@@ -74,6 +74,7 @@ import java.nio.channels.ReadableByteChannel;
 import java.nio.charset.Charset;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -89,9 +90,18 @@ import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
 
 import org.json.JSONException;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.libreoffice.androidlib.lok.LokClipboardData;
 import org.libreoffice.androidlib.lok.LokClipboardEntry;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class LOActivity extends AppCompatActivity {
     final static String TAG = "LOActivity";
@@ -106,6 +116,12 @@ public class LOActivity extends AppCompatActivity {
     private static final String KEY_INTENT_URI = "intentUri";
     private static final String CLIPBOARD_FILE_PATH = "LibreofficeClipboardFile.data";
     private static final String CLIPBOARD_COOL_SIGNATURE = "cool-clip-magic-4a22437e49a8-";
+    private static final String AI_PREF_ENDPOINT = "AI_OPENAI_ENDPOINT";
+    private static final String AI_PREF_API_KEY = "AI_OPENAI_API_KEY";
+    private static final String AI_PREF_MODEL = "AI_OPENAI_MODEL";
+    private static final String AI_DEFAULT_ENDPOINT = "https://api.openai.com/v1/chat/completions";
+    private static final String AI_DEFAULT_MODEL = "gpt-4o-mini";
+    private static final String AI_DEFAULT_SYSTEM_PROMPT = "You are a concise office writing assistant. Return only the rewritten or generated content.";
     public static final String RECENT_DOCUMENTS_KEY = "RECENT_DOCUMENTS_LIST";
     private static String USER_NAME_KEY = "USER_NAME";
     public static final String NIGHT_MODE_KEY = "NIGHT_MODE";
@@ -146,6 +162,8 @@ public class LOActivity extends AppCompatActivity {
     private boolean mIsEditModeActive = false;
 
     private ValueCallback<Uri[]> valueCallback;
+    private final Map<String, AiRequestSession> aiRequestSessions = new ConcurrentHashMap<>();
+    private boolean aiBridgeInjected = false;
 
     public static final int REQUEST_SELECT_IMAGE_FILE = 500;
     public static final int REQUEST_SAVEAS_PDF = 501;
@@ -173,6 +191,26 @@ public class LOActivity extends AppCompatActivity {
 
     /** shared pref key for recent files. */
     public static final String EXPLORER_PREFS_KEY = "EXPLORER_PREFS";
+
+    private static class AiRequestSession {
+        private volatile boolean cancelled = false;
+        private HttpURLConnection connection;
+
+        void bindConnection(HttpURLConnection httpURLConnection) {
+            connection = httpURLConnection;
+        }
+
+        void cancel() {
+            cancelled = true;
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+
+        boolean isCancelled() {
+            return cancelled;
+        }
+    }
 
     private static boolean copyFromAssets(AssetManager assetManager,
                                           String fromAssetPath, String targetDir) {
@@ -478,6 +516,7 @@ public class LOActivity extends AppCompatActivity {
             @Override
             public void run() {
                 documentLoaded = false;
+                cancelAllAiRequests();
                 postMobileMessageNative("BYE");
                 //copyTempBackToIntent();
                 runOnUiThread(new Runnable() {
@@ -670,9 +709,11 @@ public class LOActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         if (!documentLoaded) {
+            cancelAllAiRequests();
             super.onDestroy();
             return;
         }
+        cancelAllAiRequests();
         nativeLooper.quit();
 
         // Remove the webview from the hierarchy & destroy
@@ -844,6 +885,7 @@ public class LOActivity extends AppCompatActivity {
             @Override
             public void run() {
                 documentLoaded = false;
+                cancelAllAiRequests();
                 postMobileMessageNative("BYE");
                 //copyTempBackToIntent();
 
@@ -860,6 +902,7 @@ public class LOActivity extends AppCompatActivity {
 
     private void loadDocument() {
         mProgressDialog.determinate(R.string.loading);
+        aiBridgeInjected = false;
 
         // setup the COOLWSD
         ApplicationInfo applicationInfo = getApplicationInfo();
@@ -1040,6 +1083,7 @@ public class LOActivity extends AppCompatActivity {
 
                 if (messageID.equals("finish")) {
                     mProgressDialog.dismiss();
+                    injectAiBridgeIfNeeded();
                     if (BuildConfig.GOOGLE_PLAY_ENABLED && rateAppController != null)
                         rateAppController.askUserForRating();
                     return;
@@ -1168,8 +1212,416 @@ public class LOActivity extends AppCompatActivity {
                 requestForCopy();
                 return false;
             }
+            case "ai.request": {
+                handleAiRequestFromWeb(messageAndParam.length > 1 ? messageAndParam[1] : "{}");
+                return false;
+            }
+            case "ai.cancel": {
+                handleAiCancelFromWeb(messageAndParam.length > 1 ? messageAndParam[1] : "{}");
+                return false;
+            }
+            case "ai.accept": {
+                handleAiAcceptFromWeb(messageAndParam.length > 1 ? messageAndParam[1] : "{}");
+                return false;
+            }
         }
         return true;
+    }
+
+    private void handleAiRequestFromWeb(String payload) {
+        try {
+            JSONObject request = new JSONObject(payload);
+            String requestId = request.optString("requestId", "");
+            if (requestId.isEmpty()) {
+                requestId = UUID.randomUUID().toString();
+                request.put("requestId", requestId);
+            }
+
+            final String finalRequestId = requestId;
+            cancelAiRequest(finalRequestId);
+
+            AiRequestSession session = new AiRequestSession();
+            aiRequestSessions.put(finalRequestId, session);
+
+            Thread requestThread = new Thread(() -> {
+                runAiRequest(finalRequestId, request, session);
+                aiRequestSessions.remove(finalRequestId);
+            }, "cool-ai-" + finalRequestId);
+            requestThread.start();
+        } catch (JSONException e) {
+            dispatchAiError("", "invalid_payload", "Invalid ai.request payload");
+            Log.e(TAG, "Invalid ai.request payload", e);
+        }
+    }
+
+    private void handleAiCancelFromWeb(String payload) {
+        try {
+            JSONObject request = new JSONObject(payload);
+            String requestId = request.optString("requestId", "");
+            if (requestId.isEmpty()) {
+                dispatchAiError("", "invalid_payload", "requestId is required for ai.cancel");
+                return;
+            }
+            cancelAiRequest(requestId);
+        } catch (JSONException e) {
+            dispatchAiError("", "invalid_payload", "Invalid ai.cancel payload");
+            Log.e(TAG, "Invalid ai.cancel payload", e);
+        }
+    }
+
+    private void handleAiAcceptFromWeb(String payload) {
+        try {
+            JSONObject request = new JSONObject(payload);
+            String requestId = request.optString("requestId", "");
+            String text = request.optString("text", "");
+            if (text.isEmpty()) {
+                dispatchAiError(requestId, "empty_text", "Nothing to insert");
+                return;
+            }
+
+            final byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+            runOnUiThread(() -> paste("text/plain;charset=utf-8", bytes));
+        } catch (JSONException e) {
+            dispatchAiError("", "invalid_payload", "Invalid ai.accept payload");
+            Log.e(TAG, "Invalid ai.accept payload", e);
+        }
+    }
+
+    private void runAiRequest(String requestId, JSONObject request, AiRequestSession session) {
+        JSONObject context = request.optJSONObject("context");
+        String endpoint = context != null ? context.optString("endpoint", "") : "";
+        String apiKey = context != null ? context.optString("apiKey", "") : "";
+        String model = context != null ? context.optString("model", "") : "";
+
+        if (endpoint.isEmpty()) {
+            endpoint = getPrefs().getString(AI_PREF_ENDPOINT, AI_DEFAULT_ENDPOINT);
+        }
+        if (apiKey.isEmpty()) {
+            apiKey = getPrefs().getString(AI_PREF_API_KEY, "");
+        }
+        if (model.isEmpty()) {
+            model = getPrefs().getString(AI_PREF_MODEL, AI_DEFAULT_MODEL);
+        }
+
+        if (endpoint == null || endpoint.isEmpty()) {
+            dispatchAiError(requestId, "config_missing", "AI endpoint is not configured");
+            return;
+        }
+
+        if (apiKey == null || apiKey.isEmpty()) {
+            dispatchAiError(requestId, "config_missing", "AI API key is not configured");
+            return;
+        }
+
+        HttpURLConnection connection = null;
+        StringBuilder fullText = new StringBuilder();
+        try {
+            URL url = new URL(endpoint);
+            connection = (HttpURLConnection) url.openConnection();
+            session.bindConnection(connection);
+            connection.setRequestMethod("POST");
+            connection.setConnectTimeout(30000);
+            connection.setReadTimeout(30000);
+            connection.setDoOutput(true);
+            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            connection.setRequestProperty("Accept", "text/event-stream");
+            connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+
+            JSONObject body = new JSONObject();
+            body.put("model", model);
+            body.put("stream", true);
+
+            JSONArray messages = new JSONArray();
+            messages.put(new JSONObject().put("role", "system").put("content", AI_DEFAULT_SYSTEM_PROMPT));
+            messages.put(new JSONObject().put("role", "user").put("content", buildAiUserPrompt(request)));
+            body.put("messages", messages);
+
+            byte[] requestBody = body.toString().getBytes(StandardCharsets.UTF_8);
+            connection.getOutputStream().write(requestBody);
+
+            int statusCode = connection.getResponseCode();
+            if (statusCode < 200 || statusCode >= 300) {
+                String errorText = readStreamAsText(connection.getErrorStream());
+                dispatchAiError(requestId, "http_" + statusCode, errorText.isEmpty() ? "AI request failed" : errorText);
+                return;
+            }
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (session.isCancelled()) {
+                    return;
+                }
+
+                line = line.trim();
+                if (!line.startsWith("data:")) {
+                    continue;
+                }
+
+                String data = line.substring("data:".length()).trim();
+                if (data.isEmpty()) {
+                    continue;
+                }
+
+                if ("[DONE]".equals(data)) {
+                    JSONObject donePayload = new JSONObject();
+                    donePayload.put("requestId", requestId);
+                    donePayload.put("fullText", fullText.toString());
+                    dispatchAiEvent("ai.done", donePayload);
+                    return;
+                }
+
+                try {
+                    JSONObject chunk = new JSONObject(data);
+                    JSONArray choices = chunk.optJSONArray("choices");
+                    if (choices == null || choices.length() == 0) {
+                        continue;
+                    }
+
+                    JSONObject choice = choices.optJSONObject(0);
+                    if (choice == null) {
+                        continue;
+                    }
+
+                    String delta = "";
+                    JSONObject deltaObj = choice.optJSONObject("delta");
+                    if (deltaObj != null) {
+                        delta = deltaObj.optString("content", "");
+                    }
+                    if (delta.isEmpty()) {
+                        delta = choice.optString("text", "");
+                    }
+
+                    if (delta.isEmpty()) {
+                        continue;
+                    }
+
+                    fullText.append(delta);
+                    JSONObject streamPayload = new JSONObject();
+                    streamPayload.put("requestId", requestId);
+                    streamPayload.put("delta", delta);
+                    dispatchAiEvent("ai.stream", streamPayload);
+                } catch (JSONException parseError) {
+                    Log.w(TAG, "Skipping unparsable SSE chunk: " + data, parseError);
+                }
+            }
+
+            JSONObject donePayload = new JSONObject();
+            donePayload.put("requestId", requestId);
+            donePayload.put("fullText", fullText.toString());
+            dispatchAiEvent("ai.done", donePayload);
+        } catch (Exception e) {
+            if (!session.isCancelled()) {
+                dispatchAiError(requestId, "request_failed", e.getMessage() == null ? "AI request failed" : e.getMessage());
+                Log.e(TAG, "runAiRequest failed", e);
+            }
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private String buildAiUserPrompt(JSONObject request) {
+        String taskType = request.optString("taskType", "rewrite");
+        String selection = request.optString("selection", "");
+        String modelMode = request.optString("modelMode", "cloud");
+        String contextString = "";
+
+        JSONObject context = request.optJSONObject("context");
+        if (context != null) {
+            contextString = context.toString();
+        }
+
+        if (selection.isEmpty() && context != null) {
+            selection = context.optString("selection", "");
+        }
+
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("TaskType: ").append(taskType).append('\n');
+        prompt.append("ModelMode: ").append(modelMode).append('\n');
+        if (!contextString.isEmpty()) {
+            prompt.append("Context: ").append(contextString).append('\n');
+        }
+        prompt.append("SelectedText:\n").append(selection);
+        return prompt.toString();
+    }
+
+    private String readStreamAsText(InputStream inputStream) {
+        if (inputStream == null) {
+            return "";
+        }
+        try {
+            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
+            StringBuilder builder = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (builder.length() > 0) {
+                    builder.append('\n');
+                }
+                builder.append(line);
+            }
+            return builder.toString();
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    private void cancelAiRequest(String requestId) {
+        AiRequestSession session = aiRequestSessions.remove(requestId);
+        if (session == null) {
+            return;
+        }
+        session.cancel();
+    }
+
+    private void cancelAllAiRequests() {
+        for (Map.Entry<String, AiRequestSession> entry : aiRequestSessions.entrySet()) {
+            entry.getValue().cancel();
+        }
+        aiRequestSessions.clear();
+    }
+
+    private void dispatchAiError(String requestId, String code, String message) {
+        try {
+            JSONObject errorPayload = new JSONObject();
+            errorPayload.put("requestId", requestId);
+            errorPayload.put("code", code);
+            errorPayload.put("message", message);
+            dispatchAiEvent("ai.error", errorPayload);
+        } catch (JSONException ignored) {
+            Log.e(TAG, "Failed to dispatch ai.error");
+        }
+    }
+
+    private void dispatchAiEvent(String type, JSONObject payload) {
+        JSONObject event = new JSONObject();
+        try {
+            event.put("type", type);
+            if (payload != null) {
+                Iterator<String> keys = payload.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    event.put(key, payload.get(key));
+                }
+            }
+        } catch (JSONException e) {
+            Log.e(TAG, "Failed to build AI event payload", e);
+            return;
+        }
+
+        final String script = "(function(){" +
+                "var data=JSON.parse(" + JSONObject.quote(event.toString()) + ");" +
+                "if(window.__coolAiBridge&&typeof window.__coolAiBridge.onNativeEvent==='function'){window.__coolAiBridge.onNativeEvent(data);}" +
+                "window.dispatchEvent(new CustomEvent('cool.ai',{detail:data}));" +
+                "})();";
+
+        runOnUiThread(() -> {
+            if (mWebView != null) {
+                mWebView.evaluateJavascript(script, null);
+            }
+        });
+    }
+
+    private void injectAiBridgeIfNeeded() {
+        if (aiBridgeInjected || mWebView == null) {
+            return;
+        }
+        aiBridgeInjected = true;
+
+        final String script = "(function(){" +
+                "if(window.__coolAiBridge){return;}" +
+                "var bridge={activeRequestId:null,lastTextByRequestId:{},onNativeEvent:function(evt){" +
+                    "if(!evt||!evt.type){return;}" +
+                    "var id=evt.requestId||'';" +
+                    "if(evt.type==='ai.stream'&&id){this.lastTextByRequestId[id]=(this.lastTextByRequestId[id]||'')+(evt.delta||'');}" +
+                    "if(evt.type==='ai.done'&&id&&typeof evt.fullText==='string'){this.lastTextByRequestId[id]=evt.fullText;}" +
+                    "window.dispatchEvent(new CustomEvent(evt.type,{detail:evt}));" +
+                "},request:function(payload){" +
+                    "payload=payload||{};" +
+                    "if(!payload.requestId){payload.requestId='req-'+Date.now()+'-'+Math.random().toString(16).slice(2);}" +
+                    "this.activeRequestId=payload.requestId;" +
+                    "window.postMobileMessage('ai.request '+JSON.stringify(payload));" +
+                    "return payload.requestId;" +
+                "},cancel:function(requestId){" +
+                    "if(!requestId){return;}" +
+                    "window.postMobileMessage('ai.cancel '+JSON.stringify({requestId:requestId}));" +
+                "},accept:function(requestId,text){" +
+                    "if(!requestId||!text){return;}" +
+                    "window.postMobileMessage('ai.accept '+JSON.stringify({requestId:requestId,text:text}));" +
+                "}};" +
+                "window.__coolAiBridge=bridge;" +
+                "var panel=document.createElement('div');" +
+                "panel.id='cool-ai-panel';" +
+                "panel.style.cssText='position:fixed;right:16px;bottom:72px;z-index:2147483646;width:320px;max-width:92vw;max-height:58vh;background:#10131a;color:#fff;border:1px solid #2c3342;border-radius:12px;box-shadow:0 12px 28px rgba(0,0,0,.35);display:none;padding:12px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;';" +
+                "panel.innerHTML='<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;\"><strong style=\"font-size:14px;\">AI Assistant</strong><button id=\"cool-ai-close\" style=\"border:none;background:transparent;color:#9fb3c8;font-size:18px;\">X</button></div><input id=\"cool-ai-endpoint\" style=\"width:100%;margin-bottom:6px;background:#182031;color:#fff;border:1px solid #30405b;border-radius:8px;padding:6px 8px;font-size:11px;\" placeholder=\"Endpoint (OpenAI-compatible)\" /><input id=\"cool-ai-model\" style=\"width:100%;margin-bottom:6px;background:#182031;color:#fff;border:1px solid #30405b;border-radius:8px;padding:6px 8px;font-size:11px;\" placeholder=\"Model\" /><input id=\"cool-ai-key\" style=\"width:100%;margin-bottom:6px;background:#182031;color:#fff;border:1px solid #30405b;border-radius:8px;padding:6px 8px;font-size:11px;\" placeholder=\"API Key\" /><textarea id=\"cool-ai-prompt\" style=\"width:100%;height:52px;background:#182031;color:#fff;border:1px solid #30405b;border-radius:8px;padding:8px;resize:none;font-size:12px;\" placeholder=\"Enter prompt, e.g. rewrite and continue selected text\"></textarea><div style=\"display:flex;gap:8px;margin-top:8px;\"><button id=\"cool-ai-run\" style=\"flex:1;background:#2f80ed;color:#fff;border:none;border-radius:8px;padding:8px 10px;font-size:12px;\">Run</button><button id=\"cool-ai-cancel\" style=\"background:#2f3545;color:#d6dbe5;border:none;border-radius:8px;padding:8px 10px;font-size:12px;\">Cancel</button><button id=\"cool-ai-accept\" style=\"background:#178a55;color:#fff;border:none;border-radius:8px;padding:8px 10px;font-size:12px;\">Accept</button></div><div id=\"cool-ai-status\" style=\"font-size:12px;color:#9fb3c8;margin-top:8px;\">Ready</div><pre id=\"cool-ai-output\" style=\"margin:8px 0 0 0;white-space:pre-wrap;line-height:1.4;background:#0b0f16;border:1px solid #29364e;border-radius:8px;padding:8px;max-height:180px;overflow:auto;font-size:12px;\"></pre>';" +
+                "document.body.appendChild(panel);" +
+                "var fab=document.createElement('button');" +
+                "fab.id='cool-ai-fab';" +
+                "fab.textContent='AI';" +
+                "fab.style.cssText='position:fixed;right:16px;bottom:16px;z-index:2147483647;width:48px;height:48px;border-radius:24px;border:none;background:#1f6feb;color:#fff;font-weight:700;box-shadow:0 8px 18px rgba(0,0,0,.28);';" +
+                "document.body.appendChild(fab);" +
+                "var promptEl=panel.querySelector('#cool-ai-prompt');" +
+                "var endpointEl=panel.querySelector('#cool-ai-endpoint');" +
+                "var modelEl=panel.querySelector('#cool-ai-model');" +
+                "var keyEl=panel.querySelector('#cool-ai-key');" +
+                "var outputEl=panel.querySelector('#cool-ai-output');" +
+                "var statusEl=panel.querySelector('#cool-ai-status');" +
+                "endpointEl.value='" + AI_DEFAULT_ENDPOINT + "';" +
+                "modelEl.value='" + AI_DEFAULT_MODEL + "';" +
+                "promptEl.value='Polish and continue the selected text.';" +
+                "function getSelectionText(){" +
+                    "try{if(window.app&&app.map&&app.map._clip){var s=app.map._clip._selectionPlainTextContent||'';if(s){return s;}}}catch(e){}" +
+                    "try{return (window.getSelection&&window.getSelection().toString())||'';}catch(e2){return '';}" +
+                "}" +
+                "fab.onclick=function(){panel.style.display='block';};" +
+                "panel.querySelector('#cool-ai-close').onclick=function(){panel.style.display='none';};" +
+                "panel.querySelector('#cool-ai-run').onclick=function(){" +
+                    "var selection=getSelectionText();" +
+                    "var reqId=bridge.request({taskType:'rewrite',selection:selection,context:{prompt:promptEl.value,source:'android-fab',endpoint:endpointEl.value,model:modelEl.value,apiKey:keyEl.value},modelMode:'cloud'});" +
+                    "bridge.activeRequestId=reqId;" +
+                    "outputEl.textContent='';" +
+                    "statusEl.textContent='Request sent: '+reqId;" +
+                "};" +
+                "panel.querySelector('#cool-ai-cancel').onclick=function(){" +
+                    "if(!bridge.activeRequestId){return;}" +
+                    "bridge.cancel(bridge.activeRequestId);" +
+                    "statusEl.textContent='Cancelled: '+bridge.activeRequestId;" +
+                "};" +
+                "panel.querySelector('#cool-ai-accept').onclick=function(){" +
+                    "var id=bridge.activeRequestId;" +
+                    "if(!id){return;}" +
+                    "var text=bridge.lastTextByRequestId[id]||outputEl.textContent||'';" +
+                    "bridge.accept(id,text);" +
+                    "statusEl.textContent='Inserted into document';" +
+                "};" +
+                "window.addEventListener('ai.stream',function(ev){" +
+                    "if(!ev||!ev.detail){return;}" +
+                    "var d=ev.detail;" +
+                    "if(bridge.activeRequestId&&d.requestId!==bridge.activeRequestId){return;}" +
+                    "outputEl.textContent+=d.delta||'';" +
+                    "statusEl.textContent='Streaming...';" +
+                "});" +
+                "window.addEventListener('ai.done',function(ev){" +
+                    "if(!ev||!ev.detail){return;}" +
+                    "var d=ev.detail;" +
+                    "if(d.requestId){bridge.lastTextByRequestId[d.requestId]=d.fullText||outputEl.textContent;}" +
+                    "if(bridge.activeRequestId&&d.requestId!==bridge.activeRequestId){return;}" +
+                    "if(typeof d.fullText==='string'&&d.fullText.length>0){outputEl.textContent=d.fullText;}" +
+                    "statusEl.textContent='Completed';" +
+                "});" +
+                "window.addEventListener('ai.error',function(ev){" +
+                    "if(!ev||!ev.detail){return;}" +
+                    "var d=ev.detail;" +
+                    "statusEl.textContent='Error('+ (d.code||'unknown') +'): '+(d.message||'request failed');" +
+                "});" +
+                "})();";
+
+        runOnUiThread(() -> {
+            if (mWebView != null) {
+                mWebView.evaluateJavascript(script, null);
+            }
+        });
     }
 
     public static void createNewFileInputDialog(Activity activity, final String defaultFileName, final @Nullable String mimeType, final int requestCode) {

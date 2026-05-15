@@ -95,6 +95,7 @@ tasks.register('copyUnpackAssets', Copy) {
     into('program') {
         from("${liboInstdir}/program/types") {
             includes = [
+                    "udkapi.rdb",
                     "offapi.rdb",
                     "oovbaapi.rdb"
             ]
@@ -267,10 +268,35 @@ ProductKey=LibreOffice ''' + "${liboVersionMajor}.${liboVersionMinor}" + '''
 UserInstallation=file://$APP_DATA_DIR
 '''.stripIndent()
 
+        def unoTypes = []
+        if (file('src/main/assets/unpack/program/udkapi.rdb').exists()) {
+            unoTypes.add('file://$APP_DATA_DIR/program/udkapi.rdb')
+        }
+        if (file('src/main/assets/unpack/program/offapi.rdb').exists()) {
+            unoTypes.add('file://$APP_DATA_DIR/program/offapi.rdb')
+        }
+        if (file('src/main/assets/unpack/program/oovbaapi.rdb').exists()) {
+            unoTypes.add('file://$APP_DATA_DIR/program/oovbaapi.rdb')
+        }
+
+        if (unoTypes.isEmpty()) {
+            throw new GradleException('No UNO type libraries found under src/main/assets/unpack/program/')
+        }
+
+        def udkapiFile = file('src/main/assets/unpack/program/udkapi.rdb')
+        if (!udkapiFile.exists()) {
+            throw new GradleException('udkapi.rdb is missing under src/main/assets/unpack/program/. Refusing to build a likely-crashing APK.')
+        }
+        if (udkapiFile.length() == 0) {
+            throw new GradleException('udkapi.rdb is empty (0 bytes). Refusing to build a likely-crashing APK.')
+        }
+
+        def unoTypesValue = unoTypes.join(' ')
+
         unorc.text = '''\
 [Bootstrap]
 URE_INTERNAL_LIB_DIR=file://$APP_DATA_DIR/lib/
-UNO_TYPES=file://$APP_DATA_DIR/program/udkapi.rdb file://$APP_DATA_DIR/program/offapi.rdb file://$APP_DATA_DIR/program/oovbaapi.rdb
+UNO_TYPES=''' + unoTypesValue + '''
 UNO_SERVICES=file:///assets/program/services.rdb file:///assets/program/services/services.rdb
 '''.stripIndent()
 
