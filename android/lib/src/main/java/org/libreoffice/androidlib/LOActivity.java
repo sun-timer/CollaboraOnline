@@ -1634,6 +1634,9 @@ public class LOActivity extends AppCompatActivity {
                 "var keyEl=panel.querySelector('#cool-ai-key');" +
                 "var outputEl=panel.querySelector('#cool-ai-output');" +
                 "var statusEl=panel.querySelector('#cool-ai-status');" +
+                "var runBtn=panel.querySelector('#cool-ai-run');" +
+                "var cancelBtn=panel.querySelector('#cool-ai-cancel');" +
+                "var acceptBtn=panel.querySelector('#cool-ai-accept');" +
                 "endpointEl.value='" + AI_DEFAULT_ENDPOINT + "';" +
                 "modelEl.value='" + AI_DEFAULT_MODEL + "';" +
                 "promptEl.value='Polish and continue the selected text.';" +
@@ -1646,31 +1649,44 @@ public class LOActivity extends AppCompatActivity {
                         "promptEl.value=ls.getItem('cool.ai.prompt')||promptEl.value;" +
                     "}" +
                 "}catch(e){}" +
+                "function setUiState(state){" +
+                    "var busy=(state==='loading'||state==='streaming');" +
+                    "runBtn.disabled=busy;" +
+                    "cancelBtn.disabled=!busy;" +
+                    "acceptBtn.disabled=busy;" +
+                    "runBtn.style.opacity=busy?'0.65':'1';" +
+                    "cancelBtn.style.opacity=busy?'1':'0.65';" +
+                    "acceptBtn.style.opacity=busy?'0.65':'1';" +
+                "}" +
+                "setUiState('ready');" +
                 "function getSelectionText(){" +
                     "try{if(window.app&&app.map&&app.map._clip){var s=app.map._clip._selectionPlainTextContent||'';if(s){return s;}}}catch(e){}" +
                     "try{return (window.getSelection&&window.getSelection().toString())||'';}catch(e2){return '';}" +
                 "}" +
                 "fab.onclick=function(){panel.style.display='block';};" +
                 "panel.querySelector('#cool-ai-close').onclick=function(){panel.style.display='none';};" +
-                "panel.querySelector('#cool-ai-run').onclick=function(){" +
+                "runBtn.onclick=function(){" +
                     "var selection=getSelectionText();" +
                     "try{var ls=window.localStorage;if(ls){ls.setItem('cool.ai.endpoint',endpointEl.value||'');ls.setItem('cool.ai.model',modelEl.value||'');ls.setItem('cool.ai.apiKey',keyEl.value||'');ls.setItem('cool.ai.prompt',promptEl.value||'');}}catch(e){}" +
                     "var reqId=bridge.request({taskType:'rewrite',selection:selection,context:{prompt:promptEl.value,source:'android-fab',endpoint:endpointEl.value,model:modelEl.value,apiKey:keyEl.value},modelMode:'cloud'});" +
                     "bridge.activeRequestId=reqId;" +
                     "outputEl.textContent='';" +
                     "statusEl.textContent='Request sent: '+reqId;" +
+                    "setUiState('loading');" +
                 "};" +
-                "panel.querySelector('#cool-ai-cancel').onclick=function(){" +
+                "cancelBtn.onclick=function(){" +
                     "if(!bridge.activeRequestId){return;}" +
                     "bridge.cancel(bridge.activeRequestId);" +
                     "statusEl.textContent='Cancelled: '+bridge.activeRequestId;" +
+                    "setUiState('cancelled');" +
                 "};" +
-                "panel.querySelector('#cool-ai-accept').onclick=function(){" +
+                "acceptBtn.onclick=function(){" +
                     "var id=bridge.activeRequestId;" +
                     "if(!id){return;}" +
                     "var text=bridge.lastTextByRequestId[id]||outputEl.textContent||'';" +
                     "bridge.accept(id,text);" +
                     "statusEl.textContent='Inserted into document';" +
+                    "setUiState('ready');" +
                 "};" +
                 "window.addEventListener('ai.stream',function(ev){" +
                     "if(!ev||!ev.detail){return;}" +
@@ -1678,6 +1694,7 @@ public class LOActivity extends AppCompatActivity {
                     "if(bridge.activeRequestId&&d.requestId!==bridge.activeRequestId){return;}" +
                     "outputEl.textContent+=d.delta||'';" +
                     "statusEl.textContent='Streaming...';" +
+                    "setUiState('streaming');" +
                 "});" +
                 "window.addEventListener('ai.done',function(ev){" +
                     "if(!ev||!ev.detail){return;}" +
@@ -1686,17 +1703,20 @@ public class LOActivity extends AppCompatActivity {
                     "if(bridge.activeRequestId&&d.requestId!==bridge.activeRequestId){return;}" +
                     "if(typeof d.fullText==='string'&&d.fullText.length>0){outputEl.textContent=d.fullText;}" +
                     "statusEl.textContent='Completed';" +
+                    "setUiState('ready');" +
                 "});" +
                 "window.addEventListener('ai.error',function(ev){" +
                     "if(!ev||!ev.detail){return;}" +
                     "var d=ev.detail;" +
                     "statusEl.textContent='Error('+ (d.code||'unknown') +'): '+(d.message||'request failed');" +
+                    "setUiState('error');" +
                 "});" +
                 "window.addEventListener('ai.state',function(ev){" +
                     "if(!ev||!ev.detail){return;}" +
                     "var d=ev.detail;" +
                     "if(bridge.activeRequestId&&d.requestId&&d.requestId!==bridge.activeRequestId){return;}" +
                     "statusEl.textContent='State: '+(d.state||'unknown')+(d.message?(' - '+d.message):'');" +
+                    "setUiState(d.state||'ready');" +
                 "});" +
                 "})();";
 
