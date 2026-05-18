@@ -25,6 +25,7 @@ import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.content.res.Configuration;
 import android.database.Cursor;
+import android.graphics.Color;
 import android.graphics.Insets;
 import android.net.Uri;
 import android.os.AsyncTask;
@@ -53,6 +54,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.RatingBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -90,6 +92,8 @@ import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
+
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.json.JSONException;
 import org.json.JSONArray;
@@ -175,7 +179,7 @@ public class LOActivity extends AppCompatActivity {
     private final Map<String, StringBuilder> aiTextByRequestId = new ConcurrentHashMap<>();
     private boolean aiBridgeInjected = false;
     private String aiActiveRequestId = "";
-    private AlertDialog aiPanelDialog;
+    private BottomSheetDialog aiPanelDialog;
     private EditText aiEndpointInput;
     private EditText aiModelInput;
     private EditText aiKeyInput;
@@ -185,6 +189,7 @@ public class LOActivity extends AppCompatActivity {
     private Button aiRunButton;
     private Button aiCancelButton;
     private Button aiAcceptButton;
+    private ImageButton aiCloseButton;
 
     public static final int REQUEST_SELECT_IMAGE_FILE = 500;
     public static final int REQUEST_SAVEAS_PDF = 501;
@@ -1631,6 +1636,7 @@ public class LOActivity extends AppCompatActivity {
         aiRunButton = panel.findViewById(R.id.ai_run);
         aiCancelButton = panel.findViewById(R.id.ai_cancel);
         aiAcceptButton = panel.findViewById(R.id.ai_accept);
+        aiCloseButton = panel.findViewById(R.id.ai_close);
 
         aiEndpointInput.setText(getPrefs().getString(AI_PREF_ENDPOINT, AI_DEFAULT_ENDPOINT));
         aiModelInput.setText(getPrefs().getString(AI_PREF_MODEL, AI_DEFAULT_MODEL));
@@ -1643,12 +1649,15 @@ public class LOActivity extends AppCompatActivity {
         aiRunButton.setOnClickListener(v -> runAiFromNativePanel());
         aiCancelButton.setOnClickListener(v -> cancelAiFromNativePanel());
         aiAcceptButton.setOnClickListener(v -> acceptAiFromNativePanel());
+        aiCloseButton.setOnClickListener(v -> {
+            if (aiPanelDialog != null) {
+                aiPanelDialog.dismiss();
+            }
+        });
 
-        aiPanelDialog = new AlertDialog.Builder(this)
-                .setTitle("AI Assistant")
-                .setView(panel)
-                .setOnDismissListener(dialog -> aiPanelDialog = null)
-                .create();
+        aiPanelDialog = new BottomSheetDialog(this);
+        aiPanelDialog.setContentView(panel);
+        aiPanelDialog.setOnDismissListener(dialog -> aiPanelDialog = null);
         aiPanelDialog.show();
     }
 
@@ -1791,9 +1800,19 @@ public class LOActivity extends AppCompatActivity {
             aiRunButton.setEnabled(!busy);
             aiCancelButton.setEnabled(busy);
             aiAcceptButton.setEnabled(!busy);
+            aiRunButton.setAlpha(busy ? 0.65f : 1.0f);
+            aiCancelButton.setAlpha(busy ? 1.0f : 0.65f);
+            aiAcceptButton.setAlpha(busy ? 0.65f : 1.0f);
 
             String finalMessage = (message == null || message.isEmpty()) ? state : message;
             aiStatusText.setText("State: " + state + " - " + finalMessage);
+            if (AI_STATE_ERROR.equals(state) || AI_STATE_UNCONFIGURED.equals(state)) {
+                aiStatusText.setTextColor(Color.parseColor("#B3261E"));
+            } else if (AI_STATE_STREAMING.equals(state) || AI_STATE_LOADING.equals(state)) {
+                aiStatusText.setTextColor(Color.parseColor("#0B57D0"));
+            } else {
+                aiStatusText.setTextColor(Color.parseColor("#2E7D32"));
+            }
         });
     }
 
