@@ -51,6 +51,8 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.RatingBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -92,6 +94,7 @@ import androidx.core.view.WindowCompat;
 import org.json.JSONException;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.json.JSONTokener;
 import org.libreoffice.androidlib.lok.LokClipboardData;
 import org.libreoffice.androidlib.lok.LokClipboardEntry;
 
@@ -169,7 +172,19 @@ public class LOActivity extends AppCompatActivity {
 
     private ValueCallback<Uri[]> valueCallback;
     private final Map<String, AiRequestSession> aiRequestSessions = new ConcurrentHashMap<>();
+    private final Map<String, StringBuilder> aiTextByRequestId = new ConcurrentHashMap<>();
     private boolean aiBridgeInjected = false;
+    private String aiActiveRequestId = "";
+    private AlertDialog aiPanelDialog;
+    private EditText aiEndpointInput;
+    private EditText aiModelInput;
+    private EditText aiKeyInput;
+    private EditText aiPromptInput;
+    private TextView aiStatusText;
+    private TextView aiOutputText;
+    private Button aiRunButton;
+    private Button aiCancelButton;
+    private Button aiAcceptButton;
 
     public static final int REQUEST_SELECT_IMAGE_FILE = 500;
     public static final int REQUEST_SAVEAS_PDF = 501;
@@ -458,6 +473,7 @@ public class LOActivity extends AppCompatActivity {
             WebSettings webSettings = mWebView.getSettings();
             webSettings.setJavaScriptEnabled(true);
             mWebView.addJavascriptInterface(this, "COOLMessageHandler");
+            setupAiFab();
 
             webSettings.setDomStorageEnabled(true);
 
@@ -1577,6 +1593,8 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
 
+        handleAiNativeEvent(event);
+
         final String script = "(function(){" +
                 "var data=JSON.parse(" + JSONObject.quote(event.toString()) + ");" +
                 "if(window.__coolAiBridge&&typeof window.__coolAiBridge.onNativeEvent==='function'){window.__coolAiBridge.onNativeEvent(data);}" +
@@ -1587,6 +1605,195 @@ public class LOActivity extends AppCompatActivity {
             if (mWebView != null) {
                 mWebView.evaluateJavascript(script, null);
             }
+        });
+    }
+
+    private void setupAiFab() {
+        View aiFab = findViewById(R.id.ai_fab);
+        if (aiFab == null) {
+            return;
+        }
+        aiFab.setOnClickListener(v -> showNativeAiPanel());
+    }
+
+    private void showNativeAiPanel() {
+        if (aiPanelDialog != null && aiPanelDialog.isShowing()) {
+            return;
+        }
+
+        View panel = LayoutInflater.from(this).inflate(R.layout.lolib_dialog_ai_panel, null, false);
+        aiEndpointInput = panel.findViewById(R.id.ai_endpoint);
+        aiModelInput = panel.findViewById(R.id.ai_model);
+        aiKeyInput = panel.findViewById(R.id.ai_api_key);
+        aiPromptInput = panel.findViewById(R.id.ai_prompt);
+        aiStatusText = panel.findViewById(R.id.ai_status);
+        aiOutputText = panel.findViewById(R.id.ai_output);
+        aiRunButton = panel.findViewById(R.id.ai_run);
+        aiCancelButton = panel.findViewById(R.id.ai_cancel);
+        aiAcceptButton = panel.findViewById(R.id.ai_accept);
+
+        aiEndpointInput.setText(getPrefs().getString(AI_PREF_ENDPOINT, AI_DEFAULT_ENDPOINT));
+        aiModelInput.setText(getPrefs().getString(AI_PREF_MODEL, AI_DEFAULT_MODEL));
+        aiKeyInput.setText(getPrefs().getString(AI_PREF_API_KEY, ""));
+        aiPromptInput.setText("Polish and continue the selected text.");
+        aiStatusText.setText("Ready");
+        aiOutputText.setText("");
+        setNativeAiPanelState(AI_STATE_READY, "Ready");
+
+        aiRunButton.setOnClickListener(v -> runAiFromNativePanel());
+        aiCancelButton.setOnClickListener(v -> cancelAiFromNativePanel());
+        aiAcceptButton.setOnClickListener(v -> acceptAiFromNativePanel());
+
+        aiPanelDialog = new AlertDialog.Builder(this)
+                .setTitle("AI Assistant")
+                .setView(panel)
+                .setOnDismissListener(dialog -> aiPanelDialog = null)
+                .create();
+        aiPanelDialog.show();
+    }
+
+    private void runAiFromNativePanel() {
+        if (mWebView == null) {
+            return;
+        }
+        setNativeAiPanelState(AI_STATE_LOADING, "AI request queued");
+        mWebView.evaluateJavascript("(function(){try{if(window.app&&app.map&&app.map._clip){return app.map._clip._selectionPlainTextContent||'';}return (window.getSelection&&window.getSelection().toString())||'';}catch(e){return '';}})();",
+                value -> startNativeAiRequest(parseJsString(value)));
+    }
+
+    private void startNativeAiRequest(String selection) {
+        try {
+            JSONObject context = new JSONObject();
+            context.put("prompt", aiPromptInput != null ? aiPromptInput.getText().toString() : "");
+            context.put("source", "android-native-panel");
+            context.put("endpoint", aiEndpointInput != null ? aiEndpointInput.getText().toString().trim() : "");
+            context.put("model", aiModelInput != null ? aiModelInput.getText().toString().trim() : "");
+            context.put("apiKey", aiKeyInput != null ? aiKeyInput.getText().toString().trim() : "");
+
+            JSONObject request = new JSONObject();
+            String requestId = "req-" + UUID.randomUUID();
+            request.put("requestId", requestId);
+            request.put("taskType", "rewrite");
+            request.put("selection", selection == null ? "" : selection);
+            request.put("context", context);
+            request.put("modelMode", "cloud");
+
+            aiActiveRequestId = requestId;
+            aiTextByRequestId.put(requestId, new StringBuilder());
+            if (aiOutputText != null) {
+                aiOutputText.setText("");
+            }
+
+            handleAiRequestFromWeb(request.toString());
+        } catch (JSONException e) {
+            dispatchAiError("", "invalid_payload", "Failed to build native ai.request payload");
+        }
+    }
+
+    private void cancelAiFromNativePanel() {
+        if (aiActiveRequestId == null || aiActiveRequestId.isEmpty()) {
+            return;
+        }
+        try {
+            JSONObject request = new JSONObject();
+            request.put("requestId", aiActiveRequestId);
+            handleAiCancelFromWeb(request.toString());
+        } catch (JSONException ignored) {
+        }
+    }
+
+    private void acceptAiFromNativePanel() {
+        if (aiActiveRequestId == null || aiActiveRequestId.isEmpty()) {
+            return;
+        }
+
+        StringBuilder textBuilder = aiTextByRequestId.get(aiActiveRequestId);
+        String text = textBuilder == null ? "" : textBuilder.toString();
+        if (text.isEmpty() && aiOutputText != null) {
+            text = aiOutputText.getText().toString();
+        }
+        if (text.isEmpty()) {
+            return;
+        }
+
+        try {
+            JSONObject request = new JSONObject();
+            request.put("requestId", aiActiveRequestId);
+            request.put("text", text);
+            handleAiAcceptFromWeb(request.toString());
+            setNativeAiPanelState(AI_STATE_READY, "Inserted into document");
+        } catch (JSONException ignored) {
+        }
+    }
+
+    private String parseJsString(String jsResult) {
+        if (jsResult == null || jsResult.equals("null")) {
+            return "";
+        }
+        try {
+            Object value = new JSONTokener(jsResult).nextValue();
+            if (value instanceof String) {
+                return (String) value;
+            }
+        } catch (Exception ignored) {
+        }
+        return jsResult;
+    }
+
+    private void handleAiNativeEvent(JSONObject event) {
+        String type = event.optString("type", "");
+        String requestId = event.optString("requestId", "");
+        if (!requestId.isEmpty() && (aiActiveRequestId == null || aiActiveRequestId.isEmpty())) {
+            aiActiveRequestId = requestId;
+        }
+
+        if ("ai.stream".equals(type)) {
+            String delta = event.optString("delta", "");
+            if (!requestId.isEmpty()) {
+                aiTextByRequestId.computeIfAbsent(requestId, ignored -> new StringBuilder()).append(delta);
+            }
+            if (requestId.equals(aiActiveRequestId) && aiOutputText != null && !delta.isEmpty()) {
+                runOnUiThread(() -> aiOutputText.append(delta));
+            }
+            setNativeAiPanelState(AI_STATE_STREAMING, "AI response streaming");
+            return;
+        }
+
+        if ("ai.done".equals(type)) {
+            String fullText = event.optString("fullText", "");
+            if (!requestId.isEmpty()) {
+                aiTextByRequestId.put(requestId, new StringBuilder(fullText));
+            }
+            if (requestId.equals(aiActiveRequestId) && aiOutputText != null) {
+                runOnUiThread(() -> aiOutputText.setText(fullText));
+            }
+            setNativeAiPanelState(AI_STATE_READY, "AI response completed");
+            return;
+        }
+
+        if ("ai.error".equals(type)) {
+            setNativeAiPanelState(AI_STATE_ERROR, event.optString("message", "AI request failed"));
+            return;
+        }
+
+        if ("ai.state".equals(type)) {
+            setNativeAiPanelState(event.optString("state", AI_STATE_READY), event.optString("message", ""));
+        }
+    }
+
+    private void setNativeAiPanelState(String state, String message) {
+        runOnUiThread(() -> {
+            if (aiStatusText == null || aiRunButton == null || aiCancelButton == null || aiAcceptButton == null) {
+                return;
+            }
+
+            boolean busy = AI_STATE_LOADING.equals(state) || AI_STATE_STREAMING.equals(state);
+            aiRunButton.setEnabled(!busy);
+            aiCancelButton.setEnabled(busy);
+            aiAcceptButton.setEnabled(!busy);
+
+            String finalMessage = (message == null || message.isEmpty()) ? state : message;
+            aiStatusText.setText("State: " + state + " - " + finalMessage);
         });
     }
 
@@ -1618,106 +1825,6 @@ public class LOActivity extends AppCompatActivity {
                     "window.postMobileMessage('ai.accept '+JSON.stringify({requestId:requestId,text:text}));" +
                 "}};" +
                 "window.__coolAiBridge=bridge;" +
-                "var panel=document.createElement('div');" +
-                "panel.id='cool-ai-panel';" +
-                "panel.style.cssText='position:fixed;right:16px;bottom:72px;z-index:2147483646;width:320px;max-width:92vw;max-height:58vh;background:#10131a;color:#fff;border:1px solid #2c3342;border-radius:12px;box-shadow:0 12px 28px rgba(0,0,0,.35);display:none;padding:12px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;';" +
-                "panel.innerHTML='<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;\"><strong style=\"font-size:14px;\">AI Assistant</strong><button id=\"cool-ai-close\" style=\"border:none;background:transparent;color:#9fb3c8;font-size:18px;\">X</button></div><input id=\"cool-ai-endpoint\" style=\"width:100%;margin-bottom:6px;background:#182031;color:#fff;border:1px solid #30405b;border-radius:8px;padding:6px 8px;font-size:11px;\" placeholder=\"Endpoint (OpenAI-compatible)\" /><input id=\"cool-ai-model\" style=\"width:100%;margin-bottom:6px;background:#182031;color:#fff;border:1px solid #30405b;border-radius:8px;padding:6px 8px;font-size:11px;\" placeholder=\"Model\" /><input id=\"cool-ai-key\" style=\"width:100%;margin-bottom:6px;background:#182031;color:#fff;border:1px solid #30405b;border-radius:8px;padding:6px 8px;font-size:11px;\" placeholder=\"API Key\" /><textarea id=\"cool-ai-prompt\" style=\"width:100%;height:52px;background:#182031;color:#fff;border:1px solid #30405b;border-radius:8px;padding:8px;resize:none;font-size:12px;\" placeholder=\"Enter prompt, e.g. rewrite and continue selected text\"></textarea><div style=\"display:flex;gap:8px;margin-top:8px;\"><button id=\"cool-ai-run\" style=\"flex:1;background:#2f80ed;color:#fff;border:none;border-radius:8px;padding:8px 10px;font-size:12px;\">Run</button><button id=\"cool-ai-cancel\" style=\"background:#2f3545;color:#d6dbe5;border:none;border-radius:8px;padding:8px 10px;font-size:12px;\">Cancel</button><button id=\"cool-ai-accept\" style=\"background:#178a55;color:#fff;border:none;border-radius:8px;padding:8px 10px;font-size:12px;\">Accept</button></div><div id=\"cool-ai-status\" style=\"font-size:12px;color:#9fb3c8;margin-top:8px;\">Ready</div><pre id=\"cool-ai-output\" style=\"margin:8px 0 0 0;white-space:pre-wrap;line-height:1.4;background:#0b0f16;border:1px solid #29364e;border-radius:8px;padding:8px;max-height:180px;overflow:auto;font-size:12px;\"></pre>';" +
-                "document.body.appendChild(panel);" +
-                "var fab=document.createElement('button');" +
-                "fab.id='cool-ai-fab';" +
-                "fab.textContent='AI';" +
-                "fab.style.cssText='position:fixed;right:16px;bottom:16px;z-index:2147483647;width:48px;height:48px;border-radius:24px;border:none;background:#1f6feb;color:#fff;font-weight:700;box-shadow:0 8px 18px rgba(0,0,0,.28);';" +
-                "document.body.appendChild(fab);" +
-                "var promptEl=panel.querySelector('#cool-ai-prompt');" +
-                "var endpointEl=panel.querySelector('#cool-ai-endpoint');" +
-                "var modelEl=panel.querySelector('#cool-ai-model');" +
-                "var keyEl=panel.querySelector('#cool-ai-key');" +
-                "var outputEl=panel.querySelector('#cool-ai-output');" +
-                "var statusEl=panel.querySelector('#cool-ai-status');" +
-                "var runBtn=panel.querySelector('#cool-ai-run');" +
-                "var cancelBtn=panel.querySelector('#cool-ai-cancel');" +
-                "var acceptBtn=panel.querySelector('#cool-ai-accept');" +
-                "endpointEl.value='" + AI_DEFAULT_ENDPOINT + "';" +
-                "modelEl.value='" + AI_DEFAULT_MODEL + "';" +
-                "promptEl.value='Polish and continue the selected text.';" +
-                "try{" +
-                    "var ls=window.localStorage;" +
-                    "if(ls){" +
-                        "endpointEl.value=ls.getItem('cool.ai.endpoint')||endpointEl.value;" +
-                        "modelEl.value=ls.getItem('cool.ai.model')||modelEl.value;" +
-                        "keyEl.value=ls.getItem('cool.ai.apiKey')||keyEl.value;" +
-                        "promptEl.value=ls.getItem('cool.ai.prompt')||promptEl.value;" +
-                    "}" +
-                "}catch(e){}" +
-                "function setUiState(state){" +
-                    "var busy=(state==='loading'||state==='streaming');" +
-                    "runBtn.disabled=busy;" +
-                    "cancelBtn.disabled=!busy;" +
-                    "acceptBtn.disabled=busy;" +
-                    "runBtn.style.opacity=busy?'0.65':'1';" +
-                    "cancelBtn.style.opacity=busy?'1':'0.65';" +
-                    "acceptBtn.style.opacity=busy?'0.65':'1';" +
-                "}" +
-                "setUiState('ready');" +
-                "function getSelectionText(){" +
-                    "try{if(window.app&&app.map&&app.map._clip){var s=app.map._clip._selectionPlainTextContent||'';if(s){return s;}}}catch(e){}" +
-                    "try{return (window.getSelection&&window.getSelection().toString())||'';}catch(e2){return '';}" +
-                "}" +
-                "fab.onclick=function(){panel.style.display='block';};" +
-                "panel.querySelector('#cool-ai-close').onclick=function(){panel.style.display='none';};" +
-                "runBtn.onclick=function(){" +
-                    "var selection=getSelectionText();" +
-                    "try{var ls=window.localStorage;if(ls){ls.setItem('cool.ai.endpoint',endpointEl.value||'');ls.setItem('cool.ai.model',modelEl.value||'');ls.setItem('cool.ai.apiKey',keyEl.value||'');ls.setItem('cool.ai.prompt',promptEl.value||'');}}catch(e){}" +
-                    "var reqId=bridge.request({taskType:'rewrite',selection:selection,context:{prompt:promptEl.value,source:'android-fab',endpoint:endpointEl.value,model:modelEl.value,apiKey:keyEl.value},modelMode:'cloud'});" +
-                    "bridge.activeRequestId=reqId;" +
-                    "outputEl.textContent='';" +
-                    "statusEl.textContent='Request sent: '+reqId;" +
-                    "setUiState('loading');" +
-                "};" +
-                "cancelBtn.onclick=function(){" +
-                    "if(!bridge.activeRequestId){return;}" +
-                    "bridge.cancel(bridge.activeRequestId);" +
-                    "statusEl.textContent='Cancelled: '+bridge.activeRequestId;" +
-                    "setUiState('cancelled');" +
-                "};" +
-                "acceptBtn.onclick=function(){" +
-                    "var id=bridge.activeRequestId;" +
-                    "if(!id){return;}" +
-                    "var text=bridge.lastTextByRequestId[id]||outputEl.textContent||'';" +
-                    "bridge.accept(id,text);" +
-                    "statusEl.textContent='Inserted into document';" +
-                    "setUiState('ready');" +
-                "};" +
-                "window.addEventListener('ai.stream',function(ev){" +
-                    "if(!ev||!ev.detail){return;}" +
-                    "var d=ev.detail;" +
-                    "if(bridge.activeRequestId&&d.requestId!==bridge.activeRequestId){return;}" +
-                    "outputEl.textContent+=d.delta||'';" +
-                    "statusEl.textContent='Streaming...';" +
-                    "setUiState('streaming');" +
-                "});" +
-                "window.addEventListener('ai.done',function(ev){" +
-                    "if(!ev||!ev.detail){return;}" +
-                    "var d=ev.detail;" +
-                    "if(d.requestId){bridge.lastTextByRequestId[d.requestId]=d.fullText||outputEl.textContent;}" +
-                    "if(bridge.activeRequestId&&d.requestId!==bridge.activeRequestId){return;}" +
-                    "if(typeof d.fullText==='string'&&d.fullText.length>0){outputEl.textContent=d.fullText;}" +
-                    "statusEl.textContent='Completed';" +
-                    "setUiState('ready');" +
-                "});" +
-                "window.addEventListener('ai.error',function(ev){" +
-                    "if(!ev||!ev.detail){return;}" +
-                    "var d=ev.detail;" +
-                    "statusEl.textContent='Error('+ (d.code||'unknown') +'): '+(d.message||'request failed');" +
-                    "setUiState('error');" +
-                "});" +
-                "window.addEventListener('ai.state',function(ev){" +
-                    "if(!ev||!ev.detail){return;}" +
-                    "var d=ev.detail;" +
-                    "if(bridge.activeRequestId&&d.requestId&&d.requestId!==bridge.activeRequestId){return;}" +
-                    "statusEl.textContent='State: '+(d.state||'unknown')+(d.message?(' - '+d.message):'');" +
-                    "setUiState(d.state||'ready');" +
-                "});" +
                 "})();";
 
         runOnUiThread(() -> {
