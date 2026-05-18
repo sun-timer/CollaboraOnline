@@ -119,6 +119,12 @@ public class LOActivity extends AppCompatActivity {
     private static final String AI_PREF_ENDPOINT = "AI_OPENAI_ENDPOINT";
     private static final String AI_PREF_API_KEY = "AI_OPENAI_API_KEY";
     private static final String AI_PREF_MODEL = "AI_OPENAI_MODEL";
+    private static final String AI_STATE_UNCONFIGURED = "unconfigured";
+    private static final String AI_STATE_LOADING = "loading";
+    private static final String AI_STATE_STREAMING = "streaming";
+    private static final String AI_STATE_READY = "ready";
+    private static final String AI_STATE_CANCELLED = "cancelled";
+    private static final String AI_STATE_ERROR = "error";
     private static final String AI_DEFAULT_ENDPOINT = "https://api.openai.com/v1/chat/completions";
     private static final String AI_DEFAULT_MODEL = "gpt-4o-mini";
     private static final String AI_DEFAULT_SYSTEM_PROMPT = "You are a concise office writing assistant. Return only the rewritten or generated content.";
@@ -194,6 +200,7 @@ public class LOActivity extends AppCompatActivity {
 
     private static class AiRequestSession {
         private volatile boolean cancelled = false;
+        private volatile boolean stateSentStreaming = false;
         private HttpURLConnection connection;
 
         void bindConnection(HttpURLConnection httpURLConnection) {
@@ -209,6 +216,14 @@ public class LOActivity extends AppCompatActivity {
 
         boolean isCancelled() {
             return cancelled;
+        }
+
+        boolean shouldEmitStreamingState() {
+            if (stateSentStreaming) {
+                return false;
+            }
+            stateSentStreaming = true;
+            return true;
         }
     }
 
@@ -1238,7 +1253,9 @@ public class LOActivity extends AppCompatActivity {
             }
 
             final String finalRequestId = requestId;
+            persistAiConfigFromRequest(request);
             cancelAiRequest(finalRequestId);
+            dispatchAiState(finalRequestId, AI_STATE_LOADING, "AI request queued");
 
             AiRequestSession session = new AiRequestSession();
             aiRequestSessions.put(finalRequestId, session);
@@ -1263,6 +1280,7 @@ public class LOActivity extends AppCompatActivity {
                 return;
             }
             cancelAiRequest(requestId);
+            dispatchAiState(requestId, AI_STATE_CANCELLED, "AI request cancelled");
         } catch (JSONException e) {
             dispatchAiError("", "invalid_payload", "Invalid ai.cancel payload");
             Log.e(TAG, "Invalid ai.cancel payload", e);
@@ -1304,11 +1322,13 @@ public class LOActivity extends AppCompatActivity {
         }
 
         if (endpoint == null || endpoint.isEmpty()) {
+            dispatchAiState(requestId, AI_STATE_UNCONFIGURED, "AI endpoint is not configured");
             dispatchAiError(requestId, "config_missing", "AI endpoint is not configured");
             return;
         }
 
         if (apiKey == null || apiKey.isEmpty()) {
+            dispatchAiState(requestId, AI_STATE_UNCONFIGURED, "AI API key is not configured");
             dispatchAiError(requestId, "config_missing", "AI API key is not configured");
             return;
         }
@@ -1368,6 +1388,7 @@ public class LOActivity extends AppCompatActivity {
                     donePayload.put("requestId", requestId);
                     donePayload.put("fullText", fullText.toString());
                     dispatchAiEvent("ai.done", donePayload);
+                    dispatchAiState(requestId, AI_STATE_READY, "AI response completed");
                     return;
                 }
 
@@ -1396,6 +1417,9 @@ public class LOActivity extends AppCompatActivity {
                         continue;
                     }
 
+                    if (session.shouldEmitStreamingState()) {
+                        dispatchAiState(requestId, AI_STATE_STREAMING, "AI response streaming");
+                    }
                     fullText.append(delta);
                     JSONObject streamPayload = new JSONObject();
                     streamPayload.put("requestId", requestId);
@@ -1410,8 +1434,10 @@ public class LOActivity extends AppCompatActivity {
             donePayload.put("requestId", requestId);
             donePayload.put("fullText", fullText.toString());
             dispatchAiEvent("ai.done", donePayload);
+            dispatchAiState(requestId, AI_STATE_READY, "AI response completed");
         } catch (Exception e) {
             if (!session.isCancelled()) {
+                dispatchAiState(requestId, AI_STATE_ERROR, "AI request failed");
                 dispatchAiError(requestId, "request_failed", e.getMessage() == null ? "AI request failed" : e.getMessage());
                 Log.e(TAG, "runAiRequest failed", e);
             }
@@ -1494,6 +1520,47 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+    private void dispatchAiState(String requestId, String state, String message) {
+        try {
+            JSONObject statePayload = new JSONObject();
+            statePayload.put("requestId", requestId);
+            statePayload.put("state", state);
+            statePayload.put("message", message);
+            dispatchAiEvent("ai.state", statePayload);
+        } catch (JSONException e) {
+            Log.e(TAG, "Failed to dispatch ai.state", e);
+        }
+    }
+
+    private void persistAiConfigFromRequest(JSONObject request) {
+        JSONObject context = request.optJSONObject("context");
+        if (context == null) {
+            return;
+        }
+
+        String endpoint = context.optString("endpoint", "").trim();
+        String model = context.optString("model", "").trim();
+        String apiKey = context.optString("apiKey", "").trim();
+
+        SharedPreferences.Editor editor = getPrefs().edit();
+        boolean changed = false;
+        if (!endpoint.isEmpty()) {
+            editor.putString(AI_PREF_ENDPOINT, endpoint);
+            changed = true;
+        }
+        if (!model.isEmpty()) {
+            editor.putString(AI_PREF_MODEL, model);
+            changed = true;
+        }
+        if (!apiKey.isEmpty()) {
+            editor.putString(AI_PREF_API_KEY, apiKey);
+            changed = true;
+        }
+        if (changed) {
+            editor.apply();
+        }
+    }
+
     private void dispatchAiEvent(String type, JSONObject payload) {
         JSONObject event = new JSONObject();
         try {
@@ -1570,6 +1637,15 @@ public class LOActivity extends AppCompatActivity {
                 "endpointEl.value='" + AI_DEFAULT_ENDPOINT + "';" +
                 "modelEl.value='" + AI_DEFAULT_MODEL + "';" +
                 "promptEl.value='Polish and continue the selected text.';" +
+                "try{" +
+                    "var ls=window.localStorage;" +
+                    "if(ls){" +
+                        "endpointEl.value=ls.getItem('cool.ai.endpoint')||endpointEl.value;" +
+                        "modelEl.value=ls.getItem('cool.ai.model')||modelEl.value;" +
+                        "keyEl.value=ls.getItem('cool.ai.apiKey')||keyEl.value;" +
+                        "promptEl.value=ls.getItem('cool.ai.prompt')||promptEl.value;" +
+                    "}" +
+                "}catch(e){}" +
                 "function getSelectionText(){" +
                     "try{if(window.app&&app.map&&app.map._clip){var s=app.map._clip._selectionPlainTextContent||'';if(s){return s;}}}catch(e){}" +
                     "try{return (window.getSelection&&window.getSelection().toString())||'';}catch(e2){return '';}" +
@@ -1578,6 +1654,7 @@ public class LOActivity extends AppCompatActivity {
                 "panel.querySelector('#cool-ai-close').onclick=function(){panel.style.display='none';};" +
                 "panel.querySelector('#cool-ai-run').onclick=function(){" +
                     "var selection=getSelectionText();" +
+                    "try{var ls=window.localStorage;if(ls){ls.setItem('cool.ai.endpoint',endpointEl.value||'');ls.setItem('cool.ai.model',modelEl.value||'');ls.setItem('cool.ai.apiKey',keyEl.value||'');ls.setItem('cool.ai.prompt',promptEl.value||'');}}catch(e){}" +
                     "var reqId=bridge.request({taskType:'rewrite',selection:selection,context:{prompt:promptEl.value,source:'android-fab',endpoint:endpointEl.value,model:modelEl.value,apiKey:keyEl.value},modelMode:'cloud'});" +
                     "bridge.activeRequestId=reqId;" +
                     "outputEl.textContent='';" +
@@ -1614,6 +1691,12 @@ public class LOActivity extends AppCompatActivity {
                     "if(!ev||!ev.detail){return;}" +
                     "var d=ev.detail;" +
                     "statusEl.textContent='Error('+ (d.code||'unknown') +'): '+(d.message||'request failed');" +
+                "});" +
+                "window.addEventListener('ai.state',function(ev){" +
+                    "if(!ev||!ev.detail){return;}" +
+                    "var d=ev.detail;" +
+                    "if(bridge.activeRequestId&&d.requestId&&d.requestId!==bridge.activeRequestId){return;}" +
+                    "statusEl.textContent='State: '+(d.state||'unknown')+(d.message?(' - '+d.message):'');" +
                 "});" +
                 "})();";
 
