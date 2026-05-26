@@ -97,6 +97,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -244,6 +245,7 @@ public class LOActivity extends AppCompatActivity {
     private String autoGenerateAcceptRequestId = "";
     private DrawerLayout docDrawerLayout;
     private View docDrawerHeaderView;
+    private final AtomicBoolean mobileSocketDrainScheduled = new AtomicBoolean(false);
 
     private static final int MODEL_TYPE_BASE = 0;
     private static final int MODEL_TYPE_THINK = 1;
@@ -1064,6 +1066,7 @@ public class LOActivity extends AppCompatActivity {
         mWebView.destroy();
         mWebView = null;
         mMobileSocket = null;
+        mobileSocketDrainScheduled.set(false);
 
         // Most probably the native part has already got a 'BYE' from
         // finishWithProgress(), but it is actually better to send it twice
@@ -1082,8 +1085,10 @@ public class LOActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, intent);
         if (resultCode != RESULT_OK) {
             if (requestCode == REQUEST_SELECT_IMAGE_FILE) {
-                valueCallback.onReceiveValue(null);
-                valueCallback = null;
+                if (valueCallback != null) {
+                    valueCallback.onReceiveValue(null);
+                    valueCallback = null;
+                }
             }
             return;
         }
@@ -1408,11 +1413,10 @@ public class LOActivity extends AppCompatActivity {
      */
     void rawCallFakeWebsocketOnMessage(final byte[] message) {
         try {
-            mMobileSocket.queueSend(message, () -> {
-                mWebView.post(() -> {
-                    mWebView.loadUrl("javascript:window.socket.doSend();");
-                });
-            });
+            if (mMobileSocket == null) {
+                return;
+            }
+            mMobileSocket.queueSend(message, this::scheduleMobileSocketDrain);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
@@ -1464,6 +1468,28 @@ public class LOActivity extends AppCompatActivity {
         } else if (messageStartsWith(message, "error:")) {
             runOnUiThread(() -> mProgressDialog.dismiss());
         }
+    }
+
+    private void scheduleMobileSocketDrain() {
+        if (mWebView == null || mMobileSocket == null || !documentLoaded) {
+            return;
+        }
+        if (!mobileSocketDrainScheduled.compareAndSet(false, true)) {
+            return;
+        }
+        mWebView.post(() -> {
+            try {
+                if (mWebView == null || mMobileSocket == null || !documentLoaded) {
+                    return;
+                }
+                mWebView.loadUrl("javascript:window.socket.doSend();");
+            } finally {
+                mobileSocketDrainScheduled.set(false);
+                if (mMobileSocket != null && mMobileSocket.hasPendingMessages()) {
+                    scheduleMobileSocketDrain();
+                }
+            }
+        });
     }
 
     /**

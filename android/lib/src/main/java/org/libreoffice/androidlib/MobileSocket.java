@@ -109,6 +109,10 @@ public class MobileSocket {
         callback.call();
     }
 
+    public boolean hasPendingMessages() {
+        return !sendingMessages.isEmpty();
+    }
+
     public WebResourceResponse open() {
         this.serial = 0;
 
