@@ -51,10 +51,10 @@
     </item-->
 
     <item android:id="@+id/action_clear_cache"
-        android:icon="@android:drawable/ic_menu_delete"
+        android:icon="@drawable/ic_action_clear_cache"
         android:title="@string/action_clear_cache"/>
 
     <item android:id="@+id/action_about"
-        android:icon="@android:drawable/ic_menu_info_details"
+        android:icon="@drawable/ic_action_about"
         android:title="@string/action_about"/>
 </menu>
