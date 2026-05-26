@@ -210,6 +210,7 @@ public class LOActivity extends AppCompatActivity {
     private final Map<String, AiRequestSession> aiRequestSessions = new ConcurrentHashMap<>();
     private final Map<String, StringBuilder> aiTextByRequestId = new ConcurrentHashMap<>();
     private final Map<String, String> aiRequestModeById = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> aiDocQaFirstTurnByRequestId = new ConcurrentHashMap<>();
     private final Map<String, TextView> aiStreamingViewByRequestId = new ConcurrentHashMap<>();
     private boolean aiBridgeInjected = false;
     private String aiActiveRequestId = "";
@@ -1773,7 +1774,6 @@ public class LOActivity extends AppCompatActivity {
                             + "【用户问题】\n" + question;
                     Log.i(TAG, "doc_qa_first_turn_context_chars requestId=" + requestId + " chars=" + docText.length());
                     messages.put(new JSONObject().put("role", "user").put("content", combinedPrompt));
-                    aiDocQaContextInjected = true;
                 } else {
                     JSONArray historyMessages = buildAiMessagesFromHistory(history);
                     if (historyMessages.length() == 0) {
@@ -2095,7 +2095,7 @@ public class LOActivity extends AppCompatActivity {
                     float rawX = event.getRawX() - aiFabDragOffsetX;
                     float rawY = event.getRawY() - aiFabDragOffsetY;
                     float maxX = Math.max(0f, parent.getWidth() - v.getWidth());
-                    float maxY = Math.max(0f, parent.getHeight() - v.getHeight());
+                    float maxY = getFabMaxY(parent, v);
                     v.setX(clamp(rawX, 0f, maxX));
                     v.setY(clamp(rawY, 0f, maxY));
                     aiFabDragged = true;
@@ -2136,9 +2136,22 @@ public class LOActivity extends AppCompatActivity {
         float savedX = prefs.getFloat(AI_PREF_FAB_X, fab.getX());
         float savedY = prefs.getFloat(AI_PREF_FAB_Y, fab.getY());
         float maxX = Math.max(0f, parent.getWidth() - fab.getWidth());
-        float maxY = Math.max(0f, parent.getHeight() - fab.getHeight());
+        float maxY = getFabMaxY(parent, fab);
         fab.setX(clamp(savedX, 0f, maxX));
         fab.setY(clamp(savedY, 0f, maxY));
+    }
+
+    private float getFabMaxY(View parent, View fab) {
+        int reservedBottom = 0;
+        View bottomToolbar = findViewById(R.id.doc_bottom_toolbar);
+        if (bottomToolbar != null && bottomToolbar.getVisibility() == View.VISIBLE) {
+            reservedBottom = bottomToolbar.getHeight() + dpToPx(16);
+        }
+        return Math.max(0f, parent.getHeight() - fab.getHeight() - reservedBottom);
+    }
+
+    private int dpToPx(int dp) {
+        return Math.round(dp * getResources().getDisplayMetrics().density);
     }
 
     private float clamp(float value, float min, float max) {
@@ -2151,9 +2164,9 @@ public class LOActivity extends AppCompatActivity {
         bindToolbarClick(R.id.toolbar_item_ai_assistant, v -> showNativeAiPanel());
         bindToolbarClick(R.id.toolbar_item_ai_feature, v -> toastTodo("AI功能后续逐步接入。"));
         bindToolbarClick(R.id.toolbar_item_keyboard, v -> focusDocumentAndShowIme());
-        bindToolbarClick(R.id.toolbar_item_character, v -> toastTodo("字符功能待接入。"));
-        bindToolbarClick(R.id.toolbar_item_paragraph, v -> toastTodo("段落功能待接入。"));
-        bindToolbarClick(R.id.toolbar_item_insert_image, v -> toastTodo("插入图片功能待接入。"));
+        bindToolbarClick(R.id.toolbar_item_character, v -> executeUnoCommand(".uno:FontDialog"));
+        bindToolbarClick(R.id.toolbar_item_paragraph, v -> executeUnoCommand(".uno:ParagraphDialog"));
+        bindToolbarClick(R.id.toolbar_item_insert_image, v -> executeUnoCommand(".uno:InsertGraphic"));
     }
 
     private void bindToolbarClick(int viewId, View.OnClickListener listener) {
@@ -2206,16 +2219,70 @@ public class LOActivity extends AppCompatActivity {
                 }
             });
         }
-        if (saveAction != null) saveAction.setOnClickListener(v -> postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1"));
-        if (downloadAction != null) downloadAction.setOnClickListener(v -> toastTodo("下载功能待接入。"));
-        if (printAction != null) printAction.setOnClickListener(v -> initiatePrint());
-        if (countAction != null) countAction.setOnClickListener(v -> toastTodo("字数统计功能待接入。"));
-        if (findAction != null) findAction.setOnClickListener(v -> toastTodo("查找替换功能待接入。"));
+        if (saveAction != null) saveAction.setOnClickListener(v -> runFunctionAction(() ->
+                postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1")));
+        if (downloadAction != null) downloadAction.setOnClickListener(v -> runFunctionAction(this::downloadCurrentTextDocumentAsPdf));
+        if (printAction != null) printAction.setOnClickListener(v -> runFunctionAction(this::initiatePrint));
+        if (countAction != null) countAction.setOnClickListener(v -> runFunctionAction(() ->
+                executeUnoCommand(".uno:WordCountDialog")));
+        if (findAction != null) findAction.setOnClickListener(v -> runFunctionAction(() ->
+                executeUnoCommand(".uno:SearchDialog?InitialFocusReplace:bool=true")));
 
         functionPanelDialog = new BottomSheetDialog(this);
         functionPanelDialog.setContentView(panel);
         functionPanelDialog.setOnDismissListener(dialog -> functionPanelDialog = null);
         functionPanelDialog.show();
+        expandFunctionPanelSheet();
+    }
+
+    private void expandFunctionPanelSheet() {
+        if (functionPanelDialog == null) {
+            return;
+        }
+        FrameLayout bottomSheet = functionPanelDialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+        if (bottomSheet == null) {
+            return;
+        }
+        BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
+        behavior.setFitToContents(true);
+        behavior.setSkipCollapsed(true);
+        behavior.setHideable(false);
+        behavior.setDraggable(false);
+        bottomSheet.post(() -> {
+            behavior.setPeekHeight(bottomSheet.getHeight(), false);
+            behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+            Log.i(TAG, "function_sheet_force_expanded height=" + bottomSheet.getHeight());
+        });
+    }
+
+    private void runFunctionAction(Runnable action) {
+        if (functionPanelDialog != null) {
+            functionPanelDialog.dismiss();
+        }
+        action.run();
+    }
+
+    private void executeUnoCommand(String command) {
+        if (command == null || command.trim().isEmpty()) {
+            return;
+        }
+        callFakeWebsocketOnMessage("uno " + command);
+    }
+
+    private void downloadCurrentTextDocumentAsPdf() {
+        String filename = getFileName(true);
+        String baseName = filename;
+        if (baseName != null) {
+            int dotIndex = baseName.lastIndexOf('.');
+            if (dotIndex > 0) {
+                baseName = baseName.substring(0, dotIndex);
+            }
+        }
+        if (baseName == null || baseName.trim().isEmpty()) {
+            baseName = "document";
+        }
+        baseName = baseName.replaceAll("[\\\\/:*?\"<>|\\s]+", "_");
+        initiateSaveAs("format=pdf name=" + baseName + ".pdf");
     }
 
     private void switchToViewingMode() {
@@ -2442,6 +2509,7 @@ public class LOActivity extends AppCompatActivity {
             aiActiveRequestId = requestId;
             aiStreamingRequestId = requestId;
             aiRequestModeById.put(requestId, request.optString("taskType", AI_MODE_CHAT));
+            aiDocQaFirstTurnByRequestId.put(requestId, firstDocQaTurn);
             if (autoAcceptWhenDone) {
                 autoGenerateAcceptRequestId = requestId;
             }
@@ -2811,7 +2879,9 @@ public class LOActivity extends AppCompatActivity {
     private void loadAiHistoriesForCurrentDocument() {
         aiDocQaHistory = loadAiHistoryFile(AI_MODE_DOC_QA);
         aiChatHistory = loadAiHistoryFile(AI_MODE_CHAT);
-        aiDocQaContextInjected = aiDocQaHistory.length() > 0;
+        // User-only history can be left by a failed first doc_qa attempt, for example
+        // config_missing. Do not treat history presence as proof that full context was sent.
+        aiDocQaContextInjected = hasAssistantHistory(aiDocQaHistory);
     }
 
     private void renderAiHistoryForCurrentMode() {
@@ -2917,6 +2987,7 @@ public class LOActivity extends AppCompatActivity {
         cancelAllAiRequests();
         aiTextByRequestId.clear();
         aiRequestModeById.clear();
+        aiDocQaFirstTurnByRequestId.clear();
         aiStreamingViewByRequestId.clear();
         aiActiveRequestId = "";
         aiStreamingRequestId = "";
@@ -2991,6 +3062,23 @@ public class LOActivity extends AppCompatActivity {
             }
         }
         return messages;
+    }
+
+    private boolean hasAssistantHistory(JSONArray history) {
+        if (history == null) {
+            return false;
+        }
+        for (int i = 0; i < history.length(); i++) {
+            JSONObject item = history.optJSONObject(i);
+            if (item == null) {
+                continue;
+            }
+            if ("assistant".equals(item.optString("role", ""))
+                    && !normalizeAiText(item.optString("content", "")).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String extractLatestUserQuestion(JSONArray history, JSONObject context, JSONObject request) {
@@ -3089,6 +3177,7 @@ public class LOActivity extends AppCompatActivity {
 
     private void cleanupRequestUiState(String requestId) {
         aiStreamingViewByRequestId.remove(requestId);
+        aiDocQaFirstTurnByRequestId.remove(requestId);
         if (requestId.equals(aiStreamingRequestId)) {
             aiStreamingRequestId = "";
             aiStreamingMessageView = null;
@@ -3136,11 +3225,16 @@ public class LOActivity extends AppCompatActivity {
             final String fullText = sanitizeAiTextPayload(requestId, event.opt("fullText"), "native_done_event");
             aiTextByRequestId.put(requestId, new StringBuilder(fullText));
             String mode = aiRequestModeById.remove(requestId);
+            boolean completedFirstDocQaTurn = Boolean.TRUE.equals(aiDocQaFirstTurnByRequestId.get(requestId));
             if (mode == null || mode.isEmpty()) {
                 mode = getActiveAiMode();
             }
             if (!fullText.isEmpty() && (AI_MODE_DOC_QA.equals(mode) || AI_MODE_CHAT.equals(mode))) {
                 appendAiHistoryMessage(mode, "assistant", fullText);
+            }
+            if (completedFirstDocQaTurn && AI_MODE_DOC_QA.equals(mode) && !fullText.isEmpty()) {
+                aiDocQaContextInjected = true;
+                Log.i(TAG, "doc_qa_first_turn_context_marked_injected requestId=" + requestId);
             }
             if (requestId.equals(autoGenerateAcceptRequestId) && !fullText.isEmpty()) {
                 try {

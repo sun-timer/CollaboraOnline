@@ -76,42 +76,87 @@
         android:layout_marginTop="10dp"
         android:orientation="vertical">
 
-        <TextView
+        <LinearLayout
             android:id="@+id/function_action_save"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:gravity="center_vertical"
-            android:text="保存"
-            android:textColor="#202124"
-            android:textSize="18sp" />
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp">
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:contentDescription="保存"
+                android:src="@drawable/lolib_ic_function_save" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:text="保存"
+                android:textColor="#202124"
+                android:textSize="18sp" />
+        </LinearLayout>
 
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:background="#E3E3E3" />
 
-        <TextView
+        <LinearLayout
             android:id="@+id/function_action_download"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:gravity="center_vertical"
-            android:text="下载"
-            android:textColor="#202124"
-            android:textSize="18sp" />
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp">
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:contentDescription="下载"
+                android:src="@drawable/lolib_ic_function_download" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:text="下载"
+                android:textColor="#202124"
+                android:textSize="18sp" />
+        </LinearLayout>
 
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:background="#E3E3E3" />
 
-        <TextView
+        <LinearLayout
             android:id="@+id/function_action_print"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:gravity="center_vertical"
-            android:text="打印"
-            android:textColor="#202124"
-            android:textSize="18sp" />
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp">
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:contentDescription="打印"
+                android:src="@drawable/lolib_ic_function_print" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:text="打印"
+                android:textColor="#202124"
+                android:textSize="18sp" />
+        </LinearLayout>
     </LinearLayout>
 
     <LinearLayout
@@ -122,28 +167,58 @@
         android:orientation="vertical"
         android:visibility="gone">
 
-        <TextView
+        <LinearLayout
             android:id="@+id/function_action_word_count"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:gravity="center_vertical"
-            android:text="字数统计"
-            android:textColor="#202124"
-            android:textSize="18sp" />
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp">
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:contentDescription="字数统计"
+                android:src="@drawable/lolib_ic_function_word_count" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:text="字数统计"
+                android:textColor="#202124"
+                android:textSize="18sp" />
+        </LinearLayout>
 
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:background="#E3E3E3" />
 
-        <TextView
+        <LinearLayout
             android:id="@+id/function_action_find_replace"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:gravity="center_vertical"
-            android:text="查找替换"
-            android:textColor="#202124"
-            android:textSize="18sp" />
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp">
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:contentDescription="查找替换"
+                android:src="@drawable/lolib_ic_function_find_replace" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:text="查找替换"
+                android:textColor="#202124"
+                android:textSize="18sp" />
+        </LinearLayout>
     </LinearLayout>
 
 </LinearLayout>

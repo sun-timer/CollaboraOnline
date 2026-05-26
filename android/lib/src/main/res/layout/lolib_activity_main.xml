@@ -24,11 +24,11 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
-            android:layout_marginBottom="20dp"
+            android:layout_marginBottom="16dp"
             android:contentDescription="AI Assistant"
             android:src="@android:drawable/ic_menu_edit"
             android:visibility="gone"
-            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
             app:layout_constraintStart_toStartOf="parent" />
 
         <LinearLayout
@@ -70,7 +70,7 @@
                         <ImageView
                             android:layout_width="24dp"
                             android:layout_height="24dp"
-                            android:src="@android:drawable/ic_menu_sort_by_size"
+                            android:src="@drawable/lolib_ic_toolbar_function"
                             android:contentDescription="功能" />
 
                         <TextView
@@ -94,7 +94,7 @@
                         <ImageView
                             android:layout_width="24dp"
                             android:layout_height="24dp"
-                            android:src="@android:drawable/ic_menu_view"
+                            android:src="@drawable/lolib_ic_toolbar_mobile_preview"
                             android:contentDescription="适配手机" />
 
                         <TextView
@@ -118,7 +118,7 @@
                         <ImageView
                             android:layout_width="24dp"
                             android:layout_height="24dp"
-                            android:src="@android:drawable/ic_menu_edit"
+                            android:src="@drawable/lolib_ic_toolbar_ai_assistant"
                             android:contentDescription="AI助手" />
 
                         <TextView
@@ -142,7 +142,7 @@
                         <ImageView
                             android:layout_width="24dp"
                             android:layout_height="24dp"
-                            android:src="@android:drawable/btn_star_big_off"
+                            android:src="@drawable/lolib_ic_toolbar_ai_feature"
                             android:contentDescription="AI功能" />
 
                         <TextView
@@ -166,7 +166,7 @@
                         <ImageView
                             android:layout_width="24dp"
                             android:layout_height="24dp"
-                            android:src="@android:drawable/ic_menu_manage"
+                            android:src="@drawable/lolib_ic_toolbar_keyboard"
                             android:contentDescription="呼出键盘" />
 
                         <TextView
@@ -190,7 +190,7 @@
                         <ImageView
                             android:layout_width="24dp"
                             android:layout_height="24dp"
-                            android:src="@android:drawable/ic_menu_agenda"
+                            android:src="@drawable/lolib_ic_toolbar_character"
                             android:contentDescription="字符" />
 
                         <TextView
@@ -214,7 +214,7 @@
                         <ImageView
                             android:layout_width="24dp"
                             android:layout_height="24dp"
-                            android:src="@android:drawable/ic_menu_sort_alphabetically"
+                            android:src="@drawable/lolib_ic_toolbar_paragraph"
                             android:contentDescription="段落" />
 
                         <TextView
@@ -238,7 +238,7 @@
                         <ImageView
                             android:layout_width="24dp"
                             android:layout_height="24dp"
-                            android:src="@android:drawable/ic_menu_gallery"
+                            android:src="@drawable/lolib_ic_toolbar_insert_image"
                             android:contentDescription="插入图片" />
 
                         <TextView
