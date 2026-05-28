@@ -22,6 +22,7 @@ window.L.Map.include({
 	setPermission: function (perm) {
 		var button = $('#mobile-edit-button');
 		button.off('click');
+		this._setupMobileEditButtonDrag(button);
 		button.attr('tabindex', 0);
 		button.attr('role', 'button');
 		button.attr('title', _('Edit document'));
@@ -73,6 +74,140 @@ window.L.Map.include({
 			}
 
 			this._enterReadOnlyMode(perm);
+		}
+	},
+
+	_setupMobileEditButtonDrag: function(button) {
+		if (!button || !button.length)
+			return;
+
+		var el = button.get(0);
+		if (!el || el.dataset.dragInit === '1')
+			return;
+
+		el.dataset.dragInit = '1';
+		this._restoreMobileEditButtonPosition(el);
+
+		var longPressTimer = null;
+		var activePointerId = null;
+		var dragging = false;
+		var suppressClick = false;
+		var originLeft = 0;
+		var originTop = 0;
+		var startClientX = 0;
+		var startClientY = 0;
+		var map = this;
+		var LONG_PRESS_MS = 350;
+		var EDGE_GAP = 8;
+
+		function clamp(value, min, max) {
+			return Math.max(min, Math.min(value, max));
+		}
+
+		function normalizeToPixelsForDrag() {
+			var rect = el.getBoundingClientRect();
+			el.style.left = rect.left + 'px';
+			el.style.top = rect.top + 'px';
+			el.style.right = 'auto';
+			el.style.bottom = 'auto';
+			el.style.transform = 'none';
+		}
+
+		function setPosition(left, top) {
+			var maxLeft = Math.max(EDGE_GAP, window.innerWidth - el.offsetWidth - EDGE_GAP);
+			var maxTop = Math.max(EDGE_GAP, window.innerHeight - el.offsetHeight - EDGE_GAP);
+			el.style.left = clamp(left, EDGE_GAP, maxLeft) + 'px';
+			el.style.top = clamp(top, EDGE_GAP, maxTop) + 'px';
+			el.style.right = 'auto';
+			el.style.bottom = 'auto';
+			el.style.transform = 'none';
+		}
+
+		function clearLongPressTimer() {
+			if (longPressTimer) {
+				clearTimeout(longPressTimer);
+				longPressTimer = null;
+			}
+		}
+
+		el.addEventListener('pointerdown', function(e) {
+			if (e.button !== undefined && e.button !== 0)
+				return;
+			activePointerId = e.pointerId;
+			dragging = false;
+			clearLongPressTimer();
+			normalizeToPixelsForDrag();
+			originLeft = parseFloat(el.style.left) || 0;
+			originTop = parseFloat(el.style.top) || 0;
+			startClientX = e.clientX;
+			startClientY = e.clientY;
+			longPressTimer = setTimeout(function() {
+				dragging = true;
+			}, LONG_PRESS_MS);
+		}, { passive: true });
+
+		el.addEventListener('pointermove', function(e) {
+			if (activePointerId !== e.pointerId || !dragging)
+				return;
+			e.preventDefault();
+			var deltaX = e.clientX - startClientX;
+			var deltaY = e.clientY - startClientY;
+			setPosition(originLeft + deltaX, originTop + deltaY);
+			suppressClick = true;
+		}, { passive: false });
+
+		function onPointerEnd(e) {
+			if (activePointerId !== e.pointerId)
+				return;
+			clearLongPressTimer();
+			if (dragging) {
+				dragging = false;
+				map._persistMobileEditButtonPosition(el);
+			}
+			activePointerId = null;
+		}
+
+		el.addEventListener('pointerup', onPointerEnd, { passive: true });
+		el.addEventListener('pointercancel', onPointerEnd, { passive: true });
+
+		el.addEventListener('click', function(e) {
+			if (!suppressClick)
+				return;
+			suppressClick = false;
+			e.preventDefault();
+			e.stopPropagation();
+		}, true);
+	},
+
+	_persistMobileEditButtonPosition: function(el) {
+		try {
+			var payload = {
+				left: parseFloat(el.style.left) || 0,
+				top: parseFloat(el.style.top) || 0
+			};
+			localStorage.setItem('cool.mobileEditButtonPos', JSON.stringify(payload));
+		} catch (e) {
+			// ignore persistence failures
+		}
+	},
+
+	_restoreMobileEditButtonPosition: function(el) {
+		try {
+			var raw = localStorage.getItem('cool.mobileEditButtonPos');
+			if (!raw)
+				return;
+			var payload = JSON.parse(raw);
+			if (typeof payload.left !== 'number' || typeof payload.top !== 'number')
+				return;
+			var maxLeft = Math.max(8, window.innerWidth - el.offsetWidth - 8);
+			var maxTop = Math.max(8, window.innerHeight - el.offsetHeight - 8);
+			el.style.left = Math.max(8, Math.min(maxLeft, payload.left)) + 'px';
+			el.style.top = Math.max(8, Math.min(maxTop, payload.top)) + 'px';
+			el.style.right = 'auto';
+			el.style.bottom = 'auto';
+			el.style.transform = 'none';
+		} catch (e) {
+			// ignore restore failures
 		}
 	},
 
@@ -135,9 +270,12 @@ window.L.Map.include({
 		if (window.mode.isMobile() || window.mode.isTablet()) {
 			this.fire('editorgotfocus');
 			this.fire('closemobilewizard');
-			// In the iOS/android app, just clicking the mobile-edit-button is
-			// not reason enough to pop up the on-screen keyboard.
-			if (!(window.ThisIsTheiOSApp || window.ThisIsTheAndroidApp))
+			if (window.ThisIsTheAndroidApp) {
+				this.focus(true);
+				setTimeout(function() {
+					app.map.focus(true);
+				}, 80);
+			} else if (!window.ThisIsTheiOSApp)
 				this.focus();
 		}
 	},
@@ -235,9 +373,13 @@ window.L.Map.include({
 
 	_enterReadOnlyMode: function (perm) {
 		this._permission = perm;
+		var transientReconnect = window.ThisIsTheAndroidApp &&
+			window.app && app.socket &&
+			typeof app.socket.isTemporarilyReconnecting === 'function' &&
+			app.socket.isTemporarilyReconnecting();
 
 		// disable all user interaction, will need to add keyboard too
-		if (this._docLayer) {
+		if (this._docLayer && !transientReconnect) {
 			this._docLayer._onUpdateCursor();
 			this._docLayer._clearSelections();
 		}
@@ -245,7 +387,7 @@ window.L.Map.include({
 		this.fire('closemobilewizard');
 		this.fire('closealldialogs');
 
-		if (window.ThisIsTheAndroidApp)
+		if (window.ThisIsTheAndroidApp && !transientReconnect)
 			window.postMobileMessage('EDITMODE off');
 	},
 

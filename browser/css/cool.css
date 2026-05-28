@@ -435,18 +435,20 @@ body {
 	width: 56px;
 	height: 56px;
 	right: 16px;
-	bottom: 16px;
+	top: 50%;
+	bottom: auto;
 	background-color: var(--color-primary);
 	border-radius: 50%;
 	box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
 	z-index: 1001;
-	transform: scale(1);
+	transform: translateY(-50%) scale(1);
 	transition: transform 0.5s;
 	display: none;
 }
 
 #mobile-edit-button.impress.portrait {
-	bottom: 70px;
+	top: 50%;
+	bottom: auto;
 }
 
 #mobile-edit-button-image {
@@ -457,7 +459,7 @@ body {
 	transition: transform 0.5s;
 }
 #mobile-edit-button:active {
-	transform: scale(1.2);
+	transform: translateY(-50%) scale(1.2);
 }
 #mobile-edit-button:active > #mobile-edit-button-image {
 	transform: rotate(45deg);

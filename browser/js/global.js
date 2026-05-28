@@ -1167,6 +1167,13 @@ function getInitializerClass() {
 		this.id = global.proxySocketCounter++;
 		this.msgInflight = 0;
 		this.openInflight = 0;
+		this._closedSocketLogOnce = false;
+		this._reconnectPending = false;
+		this._highLatencyPauseCount = 0;
+		this._lastPauseLogTs = 0;
+		this._lastForcedReconnectTs = 0;
+		this._lastMobileInflightWaitLogTs = 0;
+		this._deferredCriticalSends = new Map();
 		this.inSerial = 1; // monotonic serial of the last processed received message
 		this.outSerial = 1; // monotonic serial of the next message to send.
 		this.minPollMs = 25; // Anything less than ~25 ms can overwhelm the HTTP server.
@@ -1271,6 +1278,29 @@ function getInitializerClass() {
 			}
 		};
 		this.sendQueue = '';
+		this._getCriticalMessageKey = function(msg) {
+			if (typeof msg !== 'string')
+				return null;
+			if (msg.indexOf('mobile: readonlymode') === 0)
+				return 'mobile:readonlymode';
+			if (msg.indexOf('uno .uno:SearchDialog') === 0)
+				return 'uno:searchdialog';
+			if (msg.indexOf('uno .uno:WordCountDialog') === 0)
+				return 'uno:wordcountdialog';
+			return null;
+		};
+		this._flushDeferredCriticalSends = function() {
+			if (!this._deferredCriticalSends.size)
+				return;
+			this._deferredCriticalSends.forEach((value) => {
+				this.sendQueue = this.sendQueue.concat(
+					'B0x' + this.outSerial.toString(16) + '\n' +
+					'0x' + (new TextEncoder().encode(value)).length.toString(16) + '\n' + value + '\n');
+				this.outSerial++;
+			});
+			global.app.console.debug('Flushed deferred critical messages: ' + this._deferredCriticalSends.size);
+			this._deferredCriticalSends.clear();
+		};
 		this._signalErrorClose = function() {
 			clearInterval(this.pollInterval);
 			clearTimeout(this.delaySession);
@@ -1288,6 +1318,9 @@ function getInitializerClass() {
 			this.msgInflight = 0;
 			this.openInflight = 0;
 			this.readyState = 3; // CLOSED
+			this._closedSocketLogOnce = false;
+			this._reconnectPending = false;
+			this._lastForcedReconnectTs = performance.now();
 		};
 		// For those who think that long-running sockets are a
 		// better way to wait: you're so right. However, each
@@ -1299,15 +1332,42 @@ function getInitializerClass() {
 				this.pollInterval = setInterval(this.doSend, intervalMs);
 		},
 		this.doSend = function () {
+			var isMobileApp = !!window.ThisIsAMobileApp;
 			if (that.sessionId === 'open')
 			{
-				if (that.readyState === 3)
-					global.app.console.debug('Error: sending on closed socket');
+				if (that.readyState === 3) {
+					if (!that._closedSocketLogOnce) {
+						global.app.console.debug('Error: sending on closed socket');
+						that._closedSocketLogOnce = true;
+					}
+					if (!that._reconnectPending) {
+						that._reconnectPending = true;
+						that.readyState = 0; // CONNECTING
+						that.getSessionId();
+					}
+				}
+				return;
+			}
+
+			if (isMobileApp && that.msgInflight >= 1)
+			{
+				var mobileNow = performance.now();
+				if (mobileNow - that.lastDataTimestamp > 60 * 1000)
+				{
+					global.app.console.debug('Close mobile connection after no response for 60secs');
+					that._signalErrorClose();
+				}
+				else if (mobileNow - that._lastMobileInflightWaitLogTs > 1500)
+				{
+					global.app.console.debug('High latency connection - mobile waiting for in-flight drain.');
+					that._lastMobileInflightWaitLogTs = mobileNow;
+				}
 				return;
 			}
 
 			if (that.msgInflight >= 4) // something went badly wrong.
 			{
+				that._highLatencyPauseCount++;
 				// We shouldn't get here because we throttle sending when we
 				// have something in flight, but if the server hangs, we
 				// will do up to 3 retries before we end up here and yield.
@@ -1323,9 +1383,29 @@ function getInitializerClass() {
 					that._signalErrorClose();
 				}
 				else
-					global.app.console.debug('High latency connection - too much in-flight, pausing.');
+				{
+					var now = performance.now();
+					if (now - that._lastPauseLogTs > 1500) {
+						global.app.console.debug('High latency connection - too much in-flight, pausing.');
+						that._lastPauseLogTs = now;
+					}
+					if (that._highLatencyPauseCount >= 24 &&
+						now - that.lastDataTimestamp > 15000 &&
+						that.sendQueue.length === 0 &&
+						that._deferredCriticalSends.size === 0) {
+						if (isMobileApp) {
+							global.app.console.debug('High latency persisted on mobile, skip forced reconnect and keep draining.');
+						} else if (now - that._lastForcedReconnectTs > 20000) {
+							that._lastForcedReconnectTs = now;
+							global.app.console.debug('High latency persisted, forcing reconnect to recover.');
+							that._signalErrorClose();
+						}
+					}
+				}
 				return;
 			}
+			that._highLatencyPauseCount = 0;
+			that._flushDeferredCriticalSends();
 
 			// Maximize the timeout, instead of stopping altogethr,
 			// so we don't hang when the following request takes
@@ -1428,6 +1508,8 @@ function getInitializerClass() {
 				{
 					that.sessionId = this.responseText;
 					that.readyState = 1;
+					that._closedSocketLogOnce = false;
+					that._reconnectPending = false;
 					that.onopen();
 					that._setPollInterval(that.curPollMs);
 				}
@@ -1440,6 +1522,13 @@ function getInitializerClass() {
 			this.openInflight++;
 		};
 		this.send = function(msg) {
+			var criticalKey = this._getCriticalMessageKey(msg);
+			if (criticalKey && that.msgInflight >= 4) {
+				this._deferredCriticalSends.set(criticalKey, msg);
+				global.app.console.debug('Deferred critical message during high latency: ' + criticalKey);
+				return;
+			}
+
 			var hadData = this.sendQueue.length > 0;
 			this.sendQueue = this.sendQueue.concat(
 				'B0x' + this.outSerial.toString(16) + '\n' +

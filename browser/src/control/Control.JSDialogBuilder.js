@@ -2517,7 +2517,35 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		const elementId = this._removeMenuId(data.id);
 		const control = this._getItemById(container, elementId);
 		if (!control) {
+			if (elementId === 'PermissionMode' &&
+				window.ThisIsTheAndroidApp &&
+				window.app &&
+				app.socket &&
+				typeof app.socket.isTemporarilyReconnecting === 'function' &&
+				app.socket.isTemporarilyReconnecting()) {
+				var nowTs = Date.now();
+				if (!this._lastPermissionModeRecoverTs || nowTs - this._lastPermissionModeRecoverTs > 2000) {
+					this._lastPermissionModeRecoverTs = nowTs;
+					window.app.console.debug('PermissionMode update deferred during reconnect; scheduling refresh.');
+					window.setTimeout(function() {
+						if (!window.app || !app.map || !app.events || typeof app.events.fire !== 'function')
+							return;
+						var perm = (typeof app.map.isEditMode === 'function' && app.map.isEditMode()) ? 'edit' : 'readonly';
+						app.events.fire('updatepermission', {perm: perm});
+					}, 120);
+				}
+				return;
+			}
 			window.app.console.warn('jsdialogupdate: not found control with id: "' + elementId + '"');
+			if (elementId === 'zoom' && this.map && this.map.uiManager) {
+				var now = Date.now();
+				if (!this._lastZoomMissingRecoverTs || now - this._lastZoomMissingRecoverTs > 5000) {
+					this._lastZoomMissingRecoverTs = now;
+					window.app.console.warn('jsdialogupdate: zoom control missing, force UI rebuild');
+					this.map.uiManager.closeAll();
+					this.map.fire('closemobilewizard');
+				}
+			}
 			return;
 		}
 

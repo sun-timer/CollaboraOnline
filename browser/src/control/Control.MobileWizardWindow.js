@@ -702,6 +702,19 @@ window.L.Control.MobileWizardWindow = window.L.Control.extend({
 		var control = container.querySelector('[id=\'' + data.control.id + '\']');
 		if (!control) {
 			window.app.console.warn('jsdialogupdate: not found control with id: "' + data.control.id + '"');
+			if (data.control && data.control.id === 'zoom' && this.map && this.map.uiManager) {
+				var now = Date.now();
+				if (!this._lastZoomMissingRecoverTs || now - this._lastZoomMissingRecoverTs > 5000) {
+					this._lastZoomMissingRecoverTs = now;
+					window.app.console.warn('jsdialogupdate: zoom control missing, force UI rebuild');
+					this.map.uiManager.closeAll();
+					this.map.fire('closemobilewizard');
+					window.setTimeout(function() {
+						if (window.app && app.map && app.map.jsdialog && typeof app.map.jsdialog.closeAll === 'function')
+							app.map.jsdialog.closeAll();
+					}, 120);
+				}
+			}
 			return;
 		}
 
