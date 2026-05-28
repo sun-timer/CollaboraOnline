@@ -7,6 +7,7 @@
 package org.libreoffice.androidlib;
 import android.content.Context;
 import android.util.AttributeSet;
+import android.view.MotionEvent;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
@@ -17,6 +18,7 @@ import androidx.annotation.NonNull;
 
 public class COWebView extends WebView {
     private Context mContext;
+    private boolean documentGestureGuardEnabled = false;
 
     public COWebView(Context context) {
         super(context);
@@ -43,6 +45,55 @@ public class COWebView extends WebView {
     @Override
     public COWebViewClient getWebViewClient() {
         return (COWebViewClient) super.getWebViewClient();
+    }
+
+    public void setDocumentGestureGuardEnabled(boolean enabled) {
+        if (documentGestureGuardEnabled == enabled) {
+            return;
+        }
+        documentGestureGuardEnabled = enabled;
+        if (enabled) {
+            abortDocumentScroll();
+        }
+    }
+
+    public boolean isDocumentGestureGuardEnabled() {
+        return documentGestureGuardEnabled;
+    }
+
+    public void abortDocumentScroll() {
+        stopNestedScroll();
+        post(() -> {
+            if (documentGestureGuardEnabled) {
+                flingScroll(0, 0);
+            }
+            scrollTo(getScrollX(), getScrollY());
+        });
+    }
+
+    @Override
+    public void flingScroll(int vx, int vy) {
+        if (documentGestureGuardEnabled) {
+            return;
+        }
+        super.flingScroll(vx, vy);
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (!documentGestureGuardEnabled) {
+            return super.onTouchEvent(event);
+        }
+
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_MOVE:
+                return true;
+            case MotionEvent.ACTION_CANCEL:
+                abortDocumentScroll();
+                return super.onTouchEvent(event);
+            default:
+                return super.onTouchEvent(event);
+        }
     }
 
     /*

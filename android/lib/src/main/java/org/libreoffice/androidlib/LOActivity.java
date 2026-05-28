@@ -206,6 +206,28 @@ public class LOActivity extends AppCompatActivity {
      */
     private boolean mMobileWizardVisible = false;
     private boolean mIsEditModeActive = false;
+    private static final long MOBILE_PREVIEW_ACK_TIMEOUT_MS = 2200L;
+    private static final long SELECTION_SYNC_THROTTLE_MS = 450L;
+    private int mobilePreviewSwitchAttempt = 0;
+    private final Runnable mobilePreviewAckTimeoutRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (mIsEditModeActive) {
+                Log.i(TAG, "mobile_preview_switch_ack success attempt=" + mobilePreviewSwitchAttempt);
+                return;
+            }
+            if (mobilePreviewSwitchAttempt < 2) {
+                mobilePreviewSwitchAttempt++;
+                Log.w(TAG, "mobile_preview_switch_ack timeout; retry attempt=" + mobilePreviewSwitchAttempt);
+                callFakeWebsocketOnMessage("mobile: readonlymode");
+                getMainHandler().postDelayed(this, MOBILE_PREVIEW_ACK_TIMEOUT_MS);
+                return;
+            }
+            Log.e(TAG, "mobile_preview_switch_ack failed after retries, triggering recovery");
+            recoverFromMobilePreviewStuckState();
+            Toast.makeText(LOActivity.this, "连接拥塞，正在尝试恢复编辑模式…", Toast.LENGTH_SHORT).show();
+        }
+    };
 
     private ValueCallback<Uri[]> valueCallback;
     private final Map<String, AiRequestSession> aiRequestSessions = new ConcurrentHashMap<>();
@@ -246,6 +268,12 @@ public class LOActivity extends AppCompatActivity {
     private DrawerLayout docDrawerLayout;
     private View docDrawerHeaderView;
     private final AtomicBoolean mobileSocketDrainScheduled = new AtomicBoolean(false);
+    private boolean docGestureGuardEnabled = false;
+    private long lastDocGestureGuardLogAt = 0L;
+    private long lastSelectionSyncAt = 0L;
+    private float aiScrollLastY = Float.NaN;
+    private boolean aiScrollLastDisallow = false;
+    private long aiScrollInterceptLogAt = 0L;
 
     private static final int MODEL_TYPE_BASE = 0;
     private static final int MODEL_TYPE_THINK = 1;
@@ -1579,12 +1607,35 @@ public class LOActivity extends AppCompatActivity {
                 switch (messageAndParam[1]) {
                     case "on":
                         mIsEditModeActive = true;
+                        getMainHandler().removeCallbacks(mobilePreviewAckTimeoutRunnable);
                         // prompt for file conversion
                         requestForOdf();
                         break;
                     case "off":
                         mIsEditModeActive = false;
                         break;
+                }
+                return false;
+            }
+            case "DOC_GESTURE_GUARD": {
+                boolean enable = messageAndParam.length > 1
+                        && messageAndParam[1] != null
+                        && messageAndParam[1].trim().toLowerCase(Locale.ROOT).startsWith("on");
+                boolean changed = docGestureGuardEnabled != enable;
+                docGestureGuardEnabled = enable;
+                if (mWebView != null) {
+                    mWebView.setDocumentGestureGuardEnabled(enable);
+                    if (!enable) {
+                        mWebView.abortDocumentScroll();
+                    }
+                }
+                long now = android.os.SystemClock.uptimeMillis();
+                if (changed || now - lastDocGestureGuardLogAt > 1200) {
+                    Log.i(TAG, "doc_gesture_guard " + (enable ? "on" : "off"));
+                    lastDocGestureGuardLogAt = now;
+                }
+                if (!enable && changed) {
+                    triggerSelectionStateSync("reconnect_done");
                 }
                 return false;
             }
@@ -2292,7 +2343,9 @@ public class LOActivity extends AppCompatActivity {
         if (command == null || command.trim().isEmpty()) {
             return;
         }
-        callFakeWebsocketOnMessage("uno " + command);
+        String normalizedCommand = command.trim();
+        Log.i(TAG, "dispatch_uno_from_native_panel command=" + normalizedCommand);
+        postMobileMessage("uno " + normalizedCommand);
     }
 
     private void downloadCurrentTextDocumentAsPdf() {
@@ -2312,7 +2365,23 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void switchToViewingMode() {
+        mobilePreviewSwitchAttempt = 1;
+        getMainHandler().removeCallbacks(mobilePreviewAckTimeoutRunnable);
         callFakeWebsocketOnMessage("mobile: readonlymode");
+        getMainHandler().postDelayed(mobilePreviewAckTimeoutRunnable, MOBILE_PREVIEW_ACK_TIMEOUT_MS);
+    }
+
+    private void recoverFromMobilePreviewStuckState() {
+        if (mWebView == null) {
+            return;
+        }
+        mWebView.post(() -> mWebView.evaluateJavascript(
+                "(function(){try{" +
+                        "if(window.socket&&window.socket.msgInflight>=4&&typeof window.socket._signalErrorClose==='function'){window.socket._signalErrorClose();}" +
+                        "if(window.socket&&typeof window.socket.doSend==='function'){window.socket.doSend();}" +
+                        "if(window.app&&app.map&&app.map.uiManager&&typeof app.map.uiManager.closeAll==='function'){app.map.uiManager.closeAll();}" +
+                        "}catch(e){console.warn('android_recover_preview_failed',e);}return true;})();",
+                null));
     }
 
     private void focusDocumentAndShowIme() {
@@ -2323,6 +2392,63 @@ public class LOActivity extends AppCompatActivity {
         mWebView.evaluateJavascript(
                 "(function(){if(window.app&&app.map){app.map.focus();}return true;})();",
                 null);
+    }
+
+    private boolean canAiMessagesScrollConsume(float deltaY) {
+        if (aiMessagesScroll == null) {
+            return false;
+        }
+        if (deltaY < -0.5f) {
+            return aiMessagesScroll.canScrollVertically(1);
+        }
+        if (deltaY > 0.5f) {
+            return aiMessagesScroll.canScrollVertically(-1);
+        }
+        return aiMessagesScroll.canScrollVertically(1) || aiMessagesScroll.canScrollVertically(-1);
+    }
+
+    private void maybeLogAiScrollIntercept(int action, boolean disallow) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (disallow != aiScrollLastDisallow || now - aiScrollInterceptLogAt > 1200) {
+            Log.i(TAG, "ai_scroll_disallow_intercept action=" + action + " disallow=" + disallow);
+            aiScrollLastDisallow = disallow;
+            aiScrollInterceptLogAt = now;
+        }
+    }
+
+    private void triggerSelectionStateSync(String reason) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - lastSelectionSyncAt < SELECTION_SYNC_THROTTLE_MS) {
+            return;
+        }
+        lastSelectionSyncAt = now;
+        Log.i(TAG, "selection_sync reason=" + reason);
+
+        postMobileMessage("resetselection");
+
+        if (mWebView == null) {
+            return;
+        }
+
+        final String script = "(function(){"
+                + "var reason=" + JSONObject.quote(reason) + ";"
+                + "function sync(tag){try{"
+                + "if(window.app&&app.activeDocument&&app.activeDocument.activeView&&typeof app.activeDocument.activeView.clearTextSelection==='function'){app.activeDocument.activeView.clearTextSelection();}"
+                + "if(window.TextSelections&&typeof window.TextSelections.deactivate==='function'){window.TextSelections.deactivate();}"
+                + "if(window.getSelection){var s=window.getSelection();if(s&&typeof s.removeAllRanges==='function'){s.removeAllRanges();}}"
+                + "if(window.app&&app.map&&app.map._docLayer&&typeof app.map._docLayer._onUpdateCursor==='function'){app.map._docLayer._onUpdateCursor();}"
+                + "if(window.app&&app.events&&typeof app.events.fire==='function'&&window.app.map){var perm=(typeof app.map.isEditMode==='function'&&app.map.isEditMode())?'edit':'readonly';app.events.fire('updatepermission',{perm:perm});}"
+                + "if(window.app&&app.console&&typeof app.console.debug==='function'){app.console.debug('selection_sync applied reason='+tag);}"
+                + "}catch(e){if(window.console&&typeof window.console.warn==='function'){console.warn('selection_sync_failed',tag,e);}}}"
+                + "sync(reason);"
+                + "var reconnecting=!!(window.app&&app.socket&&typeof app.socket.isTemporarilyReconnecting==='function'&&app.socket.isTemporarilyReconnecting());"
+                + "if(reconnecting){setTimeout(function(){sync(reason+'_postreconnect');},700);}"
+                + "return true;})();";
+        runOnUiThread(() -> {
+            if (mWebView != null) {
+                mWebView.evaluateJavascript(script, null);
+            }
+        });
     }
 
     private void toastTodo(String text) {
@@ -2396,6 +2522,7 @@ public class LOActivity extends AppCompatActivity {
         aiPanelDialog.setContentView(panel);
         aiPanelDialog.setOnDismissListener(dialog -> {
             cancelAiFromNativePanel();
+            triggerSelectionStateSync("ai_dialog_dismiss");
             aiPanelDialog = null;
             aiPromptInput = null;
             aiStatusText = null;
@@ -2411,6 +2538,7 @@ public class LOActivity extends AppCompatActivity {
             aiStreamingMessageView = null;
             aiStreamingRequestId = "";
             aiStreamingViewByRequestId.clear();
+            aiScrollLastY = Float.NaN;
         });
         aiPanelDialog.show();
 
@@ -2445,14 +2573,28 @@ public class LOActivity extends AppCompatActivity {
             aiMessagesScroll.setOnTouchListener((v, event) -> {
                 ViewParent parent = v.getParent();
                 if (parent != null) {
-                    if (event.getActionMasked() == MotionEvent.ACTION_DOWN
-                            || event.getActionMasked() == MotionEvent.ACTION_MOVE) {
-                        parent.requestDisallowInterceptTouchEvent(true);
-                    } else if (event.getActionMasked() == MotionEvent.ACTION_UP
-                            || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
-                        parent.requestDisallowInterceptTouchEvent(false);
+                    final int action = event.getActionMasked();
+                    boolean disallow = false;
+                    if (action == MotionEvent.ACTION_DOWN) {
+                        aiScrollLastY = event.getY();
+                        disallow = canAiMessagesScrollConsume(0f);
+                    } else if (action == MotionEvent.ACTION_MOVE) {
+                        float previousY = Float.isNaN(aiScrollLastY) ? event.getY() : aiScrollLastY;
+                        float deltaY = event.getY() - previousY;
+                        aiScrollLastY = event.getY();
+                        disallow = canAiMessagesScrollConsume(deltaY);
+                    } else if (action == MotionEvent.ACTION_UP) {
+                        aiScrollLastY = Float.NaN;
+                    } else if (action == MotionEvent.ACTION_CANCEL) {
+                        aiScrollLastY = Float.NaN;
+                        if (mWebView != null) {
+                            mWebView.abortDocumentScroll();
+                        }
+                        triggerSelectionStateSync("action_cancel");
                     }
-                    Log.i(TAG, "ai_scroll_disallow_intercept action=" + event.getActionMasked());
+
+                    parent.requestDisallowInterceptTouchEvent(disallow);
+                    maybeLogAiScrollIntercept(action, disallow);
                 }
                 return false;
             });
@@ -3227,6 +3369,9 @@ public class LOActivity extends AppCompatActivity {
             StringBuilder currentText = aiTextByRequestId.computeIfAbsent(requestId, ignored -> new StringBuilder());
             currentText.append(delta);
             final String accumulatedText = currentText.toString();
+            if (currentText.length() == delta.length()) {
+                Log.i(TAG, "ai_stream_render_mode=plaintext requestId=" + requestId);
+            }
             final TextView outputSnapshot = aiOutputText;
             final TextView streamViewSnapshot = aiStreamingViewByRequestId.get(requestId);
             runOnUiThread(() -> {
@@ -3237,7 +3382,7 @@ public class LOActivity extends AppCompatActivity {
                     outputSnapshot.append(delta);
                 }
                 if (streamViewSnapshot != null && streamViewSnapshot.isAttachedToWindow()) {
-                    renderAiMessageContent(accumulatedText, streamViewSnapshot, false, false);
+                    renderAiMessageContent(accumulatedText, streamViewSnapshot, false, true);
                 }
             });
             setNativeAiPanelState(AI_STATE_STREAMING, "AI response streaming");
