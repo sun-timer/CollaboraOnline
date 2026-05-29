@@ -8,7 +8,6 @@ package org.libreoffice.androidlib;
 import android.content.Context;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
-import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.webkit.WebView;
@@ -39,6 +38,25 @@ public class COWebView extends WebView {
     public COWebView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
         setWebViewClient(new COWebViewClient());
+    }
+
+    /**
+     * Always return true so the WebView keeps full editing capability
+     * (input[type=file], contentEditable, text selection, etc.).
+     * IME show/hide is controlled via InputMethodManager from LOActivity.
+     */
+    @Override
+    public boolean onCheckIsTextEditor() {
+        return true;
+    }
+
+    @Override
+    public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+        // TODO FIXME
+        //return new BaseInputConnection(this, false);
+        // ^ caused a regression on inserting special characters like Non-English ones
+
+        return super.onCreateInputConnection(outAttrs);
     }
 
     @NonNull
@@ -94,18 +112,5 @@ public class COWebView extends WebView {
             default:
                 return super.onTouchEvent(event);
         }
-    }
-
-    /*
-     * This fixes Unidentified key events in javascript such as 'space' key and
-     * shortcuts that require such keys
-     * */
-    @Override
-    public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
-        // TODO FIXME
-        //return new BaseInputConnection(this, false);
-        // ^ caused a regression on inserting special characters like Non-English ones
-
-        return super.onCreateInputConnection(outAttrs);
     }
 }

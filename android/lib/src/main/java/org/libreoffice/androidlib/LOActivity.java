@@ -52,6 +52,7 @@ import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.WindowInsets;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.MimeTypeMap;
 import android.webkit.ValueCallback;
@@ -1610,6 +1611,8 @@ public class LOActivity extends AppCompatActivity {
                         getMainHandler().removeCallbacks(mobilePreviewAckTimeoutRunnable);
                         // prompt for file conversion
                         requestForOdf();
+                        // Hide the soft keyboard so it doesn't auto-popup on edit mode entry.
+                        hideKeyboard();
                         break;
                     case "off":
                         mIsEditModeActive = false;
@@ -2345,6 +2348,14 @@ public class LOActivity extends AppCompatActivity {
         }
         String normalizedCommand = command.trim();
         Log.i(TAG, "dispatch_uno_from_native_panel command=" + normalizedCommand);
+
+        // For insert-graphic, ensure the WebView is focused so the JS layer
+        // can process the subsequent file-picker interaction.
+        if (normalizedCommand.contains("InsertGraphic") && mWebView != null) {
+            mWebView.requestFocus();
+            Log.i(TAG, "dispatch_uno_focus_webview_for command=" + normalizedCommand);
+        }
+
         postMobileMessage("uno " + normalizedCommand);
     }
 
@@ -2392,6 +2403,22 @@ public class LOActivity extends AppCompatActivity {
         mWebView.evaluateJavascript(
                 "(function(){if(window.app&&app.map){app.map.focus();}return true;})();",
                 null);
+        // Explicitly show the soft keyboard.
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.showSoftInput(mWebView, InputMethodManager.SHOW_IMPLICIT);
+        }
+    }
+
+    /** Hide the soft keyboard and reset IME state on the WebView. */
+    private void hideKeyboard() {
+        if (mWebView == null) {
+            return;
+        }
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.hideSoftInputFromWindow(mWebView.getWindowToken(), 0);
+        }
     }
 
     private boolean canAiMessagesScrollConsume(float deltaY) {
