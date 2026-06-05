@@ -40,8 +40,6 @@ import android.print.PrintDocumentAdapter;
 import android.print.PrintManager;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
-import android.text.Spanned;
-import android.text.SpannableStringBuilder;
 import android.util.Log;
 import android.view.HapticFeedbackConstants;
 import android.view.LayoutInflater;
@@ -49,7 +47,6 @@ import android.view.MotionEvent;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewParent;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
@@ -88,8 +85,6 @@ import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.charset.Charset;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -99,8 +94,6 @@ import java.util.Objects;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
@@ -109,7 +102,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.core.text.HtmlCompat;
 import androidx.core.view.GravityCompat;
 import androidx.core.view.WindowCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
@@ -121,13 +113,17 @@ import org.json.JSONException;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
+import org.libreoffice.androidlib.ai.AiChatCoordinator;
+import org.libreoffice.androidlib.ai.AiDocumentContextProvider;
+import org.libreoffice.androidlib.ai.AiMarkdownRenderer;
+import org.libreoffice.androidlib.ai.AiPanelController;
+import org.libreoffice.androidlib.ai.AiRequestManager;
+import org.libreoffice.androidlib.ai.AiRequestSession;
 import org.libreoffice.androidlib.lok.LokClipboardData;
 import org.libreoffice.androidlib.lok.LokClipboardEntry;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -164,8 +160,8 @@ public class LOActivity extends AppCompatActivity {
     private static final String AI_DEFAULT_SYSTEM_PROMPT = "You are a concise office writing assistant. Return only the rewritten or generated content.";
     private static final String AI_MODE_DOC_QA = "doc_qa";
     private static final String AI_MODE_CHAT = "chat";
-    private static final String AI_HISTORY_DIR = "ai_history";
     private static final String AI_STREAMING_PLACEHOLDER = "正在思考...";
+    private static final int IME_VISIBLE_THRESHOLD_DP = 56;
     public static final String RECENT_DOCUMENTS_KEY = "RECENT_DOCUMENTS_LIST";
     private static String USER_NAME_KEY = "USER_NAME";
     public static final String NIGHT_MODE_KEY = "NIGHT_MODE";
@@ -209,12 +205,13 @@ public class LOActivity extends AppCompatActivity {
     private boolean mIsEditModeActive = false;
     private static final long MOBILE_PREVIEW_ACK_TIMEOUT_MS = 2200L;
     private static final long SELECTION_SYNC_THROTTLE_MS = 450L;
+    /** True while waiting for JS to finish mobile preview (readonly UI) after native toolbar switch. */
+    private boolean awaitingPreviewModeJsAck = false;
     private int mobilePreviewSwitchAttempt = 0;
     private final Runnable mobilePreviewAckTimeoutRunnable = new Runnable() {
         @Override
         public void run() {
-            if (mIsEditModeActive) {
-                Log.i(TAG, "mobile_preview_switch_ack success attempt=" + mobilePreviewSwitchAttempt);
+            if (!awaitingPreviewModeJsAck) {
                 return;
             }
             if (mobilePreviewSwitchAttempt < 2) {
@@ -224,9 +221,10 @@ public class LOActivity extends AppCompatActivity {
                 getMainHandler().postDelayed(this, MOBILE_PREVIEW_ACK_TIMEOUT_MS);
                 return;
             }
-            Log.e(TAG, "mobile_preview_switch_ack failed after retries, triggering recovery");
-            recoverFromMobilePreviewStuckState();
-            Toast.makeText(LOActivity.this, "连接拥塞，正在尝试恢复编辑模式…", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "mobile_preview_switch_ack failed after retries; applying soft resync");
+            awaitingPreviewModeJsAck = false;
+            mobilePreviewSwitchAttempt = 0;
+            nudgePreviewModeOnWebLayer();
         }
     };
 
@@ -254,10 +252,10 @@ public class LOActivity extends AppCompatActivity {
     private boolean aiDocQaMode = true;
     private TextView aiStreamingMessageView;
     private String aiStreamingRequestId = "";
-    private JSONArray aiDocQaHistory = new JSONArray();
-    private JSONArray aiChatHistory = new JSONArray();
-    private boolean aiDocQaContextInjected = false;
-    private String aiDocumentKeyCache = "";
+    private AiChatCoordinator aiChatCoordinator;
+    private AiDocumentContextProvider aiDocumentContextProvider;
+    private final AiPanelController aiPanelController = new AiPanelController();
+    private final AiRequestManager aiRequestManager = new AiRequestManager();
     private boolean aiFabDragging = false;
     private boolean aiFabDragged = false;
     private float aiFabDragOffsetX = 0f;
@@ -266,15 +264,18 @@ public class LOActivity extends AppCompatActivity {
     private boolean pendingAutoGenerateAiContent = false;
     private String pendingAutoOpenAiPrompt = "";
     private String autoGenerateAcceptRequestId = "";
+    private boolean imagePickerInFlight = false;
     private DrawerLayout docDrawerLayout;
     private View docDrawerHeaderView;
     private final AtomicBoolean mobileSocketDrainScheduled = new AtomicBoolean(false);
     private boolean docGestureGuardEnabled = false;
     private long lastDocGestureGuardLogAt = 0L;
     private long lastSelectionSyncAt = 0L;
-    private float aiScrollLastY = Float.NaN;
-    private boolean aiScrollLastDisallow = false;
-    private long aiScrollInterceptLogAt = 0L;
+    private int bottomToolbarImeInsetPx = 0;
+    private boolean isImeVisibleForToolbar = false;
+    private BottomToolbarController bottomToolbarController;
+    private SelectionMenuController selectionMenuController;
+    private Runnable pendingAfterEditMode;
 
     private static final int MODEL_TYPE_BASE = 0;
     private static final int MODEL_TYPE_THINK = 1;
@@ -311,35 +312,6 @@ public class LOActivity extends AppCompatActivity {
 
     /** shared pref key for recent files. */
     public static final String EXPLORER_PREFS_KEY = "EXPLORER_PREFS";
-
-    private static class AiRequestSession {
-        private volatile boolean cancelled = false;
-        private volatile boolean stateSentStreaming = false;
-        private HttpURLConnection connection;
-
-        void bindConnection(HttpURLConnection httpURLConnection) {
-            connection = httpURLConnection;
-        }
-
-        void cancel() {
-            cancelled = true;
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
-
-        boolean isCancelled() {
-            return cancelled;
-        }
-
-        boolean shouldEmitStreamingState() {
-            if (stateSentStreaming) {
-                return false;
-            }
-            stateSentStreaming = true;
-            return true;
-        }
-    }
 
     private static boolean copyFromAssets(AssetManager assetManager,
             String fromAssetPath, String targetDir) {
@@ -444,7 +416,7 @@ public class LOActivity extends AppCompatActivity {
                     callFakeWebsocketOnMessage("mobile: mobilewizardback");
                     return;
                 } else if (mIsEditModeActive) {
-                    callFakeWebsocketOnMessage("mobile: readonlymode");
+                    switchToViewingMode();
                     return;
                 }
 
@@ -565,6 +537,14 @@ public class LOActivity extends AppCompatActivity {
                             | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
                                     ? WindowInsets.Type.systemOverlays()
                                     : 0));
+                    Insets navInsets = windowInsets.getInsets(WindowInsets.Type.navigationBars());
+                    boolean imeVisible = windowInsets.isVisible(WindowInsets.Type.ime());
+                    int imeInsetBottom = Math.max(0, insets.bottom - navInsets.bottom);
+                    if (imeVisible && imeInsetBottom < dpToPx(IME_VISIBLE_THRESHOLD_DP)) {
+                        imeVisible = false;
+                        imeInsetBottom = 0;
+                    }
+                    applyBottomToolbarImeState(imeVisible, imeInsetBottom);
 
                     ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
                     mlp.leftMargin = insets.left;
@@ -590,6 +570,24 @@ public class LOActivity extends AppCompatActivity {
             mWebView.addJavascriptInterface(this, "COOLMessageHandler");
             setupAiFab();
             setupBottomToolbar();
+            setupSelectionMenu();
+            mWebView.setOnDocumentLongPressListener(new COWebView.OnDocumentLongPressListener() {
+                @Override
+                public void onDocumentLongPress(float viewX, float viewY) {
+                    LOActivity.this.onDocumentLongPress(viewX, viewY);
+                }
+
+                @Override
+                public void onDocumentSelectionDrag(float viewX, float viewY) {
+                    LOActivity.this.onDocumentSelectionDrag(viewX, viewY);
+                }
+
+                @Override
+                public void onDocumentSelectionDragEnd(float viewX, float viewY) {
+                    LOActivity.this.onDocumentSelectionDragEnd(viewX, viewY);
+                }
+            });
+            mWebView.setConsumeWebViewLongClick(!mIsEditModeActive);
 
             webSettings.setDomStorageEnabled(true);
 
@@ -627,10 +625,12 @@ public class LOActivity extends AppCompatActivity {
                     Intent intent = fileChooserParams.createIntent();
 
                     try {
+                        imagePickerInFlight = true;
                         intent.setType("image/*");
                         startActivityForResult(intent, REQUEST_SELECT_IMAGE_FILE);
                     } catch (ActivityNotFoundException e) {
                         valueCallback = null;
+                        imagePickerInFlight = false;
                         Toast.makeText(LOActivity.this, getString(R.string.cannot_open_file_chooser), Toast.LENGTH_LONG)
                                 .show();
                         return false;
@@ -655,6 +655,11 @@ public class LOActivity extends AppCompatActivity {
     protected void onNewIntent(Intent intent) {
 
         Log.i(TAG, "onNewIntent");
+        if (imagePickerInFlight) {
+            Log.i(TAG, "onNewIntent ignored while image picker is in-flight");
+            super.onNewIntent(intent);
+            return;
+        }
 
         if (documentLoaded) {
             postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1");
@@ -1112,6 +1117,9 @@ public class LOActivity extends AppCompatActivity {
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent intent) {
         super.onActivityResult(requestCode, resultCode, intent);
+        if (requestCode == REQUEST_SELECT_IMAGE_FILE) {
+            imagePickerInFlight = false;
+        }
         if (resultCode != RESULT_OK) {
             if (requestCode == REQUEST_SELECT_IMAGE_FILE) {
                 if (valueCallback != null) {
@@ -1607,16 +1615,36 @@ public class LOActivity extends AppCompatActivity {
             case "EDITMODE": {
                 switch (messageAndParam[1]) {
                     case "on":
-                        mIsEditModeActive = true;
-                        getMainHandler().removeCallbacks(mobilePreviewAckTimeoutRunnable);
+                        cancelPreviewModeSwitchAck("editmode_on");
+                        updateEditModeState(true, "js_editmode_on");
                         // prompt for file conversion
                         requestForOdf();
                         // Hide the soft keyboard so it doesn't auto-popup on edit mode entry.
                         hideKeyboard();
+                        runPendingAfterEditMode();
                         break;
                     case "off":
-                        mIsEditModeActive = false;
+                        updateEditModeState(false, "js_editmode_off");
+                        completePreviewModeSwitchAck("editmode_off");
                         break;
+                }
+                return false;
+            }
+            case "SELECTIONMENU": {
+                if (messageAndParam.length > 1 && "hide".equals(messageAndParam[1])) {
+                    getMainHandler().post(() -> ensureSelectionMenuController().hide());
+                    return false;
+                }
+                if (messageAndParam.length >= 4 && "show".equals(messageAndParam[1])) {
+                    try {
+                        final float anchorX = Float.parseFloat(messageAndParam[2]);
+                        final float anchorY = Float.parseFloat(messageAndParam[3]);
+                        getMainHandler().post(() ->
+                                ensureSelectionMenuController().showAtWindow(anchorX, anchorY));
+                    } catch (NumberFormatException e) {
+                        Log.w(TAG, "selection_menu_bad_anchor", e);
+                    }
+                    return false;
                 }
                 return false;
             }
@@ -1638,7 +1666,7 @@ public class LOActivity extends AppCompatActivity {
                     lastDocGestureGuardLogAt = now;
                 }
                 if (!enable && changed) {
-                    triggerSelectionStateSync("reconnect_done");
+                    triggerSelectionStateSync("reconnect_done", mIsEditModeActive);
                 }
                 return false;
             }
@@ -1819,24 +1847,7 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
 
-        HttpURLConnection connection = null;
-        StringBuilder fullText = new StringBuilder();
         try {
-            URL url = new URL(endpoint);
-            connection = (HttpURLConnection) url.openConnection();
-            session.bindConnection(connection);
-            connection.setRequestMethod("POST");
-            connection.setConnectTimeout(30000);
-            connection.setReadTimeout(30000);
-            connection.setDoOutput(true);
-            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            connection.setRequestProperty("Accept", "text/event-stream");
-            connection.setRequestProperty("Authorization", "Bearer " + apiKey);
-
-            JSONObject body = new JSONObject();
-            body.put("model", model);
-            body.put("stream", true);
-
             JSONArray messages = new JSONArray();
             messages.put(new JSONObject().put("role", "system").put("content", AI_DEFAULT_SYSTEM_PROMPT));
             Log.i(TAG, "ai_prompt_mode=" + taskType + " requestId=" + requestId);
@@ -1876,97 +1887,45 @@ public class LOActivity extends AppCompatActivity {
             } else {
                 messages.put(new JSONObject().put("role", "user").put("content", buildAiUserPrompt(request)));
             }
-            body.put("messages", messages);
+            aiRequestManager.execute(requestId, endpoint, apiKey, model, messages, session,
+                    new AiRequestManager.Callback() {
+                        @Override
+                        public String sanitizePayload(String callbackRequestId, Object raw, String stage) {
+                            return sanitizeAiTextPayload(callbackRequestId, raw, stage);
+                        }
 
-            byte[] requestBody = body.toString().getBytes(StandardCharsets.UTF_8);
-            connection.getOutputStream().write(requestBody);
+                        @Override
+                        public void onStreamingState(String callbackRequestId) {
+                            dispatchAiState(callbackRequestId, AI_STATE_STREAMING, "AI response streaming");
+                        }
 
-            int statusCode = connection.getResponseCode();
-            if (statusCode < 200 || statusCode >= 300) {
-                String errorText = readStreamAsText(connection.getErrorStream());
-                dispatchAiError(requestId, "http_" + statusCode, errorText.isEmpty() ? "AI request failed" : errorText);
-                return;
-            }
+                        @Override
+                        public void onStreamDelta(String callbackRequestId, String delta) throws JSONException {
+                            JSONObject streamPayload = new JSONObject();
+                            streamPayload.put("requestId", callbackRequestId);
+                            streamPayload.put("delta", delta);
+                            dispatchAiEvent("ai.stream", streamPayload);
+                        }
 
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (session.isCancelled()) {
-                    return;
-                }
+                        @Override
+                        public void onDone(String callbackRequestId, String fullText) throws JSONException {
+                            JSONObject donePayload = new JSONObject();
+                            donePayload.put("requestId", callbackRequestId);
+                            donePayload.put("fullText", fullText);
+                            dispatchAiEvent("ai.done", donePayload);
+                        }
 
-                line = line.trim();
-                if (!line.startsWith("data:")) {
-                    continue;
-                }
-
-                String data = line.substring("data:".length()).trim();
-                if (data.isEmpty()) {
-                    continue;
-                }
-
-                if ("[DONE]".equals(data)) {
-                    JSONObject donePayload = new JSONObject();
-                    donePayload.put("requestId", requestId);
-                    donePayload.put("fullText", sanitizeAiTextPayload(requestId, fullText.toString(), "done_payload"));
-                    dispatchAiEvent("ai.done", donePayload);
-                    return;
-                }
-
-                try {
-                    JSONObject chunk = new JSONObject(data);
-                    JSONArray choices = chunk.optJSONArray("choices");
-                    if (choices == null || choices.length() == 0) {
-                        continue;
-                    }
-
-                    JSONObject choice = choices.optJSONObject(0);
-                    if (choice == null) {
-                        continue;
-                    }
-
-                    String delta = "";
-                    Object deltaRaw = null;
-                    JSONObject deltaObj = choice.optJSONObject("delta");
-                    if (deltaObj != null && deltaObj.has("content")) {
-                        deltaRaw = deltaObj.opt("content");
-                    }
-                    if (deltaRaw == null && choice.has("text")) {
-                        deltaRaw = choice.opt("text");
-                    }
-                    delta = sanitizeAiTextPayload(requestId, deltaRaw, "stream_delta");
-                    if (delta.isEmpty()) {
-                        continue;
-                    }
-
-                    if (session.shouldEmitStreamingState()) {
-                        dispatchAiState(requestId, AI_STATE_STREAMING, "AI response streaming");
-                    }
-                    fullText.append(delta);
-                    JSONObject streamPayload = new JSONObject();
-                    streamPayload.put("requestId", requestId);
-                    streamPayload.put("delta", delta);
-                    dispatchAiEvent("ai.stream", streamPayload);
-                } catch (JSONException parseError) {
-                    Log.w(TAG, "Skipping unparsable SSE chunk: " + data, parseError);
-                }
-            }
-
-            JSONObject donePayload = new JSONObject();
-            donePayload.put("requestId", requestId);
-            donePayload.put("fullText", sanitizeAiTextPayload(requestId, fullText.toString(), "done_payload"));
-            dispatchAiEvent("ai.done", donePayload);
+                        @Override
+                        public void onError(String callbackRequestId, String code, String message) {
+                            dispatchAiError(callbackRequestId, code, message);
+                        }
+                    });
         } catch (Exception e) {
             if (!session.isCancelled()) {
                 dispatchAiState(requestId, AI_STATE_ERROR, "AI request failed");
                 dispatchAiError(requestId, "request_failed",
                         e.getMessage() == null ? "AI request failed" : e.getMessage());
                 Log.e(TAG, "runAiRequest failed", e);
-            }
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
             }
         }
     }
@@ -2014,26 +1973,6 @@ public class LOActivity extends AppCompatActivity {
         }
         prompt.append("SelectedText:\n").append(selection);
         return prompt.toString();
-    }
-
-    private String readStreamAsText(InputStream inputStream) {
-        if (inputStream == null) {
-            return "";
-        }
-        try {
-            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
-            StringBuilder builder = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (builder.length() > 0) {
-                    builder.append('\n');
-                }
-                builder.append(line);
-            }
-            return builder.toString();
-        } catch (IOException e) {
-            return "";
-        }
     }
 
     private void cancelAiRequest(String requestId) {
@@ -2222,11 +2161,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private float getFabMaxY(View parent, View fab) {
-        int reservedBottom = 0;
-        View bottomToolbar = findViewById(R.id.doc_bottom_toolbar);
-        if (bottomToolbar != null && bottomToolbar.getVisibility() == View.VISIBLE) {
-            reservedBottom = bottomToolbar.getHeight() + dpToPx(16);
-        }
+        int reservedBottom = ensureBottomToolbarController().getReservedBottomHeightPx();
         return Math.max(0f, parent.getHeight() - fab.getHeight() - reservedBottom);
     }
 
@@ -2238,22 +2173,228 @@ public class LOActivity extends AppCompatActivity {
         return Math.max(min, Math.min(value, max));
     }
 
-    private void setupBottomToolbar() {
-        bindToolbarClick(R.id.toolbar_item_function, v -> showFunctionPanel());
-        bindToolbarClick(R.id.toolbar_item_mobile_preview, v -> switchToViewingMode());
-        bindToolbarClick(R.id.toolbar_item_ai_assistant, v -> showNativeAiPanel());
-        bindToolbarClick(R.id.toolbar_item_ai_feature, v -> toastTodo("AI功能后续逐步接入。"));
-        bindToolbarClick(R.id.toolbar_item_keyboard, v -> focusDocumentAndShowIme());
-        bindToolbarClick(R.id.toolbar_item_character, v -> executeUnoCommand(".uno:FontDialog"));
-        bindToolbarClick(R.id.toolbar_item_paragraph, v -> executeUnoCommand(".uno:ParagraphDialog"));
-        bindToolbarClick(R.id.toolbar_item_insert_image, v -> executeUnoCommand(".uno:InsertGraphic"));
+    private void onDocumentLongPress(float viewX, float viewY) {
+        if (!documentLoaded || mWebView == null || mIsEditModeActive) {
+            return;
+        }
+        mWebView.evaluateJavascript(
+                "(function(){try{if(window.AndroidSelectionMenu){"
+                        + "window.AndroidSelectionMenu.markNativeLongPress();"
+                        + "window.AndroidSelectionMenu.onLongPressAt(" + viewX + "," + viewY + ");"
+                        + "}}catch(e){if(window.console&&console.warn){"
+                        + "console.warn('selection_menu_long_press_failed',e);}}"
+                        + "return true;})();",
+                null);
     }
 
-    private void bindToolbarClick(int viewId, View.OnClickListener listener) {
-        View view = findViewById(viewId);
-        if (view != null) {
-            view.setOnClickListener(listener);
+    private void onDocumentSelectionDrag(float viewX, float viewY) {
+        if (!documentLoaded || mWebView == null || mIsEditModeActive) {
+            return;
         }
+        mWebView.evaluateJavascript(
+                "(function(){try{if(window.AndroidSelectionMenu){"
+                        + "window.AndroidSelectionMenu.updateTextSelectionEndAt(" + viewX + "," + viewY + ");"
+                        + "}}catch(e){if(window.console&&console.warn){"
+                        + "console.warn('selection_menu_drag_failed',e);}}"
+                        + "return true;})();",
+                null);
+    }
+
+    private void onDocumentSelectionDragEnd(float viewX, float viewY) {
+        if (!documentLoaded || mWebView == null || mIsEditModeActive) {
+            return;
+        }
+        mWebView.evaluateJavascript(
+                "(function(){try{if(window.AndroidSelectionMenu){"
+                        + "window.AndroidSelectionMenu.finishTextSelectionDrag(" + viewX + "," + viewY + ");"
+                        + "}}catch(e){if(window.console&&console.warn){"
+                        + "console.warn('selection_menu_drag_end_failed',e);}}"
+                        + "return true;})();",
+                null);
+    }
+
+    private void setupSelectionMenu() {
+        if (selectionMenuController == null) {
+            selectionMenuController = new SelectionMenuController(new SelectionMenuController.Host() {
+                @Override
+                public Context getContext() {
+                    return LOActivity.this;
+                }
+
+                @Override
+                public View findViewById(int id) {
+                    return LOActivity.this.findViewById(id);
+                }
+
+                @Override
+                public boolean isDocEditable() {
+                    return LOActivity.this.isDocEditable;
+                }
+
+                @Override
+                public boolean isEditModeActive() {
+                    return LOActivity.this.mIsEditModeActive;
+                }
+
+                @Override
+                public void ensureEditModeThen(Runnable action) {
+                    LOActivity.this.ensureEditModeThen(action);
+                }
+
+                @Override
+                public void executeUnoCommand(String command) {
+                    LOActivity.this.executeUnoCommand(command);
+                }
+
+                @Override
+                public void performPasteCommand() {
+                    LOActivity.this.performPasteCommand();
+                }
+
+                @Override
+                public void hideQuickActionPanel() {
+                    LOActivity.this.hideQuickActionPanel();
+                }
+            });
+        }
+        selectionMenuController.setup();
+    }
+
+    private SelectionMenuController ensureSelectionMenuController() {
+        if (selectionMenuController == null) {
+            setupSelectionMenu();
+        }
+        return selectionMenuController;
+    }
+
+    private void ensureEditModeThen(Runnable action) {
+        if (action == null) {
+            return;
+        }
+        if (!isDocEditable) {
+            Toast.makeText(this, "当前文档为只读，无法粘贴或剪切", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (mIsEditModeActive) {
+            getMainHandler().post(action);
+            return;
+        }
+        pendingAfterEditMode = action;
+        if (mWebView != null) {
+            mWebView.evaluateJavascript(
+                    "(function(){try{if(window.app&&app.map&&typeof app.map._switchToEditMode==='function')"
+                            + "{app.map._switchToEditMode();}}catch(e){}"
+                            + "return true;})();",
+                    null);
+        }
+        getMainHandler().postDelayed(() -> {
+            if (pendingAfterEditMode != action) {
+                return;
+            }
+            if (mIsEditModeActive) {
+                runPendingAfterEditMode();
+            } else {
+                pendingAfterEditMode = null;
+                Toast.makeText(LOActivity.this, "无法进入编辑模式", Toast.LENGTH_SHORT).show();
+            }
+        }, 2500L);
+    }
+
+    private void runPendingAfterEditMode() {
+        if (pendingAfterEditMode == null) {
+            return;
+        }
+        Runnable action = pendingAfterEditMode;
+        pendingAfterEditMode = null;
+        getMainHandler().postDelayed(action, 120L);
+    }
+
+    private void performPasteCommand() {
+        postMobileMessage("uno .uno:Paste");
+    }
+
+    private void setupBottomToolbar() {
+        ensureBottomToolbarController().setup();
+    }
+
+    private BottomToolbarController ensureBottomToolbarController() {
+        if (bottomToolbarController == null) {
+            bottomToolbarController = new BottomToolbarController(new BottomToolbarController.Host() {
+                @Override
+                public Context getContext() {
+                    return LOActivity.this;
+                }
+
+                @Override
+                public View findViewById(int id) {
+                    return LOActivity.this.findViewById(id);
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return LOActivity.this.dpToPx(dp);
+                }
+
+                @Override
+                public void runOnUiThread(Runnable runnable) {
+                    LOActivity.this.runOnUiThread(runnable);
+                }
+
+                @Override
+                public void showFunctionPanel() {
+                    LOActivity.this.showFunctionPanel();
+                }
+
+                @Override
+                public void switchToViewingMode() {
+                    LOActivity.this.switchToViewingMode();
+                }
+
+                @Override
+                public void showNativeAiPanel() {
+                    LOActivity.this.showNativeAiPanel();
+                }
+
+                @Override
+                public void toastTodo(String text) {
+                    LOActivity.this.toastTodo(text);
+                }
+
+                @Override
+                public void focusDocumentAndShowIme() {
+                    LOActivity.this.focusDocumentAndShowIme();
+                }
+
+                @Override
+                public void openLocalImagePickerFromWeb() {
+                    LOActivity.this.openLocalImagePickerFromWeb();
+                }
+
+                @Override
+                public void executeUnoCommand(String command) {
+                    LOActivity.this.executeUnoCommand(command);
+                }
+            });
+        }
+        return bottomToolbarController;
+    }
+
+    private void updateEditModeState(boolean isEditMode, String reason) {
+        mIsEditModeActive = isEditMode;
+        if (mWebView != null) {
+            mWebView.setConsumeWebViewLongClick(!isEditMode);
+        }
+        ensureBottomToolbarController().updateEditModeState(isEditMode, reason);
+    }
+
+    private void hideQuickActionPanel() {
+        ensureBottomToolbarController().hideQuickActionPanel();
+    }
+
+    private void applyBottomToolbarImeState(boolean imeVisible, int imeInsetBottom) {
+        isImeVisibleForToolbar = imeVisible;
+        bottomToolbarImeInsetPx = Math.max(0, imeInsetBottom);
+        ensureBottomToolbarController().applyImeState(imeVisible, imeInsetBottom);
     }
 
     private void showFunctionPanel() {
@@ -2342,6 +2483,28 @@ public class LOActivity extends AppCompatActivity {
         action.run();
     }
 
+    private void openLocalImagePickerFromWeb() {
+        if (mWebView == null) {
+            return;
+        }
+        mWebView.requestFocus();
+        final String script = "(function(){try{"
+                + "if(window.app&&app.dispatcher&&typeof app.dispatcher.dispatch==='function'){app.dispatcher.dispatch('localgraphic');return 'dispatcher';}"
+                + "var el=window.L&&window.L.DomUtil&&window.L.DomUtil.get('insertgraphic');"
+                + "if(el&&typeof el.click==='function'){el.click();return 'input';}"
+                + "}catch(e){if(window.console&&console.warn){console.warn('android_insert_image_open_failed',e);}}"
+                + "return 'none';})();";
+        mWebView.evaluateJavascript(script, value -> {
+            String result = value == null ? "" : value.replace("\"", "");
+            Log.i(TAG, "open_local_image_picker result=" + result);
+            if ("none".equals(result)) {
+                Log.w(TAG, "open_local_image_picker fallback to uno insert graphic");
+                executeUnoCommand(".uno:InsertGraphic");
+            }
+        });
+        nudgeSocketIfStalled("insert_image_click");
+    }
+
     private void executeUnoCommand(String command) {
         if (command == null || command.trim().isEmpty()) {
             return;
@@ -2357,6 +2520,7 @@ public class LOActivity extends AppCompatActivity {
         }
 
         postMobileMessage("uno " + normalizedCommand);
+        nudgeSocketIfStalled("uno_dispatch");
     }
 
     private void downloadCurrentTextDocumentAsPdf() {
@@ -2376,23 +2540,51 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void switchToViewingMode() {
+        ensureSelectionMenuController().hide();
+        pendingAfterEditMode = null;
+        updateEditModeState(false, "manual_preview_switch");
+        awaitingPreviewModeJsAck = true;
         mobilePreviewSwitchAttempt = 1;
         getMainHandler().removeCallbacks(mobilePreviewAckTimeoutRunnable);
         callFakeWebsocketOnMessage("mobile: readonlymode");
         getMainHandler().postDelayed(mobilePreviewAckTimeoutRunnable, MOBILE_PREVIEW_ACK_TIMEOUT_MS);
     }
 
-    private void recoverFromMobilePreviewStuckState() {
+    private void completePreviewModeSwitchAck(String reason) {
+        if (!awaitingPreviewModeJsAck) {
+            return;
+        }
+        awaitingPreviewModeJsAck = false;
+        mobilePreviewSwitchAttempt = 0;
+        getMainHandler().removeCallbacks(mobilePreviewAckTimeoutRunnable);
+        Log.i(TAG, "mobile_preview_switch_ack success reason=" + reason);
+    }
+
+    private void cancelPreviewModeSwitchAck(String reason) {
+        if (!awaitingPreviewModeJsAck) {
+            return;
+        }
+        awaitingPreviewModeJsAck = false;
+        mobilePreviewSwitchAttempt = 0;
+        getMainHandler().removeCallbacks(mobilePreviewAckTimeoutRunnable);
+        Log.i(TAG, "mobile_preview_switch_ack cancelled reason=" + reason);
+    }
+
+    /** Ask the Web layer to enter mobile read-only UI without resetting the document socket. */
+    private void nudgePreviewModeOnWebLayer() {
         if (mWebView == null) {
             return;
         }
-        mWebView.post(() -> mWebView.evaluateJavascript(
-                "(function(){try{" +
-                        "if(window.socket&&window.socket.msgInflight>=4&&typeof window.socket._signalErrorClose==='function'){window.socket._signalErrorClose();}" +
-                        "if(window.socket&&typeof window.socket.doSend==='function'){window.socket.doSend();}" +
-                        "if(window.app&&app.map&&app.map.uiManager&&typeof app.map.uiManager.closeAll==='function'){app.map.uiManager.closeAll();}" +
-                        "}catch(e){console.warn('android_recover_preview_failed',e);}return true;})();",
-                null));
+        mWebView.evaluateJavascript(
+                "(function(){try{"
+                        + "if(window.app&&app.map){"
+                        + "if(typeof app.map.isEditMode==='function'&&app.map.isEditMode()){"
+                        + "if(typeof app.map.setPermission==='function'){app.map.setPermission('edit');}"
+                        + "}else if(typeof app.map.fire==='function'){app.map.fire('readonlymode');}"
+                        + "}"
+                        + "}catch(e){if(window.console&&console.warn){console.warn('android_preview_resync_failed',e);}}"
+                        + "return true;})();",
+                null);
     }
 
     private void focusDocumentAndShowIme() {
@@ -2408,6 +2600,7 @@ public class LOActivity extends AppCompatActivity {
         if (imm != null) {
             imm.showSoftInput(mWebView, InputMethodManager.SHOW_IMPLICIT);
         }
+        nudgeSocketIfStalled("show_ime_focus_doc");
     }
 
     /** Hide the soft keyboard and reset IME state on the WebView. */
@@ -2434,24 +2627,21 @@ public class LOActivity extends AppCompatActivity {
         return aiMessagesScroll.canScrollVertically(1) || aiMessagesScroll.canScrollVertically(-1);
     }
 
-    private void maybeLogAiScrollIntercept(int action, boolean disallow) {
-        long now = android.os.SystemClock.uptimeMillis();
-        if (disallow != aiScrollLastDisallow || now - aiScrollInterceptLogAt > 1200) {
-            Log.i(TAG, "ai_scroll_disallow_intercept action=" + action + " disallow=" + disallow);
-            aiScrollLastDisallow = disallow;
-            aiScrollInterceptLogAt = now;
-        }
+    private void triggerSelectionStateSync(String reason) {
+        triggerSelectionStateSync(reason, true);
     }
 
-    private void triggerSelectionStateSync(String reason) {
+    private void triggerSelectionStateSync(String reason, boolean resetSelection) {
         long now = android.os.SystemClock.uptimeMillis();
         if (now - lastSelectionSyncAt < SELECTION_SYNC_THROTTLE_MS) {
             return;
         }
         lastSelectionSyncAt = now;
-        Log.i(TAG, "selection_sync reason=" + reason);
+        Log.i(TAG, "selection_sync reason=" + reason + " resetSelection=" + resetSelection);
 
-        postMobileMessage("resetselection");
+        if (resetSelection) {
+            postMobileMessage("resetselection");
+        }
 
         if (mWebView == null) {
             return;
@@ -2459,12 +2649,26 @@ public class LOActivity extends AppCompatActivity {
 
         final String script = "(function(){"
                 + "var reason=" + JSONObject.quote(reason) + ";"
+                + "var resetSelection=" + resetSelection + ";"
                 + "function sync(tag){try{"
+                + "if(resetSelection){"
                 + "if(window.app&&app.activeDocument&&app.activeDocument.activeView&&typeof app.activeDocument.activeView.clearTextSelection==='function'){app.activeDocument.activeView.clearTextSelection();}"
                 + "if(window.TextSelections&&typeof window.TextSelections.deactivate==='function'){window.TextSelections.deactivate();}"
                 + "if(window.getSelection){var s=window.getSelection();if(s&&typeof s.removeAllRanges==='function'){s.removeAllRanges();}}"
+                + "}"
                 + "if(window.app&&app.map&&app.map._docLayer&&typeof app.map._docLayer._onUpdateCursor==='function'){app.map._docLayer._onUpdateCursor();}"
                 + "if(window.app&&app.events&&typeof app.events.fire==='function'&&window.app.map){var perm=(typeof app.map.isEditMode==='function'&&app.map.isEditMode())?'edit':'readonly';app.events.fire('updatepermission',{perm:perm});}"
+                + "if(window.ThisIsTheAndroidApp&&typeof window.postMobileMessage==='function'){"
+                + "var reconnectingNow=!!(window.app&&app.socket&&typeof app.socket.isTemporarilyReconnecting==='function'&&app.socket.isTemporarilyReconnecting());"
+                + "if(!reconnectingNow){"
+                + "window.__androidEditModeSync=window.__androidEditModeSync||{last:null,ts:0};"
+                + "if(window.__androidEditModeSync.last!==perm||Date.now()-window.__androidEditModeSync.ts>1200){"
+                + "window.postMobileMessage('EDITMODE '+(perm==='edit'?'on':'off'));"
+                + "window.__androidEditModeSync.last=perm;"
+                + "window.__androidEditModeSync.ts=Date.now();"
+                + "}"
+                + "}"
+                + "}"
                 + "if(window.app&&app.console&&typeof app.console.debug==='function'){app.console.debug('selection_sync applied reason='+tag);}"
                 + "}catch(e){if(window.console&&typeof window.console.warn==='function'){console.warn('selection_sync_failed',tag,e);}}}"
                 + "sync(reason);"
@@ -2476,6 +2680,22 @@ public class LOActivity extends AppCompatActivity {
                 mWebView.evaluateJavascript(script, null);
             }
         });
+    }
+
+    private void nudgeSocketIfStalled(String reason) {
+        if (mWebView == null) {
+            return;
+        }
+        final String script = "(function(){try{"
+                + "if(!window.socket){return 'no_socket';}"
+                + "var now=performance.now?performance.now():Date.now();"
+                + "var last=window.socket.lastDataTimestamp||0;"
+                + "var inflight=window.socket.msgInflight||0;"
+                + "if(inflight>=1&&now-last>12000&&typeof window.socket._signalErrorClose==='function'){window.socket._signalErrorClose();}"
+                + "if(typeof window.socket.doSend==='function'){window.socket.doSend();return 'nudged';}"
+                + "return 'no_dosend';"
+                + "}catch(e){if(window.console&&console.warn){console.warn('android_socket_nudge_failed',e);}return 'err';}})();";
+        mWebView.evaluateJavascript(script, value -> Log.i(TAG, "socket_nudge reason=" + reason + " result=" + value));
     }
 
     private void toastTodo(String text) {
@@ -2565,67 +2785,29 @@ public class LOActivity extends AppCompatActivity {
             aiStreamingMessageView = null;
             aiStreamingRequestId = "";
             aiStreamingViewByRequestId.clear();
-            aiScrollLastY = Float.NaN;
+            aiPanelController.resetTransientState();
         });
         aiPanelDialog.show();
 
-        FrameLayout bottomSheet = aiPanelDialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
-        if (bottomSheet != null) {
-            BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
-            ViewGroup.LayoutParams layoutParams = bottomSheet.getLayoutParams();
-            int screenHeight = getResources().getDisplayMetrics().heightPixels;
-            int screenWidth = getResources().getDisplayMetrics().widthPixels;
-            int orientation = getResources().getConfiguration().orientation;
-            boolean isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE || screenWidth > screenHeight;
-            float targetRatio = isLandscape ? 0.52f : 0.62f;
-            int targetHeight = (int) (screenHeight * targetRatio);
-            if (layoutParams != null) {
-                layoutParams.height = targetHeight;
-                bottomSheet.setLayoutParams(layoutParams);
+        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int orientation = getResources().getConfiguration().orientation;
+        aiPanelController.configureBottomSheet(aiPanelDialog, screenHeight, screenWidth, orientation);
+
+        aiPanelController.installMessageScrollTouchPolicy(aiMessagesScroll, new AiPanelController.ScrollCallbacks() {
+            @Override
+            public boolean canMessagesScrollConsume(float deltaY) {
+                return canAiMessagesScrollConsume(deltaY);
             }
-            behavior.setFitToContents(true);
-            behavior.setSkipCollapsed(true);
-            behavior.setHideable(false);
-            behavior.setDraggable(false);
-            behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
-            Log.i(TAG, "ai_sheet_drag_disabled");
-            Log.i(TAG, "ai_sheet_force_expanded height=" + targetHeight
-                    + " screenHeight=" + screenHeight
-                    + " screenWidth=" + screenWidth
-                    + " orientation=" + orientation
-                    + " ratio=" + targetRatio);
-        }
 
-        if (aiMessagesScroll != null) {
-            aiMessagesScroll.setOnTouchListener((v, event) -> {
-                ViewParent parent = v.getParent();
-                if (parent != null) {
-                    final int action = event.getActionMasked();
-                    boolean disallow = false;
-                    if (action == MotionEvent.ACTION_DOWN) {
-                        aiScrollLastY = event.getY();
-                        disallow = canAiMessagesScrollConsume(0f);
-                    } else if (action == MotionEvent.ACTION_MOVE) {
-                        float previousY = Float.isNaN(aiScrollLastY) ? event.getY() : aiScrollLastY;
-                        float deltaY = event.getY() - previousY;
-                        aiScrollLastY = event.getY();
-                        disallow = canAiMessagesScrollConsume(deltaY);
-                    } else if (action == MotionEvent.ACTION_UP) {
-                        aiScrollLastY = Float.NaN;
-                    } else if (action == MotionEvent.ACTION_CANCEL) {
-                        aiScrollLastY = Float.NaN;
-                        if (mWebView != null) {
-                            mWebView.abortDocumentScroll();
-                        }
-                        triggerSelectionStateSync("action_cancel");
-                    }
-
-                    parent.requestDisallowInterceptTouchEvent(disallow);
-                    maybeLogAiScrollIntercept(action, disallow);
+            @Override
+            public void onTouchCancelled() {
+                if (mWebView != null) {
+                    mWebView.abortDocumentScroll();
                 }
-                return false;
-            });
-        }
+                triggerSelectionStateSync("action_cancel");
+            }
+        });
     }
 
     private void maybeAutoOpenAiPanelAfterLoad() {
@@ -2662,10 +2844,17 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         String mode = getActiveAiMode();
-        boolean firstDocQaTurn = AI_MODE_DOC_QA.equals(mode) && !aiDocQaContextInjected;
+        boolean firstDocQaTurn = ensureAiChatCoordinator().isFirstDocQaTurn(mode);
         Log.i(TAG, "ai_native_send_start mode=" + mode
                 + " firstDocQaTurn=" + firstDocQaTurn
                 + " promptChars=" + prompt.length());
+        String configError = validateBaseModelConfigured();
+        if (!configError.isEmpty()) {
+            Log.w(TAG, "ai_native_send_blocked reason=config_missing mode=" + mode);
+            showBaseModelConfigRequiredDialog(configError);
+            setNativeAiPanelState(AI_STATE_UNCONFIGURED, configError);
+            return;
+        }
         appendAiMessage(prompt, true, false);
         appendAiHistoryMessage(mode, "user", prompt);
         aiPromptInput.setText("");
@@ -2699,7 +2888,7 @@ public class LOActivity extends AppCompatActivity {
             request.put("context", context);
             request.put("modelMode", "base");
             request.put("docQaFirstTurn", firstDocQaTurn);
-            request.put("history", cloneHistoryArray(getAiHistoryForMode(request.optString("taskType", AI_MODE_CHAT))));
+            request.put("history", ensureAiChatCoordinator().cloneHistory(request.optString("taskType", AI_MODE_CHAT)));
 
             aiActiveRequestId = requestId;
             aiStreamingRequestId = requestId;
@@ -2730,6 +2919,32 @@ public class LOActivity extends AppCompatActivity {
             dispatchAiError("", "invalid_payload", "Failed to build native ai.request payload");
             Log.e(TAG, "Failed to build native ai.request payload", e);
         }
+    }
+
+    private String validateBaseModelConfigured() {
+        SharedPreferences modelPrefs = getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
+        String endpoint = modelPrefs.getString("AI_MODEL_BASE_url", "");
+        String apiKey = modelPrefs.getString("AI_MODEL_BASE_api_key", "");
+        endpoint = endpoint == null ? "" : endpoint.trim();
+        apiKey = apiKey == null ? "" : apiKey.trim();
+        if (endpoint.isEmpty()) {
+            return "请先在设置中配置基础模型的接口地址。";
+        }
+        if (apiKey.isEmpty()) {
+            return "请先在设置中配置基础模型的 API Key。";
+        }
+        return "";
+    }
+
+    private void showBaseModelConfigRequiredDialog(String message) {
+        if (isFinishing()) {
+            return;
+        }
+        new AlertDialog.Builder(LOActivity.this)
+                .setTitle("需要配置基础模型")
+                .setMessage(message)
+                .setPositiveButton("知道了", null)
+                .show();
     }
 
     private void updateAiPanelTabStyle() {
@@ -2773,241 +2988,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void renderAiMessageContent(String rawText, TextView target, boolean userMessage, boolean streaming) {
-        if (target == null) {
-            return;
-        }
-        String clean = normalizeAiText(rawText);
-        if (clean.isEmpty()) {
-            target.setText("");
-            return;
-        }
-        if (userMessage || streaming) {
-            target.setText(clean);
-            return;
-        }
-        target.setLineSpacing(0f, 1.0f);
-        Log.i(TAG, "ai_markdown_render chars=" + clean.length()
-                + " newlineCount=" + countOccurrences(clean, '\n'));
-        Spanned spanned = HtmlCompat.fromHtml(markdownToHtml(clean), HtmlCompat.FROM_HTML_MODE_COMPACT);
-        CharSequence compact = compactRenderedLineBreaks(trimTrailingWhitespace(spanned));
-        Log.i(TAG, "ai_markdown_compact newlineCount="
-                + countOccurrences(compact.toString(), '\n'));
-        target.setText(compact);
-    }
-
-    private String markdownToHtml(String markdown) {
-        String src = escapeHtml(markdown).replace("\r\n", "\n");
-
-        Matcher codeBlockMatcher = Pattern.compile("(?s)```\\s*\\n?(.*?)\\n?```").matcher(src);
-        StringBuffer codeBuffer = new StringBuffer();
-        while (codeBlockMatcher.find()) {
-            String code = codeBlockMatcher.group(1);
-            codeBlockMatcher.appendReplacement(codeBuffer,
-                    "<pre><code>" + Matcher.quoteReplacement(code) + "</code></pre>");
-        }
-        codeBlockMatcher.appendTail(codeBuffer);
-        src = codeBuffer.toString();
-
-        String[] lines = src.split("\n");
-        StringBuilder html = new StringBuilder();
-        boolean inUl = false;
-        boolean inOl = false;
-        boolean inBlockquote = false;
-        for (String line : lines) {
-            String trimmed = line.trim();
-            if (trimmed.startsWith("<pre><code>")) {
-                if (inUl) {
-                    html.append("</ul>");
-                    inUl = false;
-                }
-                if (inOl) {
-                    html.append("</ol>");
-                    inOl = false;
-                }
-                if (inBlockquote) {
-                    html.append("</blockquote>");
-                    inBlockquote = false;
-                }
-                html.append(trimmed);
-                continue;
-            }
-
-            if (trimmed.isEmpty()) {
-                if (inUl) {
-                    html.append("</ul>");
-                    inUl = false;
-                }
-                if (inOl) {
-                    html.append("</ol>");
-                    inOl = false;
-                }
-                if (inBlockquote) {
-                    html.append("</blockquote>");
-                    inBlockquote = false;
-                }
-                continue;
-            }
-
-            if (trimmed.matches("^#{1,6}\\s+.*")) {
-                if (inUl) {
-                    html.append("</ul>");
-                    inUl = false;
-                }
-                if (inOl) {
-                    html.append("</ol>");
-                    inOl = false;
-                }
-                if (inBlockquote) {
-                    html.append("</blockquote>");
-                    inBlockquote = false;
-                }
-                int level = 0;
-                while (level < trimmed.length() && trimmed.charAt(level) == '#') {
-                    level++;
-                }
-                level = Math.min(level, 6);
-                html.append("<h").append(level).append(">")
-                        .append(applyInlineMarkdown(trimmed.substring(level).trim()))
-                        .append("</h").append(level).append(">");
-                continue;
-            }
-
-            if (trimmed.matches("^[\\-\\*]\\s+.*")) {
-                if (inOl) {
-                    html.append("</ol>");
-                    inOl = false;
-                }
-                if (!inUl) {
-                    html.append("<ul>");
-                    inUl = true;
-                }
-                html.append("<li>").append(applyInlineMarkdown(trimmed.substring(2).trim())).append("</li>");
-                continue;
-            }
-
-            if (trimmed.matches("^\\d+\\.\\s+.*")) {
-                if (inUl) {
-                    html.append("</ul>");
-                    inUl = false;
-                }
-                if (!inOl) {
-                    html.append("<ol>");
-                    inOl = true;
-                }
-                html.append("<li>").append(applyInlineMarkdown(trimmed.replaceFirst("^\\d+\\.\\s+", ""))).append("</li>");
-                continue;
-            }
-
-            if (trimmed.startsWith("&gt;")) {
-                if (inUl) {
-                    html.append("</ul>");
-                    inUl = false;
-                }
-                if (inOl) {
-                    html.append("</ol>");
-                    inOl = false;
-                }
-                if (!inBlockquote) {
-                    html.append("<blockquote>");
-                    inBlockquote = true;
-                }
-                html.append("<div>").append(applyInlineMarkdown(trimmed.substring(4).trim())).append("</div>");
-                continue;
-            }
-
-            if (inUl) {
-                html.append("</ul>");
-                inUl = false;
-            }
-            if (inOl) {
-                html.append("</ol>");
-                inOl = false;
-            }
-            if (inBlockquote) {
-                html.append("</blockquote>");
-                inBlockquote = false;
-            }
-            html.append("<div>").append(applyInlineMarkdown(trimmed)).append("</div>");
-        }
-
-        if (inUl) {
-            html.append("</ul>");
-        }
-        if (inOl) {
-            html.append("</ol>");
-        }
-        if (inBlockquote) {
-            html.append("</blockquote>");
-        }
-        return html.toString();
-    }
-
-    private int countOccurrences(String text, char needle) {
-        if (text == null || text.isEmpty()) {
-            return 0;
-        }
-        int count = 0;
-        for (int i = 0; i < text.length(); i++) {
-            if (text.charAt(i) == needle) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private CharSequence trimTrailingWhitespace(CharSequence text) {
-        if (text == null) {
-            return "";
-        }
-        int end = text.length();
-        while (end > 0 && Character.isWhitespace(text.charAt(end - 1))) {
-            end--;
-        }
-        return end == text.length() ? text : text.subSequence(0, end);
-    }
-
-    private CharSequence compactRenderedLineBreaks(CharSequence text) {
-        if (text == null) {
-            return "";
-        }
-        SpannableStringBuilder builder = new SpannableStringBuilder(text);
-        boolean previousWasNewline = false;
-        for (int i = 0; i < builder.length(); i++) {
-            char ch = builder.charAt(i);
-            if (ch == '\n') {
-                if (previousWasNewline) {
-                    builder.delete(i, i + 1);
-                    i--;
-                    continue;
-                }
-                previousWasNewline = true;
-                continue;
-            }
-            if (previousWasNewline && Character.isWhitespace(ch)) {
-                builder.delete(i, i + 1);
-                i--;
-                continue;
-            }
-            previousWasNewline = false;
-        }
-        return trimTrailingWhitespace(builder);
-    }
-
-    private String applyInlineMarkdown(String text) {
-        String out = text;
-        out = out.replaceAll("\\*\\*(.+?)\\*\\*", "<b>$1</b>");
-        out = out.replaceAll("(?<!\\*)\\*(?!\\*)(.+?)(?<!\\*)\\*(?!\\*)", "<i>$1</i>");
-        out = out.replaceAll("`([^`]+)`", "<code>$1</code>");
-        out = out.replaceAll("\\[(.+?)\\]\\((https?://[^\\s)]+)\\)", "<a href=\"$2\">$1</a>");
-        return out;
-    }
-
-    private String escapeHtml(String text) {
-        return text
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;");
+        AiMarkdownRenderer.render(rawText, target, userMessage || streaming);
     }
 
     private void cancelAiFromNativePanel() {
@@ -3064,19 +3045,52 @@ public class LOActivity extends AppCompatActivity {
         return aiDocQaMode ? AI_MODE_DOC_QA : AI_MODE_CHAT;
     }
 
-    private JSONArray getAiHistoryForMode(String mode) {
-        if (AI_MODE_DOC_QA.equals(mode)) {
-            return aiDocQaHistory;
+    private AiChatCoordinator ensureAiChatCoordinator() {
+        if (aiChatCoordinator == null) {
+            aiChatCoordinator = new AiChatCoordinator(this, documentUri, urlToLoad, loadDocumentMillis);
+            aiChatCoordinator.load();
         }
-        return aiChatHistory;
+        return aiChatCoordinator;
+    }
+
+    private AiDocumentContextProvider ensureAiDocumentContextProvider() {
+        if (aiDocumentContextProvider == null) {
+            aiDocumentContextProvider = new AiDocumentContextProvider(new AiDocumentContextProvider.Bridge() {
+                @Override
+                public void postUnoCommand(String command, String args, boolean notify) {
+                    LOActivity.this.postUnoCommand(command, args, notify);
+                }
+
+                @Override
+                public void runOnUiThread(Runnable runnable) {
+                    LOActivity.this.runOnUiThread(runnable);
+                }
+
+                @Override
+                public void copyViaWebsocketFallback() {
+                    LOActivity.this.callFakeWebsocketOnMessage("uno .uno:Copy");
+                }
+
+                @Override
+                public boolean getClipboardContent(LokClipboardData clipboardData) {
+                    return LOActivity.this.getClipboardContent(clipboardData);
+                }
+
+                @Override
+                public String normalizeAiText(String text) {
+                    return LOActivity.this.normalizeAiText(text);
+                }
+            });
+        }
+        return aiDocumentContextProvider;
+    }
+
+    private JSONArray getAiHistoryForMode(String mode) {
+        return ensureAiChatCoordinator().getHistory(mode);
     }
 
     private void loadAiHistoriesForCurrentDocument() {
-        aiDocQaHistory = loadAiHistoryFile(AI_MODE_DOC_QA);
-        aiChatHistory = loadAiHistoryFile(AI_MODE_CHAT);
-        // User-only history can be left by a failed first doc_qa attempt, for example
-        // config_missing. Do not treat history presence as proof that full context was sent.
-        aiDocQaContextInjected = hasAssistantHistory(aiDocQaHistory);
+        ensureAiChatCoordinator().load();
     }
 
     private void renderAiHistoryForCurrentMode() {
@@ -3100,82 +3114,15 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void appendAiHistoryMessage(String mode, String role, String content) {
-        String normalized = normalizeAiText(content);
-        if (normalized.isEmpty()) {
-            return;
-        }
-        JSONArray history = getAiHistoryForMode(mode);
         try {
-            JSONObject entry = new JSONObject();
-            entry.put("role", role);
-            entry.put("content", normalized);
-            history.put(entry);
-            saveAiHistoryFile(mode, history);
+            ensureAiChatCoordinator().appendHistoryMessage(mode, role, content);
         } catch (JSONException e) {
             Log.e(TAG, "appendAiHistoryMessage failed", e);
         }
     }
 
-    private JSONArray cloneHistoryArray(JSONArray source) {
-        if (source == null) {
-            return new JSONArray();
-        }
-        try {
-            return new JSONArray(source.toString());
-        } catch (JSONException e) {
-            return new JSONArray();
-        }
-    }
-
-    private JSONArray loadAiHistoryFile(String mode) {
-        File file = getAiHistoryFile(mode);
-        if (!file.exists()) {
-            return new JSONArray();
-        }
-        try (FileInputStream inputStream = new FileInputStream(file);
-                InputStreamReader reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
-                BufferedReader bufferedReader = new BufferedReader(reader)) {
-            StringBuilder builder = new StringBuilder();
-            String line;
-            while ((line = bufferedReader.readLine()) != null) {
-                builder.append(line);
-            }
-            if (builder.length() == 0) {
-                return new JSONArray();
-            }
-            return new JSONArray(builder.toString());
-        } catch (Exception e) {
-            Log.w(TAG, "loadAiHistoryFile failed for mode=" + mode, e);
-            return new JSONArray();
-        }
-    }
-
-    private void saveAiHistoryFile(String mode, JSONArray history) {
-        File file = getAiHistoryFile(mode);
-        File parent = file.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            Log.w(TAG, "saveAiHistoryFile failed to mkdirs for " + parent.getAbsolutePath());
-            return;
-        }
-        try (FileOutputStream outputStream = new FileOutputStream(file, false);
-                OutputStreamWriter writer = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8);
-                BufferedWriter bufferedWriter = new BufferedWriter(writer)) {
-            bufferedWriter.write(history.toString());
-            bufferedWriter.flush();
-        } catch (Exception e) {
-            Log.e(TAG, "saveAiHistoryFile failed for mode=" + mode, e);
-        }
-    }
-
     private void clearAiHistoryFilesForCurrentDocument() {
-        File docQaFile = getAiHistoryFile(AI_MODE_DOC_QA);
-        File chatFile = getAiHistoryFile(AI_MODE_CHAT);
-        if (docQaFile.exists() && !docQaFile.delete()) {
-            Log.w(TAG, "Failed to delete ai history file: " + docQaFile.getAbsolutePath());
-        }
-        if (chatFile.exists() && !chatFile.delete()) {
-            Log.w(TAG, "Failed to delete ai history file: " + chatFile.getAbsolutePath());
-        }
+        ensureAiChatCoordinator().clearHistoriesForCurrentDocument();
     }
 
     private void resetAiSessionState(boolean clearHistoryFiles) {
@@ -3188,48 +3135,11 @@ public class LOActivity extends AppCompatActivity {
         aiStreamingRequestId = "";
         aiStreamingMessageView = null;
         autoGenerateAcceptRequestId = "";
-        aiDocQaContextInjected = false;
         if (clearHistoryFiles) {
             clearAiHistoryFilesForCurrentDocument();
         }
-        aiDocQaHistory = new JSONArray();
-        aiChatHistory = new JSONArray();
-    }
-
-    private File getAiHistoryFile(String mode) {
-        String suffix = AI_MODE_DOC_QA.equals(mode) ? "docqa" : "chat";
-        return new File(new File(getFilesDir(), AI_HISTORY_DIR), getAiDocumentKey() + "." + suffix + ".json");
-    }
-
-    private String getAiDocumentKey() {
-        if (aiDocumentKeyCache != null && !aiDocumentKeyCache.isEmpty()) {
-            return aiDocumentKeyCache;
-        }
-        String raw = "";
-        if (documentUri != null) {
-            raw = documentUri.toString();
-        }
-        if ((raw == null || raw.isEmpty()) && urlToLoad != null) {
-            raw = urlToLoad;
-        }
-        if (raw == null || raw.isEmpty()) {
-            raw = "doc-" + loadDocumentMillis;
-        }
-        aiDocumentKeyCache = sha256Hex(raw);
-        return aiDocumentKeyCache;
-    }
-
-    private String sha256Hex(String value) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = digest.digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder builder = new StringBuilder();
-            for (byte b : bytes) {
-                builder.append(String.format(Locale.US, "%02x", b));
-            }
-            return builder.substring(0, 24);
-        } catch (NoSuchAlgorithmException e) {
-            return Integer.toHexString(value.hashCode());
+        if (aiChatCoordinator != null) {
+            aiChatCoordinator.reset(false);
         }
     }
 
@@ -3259,23 +3169,6 @@ public class LOActivity extends AppCompatActivity {
         return messages;
     }
 
-    private boolean hasAssistantHistory(JSONArray history) {
-        if (history == null) {
-            return false;
-        }
-        for (int i = 0; i < history.length(); i++) {
-            JSONObject item = history.optJSONObject(i);
-            if (item == null) {
-                continue;
-            }
-            if ("assistant".equals(item.optString("role", ""))
-                    && !normalizeAiText(item.optString("content", "")).isEmpty()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private String extractLatestUserQuestion(JSONArray history, JSONObject context, JSONObject request) {
         if (history != null) {
             for (int i = history.length() - 1; i >= 0; i--) {
@@ -3303,34 +3196,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private String extractDocumentTextForDocQaFirstTurn(String requestId) {
-        Log.i(TAG, "doc_qa_first_turn_extract_start requestId=" + requestId);
-        try {
-            // Prefer core-level UNO to avoid depending on WebView gesture state.
-            postUnoCommand(".uno:SelectAll", "{}", false);
-            Thread.sleep(120);
-            postUnoCommand(".uno:Copy", "{}", false);
-
-            // Keep websocket path as a fallback for environments where UNO bridge behavior differs.
-            runOnUiThread(() -> callFakeWebsocketOnMessage("uno .uno:Copy"));
-
-            for (int i = 0; i < 24; i++) {
-                Thread.sleep(i < 6 ? 120 : 220);
-                LokClipboardData clipboardData = new LokClipboardData();
-                if (!getClipboardContent(clipboardData)) {
-                    continue;
-                }
-                String text = normalizeAiText(clipboardData.getText());
-                if (!text.isEmpty()) {
-                    Log.i(TAG, "doc_qa_first_turn_extract_success requestId=" + requestId);
-                    return text;
-                }
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "doc_qa_first_turn_extract_fail requestId=" + requestId, e);
-            return "";
-        }
-        Log.w(TAG, "doc_qa_first_turn_extract_fail requestId=" + requestId + " reason=empty");
-        return "";
+        return ensureAiDocumentContextProvider().extractFullTextForDocQaFirstTurn(requestId);
     }
 
     private String normalizeAiText(String text) {
@@ -3431,7 +3297,7 @@ public class LOActivity extends AppCompatActivity {
                 appendAiHistoryMessage(mode, "assistant", fullText);
             }
             if (completedFirstDocQaTurn && AI_MODE_DOC_QA.equals(mode) && !fullText.isEmpty()) {
-                aiDocQaContextInjected = true;
+                ensureAiChatCoordinator().markDocQaContextInjected();
                 Log.i(TAG, "doc_qa_first_turn_context_marked_injected requestId=" + requestId);
             }
             if (requestId.equals(autoGenerateAcceptRequestId) && !fullText.isEmpty()) {

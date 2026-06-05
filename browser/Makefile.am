@@ -259,6 +259,7 @@ COOL_JS_LST =\
 	src/core/TimerRegistry.ts \
 	src/app/GraphicSelectionMiddleware.ts \
 	src/app/TextSelectionMiddleware.ts \
+	src/app/AndroidSelectionMenu.ts \
 	src/app/CellSelectionMarkerMiddleware.ts \
 	src/app/TableMiddleware.ts \
 	src/app/ImpressSelectionMiddleware.ts \

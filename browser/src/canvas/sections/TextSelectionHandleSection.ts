@@ -12,6 +12,8 @@
 
 class TextSelectionHandle extends HTMLObjectSection {
 	_showSection: boolean = true; // Store the internal show/hide section through forced non-touchscreen hides...
+	private lastSelectionUpdateAt: number = 0;
+	private readonly selectionUpdateThrottleMs: number = 100;
 
 	constructor (sectionName: string, objectWidth: number, objectHeight: number, documentPosition: cool.SimplePoint,  extraClass: string = "", showSection: boolean = false) {
 		super(sectionName, objectWidth, objectHeight, documentPosition, extraClass, showSection);
@@ -25,6 +27,7 @@ class TextSelectionHandle extends HTMLObjectSection {
 		this.sectionProperties.objectDiv.style.top = candidateY + 'px';
 
 		app.map.fire('handleautoscroll', {pos: { x: candidateX, y: candidateY }, map: app.map});
+		this.postSelectionUpdate(point, true);
 	}
 
 	setShowSection(show: boolean) {
@@ -42,11 +45,31 @@ class TextSelectionHandle extends HTMLObjectSection {
 	}
 
 	onDragEnd(point: cool.SimplePoint) {
-		let x = this.position[0] + point.pX;
+		const x = this.position[0] + point.pX;
 		const y = this.position[1] + point.pY;
-		this.setPosition(x, y);
 
 		app.map.fire('scrollvelocity', {vx: 0, vy: 0});
+		this.postSelectionUpdate(point, false);
+		this.setPosition(x, y);
+	}
+
+	private postSelectionUpdate(point: cool.SimplePoint, throttle: boolean) {
+		if (throttle) {
+			if (!window.ThisIsTheAndroidApp || !window.touch.currentlyUsingTouchscreen()) {
+				return;
+			}
+
+			const now = Date.now();
+			if (now - this.lastSelectionUpdateAt < this.selectionUpdateThrottleMs) {
+				return;
+			}
+			this.lastSelectionUpdateAt = now;
+		} else {
+			this.lastSelectionUpdateAt = 0;
+		}
+
+		let x = this.position[0] + point.pX;
+		const y = this.position[1] + point.pY;
 		const type = this.name === 'selection_start_handle' ? 'start' : 'end';
 
 		if (type === 'start')
@@ -56,7 +79,7 @@ class TextSelectionHandle extends HTMLObjectSection {
 			app.map._docLayer._postSelectTextEvent(type, Math.round(x * app.pixelsToTwips), Math.round(y * app.pixelsToTwips));
 		}
 		else {
-			const referenceX = app.activeDocument.activeLayout.viewedRectangle.pX1 + (app.activeDocument.activeLayout.viewedRectangle.pX2 - this.position[0]);
+			const referenceX = app.activeDocument.activeLayout.viewedRectangle.pX1 + (app.activeDocument.activeLayout.viewedRectangle.pX2 - x);
 			app.map._docLayer._postSelectTextEvent(type, Math.round(referenceX * app.pixelsToTwips), Math.round(y * app.pixelsToTwips));
 		}
 	}
@@ -84,6 +107,7 @@ class TextSelectionHandle extends HTMLObjectSection {
 	onMouseDown(point: cool.SimplePoint, e: MouseEvent): void {
 		e.stopPropagation();
 		this.stopPropagating();
+		this.lastSelectionUpdateAt = 0;
 	}
 
 	onMouseUp(point: cool.SimplePoint, e: MouseEvent): void {

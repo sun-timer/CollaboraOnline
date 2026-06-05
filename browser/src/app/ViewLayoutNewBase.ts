@@ -29,7 +29,7 @@ class ViewLayoutNewBase extends ViewLayoutBase {
 		super();
 	}
 
-	public sendClientVisibleArea() {
+	public sendClientVisibleArea(forceUpdate: boolean = false) {
 		const visibleAreaCommand =
 			'clientvisiblearea x=' +
 			this.viewedRectangle.x1 +
@@ -40,7 +40,15 @@ class ViewLayoutNewBase extends ViewLayoutBase {
 			' height=' +
 			this.viewedRectangle.height;
 
+		if (this.clientVisibleAreaCommand === visibleAreaCommand && !forceUpdate) {
+			return new cool.Bounds(
+				new cool.Point(this.viewedRectangle.pX1, this.viewedRectangle.pY1),
+				new cool.Point(this.viewedRectangle.pX2, this.viewedRectangle.pY2),
+			);
+		}
+
 		app.socket.sendMessage(visibleAreaCommand);
+		this.clientVisibleAreaCommand = visibleAreaCommand;
 
 		return new cool.Bounds(
 			new cool.Point(this.viewedRectangle.pX1, this.viewedRectangle.pY1),

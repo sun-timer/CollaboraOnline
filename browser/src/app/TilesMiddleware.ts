@@ -242,6 +242,10 @@ class TileManager {
 	private static nullDeltaUpdate = 0;
 	private static queuedProcessed: any = [];
 	private static fetchKeyframeQueue: any = []; // Queue of tiles which were GC'd earlier than coolwsd expected
+	private static pendingTileCombineQueue: Array<TileCoordData> = [];
+	private static tileCombineFlushTimer: ReturnType<typeof setTimeout> | undefined =
+		undefined;
+	private static lastTileCombineFlushTs: number = 0;
 	private static emptyTilesCount: number = 0;
 	private static debugDeltas: boolean = false;
 	private static debugDeltasDetail: boolean = false;
@@ -1217,11 +1221,41 @@ class TileManager {
 		else window.app.console.log('Skipped empty (too fast) tilecombine');
 	}
 
+	private static flushPendingTileCombineQueue() {
+		this.tileCombineFlushTimer = undefined;
+		if (this.pendingTileCombineQueue.length <= 0) return;
+
+		const merged: Map<string, TileCoordData> = new Map();
+		for (let i = 0; i < this.pendingTileCombineQueue.length; i++) {
+			const coords = this.pendingTileCombineQueue[i];
+			merged.set(coords.key(), coords);
+		}
+		this.pendingTileCombineQueue = [];
+		this.lastTileCombineFlushTs = Date.now();
+		this.sendTileCombineRequestNow(Array.from(merged.values()));
+	}
+
 	private static sendTileCombineRequest(
 		tileCombineQueue: Array<TileCoordData>,
 	) {
 		if (tileCombineQueue.length <= 0) return;
 
+		for (let i = 0; i < tileCombineQueue.length; i++)
+			this.pendingTileCombineQueue.push(tileCombineQueue[i]);
+
+		const minFlushIntervalMs = 45;
+		const elapsed = Date.now() - this.lastTileCombineFlushTs;
+		const delayMs = Math.max(0, minFlushIntervalMs - elapsed);
+		if (this.tileCombineFlushTimer !== undefined) return;
+		this.tileCombineFlushTimer = setTimeout(
+			() => this.flushPendingTileCombineQueue(),
+			delayMs,
+		);
+	}
+
+	private static sendTileCombineRequestNow(
+		tileCombineQueue: Array<TileCoordData>,
+	) {
 		// Sort into buckets of consistent part & mode.
 		const partMode: any = {};
 		for (var i = 0; i < tileCombineQueue.length; ++i) {
@@ -1871,6 +1905,33 @@ class TileManager {
 			window.app.console.warn('re-fetching prematurely GCd keyframes');
 			this.sendTileCombineRequest(this.fetchKeyframeQueue);
 			this.fetchKeyframeQueue = [];
+		}
+	}
+
+	public static resetReconnectTransientState(reason: string) {
+		const droppedProcessed = this.queuedProcessed.length;
+		const droppedFetches = this.fetchKeyframeQueue.length;
+		const droppedTileCombines = this.pendingTileCombineQueue.length;
+		this.queuedProcessed = [];
+		this.fetchKeyframeQueue = [];
+		this.pendingTileCombineQueue = [];
+		if (this.tileCombineFlushTimer !== undefined) {
+			clearTimeout(this.tileCombineFlushTimer);
+			this.tileCombineFlushTimer = undefined;
+		}
+		this.lastTileCombineFlushTs = 0;
+
+		if (droppedProcessed || droppedFetches || droppedTileCombines) {
+			window.app.console.debug(
+				'tile reconnect reset reason=' +
+					reason +
+					' dropped tileprocessed=' +
+					droppedProcessed +
+					' keyframeRefetch=' +
+					droppedFetches +
+					' tilecombine=' +
+					droppedTileCombines,
+			);
 		}
 	}
 

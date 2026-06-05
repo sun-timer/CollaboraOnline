@@ -175,6 +175,11 @@ class BrowserProperties {
 					return true;
 				}
 
+				// Android WebView on tablets may not contain "mobile" in UA.
+				// Force Android app to use mobile UI style consistently.
+				if (global.ThisIsTheAndroidApp)
+					return true;
+
 				return global.L.Browser.mobile && (screen.width < 768 || screen.height < 768);
 			},
 			// Mobile device with big screen size.
@@ -182,11 +187,17 @@ class BrowserProperties {
 				if (global.mode.isChromebook())
 					return false;
 
+				if (global.ThisIsTheAndroidApp)
+					return false;
+
 				return global.L.Browser.mobile && !global.mode.isMobile();
 			},
 			isDesktop: function() {
 				if (global.mode.isChromebook())
 					return true;
+
+				if (global.ThisIsTheAndroidApp)
+					return false;
 
 				return !global.L.Browser.mobile;
 			},
@@ -1352,9 +1363,9 @@ function getInitializerClass() {
 			if (isMobileApp && that.msgInflight >= 1)
 			{
 				var mobileNow = performance.now();
-				if (mobileNow - that.lastDataTimestamp > 60 * 1000)
+				if (mobileNow - that.lastDataTimestamp > 20 * 1000)
 				{
-					global.app.console.debug('Close mobile connection after no response for 60secs');
+					global.app.console.debug('Close mobile connection after no response for 20secs');
 					that._signalErrorClose();
 				}
 				else if (mobileNow - that._lastMobileInflightWaitLogTs > 1500)
