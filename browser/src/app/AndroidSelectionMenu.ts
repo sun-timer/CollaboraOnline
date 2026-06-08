@@ -6,12 +6,14 @@
 class AndroidSelectionMenu {
 	private static hooksInstalled = false;
 	private static pendingLongPressSelection = false;
-	private static nativeLongPressUntil = 0;
-	private static readonly nativeLongPressGuardMs = 700;
+	private static selectionGestureComplete = false;
 	private static nativeSelectionDragActive = false;
-	private static nativeSelectionTouchActive = false;
 	private static lastDragSelectionUpdateAt = 0;
 	private static readonly dragSelectionThrottleMs = 60;
+	private static lastSelectionStartAt = 0;
+	private static readonly ignoreEmptyAfterStartMs = 500;
+	private static selectionStartTwips: { x: number; y: number } | null = null;
+	private static readonly minSelectionSpanTwips = 80;
 
 	static hide(): void {
 		if (!window.ThisIsTheAndroidApp || typeof window.postMobileMessage !== 'function') {
@@ -21,8 +23,7 @@ class AndroidSelectionMenu {
 	}
 
 	static markNativeLongPress(): void {
-		AndroidSelectionMenu.nativeLongPressUntil =
-			Date.now() + AndroidSelectionMenu.nativeLongPressGuardMs;
+		// Reserved for native long-press guard extensions.
 	}
 
 	private static isPreviewWriterMode(): boolean {
@@ -38,6 +39,38 @@ class AndroidSelectionMenu {
 		return !!app.map && app.map.getDocType() === 'text';
 	}
 
+	private static clearLocalTextSelection(): void {
+		try {
+			if (TextSelections && typeof TextSelections.deactivate === 'function') {
+				TextSelections.deactivate();
+			}
+			if (
+				app.activeDocument &&
+				app.activeDocument.activeView &&
+				typeof app.activeDocument.activeView.clearTextSelection === 'function'
+			) {
+				app.activeDocument.activeView.clearTextSelection();
+			}
+		} catch (_e) {
+			// Best-effort cleanup only.
+		}
+	}
+
+	/** Reset bridge flags and hide menu (no selecttext end). */
+	static cancelGesture(): void {
+		AndroidSelectionMenu.pendingLongPressSelection = false;
+		AndroidSelectionMenu.selectionGestureComplete = false;
+		AndroidSelectionMenu.nativeSelectionDragActive = false;
+		AndroidSelectionMenu.selectionStartTwips = null;
+		AndroidSelectionMenu.lastDragSelectionUpdateAt = 0;
+		AndroidSelectionMenu.hide();
+	}
+
+	private static resetForNewGesture(): void {
+		AndroidSelectionMenu.cancelGesture();
+		AndroidSelectionMenu.clearLocalTextSelection();
+	}
+
 	/** WebView-local touch coords (viewX/viewY) → document twips. */
 	private static viewPointToDocumentTwips(
 		viewX: number,
@@ -49,11 +82,6 @@ class AndroidSelectionMenu {
 		}
 
 		const canvasRect = canvas.getBoundingClientRect();
-		const hitTarget = document.elementFromPoint(viewX, viewY);
-		if (hitTarget && !canvas.contains(hitTarget)) {
-			return null;
-		}
-
 		const point = new cool.SimplePoint(viewX - canvasRect.left, viewY - canvasRect.top);
 		let documentPoint = point.clone();
 		documentPoint.pX +=
@@ -75,28 +103,46 @@ class AndroidSelectionMenu {
 		};
 	}
 
-	/**
-	 * Start a real core text selection near the long-press point.
-	 *
-	 * Preview mode ignores edit-style mouse double-click selection, so sending
-	 * selecttext start/end is the stable path that makes core emit textselection.
-	 */
-	static createTextSelectionAt(viewX: number, viewY: number): void {
+	private static isZeroWidthTwips(
+		start: { x: number; y: number },
+		end: { x: number; y: number },
+	): boolean {
+		return (
+			Math.abs(end.x - start.x) < AndroidSelectionMenu.minSelectionSpanTwips &&
+			Math.abs(end.y - start.y) < AndroidSelectionMenu.minSelectionSpanTwips
+		);
+	}
+
+	private static hasNonDegenerateSelection(): boolean {
+		if (!TextSelections || !TextSelections.isActive()) {
+			return false;
+		}
+		const startRect = TextSelections.getStartRectangle();
+		const endRect = TextSelections.getEndRectangle();
+		if (!startRect || !endRect) {
+			return false;
+		}
+		const left = Math.min(startRect.pX1, endRect.pX1, startRect.pX2, endRect.pX2);
+		const right = Math.max(startRect.pX1, endRect.pX1, startRect.pX2, endRect.pX2);
+		const top = Math.min(startRect.pY1, endRect.pY1, startRect.pY2, endRect.pY2);
+		const bottom = Math.max(startRect.pY1, endRect.pY1, startRect.pY2, endRect.pY2);
+		return (
+			right - left >= AndroidSelectionMenu.minSelectionSpanTwips ||
+			bottom - top >= AndroidSelectionMenu.minSelectionSpanTwips
+		);
+	}
+
+	/** Long-press: send selecttext start only; end is sent on finger up. */
+	static startTextSelectionAt(viewX: number, viewY: number): void {
 		const pos = AndroidSelectionMenu.viewPointToDocumentTwips(viewX, viewY);
 		if (!pos) {
-			AndroidSelectionMenu.pendingLongPressSelection = false;
-			AndroidSelectionMenu.nativeSelectionDragActive = false;
-			AndroidSelectionMenu.nativeSelectionTouchActive = false;
+			AndroidSelectionMenu.cancelGesture();
 			return;
 		}
 
-		const layer = app.map._docLayer;
-		const spanTwips = Math.max(
-			Math.round(12 * app.pixelsToTwips),
-			Math.round(12 * app.dpiScale * app.pixelsToTwips),
-		);
-		layer._postSelectTextEvent('start', pos.x, pos.y);
-		layer._postSelectTextEvent('end', pos.x + spanTwips, pos.y);
+		AndroidSelectionMenu.lastSelectionStartAt = Date.now();
+		AndroidSelectionMenu.selectionStartTwips = { x: pos.x, y: pos.y };
+		app.map._docLayer._postSelectTextEvent('start', pos.x, pos.y);
 	}
 
 	static updateTextSelectionEndAt(
@@ -108,13 +154,15 @@ class AndroidSelectionMenu {
 			return;
 		}
 		if (!AndroidSelectionMenu.isPreviewWriterMode()) {
-			AndroidSelectionMenu.nativeSelectionDragActive = false;
-			AndroidSelectionMenu.nativeSelectionTouchActive = false;
+			AndroidSelectionMenu.cancelGesture();
 			return;
 		}
 		const now = Date.now();
-		if (!force && now - AndroidSelectionMenu.lastDragSelectionUpdateAt <
-			AndroidSelectionMenu.dragSelectionThrottleMs) {
+		if (
+			!force &&
+			now - AndroidSelectionMenu.lastDragSelectionUpdateAt <
+				AndroidSelectionMenu.dragSelectionThrottleMs
+		) {
 			return;
 		}
 		const pos = AndroidSelectionMenu.viewPointToDocumentTwips(viewX, viewY);
@@ -125,40 +173,61 @@ class AndroidSelectionMenu {
 		app.map._docLayer._postSelectTextEvent('end', pos.x, pos.y);
 	}
 
+	/** Finger up: finalize selecttext end; menu only after gesture complete + textselection:. */
 	static finishTextSelectionDrag(viewX?: number, viewY?: number): void {
 		if (!AndroidSelectionMenu.nativeSelectionDragActive) {
 			return;
 		}
+
+		let endTwips: { x: number; y: number } | null = null;
 		if (typeof viewX === 'number' && typeof viewY === 'number') {
-			AndroidSelectionMenu.updateTextSelectionEndAt(viewX, viewY, true);
+			endTwips = AndroidSelectionMenu.viewPointToDocumentTwips(viewX, viewY);
+			if (endTwips) {
+				AndroidSelectionMenu.updateTextSelectionEndAt(viewX, viewY, true);
+			}
 		}
+
 		AndroidSelectionMenu.nativeSelectionDragActive = false;
-		AndroidSelectionMenu.nativeSelectionTouchActive = false;
-		window.setTimeout(() => AndroidSelectionMenu.tryShow(), 80);
+		AndroidSelectionMenu.selectionGestureComplete = true;
+
+		if (
+			AndroidSelectionMenu.selectionStartTwips &&
+			endTwips &&
+			AndroidSelectionMenu.isZeroWidthTwips(
+				AndroidSelectionMenu.selectionStartTwips,
+				endTwips,
+			)
+		) {
+			AndroidSelectionMenu.cancelGesture();
+			AndroidSelectionMenu.clearLocalTextSelection();
+			return;
+		}
+
+		AndroidSelectionMenu.maybeShowAfterTextSelection();
 	}
 
 	/**
-	 * Long-press in preview mode: select word at touch point, then show native menu.
-	 * Invoked from LOActivity only when native preview mode is active.
-	 * viewX/viewY are WebView-local coordinates.
+	 * Long-press in preview mode (WebView-local viewX/viewY).
+	 * Invoked from LOActivity / COWebView only when native preview mode is active.
 	 */
 	static onLongPressAt(viewX: number, viewY: number): void {
-		if (!window.ThisIsTheAndroidApp) {
-			return;
-		}
-		if (!AndroidSelectionMenu.isWriterDoc()) {
+		if (!window.ThisIsTheAndroidApp || !AndroidSelectionMenu.isWriterDoc()) {
 			return;
 		}
 
+		AndroidSelectionMenu.resetForNewGesture();
 		AndroidSelectionMenu.markNativeLongPress();
 		AndroidSelectionMenu.pendingLongPressSelection = true;
+		AndroidSelectionMenu.selectionGestureComplete = false;
 		AndroidSelectionMenu.nativeSelectionDragActive = true;
-		AndroidSelectionMenu.nativeSelectionTouchActive = true;
 		AndroidSelectionMenu.lastDragSelectionUpdateAt = 0;
-		AndroidSelectionMenu.createTextSelectionAt(viewX, viewY);
+		AndroidSelectionMenu.startTextSelectionAt(viewX, viewY);
 	}
 
-	/** Show menu anchored above the current text selection (preview / read-only UI only). */
+	/**
+	 * Show menu anchored above the current text selection.
+	 * Only when TextSelections is active with a non-degenerate range.
+	 */
 	static tryShow(): void {
 		if (!window.ThisIsTheAndroidApp || typeof window.postMobileMessage !== 'function') {
 			return;
@@ -169,7 +238,7 @@ class AndroidSelectionMenu {
 		if (app.map.getDocType() !== 'text') {
 			return;
 		}
-		if (!TextSelections || !TextSelections.isActive()) {
+		if (!AndroidSelectionMenu.hasNonDegenerateSelection()) {
 			return;
 		}
 
@@ -179,16 +248,85 @@ class AndroidSelectionMenu {
 			return;
 		}
 
-		const topTwips = Math.min(startRect.pY1, endRect.pY1);
-		const leftTwips = Math.min(startRect.pX1, endRect.pX1);
-		const rightTwips = Math.max(startRect.pX2, endRect.pX2);
-		const centerTwipsX = (leftTwips + rightTwips) / 2;
-		const point = new cool.SimplePoint(centerTwipsX, topTwips);
+		const topViewY = Math.min(
+			startRect.v1Y,
+			startRect.v2Y,
+			endRect.v1Y,
+			endRect.v2Y,
+		);
+		const leftViewX = Math.min(
+			startRect.v1X,
+			startRect.v3X,
+			endRect.v1X,
+			endRect.v3X,
+		);
+		const rightViewX = Math.max(
+			startRect.v2X,
+			startRect.v4X,
+			endRect.v2X,
+			endRect.v4X,
+		);
+		const centerViewX = (leftViewX + rightViewX) / 2;
 		const canvasRect = app.sectionContainer.getCanvasBoundingClientRect();
-		const anchorX = Math.round(point.vX / app.dpiScale) + canvasRect.x;
-		const anchorY = Math.round(point.vY / app.dpiScale) + canvasRect.y;
+		const anchor = AndroidSelectionMenu.clampAnchorToCanvas(
+			Math.round(centerViewX) + Math.round(canvasRect.x * app.dpiScale),
+			Math.round(topViewY) + Math.round(canvasRect.y * app.dpiScale),
+		);
 
-		window.postMobileMessage('SELECTIONMENU show ' + anchorX + ' ' + anchorY);
+		window.postMobileMessage('SELECTIONMENU show ' + anchor.x + ' ' + anchor.y);
+		AndroidSelectionMenu.pendingLongPressSelection = false;
+		AndroidSelectionMenu.selectionStartTwips = null;
+	}
+
+	private static clampAnchorToCanvas(x: number, y: number): { x: number; y: number } {
+		const canvas = document.getElementById('canvas-container');
+		if (!canvas) {
+			return { x, y };
+		}
+		const rect = canvas.getBoundingClientRect();
+		const margin = 8;
+		const scale = app.dpiScale || 1;
+		return {
+			x: Math.round(
+				Math.max(
+					rect.left * scale + margin,
+					Math.min(x, rect.right * scale - margin),
+				),
+			),
+			y: Math.round(
+				Math.max(
+					rect.top * scale + margin,
+					Math.min(y, rect.bottom * scale - margin),
+				),
+			),
+		};
+	}
+
+	private static maybeShowAfterTextSelection(): void {
+		if (
+			!AndroidSelectionMenu.pendingLongPressSelection ||
+			!AndroidSelectionMenu.selectionGestureComplete ||
+			AndroidSelectionMenu.nativeSelectionDragActive
+		) {
+			return;
+		}
+		window.setTimeout(() => AndroidSelectionMenu.tryShow(), 50);
+	}
+
+	private static onEmptyTextSelection(): void {
+		const now = Date.now();
+		if (
+			AndroidSelectionMenu.pendingLongPressSelection &&
+			!AndroidSelectionMenu.selectionGestureComplete &&
+			now - AndroidSelectionMenu.lastSelectionStartAt <
+				AndroidSelectionMenu.ignoreEmptyAfterStartMs
+		) {
+			return;
+		}
+		if (AndroidSelectionMenu.pendingLongPressSelection) {
+			AndroidSelectionMenu.cancelGesture();
+			AndroidSelectionMenu.clearLocalTextSelection();
+		}
 	}
 
 	/** Install Android-only hooks without modifying upstream canvas/tile sources. */
@@ -208,56 +346,6 @@ class AndroidSelectionMenu {
 			},
 			true,
 		);
-
-		document.addEventListener(
-			'touchmove',
-			(e: TouchEvent) => {
-				if (
-					!AndroidSelectionMenu.nativeSelectionDragActive ||
-					!AndroidSelectionMenu.isPreviewWriterMode() ||
-					e.touches.length !== 1
-				) {
-					return;
-				}
-
-				e.preventDefault();
-				e.stopPropagation();
-				const touch = e.touches[0];
-				AndroidSelectionMenu.updateTextSelectionEndAt(
-					touch.clientX,
-					touch.clientY,
-				);
-			},
-			{ capture: true, passive: false },
-		);
-
-		const finishTouchSelection = (e: TouchEvent) => {
-			if (!AndroidSelectionMenu.nativeSelectionDragActive) {
-				return;
-			}
-			e.preventDefault();
-			e.stopPropagation();
-			const touch = e.changedTouches && e.changedTouches.length > 0
-				? e.changedTouches[0]
-				: null;
-			if (touch) {
-				AndroidSelectionMenu.finishTextSelectionDrag(
-					touch.clientX,
-					touch.clientY,
-				);
-			} else {
-				AndroidSelectionMenu.finishTextSelectionDrag();
-			}
-		};
-
-		document.addEventListener('touchend', finishTouchSelection, {
-			capture: true,
-			passive: false,
-		});
-		document.addEventListener('touchcancel', finishTouchSelection, {
-			capture: true,
-			passive: false,
-		});
 
 		const installMouseControlHook = () => {
 			if (typeof MouseControl === 'undefined') {
@@ -302,17 +390,12 @@ class AndroidSelectionMenu {
 				}
 				const payload = textMsg.replace('textselection:', '').trim();
 				if (payload && payload !== 'EMPTY') {
-					if (AndroidSelectionMenu.pendingLongPressSelection) {
-						AndroidSelectionMenu.pendingLongPressSelection = false;
-						if (!AndroidSelectionMenu.nativeSelectionTouchActive) {
-							window.setTimeout(() => AndroidSelectionMenu.tryShow(), 50);
-						}
+					AndroidSelectionMenu.maybeShowAfterTextSelection();
+					if (!AndroidSelectionMenu.nativeSelectionDragActive) {
+						window.setTimeout(() => AndroidSelectionMenu.tryShow(), 80);
 					}
 				} else {
-					AndroidSelectionMenu.pendingLongPressSelection = false;
-					AndroidSelectionMenu.nativeSelectionDragActive = false;
-					AndroidSelectionMenu.nativeSelectionTouchActive = false;
-					AndroidSelectionMenu.hide();
+					AndroidSelectionMenu.onEmptyTextSelection();
 				}
 			};
 		};

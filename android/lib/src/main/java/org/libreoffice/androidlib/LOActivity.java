@@ -586,6 +586,11 @@ public class LOActivity extends AppCompatActivity {
                 public void onDocumentSelectionDragEnd(float viewX, float viewY) {
                     LOActivity.this.onDocumentSelectionDragEnd(viewX, viewY);
                 }
+
+                @Override
+                public void onDocumentSelectionDragCancel() {
+                    LOActivity.this.onDocumentSelectionDragCancel();
+                }
             });
             mWebView.setConsumeWebViewLongClick(!mIsEditModeActive);
 
@@ -1635,12 +1640,16 @@ public class LOActivity extends AppCompatActivity {
                     getMainHandler().post(() -> ensureSelectionMenuController().hide());
                     return false;
                 }
-                if (messageAndParam.length >= 4 && "show".equals(messageAndParam[1])) {
+                if (messageAndParam.length > 1 && messageAndParam[1] != null &&
+                        messageAndParam[1].startsWith("show ")) {
                     try {
-                        final float anchorX = Float.parseFloat(messageAndParam[2]);
-                        final float anchorY = Float.parseFloat(messageAndParam[3]);
-                        getMainHandler().post(() ->
-                                ensureSelectionMenuController().showAtWindow(anchorX, anchorY));
+                        String[] parts = messageAndParam[1].split(" ");
+                        if (parts.length >= 3) {
+                            final float anchorX = Float.parseFloat(parts[1]);
+                            final float anchorY = Float.parseFloat(parts[2]);
+                            getMainHandler().post(() ->
+                                    ensureSelectionMenuController().showAtWindow(anchorX, anchorY));
+                        }
                     } catch (NumberFormatException e) {
                         Log.w(TAG, "selection_menu_bad_anchor", e);
                     }
@@ -2209,6 +2218,19 @@ public class LOActivity extends AppCompatActivity {
                         + "window.AndroidSelectionMenu.finishTextSelectionDrag(" + viewX + "," + viewY + ");"
                         + "}}catch(e){if(window.console&&console.warn){"
                         + "console.warn('selection_menu_drag_end_failed',e);}}"
+                        + "return true;})();",
+                null);
+    }
+
+    private void onDocumentSelectionDragCancel() {
+        if (!documentLoaded || mWebView == null || mIsEditModeActive) {
+            return;
+        }
+        mWebView.evaluateJavascript(
+                "(function(){try{if(window.AndroidSelectionMenu){"
+                        + "window.AndroidSelectionMenu.cancelGesture();"
+                        + "}}catch(e){if(window.console&&console.warn){"
+                        + "console.warn('selection_menu_drag_cancel_failed',e);}}"
                         + "return true;})();",
                 null);
     }

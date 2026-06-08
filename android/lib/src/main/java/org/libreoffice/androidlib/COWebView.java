@@ -26,6 +26,8 @@ public class COWebView extends WebView {
         void onDocumentSelectionDrag(float viewX, float viewY);
 
         void onDocumentSelectionDragEnd(float viewX, float viewY);
+
+        void onDocumentSelectionDragCancel();
     }
 
     private Context mContext;
@@ -177,12 +179,21 @@ public class COWebView extends WebView {
     }
 
     private void updateNativeSelectionDrag(MotionEvent event) {
-        if (!nativeSelectionDragActive || documentLongPressListener == null) {
+        if (documentLongPressListener == null) {
             return;
         }
 
         switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                if (nativeSelectionDragActive) {
+                    nativeSelectionDragActive = false;
+                    documentLongPressListener.onDocumentSelectionDragCancel();
+                }
+                break;
             case MotionEvent.ACTION_MOVE:
+                if (!nativeSelectionDragActive) {
+                    return;
+                }
                 if (event.getPointerCount() == 1) {
                     long now = event.getEventTime();
                     if (now - lastNativeSelectionDragAt < NATIVE_SELECTION_DRAG_THROTTLE_MS) {
@@ -193,9 +204,18 @@ public class COWebView extends WebView {
                 }
                 break;
             case MotionEvent.ACTION_UP:
-            case MotionEvent.ACTION_CANCEL:
+                if (!nativeSelectionDragActive) {
+                    return;
+                }
                 nativeSelectionDragActive = false;
                 documentLongPressListener.onDocumentSelectionDragEnd(event.getX(), event.getY());
+                break;
+            case MotionEvent.ACTION_CANCEL:
+                if (!nativeSelectionDragActive) {
+                    return;
+                }
+                nativeSelectionDragActive = false;
+                documentLongPressListener.onDocumentSelectionDragCancel();
                 break;
             default:
                 break;
