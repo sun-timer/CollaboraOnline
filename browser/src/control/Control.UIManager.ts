@@ -163,6 +163,10 @@ class UIManager extends window.L.Control {
 		return !!window.ThisIsTheAndroidApp && window.mode.isMobile();
 	}
 
+	private shouldUseAndroidNativeTopToolbar(): boolean {
+		return !!window.ThisIsTheAndroidApp && window.mode.isMobile();
+	}
+
 	// Dark mode toggle
 
 	/**
@@ -482,12 +486,17 @@ class UIManager extends window.L.Control {
 		var enableNotebookbar = currentMode === 'notebookbar' && !app.isReadOnly();
 		var hasShare = this.map.wopi.EnableShare;
 		var useAndroidNativeBottomToolbar = this.shouldUseAndroidNativeBottomToolbar();
+		var useAndroidNativeTopToolbar = this.shouldUseAndroidNativeTopToolbar();
 
 		document.body.setAttribute('data-userInterfaceMode', currentMode);
 		document.body.setAttribute('data-docType', docType);
 		document.body.classList.toggle(
 			'android-native-bottom-toolbar',
 			useAndroidNativeBottomToolbar,
+		);
+		document.body.classList.toggle(
+			'android-native-top-toolbar',
+			useAndroidNativeTopToolbar,
 		);
 
 		if (hasShare)
@@ -500,7 +509,11 @@ class UIManager extends window.L.Control {
 			} else {
 				this.map.mobileBottomBar = JSDialog.MobileBottomBar(this.map);
 			}
-			this.map.mobileTopBar = JSDialog.MobileTopBar(this.map);
+			if (useAndroidNativeTopToolbar) {
+				this.map.mobileTopBar = null;
+			} else {
+				this.map.mobileTopBar = JSDialog.MobileTopBar(this.map);
+			}
 			this.map.mobileSearchBar = JSDialog.MobileSearchBar(this.map);
 		} else {
 			this.createNotebookbarControl(docType, enableNotebookbar);

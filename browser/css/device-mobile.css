@@ -221,6 +221,11 @@ textarea.cool-annotation-textarea {
 body.android-native-bottom-toolbar #toolbar-down {
 	display: none !important;
 }
+
+body.android-native-top-toolbar #toolbar-wrapper,
+body.android-native-top-toolbar #toolbar-up {
+	display: none !important;
+}
 .ui-scroll-wrapper {
 	overflow-x: scroll !important;
 	scrollbar-width: none; /*css draft (firefox only)*/

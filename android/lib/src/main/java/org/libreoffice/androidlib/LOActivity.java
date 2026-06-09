@@ -274,6 +274,7 @@ public class LOActivity extends AppCompatActivity {
     private int bottomToolbarImeInsetPx = 0;
     private boolean isImeVisibleForToolbar = false;
     private BottomToolbarController bottomToolbarController;
+    private TopToolbarController topToolbarController;
     private SelectionMenuController selectionMenuController;
     private Runnable pendingAfterEditMode;
 
@@ -548,9 +549,11 @@ public class LOActivity extends AppCompatActivity {
 
                     ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
                     mlp.leftMargin = insets.left;
-                    mlp.topMargin = insets.top;
+                    mlp.topMargin = 0;
                     mlp.rightMargin = insets.right;
-                    mlp.bottomMargin = insets.bottom;
+                    // IME lift is handled by native bottom toolbar margin; do not
+                    // subtract keyboard height here or WebView collapses to 0.
+                    mlp.bottomMargin = navInsets.bottom;
                     v.setLayoutParams(mlp);
 
                     return WindowInsets.CONSUMED;
@@ -569,6 +572,7 @@ public class LOActivity extends AppCompatActivity {
             webSettings.setJavaScriptEnabled(true);
             mWebView.addJavascriptInterface(this, "COOLMessageHandler");
             setupAiFab();
+            setupTopToolbar();
             setupBottomToolbar();
             setupSelectionMenu();
             mWebView.setOnDocumentLongPressListener(new COWebView.OnDocumentLongPressListener() {
@@ -1350,6 +1354,7 @@ public class LOActivity extends AppCompatActivity {
         mWebView.loadUrl(finalUrlToLoad);
 
         documentLoaded = true;
+        ensureTopToolbarController().refreshDocumentTitle();
 
         loadDocumentMillis = android.os.SystemClock.uptimeMillis();
     }
@@ -2335,6 +2340,68 @@ public class LOActivity extends AppCompatActivity {
         postMobileMessage("uno .uno:Paste");
     }
 
+    private void setupTopToolbar() {
+        ensureTopToolbarController().setup();
+    }
+
+    private TopToolbarController ensureTopToolbarController() {
+        if (topToolbarController == null) {
+            topToolbarController = new TopToolbarController(new TopToolbarController.Host() {
+                @Override
+                public View findViewById(int id) {
+                    return LOActivity.this.findViewById(id);
+                }
+
+                @Override
+                public void runOnUiThread(Runnable runnable) {
+                    LOActivity.this.runOnUiThread(runnable);
+                }
+
+                @Override
+                public void onTopToolbarBack() {
+                    if (mIsEditModeActive) {
+                        switchToViewingMode();
+                    } else {
+                        finishWithProgress();
+                    }
+                }
+
+                @Override
+                public void switchToViewingMode() {
+                    LOActivity.this.switchToViewingMode();
+                }
+
+                @Override
+                public void executeUnoCommand(String command) {
+                    LOActivity.this.executeUnoCommand(command);
+                }
+
+                @Override
+                public void toastTodo(String text) {
+                    LOActivity.this.toastTodo(text);
+                }
+
+                @Override
+                public String getDocumentTitle() {
+                    return LOActivity.this.getDocumentDisplayTitle();
+                }
+            });
+        }
+        return topToolbarController;
+    }
+
+    private String getDocumentDisplayTitle() {
+        try {
+            String filename = getFileName(false);
+            if (filename != null && !filename.trim().isEmpty()) {
+                return filename.trim();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "document_title_unavailable", e);
+        }
+        return "文档";
+    }
+
     private void setupBottomToolbar() {
         ensureBottomToolbarController().setup();
     }
@@ -2407,6 +2474,7 @@ public class LOActivity extends AppCompatActivity {
             mWebView.setConsumeWebViewLongClick(!isEditMode);
         }
         ensureBottomToolbarController().updateEditModeState(isEditMode, reason);
+        ensureTopToolbarController().updateEditModeState(isEditMode, reason);
     }
 
     private void hideQuickActionPanel() {

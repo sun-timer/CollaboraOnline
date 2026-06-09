@@ -12,12 +12,23 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
+        <include
+            android:id="@+id/doc_top_toolbar_include"
+            layout="@layout/lolib_doc_top_toolbar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
         <org.libreoffice.androidlib.COWebView
             android:id="@+id/browser"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            tools:layout_editor_absoluteX="0dp"
-            tools:layout_editor_absoluteY="0dp" />
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/ai_fab"
@@ -264,7 +275,7 @@
             app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
 
         <View
             android:id="@+id/selection_menu_overlay"
@@ -277,7 +288,7 @@
             app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
 
         <include
             android:id="@+id/selection_menu_panel"
@@ -286,7 +297,7 @@
             android:layout_height="wrap_content"
             android:visibility="gone"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
 
         <LinearLayout
             android:id="@+id/toolbar_quick_panel"
