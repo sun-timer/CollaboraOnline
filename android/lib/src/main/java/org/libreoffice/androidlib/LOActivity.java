@@ -14,6 +14,7 @@ import android.content.ClipData;
 import android.content.ClipDescription;
 import android.content.ClipboardManager;
 import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -85,8 +86,10 @@ import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
@@ -205,6 +208,7 @@ public class LOActivity extends AppCompatActivity {
     private boolean mIsEditModeActive = false;
     private static final long MOBILE_PREVIEW_ACK_TIMEOUT_MS = 2200L;
     private static final long SELECTION_SYNC_THROTTLE_MS = 450L;
+    private static final long MOBILE_WIZARD_COMMAND_BLOCK_MS = 4000L;
     /** True while waiting for JS to finish mobile preview (readonly UI) after native toolbar switch. */
     private boolean awaitingPreviewModeJsAck = false;
     private int mobilePreviewSwitchAttempt = 0;
@@ -271,12 +275,19 @@ public class LOActivity extends AppCompatActivity {
     private boolean docGestureGuardEnabled = false;
     private long lastDocGestureGuardLogAt = 0L;
     private long lastSelectionSyncAt = 0L;
+    private long lastBlockedMobileWizardAt = 0L;
     private int bottomToolbarImeInsetPx = 0;
     private boolean isImeVisibleForToolbar = false;
     private BottomToolbarController bottomToolbarController;
+    private FunctionPanelController functionPanelController;
     private TopToolbarController topToolbarController;
+    private FindReplaceSheetController findReplaceSheetController;
+    private DocumentTabsSheetController documentTabsSheetController;
     private SelectionMenuController selectionMenuController;
     private Runnable pendingAfterEditMode;
+    private boolean documentModified = false;
+    private boolean closeAfterSaveRequested = false;
+    private boolean documentStateBridgeInjected = false;
 
     private static final int MODEL_TYPE_BASE = 0;
     private static final int MODEL_TYPE_THINK = 1;
@@ -596,7 +607,7 @@ public class LOActivity extends AppCompatActivity {
                     LOActivity.this.onDocumentSelectionDragCancel();
                 }
             });
-            mWebView.setConsumeWebViewLongClick(!mIsEditModeActive);
+            mWebView.setConsumeWebViewLongClick(true);
 
             webSettings.setDomStorageEnabled(true);
 
@@ -1079,6 +1090,9 @@ public class LOActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         refreshDocumentSettingsDrawer();
+        if (documentLoaded) {
+            recoverVisibleTilesAfterEditMode("activity_resume");
+        }
         Log.i(TAG, "onResume..");
     }
 
@@ -1167,6 +1181,20 @@ public class LOActivity extends AppCompatActivity {
                 valueCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, intent));
                 valueCallback = null;
                 return;
+            case DocumentTabsSheetController.REQUEST_OPEN_DOCUMENT:
+                if (intent == null || intent.getData() == null) {
+                    return;
+                }
+                Uri openedUri = intent.getData();
+                final int takeFlags = intent.getFlags()
+                        & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                try {
+                    getContentResolver().takePersistableUriPermission(openedUri, takeFlags);
+                } catch (SecurityException e) {
+                    Log.w(TAG, "takePersistableUriPermission failed: " + e.getMessage());
+                }
+                openDocumentUri(openedUri);
+                return;
             case REQUEST_SAVEAS_PDF:
             case REQUEST_SAVEAS_RTF:
             case REQUEST_SAVEAS_ODT:
@@ -1240,11 +1268,12 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void addIntentToRecents(Intent intent) {
-        Uri treeFileUri = intent.getData();
-        SharedPreferences recentPrefs = getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
-        String recentList = recentPrefs.getString(RECENT_DOCUMENTS_KEY, "");
-        recentList = treeFileUri.toString() + "\n" + recentList;
-        recentPrefs.edit().putString(RECENT_DOCUMENTS_KEY, recentList).apply();
+        if (intent == null || intent.getData() == null) {
+            return;
+        }
+        RecentDocumentsStore.prependRecent(
+                getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE),
+                intent.getData().toString());
     }
 
     private String getFormatForRequestCode(int requestCode) {
@@ -1309,6 +1338,9 @@ public class LOActivity extends AppCompatActivity {
     private void loadDocument() {
         mProgressDialog.determinate(R.string.loading);
         aiBridgeInjected = false;
+        documentStateBridgeInjected = false;
+        documentModified = false;
+        closeAfterSaveRequested = false;
 
         // setup the COOLWSD
         ApplicationInfo applicationInfo = getApplicationInfo();
@@ -1355,6 +1387,13 @@ public class LOActivity extends AppCompatActivity {
 
         documentLoaded = true;
         ensureTopToolbarController().refreshDocumentTitle();
+        ensureTopToolbarController().resetUndoRedoState("document_loaded");
+        Uri currentData = getIntent().getData();
+        if (currentData != null) {
+            RecentDocumentsStore.prependRecent(
+                    getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE),
+                    currentData.toString());
+        }
 
         loadDocumentMillis = android.os.SystemClock.uptimeMillis();
     }
@@ -1495,6 +1534,7 @@ public class LOActivity extends AppCompatActivity {
                 if (messageID.equals("finish")) {
                     mProgressDialog.dismiss();
                     injectAiBridgeIfNeeded();
+                    injectDocumentStateBridgeIfNeeded();
                     if (BuildConfig.GOOGLE_PLAY_ENABLED && rateAppController != null)
                         rateAppController.askUserForRating();
                     return;
@@ -1573,13 +1613,26 @@ public class LOActivity extends AppCompatActivity {
                 });
                 return false;
             case "SAVE":
+                documentModified = false;
                 copyTempBackToIntent();
-                sendBroadcast(messageAndParam[0], messageAndParam[1]);
+                sendBroadcast(messageAndParam[0], messageAndParam.length > 1 ? messageAndParam[1] : "");
+                if (closeAfterSaveRequested) {
+                    closeAfterSaveRequested = false;
+                    finishWithProgress();
+                }
+                return false;
+            case "DOC_MODIFIED_STATUS":
+                documentModified = messageAndParam.length > 1 && "true".equalsIgnoreCase(messageAndParam[1]);
+                Log.i(TAG, "doc_modified_status modified=" + documentModified);
                 return false;
             case "downloadas":
                 initiateSaveAs(messageAndParam[1]);
                 return false;
             case "uno":
+                if (messageAndParam.length > 1 && shouldBlockUnexpectedMobileWizardUno(messageAndParam[1])) {
+                    Log.w(TAG, "blocked_mobile_wizard_uno command=" + messageAndParam[1]);
+                    return false;
+                }
                 switch (messageAndParam[1]) {
                     case ".uno:Paste":
                         return performPaste();
@@ -1609,6 +1662,11 @@ public class LOActivity extends AppCompatActivity {
                 switch (messageAndParam[1]) {
                     case "show":
                         mMobileWizardVisible = true;
+                        if (mIsEditModeActive) {
+                            lastBlockedMobileWizardAt = android.os.SystemClock.uptimeMillis();
+                            closeMobileWizardFromAndroid("edit_mode_web_long_press");
+                            Log.w(TAG, "blocked_mobile_wizard_show_in_edit_mode");
+                        }
                         break;
                     case "hide":
                         mMobileWizardVisible = false;
@@ -1627,6 +1685,7 @@ public class LOActivity extends AppCompatActivity {
                     case "on":
                         cancelPreviewModeSwitchAck("editmode_on");
                         updateEditModeState(true, "js_editmode_on");
+                        recoverVisibleTilesAfterEditMode("js_editmode_on");
                         // prompt for file conversion
                         requestForOdf();
                         // Hide the soft keyboard so it doesn't auto-popup on edit mode entry.
@@ -1638,6 +1697,10 @@ public class LOActivity extends AppCompatActivity {
                         completePreviewModeSwitchAck("editmode_off");
                         break;
                 }
+                return false;
+            }
+            case "UNDOREDO": {
+                handleUndoRedoStateFromWeb(messageAndParam.length > 1 ? messageAndParam[1] : "");
                 return false;
             }
             case "SELECTIONMENU": {
@@ -1713,6 +1776,55 @@ public class LOActivity extends AppCompatActivity {
             }
         }
         return true;
+    }
+
+    private boolean shouldBlockUnexpectedMobileWizardUno(String command) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (!mIsEditModeActive || now - lastBlockedMobileWizardAt > MOBILE_WIZARD_COMMAND_BLOCK_MS) {
+            return false;
+        }
+        if (command == null) {
+            return false;
+        }
+        return command.startsWith(".uno:ResetAttributes")
+                || command.startsWith(".uno:FormatPaintbrush")
+                || command.startsWith(".uno:InsertAnnotation")
+                || command.startsWith(".uno:Paste");
+    }
+
+    private void closeMobileWizardFromAndroid(String reason) {
+        if (mWebView == null) {
+            return;
+        }
+        getMainHandler().post(() -> {
+            if (mWebView == null) {
+                return;
+            }
+            final String escapedReason = escapeForJsString(reason == null ? "android" : reason);
+            mWebView.evaluateJavascript(
+                    "(function(){try{"
+                            + "if(window.app&&app.map&&typeof app.map.fire==='function'){app.map.fire('closemobilewizard');}"
+                            + "if(window.console&&console.info){console.info('android close mobile wizard reason=" + escapedReason + "');}"
+                            + "}catch(e){if(window.console&&console.warn){console.warn('android_close_mobile_wizard_failed',e);}}"
+                            + "return true;})();",
+                    null);
+        });
+    }
+
+    private void handleUndoRedoStateFromWeb(String payload) {
+        boolean canUndo = false;
+        boolean canRedo = false;
+        if (payload != null) {
+            String[] tokens = payload.trim().split("\\s+");
+            for (String token : tokens) {
+                if (token.startsWith("undo=")) {
+                    canUndo = "1".equals(token.substring("undo=".length()));
+                } else if (token.startsWith("redo=")) {
+                    canRedo = "1".equals(token.substring("redo=".length()));
+                }
+            }
+        }
+        ensureTopToolbarController().updateUndoRedoState(canUndo, canRedo, "web_commandstate");
     }
 
     private void handleAiRequestFromWeb(String payload) {
@@ -2372,13 +2484,28 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public void requestCloseDocument() {
+                    LOActivity.this.requestCloseDocument();
+                }
+
+                @Override
                 public void executeUnoCommand(String command) {
                     LOActivity.this.executeUnoCommand(command);
                 }
 
                 @Override
-                public void toastTodo(String text) {
-                    LOActivity.this.toastTodo(text);
+                public void showFindReplaceSheet() {
+                    LOActivity.this.showFindReplaceSheet();
+                }
+
+                @Override
+                public void shareCurrentDocument() {
+                    LOActivity.this.shareCurrentDocument();
+                }
+
+                @Override
+                public void showDocumentTabsSheet() {
+                    LOActivity.this.showDocumentTabsSheet();
                 }
 
                 @Override
@@ -2388,6 +2515,122 @@ public class LOActivity extends AppCompatActivity {
             });
         }
         return topToolbarController;
+    }
+
+    private FindReplaceSheetController ensureFindReplaceSheetController() {
+        if (findReplaceSheetController == null) {
+            findReplaceSheetController = new FindReplaceSheetController(new FindReplaceSheetController.Host() {
+                @Override
+                public Context getContext() {
+                    return LOActivity.this;
+                }
+
+                @Override
+                public void runFindBridge(String js) {
+                    LOActivity.this.runFindBridge(js);
+                }
+
+                @Override
+                public void ensureEditModeThen(Runnable action) {
+                    LOActivity.this.ensureEditModeThen(action);
+                }
+
+                @Override
+                public boolean isEditModeActive() {
+                    return LOActivity.this.mIsEditModeActive;
+                }
+
+                @Override
+                public void onFindReplaceEditDispatched(boolean replaceAll) {
+                    LOActivity.this.onFindReplaceEditDispatched(replaceAll);
+                }
+            });
+        }
+        return findReplaceSheetController;
+    }
+
+    private DocumentTabsSheetController ensureDocumentTabsSheetController() {
+        if (documentTabsSheetController == null) {
+            documentTabsSheetController = new DocumentTabsSheetController(new DocumentTabsSheetController.Host() {
+                @Override
+                public Context getContext() {
+                    return LOActivity.this;
+                }
+
+                @Override
+                public SharedPreferences getExplorerPrefs() {
+                    return getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
+                }
+
+                @Override
+                public String getCurrentDocumentUri() {
+                    if (getIntent().getData() == null) {
+                        return "";
+                    }
+                    return getIntent().getData().toString();
+                }
+
+                @Override
+                public void startActivityForResult(Intent intent, int requestCode) {
+                    LOActivity.this.startActivityForResult(intent, requestCode);
+                }
+
+                @Override
+                public void openDocumentUri(Uri uri) {
+                    LOActivity.this.openDocumentUri(uri);
+                }
+            });
+        }
+        return documentTabsSheetController;
+    }
+
+    private void showFindReplaceSheet() {
+        ensureFindReplaceSheetController().show();
+    }
+
+    private void shareCurrentDocument() {
+        Uri sourceUri = getIntent().getData();
+        if (sourceUri == null) {
+            Toast.makeText(this, "无法分享当前文档", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DocumentShareHelper.shareDocument(this, sourceUri, mTempFile);
+    }
+
+    private void showDocumentTabsSheet() {
+        ensureDocumentTabsSheetController().show();
+    }
+
+    private void runFindBridge(String js) {
+        if (mWebView == null || js == null || js.isEmpty()) {
+            return;
+        }
+        String script = "(function(){try{" + js + ";}catch(e){console.log(e);}return true;})();";
+        mWebView.evaluateJavascript(script, null);
+    }
+
+    private void onFindReplaceEditDispatched(boolean replaceAll) {
+        ensureTopToolbarController().recordUndoableNativeEdit(
+                replaceAll ? "find_replace_all" : "find_replace_one");
+    }
+
+    private Intent buildEditIntent(Uri uri) {
+        Intent intent = new Intent(Intent.ACTION_EDIT, uri);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        intent.setComponent(new ComponentName(getPackageName(), LOActivity.class.getName()));
+        return intent;
+    }
+
+    private void openDocumentUri(Uri uri) {
+        if (uri == null) {
+            return;
+        }
+        RecentDocumentsStore.prependRecent(
+                getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE),
+                uri.toString());
+        startActivity(buildEditIntent(uri));
+        finish();
     }
 
     private String getDocumentDisplayTitle() {
@@ -2471,7 +2714,7 @@ public class LOActivity extends AppCompatActivity {
     private void updateEditModeState(boolean isEditMode, String reason) {
         mIsEditModeActive = isEditMode;
         if (mWebView != null) {
-            mWebView.setConsumeWebViewLongClick(!isEditMode);
+            mWebView.setConsumeWebViewLongClick(true);
         }
         ensureBottomToolbarController().updateEditModeState(isEditMode, reason);
         ensureTopToolbarController().updateEditModeState(isEditMode, reason);
@@ -2481,6 +2724,45 @@ public class LOActivity extends AppCompatActivity {
         ensureBottomToolbarController().hideQuickActionPanel();
     }
 
+    private void requestCloseDocument() {
+        runOnUiThread(() -> {
+            hideKeyboard();
+            if (functionPanelDialog != null) {
+                functionPanelDialog.dismiss();
+            }
+            if (functionPanelController != null) {
+                functionPanelController.dismiss();
+            }
+            if (!documentLoaded || !documentModified) {
+                closeAfterSaveRequested = false;
+                finishWithProgress();
+                return;
+            }
+
+            new AlertDialog.Builder(LOActivity.this)
+                    .setTitle("保存文件")
+                    .setMessage("关闭文件前要保存修改吗")
+                    .setNegativeButton("不保存", (dialog, which) -> {
+                        closeAfterSaveRequested = false;
+                        documentModified = false;
+                        finishWithProgress();
+                    })
+                    .setPositiveButton("保存并退出", (dialog, which) -> saveAndCloseDocument())
+                    .setOnCancelListener(dialog -> closeAfterSaveRequested = false)
+                    .show();
+        });
+    }
+
+    private void saveAndCloseDocument() {
+        if (!documentLoaded) {
+            finishWithProgress();
+            return;
+        }
+        closeAfterSaveRequested = true;
+        mProgressDialog.indeterminate(R.string.exiting);
+        postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=0");
+    }
+
     private void applyBottomToolbarImeState(boolean imeVisible, int imeInsetBottom) {
         isImeVisibleForToolbar = imeVisible;
         bottomToolbarImeInsetPx = Math.max(0, imeInsetBottom);
@@ -2488,6 +2770,10 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void showFunctionPanel() {
+        if (mIsEditModeActive) {
+            ensureFunctionPanelController().show();
+            return;
+        }
         if (functionPanelDialog != null && functionPanelDialog.isShowing()) {
             return;
         }
@@ -2570,7 +2856,183 @@ public class LOActivity extends AppCompatActivity {
         if (functionPanelDialog != null) {
             functionPanelDialog.dismiss();
         }
+        if (functionPanelController != null) {
+            functionPanelController.dismiss();
+        }
         action.run();
+    }
+
+    private FunctionPanelController ensureFunctionPanelController() {
+        if (functionPanelController == null) {
+            functionPanelController = new FunctionPanelController(new FunctionPanelController.Host() {
+                @Override
+                public Context getContext() {
+                    return LOActivity.this;
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return LOActivity.this.dpToPx(dp);
+                }
+
+                @Override
+                public void executeUnoCommand(String command) {
+                    LOActivity.this.executeUnoCommand(command);
+                }
+
+                @Override
+                public void saveDocument() {
+                    postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1");
+                }
+
+                @Override
+                public void saveDocumentAs() {
+                    LOActivity.this.showSaveAsFormatDialog();
+                }
+
+                @Override
+                public void exportDocumentAsPdf() {
+                    LOActivity.this.downloadCurrentTextDocumentAsPdf();
+                }
+
+                @Override
+                public void initiatePrint() {
+                    LOActivity.this.initiatePrint();
+                }
+
+                @Override
+                public void openLocalImagePickerFromWeb() {
+                    LOActivity.this.openLocalImagePickerFromWeb();
+                }
+
+                @Override
+                public void toastTodo(String text) {
+                    LOActivity.this.toastTodo(text);
+                }
+
+                @Override
+                public void showWatermarkDialog(boolean enabled) {
+                    LOActivity.this.showWatermarkDialog(enabled);
+                }
+
+                @Override
+                public void applyParagraphStyle(String styleName) {
+                    LOActivity.this.applyParagraphStyleFromPanel(styleName);
+                }
+
+                @Override
+                public void applyFont(String fontName) {
+                    LOActivity.this.applyFontFromPanel(fontName);
+                }
+
+                @Override
+                public void applyFontSize(String fontSizePt) {
+                    LOActivity.this.applyFontSizeFromPanel(fontSizePt);
+                }
+
+                @Override
+                public void insertComment() {
+                    LOActivity.this.insertCommentFromPanel();
+                }
+
+                @Override
+                public void fetchStyleList(FunctionPanelController.StringListCallback callback) {
+                    LOActivity.this.fetchStyleListAsync(callback);
+                }
+
+                @Override
+                public void fetchFontList(FunctionPanelController.StringListCallback callback) {
+                    LOActivity.this.fetchFontListAsync(callback);
+                }
+
+                @Override
+                public void fetchCurrentFormatting(FunctionPanelController.FormattingCallback callback) {
+                    LOActivity.this.fetchCurrentFormattingAsync(callback);
+                }
+            });
+        }
+        return functionPanelController;
+    }
+
+    private void showSaveAsFormatDialog() {
+        final String[] labels = new String[] { "ODT 文档", "DOCX 文档" };
+        final String[] formats = new String[] { "odt", "docx" };
+        new AlertDialog.Builder(this)
+                .setTitle("另存为")
+                .setItems(labels, (dialog, which) -> {
+                    String filename = getFileName(true);
+                    String baseName = filename;
+                    if (baseName != null) {
+                        int dotIndex = baseName.lastIndexOf('.');
+                        if (dotIndex > 0) {
+                            baseName = baseName.substring(0, dotIndex);
+                        }
+                    }
+                    if (baseName == null || baseName.trim().isEmpty()) {
+                        baseName = "document";
+                    }
+                    baseName = baseName.replaceAll("[\\\\/:*?\"<>|\\s]+", "_");
+                    initiateSaveAs("format=" + formats[which] + " name=" + baseName + "." + formats[which]);
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void showWatermarkDialog(boolean enabled) {
+        if (!enabled) {
+            applyDocumentWatermark("");
+            return;
+        }
+        final EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("请输入水印文字");
+        input.setText("水印");
+        input.setSelectAllOnFocus(true);
+
+        int padding = dpToPx(20);
+        FrameLayout container = new FrameLayout(this);
+        container.setPadding(padding, dpToPx(8), padding, 0);
+        container.addView(input, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        new AlertDialog.Builder(this)
+                .setTitle("水印")
+                .setView(container)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确定", (dialog, which) -> {
+                    String text = input.getText() == null ? "" : input.getText().toString().trim();
+                    applyDocumentWatermark(text);
+                })
+                .show();
+    }
+
+    private void applyDocumentWatermark(String text) {
+        if (mWebView == null) {
+            return;
+        }
+        final String safeText = JSONObject.quote(text == null ? "" : text);
+        final String script = "(function(){try{"
+                + "if(!(window.app&&app.map&&typeof app.map.sendUnoCommand==='function')){return 'no_map';}"
+                + "var args={"
+                + "Text:{type:'string',value:" + safeText + "},"
+                + "Font:{type:'string',value:'Noto Serif CJK SC'},"
+                + "Angle:{type:'long',value:45},"
+                + "Transparency:{type:'long',value:50},"
+                + "Color:{type:'long',value:12632256}"
+                + "};"
+                + "app.map.sendUnoCommand('.uno:Watermark',args);"
+                + "return 'sent';"
+                + "}catch(e){if(window.console&&console.warn){console.warn('android_watermark_failed',e);}return 'err';}})();";
+        runOnUiThread(() -> {
+            if (mWebView != null) {
+                mWebView.evaluateJavascript(script,
+                        value -> Log.i(TAG, "watermark_apply result=" + value));
+            }
+        });
+        documentModified = true;
+        nudgeSocketIfStalled("watermark_apply");
+        forceVisibleTileRedrawFromAndroid("watermark_apply");
     }
 
     private void openLocalImagePickerFromWeb() {
@@ -2601,16 +3063,295 @@ public class LOActivity extends AppCompatActivity {
         }
         String normalizedCommand = command.trim();
         Log.i(TAG, "dispatch_uno_from_native_panel command=" + normalizedCommand);
-
-        // For insert-graphic, ensure the WebView is focused so the JS layer
-        // can process the subsequent file-picker interaction.
-        if (normalizedCommand.contains("InsertGraphic") && mWebView != null) {
-            mWebView.requestFocus();
-            Log.i(TAG, "dispatch_uno_focus_webview_for command=" + normalizedCommand);
-        }
-
+        requestWebViewFocusForPanelAction("uno_dispatch");
         postMobileMessage("uno " + normalizedCommand);
         nudgeSocketIfStalled("uno_dispatch");
+        if (isLayoutChangingUnoCommand(normalizedCommand)) {
+            forceVisibleTileRedrawFromAndroid("uno_dispatch");
+        }
+    }
+
+    private boolean isLayoutChangingUnoCommand(String command) {
+        if (command == null) {
+            return false;
+        }
+        return command.startsWith(".uno:Delete")
+                || command.startsWith(".uno:ResetAttributes")
+                || command.startsWith(".uno:StyleApply")
+                || command.startsWith(".uno:CharFontName")
+                || command.startsWith(".uno:FontHeight")
+                || command.startsWith(".uno:Grow")
+                || command.startsWith(".uno:Shrink")
+                || command.startsWith(".uno:PageLRMargin")
+                || command.startsWith(".uno:PageULMargin")
+                || command.startsWith(".uno:AttributePageSize")
+                || command.startsWith(".uno:Orientation")
+                || command.startsWith(".uno:LeftPara")
+                || command.startsWith(".uno:CenterPara")
+                || command.startsWith(".uno:RightPara")
+                || command.startsWith(".uno:JustifyPara")
+                || command.startsWith(".uno:DefaultBullet")
+                || command.startsWith(".uno:DefaultNumbering")
+                || command.startsWith(".uno:TrackChanges")
+                || command.startsWith(".uno:TrackChangesInAllViews")
+                || command.startsWith(".uno:TrackChangesInThisView")
+                || command.startsWith(".uno:ShowTrackedChanges")
+                || command.startsWith(".uno:AcceptTrackedChange")
+                || command.startsWith(".uno:RejectTrackedChange")
+                || command.startsWith(".uno:AcceptTrackedChanges")
+                || command.startsWith(".uno:RejectTrackedChanges")
+                || command.startsWith(".uno:InsertTable")
+                || command.startsWith(".uno:InsertPageNumberField")
+                || command.startsWith(".uno:InsertPagebreak")
+                || command.startsWith(".uno:BasicShapes");
+    }
+
+    private void requestWebViewFocusForPanelAction(String reason) {
+        if (mWebView != null) {
+            mWebView.requestFocus();
+            Log.i(TAG, "function_panel_webview_focus reason=" + reason);
+        }
+    }
+
+    private String escapeForJsString(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "");
+    }
+
+    private void runWebJs(String script, ValueCallback<String> callback) {
+        if (mWebView == null) {
+            if (callback != null) {
+                callback.onReceiveValue(null);
+            }
+            return;
+        }
+        requestWebViewFocusForPanelAction("run_web_js");
+        mWebView.evaluateJavascript(script, callback);
+    }
+
+    void applyParagraphStyleFromPanel(String styleName) {
+        if (styleName == null || styleName.trim().isEmpty()) {
+            return;
+        }
+        final String trimmedStyle = styleName.trim();
+        Log.i(TAG, "function_apply_style style=" + trimmedStyle);
+        if (trimmedStyle.startsWith(".uno:")) {
+            postMobileMessage("uno " + trimmedStyle);
+            nudgeSocketIfStalled("function_apply_uno_style");
+            forceVisibleTileRedrawFromAndroid("function_apply_uno_style");
+            return;
+        }
+        final String escaped = escapeForJsString(trimmedStyle);
+        runWebJs("(function(){try{"
+                + "if(window.app&&app.map&&typeof app.map.applyStyle==='function'){"
+                + "app.map.applyStyle('" + escaped + "','ParagraphStyles');"
+                + "if(typeof app.map.focus==='function'){app.map.focus();}"
+                + "return 'ok';}"
+                + "}catch(e){if(window.console&&console.warn){console.warn('function_apply_style_failed',e);}}"
+                + "return 'fail';})();", value -> Log.i(TAG, "function_apply_style_result=" + value));
+        nudgeSocketIfStalled("function_apply_style");
+        forceVisibleTileRedrawFromAndroid("function_apply_style");
+    }
+
+    void applyFontFromPanel(String fontName) {
+        if (fontName == null || fontName.trim().isEmpty()) {
+            return;
+        }
+        final String escaped = escapeForJsString(fontName.trim());
+        Log.i(TAG, "function_apply_font font=" + fontName);
+        runWebJs("(function(){try{"
+                + "if(window.app&&app.map&&typeof app.map.applyFont==='function'){"
+                + "app.map.applyFont('" + escaped + "');"
+                + "if(typeof app.map.focus==='function'){app.map.focus();}"
+                + "return 'ok';}"
+                + "}catch(e){if(window.console&&console.warn){console.warn('function_apply_font_failed',e);}}"
+                + "return 'fail';})();", value -> Log.i(TAG, "function_apply_font_result=" + value));
+        nudgeSocketIfStalled("function_apply_font");
+        forceVisibleTileRedrawFromAndroid("function_apply_font");
+    }
+
+    void applyFontSizeFromPanel(String fontSizePt) {
+        if (fontSizePt == null || fontSizePt.trim().isEmpty()) {
+            return;
+        }
+        final String escaped = escapeForJsString(fontSizePt.trim());
+        Log.i(TAG, "function_apply_font_size pt=" + fontSizePt);
+        runWebJs("(function(){try{"
+                + "if(window.app&&app.map&&typeof app.map.applyFontSize==='function'){"
+                + "app.map.applyFontSize('" + escaped + "');"
+                + "if(typeof app.map.focus==='function'){app.map.focus();}"
+                + "return 'ok';}"
+                + "}catch(e){if(window.console&&console.warn){console.warn('function_apply_font_size_failed',e);}}"
+                + "return 'fail';})();", value -> Log.i(TAG, "function_apply_font_size_result=" + value));
+        nudgeSocketIfStalled("function_apply_font_size");
+        forceVisibleTileRedrawFromAndroid("function_apply_font_size");
+    }
+
+    void insertCommentFromPanel() {
+        Log.i(TAG, "function_insert_comment");
+        runWebJs("(function(){try{"
+                + "if(window.app&&app.map&&typeof app.map.insertComment==='function'){"
+                + "app.map.insertComment();"
+                + "if(typeof app.map.focus==='function'){app.map.focus();}"
+                + "return 'map';}"
+                + "if(window.app&&app.dispatcher&&typeof app.dispatcher.dispatch==='function'){"
+                + "app.dispatcher.dispatch('insertcomment');"
+                + "return 'dispatcher';}"
+                + "}catch(e){if(window.console&&console.warn){console.warn('function_insert_comment_failed',e);}}"
+                + "return 'fail';})();", value -> Log.i(TAG, "function_insert_comment_result=" + value));
+        nudgeSocketIfStalled("function_insert_comment");
+    }
+
+    void fetchStyleListAsync(FunctionPanelController.StringListCallback callback) {
+        runWebJs("(function(){try{"
+                + "if(!window.app||!app.map||typeof app.map.getToolbarCommandValues!=='function'){return '[]';}"
+                + "var cv=app.map.getToolbarCommandValues('.uno:StyleApply');"
+                + "if(!cv){return '[]';}"
+                + "var out=[];"
+                + "var mappings=(window.L&&window.L.Styles&&window.L.Styles.styleMappings)?window.L.Styles.styleMappings:{};"
+                + "function localize(style){"
+                + "if(mappings[style]){try{return mappings[style].toLocaleString();}catch(e){return style;}}"
+                + "if(style.indexOf('outline')===0){return 'Outline '+style.split('outline')[1];}"
+                + "return style;}"
+                + "if(cv.Commands&&cv.Commands.length){"
+                + "cv.Commands.forEach(function(cmd){"
+                + "var text=cmd.text;"
+                + "if(mappings[cmd.text]){try{text=mappings[cmd.text].toLocaleString();}catch(e){}}"
+                + "out.push({id:cmd.id,label:text});"
+                + "});}"
+                + "if(app.map.getDocType&&app.map.getDocType()==='text'&&cv.ParagraphStyles){"
+                + "var top=cv.ParagraphStyles.slice(0,7);"
+                + "var more=cv.ParagraphStyles.slice(7);"
+                + "top.forEach(function(s){out.push({id:s,label:localize(s)});});"
+                + "more.forEach(function(s){out.push({id:s,label:localize(s)});});"
+                + "}"
+                + "return JSON.stringify(out);"
+                + "}catch(e){return '[]';}})();", value -> {
+            List<String> labels = new ArrayList<>();
+            List<String> values = new ArrayList<>();
+            parseStyleListJson(value, labels, values);
+            Log.i(TAG, "function_fetch_styles_count=" + labels.size());
+            if (callback != null) {
+                runOnUiThread(() -> callback.onResult(labels, values));
+            }
+        });
+    }
+
+    private void parseStyleListJson(String json, List<String> labels, List<String> values) {
+        if (json == null || json.isEmpty() || "null".equals(json)) {
+            return;
+        }
+        String trimmed = json.trim();
+        if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+            trimmed = trimmed.substring(1, trimmed.length() - 1);
+            trimmed = trimmed.replace("\\\"", "\"").replace("\\\\", "\\");
+        }
+        try {
+            JSONArray array = new JSONArray(trimmed);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject obj = array.getJSONObject(i);
+                String id = obj.optString("id", "");
+                String label = obj.optString("label", id);
+                if (!id.isEmpty()) {
+                    values.add(id);
+                    labels.add(label.isEmpty() ? id : label);
+                }
+            }
+        } catch (JSONException e) {
+            Log.w(TAG, "function_fetch_styles_parse_failed", e);
+        }
+    }
+
+    void fetchFontListAsync(FunctionPanelController.StringListCallback callback) {
+        runWebJs("(function(){try{"
+                + "if(!window.app||!app.map||typeof app.map.getToolbarCommandValues!=='function'){return '[]';}"
+                + "var cv=app.map.getToolbarCommandValues('.uno:CharFontName');"
+                + "if(!cv||typeof cv!=='object'){return '[]';}"
+                + "var fonts=Object.keys(cv).filter(function(k){return !!k;});"
+                + "return JSON.stringify(fonts);"
+                + "}catch(e){return '[]';}})();", value -> {
+            List<String> labels = new ArrayList<>();
+            List<String> values = new ArrayList<>();
+            parseStringArrayJson(value, labels);
+            values.addAll(labels);
+            Log.i(TAG, "function_fetch_fonts_count=" + labels.size());
+            if (callback != null) {
+                runOnUiThread(() -> callback.onResult(labels, values));
+            }
+        });
+    }
+
+    private void parseStringArrayJson(String json, List<String> out) {
+        if (json == null || json.isEmpty() || "null".equals(json)) {
+            return;
+        }
+        String trimmed = json.trim();
+        if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+            trimmed = trimmed.substring(1, trimmed.length() - 1);
+            trimmed = trimmed.replace("\\\"", "\"").replace("\\\\", "\\");
+        }
+        try {
+            JSONArray array = new JSONArray(trimmed);
+            for (int i = 0; i < array.length(); i++) {
+                String item = array.optString(i, "");
+                if (!item.isEmpty()) {
+                    out.add(item);
+                }
+            }
+        } catch (JSONException e) {
+            Log.w(TAG, "function_fetch_fonts_parse_failed", e);
+        }
+    }
+
+    void fetchCurrentFormattingAsync(FunctionPanelController.FormattingCallback callback) {
+        runWebJs("(function(){try{"
+                + "if(!window.app||!app.map){return '{}';}"
+                + "var sch=app.map.stateChangeHandler||app.map['stateChangeHandler'];"
+                + "function state(cmd){try{return sch&&typeof sch.getItemValue==='function'?sch.getItemValue(cmd):'';}catch(e){return '';}}"
+                + "function scalar(v){"
+                + "if(v===undefined||v===null){return '';}"
+                + "if(typeof v==='string'){return v;}"
+                + "if(typeof v==='number'){return String(v);}"
+                + "if(typeof v==='object'){"
+                + "if(v.value!==undefined){return String(v.value);}"
+                + "if(v.text!==undefined){return String(v.text);}"
+                + "if(v.family!==undefined){return String(v.family);}"
+                + "}"
+                + "return String(v);}"
+                + "var style=scalar(state('.uno:StyleApply'));"
+                + "var font=scalar(state('.uno:CharFontName'));"
+                + "if(!font&&typeof app.map._getCurrentFontName==='function'){font=app.map._getCurrentFontName()||'';}"
+                + "var size=scalar(state('.uno:FontHeight'));"
+                + "font=font.split(';')[0].trim();"
+                + "size=size.replace('pt','').trim();"
+                + "return JSON.stringify({style:style,font:font,size:size});"
+                + "}catch(e){return '{}';}})();", value -> {
+            String style = "";
+            String font = "";
+            String size = "";
+            String trimmed = value == null ? "" : value.trim();
+            if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+                trimmed = trimmed.substring(1, trimmed.length() - 1);
+                trimmed = trimmed.replace("\\\"", "\"").replace("\\\\", "\\");
+            }
+            try {
+                JSONObject obj = new JSONObject(trimmed);
+                style = obj.optString("style", "");
+                font = obj.optString("font", "");
+                size = obj.optString("size", "");
+            } catch (JSONException e) {
+                Log.w(TAG, "function_current_format_parse_failed", e);
+            }
+            Log.i(TAG, "function_current_format style=" + style + " font=" + font + " size=" + size);
+            if (callback != null) {
+                final String finalStyle = style;
+                final String finalFont = font;
+                final String finalSize = size;
+                runOnUiThread(() -> callback.onResult(finalStyle, finalFont, finalSize));
+            }
+        });
     }
 
     private void downloadCurrentTextDocumentAsPdf() {
@@ -2785,7 +3526,85 @@ public class LOActivity extends AppCompatActivity {
                 + "if(typeof window.socket.doSend==='function'){window.socket.doSend();return 'nudged';}"
                 + "return 'no_dosend';"
                 + "}catch(e){if(window.console&&console.warn){console.warn('android_socket_nudge_failed',e);}return 'err';}})();";
-        mWebView.evaluateJavascript(script, value -> Log.i(TAG, "socket_nudge reason=" + reason + " result=" + value));
+        runOnUiThread(() -> {
+            if (mWebView != null) {
+                mWebView.evaluateJavascript(script,
+                        value -> Log.i(TAG, "socket_nudge reason=" + reason + " result=" + value));
+            }
+        });
+    }
+
+    private void forceVisibleTileRedrawFromAndroid(String reason) {
+        if (mWebView == null) {
+            return;
+        }
+        final String escapedReason = escapeForJsString(reason == null ? "android_panel_action" : reason);
+        final String script = "(function(){try{"
+                + "var reason='" + escapedReason + "';"
+                + "var tm=window.TileManager||(typeof TileManager!=='undefined'?TileManager:null);"
+                + "if(!(window.ThisIsTheAndroidApp&&window.app&&app.map)){return 'skip';}"
+                + "setTimeout(function(){try{"
+                + "if(window.app&&app.map&&app.map._docLayer&&typeof app.map._docLayer._resetClientVisArea==='function'){app.map._docLayer._resetClientVisArea();}"
+                + "var currentTm=window.TileManager||(typeof TileManager!=='undefined'?TileManager:null);"
+                + "if(currentTm&&typeof currentTm.refreshTilesInBackground==='function'){currentTm.refreshTilesInBackground();}"
+                + "if(currentTm&&typeof currentTm.update==='function'){currentTm.update();}"
+                + "if(app.console&&typeof app.console.debug==='function'){app.console.debug('android visible tile refresh reason='+reason);}"
+                + "}catch(e){if(window.console&&console.warn){console.warn('android_visible_tile_refresh_deferred_failed',e);}}},250);"
+                + "return 'scheduled';"
+                + "}catch(e){if(window.console&&console.warn){console.warn('android_visible_tile_redraw_failed',e);}return 'err';}})();";
+        runOnUiThread(() -> {
+            if (mWebView != null) {
+                mWebView.evaluateJavascript(script,
+                        value -> Log.i(TAG, "visible_tile_redraw reason=" + reason + " result=" + value));
+            }
+        });
+    }
+
+    private void recoverVisibleTilesAfterEditMode(String reason) {
+        if (mWebView == null) {
+            return;
+        }
+        final String escapedReason = escapeForJsString(reason == null ? "editmode" : reason);
+        final String script = "(function(){try{"
+                + "var reason='" + escapedReason + "';"
+                + "var maxDeferRetries=24;"
+                + "function isReconnecting(){"
+                + "return!!(window.app&&app.socket&&typeof app.socket.isTemporarilyReconnecting==='function'&&app.socket.isTemporarilyReconnecting());"
+                + "}"
+                + "function applyRecover(tag,hard){"
+                + "var tm=window.TileManager||(typeof TileManager!=='undefined'?TileManager:null);"
+                + "if(typeof app.map.invalidateSize==='function'){app.map.invalidateSize(false);}"
+                + "if(app.map._docLayer&&typeof app.map._docLayer._resetClientVisArea==='function'){app.map._docLayer._resetClientVisArea();}"
+                + "if(app.map._docLayer&&typeof app.map._docLayer._requestNewTiles==='function'){app.map._docLayer._requestNewTiles();}"
+                + "if(tm&&typeof tm.refreshTilesInBackground==='function'){tm.refreshTilesInBackground();}"
+                + "if(tm&&typeof tm.update==='function'){tm.update();}"
+                + "if(hard&&tm&&typeof tm.redraw==='function'){tm.redraw();}"
+                + "if(app.console&&typeof app.console.debug==='function'){app.console.debug('android editmode tile recover applied tag='+tag+' hard='+hard+' reason='+reason);}"
+                + "}"
+                + "function recoverWithReconnectGuard(tag,hard,deferCount){try{"
+                + "if(!(window.ThisIsTheAndroidApp&&window.app&&app.map)){return;}"
+                + "if(isReconnecting()){"
+                + "if(deferCount<maxDeferRetries){"
+                + "if(app.console&&typeof app.console.debug==='function'){app.console.debug('android editmode tile recover deferred reconnect tag='+tag+' defer='+deferCount+' reason='+reason);}"
+                + "setTimeout(function(){recoverWithReconnectGuard(tag,hard,deferCount+1);},120);"
+                + "}else if(app.console&&typeof app.console.warn==='function'){app.console.warn('android editmode tile recover reconnect limit tag='+tag+' reason='+reason);}"
+                + "return;"
+                + "}"
+                + "applyRecover(tag,hard);"
+                + "}catch(e){if(window.console&&console.warn){console.warn('android_editmode_tile_recover_failed',tag,e);}}}"
+                + "setTimeout(function(){recoverWithReconnectGuard('soon',false,0);},120);"
+                + "setTimeout(function(){recoverWithReconnectGuard('mid',false,0);},420);"
+                + "setTimeout(function(){recoverWithReconnectGuard('late',false,0);},900);"
+                + "setTimeout(function(){recoverWithReconnectGuard('final',true,0);},1700);"
+                + "return 'scheduled';"
+                + "}catch(e){if(window.console&&console.warn){console.warn('android_editmode_tile_recover_failed',e);}return 'err';}})();";
+        runOnUiThread(() -> {
+            if (mWebView != null) {
+                mWebView.evaluateJavascript(script,
+                        value -> Log.i(TAG, "editmode_tile_recover reason=" + reason + " result=" + value));
+            }
+            nudgeSocketIfStalled("editmode_tile_recover");
+        });
     }
 
     private void toastTodo(String text) {
@@ -3481,6 +4300,33 @@ public class LOActivity extends AppCompatActivity {
                 aiStatusText.setTextColor(Color.parseColor("#0B57D0"));
             } else {
                 aiStatusText.setTextColor(Color.parseColor("#2E7D32"));
+            }
+        });
+    }
+
+    private void injectDocumentStateBridgeIfNeeded() {
+        if (documentStateBridgeInjected || mWebView == null) {
+            return;
+        }
+        documentStateBridgeInjected = true;
+
+        final String script = "(function(){try{"
+                + "if(window.__androidDocStateBridge){return 'exists';}"
+                + "window.__androidDocStateBridge=true;"
+                + "function hook(){try{"
+                + "if(!(window.app&&app.map&&typeof app.map.on==='function')){setTimeout(hook,250);return;}"
+                + "app.map.on('postMessage',function(e){try{"
+                + "if(e&&e.msgId==='Doc_ModifiedStatus'){var modified=!!(e.args&&e.args.Modified);"
+                + "window.postMobileMessage('DOC_MODIFIED_STATUS '+(modified?'true':'false'));}"
+                + "}catch(ignore){}});"
+                + "}catch(e){setTimeout(hook,250);}}"
+                + "hook();"
+                + "return 'installed';"
+                + "}catch(e){if(window.console&&console.warn){console.warn('android_doc_state_bridge_failed',e);}return 'err';}})();";
+        runOnUiThread(() -> {
+            if (mWebView != null) {
+                mWebView.evaluateJavascript(script,
+                        value -> Log.i(TAG, "doc_state_bridge result=" + value));
             }
         });
     }

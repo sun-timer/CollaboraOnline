@@ -14,6 +14,14 @@ class AndroidSelectionMenu {
 	private static readonly ignoreEmptyAfterStartMs = 500;
 	private static selectionStartTwips: { x: number; y: number } | null = null;
 	private static readonly minSelectionSpanTwips = 80;
+	private static tryShowRetryTimer = 0;
+	private static readonly tryShowRetryDelayMs = 100;
+	private static readonly tryShowMaxRetries = 30;
+
+	/** True while a native long-press selection gesture is in flight. */
+	static isLongPressGesturePending(): boolean {
+		return AndroidSelectionMenu.pendingLongPressSelection;
+	}
 
 	static hide(): void {
 		if (!window.ThisIsTheAndroidApp || typeof window.postMobileMessage !== 'function') {
@@ -63,6 +71,7 @@ class AndroidSelectionMenu {
 		AndroidSelectionMenu.nativeSelectionDragActive = false;
 		AndroidSelectionMenu.selectionStartTwips = null;
 		AndroidSelectionMenu.lastDragSelectionUpdateAt = 0;
+		AndroidSelectionMenu.clearTryShowRetry();
 		AndroidSelectionMenu.hide();
 	}
 
@@ -190,20 +199,10 @@ class AndroidSelectionMenu {
 		AndroidSelectionMenu.nativeSelectionDragActive = false;
 		AndroidSelectionMenu.selectionGestureComplete = true;
 
-		if (
-			AndroidSelectionMenu.selectionStartTwips &&
-			endTwips &&
-			AndroidSelectionMenu.isZeroWidthTwips(
-				AndroidSelectionMenu.selectionStartTwips,
-				endTwips,
-			)
-		) {
-			AndroidSelectionMenu.cancelGesture();
-			AndroidSelectionMenu.clearLocalTextSelection();
-			return;
-		}
-
-		AndroidSelectionMenu.maybeShowAfterTextSelection();
+		// Long-press word select often has identical start/end twips; wait for
+		// textselection: instead of cancelling here. onEmptyTextSelection handles
+		// genuine zero-width failures.
+		AndroidSelectionMenu.scheduleTryShowAfterGesture();
 	}
 
 	/**
@@ -216,6 +215,13 @@ class AndroidSelectionMenu {
 		}
 
 		AndroidSelectionMenu.resetForNewGesture();
+		const findBridge = (window as any).AndroidFindReplaceBridge;
+		if (
+			findBridge &&
+			typeof findBridge.clearSuppressSelectionMenu === 'function'
+		) {
+			findBridge.clearSuppressSelectionMenu();
+		}
 		AndroidSelectionMenu.markNativeLongPress();
 		AndroidSelectionMenu.pendingLongPressSelection = true;
 		AndroidSelectionMenu.selectionGestureComplete = false;
@@ -302,7 +308,14 @@ class AndroidSelectionMenu {
 		};
 	}
 
-	private static maybeShowAfterTextSelection(): void {
+	private static clearTryShowRetry(): void {
+		if (AndroidSelectionMenu.tryShowRetryTimer) {
+			window.clearTimeout(AndroidSelectionMenu.tryShowRetryTimer);
+			AndroidSelectionMenu.tryShowRetryTimer = 0;
+		}
+	}
+
+	private static scheduleTryShowAfterGesture(): void {
 		if (
 			!AndroidSelectionMenu.pendingLongPressSelection ||
 			!AndroidSelectionMenu.selectionGestureComplete ||
@@ -310,10 +323,65 @@ class AndroidSelectionMenu {
 		) {
 			return;
 		}
-		window.setTimeout(() => AndroidSelectionMenu.tryShow(), 50);
+		AndroidSelectionMenu.clearTryShowRetry();
+		let attempts = 0;
+		const tick = (): void => {
+			AndroidSelectionMenu.tryShowRetryTimer = 0;
+			if (
+				!AndroidSelectionMenu.pendingLongPressSelection ||
+				!AndroidSelectionMenu.selectionGestureComplete ||
+				AndroidSelectionMenu.nativeSelectionDragActive
+			) {
+				return;
+			}
+			if (AndroidSelectionMenu.hasNonDegenerateSelection()) {
+				AndroidSelectionMenu.tryShow();
+				return;
+			}
+			attempts++;
+			if (attempts < AndroidSelectionMenu.tryShowMaxRetries) {
+				AndroidSelectionMenu.tryShowRetryTimer = window.setTimeout(
+					tick,
+					AndroidSelectionMenu.tryShowRetryDelayMs,
+				);
+			}
+		};
+		AndroidSelectionMenu.tryShowRetryTimer = window.setTimeout(tick, 50);
+	}
+
+	/** Show menu when core reports a selection without our long-press gesture flags. */
+	private static scheduleTryShowFromCoreSelection(): void {
+		AndroidSelectionMenu.clearTryShowRetry();
+		let attempts = 0;
+		const tick = (): void => {
+			AndroidSelectionMenu.tryShowRetryTimer = 0;
+			if (AndroidSelectionMenu.hasNonDegenerateSelection()) {
+				AndroidSelectionMenu.tryShow();
+				return;
+			}
+			attempts++;
+			if (attempts < AndroidSelectionMenu.tryShowMaxRetries) {
+				AndroidSelectionMenu.tryShowRetryTimer = window.setTimeout(
+					tick,
+					AndroidSelectionMenu.tryShowRetryDelayMs,
+				);
+			}
+		};
+		AndroidSelectionMenu.tryShowRetryTimer = window.setTimeout(tick, 50);
+	}
+
+	private static shouldUseGestureTryShow(): boolean {
+		return (
+			AndroidSelectionMenu.pendingLongPressSelection &&
+			AndroidSelectionMenu.selectionGestureComplete &&
+			!AndroidSelectionMenu.nativeSelectionDragActive
+		);
 	}
 
 	private static onEmptyTextSelection(): void {
+		if (AndroidSelectionMenu.nativeSelectionDragActive) {
+			return;
+		}
 		const now = Date.now();
 		if (
 			AndroidSelectionMenu.pendingLongPressSelection &&
@@ -390,9 +458,22 @@ class AndroidSelectionMenu {
 				}
 				const payload = textMsg.replace('textselection:', '').trim();
 				if (payload && payload !== 'EMPTY') {
-					AndroidSelectionMenu.maybeShowAfterTextSelection();
-					if (!AndroidSelectionMenu.nativeSelectionDragActive) {
-						window.setTimeout(() => AndroidSelectionMenu.tryShow(), 80);
+					const findBridge = (window as any).AndroidFindReplaceBridge;
+					if (
+						findBridge &&
+						typeof findBridge.consumeSuppressSelectionMenu === 'function' &&
+						findBridge.consumeSuppressSelectionMenu()
+					) {
+						AndroidSelectionMenu.hide();
+						return;
+					}
+					if (AndroidSelectionMenu.nativeSelectionDragActive) {
+						return;
+					}
+					if (AndroidSelectionMenu.shouldUseGestureTryShow()) {
+						AndroidSelectionMenu.scheduleTryShowAfterGesture();
+					} else if (!AndroidSelectionMenu.pendingLongPressSelection) {
+						AndroidSelectionMenu.scheduleTryShowFromCoreSelection();
 					}
 				} else {
 					AndroidSelectionMenu.onEmptyTextSelection();

@@ -57,6 +57,9 @@ class Socket {
 	private _pendingTileCombineByKey: Map<string, string>;
 	private _tileCombineFlushTimer: TimeoutHdl | undefined;
 	private _isFlushingTileCombine: boolean;
+	private _tileCombineFlushReconnectRetryCount: number;
+	private static readonly TILE_COMBINE_FLUSH_RECONNECT_RETRY_MS = 120;
+	private static readonly TILE_COMBINE_FLUSH_RECONNECT_MAX_RETRIES = 25;
 	private _slurpTimer: TimeoutHdl | undefined;
 	private _renderEventTimer: TimeoutHdl | undefined;
 	private _renderEventTimerStart: DOMHighResTimeStamp | undefined;
@@ -100,6 +103,7 @@ class Socket {
 		this._pendingTileCombineByKey = new Map();
 		this._tileCombineFlushTimer = undefined;
 		this._isFlushingTileCombine = false;
+		this._tileCombineFlushReconnectRetryCount = 0;
 		this._slurpTimer = undefined;
 		this._renderEventTimer = undefined;
 		this._renderEventTimerStart = undefined;
@@ -207,6 +211,7 @@ class Socket {
 		}
 		this._setMobileDocGestureGuard(false, 'docalreadyloaded_reconnect_done');
 		this._map.hideBusy();
+		this._forceMobileVisibleTilesAfterReconnect('docalreadyloaded_reconnect_done');
 		if (this._reconnectBusyTimer) {
 			clearTimeout(this._reconnectBusyTimer);
 			this._reconnectBusyTimer = undefined;
@@ -336,11 +341,47 @@ class Socket {
 		return partMatch[1] + ':' + mode;
 	}
 
+	private _scheduleTileCombineFlushAfterReconnectBlock(): void {
+		if (!window.ThisIsAMobileApp) return;
+		if (!this._pendingTileCombineByKey.size) {
+			this._tileCombineFlushReconnectRetryCount = 0;
+			return;
+		}
+		if (this._tileCombineFlushReconnectRetryCount >= Socket.TILE_COMBINE_FLUSH_RECONNECT_MAX_RETRIES) {
+			window.app.console.warn(
+				'tilecombine flush reconnect retry limit reached pending=' +
+					this._pendingTileCombineByKey.size,
+			);
+			this._tileCombineFlushReconnectRetryCount = 0;
+			return;
+		}
+		if (this._tileCombineFlushTimer) return;
+
+		this._tileCombineFlushReconnectRetryCount++;
+		window.app.console.debug(
+			'tilecombine flush deferred for reconnect reschedule attempt=' +
+				this._tileCombineFlushReconnectRetryCount +
+				' pending=' +
+				this._pendingTileCombineByKey.size,
+		);
+		this._tileCombineFlushTimer = setTimeout(
+			() => this._flushPendingTileCombineMessages(),
+			Socket.TILE_COMBINE_FLUSH_RECONNECT_RETRY_MS,
+		);
+	}
+
 	private _flushPendingTileCombineMessages(): void {
 		this._tileCombineFlushTimer = undefined;
-		if (!this._pendingTileCombineByKey.size) return;
-		if (this._reconnecting || this._interactionBlockedForReconnect) return;
+		if (!this._pendingTileCombineByKey.size) {
+			this._tileCombineFlushReconnectRetryCount = 0;
+			return;
+		}
+		if (this._reconnecting || this._interactionBlockedForReconnect) {
+			this._scheduleTileCombineFlushAfterReconnectBlock();
+			return;
+		}
 
+		this._tileCombineFlushReconnectRetryCount = 0;
 		const now = Date.now();
 		const throttleMs = 45;
 		let minWait = throttleMs;
@@ -371,6 +412,42 @@ class Socket {
 				Math.max(8, minWait),
 			);
 		}
+	}
+
+	private _forceMobileVisibleTilesAfterReconnect(reason: string): void {
+		if (!window.ThisIsAMobileApp) return;
+		if (!this._map || !this._map._docLayer || !app.activeDocument) return;
+
+		const refresh = (attempt: number) => {
+			if (!this._map || !this._map._docLayer || !app.activeDocument) return;
+			try {
+				this._map._docLayer._resetClientVisArea();
+				if (attempt === 1 && typeof TileManager.redraw === 'function') {
+					TileManager.redraw();
+				} else {
+					TileManager.refreshTilesInBackground();
+					TileManager.update();
+				}
+				window.app.console.debug(
+					'mobile reconnect visible tile refresh reason=' +
+						reason +
+						' attempt=' +
+						attempt,
+				);
+			} catch (e) {
+				window.app.console.warn(
+					'mobile reconnect visible tile refresh failed reason=' +
+						reason +
+						' attempt=' +
+						attempt +
+						' error=' +
+						e,
+				);
+			}
+		};
+
+		setTimeout(() => refresh(1), 80);
+		setTimeout(() => refresh(2), 300);
 	}
 
 	private _throttleTileCombine(msg: MessageInterface): boolean {
@@ -419,6 +496,7 @@ class Socket {
 		}
 		this._isFlushingTileCombine = false;
 		this._isFlushingClientVisibleArea = false;
+		this._tileCombineFlushReconnectRetryCount = 0;
 
 		if (typeof TileManager.resetReconnectTransientState === 'function')
 			TileManager.resetReconnectTransientState(reason);
@@ -1375,7 +1453,10 @@ class Socket {
 			// we are reconnecting ...
 			this._resetReconnectTransientState('status_reconnected');
 			this._map._docLayer._resetClientVisArea();
-			TileManager.refreshTilesInBackground();
+			if (window.ThisIsAMobileApp && typeof TileManager.redraw === 'function')
+				TileManager.redraw();
+			else
+				TileManager.refreshTilesInBackground();
 			this._map.fire('statusindicator', { statusType: 'reconnected' });
 
 			const darkTheme = window.prefs.getBoolean('darkTheme');
