@@ -53,6 +53,7 @@ public class SelectionMenuController {
         host.findViewById(R.id.selection_menu_copy).setOnClickListener(v -> onCopy());
         host.findViewById(R.id.selection_menu_paste).setOnClickListener(v -> onPaste());
         host.findViewById(R.id.selection_menu_cut).setOnClickListener(v -> onCut());
+        updateEditActionVisibility();
         hide();
     }
 
@@ -62,6 +63,7 @@ public class SelectionMenuController {
             return;
         }
         host.hideQuickActionPanel();
+        updateEditActionVisibility();
 
         menuView.setVisibility(View.VISIBLE);
         overlayView.setVisibility(View.VISIBLE);
@@ -154,6 +156,18 @@ public class SelectionMenuController {
 
     private void toastReadOnlyDocument() {
         Toast.makeText(host.getContext(), "当前文档为只读，无法粘贴或剪切", Toast.LENGTH_SHORT).show();
+    }
+
+    private void updateEditActionVisibility() {
+        boolean showEditActions = host.isEditModeActive();
+        View paste = host.findViewById(R.id.selection_menu_paste);
+        View cut = host.findViewById(R.id.selection_menu_cut);
+        if (paste != null) {
+            paste.setVisibility(showEditActions ? View.VISIBLE : View.GONE);
+        }
+        if (cut != null) {
+            cut.setVisibility(showEditActions ? View.VISIBLE : View.GONE);
+        }
     }
 
     private float dpToPx(float dp) {

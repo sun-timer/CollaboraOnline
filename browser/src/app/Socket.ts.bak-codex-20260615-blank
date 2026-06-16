@@ -50,7 +50,6 @@ class Socket {
 	private _mobileDocGestureGuardEnabled: boolean;
 	private _lastGestureGuardLogTs: number;
 	private _lastClientVisibleAreaSentTs: number;
-	private _lastInvalidClientVisibleAreaLogTs: number;
 	private _clientVisibleAreaFlushTimer: TimeoutHdl | undefined;
 	private _pendingClientVisibleAreaMsg: string | null;
 	private _isFlushingClientVisibleArea: boolean;
@@ -97,7 +96,6 @@ class Socket {
 		this._mobileDocGestureGuardEnabled = false;
 		this._lastGestureGuardLogTs = 0;
 		this._lastClientVisibleAreaSentTs = 0;
-		this._lastInvalidClientVisibleAreaLogTs = 0;
 		this._clientVisibleAreaFlushTimer = undefined;
 		this._pendingClientVisibleAreaMsg = null;
 		this._isFlushingClientVisibleArea = false;
@@ -322,17 +320,6 @@ class Socket {
 	private _throttleClientVisibleArea(msg: MessageInterface): boolean {
 		if (!window.ThisIsAMobileApp) return false;
 		if (typeof msg !== 'string' || !msg.startsWith('clientvisiblearea ')) return false;
-		if (this._isInvalidClientVisibleArea(msg)) {
-			const now = Date.now();
-			if (now - this._lastInvalidClientVisibleAreaLogTs > 1500) {
-				window.app.console.debug(
-					'Dropped invalid mobile clientvisiblearea: ' +
-						msg.substring(0, 80),
-				);
-				this._lastInvalidClientVisibleAreaLogTs = now;
-			}
-			return true;
-		}
 		if (this._isFlushingClientVisibleArea) {
 			this._isFlushingClientVisibleArea = false;
 			this._lastClientVisibleAreaSentTs = Date.now();
@@ -354,16 +341,6 @@ class Socket {
 			this.sendMessage(pending);
 		}, delayMs);
 		return true;
-	}
-
-	private _isInvalidClientVisibleArea(msg: string): boolean {
-		const widthMatch = msg.match(/\bwidth=(-?\d+)/);
-		const heightMatch = msg.match(/\bheight=(-?\d+)/);
-		if (!widthMatch || !heightMatch) return false;
-
-		const width = parseInt(widthMatch[1], 10);
-		const height = parseInt(heightMatch[1], 10);
-		return !isFinite(width) || !isFinite(height) || width <= 0 || height <= 0;
 	}
 
 	private _parseTileCombineCompactionKey(msg: string): string | null {
@@ -455,24 +432,7 @@ class Socket {
 		const refresh = (attempt: number) => {
 			if (!this._map || !this._map._docLayer || !app.activeDocument) return;
 			try {
-				const mapSize = this._map.getSize();
-				if (!mapSize || mapSize.x <= 0 || mapSize.y <= 0) {
-					window.app.console.debug(
-						'mobile reconnect visible tile refresh deferred invalid map size reason=' +
-							reason +
-							' attempt=' +
-							attempt,
-					);
-					return;
-				}
-				const docLayer = this._map._docLayer as any;
-				docLayer._resetClientVisArea();
-				if (typeof docLayer._sendClientZoom === 'function') {
-					docLayer._sendClientZoom(true);
-				}
-				if (typeof docLayer._requestNewTiles === 'function') {
-					docLayer._requestNewTiles();
-				}
+				this._map._docLayer._resetClientVisArea();
 				if (attempt === 1 && typeof TileManager.redraw === 'function') {
 					TileManager.redraw();
 				} else {

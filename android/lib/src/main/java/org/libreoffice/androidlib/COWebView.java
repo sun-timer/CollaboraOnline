@@ -8,6 +8,7 @@ package org.libreoffice.androidlib;
 import android.content.Context;
 import android.os.Build;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
@@ -20,6 +21,8 @@ import android.widget.Magnifier;
 import androidx.annotation.NonNull;
 
 public class COWebView extends WebView {
+    private static final String TAG = "COWebView";
+
     public interface OnDocumentLongPressListener {
         void onDocumentLongPress(float viewX, float viewY);
 
@@ -85,6 +88,7 @@ public class COWebView extends WebView {
                 if (consumeWebViewLongClick && documentLongPressListener != null) {
                     nativeSelectionDragActive = true;
                     lastNativeSelectionDragAt = 0L;
+                    Log.i(TAG, "native_selection_drag start consumed=true");
                     documentLongPressListener.onDocumentLongPress(e.getX(), e.getY());
                 }
             }
@@ -164,7 +168,16 @@ public class COWebView extends WebView {
     public boolean onTouchEvent(MotionEvent event) {
         documentGestureDetector.onTouchEvent(event);
         updateDocumentMagnifier(event);
-        updateNativeSelectionDrag(event);
+        boolean handledNativeSelection = updateNativeSelectionDrag(event);
+
+        if (consumeWebViewLongClick && handledNativeSelection) {
+            if (documentGestureGuardEnabled &&
+                    (event.getActionMasked() == MotionEvent.ACTION_MOVE ||
+                            event.getActionMasked() == MotionEvent.ACTION_CANCEL)) {
+                abortDocumentScroll();
+            }
+            return true;
+        }
 
         boolean handled = super.onTouchEvent(event);
         if (!documentGestureGuardEnabled) {
@@ -178,9 +191,9 @@ public class COWebView extends WebView {
         return handled;
     }
 
-    private void updateNativeSelectionDrag(MotionEvent event) {
+    private boolean updateNativeSelectionDrag(MotionEvent event) {
         if (documentLongPressListener == null) {
-            return;
+            return false;
         }
 
         switch (event.getActionMasked()) {
@@ -188,38 +201,43 @@ public class COWebView extends WebView {
                 if (nativeSelectionDragActive) {
                     nativeSelectionDragActive = false;
                     documentLongPressListener.onDocumentSelectionDragCancel();
+                    Log.i(TAG, "native_selection_drag down_cancel consumed=false");
                 }
                 break;
             case MotionEvent.ACTION_MOVE:
                 if (!nativeSelectionDragActive) {
-                    return;
+                    return false;
                 }
                 if (event.getPointerCount() == 1) {
                     long now = event.getEventTime();
                     if (now - lastNativeSelectionDragAt < NATIVE_SELECTION_DRAG_THROTTLE_MS) {
-                        return;
+                        return true;
                     }
                     lastNativeSelectionDragAt = now;
                     documentLongPressListener.onDocumentSelectionDrag(event.getX(), event.getY());
                 }
-                break;
+                Log.i(TAG, "native_selection_drag move consumed=true");
+                return true;
             case MotionEvent.ACTION_UP:
                 if (!nativeSelectionDragActive) {
-                    return;
+                    return false;
                 }
                 nativeSelectionDragActive = false;
                 documentLongPressListener.onDocumentSelectionDragEnd(event.getX(), event.getY());
-                break;
+                Log.i(TAG, "native_selection_drag end consumed=true");
+                return true;
             case MotionEvent.ACTION_CANCEL:
                 if (!nativeSelectionDragActive) {
-                    return;
+                    return false;
                 }
                 nativeSelectionDragActive = false;
                 documentLongPressListener.onDocumentSelectionDragCancel();
-                break;
+                Log.i(TAG, "native_selection_drag cancel consumed=false");
+                return false;
             default:
                 break;
         }
+        return false;
     }
 
     private void updateDocumentMagnifier(MotionEvent event) {

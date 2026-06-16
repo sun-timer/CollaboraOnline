@@ -42,7 +42,7 @@ public class FunctionPanelController {
     }
 
     public interface FormattingCallback {
-        void onResult(String styleName, String fontName, String fontSizePt);
+        void onResult(String styleName, String fontName, String fontSizePt, String paragraphAlignment);
     }
 
     public interface Host {
@@ -156,6 +156,7 @@ public class FunctionPanelController {
     private String[] cachedFontOptions = FALLBACK_FONT_OPTIONS;
     private String[] cachedFontValues = FALLBACK_FONT_VALUES;
     private String currentStyleName = "";
+    private String currentParagraphAlignment = "";
 
     public FunctionPanelController(Host host) {
         this.host = host;
@@ -440,7 +441,9 @@ public class FunctionPanelController {
                 FunctionItem chip = chips.get(i);
                 ImageButton button = new ImageButton(host.getContext());
                 button.setImageResource(chip.iconResId);
-                button.setBackgroundResource(R.drawable.lolib_bg_function_chip);
+                button.setBackgroundResource(isCurrentParagraphAlignment(chip.id)
+                        ? R.drawable.lolib_bg_function_chip_selected
+                        : R.drawable.lolib_bg_function_chip);
                 button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
                 button.setPadding(host.dpToPx(10), host.dpToPx(10), host.dpToPx(10), host.dpToPx(10));
                 button.setContentDescription(chip.label);
@@ -628,8 +631,8 @@ public class FunctionPanelController {
     }
 
     private void syncCurrentFormatting() {
-        host.fetchCurrentFormatting((styleName, fontName, fontSizePt) -> {
-            applyCurrentFormatting(styleName, fontName, fontSizePt);
+        host.fetchCurrentFormatting((styleName, fontName, fontSizePt, paragraphAlignment) -> {
+            applyCurrentFormatting(styleName, fontName, fontSizePt, paragraphAlignment);
             if (dialog != null && dialog.isShowing() && selectedTabIndex == 0) {
                 renderTabContent(tabs.get(selectedTabIndex));
                 expandSheet();
@@ -637,9 +640,13 @@ public class FunctionPanelController {
         });
     }
 
-    private void applyCurrentFormatting(String styleName, String fontName, String fontSizePt) {
+    private void applyCurrentFormatting(String styleName, String fontName, String fontSizePt,
+            String paragraphAlignment) {
         if (styleName != null && !styleName.trim().isEmpty()) {
             currentStyleName = styleName.trim();
+        }
+        if (paragraphAlignment != null && !paragraphAlignment.trim().isEmpty()) {
+            currentParagraphAlignment = paragraphAlignment.trim();
         }
         if (fontName != null && !fontName.trim().isEmpty()) {
             pickerValues.put("font_name", fontName.trim());
@@ -650,7 +657,15 @@ public class FunctionPanelController {
         }
         Log.i(TAG, "current_format style=" + currentStyleName
                 + " font=" + pickerValues.get("font_name")
-                + " size=" + pickerValues.get("font_size"));
+                + " size=" + pickerValues.get("font_size")
+                + " align=" + currentParagraphAlignment);
+    }
+
+    private boolean isCurrentParagraphAlignment(String itemId) {
+        if (currentParagraphAlignment == null || currentParagraphAlignment.isEmpty()) {
+            return false;
+        }
+        return currentParagraphAlignment.equals(itemId);
     }
 
     private String displayFontSize(String fontSizePt) {
