@@ -105,6 +105,8 @@ public class BottomToolbarController {
 
         void showNativeAiPanel();
 
+        void showNativeAiOperationSheet();
+
         void toastTodo(String text);
 
         void focusDocumentAndShowIme();
@@ -153,7 +155,7 @@ public class BottomToolbarController {
         });
         bindToolbarClick(R.id.toolbar_item_ai_feature, v -> {
             hideQuickActionPanel();
-            host.toastTodo("AI功能后续逐步接入。");
+            host.showNativeAiOperationSheet();
         });
         bindToolbarClick(R.id.toolbar_item_keyboard, v -> {
             hideQuickActionPanel();

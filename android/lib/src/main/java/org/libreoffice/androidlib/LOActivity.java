@@ -98,6 +98,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import androidx.activity.OnBackPressedCallback;
@@ -267,6 +268,10 @@ public class LOActivity extends AppCompatActivity {
     private boolean aiFabDragging = false;
     private boolean aiFabDragged = false;
     private float aiFabDragOffsetX = 0f;
+    private BottomSheetDialog aiOperationSheet;
+    private View aiOperationSheetPanel;
+    private TextView aiOpSelectionHint;
+    private String aiOpPendingSelection = "";
     private float aiFabDragOffsetY = 0f;
     private boolean pendingAutoOpenAiPanel = false;
     private boolean pendingAutoGenerateAiContent = false;
@@ -2020,6 +2025,11 @@ public class LOActivity extends AppCompatActivity {
                         messages.put(historyMessages.getJSONObject(i));
                     }
                 }
+            } else if (AiChatCoordinator.isOperateMode(taskType)) {
+                String selection = request.optString("selection", "");
+                messages = AiChatCoordinator.buildOperateMessages(taskType, selection);
+                Log.i(TAG, "ai_operate_mode requestId=" + requestId + " mode=" + taskType
+                        + " selectionChars=" + selection.length());
             } else {
                 messages.put(new JSONObject().put("role", "user").put("content", buildAiUserPrompt(request)));
             }
@@ -2045,6 +2055,9 @@ public class LOActivity extends AppCompatActivity {
 
                         @Override
                         public void onDone(String callbackRequestId, String fullText) throws JSONException {
+                            if (AiChatCoordinator.isOperateMode(taskType)) {
+                                onAiOperationDone(callbackRequestId, fullText);
+                            }
                             JSONObject donePayload = new JSONObject();
                             donePayload.put("requestId", callbackRequestId);
                             donePayload.put("fullText", fullText);
@@ -2053,6 +2066,10 @@ public class LOActivity extends AppCompatActivity {
 
                         @Override
                         public void onError(String callbackRequestId, String code, String message) {
+                            if (AiChatCoordinator.isOperateMode(taskType)) {
+                                cleanupOperationSheet();
+                                runOnUiThread(() -> toastTodo("AI 操作失败：" + message));
+                            }
                             dispatchAiError(callbackRequestId, code, message);
                         }
                     });
@@ -2695,6 +2712,11 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void showNativeAiPanel() {
                     LOActivity.this.showNativeAiPanel();
+                }
+
+                @Override
+                public void showNativeAiOperationSheet() {
+                    LOActivity.this.showNativeAiOperationSheet();
                 }
 
                 @Override
@@ -3890,6 +3912,208 @@ public class LOActivity extends AppCompatActivity {
         });
     }
 
+    private void showNativeAiOperationSheet() {
+        if (isFinishing()) {
+            return;
+        }
+        if (aiOperationSheet != null && aiOperationSheet.isShowing()) {
+            return;
+        }
+        View panel = getLayoutInflater().inflate(R.layout.lolib_sheet_ai_operations, null);
+        aiOperationSheetPanel = panel;
+        View closeButton = panel.findViewById(R.id.ai_op_close);
+        aiOpSelectionHint = panel.findViewById(R.id.ai_op_selection_hint);
+        View cancelButton = panel.findViewById(R.id.ai_op_cancel);
+
+        // Bind operation buttons with their modes
+        bindAiOpButton(panel, R.id.ai_op_continue_write, AiChatCoordinator.MODE_CONTINUE);
+        bindAiOpButton(panel, R.id.ai_op_expand, AiChatCoordinator.MODE_EXPAND);
+        bindAiOpButton(panel, R.id.ai_op_polish, AiChatCoordinator.MODE_POLISH);
+        bindAiOpButton(panel, R.id.ai_op_summarize, AiChatCoordinator.MODE_SUMMARIZE);
+        bindAiOpButton(panel, R.id.ai_op_condense, AiChatCoordinator.MODE_CONDENSE);
+        bindAiOpButton(panel, R.id.ai_op_rewrite, AiChatCoordinator.MODE_REWRITE);
+        bindAiOpButton(panel, R.id.ai_op_translate, AiChatCoordinator.MODE_TRANSLATE);
+
+        if (cancelButton != null) {
+            cancelButton.setOnClickListener(v -> cancelAiOperation());
+        }
+
+        if (closeButton != null) {
+            closeButton.setOnClickListener(v -> {
+                if (aiOperationSheet != null) {
+                    aiOperationSheet.dismiss();
+                }
+            });
+        }
+
+        aiOperationSheet = new BottomSheetDialog(this);
+        aiOperationSheet.setContentView(panel);
+        aiOperationSheet.setOnDismissListener(dialog -> {
+            aiOperationSheet = null;
+            aiOperationSheetPanel = null;
+            aiOpSelectionHint = null;
+            aiOpPendingSelection = "";
+        });
+
+        // Apply same configuration as AI panel
+        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        aiPanelController.configureBottomSheet(aiOperationSheet,
+                screenHeight, screenWidth,
+                getResources().getConfiguration().orientation);
+
+        aiOperationSheet.show();
+
+        // Read selection from JS and update hint
+        getSelectedTextFromJs(selection -> {
+            aiOpPendingSelection = selection;
+            runOnUiThread(() -> {
+                if (aiOpSelectionHint != null) {
+                    if (selection.isEmpty()) {
+                        aiOpSelectionHint.setText("请先在文档中选择文本");
+                        aiOpSelectionHint.setTextColor(Color.parseColor("#E53935"));
+                        setAiOpButtonsEnabled(panel, false);
+                    } else {
+                        aiOpSelectionHint.setText("已选中 " + selection.length() + " 字");
+                        aiOpSelectionHint.setTextColor(Color.parseColor("#43A047"));
+                        setAiOpButtonsEnabled(panel, true);
+                    }
+                }
+            });
+        });
+    }
+
+    private void bindAiOpButton(View panel, int viewId, String mode) {
+        View button = panel.findViewById(viewId);
+        if (button != null) {
+            button.setOnClickListener(v -> {
+                if (aiOpPendingSelection == null || aiOpPendingSelection.isEmpty()) {
+                    return;
+                }
+                // Show loading bar
+                View loadingBar = panel.findViewById(R.id.ai_op_loading_bar);
+                if (loadingBar != null) {
+                    loadingBar.setVisibility(View.VISIBLE);
+                }
+                // Disable all buttons during request
+                setAiOpButtonsEnabled(panel, false);
+                runAiOperation(mode);
+            });
+        }
+    }
+
+    private void setAiOpButtonsEnabled(View panel, boolean enabled) {
+        int[] buttonIds = {
+                R.id.ai_op_continue_write, R.id.ai_op_expand, R.id.ai_op_polish,
+                R.id.ai_op_summarize, R.id.ai_op_condense, R.id.ai_op_rewrite,
+                R.id.ai_op_translate
+        };
+        for (int id : buttonIds) {
+            View button = panel.findViewById(id);
+            if (button != null) {
+                button.setEnabled(enabled);
+                button.setAlpha(enabled ? 1.0f : 0.4f);
+            }
+        }
+    }
+
+    private void runAiOperation(String mode) {
+        String selection = aiOpPendingSelection;
+        if (selection == null || selection.trim().isEmpty()) {
+            return;
+        }
+        try {
+            JSONObject context = new JSONObject();
+            context.put("prompt", "");
+            context.put("question", "");
+            context.put("source", "android-operation-sheet");
+            context.put("selection", selection);
+
+            JSONObject request = new JSONObject();
+            String requestId = "op-" + UUID.randomUUID().toString();
+            request.put("requestId", requestId);
+            request.put("taskType", mode);
+            request.put("selection", selection);
+            request.put("context", context);
+            request.put("modelMode", "base");
+            request.put("history", new JSONArray());
+
+            aiActiveRequestId = requestId;
+            aiStreamingRequestId = requestId;
+            aiRequestModeById.put(requestId, mode);
+            aiTextByRequestId.put(requestId, new StringBuilder());
+            if (aiOutputText != null) {
+                aiOutputText.setText("");
+            }
+
+            Log.i(TAG, "ai_operation_request requestId=" + requestId
+                    + " mode=" + mode
+                    + " selectionChars=" + selection.length());
+
+            startAiRequestSession(request, -1);
+        } catch (JSONException e) {
+            dispatchAiError("", "invalid_payload", "Failed to build ai operation request");
+            Log.e(TAG, "Failed to build ai operation request", e);
+            cleanupOperationSheet();
+        }
+    }
+
+    private void cleanupOperationSheet() {
+        runOnUiThread(() -> {
+            if (aiOperationSheet != null && aiOperationSheet.isShowing()) {
+                aiOperationSheet.dismiss();
+            }
+        });
+    }
+
+    private void cancelAiOperation() {
+        if (!aiActiveRequestId.isEmpty()) {
+            cancelAiRequest(aiActiveRequestId);
+            aiRequestModeById.remove(aiActiveRequestId);
+        }
+        cleanupOperationSheet();
+        runOnUiThread(() -> toastTodo("AI 操作已取消"));
+    }
+
+    private void getSelectedTextFromJs(final Consumer<String> callback) {
+        if (mWebView == null) {
+            callback.accept("");
+            return;
+        }
+        injectAiBridgeIfNeeded();
+        runOnUiThread(() -> {
+            if (mWebView != null) {
+                mWebView.evaluateJavascript("window.__coolAiBridge.getSelectedText()", value -> {
+                    String text = "";
+                    if (value != null && !"null".equals(value)) {
+                        try {
+                            text = new JSONObject("{\"v\":" + value + "}").optString("v", "");
+                        } catch (JSONException e) {
+                            text = "";
+                        }
+                    }
+                    callback.accept(text);
+                });
+            } else {
+                callback.accept("");
+            }
+        });
+    }
+
+    private void onAiOperationDone(String requestId, String fullText) {
+        Log.i(TAG, "ai_operation_done requestId=" + requestId + " textChars=" + fullText.length());
+        cleanupOperationSheet();
+        if (fullText == null || fullText.trim().isEmpty()) {
+            runOnUiThread(() -> toastTodo("AI 未返回有效内容"));
+            return;
+        }
+        final byte[] bytes = fullText.getBytes(StandardCharsets.UTF_8);
+        runOnUiThread(() -> {
+            paste("text/plain;charset=utf-8", bytes);
+            toastTodo("AI 操作完成");
+        });
+    }
+
     private void maybeAutoOpenAiPanelAfterLoad() {
         if (!pendingAutoOpenAiPanel || pendingAutoGenerateAiContent) {
             return;
@@ -4530,6 +4754,8 @@ public class LOActivity extends AppCompatActivity {
                 "},accept:function(requestId,text){" +
                 "if(!requestId||!text){return;}" +
                 "window.postMobileMessage('ai.accept '+JSON.stringify({requestId:requestId,text:text}));" +
+                "},getSelectedText:function(){" +
+                "try{return (window.app&&window.app.map&&window.app.map._docLayer&&typeof window.app.map._docLayer._selectedTextContent==='string')?window.app.map._docLayer._selectedTextContent:'';}catch(e){return '';}" +
                 "}};" +
                 "window.__coolAiBridge=bridge;" +
                 "})();";
