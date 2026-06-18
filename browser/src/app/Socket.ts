@@ -228,6 +228,14 @@ class Socket {
 			TileManager.refreshTilesInBackground();
 		}
 		this._map.fire('statusindicator', { statusType: 'reconnected' });
+
+		// Re-apply dark mode to core after reconnect — matches _onStatusMsg path.
+		// Without this, tiles re-render with wrong colors (e.g. white text on white bg).
+		const darkTheme = window.prefs.getBoolean('darkTheme');
+		this._map.uiManager.activateDarkModeInCore(darkTheme);
+		this._map.uiManager.applyInvert();
+		this._map.uiManager.setCanvasColorAfterModeChange();
+
 		this._map.fire('docloaded', { status: true });
 	}
 
