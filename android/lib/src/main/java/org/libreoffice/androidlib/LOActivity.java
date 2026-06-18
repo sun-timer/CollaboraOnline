@@ -253,6 +253,8 @@ public class LOActivity extends AppCompatActivity {
     private View aiRunButton;
     private Button aiCancelButton;
     private Button aiAcceptButton;
+    private View aiProgressBar;
+    private TextView aiProgressLabel;
     private ImageButton aiCloseButton;
     private TextView aiTabDocQa;
     private TextView aiTabChat;
@@ -1756,9 +1758,7 @@ public class LOActivity extends AppCompatActivity {
                 }
                 if (!enable && changed) {
                     triggerSelectionStateSync("reconnect_done", mIsEditModeActive);
-                    if (mIsEditModeActive) {
-                        recoverVisibleTilesAfterEditMode("reconnect_done_editmode");
-                    }
+                    recoverVisibleTilesAfterEditMode("reconnect_done_editmode");
                 }
                 return false;
             }
@@ -2033,6 +2033,7 @@ public class LOActivity extends AppCompatActivity {
             } else {
                 messages.put(new JSONObject().put("role", "user").put("content", buildAiUserPrompt(request)));
             }
+            Log.i(TAG, "ai_execute_start requestId=" + requestId + " endpoint=" + endpoint + " model=" + model);
             aiRequestManager.execute(requestId, endpoint, apiKey, model, messages, session,
                     new AiRequestManager.Callback() {
                         @Override
@@ -2066,6 +2067,8 @@ public class LOActivity extends AppCompatActivity {
 
                         @Override
                         public void onError(String callbackRequestId, String code, String message) {
+                            String safeMsg = message == null ? "" : (message.length() > 120 ? message.substring(0, 120) + "..." : message);
+                            Log.i(TAG, "ai_operation_error requestId=" + callbackRequestId + " code=" + code + " msg=" + safeMsg);
                             if (AiChatCoordinator.isOperateMode(taskType)) {
                                 cleanupOperationSheet();
                                 runOnUiThread(() -> toastTodo("AI 操作失败：" + message));
@@ -3816,6 +3819,8 @@ public class LOActivity extends AppCompatActivity {
         aiRunButton = panel.findViewById(R.id.ai_run);
         aiCancelButton = panel.findViewById(R.id.ai_cancel);
         aiAcceptButton = panel.findViewById(R.id.ai_accept);
+        aiProgressBar = panel.findViewById(R.id.ai_progress_bar);
+        aiProgressLabel = panel.findViewById(R.id.ai_progress_label);
         aiCloseButton = panel.findViewById(R.id.ai_close);
         aiTabDocQa = panel.findViewById(R.id.ai_tab_doc_qa);
         aiTabChat = panel.findViewById(R.id.ai_tab_chat);
@@ -3879,6 +3884,8 @@ public class LOActivity extends AppCompatActivity {
             aiRunButton = null;
             aiCancelButton = null;
             aiAcceptButton = null;
+            aiProgressBar = null;
+            aiProgressLabel = null;
             aiCloseButton = null;
             aiTabDocQa = null;
             aiTabChat = null;
@@ -4081,23 +4088,37 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         injectAiBridgeIfNeeded();
-        runOnUiThread(() -> {
-            if (mWebView != null) {
-                mWebView.evaluateJavascript("window.__coolAiBridge.getSelectedText()", value -> {
-                    String text = "";
+
+        // Primary: JNI direct call to LOK getTextSelection — synchronous, no clipboard, no polling
+        new Thread(() -> {
+            String text = getTextSelection("text/plain;charset=utf-8");
+            if (text != null && !text.trim().isEmpty()) {
+                Log.i(TAG, "ai_op_selection_native_lok chars=" + text.length());
+                runOnUiThread(() -> callback.accept(text));
+                return;
+            }
+            // Fallback: JS bridge (preview mode _selectedTextContent / edit mode _selectionPlainTextContent)
+            if (mWebView == null) {
+                runOnUiThread(() -> callback.accept(""));
+                return;
+            }
+            mWebView.evaluateJavascript(
+                "window.__coolAiBridge?window.__coolAiBridge.getSelectedText():''",
+                value -> {
+                    String jsText = "";
                     if (value != null && !"null".equals(value)) {
                         try {
-                            text = new JSONObject("{\"v\":" + value + "}").optString("v", "");
+                            jsText = new JSONObject("{\"v\":" + value + "}").optString("v", "");
                         } catch (JSONException e) {
-                            text = "";
+                            jsText = "";
                         }
                     }
-                    callback.accept(text);
+                    if (!jsText.isEmpty()) {
+                        Log.i(TAG, "ai_op_selection_js_bridge chars=" + jsText.length());
+                    }
+                    callback.accept(jsText);
                 });
-            } else {
-                callback.accept("");
-            }
-        });
+        }, "cool-ai-op-selection").start();
     }
 
     private void onAiOperationDone(String requestId, String fullText) {
@@ -4132,9 +4153,12 @@ public class LOActivity extends AppCompatActivity {
 
     private void startAutoGenerateForNewDocument() {
         String prompt = pendingAutoOpenAiPrompt == null || pendingAutoOpenAiPrompt.isEmpty()
-                ? "Generate an outline first, then expand it into complete document content."
+                ? "请先生成文档大纲（章节标题），再基于大纲输出完整正文，风格专业、结构清晰。"
                 : pendingAutoOpenAiPrompt;
-        startNativeAiRequest("", prompt, true, "rewrite", false);
+        Log.i(TAG, "ai_auto_generate_start promptChars=" + prompt.length()
+                + " promptPreview=" + (prompt.length() > 80 ? prompt.substring(0, 80) + "..." : prompt));
+        showNativeAiPanel();
+        startNativeAiRequest("", prompt, true, "chat", false);
     }
 
     private void runAiFromNativePanel() {
@@ -4512,17 +4536,17 @@ public class LOActivity extends AppCompatActivity {
 
     private String sanitizeAiTextPayload(String requestId, Object raw, String stage) {
         if (raw == null || raw == JSONObject.NULL) {
-            Log.i(TAG, "ai_delta_null_filtered requestId=" + requestId + " stage=" + stage);
+            Log.d(TAG, "ai_delta_null_filtered requestId=" + requestId + " stage=" + stage);
             return "";
         }
         String text = raw instanceof String ? (String) raw : String.valueOf(raw);
         if (text == null) {
-            Log.i(TAG, "ai_delta_null_filtered requestId=" + requestId + " stage=" + stage);
+            Log.d(TAG, "ai_delta_null_filtered requestId=" + requestId + " stage=" + stage);
             return "";
         }
         String trimmed = text.trim();
         if ("null".equalsIgnoreCase(trimmed)) {
-            Log.i(TAG, "ai_delta_null_filtered requestId=" + requestId + " stage=" + stage);
+            Log.d(TAG, "ai_delta_null_filtered requestId=" + requestId + " stage=" + stage);
             return "";
         }
         return "stream_delta".equals(stage) || "native_stream_event".equals(stage) ? text : trimmed;
@@ -4687,8 +4711,32 @@ public class LOActivity extends AppCompatActivity {
             aiCancelButton.setAlpha(busy ? 1.0f : 0.65f);
             aiAcceptButton.setAlpha(busy ? 0.65f : 1.0f);
 
-            String finalMessage = (message == null || message.isEmpty()) ? state : message;
-            aiStatusText.setText("State: " + state + " - " + finalMessage);
+            // Progress bar: visible only while generating
+            if (aiProgressBar != null) {
+                aiProgressBar.setVisibility(busy ? View.VISIBLE : View.GONE);
+            }
+            if (aiProgressLabel != null) {
+                aiProgressLabel.setText(AI_STATE_LOADING.equals(state) ? "正在连接..." : "AI 正在生成...");
+            }
+
+            // Human-friendly status text
+            String friendlyText;
+            if (AI_STATE_LOADING.equals(state)) {
+                friendlyText = "正在连接...";
+            } else if (AI_STATE_STREAMING.equals(state)) {
+                friendlyText = "AI 正在生成...";
+            } else if (AI_STATE_READY.equals(state)) {
+                friendlyText = "生成完成";
+            } else if (AI_STATE_ERROR.equals(state)) {
+                friendlyText = "生成失败";
+            } else if (AI_STATE_UNCONFIGURED.equals(state)) {
+                friendlyText = "请先配置 AI 模型";
+            } else if (AI_STATE_CANCELLED.equals(state)) {
+                friendlyText = "已取消";
+            } else {
+                friendlyText = message == null || message.isEmpty() ? state : message;
+            }
+            aiStatusText.setText(friendlyText);
             if (AI_STATE_ERROR.equals(state) || AI_STATE_UNCONFIGURED.equals(state)) {
                 aiStatusText.setTextColor(Color.parseColor("#B3261E"));
             } else if (AI_STATE_STREAMING.equals(state) || AI_STATE_LOADING.equals(state)) {
@@ -4755,7 +4803,18 @@ public class LOActivity extends AppCompatActivity {
                 "if(!requestId||!text){return;}" +
                 "window.postMobileMessage('ai.accept '+JSON.stringify({requestId:requestId,text:text}));" +
                 "},getSelectedText:function(){" +
-                "try{return (window.app&&window.app.map&&window.app.map._docLayer&&typeof window.app.map._docLayer._selectedTextContent==='string')?window.app.map._docLayer._selectedTextContent:'';}catch(e){return '';}" +
+                "try{" +
+                "var docLayer=window.app&&window.app.map&&window.app.map._docLayer;" +
+                "if(docLayer&&typeof docLayer._selectedTextContent==='string'&&docLayer._selectedTextContent)return docLayer._selectedTextContent;" +
+                "var clip=window.app&&window.app.map&&window.app.map._clip;" +
+                "if(clip&&typeof clip._selectionPlainTextContent==='string'&&clip._selectionPlainTextContent)return clip._selectionPlainTextContent;" +
+                // trigger gettextselection in edit mode where clipboardApiAvailable suppresses it
+                "if(clip&&!clip._selectionPlainTextContent&&window.app&&window.app.socket){" +
+                "try{window.app.socket.sendMessage('gettextselection mimetype=text/plain;charset=utf-8');}catch(e2){}}" +
+                "var sel=window.getSelection();" +
+                "if(sel&&sel.toString&&sel.toString().trim())return sel.toString().trim();" +
+                "return '';" +
+                "}catch(e){return '';}" +
                 "}};" +
                 "window.__coolAiBridge=bridge;" +
                 "})();";
@@ -5002,6 +5061,8 @@ public class LOActivity extends AppCompatActivity {
     public native void paste(String mimeType, byte[] data);
 
     public native void postUnoCommand(String command, String arguments, boolean bNotifyWhenFinished);
+
+    public native String getTextSelection(String mimeType);
 
     /// Returns a magic that specifies this application - and this document.
     private final String getClipboardMagic() {

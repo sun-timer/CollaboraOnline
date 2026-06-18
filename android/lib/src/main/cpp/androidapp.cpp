@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <thread>
+#include <vector>
 
 #include <FakeSocket.hpp>
 #include <Kit.hpp>
@@ -342,6 +343,20 @@ static jstring tojstringAndFree(JNIEnv *env, char *str)
     return ret;
 }
 
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_libreoffice_androidlib_LOActivity_getTextSelection(JNIEnv* pEnv, jobject, jstring mimeType)
+{
+    if (!getLOKDocumentForAndroidOnly())
+        return pEnv->NewStringUTF("");
+
+    const char* pMimeType = pEnv->GetStringUTFChars(mimeType, nullptr);
+    char* text = getLOKDocumentForAndroidOnly()->getTextSelection(pMimeType, nullptr);
+    pEnv->ReleaseStringUTFChars(mimeType, pMimeType);
+
+    return tojstringAndFree(pEnv, text);
+}
+
 const char* copyJavaString(JNIEnv* pEnv, jstring aJavaString)
 {
     const char* pTemp = pEnv->GetStringUTFChars(aJavaString, nullptr);
@@ -471,9 +486,9 @@ Java_org_libreoffice_androidlib_LOActivity_setClipboardContent(JNIEnv *env, jobj
     if (nEntrySize == 0)
         return;
 
-    size_t pSizes[nEntrySize];
-    const char* pMimeTypes[nEntrySize];
-    const char* pStreams[nEntrySize];
+    std::vector<size_t> pSizes(nEntrySize);
+    std::vector<const char*> pMimeTypes(nEntrySize);
+    std::vector<const char*> pStreams(nEntrySize);
 
     for (size_t nEntryIndex = 0; nEntryIndex < nEntrySize; ++nEntryIndex)
     {
@@ -492,7 +507,7 @@ Java_org_libreoffice_androidlib_LOActivity_setClipboardContent(JNIEnv *env, jobj
         pStreams[nEntryIndex] = dataArray;
     }
 
-    getLOKDocumentForAndroidOnly()->setClipboard(nEntrySize, pMimeTypes, pSizes, pStreams);
+    getLOKDocumentForAndroidOnly()->setClipboard(nEntrySize, pMimeTypes.data(), pSizes.data(), pStreams.data());
 }
 
 extern "C"
