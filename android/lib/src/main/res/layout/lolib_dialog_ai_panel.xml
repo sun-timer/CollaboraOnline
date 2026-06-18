@@ -146,6 +146,33 @@
         android:layout_height="1dp"
         android:visibility="gone" />
 
+    <!-- AI Generating progress indicator (hidden by default) -->
+    <LinearLayout
+        android:id="@+id/ai_progress_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <ProgressBar
+            android:id="@+id/ai_progress_spinner"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:indeterminate="true"
+            android:indeterminateTint="#1E88E5" />
+
+        <TextView
+            android:id="@+id/ai_progress_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="AI 正在生成..."
+            android:textColor="#5F6368"
+            android:textSize="13sp" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/ai_status"
         android:layout_width="match_parent"
