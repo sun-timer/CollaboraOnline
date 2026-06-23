@@ -9,20 +9,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Static file serving for browser UI resources.
- * Classes: FileServerRequestHandler
- */
-
 #pragma once
 
-#include <common/ConfigUtil.hpp>
-#include <common/FileUtil.hpp>
-#include <net/HttpRequest.hpp>
-#include <net/Socket.hpp>
-#include <wsd/COOLWSD.hpp>
-
+#include <COOLWSD.hpp>
+#include <ConfigUtil.hpp>
+#include <HttpRequest.hpp>
 #include <Poco/Net/PartHandler.h>
+#include <Socket.hpp>
 
 #include <string>
 #include <unordered_map>
@@ -111,13 +104,13 @@ public:
 
         bool isValid() const { return !_wopiSrc.empty() && !_accessToken.empty(); }
 
-        const std::string& wopiSrc() const { return _wopiSrc; }
-        const std::string& accessToken() const { return _accessToken; }
-        const std::string& noAuthHeader() const { return _noAuthHeader; }
-        const std::string& permission() const { return _permission; }
+        const std::string wopiSrc() const { return _wopiSrc; }
+        const std::string accessToken() const { return _accessToken; }
+        const std::string noAuthHeader() const { return _noAuthHeader; }
+        const std::string permission() const { return _permission; }
         // only exists in debugging mode, so built-in wopi debuging server
         // can support multiple 'shared' configs depending on configid=something
-        const std::string& wopiConfigId() const { return _wopiConfigId; }
+        const std::string wopiConfigId() const { return _wopiConfigId; }
 
     private:
         std::string _wopiSrc;
@@ -159,8 +152,6 @@ private:
     static void fetchSettingFile(const Poco::Net::HTTPRequest& request,
                                    std::istream& message,
                                    const std::shared_ptr<StreamSocket>& socket);
-    static void fetchModels(const Poco::Net::HTTPRequest& request, std::istream& message,
-                            const std::shared_ptr<StreamSocket>& socket);
 
     static void deleteWopiSettingConfigs(const Poco::Net::HTTPRequest& request,
                                          std::istream& message,
@@ -213,7 +204,7 @@ public:
                        const std::shared_ptr<StreamSocket>& socket,
                        ResourceAccessDetails& accessDetails);
 
-    void readDirToHash(const std::string& basePath, const std::string& path);
+    void readDirToHash(const std::string &basePath, const std::string &path, const std::string &prefix = std::string());
 
     const std::string *getCompressedFile(const std::string &path);
 
@@ -223,27 +214,25 @@ public:
     static void hstsHeaders([[maybe_unused]] http::Response& response)
     {
         // HSTS hardening. Disabled in debug builds.
-        if constexpr (!Util::isDebugEnabled())
+#if !ENABLE_DEBUG
+        if (ConfigUtil::isSslEnabled() || ConfigUtil::isSSLTermination())
         {
-            if (ConfigUtil::isSslEnabled() || ConfigUtil::isSSLTermination())
+            if (ConfigUtil::getConfigValue<bool>("ssl.sts.enabled", false))
             {
-                if (ConfigUtil::getConfigValue<bool>("ssl.sts.enabled", false))
-                {
-                    // Only for release, which doesn't support tests. No CONFIG_STATIC, therefore.
-                    static const auto maxAge = ConfigUtil::getConfigValue<int>(
-                        "ssl.sts.max_age", 31536000); // Default 1 year.
-                    response.add("Strict-Transport-Security",
-                                 "max-age=" + std::to_string(maxAge) + "; includeSubDomains");
-                }
+                // Only for release, which doesn't support tests. No CONFIG_STATIC, therefore.
+                static const auto maxAge =
+                    ConfigUtil::getConfigValue<int>("ssl.sts.max_age", 31536000); // Default 1 year.
+                response.add("Strict-Transport-Security",
+                             "max-age=" + std::to_string(maxAge) + "; includeSubDomains");
             }
         }
+#endif
     }
 
     void dumpState(std::ostream& os);
 
 private:
-    using FileHashMap_t = std::unordered_map<std::string, std::pair<std::string, std::string>>;
-    FileHashMap_t FileHash;
+    std::map<std::string, std::pair<std::string, std::string>> FileHash;
     static void sendError(http::StatusCode errorCode, const std::string& requestPath,
                           const std::shared_ptr<StreamSocket>& socket,
                           const std::string& shortMessage, const std::string& longMessage,
@@ -255,17 +244,11 @@ class FilePartHandler : public Poco::Net::PartHandler
 public:
     void handlePart(const Poco::Net::MessageHeader& header, std::istream& stream) override;
     const std::string& getFileName() const { return _fileName; }
-    const std::string& getFilePath() const { return _filePath; }
-    /// Take shared ownership of the temp dir (and file within it).
-    /// Caller keeps this alive until the file is no longer needed.
-    std::shared_ptr<FileUtil::OwnedFile> getFileOwnership() const { return _fileDir; }
+    const std::string& getFileContent() const { return _fileContent; }
 
 private:
     std::string _fileName;
-    /// Path to temp file containing the uploaded content.
-    std::string _filePath;
-    /// Temp directory holding the file, removed recursively on destruction.
-    std::shared_ptr<FileUtil::OwnedFile> _fileDir;
+    std::string _fileContent;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

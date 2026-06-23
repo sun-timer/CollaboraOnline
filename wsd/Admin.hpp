@@ -9,14 +9,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Administrative interface for monitoring and managing server.
- * Classes: AdminSocketHandler, MonitorSocketHandler, Admin
- */
-
 #pragma once
 
-#include <AdminModel.hpp>
+#include "AdminModel.hpp"
 
 #include <net/WebSocketHandler.hpp>
 #include <common/ConfigUtil.hpp>
@@ -28,7 +23,7 @@ class AdminSocketHandler : public WebSocketHandler
 {
 public:
     /// Client connection to remote admin socket
-    explicit AdminSocketHandler(Admin* adminManager);
+    AdminSocketHandler(Admin* adminManager);
 
     /// Connection from remote admin socket
     AdminSocketHandler(Admin* adminManager,
@@ -253,7 +248,7 @@ private:
         std::chrono::steady_clock::time_point getWhen() const { return _when; }
 
         void setUri(const std::string& uri) { _uri = uri; }
-        const std::string& getUri() const { return _uri; }
+        std::string getUri() const { return _uri; }
 
     private:
         std::chrono::steady_clock::time_point _when;

@@ -8,39 +8,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-
 /*
  * A very simple, single threaded helper to efficiently pre-init and
  * spawn lots of kits as children.
  */
 
 #include <config.h>
-
-#include <common/Common.hpp>
-#include <common/ConfigUtil.hpp>
-#include <common/FileUtil.hpp>
-#include <common/JailUtil.hpp>
-#include <common/Log.hpp>
-#include <common/NumUtil.hpp>
-#include <common/Seccomp.hpp>
-#include <common/SigUtil.hpp>
-#include <common/Simd.hpp>
-#include <common/Unit.hpp>
-#include <common/Uri.hpp>
-#include <common/Util.hpp>
-#include <common/Watchdog.hpp>
-#include <common/security.h>
-#include <kit/DeltaSimd.h>
-#include <kit/Kit.hpp>
-#include <kit/SetupKitEnvironment.hpp>
-#include <net/ServerSocket.hpp>
-#include <net/WebSocketHandler.hpp>
-
-#define KIT_USE_UNSTABLE_API
-#include <COKit/COKit.hxx>
-
-#include <Poco/Path.h>
-#include <Poco/URI.h>
 
 #if HAVE_LIBCAP
 #include <sys/capability.h>
@@ -50,13 +23,35 @@
 #include <sysexits.h>
 
 #include <atomic>
-#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <map>
 #include <thread>
+#include <chrono>
 #include <utility>
+
+#include <Poco/Path.h>
+#include <Poco/URI.h>
+
+#include <Common.hpp>
+#include "Kit.hpp"
+#include "SetupKitEnvironment.hpp"
+#include <Log.hpp>
+#include <Simd.hpp>
+#include <Unit.hpp>
+#include <Util.hpp>
+#include <WebSocketHandler.hpp>
+
+#include <common/FileUtil.hpp>
+#include <common/JailUtil.hpp>
+#include <common/Seccomp.hpp>
+#include <common/SigUtil.hpp>
+#include <common/security.h>
+#include <common/ConfigUtil.hpp>
+#include <common/Uri.hpp>
+#include <common/Watchdog.hpp>
+#include <kit/DeltaSimd.h>
 
 namespace
 {
@@ -166,7 +161,7 @@ protected:
         }
         else if (tokens.size() == 2 && tokens.equals(0, "spawn"))
         {
-            const int count = NumUtil::stoi(tokens[1]);
+            const int count = std::stoi(tokens[1]);
             if (count > 0)
             {
                 LOG_INF("Setting to spawn " << count << " child" << (count == 1 ? "" : "ren")
@@ -351,7 +346,6 @@ void cleanupChildren(const std::string& childRoot)
                 }
                 else if (status == SIGKILL)
                 {
-#if !defined(MACOS)
                     // TODO differentiate with docker
                     if (info.si_code == SI_KERNEL)
                     {
@@ -360,7 +354,6 @@ void cleanupChildren(const std::string& childRoot)
                                          << status);
                     }
                     else
-#endif
                     {
                         ++killedCount;
                         LOG_WRN("Child " << exitedChildPid << " was killed, with status "
@@ -422,7 +415,7 @@ void cleanupChildren(const std::string& childRoot)
             stream << "segfaultcount=" << segFaultCount << ' ' << "killedcount=" << killedCount
                     << ' ' << "oomkilledcount=" << oomKilledCount << '\n';
 
-            const int ret = WSHandler->sendTextMessage(stream.str());
+            int ret = WSHandler->sendMessage(stream.str());
             if (ret == -1)
             {
                 LOG_WRN("Could not send 'segfaultcount' message through websocket");
@@ -491,7 +484,7 @@ int forkKit(const std::function<void()>& childFunc, const std::string& childProc
 
         // sort out thread local variables to get logging right from
         // as early as possible.
-        ProcUtil::setThreadName(childProcessName);
+        Util::setThreadName(childProcessName);
 
         // Close the pipe from coolwsd
         close(0);
@@ -528,7 +521,7 @@ int forkKit(const std::function<void()>& childFunc, const std::string& childProc
     return pid;
 }
 
-int createCOKit(const std::string& childRoot, const std::string& sysTemplate,
+int createLibreOfficeKit(const std::string& childRoot, const std::string& sysTemplate,
                          const std::string& loTemplate, const std::string& configId,
                          bool useMountNamespaces, bool queryVersion = false)
 {
@@ -536,11 +529,7 @@ int createCOKit(const std::string& childRoot, const std::string& sysTemplate,
     std::string jailId = Util::rng::getFilename(16);
 
     // Update the dynamic files as necessary.
-#if ENABLE_CHILDROOTS
     const bool sysTemplateIncomplete = !JailUtil::SysTemplate::updateDynamicFiles(sysTemplate);
-#else
-    const bool sysTemplateIncomplete = false;
-#endif
 
     // Used to label the spare kit instances
     static size_t spareKitId = 0;
@@ -553,11 +542,7 @@ int createCOKit(const std::string& childRoot, const std::string& sysTemplate,
     if (Util::isKitInProcess())
     {
         std::thread([childRoot, jailId = std::move(jailId), configId, sysTemplate,
-                     loTemplate, queryVersion
-#if ENABLE_CHILDROOTS
-                     , sysTemplateIncomplete
-#endif
-                    ] {
+                     loTemplate, queryVersion, sysTemplateIncomplete] {
             sleepForDebugger();
             lokit_main(childRoot, jailId, configId, sysTemplate, loTemplate, true,
                        true, false, queryVersion, DisplayVersion,
@@ -636,7 +621,7 @@ int createSubForKit(const std::string& subForKitIdent, const std::string& childR
         LOG_INF("SubForKit process is ready. Parent: " << parentPid);
 
         // launch first coolkit child of this subForKit
-        const pid_t forKitPid = createCOKit(childRoot, sysTemplate,
+        const pid_t forKitPid = createLibreOfficeKit(childRoot, sysTemplate,
                                                      loTemplate, ForKitIdent,
                                                      useMountNamespaces);
         if (forKitPid < 0)
@@ -698,7 +683,7 @@ void createSubForKits(const std::string& childRoot, const std::string& sysTempla
 
 } // namespace
 
-void forkCOKit(const std::string& childRoot,
+void forkLibreOfficeKit(const std::string& childRoot,
                         const std::string& sysTemplate,
                         const std::string& loTemplate,
                         bool useMountNamespaces)
@@ -714,7 +699,7 @@ void forkCOKit(const std::string& childRoot,
         const size_t retry = count * 2;
         for (size_t i = 0; ForkCounter > 0 && i < retry; ++i)
         {
-            if (ForkCounter-- <= 0 || createCOKit(childRoot, sysTemplate, loTemplate,
+            if (ForkCounter-- <= 0 || createLibreOfficeKit(childRoot, sysTemplate, loTemplate,
                                                            ForKitIdent, useMountNamespaces) < 0)
             {
                 LOG_ERR("Failed to create a kit process.");
@@ -921,7 +906,7 @@ int forkit_main(int argc, char** argv)
         else if (std::strstr(cmd, "--masterport=") == cmd)
         {
             eq = std::strchr(cmd, '=');
-            MasterLocation = UnxSocketPath(std::string(eq+1));
+            MasterLocation = std::string(eq+1);
         }
         else if (std::strstr(cmd, "--version") == cmd)
         {
@@ -1034,13 +1019,11 @@ int forkit_main(int argc, char** argv)
     if (Util::ThreadCounter().count() != 1)
         LOG_ERR("forkit has more than a single thread after pre-init" << Util::ThreadCounter().count());
 
-#if ENABLE_CHILDROOTS
     // Link the network and system files in sysTemplate, if possible.
     JailUtil::SysTemplate::setupDynamicFiles(sysTemplate);
 
     // Make dev/[u]random point to the writable devices in tmp/dev/.
     JailUtil::SysTemplate::setupRandomDeviceLinks(sysTemplate);
-#endif
 
     if (!Util::isKitInProcess())
     {
@@ -1050,14 +1033,14 @@ int forkit_main(int argc, char** argv)
         EnableExperimental = ConfigUtil::getBool("experimental_features", false);
     }
 
-    ProcUtil::setThreadName("forkit");
+    Util::setThreadName("forkit");
 
     LOG_INF("Preinit stage OK.");
 
     // We must have at least one child, more are created dynamically.
     // Ask this first child to send version information to master process and trace startup.
     ::setenv("COOL_TRACE_STARTUP", "1", 1);
-    const pid_t forKitPid = createCOKit(childRoot, sysTemplate, loTemplate,
+    const pid_t forKitPid = createLibreOfficeKit(childRoot, sysTemplate, loTemplate,
                                                  ForKitIdent, useMountNamespaces, true);
     if (forKitPid < 0)
     {
@@ -1079,7 +1062,7 @@ int forkit_main(int argc, char** argv)
     // that otherwise that choice is overwritten
     SigUtil::setUserSignals();
 
-    ForKitPoll.reset(new SocketPoll (ProcUtil::getThreadName()));
+    ForKitPoll.reset(new SocketPoll (Util::getThreadName()));
     ForKitPoll->runOnClientThread(); // We will do the polling on this thread.
 
     // Reap zombies when we get the signal
@@ -1118,7 +1101,7 @@ int forkit_main(int argc, char** argv)
             if (!Util::isKitInProcess() && !SigUtil::getTerminationFlag())
             {
                 // new kits are launched primarily after a 'spawn' message
-                forkCOKit(childRoot, sysTemplate, loTemplate, useMountNamespaces);
+                forkLibreOfficeKit(childRoot, sysTemplate, loTemplate, useMountNamespaces);
                 // new sub forkits are launched after an 'addforkit' message
                 createSubForKits(childRoot, sysTemplate, loTemplate, useMountNamespaces);
             }

@@ -9,11 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Main server application class and entry point.
- * Classes: COOLWSD
- */
-
 #pragma once
 
 #include <common/ConfigUtil.hpp>
@@ -106,9 +101,6 @@ public:
     static bool AnonymizeUserData;
     static bool CheckCoolUser;
     static bool CleanupOnly;
-#if ENABLE_DEBUG
-    static bool FindFreePort;
-#endif
     static bool IsProxyPrefixEnabled;
     static std::atomic<unsigned> NumConnections;
     static std::unique_ptr<TraceFileWriter> TraceDumper;
@@ -151,6 +143,12 @@ public:
     static std::mutex FetchUpdateMutex;
     static bool IsBindMountingEnabled;
     static std::mutex RemoteConfigMutex;
+#if MOBILEAPP
+#ifndef IOS
+    /// This is used to be able to wait until the lokit main thread has finished (and it is safe to load a new document).
+    static std::mutex lokit_main_mutex;
+#endif
+#endif
 
     /// For testing only [!]
     static int getClientPortNumber();

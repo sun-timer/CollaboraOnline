@@ -21,7 +21,7 @@ class Sidebar extends SidebarBase {
 
 	constructor(map: MapInterface) {
 		super(map, SidebarType.Sidebar);
-		this.isUserRequest = false;
+		this.isUserRequest = true;
 	}
 
 	onAdd(map: MapInterface) {
@@ -91,6 +91,7 @@ class Sidebar extends SidebarBase {
 
 	onSidebar(data: FireEvent) {
 		var sidebarData = data.data;
+		$(this.container).empty();
 
 		if (
 			sidebarData.action === 'close' ||
@@ -140,43 +141,17 @@ class Sidebar extends SidebarBase {
 				}
 
 				this.model.fullUpdate(sidebarData as JSDialogJSON);
-
-				const documentFragment = new DocumentFragment(); // do not modify dom yet
-				const tempContainer = window.L.DomUtil.create(
-					'div',
-					'',
-					documentFragment,
-				);
-
-				this.builder.build(tempContainer, [this.model.getSnapshot()], false);
+				this.builder.build(this.container, [this.model.getSnapshot()], false);
 
 				if (!this.isVisible()) {
 					this.showSidebar();
 
-					// on initial load of file do not focus automatically
-					if (!this.sidebarShownTheFirstTime) this.isUserRequest = true;
-				}
-
-				this.map.uiManager.setDocTypePref('ShowSidebar', true);
-
-				// cache - check happens in task and we will update value later in this function
-				const wasUserRequest = this.isUserRequest;
-
-				app.layoutingService.appendLayoutingTask(() => {
-					// now attach to the DOM built content
-					this.container.replaceChildren(tempContainer.firstChild);
-
 					// schedule focus after animation so it will not shift the browser page
-					if (wasUserRequest) {
+					if (this.isUserRequest) {
 						app.timerRegistry.setTimeout(
 							'sidebarstealfocus',
 							() => {
 								app.layoutingService.appendLayoutingTask(() => {
-									if (
-										this.map.dialog.hasOpenedDialog() ||
-										(this.map.jsdialog && this.map.jsdialog.hasDialogOpened())
-									)
-										return;
 									const focusables = JSDialog.GetFocusableElements(
 										this.container,
 									);
@@ -188,18 +163,19 @@ class Sidebar extends SidebarBase {
 							250,
 						); // see animation time in #sidebar-dock-wrapper.visible
 					}
+				}
 
-					if (this.sidebarShownTheFirstTime) {
-						app.serverConnectionService.onShowSidebar();
-						this.sidebarShownTheFirstTime = false;
-					}
-				});
+				this.map.uiManager.setDocTypePref('ShowSidebar', true);
 
-				this.isUserRequest = false;
+				if (this.sidebarShownTheFirstTime) {
+					app.serverConnectionService.onShowSidebar();
+					this.sidebarShownTheFirstTime = false;
+				}
 			} else {
 				this.closeSidebar();
-				this.isUserRequest = true;
 			}
+
+			this.isUserRequest = true;
 		}
 	}
 }

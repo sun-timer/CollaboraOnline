@@ -9,19 +9,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for stress testing document loading under heavy load.
- */
-
 #include <config.h>
 
 #include <Unit.hpp>
-#include <common/Util.hpp>
+#include <Util.hpp>
 #include <helpers.hpp>
 #include <WebSocketSession.hpp>
 #include <test/lokassert.hpp>
 
-#include <memory>
 #include <string>
 
 using namespace std::literals;
@@ -66,7 +61,9 @@ void UnitLoadTorture::loadTorture(const std::string& name, const std::string& do
     for (size_t i = 0; i < thread_count; ++i)
     {
         threads.emplace_back([&] {
-            const std::string id = std::to_string(ProcUtil::getThreadId());
+            std::ostringstream oss;
+            oss << std::hex << std::this_thread::get_id();
+            const std::string id = oss.str();
 
             TST_LOG(": #" << id << ", views: " << num_of_views << ", to load: " << num_to_load);
             try

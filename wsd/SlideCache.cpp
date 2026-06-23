@@ -9,11 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Implementation of slide cache management.
- * Classes: SlideCache
- */
-
 #include <config.h>
 
 #include "SlideCache.hpp"
@@ -64,9 +59,9 @@ SlideLayerCacheMap::find(const std::string& key) const
 }
 
 std::unordered_map<std::string, std::vector<std::shared_ptr<Message>>>::const_iterator
-SlideLayerCacheMap::end() const
+SlideLayerCacheMap::end()
 {
     return cache_map.end();
 }
 
-std::size_t SlideLayerCacheMap::size() const { return cache_map.size(); }
+std::size_t SlideLayerCacheMap::size() { return cache_map.size(); }

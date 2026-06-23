@@ -9,20 +9,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for WOPI file URL handling.
- */
-
 #include <config.h>
 
-#include <lokassert.hpp>
-
-#include <regex>
+#include "lokassert.hpp"
 
 #include <Poco/Net/HTTPRequest.h>
 
 #include <WopiTestServer.hpp>
-#include <common/Log.hpp>
+#include <Log.hpp>
 #include <Unit.hpp>
 #include <UnitHTTP.hpp>
 #include <helpers.hpp>
@@ -87,14 +81,14 @@ public:
                                                << " request: " << uriReq.toString());
 
         constexpr auto DefaultUrlFilename = "empty.odt";
-        static const std::regex regContent("/wopi/files/[0-9]/contents");
+        static const Poco::RegularExpression regContent("/wopi/files/[0-9]/contents");
 
         if (request.getMethod() == "GET")
         {
-            static const std::regex regInfo("/wopi/files/[0-9]");
+            static const Poco::RegularExpression regInfo("/wopi/files/[0-9]");
 
             // CheckFileInfo
-            if (std::regex_match(uriReq.getPath(), regInfo))
+            if (regInfo.match(uriReq.getPath()))
             {
                 TST_LOG("FakeWOPIHost: Handling WOPI::CheckFileInfo: " << uriReq.getPath());
 
@@ -134,7 +128,7 @@ public:
                 return true;
             }
 
-            if (std::regex_match(uriReq.getPath(), regContent))
+            if (regContent.match(uriReq.getPath()))
             {
                 if (_fileUrlState == FileUrlState::Valid)
                 {
@@ -159,7 +153,7 @@ public:
             LOK_ASSERT_STATE(_phase, Phase::WaitPutFile);
 
             LOK_ASSERT_MESSAGE("Always the default URI must be used for PutFile",
-                               std::regex_match(uriReq.getPath(), regContent));
+                               regContent.match(uriReq.getPath()));
 
             std::streamsize size = request.getContentLength();
             LOK_ASSERT(size > 0);

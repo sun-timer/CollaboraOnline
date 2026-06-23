@@ -11,25 +11,26 @@
 
 #pragma once
 
-#include <common/Log.hpp>
-#include <common/Util.hpp>
-#include <net/Socket.hpp>
-#include <net/WebSocketHandler.hpp>
-#include <wsd/TileDesc.hpp>
-#include <wsd/TraceFile.hpp>
-#if ENABLE_SSL
-#include <net/Ssl.hpp>
-#include <net/SslSocket.hpp>
-#endif
-
+#include <math.h>
+#include <iomanip>
 #include <chrono>
 #include <cstring>
-#include <ctime>
-#include <fstream>
-#include <iomanip>
-#include <iostream>
-#include <math.h>
 #include <unordered_map>
+
+#include "Socket.hpp"
+#include "WebSocketHandler.hpp"
+#include <TraceFile.hpp>
+#include <Util.hpp>
+#include <common/Log.hpp>
+#include <net/Ssl.hpp>
+#include <wsd/TileDesc.hpp>
+#if ENABLE_SSL
+#  include <SslSocket.hpp>
+#endif
+
+#include <iostream>
+#include <fstream>
+#include <ctime>
 #include <utility>
 
 struct PerfMetricInfo
@@ -351,7 +352,7 @@ struct Stats {
 
         time_t now = time(0);
         struct tm datetime;
-        gmtime_r(&now, &datetime);
+        localtime_r(&now, &datetime);
 
         char formattedDate[50];
         strftime(formattedDate, 50, "%d/%m/%y", &datetime);
@@ -499,7 +500,7 @@ public:
         if (!msg.empty())
         {
             LOG_TST(_logPre << "Send: '" << msg << "'");
-            sendTextMessage(msg);
+            sendMessage(msg);
         }
 
         if (!getNextRecord())
@@ -568,8 +569,8 @@ public:
             // eg. tileprocessed tile=0:9216:0:3072:3072:0
             TileDesc desc = TileDesc::parse(tokens);
 
-            sendTextMessage("tileprocessed wids=" + std::to_string(desc.getWireId()));
-            LOG_TST(_logPre << "Sent tileprocessed wids= " << desc.getWireId());
+            sendMessage("tileprocessed tile=" + desc.generateID());
+            LOG_TST(_logPre << "Sent tileprocessed tile= " << desc.generateID());
         }
         else if (tokens.equals(0, "error:"))
         {
@@ -582,7 +583,7 @@ public:
             else if (firstLine == "error: cmd=storage kind=documentconflict")
             {
                 LOG_TST("Document conflict - need to resolve it first ...");
-                sendTextMessage("closedocument");
+                sendMessage("closedocument");
                 reconnect = true;
             }
             else
@@ -601,10 +602,7 @@ public:
                 return;
             }
             else
-            {
-                SigUtil::requestShutdown();
                 Util::forcedExit(70);
-            }
         }
 
         // FIXME: implement code to send new view-ports based
@@ -612,10 +610,10 @@ public:
     }
 
     /// override ProtocolHandlerInterface piece
-    int sendTextMessage(std::string_view msg, bool flush = false) const override
+    int sendTextMessage(const char* msg, const size_t len, bool flush = false) const override
     {
-        _stats->accumulateSend(msg.data(), msg.size(), flush);
-        return WebSocketHandler::sendTextMessage(msg, flush);
+        _stats->accumulateSend(msg, len, flush);
+        return WebSocketHandler::sendTextMessage(msg, len, flush);
     }
 
     static void addPollFor(SocketPoll& poll, const std::string& server, const std::string& filePath,

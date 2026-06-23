@@ -9,16 +9,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for WOPI template functionality.
- */
-
 #include <config.h>
 
 #include <Poco/Net/HTTPRequest.h>
 
 #include <WopiTestServer.hpp>
-#include <common/Log.hpp>
+#include <Log.hpp>
 #include <Unit.hpp>
 #include <UnitHTTP.hpp>
 #include <helpers.hpp>

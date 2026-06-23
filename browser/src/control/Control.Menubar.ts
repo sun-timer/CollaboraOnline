@@ -266,7 +266,6 @@ class Menubar extends window.L.Control {
 					{uno: '.uno:ParaRightToLeft'}]},
 				{name: _UNO('.uno:FormatSpacingMenu', 'text'), type: 'menu', menu: [
 					{uno: '.uno:SpacePara1'},
-					{uno: '.uno:SpacePara115'},
 					{uno: '.uno:SpacePara15'},
 					{uno: '.uno:SpacePara2'},
 					{type: 'separator'},
@@ -416,17 +415,13 @@ class Menubar extends window.L.Control {
 				{name: _UNO('.uno:RunMacro'), id: 'runmacro', uno: '.uno:RunMacro'}
 			]},
 			{name: _UNO('.uno:HelpMenu', 'text'), id: 'help', type: 'menu', menu: [
-				{name: _('Online Help'), id: 'online-help', type: 'action', iosapp: false},
-				{type: 'separator', iosapp: false},
-				{name: _('Keyboard shortcuts'), id: 'keyboard-shortcuts', type: 'action', iosapp: false},
-				{type: 'separator'},
 				{name: _('Forum'), id: 'forum', type: 'action'},
+				{name: _('Online Help'), id: 'online-help', type: 'action', iosapp: false},
+				{name: _('Keyboard shortcuts'), id: 'keyboard-shortcuts', type: 'action', iosapp: false},
 				{name: _('Report an issue'), id: 'report-an-issue', type: 'action', iosapp: false},
 				{name: _('Latest Updates'), id: 'latestupdates', type: 'action', iosapp: false},
 				{name: _('Send Feedback'), id: 'feedback', type: 'action', mobileapp: false},
-				{type: 'separator'},
 				{name: _('Server audit'), id: 'serveraudit', type: 'action', mobileapp: false},
-				{type: 'separator'},
 				{name: _('About'), id: 'about', type: 'action'}]
 			},
 			{name: _('Last modification'), id: 'last-mod', type: 'action', tablet: false}
@@ -589,7 +584,7 @@ class Menubar extends window.L.Control {
 				{name: _('Fullscreen presentation'), id: 'fullscreen-presentation', type: 'action'},
 				{name: _('Present current slide'), id: 'presentation-currentslide', type: 'action'},
 				{name: _('Present in new window'), id: 'present-in-window', type: 'action'},
-				...((!window.ThisIsAMobileApp || window.mode.isCODesktop()) ? [
+				...(!window.ThisIsAMobileApp ? [
 					{name: _('Presenter Console'), id: 'presentation-in-console', type: 'action'}
 				] : [])
 			]
@@ -605,16 +600,11 @@ class Menubar extends window.L.Control {
 			]},
 			{name: _UNO('.uno:HelpMenu', 'presentation'), id: 'help', type: 'menu', menu: [
 				{name: _('Online Help'), id: 'online-help', type: 'action', iosapp: false},
-				{type: 'separator', iosapp: false},
 				{name: _('Keyboard shortcuts'), id: 'keyboard-shortcuts', type: 'action', iosapp: false},
-				{type: 'separator'},
-				{name: _('Forum'), id: 'forum', type: 'action'},
 				{name: _('Report an issue'), id: 'report-an-issue', type: 'action', iosapp: false},
 				{name: _('Latest Updates'), id: 'latestupdates', type: 'action', iosapp: false},
 				{name: _('Send Feedback'), id: 'feedback', type: 'action', mobileapp: false},
-				{type: 'separator'},
 				{name: _('Server audit'), id: 'serveraudit', type: 'action', mobileapp: false},
-				{type: 'separator'},
 				{name: _('About'), id: 'about', type: 'action'}]
 			},
 			{name: _('Last modification'), id: 'last-mod', type: 'action', tablet: false}
@@ -749,16 +739,11 @@ class Menubar extends window.L.Control {
 			]},
 			{name: _UNO('.uno:HelpMenu', 'presentation'), id: 'help', type: 'menu', menu: [
 				{name: _('Online Help'), id: 'online-help', type: 'action', iosapp: false},
-				{type: 'separator', iosapp: false},
 				{name: _('Keyboard shortcuts'), id: 'keyboard-shortcuts', type: 'action', iosapp: false},
-				{type: 'separator'},
-				{name: _('Forum'), id: 'forum', type: 'action'},
 				{name: _('Report an issue'), id: 'report-an-issue', type: 'action', iosapp: false},
 				{name: _('Latest Updates'), id: 'latestupdates', type: 'action', iosapp: false},
 				{name: _('Send Feedback'), id: 'feedback', type: 'action', mobileapp: false},
-				{type: 'separator'},
 				{name: _('Server audit'), id: 'serveraudit', type: 'action', mobileapp: false},
-				{type: 'separator'},
 				{name: _('About'), id: 'about', type: 'action'}]
 			},
 			{name: _('Last modification'), id: 'last-mod', type: 'action', tablet: false}
@@ -840,7 +825,6 @@ class Menubar extends window.L.Control {
 				{name: _('Local Image...'), id: 'insertgraphic', type: 'action'},
 				{name: _UNO('.uno:InsertGraphic', 'spreadsheet'), unoid: '.uno:InsertGraphic', id: 'insertgraphicremote', type: 'action'},
 				{name: _UNO('.uno:DataDataPilotRun', 'spreadsheet'), uno: '.uno:DataDataPilotRun'},
-				{name: _UNO('.uno:CalculatedFieldRun', 'spreadsheet'), uno: '.uno:CalculatedFieldRun'},
 				{name: _UNO('.uno:InsertCalcTable', 'spreadsheet'), uno: '.uno:InsertCalcTable'},
 				{name: _UNO('.uno:InsertSparkline', 'spreadsheet'), uno: '.uno:InsertSparkline'},
 				{name: _UNO('.uno:InsertAnnotation', 'spreadsheet'), unoid: '.uno:InsertAnnotation', id: 'insertcomment', type: 'action'},
@@ -1003,7 +987,6 @@ class Menubar extends window.L.Control {
 				{type: 'separator'},
 				{name: _UNO('.uno:DataPilotMenu', 'spreadsheet'), type: 'menu', menu: [
 					{name: _UNO('.uno:InsertPivotTable', 'spreadsheet'), uno: '.uno:DataDataPilotRun'},
-					{name: _UNO('.uno:InsertCalculation', 'spreadsheet'), uno: '.uno:CalculatedFieldRun'},
 					{name: _UNO('.uno:RecalcPivotTable', 'spreadsheet'), uno: '.uno:RecalcPivotTable'},
 					{name: _UNO('.uno:DeletePivotTable', 'spreadsheet'), uno: '.uno:DeletePivotTable'}]},
 				{type: 'separator'},
@@ -1054,16 +1037,11 @@ class Menubar extends window.L.Control {
 			]},
 			{name: _UNO('.uno:HelpMenu', 'spreadsheet'), id: 'help', type: 'menu', menu: [
 				{name: _('Online Help'), id: 'online-help', type: 'action', iosapp: false},
-				{type: 'separator', iosapp: false},
 				{name: _('Keyboard shortcuts'), id: 'keyboard-shortcuts', type: 'action', iosapp: false},
-				{type: 'separator'},
-				{name: _('Forum'), id: 'forum', type: 'action'},
 				{name: _('Report an issue'), id: 'report-an-issue', type: 'action', iosapp: false},
 				{name: _('Latest Updates'), id: 'latestupdates', type: 'action', iosapp: false},
 				{name: _('Send Feedback'), id: 'feedback', type: 'action', mobileapp: false},
-				{type: 'separator'},
 				{name: _('Server audit'), id: 'serveraudit', type: 'action', mobileapp: false},
-				{type: 'separator'},
 				{name: _('About'), id: 'about', type: 'action'}]
 			},
 			{name: _('Last modification'), id: 'last-mod', type: 'action', tablet: false}
@@ -1446,8 +1424,8 @@ class Menubar extends window.L.Control {
 		commandStates: {},
 
 		// Only these menu options will be visible in readonly mode
-		allowedReadonlyMenus: window.mode.isCODesktop() ? ['file', 'view', 'slide', 'help'] : ['file', 'downloadas', 'view', 'insert', 'slide', 'help', 'print'],
-		allowedRedlineManagementMenus: window.mode.isCODesktop() ? [] : ['editmenu', 'changesmenu', ],
+		allowedReadonlyMenus: ['file', 'downloadas', 'view', 'insert', 'slide', 'help', 'print'],
+		allowedRedlineManagementMenus: ['editmenu', 'changesmenu', ],
 
 		math: ['.uno:ChangeFont', '.uno:ChangeFontSize', '.uno:ChangeDistance', '.uno:ChangeAlignment'],
 
@@ -1768,7 +1746,7 @@ class Menubar extends window.L.Control {
 			var pageStyles = e.commandValues['HeaderFooter'];
 			for (var iterator in pageStyles) {
 				style = pageStyles[iterator];
-				if (!window.mode.isSmallScreenDevice()) {
+				if (!window.mode.isMobile()) {
 					$menuHeader.append(this._createUnoMenuItem(_(style), constHeader + encodeURIComponent(style) + constArg, style));
 					$menuFooter.append(this._createUnoMenuItem(_(style), constFooter + encodeURIComponent(style) + constArg, style));
 				} else {
@@ -1813,7 +1791,7 @@ class Menubar extends window.L.Control {
 		this._bindEventIfNotBound('#main-menu', 'click', 'smapi', {self: this}, this._onClicked);
 		this._bindEventIfNotBound('#main-menu', 'keydown', '', {self: this}, this._onKeyDown);
 
-		if (window.mode.isSmallScreenDevice()) {
+		if (window.mode.isMobile()) {
 			$('#main-menu').parent().css('height', '0');
 			$('#toolbar-wrapper').addClass('mobile');
 		}
@@ -1828,12 +1806,12 @@ class Menubar extends window.L.Control {
 					var $menu = $('#main-menu');
 					var $nav = $menu.parent();
 					if ((event.target as HTMLInputElement).checked) {
-						if (!window.mode.isSmallScreenDevice()) {
+						if (!window.mode.isMobile()) {
 							// Surely this code, if it really is related only to the hamburger menu,
 							// will never be invoked on non-mobile browsers? I might be wrong though.
 							// If you notice this logging, please modify this comment to indicate what is
 							// going on.
-							window.app.console.log('======> Assertion failed!? Not window.mode.isSmallScreenDevice()? Control.Menubar.js #1');
+							window.app.console.log('======> Assertion failed!? Not window.mode.isMobile()? Control.Menubar.js #1');
 							$nav.css({height: 'initial', bottom: '38px'});
 							$menu.hide().slideDown(250, () => { $menu.css('display', ''); });
 						} else {
@@ -1844,9 +1822,9 @@ class Menubar extends window.L.Control {
 							$('#toolbar-mobile-back').css('visibility', 'hidden');
 							$('#formulabar').hide();
 						}
-					} else if (!window.mode.isSmallScreenDevice()) {
+					} else if (!window.mode.isMobile()) {
 						// Ditto.
-						window.app.console.log('======> Assertion failed!? Not window.mode.isSmallScreenDevice()? Control.Menubar.js #2');
+						window.app.console.log('======> Assertion failed!? Not window.mode.isMobile()? Control.Menubar.js #2');
 						$menu.show().slideUp(250, () => { $menu.css('display', ''); });
 						$nav.css({height:'', bottom: ''});
 					} else {
@@ -1886,9 +1864,6 @@ class Menubar extends window.L.Control {
 		if (!$(menu).hasClass('has-submenu') && ($mainMenuState[0] as HTMLInputElement).checked) {
 			$mainMenuState[0].click();
 		}
-
-		if (menu?.parentElement?.id === 'menu-file' && window.mode.isCODesktop() && app.map.backstageView)
-			app.map.backstageView.toggle();
 	}
 
 	/**
@@ -1973,7 +1948,7 @@ class Menubar extends window.L.Control {
 					} else {
 						$(aItem).removeClass(constChecked);
 					}
-					if (this.options.math.includes(unoCommand) && app.map.context && app.map.context.context !== 'Math') {
+					if (this.options.math.includes(unoCommand) && app.map.context.context !== 'Math') {
 						$(aItem).addClass('disabled');
 					}
 				} else if (type === 'action') { // enable all except fullscreen on windows
@@ -2142,33 +2117,6 @@ class Menubar extends window.L.Control {
 						}
 					}
 				}
-
-				const $menuItems = $(menu).children('li');
-
-				$menuItems.each((index, li) => {
-					const $aItem = $(li).children('a').first();
-					if (!$aItem.hasClass('separator')) return;
-
-					const $prevVisible = $(li).prevAll('li').filter(function() {
-						const $a = $(this).children('a').first();
-						return !$a.hasClass('separator') &&
-							$a.css('display') !== 'none' &&
-							$(this).css('display') !== 'none';
-					}).first();
-
-					const $nextVisible = $(li).nextAll('li').filter(function() {
-						const $a = $(this).children('a').first();
-						return !$a.hasClass('separator') &&
-							$a.css('display') !== 'none' &&
-							$(this).css('display') !== 'none';
-					}).first();
-
-					if ($prevVisible.length === 0 || $nextVisible.length === 0) {
-						$aItem.hide();
-					} else {
-						$aItem.show();
-					}
-				});
 			}
 
 			if (id === 'remotelink') {
@@ -2312,10 +2260,7 @@ class Menubar extends window.L.Control {
 				};
 				app.map.sendUnoCommand('.uno:InsertSignatureLine', args);
 				const finishMessage = _('The signature line can now be moved or resized as needed.');
-				const finishFunc = () => {
-					Util.ensureValue(app.map.eSignature);
-					app.map.eSignature.insert();
-				};
+				const finishFunc = () => app.map.eSignature.insert();
 				app.map.uiManager.showSnackbar(finishMessage, _('Finish electronic signing'), finishFunc, -1);
 			} else {
 				app.map.sendUnoCommand('.uno:InsertSignatureLine');
@@ -2384,8 +2329,7 @@ class Menubar extends window.L.Control {
 		} else if (id === 'about') {
 			this._map.showLOAboutDialog();
 		} else if (id === 'latestupdates' && this._map.welcome) {
-			if (window.mode.isCODesktop()) this._map.welcome.showWelcomeSlideshow();
-			else this._map.welcome.showWelcomeDialog();
+			this._map.welcome.showWelcomeDialog();
 		} else if (id === 'feedback' && this._map.feedback) {
 			this._map.feedback.showFeedbackDialog();
 		} else if (id === 'report-an-issue') {
@@ -2470,7 +2414,7 @@ class Menubar extends window.L.Control {
 			this._executeAction(item);
 		}
 
-		if (!window.mode.isSmallScreenDevice() && $(item).data('id') !== 'insertcomment' && self && this._map)
+		if (!window.mode.isMobile() && $(item).data('id') !== 'insertcomment' && self && this._map)
 			this._map.focus();
 	}
 
@@ -2503,17 +2447,12 @@ class Menubar extends window.L.Control {
 
 			if (window.logoURL) {
 				aItem.style.backgroundImage = "url(" + window.logoURL + ")";
-			} else {
-				const docType = this._map.getDocType();
-				const [iconClass, iconTooltip] = app.LOUtil.getDocumentLogoClass(docType);
-				aItem.classList.add(iconClass);
-				aItem.setAttribute('data-cooltip', iconTooltip);
 			}
 
 			if (this._menubarCont != null)
 				this._menubarCont.insertBefore(liItem, this._menubarCont.firstChild);
 
-			const $docLogo = $(aItem);
+			var $docLogo = $(aItem);
 			$docLogo.bind('click', {self: this}, this._createDocument);
 			$docLogo.bind('click', this._createDocument.bind(this));
 		}
@@ -2695,12 +2634,9 @@ class Menubar extends window.L.Control {
 
 			var liItem = window.L.DomUtil.create('li', '');
 			liItem.setAttribute('role', 'menuitem');
-			if (menu[i].type === 'separator') {
-				liItem.setAttribute('aria-hidden', 'true');
-			}
 			if (menu[i].id) {
 				liItem.id = 'menu-' + menu[i].id;
-				if (menu[i].id === 'closedocument' && isReadOnly) {
+				if (menu[i].id === 'closedocument' && this._map.isReadOnlyMode()) {
 					// see corresponding css rule for readonly class usage
 					window.L.DomUtil.addClass(liItem, 'readonly');
 				}

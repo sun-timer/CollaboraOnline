@@ -75,7 +75,7 @@ class UIManager extends window.L.Control {
 		map.on('infobar', this.showInfoBar, this);
 		app.events.on('updatepermission', this.onUpdatePermission.bind(this));
 
-		if (window.mode.isSmallScreenDevice()) {
+		if (window.mode.isMobile()) {
 			window.addEventListener('popstate', this.onGoBack.bind(this));
 
 			// provide entries in the history we can catch to close the app
@@ -117,49 +117,16 @@ class UIManager extends window.L.Control {
 		this.map['stateChangeHandler'].setItemValue('toggledarktheme', 'false');
 		this.map['stateChangeHandler'].setItemValue('invertbackground', 'false');
 		this.map['stateChangeHandler'].setItemValue('showannotations', 'true');
-		window.addEventListener('browsersettingchanged', () => {
-			this.initDarkModeFromSettings();
-		});
 	}
 
 	// UI initialization
-
-	/**
-	 * Shows a tooltip attached to an element and auto-hides it after a timeout.
-	 */
-	showTimedTooltip(element: HTMLElement, text: string, timeMs: number): void {
-		if (!element || !this.map.tooltip)
-			return;
-
-		this.map.tooltip.show(element, text);
-		clearTimeout(this.map._timedTooltipTimeout);
-		this.map._timedTooltipTimeout = setTimeout(() => {
-			if (this.map.tooltip && this.map.tooltip._current === element) {
-				this.map.tooltip.hide();
-			}
-		}, timeMs);
-	}
-
-	/**
-	 * Shows a timed tooltip on an element and optionally plays the attention animation.
-	 */
-	showAttention(element: HTMLElement, text: string, animate: boolean, timeMs: number = 3000): void {
-		this.showTimedTooltip(element, text, timeMs);
-
-		if (animate && !element.classList.contains('attention')) {
-			element.classList.add('attention');
-			element.addEventListener('animationend', function () {
-				element.classList.remove('attention');
-			}, { once: true });
-		}
-	}
 
 	/**
 	 * Returns the current UI mode ("notebookbar" or "classic").
 	 */
 	getCurrentMode(): UIMode {
 		// no notebookbar on mobile
-		if (window.mode.isSmallScreenDevice())
+		if (window.mode.isMobile())
 			return 'classic';
 
 		return this.shouldUseNotebookbarMode() ? 'notebookbar' : 'classic';
@@ -190,6 +157,14 @@ class UIManager extends window.L.Control {
 		// all other cases should default to notebookbar
 		const shouldUseClassic = (window.userInterfaceMode === 'classic' && forceCompact == null) || forceCompact === 'true';
 		return !shouldUseClassic;
+	}
+
+	private shouldUseAndroidNativeBottomToolbar(): boolean {
+		return !!window.ThisIsTheAndroidApp && window.mode.isMobile();
+	}
+
+	private shouldUseAndroidNativeTopToolbar(): boolean {
+		return !!window.ThisIsTheAndroidApp && window.mode.isMobile();
 	}
 
 	// Dark mode toggle
@@ -318,7 +293,7 @@ class UIManager extends window.L.Control {
 		}
 		this.applyInvert();
 		this.setCanvasColorAfterModeChange();
-		if (!window.mode.isSmallScreenDevice())
+		if (!window.mode.isMobile())
 			this.refreshAfterThemeChange();
 
 		if (app.map._docLayer._docType === 'spreadsheet') {
@@ -386,14 +361,14 @@ class UIManager extends window.L.Control {
 	 */
 	initializeMenubarAndTopToolbar(): void {
 		const enableNotebookbar = this.shouldUseNotebookbarMode();
-		const isSmallScreenDevice = window.mode.isSmallScreenDevice();
-		if (isSmallScreenDevice || !enableNotebookbar) {
+		const isMobile = window.mode.isMobile();
+		if (isMobile || !enableNotebookbar) {
 			var menubar = new Menubar();
 			this.map.menubar = menubar;
 			this.map.addControl(menubar);
 		}
 
-		if (!isSmallScreenDevice && !enableNotebookbar)
+		if (!isMobile && !enableNotebookbar)
 			this.map.topToolbar = JSDialog.TopToolbar(this.map);
 
 		this.permissionViewMode = new PermissionViewMode(this.map);
@@ -408,13 +383,13 @@ class UIManager extends window.L.Control {
 
 		this.initializeMenubarAndTopToolbar();
 
-		if (window.mode.isSmallScreenDevice()) {
+		if (window.mode.isMobile()) {
 			$('#toolbar-mobile-back').on('click', () => {
 				this.enterReadonlyOrClose();
 			});
 		}
 
-		if (!window.mode.isSmallScreenDevice()) {
+		if (!window.mode.isMobile()) {
 			this.map.statusBar = JSDialog.StatusBar(this.map);
 
 			this.map.sidebar = JSDialog.Sidebar(this.map);
@@ -431,19 +406,17 @@ class UIManager extends window.L.Control {
 
 		window.setupToolbar(this.map);
 
-		if (!((window as any).mode.isCODesktop())) {
-			this.documentNameInput = window.L.control.documentNameInput();
-			this.map.addControl(this.documentNameInput);
-		}
+		this.documentNameInput = window.L.control.documentNameInput();
+		this.map.addControl(this.documentNameInput);
 		this.map.addControl(window.L.control.alertDialog());
-		if (window.mode.isSmallScreenDevice()) {
+		if (window.mode.isMobile()) {
 			this.mobileWizard = window.L.control.mobileWizard();
 			this.map.addControl(this.mobileWizard);
 		}
 		this.map.addControl(window.L.control.languageDialog());
 		this.map.dialog = window.L.control.lokDialog();
 		this.map.addControl(this.map.dialog);
-		this.map.addControl(new ContextMenuControl());
+		this.map.addControl(window.L.control.contextMenu());
 		this.map.userList = window.L.control.userList();
 		this.map.addControl(this.map.userList);
 		this.map.aboutDialog = JSDialog.aboutDialog(this.map);
@@ -501,39 +474,6 @@ class UIManager extends window.L.Control {
 		app.serverConnectionService.onBasicUI();
 	}
 
-
-	initializeNonInteractiveUI() {
-		app.console.debug('UIManager: initialize non-interactive basic UI');
-
-		this.map.jsdialog = window.L.control.jsDialog();
-		this.map.addControl(this.map.jsdialog);
-		this.map.dialog = window.L.control.lokDialog();
-		this.map.addControl(this.map.dialog);
-
-		app.serverConnectionService.onBasicUI();
-	}
-
-	initializeBackstageView(): void {
-		if (!(window as any).mode.isCODesktop())
-			return;
-
-		if (!this.map.backstageView) {
-			this.map.backstageView = new window.L.Control.BackstageView(this.map);
-			console.log('UIManager: BackstageView created for starter mode');
-		}
-
-		console.log('UIManager: Showing BackstageView for starter mode');
-
-		this.initDarkModeFromSettings();
-
-		// Use requestAnimationFrame to ensure DOM is ready
-		window.requestAnimationFrame(() => {
-			if (this.map.backstageView) {
-				this.map.backstageView.show();
-			}
-		});
-	}
-
 	/**
 	 * Initializes specialized UI components based on the document type.
 	 * @param docType - Document type (e.g. 'spreadsheet', 'presentation', 'text').
@@ -541,50 +481,43 @@ class UIManager extends window.L.Control {
 	initializeSpecializedUI(docType: string): void {
 		app.console.debug('UIManager: initialize specialized UI for: ' + docType);
 
-		const startWelcomePresentation = window.coolParams.get('welcome');
-
-		// Return early when we are loading welcome slideshow
-		if (startWelcomePresentation) {
-			this.map.on('docloaded', () => {
-				app.dispatcher.dispatch('presentinwindow');
-			});
-			this.map.slideShowPresenter = new SlideShow.SlideShowPresenter(
-				this.map,
-				window.enableAccessibility,
-			);
-			return;
-		}
-
 		var isDesktop = window.mode.isDesktop();
 		var currentMode = this.getCurrentMode();
 		var enableNotebookbar = currentMode === 'notebookbar' && !app.isReadOnly();
 		var hasShare = this.map.wopi.EnableShare;
+		var useAndroidNativeBottomToolbar = this.shouldUseAndroidNativeBottomToolbar();
+		var useAndroidNativeTopToolbar = this.shouldUseAndroidNativeTopToolbar();
 
 		document.body.setAttribute('data-userInterfaceMode', currentMode);
 		document.body.setAttribute('data-docType', docType);
+		document.body.classList.toggle(
+			'android-native-bottom-toolbar',
+			useAndroidNativeBottomToolbar,
+		);
+		document.body.classList.toggle(
+			'android-native-top-toolbar',
+			useAndroidNativeTopToolbar,
+		);
 
 		if (hasShare)
 			document.body.setAttribute('data-integratorSidebar', 'true');
 
-		if (window.mode.isSmallScreenDevice()) {
+		if (window.mode.isMobile()) {
 			$('#mobile-edit-button').css('display', 'flex');
-			this.map.mobileBottomBar = JSDialog.MobileBottomBar(this.map);
-			this.map.mobileTopBar = JSDialog.MobileTopBar(this.map);
+			if (useAndroidNativeBottomToolbar) {
+				this.map.mobileBottomBar = null;
+			} else {
+				this.map.mobileBottomBar = JSDialog.MobileBottomBar(this.map);
+			}
+			if (useAndroidNativeTopToolbar) {
+				this.map.mobileTopBar = null;
+			} else {
+				this.map.mobileTopBar = JSDialog.MobileTopBar(this.map);
+			}
 			this.map.mobileSearchBar = JSDialog.MobileSearchBar(this.map);
 		} else {
 			this.createNotebookbarControl(docType, enableNotebookbar);
 			// makeSpaceForNotebookbar call in onUpdatePermission
-		}
-
-		if ((window as any).mode.isCODesktop()) {
-			if (!this.map.backstageView) {
-				this.map.backstageView = new window.L.Control.BackstageView(this.map);
-				console.log('UIManager: BackstageView created and attached to map');
-			} else {
-				console.log('UIManager: BackstageView already exists');
-			}
-		} else {
-			console.log('UIManager: Not a CODA app, skipping backstage view initialization');
 		}
 
 		if (!window.prefs.getBoolean(`${docType}.ShowToolbar`, true)) {
@@ -642,7 +575,7 @@ class UIManager extends window.L.Control {
 			this._map.fire('commandstatechanged', {commandName : 'showannotations', state : initialCommentState});
 			this.map.mention = new Mention(this.map);
 
-			if (!window.mode.isSmallScreenDevice()) {
+			if (!window.mode.isMobile()) {
 				// setup quickfind panel
 				this.map.quickFindPanel = JSDialog.QuickFindPanel(this.map);
 				this.map.addControl(this.map.quickFindPanel);
@@ -675,19 +608,6 @@ class UIManager extends window.L.Control {
 		}
 
 		this.map.on('changeuimode', this.onChangeUIMode, this);
-		window.addEventListener('browsersettingchanged', () => {
-			this.onChangeUIMode({ mode: this.getCurrentMode(), force: true });
-		});
-		this.map.on('backstagehide', () => {
-			setTimeout(() => {
-				this.map.invalidateSize(); // triggers Leaflet layout recalculation
-				const docLayer = this.map._docLayer;
-				if (docLayer && docLayer._docType === 'spreadsheet') {
-					docLayer._resetClientVisArea();
-					docLayer._requestNewTiles();
-				}
-			}, 0);
-		});
 
 		this.refreshTheme();
 
@@ -813,8 +733,7 @@ class UIManager extends window.L.Control {
 	 */
 	initializeRuler(): void {
 		if ((window.mode.isTablet() || window.mode.isDesktop()) && !app.isReadOnly()) {
-			var defaultShowRuler = (window as any).mode.isCODesktop();
-			var showRuler = this.getBooleanDocTypePref('ShowRuler', defaultShowRuler);
+			var showRuler = this.getBooleanDocTypePref('ShowRuler');
 			var interactiveRuler = this.map.isEditMode();
 			// Call the static method from the Ruler class
 			app.definitions.ruler.initializeRuler(this.map, {
@@ -980,7 +899,7 @@ class UIManager extends window.L.Control {
 	 * @param uiMode - Object containing the new UI mode and additional flags.
 	 */
 	onChangeUIMode(uiMode: UIModeCommand): void {
-		if (window.mode.isSmallScreenDevice())
+		if (window.mode.isMobile())
 			return;
 
 		var currentMode = this.getCurrentMode();
@@ -995,16 +914,24 @@ class UIManager extends window.L.Control {
 
 		this.map.fire('postMessage', {msgId: 'Action_ChangeUIMode_Resp', args: {Mode: uiMode.mode}});
 
+		switch (currentMode) {
+		case 'classic':
+			this.removeClassicUI();
+			break;
+
+		case 'notebookbar':
+			this.removeNotebookbarUI();
+			break;
+		}
+
 		window.userInterfaceMode = uiMode.mode;
 
 		switch (uiMode.mode) {
 		case 'classic':
-			this.removeNotebookbarUI();
 			this.addClassicUI();
 			break;
 
 		case 'notebookbar':
-			this.removeClassicUI();
 			this.addNotebookbarUI();
 			break;
 		}
@@ -1182,11 +1109,6 @@ class UIManager extends window.L.Control {
 
 		if (!found)
 			window.app.console.error('UIManager: Button with id "' + buttonId + '" not found.');
-
-		// When toggledarktheme is hidden, also hide the adjacent separator
-		// to prevent two separators from being displayed in a row.
-		if (buttonId === 'toggledarktheme')
-			this.showButton('view-invertbackground-break', show);
 	}
 
 	/**
@@ -1363,12 +1285,6 @@ class UIManager extends window.L.Control {
 		$('#map').addClass('hasruler');
 		this.setDocTypePref('ShowRuler', true);
 		this.map.fire('rulerchanged');
-
-		if (app.sectionContainer
-			&& app.map?._docLayer?._docType === 'text'
-			&& !app.sectionContainer.getSectionWithName(app.CSections.RulerSpacer.name)) {
-			app.sectionContainer.addSection(new cool.RulerSpacerSection());
-		}
 	}
 
 	/**
@@ -1380,11 +1296,7 @@ class UIManager extends window.L.Control {
 
 		$('#map').removeClass('hasruler');
 		this.setDocTypePref('ShowRuler', false);
-
-		if (app.sectionContainer
-			&& app.sectionContainer.getSectionWithName(app.CSections.RulerSpacer.name)) {
-			app.sectionContainer.removeSection(app.CSections.RulerSpacer.name);
-		}
+		this.map.fire('rulerchanged');
 	}
 
 	/**
@@ -1435,7 +1347,7 @@ class UIManager extends window.L.Control {
 
 	initializeNotebookbarInCore(): void {
 		// do it always apart of mobile as we need it for contextual toolbar
-		if (window.mode.isSmallScreenDevice()) return;
+		if (window.mode.isMobile()) return;
 
 		if (!this.notebookbar.impl.initialized) {
 			this.map.sendUnoCommand('.uno:ToolbarMode?Mode:string=Default');
@@ -1535,7 +1447,7 @@ class UIManager extends window.L.Control {
 	}
 
 	showNavigator(): void {
-		this.map?.navigator?.requestShow();
+		app.socket.sendMessage('uno .uno:Navigator');
 	}
 
 	/**
@@ -1599,7 +1511,7 @@ class UIManager extends window.L.Control {
 	 * @param e - The event object containing permission details.
 	 */
 	onUpdatePermission(e: any): void {
-		if (window.mode.isSmallScreenDevice()) {
+		if (window.mode.isMobile()) {
 			if (e.detail.perm === 'edit') {
 				history.pushState({context: 'app-started'}, 'edit-mode');
 				$('#toolbar-down').show();
@@ -1611,7 +1523,7 @@ class UIManager extends window.L.Control {
 		}
 
 		var enableNotebookbar = this.shouldUseNotebookbarMode();
-		if (enableNotebookbar && !window.mode.isSmallScreenDevice()) {
+		if (enableNotebookbar && !window.mode.isMobile()) {
 			if (e.detail.perm === 'edit') {
 				this.removeClassicUI();
 				// Avoid re-refreshing the notebookbar if it is already initialized.
@@ -1924,25 +1836,19 @@ class UIManager extends window.L.Control {
 	isAnyDialogOpen(): boolean {
 		if (this.map.jsdialog)
 			return this.map.jsdialog.hasDialogOpened();
-		else if (this.mobileWizard)
-			return this.mobileWizard.isOpen();
 		else
-			return false;
+			return this.mobileWizard.isOpen();
 	}
 
 	/**
 	 * Returns whether any context menu is currently open.
 	 */
 	isAnyContextMenuOpened(): boolean {
-		const jqContextMenu = document.querySelector(
+		const contextMenu = document.querySelector(
 			'.context-menu-root:not([style*="display: none"])',
 		);
 
-		const jsdContextMenu = document.querySelector(
-			'#jsd-context-menu-dropdown-overlay:not([style*="display: none"])',
-		);
-
-		return (jqContextMenu !== null) || (jsdContextMenu !== null);
+		return contextMenu !== null;
 	}
 
 	// TODO: remove and use JSDialog.generateModalId directly
@@ -2022,7 +1928,7 @@ class UIManager extends window.L.Control {
 				id: 'info-modal-tile-m',
 				type: 'fixedtext',
 				text: title,
-				hidden: !window.mode.isSmallScreenDevice()
+				hidden: !window.mode.isMobile()
 			},
 			{
 				id: 'info-modal-label1',
@@ -2101,7 +2007,7 @@ class UIManager extends window.L.Control {
 				id: 'info-modal-tile-m',
 				type: 'fixedtext',
 				text: title,
-				hidden: !window.mode.isSmallScreenDevice()
+				hidden: !window.mode.isMobile()
 			},
 			{
 				id: 'info-modal-label1',
@@ -2202,7 +2108,7 @@ class UIManager extends window.L.Control {
 				id: 'info-modal-tile-m',
 				type: 'fixedtext',
 				text: title,
-				hidden: !window.mode.isSmallScreenDevice()
+				hidden: !window.mode.isMobile()
 			},
 			{
 				id: 'info-modal-label1',
@@ -2347,7 +2253,7 @@ class UIManager extends window.L.Control {
 			}
 		}]);
 
-		if (!window.mode.isSmallScreenDevice()) {
+		if (!window.mode.isMobile()) {
 			const dialogElement = document.getElementById(dialogId);
 			if (dialogElement != null) {
 				dialogElement.style.marginRight = '0';
@@ -2376,7 +2282,7 @@ class UIManager extends window.L.Control {
 				id:  dialogId + '-title',
 				type: 'fixedtext',
 				text: title,
-				hidden: !window.mode.isSmallScreenDevice()
+				hidden: !window.mode.isMobile()
 			},
 			{
 				id: dialogId + '-label',

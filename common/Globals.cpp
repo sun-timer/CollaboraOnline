@@ -9,10 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Global variable definitions and initialization.
- */
-
 #include <config.h>
 
 #include "Globals.hpp"

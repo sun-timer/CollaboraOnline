@@ -55,7 +55,7 @@ class FormulaBar {
 	}
 
 	createFormulabar(text) {
-		if (!window.mode.isSmallScreenDevice()) {
+		if (!window.mode.isMobile()) {
 			var data = [
 				{
 					id: 'formulabar-buttons-toolbox',

@@ -78,7 +78,7 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Top toolbar tests.', funct
 	});
 
 	it('Apply a selected font name on the text shape', function() {
-		cy.cGet('#fontnamecombobox .ui-combobox-button').click();
+		cy.cGet('#fontnamecombobox').click();
 		desktopHelper.selectFromListbox('Liberation Mono');
 
 		impressHelper.triggerNewSVGForShapeInTheCenter();
@@ -87,7 +87,7 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Top toolbar tests.', funct
 	});
 
 	it('Apply a selected font size on the text shape', function() {
-		cy.cGet('#fontsizecombobox .ui-combobox-button').click();
+		cy.cGet('#fontsizecombobox').click();
 		desktopHelper.selectFromListbox('22');
 
 		impressHelper.triggerNewSVGForShapeInTheCenter();
@@ -146,13 +146,14 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Top toolbar tests.', funct
 	});
 
 	it('Click shape hyperlink.', function() {
-		// Insert shape - this creates and selects the shape
-		// immediately, no additional click needed to select it.
+		// Insert shape
 		desktopHelper.getCompactIconArrow('DefaultNumbering').click();
 		desktopHelper.getCompactIconArrow('BasicShapes').click();
 		cy.cGet('.col.w2ui-icon.basicshapes_round-quadrat').click();
 		cy.cGet('#test-div-shapeHandlesSection').should('exist');
-		helper.processToIdle(this.win);
+
+		// Select shape at center of document
+		impressHelper.clickCenterOfSlide( { } );
 
 		helper.typeIntoDocument('{ctrl}k');
 		cy.cGet('#target').should('exist').should('be.visible');
@@ -161,7 +162,6 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Top toolbar tests.', funct
 
 		cy.cGet('#target-input').type('www.something.com');
 		cy.cGet('#ok').click();
-		cy.cGet('#target').should('not.exist');
 
 		helper.processToIdle(this.win);
 

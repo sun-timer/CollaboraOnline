@@ -45,14 +45,6 @@ JSDialog.container = function (
 
 	if (parentContainer && !parentContainer.id) parentContainer.id = id;
 
-	// ARIA support for non-grid containers
-	if (parentContainer) {
-		if (data.allyRole) parentContainer.setAttribute('role', data.allyRole);
-		if (data.aria?.label)
-			parentContainer.setAttribute('aria-label', data.aria.label);
-		if (data.ariaLive) parentContainer.setAttribute('aria-live', data.ariaLive);
-	}
-
 	return true;
 };
 
@@ -134,26 +126,11 @@ JSDialog.grid = function (
 		if (processedChildren.indexOf(child) === -1) {
 			const sandbox = window.L.DomUtil.create('div');
 			builder.build(sandbox, [child], false);
-
-			// For listbox role, process all children from sandbox
-			// all children will be of role="option"
-			if (data.allyRole === 'listbox') {
-				const controls = Array.from(sandbox.children);
-				for (let j = 0; j < controls.length; j++) {
-					const control = controls[j];
-					if (control) {
-						window.L.DomUtil.addClass(control, 'ui-grid-cell');
-						table.appendChild(control);
-					}
-				}
-			} else {
-				const control = sandbox.firstChild;
-				if (control) {
-					window.L.DomUtil.addClass(control, 'ui-grid-cell');
-					table.appendChild(control);
-				}
+			const control = sandbox.firstChild;
+			if (control) {
+				window.L.DomUtil.addClass(control, 'ui-grid-cell');
+				table.appendChild(control);
 			}
-
 			processedChildren.push(child);
 		}
 	}

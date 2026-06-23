@@ -10,8 +10,7 @@
  */
 
 #define LIBO_INTERNAL_ONLY
-#import <COKit/COKitInit.h>
-#import <COKit/COKit.h>
+#import <LibreOfficeKit/LibreOfficeKitInit.h>
 
 #import "ios.h"
 #import "AppDelegate.h"
@@ -163,7 +162,7 @@ static NSString *mapTemplateExtensionToActual(NSString *templateName) {
     // Load the template into LibreOffice core, save as the corresponding document type (with the
     // same basename), and then proceed to edit that.
 
-    COKitDocument *doc = lo_kit->pClass->documentLoad(lo_kit, [[selectedTemplate absoluteString] UTF8String]);
+    LibreOfficeKitDocument *doc = lo_kit->pClass->documentLoad(lo_kit, [[selectedTemplate absoluteString] UTF8String]);
     doc->pClass->saveAs(doc, [[newURL absoluteString] UTF8String], nullptr, nullptr);
     doc->pClass->destroy(doc);
 

@@ -9,43 +9,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Implementation of special purpose brokers.
- * Classes: ThumbnailBroker, SystemTemplatesBroker
- */
-
 #include <config.h>
 
 #include "SpecialBrokers.hpp"
-
-#include <common/Clipboard.hpp>
-#include <common/CommandControl.hpp>
-#include <common/Common.hpp>
-#include <common/FileUtil.hpp>
-#include <common/JsonUtil.hpp>
-#include <common/Log.hpp>
-#include <common/Message.hpp>
-#include <common/Protocol.hpp>
-#include <common/Unit.hpp>
-#include <common/Uri.hpp>
-#include <net/Socket.hpp>
-#include <wsd/COOLWSD.hpp>
-#include <wsd/ClientSession.hpp>
-#include <wsd/FileServer.hpp>
-#include <wsd/QuarantineUtil.hpp>
-#include <wsd/TileCache.hpp>
-
-#if !MOBILEAPP
-#include <wopi/CheckFileInfo.hpp>
-#include <net/HttpHelper.hpp>
-#endif
-
-#include <Poco/DigestStream.h>
-#include <Poco/Exception.h>
-#include <Poco/Path.h>
-#include <Poco/SHA1Engine.h>
-#include <Poco/StreamCopier.h>
-#include <Poco/URI.h>
 
 #include <atomic>
 #include <cassert>
@@ -54,6 +20,34 @@
 #include <memory>
 #include <string>
 
+#include <Poco/DigestStream.h>
+#include <Poco/Exception.h>
+#include <Poco/Path.h>
+#include <Poco/SHA1Engine.h>
+#include <Poco/StreamCopier.h>
+#include <Poco/URI.h>
+
+#include "ClientSession.hpp"
+#include "Common.hpp"
+#include "COOLWSD.hpp"
+#include "FileServer.hpp"
+#include "Socket.hpp"
+#include "TileCache.hpp"
+#include "QuarantineUtil.hpp"
+#include <common/JsonUtil.hpp>
+#include <common/Log.hpp>
+#include <common/Message.hpp>
+#include <common/Clipboard.hpp>
+#include <common/Protocol.hpp>
+#include <common/Unit.hpp>
+#include <common/FileUtil.hpp>
+#include <common/Uri.hpp>
+#include <CommandControl.hpp>
+
+#if !MOBILEAPP
+#include <wopi/CheckFileInfo.hpp>
+#include <net/HttpHelper.hpp>
+#endif
 #include <sys/types.h>
 #include <sys/wait.h>
 
@@ -251,11 +245,11 @@ void ConvertToBroker::setLoaded()
     _clientSession->handleMessage(saveasRequest);
 }
 
-static std::atomic<std::size_t> renderSearchResultBrokerInstanceCounter;
+static std::atomic<std::size_t> renderSearchResultBrokerInstanceCouter;
 
 std::size_t RenderSearchResultBroker::getInstanceCount()
 {
-    return renderSearchResultBrokerInstanceCounter;
+    return renderSearchResultBrokerInstanceCouter;
 }
 
 RenderSearchResultBroker::RenderSearchResultBroker(
@@ -324,7 +318,7 @@ void RenderSearchResultBroker::dispose()
 {
     if (!_uriOrig.empty())
     {
-        renderSearchResultBrokerInstanceCounter--;
+        renderSearchResultBrokerInstanceCouter--;
         removeFile(_uriOrig);
         _uriOrig.clear();
     }

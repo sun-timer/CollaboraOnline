@@ -9,24 +9,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Implementation of network utilities: host resolution, connection, SSL setup.
- * Classes: net::HostEntry
- * Functions: connect(), resolve(), localhostIPv4/IPv6()
- */
-
 #include <config.h>
 
-#include <common/NumUtil.hpp>
-#include <common/Syscall.hpp>
-#include <common/Unit.hpp>
+#include "NetUtil.hpp"
+#include "AsyncDNS.hpp"
 #include <common/Util.hpp>
-#include <net/AsyncDNS.hpp>
-#include <net/NetUtil.hpp>
-#include <net/Socket.hpp>
+#include <common/Unit.hpp>
 #include <net/Uri.hpp>
+
+#include "Socket.hpp"
 #if ENABLE_SSL && !MOBILEAPP
-#include <net/SslSocket.hpp>
+#include "SslSocket.hpp"
 #endif
 
 #include <Poco/Exception.h>
@@ -98,8 +91,8 @@ std::string HostEntry::errorMessage() const
     return std::string("[" + _requestName + "]: " + errmsg);
 }
 
-HostEntry::HostEntry(std::string desc)
-    : _requestName(std::move(desc))
+HostEntry::HostEntry(const std::string& desc)
+    : _requestName(desc)
     , _saved_errno(0)
     , _eaino(0)
 {
@@ -108,7 +101,7 @@ HostEntry::HostEntry(std::string desc)
     hints.ai_flags = AI_CANONNAME | AI_ADDRCONFIG;
 
     addrinfo* ainfo = nullptr;
-    int rc = getaddrinfo(_requestName.c_str(), nullptr, &hints, &ainfo);
+    int rc = getaddrinfo(desc.c_str(), nullptr, &hints, &ainfo);
     if (rc != 0)
     {
         setEAI(rc);
@@ -139,10 +132,10 @@ struct DNSCacheEntry
     HostEntry hostEntry;
     std::chrono::steady_clock::time_point lookupTime;
 
-    DNSCacheEntry(std::string address, HostEntry entry,
+    DNSCacheEntry(const std::string& address, const HostEntry& entry,
                   const std::chrono::steady_clock::time_point time)
-        : queryAddress(std::move(address))
-        , hostEntry(std::move(entry))
+        : queryAddress(address)
+        , hostEntry(entry)
         , lookupTime(time)
     {
     }
@@ -194,9 +187,7 @@ public:
     }
 };
 
-namespace
-{
-HostEntry syncResolveDNS(const std::string& addressToCheck)
+static HostEntry syncResolveDNS(const std::string& addressToCheck)
 {
 #if !MOBILEAPP
     // Where we have async DNS then use it for the sync DNS use cases too
@@ -219,7 +210,7 @@ HostEntry syncResolveDNS(const std::string& addressToCheck)
 
     std::unique_lock<std::mutex> lock(mutex);
 
-    AsyncDNS::lookup(addressToCheck, std::move(callback), std::move(dumpState));
+    AsyncDNS::lookup(addressToCheck, std::move(callback), dumpState);
 
     cv.wait(lock, [&result]{ return static_cast<bool>(result); });
 
@@ -230,31 +221,9 @@ HostEntry syncResolveDNS(const std::string& addressToCheck)
 #endif
 }
 
-/// Returns true if the address is a cloud instance metadata IP,
-/// matching core's opensocket_callback in CurlSession.cxx.
-bool isInstanceMetadataAddress(const sockaddr* ai_addr)
-{
-    char addrstr[INET6_ADDRSTRLEN];
-    const void* inAddr = nullptr;
-
-    if (ai_addr->sa_family == AF_INET)
-        inAddr = &(reinterpret_cast<const sockaddr_in*>(ai_addr)->sin_addr);
-    else if (ai_addr->sa_family == AF_INET6)
-        inAddr = &(reinterpret_cast<const sockaddr_in6*>(ai_addr)->sin6_addr);
-
-    if (!inAddr)
-        return false;
-
-    if (!inet_ntop(ai_addr->sa_family, inAddr, addrstr, sizeof(addrstr)))
-        return false;
-
-    const std::string_view addr(addrstr);
-    return addr == "169.254.169.254" || addr == "fd00:ec2::254";
-}
-
 using sockaddr_ptr = std::unique_ptr<sockaddr, void (*)(void*)>;
 
-sockaddr_ptr dupAddrWithPort(const sockaddr* addr, socklen_t addrLen, uint16_t port)
+static sockaddr_ptr dupAddrWithPort(const sockaddr* addr, socklen_t addrLen, uint16_t port)
 {
     sockaddr_ptr newAddr((sockaddr*)malloc(addrLen), free);
     memcpy(newAddr.get(), addr, addrLen);
@@ -278,7 +247,6 @@ sockaddr_ptr dupAddrWithPort(const sockaddr* addr, socklen_t addrLen, uint16_t p
 
     return newAddr;
 }
-} // namespace
 
 #if !MOBILEAPP
 
@@ -405,7 +373,7 @@ AsyncDNS::~AsyncDNS()
 
 void AsyncDNS::resolveDNS()
 {
-    ProcUtil::setThreadName("asyncdns");
+    Util::setThreadName("asyncdns");
     std::unique_lock<std::mutex> guard(_lock);
     while (true)
     {
@@ -421,7 +389,8 @@ void AsyncDNS::resolveDNS()
         // Unlock to allow entries to queue up in _lookups while resolving
         _lock.unlock();
 
-        UNITWSD_CALL_INSTANCE(_unitWsd, filterResolveDNS(_activeLookup.query));
+        if (_unitWsd)
+            _unitWsd->filterResolveDNS(_activeLookup.query);
 
         _activeLookup.cb(_resolver->resolveDNS(_activeLookup.query));
 
@@ -431,10 +400,10 @@ void AsyncDNS::resolveDNS()
     }
 }
 
-void AsyncDNS::addLookup(std::string lookup, DNSThreadFn cb, DNSThreadDumpStateFn dumpState)
+void AsyncDNS::addLookup(std::string lookup, DNSThreadFn cb, const DNSThreadDumpStateFn& dumpState)
 {
     std::unique_lock<std::mutex> guard(_lock);
-    _lookups.emplace(std::move(lookup), std::move(cb), std::move(dumpState));
+    _lookups.emplace(std::move(lookup), std::move(cb), dumpState);
     guard.unlock();
     _condition.notify_one();
 }
@@ -469,14 +438,16 @@ void AsyncDNS::stopAsyncDNS()
 }
 
 //static
-void AsyncDNS::lookup(std::string searchEntry, DNSThreadFn cb, DNSThreadDumpStateFn dumpState)
+void AsyncDNS::lookup(std::string searchEntry, DNSThreadFn cb,
+                      const DNSThreadDumpStateFn& dumpState)
 {
-    AsyncDNSThread->addLookup(std::move(searchEntry), std::move(cb), std::move(dumpState));
+    AsyncDNSThread->addLookup(std::move(searchEntry), std::move(cb), dumpState);
 }
 
-void asyncConnect(std::string host, const std::string& port, const bool isSSL,
-                  const std::shared_ptr<ProtocolHandlerInterface>& protocolHandler,
-                  const asyncConnectCB& asyncCb)
+void
+asyncConnect(const std::string& host, const std::string& port, const bool isSSL,
+             const std::shared_ptr<ProtocolHandlerInterface>& protocolHandler,
+             const asyncConnectCB& asyncCb)
 {
     if (host.empty() || port.empty())
     {
@@ -509,14 +480,7 @@ void asyncConnect(std::string host, const std::string& port, const bool isSSL,
             {
                 if (ai->ai_addrlen && ai->ai_addr)
                 {
-                    if (isInstanceMetadataAddress(ai->ai_addr))
-                    {
-                        LOG_WRN("Blocking connection to instance metadata address for " << host);
-                        result = AsyncConnectResult::ConnectionError;
-                        break;
-                    }
-
-                    int fd = Syscall::socket_cloexec_nonblock(ai->ai_addr->sa_family, SOCK_STREAM /*| SOCK_NONBLOCK | SOCK_CLOEXEC*/, 0);
+                    int fd = ::socket(ai->ai_addr->sa_family, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
                     if (fd < 0)
                     {
                         result = AsyncConnectResult::SocketError;
@@ -524,8 +488,7 @@ void asyncConnect(std::string host, const std::string& port, const bool isSSL,
                         continue;
                     }
 
-                    auto addrWithPort =
-                        dupAddrWithPort(ai->ai_addr, ai->ai_addrlen, NumUtil::stoi(port));
+                    auto addrWithPort = dupAddrWithPort(ai->ai_addr, ai->ai_addrlen, std::stoi(port));
                     int res = ::connect(fd, addrWithPort.get(), ai->ai_addrlen);
                     if (res < 0 && errno != EINPROGRESS)
                     {
@@ -573,10 +536,13 @@ void asyncConnect(std::string host, const std::string& port, const bool isSSL,
         asyncCb(std::move(socket), result);
     };
 
-    std::string state = "asyncConnect: [" + host + ':' + port + ']';
-    net::AsyncDNS::DNSThreadDumpStateFn dumpState = [state = std::move(state)]() -> std::string { return state; };
+    net::AsyncDNS::DNSThreadDumpStateFn dumpState = [host, port]() -> std::string
+    {
+        std::string state = "asyncConnect: [" + host + ":" + port + "]";
+        return state;
+    };
 
-    AsyncDNS::lookup(std::move(host), std::move(callback), std::move(dumpState));
+    AsyncDNS::lookup(host, std::move(callback), dumpState);
 }
 
 std::shared_ptr<StreamSocket>
@@ -608,21 +574,14 @@ connect(const std::string& host, const std::string& port, const bool isSSL,
         {
             if (ai->ai_addrlen && ai->ai_addr)
             {
-                if (isInstanceMetadataAddress(ai->ai_addr))
-                {
-                    LOG_WRN("Blocking connection to instance metadata address for " << host);
-                    break;
-                }
-
-                int fd = Syscall::socket_cloexec_nonblock(ai->ai_addr->sa_family, SOCK_STREAM /*| SOCK_NONBLOCK | SOCK_CLOEXEC*/, 0);
+                int fd = ::socket(ai->ai_addr->sa_family, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
                 if (fd < 0)
                 {
                     LOG_SYS("Failed to create socket");
                     continue;
                 }
 
-                auto addrWithPort =
-                    dupAddrWithPort(ai->ai_addr, ai->ai_addrlen, NumUtil::stoi(port));
+                auto addrWithPort = dupAddrWithPort(ai->ai_addr, ai->ai_addrlen, std::stoi(port));
                 int res = ::connect(fd, addrWithPort.get(), ai->ai_addrlen);
                 if (res < 0 && errno != EINPROGRESS)
                 {

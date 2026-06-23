@@ -37,8 +37,6 @@ window.L.Map.Welcome = window.L.Handler.extend({
 	},
 
 	addHooks: function () {
-		if (window.mode.isCODesktop())
-			return;
 		window.L.DomEvent.on(window, 'message', this.onMessage, this);
 		this.remove();
 	},
@@ -52,23 +50,7 @@ window.L.Map.Welcome = window.L.Handler.extend({
 	onUpdateList: function () {
 		if (!this.isGuest() && window.autoShowWelcome && this.shouldWelcome()) {
 			this.showWelcomeDialog();
-		} else if (this.shouldWelcomeWithSlideshow()) {
-			this.showWelcomeSlideshow();
 		}
-	},
-
-	shouldWelcomeWithSlideshow: function() {
-		if (!window.mode.isCODesktop())
-			return false;
-
-		let storedVersion = window.prefs.get('WSDWelcomeVersion');
-		let currentVersion = app.socket.WSDServer.Version;
-
-		if(!storedVersion || storedVersion !== currentVersion) {
-			return true;
-		}
-
-		return false;
 	},
 
 	shouldWelcome: function () {
@@ -97,14 +79,6 @@ window.L.Map.Welcome = window.L.Handler.extend({
 		}
 
 		return false;
-	},
-
-	showWelcomeSlideshow: function() {
-		if (window.coolParams.get('welcome') === 'true')
-			return;
-
-		app.socket.sendMessage('WELCOME');
-		window.prefs.set('WSDWelcomeVersion', app.socket.WSDServer.Version);
 	},
 
 	showWelcomeDialog: function () {
@@ -170,6 +144,6 @@ window.L.Map.Welcome = window.L.Handler.extend({
 	}
 });
 
-if (!window.L.Browser.cypressTest && (window.enableWelcomeMessage || window.mode.isCODesktop()) && window.prefs.canPersist) {
+if (!window.L.Browser.cypressTest && window.enableWelcomeMessage && window.prefs.canPersist) {
 	window.L.Map.addInitHook('addHandler', 'welcome', window.L.Map.Welcome);
 }

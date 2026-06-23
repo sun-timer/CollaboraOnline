@@ -1,4 +1,4 @@
-/* -*- js-indent-level: 8; fill-column: 100 -*- */
+/* -*- js-indent-level: 8 -*- */
 
 /* global Module ArrayBuffer Uint8Array _ */
 
@@ -165,11 +165,9 @@ class BrowserProperties {
 			isChromebook: function() {
 				return chromebook;
 			},
-			// This typically means a mobile phone. Has to match small screen size requirement.
-			isSmallScreenDevice: function() {
-				if (global.ThisIsTheWindowsApp || global.ThisIsTheQtApp || global.ThisIsTheMacOSApp)
-					return false;
-
+			// Here "mobile" means "mobile phone" (at least for now). Has to match small screen size
+			// requirement.
+			isMobile: function() {
 				if (global.mode.isChromebook())
 					return false;
 
@@ -177,35 +175,34 @@ class BrowserProperties {
 					return true;
 				}
 
+				// Android WebView on tablets may not contain "mobile" in UA.
+				// Force Android app to use mobile UI style consistently.
+				if (global.ThisIsTheAndroidApp)
+					return true;
+
 				return global.L.Browser.mobile && (screen.width < 768 || screen.height < 768);
 			},
 			// Mobile device with big screen size.
 			isTablet: function() {
-				if (global.ThisIsTheWindowsApp || global.ThisIsTheQtApp || global.ThisIsTheMacOSApp)
-					return false;
-
 				if (global.mode.isChromebook())
 					return false;
 
-				return global.L.Browser.mobile && !global.mode.isSmallScreenDevice();
-			},
-			isCODesktop: function() {
-				return global.ThisIsTheMacOSApp || global.ThisIsTheQtApp || global.ThisIsTheWindowsApp;
-			},
-			isNewDocument: function() {
-				return window.coolParams.get('isnewdocument');
+				if (global.ThisIsTheAndroidApp)
+					return false;
+
+				return global.L.Browser.mobile && !global.mode.isMobile();
 			},
 			isDesktop: function() {
-				if (global.ThisIsTheWindowsApp || global.ThisIsTheQtApp	|| global.ThisIsTheMacOSApp)
-					return true;
-
 				if (global.mode.isChromebook())
 					return true;
+
+				if (global.ThisIsTheAndroidApp)
+					return false;
 
 				return !global.L.Browser.mobile;
 			},
 			getDeviceFormFactor: function() {
-				if (global.mode.isSmallScreenDevice())
+				if (global.mode.isMobile())
 					return 'mobile';
 				else if (global.mode.isTablet())
 					return 'tablet';
@@ -276,15 +273,15 @@ class InitializerBase {
 		window.geolocationSetup = false;
 		window.canvasSlideshowEnabled = false;
 		window.wopiSettingBaseUrl = element.dataset.wopiSettingBaseUrl;
-		window.enableExperimentalFeatures = element.dataset.enableExperimentalFeatures === 'true';
+		window.enableExperimentalFeatures = element.dataset.enableExperimentalFeatures;
 
 		window.tileSize = 256;
 
 		window.ThisIsAMobileApp = false;
 		window.ThisIsTheiOSApp = false;
+		window.ThisIsTheGtkApp = false;
 		window.ThisIsTheAndroidApp = false;
 		window.ThisIsTheEmscriptenApp = false;
-		window.ThisIsTheQtApp = false;
 
 		window.bundlejsLoaded = false;
 		window.fullyLoadedAndReady = false;
@@ -330,14 +327,6 @@ class InitializerBase {
 		}.bind(coolParams);
 
 		window.coolParams = coolParams;
-
-		// Returns true if the simulateError param matches the check
-		window.simulateError = function(name) {
-			return coolParams.get('simulateError') === name;
-		};
-
-		// Starter Screen: Show BackstageView without document when app launches
-		window.starterScreen = coolParams.get('starterMode') === 'true';
 	}
 
 	loadCSSFiles() {
@@ -356,7 +345,7 @@ class InitializerBase {
 		if(window.useIntegrationTheme && theme_name !== '')
 			theme_prefix = theme_name + '/';
 
-		if (window.mode.isSmallScreenDevice()) {
+		if (window.mode.isMobile()) {
 			link.setAttribute("href", this.uriPrefix + 'device-mobile.css');
 			brandingLink.setAttribute("href", this.brandingUriPrefix + theme_prefix + 'branding-mobile.css');
 		} else if (window.mode.isTablet()) {
@@ -377,7 +366,7 @@ class InitializerBase {
 
 	initializeViewMode() {
 		const darkTheme = window.coolParams.get('darkTheme');
-		if (darkTheme) { window.uiDefaults = { 'darkTheme': 'true' }; }
+		if (darkTheme) { window.uiDefaults = { 'darkTheme': true }; }
 	}
 
 	afterInitialization() {
@@ -464,12 +453,6 @@ class MobileAppInitializer extends InitializerBase {
 		window.ThisIsAMobileApp = true;
 		window.HelpFile = document.getElementById("init-help-file").value;
 
-		// Related to issue #5841: the mobile apps set the base text direction via the "dir" parameter
-		document.dir = window.coolParams.get('dir');
-
-		// stash this so we can use it for presenter console despite
-		// MobileAppInitializer redirection of general 'open' use
-		window.origOpen = window.open;
 		// eslint-disable-next-line
 		window.open = function (url, windowName, windowFeatures) {
 		  window.postMobileMessage('HYPERLINK ' + url); /* don't call the 'normal' window.open on mobile at all */
@@ -485,6 +468,7 @@ class MobileAppInitializer extends InitializerBase {
 		window.idleTimeoutSecs = 1000000;
 
 		window.canvasSlideshowEnabled = true;
+		window.enableAccessibility = true;
 	}
 }
 
@@ -494,9 +478,11 @@ class IOSAppInitializer extends MobileAppInitializer {
 
 		window.ThisIsTheiOSApp = true;
 		window.postMobileMessage = function(msg) { window.webkit.messageHandlers.lok.postMessage(msg); };
-		window.postMobileCall    = window.postMobileMessage;
 		window.postMobileError   = function(msg) { window.webkit.messageHandlers.error.postMessage(msg); };
 		window.postMobileDebug   = function(msg) { window.webkit.messageHandlers.debug.postMessage(msg); };
+
+		// Related to issue #5841: the iOS app sets the base text direction via the "dir" parameter
+		document.dir = window.coolParams.get('dir');
 
 		window.userInterfaceMode = window.coolParams.get('userinterfacemode');
 
@@ -504,63 +490,14 @@ class IOSAppInitializer extends MobileAppInitializer {
 	}
 }
 
-class MacOSAppInitializer extends MobileAppInitializer {
+class GTKAppInitializer extends MobileAppInitializer {
 	constructor() {
 		super();
 
-		window.ThisIsTheMacOSApp = true;
-		window.postMobileMessage = function(msg) { return window.webkit.messageHandlers.lok.postMessage(msg); };
-		window.postMobileCall    = window.postMobileMessage;
-		window.postMobileError   = function(msg) { return window.webkit.messageHandlers.error.postMessage(msg); };
-		window.postMobileDebug   = function(msg) { return window.webkit.messageHandlers.debug.postMessage(msg); };
-
-		window.userInterfaceMode = window.coolParams.get('userinterfacemode');
-	}
-}
-
-class WindowsAppInitializer extends MobileAppInitializer {
-	constructor() {
-		super();
-
-		window.ThisIsTheWindowsApp = true;
-		window.postMobileMessage = function(msg) { window.chrome.webview.postMessage('MSG ' + msg); };
-
-		// Here, and elsewhere, things would be nicer if we just used JSON for all our
-		// messages, instead of plain text with a home-grown syntax of mostly "command
-		// parameter1=value..."  but also some cases of "command JSON".
-
-		// The name "postMobileCall" is a bit misleading as this isn't just "posting" a
-		// message like the other postMobileFoo() functions, but to be used when a return
-		// value is expected. In other platforms, the postMobileMessage() can be used for
-		// that, too, but not on Windows. The WebView2 does not have the required
-		// functionality built-in.
-		window.postMobileCall = (() => {
-			let nextId = 1;
-			const pending = new Map();
-
-			window.replyFromNativeToCall = (id, reply) => {
-				const resolveFunc = pending.get(id);
-				pending.delete(id);
-				resolveFunc(reply);
-			};
-
-			return function call(msg) {
-				return new Promise((resolveFunc) => {
-					const id = nextId++;
-					pending.set(id, resolveFunc);
-					window.chrome.webview.postMessage("CALL " + id + " " + msg);
-				});
-			};
-		})();
-
-		// FIXME: No registration of separate handlers in Windows WebView2, so just log
-		// errors and debug messages? Maybe instead send a JSON object with separate name
-		// and body? But then we would have to parse that JSON object from the string in C#
-		// anyway.
-		window.postMobileError   = function(msg) { window.chrome.webview.postMessage('ERR ' + msg); };
-		window.postMobileDebug   = function(msg) { window.chrome.webview.postMessage('DBG ' + msg); };
-
-		window.userInterfaceMode = window.coolParams.get('userinterfacemode');
+		window.ThisIsTheGtkApp = true;
+		window.postMobileMessage = function(msg) { window.webkit.messageHandlers.cool.postMessage(msg, '*'); };
+		window.postMobileError   = function(msg) { window.webkit.messageHandlers.error.postMessage(msg, '*'); };
+		window.postMobileDebug   = function(msg) { window.webkit.messageHandlers.debug.postMessage(msg, '*'); };
 	}
 }
 
@@ -570,7 +507,6 @@ class AndroidAppInitializer extends MobileAppInitializer {
 
 		window.ThisIsTheAndroidApp = true;
 		window.postMobileMessage = function(msg) { window.COOLMessageHandler.postMobileMessage(msg); };
-		window.postMobileCall    = window.postMobileMessage;
 		window.postMobileError   = function(msg) { window.COOLMessageHandler.postMobileError(msg); };
 		window.postMobileDebug   = function(msg) { window.COOLMessageHandler.postMobileDebug(msg); };
 
@@ -584,54 +520,10 @@ class EMSCRIPTENAppInitializer extends MobileAppInitializer {
 
 		window.ThisIsTheEmscriptenApp = true;
 		window.postMobileMessage = function(msg) { Module._handle_cool_message(Module.stringToNewUTF8(msg)); };
-		window.postMobileCall    = window.postMobileMessage;
 		window.postMobileError   = function(msg) { console.log('COOL Error: ' + msg); };
 		window.postMobileDebug   = function(msg) { console.log('COOL Debug: ' + msg); };
 
 		window.userInterfaceMode = 'notebookbar';
-	}
-}
-
-class QtAppInitializer extends MobileAppInitializer {
-	constructor() {
-		super();
-		window.ThisIsTheQtApp = true;
-
-		const messageQueue = [];
-
-		// Define safe stub functions that queue messages, as QWebChannel doesn't initialize immediately.
-		window.postMobileMessage = (msg) => messageQueue.push({ type: 'cool', msg });
-		window.postMobileCall    = window.postMobileMessage;
-		window.postMobileError   = (msg) => messageQueue.push({ type: 'error', msg });
-		window.postMobileDebug   = (msg) => messageQueue.push({ type: 'debug', msg });
-		window.userInterfaceMode = window.coolParams.get('userinterfacemode');
-
-		// Initialize QWebChannel and replace stubs when bridge is ready
-		// eslint-disable-next-line no-undef
-		new QWebChannel(qt.webChannelTransport, (channel) => {
-			const bridge = channel.objects.bridge;
-			window.bridge = bridge;
-
-			// Replace stubs with real implementations
-			window.postMobileMessage = (msg) => window.bridge.cool(msg);
-			window.postMobileCall    = window.postMobileMessage;
-			window.postMobileError   = (msg) => window.bridge.error(msg);
-			window.postMobileDebug   = (msg) => window.bridge.debug(msg);
-
-			// Flush queued messages
-			for (const { type, msg } of messageQueue) {
-				if (typeof bridge[type] === 'function') {
-					bridge[type](msg);
-				}
-			}
-			messageQueue.length = 0;
-
-			window.qtBridgeReady = true;
-			window.dispatchEvent(new Event('qtbridgeready'));
-			if (bridge.debug) {
-				bridge.debug("Qt bridge initialized");
-			}
-		});
 	}
 }
 
@@ -649,46 +541,14 @@ function getInitializerClass() {
 
 			if (osType === "IOS")
 				return new IOSAppInitializer();
-			else if (osType === "MACOS")
-				return new MacOSAppInitializer();
-			else if (osType === "WINDOWS")
-				return new WindowsAppInitializer();
+			else if (osType === "GTK")
+				return new GTKAppInitializer();
 			else if (osType === "ANDROID")
 				return new AndroidAppInitializer();
 			else if (osType === "EMSCRIPTEN")
 				return new EMSCRIPTENAppInitializer();
-			else if (osType === "QT")
-				return new QtAppInitializer();
 		}
 	}
-}
-
-function showWelcomeSVG() {
-	const loaderDiv = document.createElement('div');
-	loaderDiv.id = 'welcome-loader';
-	loaderDiv.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background-color: #faf8fc;
-        z-index: 9999999999;
-        opacity: 1;
-        transition: opacity 0.8s ease-out;
-    `;
-
-	const img = document.createElement('img');
-	img.src = 'welcome/welcome.svg';
-	img.alt = 'Welcome';
-	img.style.cssText = `
-        width: 100%;
-        height: 100%;
-        object-fit: fill;
-    `;
-
-	loaderDiv.appendChild(img);
-	document.body.insertBefore(loaderDiv, document.body.firstChild);
 }
 
 (function (global) {
@@ -849,10 +709,6 @@ function showWelcomeSVG() {
 
 			// make sure set accessibilityState for cypress
 			global.getAccessibilityState();
-			if (this._initialized) {
-				window.dispatchEvent(new Event("browsersettingchanged"));
-			}
-			this._initialized = true;
 		},
 
 		_renameLocalStoragePref: function(oldName, newName) {
@@ -1076,10 +932,8 @@ function showWelcomeSVG() {
 		// recognized without tapping again. This is an impossible problem, because browsers do not give us enough information
 		// Instead, let's just guess
 		guessOnscreenKeyboard: function() {
-			if (global.ThisIsTheWindowsApp || global.ThisIsTheQtApp || global.ThisIsTheMacOSApp)
-				return false;
 			if (global.keyboard.onscreenKeyboardHint != undefined) return global.keyboard.onscreenKeyboardHint;
-			return (global.ThisIsAMobileApp && !global.ThisIsTheEmscriptenApp) || global.mode.isSmallScreenDevice() || global.mode.isTablet();
+			return (global.ThisIsAMobileApp && !global.ThisIsTheEmscriptenApp) || global.mode.isMobile() || global.mode.isTablet();
 			// It's better to guess that more devices will have an onscreen keyboard than reality,
 			// because calc becomes borderline unusable if you miss a device that pops up an onscreen keyboard which covers
 			// a sizeable portion of the screen
@@ -1324,6 +1178,13 @@ function showWelcomeSVG() {
 		this.id = global.proxySocketCounter++;
 		this.msgInflight = 0;
 		this.openInflight = 0;
+		this._closedSocketLogOnce = false;
+		this._reconnectPending = false;
+		this._highLatencyPauseCount = 0;
+		this._lastPauseLogTs = 0;
+		this._lastForcedReconnectTs = 0;
+		this._lastMobileInflightWaitLogTs = 0;
+		this._deferredCriticalSends = new Map();
 		this.inSerial = 1; // monotonic serial of the last processed received message
 		this.outSerial = 1; // monotonic serial of the next message to send.
 		this.minPollMs = 25; // Anything less than ~25 ms can overwhelm the HTTP server.
@@ -1428,6 +1289,29 @@ function showWelcomeSVG() {
 			}
 		};
 		this.sendQueue = '';
+		this._getCriticalMessageKey = function(msg) {
+			if (typeof msg !== 'string')
+				return null;
+			if (msg.indexOf('mobile: readonlymode') === 0)
+				return 'mobile:readonlymode';
+			if (msg.indexOf('uno .uno:SearchDialog') === 0)
+				return 'uno:searchdialog';
+			if (msg.indexOf('uno .uno:WordCountDialog') === 0)
+				return 'uno:wordcountdialog';
+			return null;
+		};
+		this._flushDeferredCriticalSends = function() {
+			if (!this._deferredCriticalSends.size)
+				return;
+			this._deferredCriticalSends.forEach((value) => {
+				this.sendQueue = this.sendQueue.concat(
+					'B0x' + this.outSerial.toString(16) + '\n' +
+					'0x' + (new TextEncoder().encode(value)).length.toString(16) + '\n' + value + '\n');
+				this.outSerial++;
+			});
+			global.app.console.debug('Flushed deferred critical messages: ' + this._deferredCriticalSends.size);
+			this._deferredCriticalSends.clear();
+		};
 		this._signalErrorClose = function() {
 			clearInterval(this.pollInterval);
 			clearTimeout(this.delaySession);
@@ -1445,6 +1329,9 @@ function showWelcomeSVG() {
 			this.msgInflight = 0;
 			this.openInflight = 0;
 			this.readyState = 3; // CLOSED
+			this._closedSocketLogOnce = false;
+			this._reconnectPending = false;
+			this._lastForcedReconnectTs = performance.now();
 		};
 		// For those who think that long-running sockets are a
 		// better way to wait: you're so right. However, each
@@ -1456,15 +1343,42 @@ function showWelcomeSVG() {
 				this.pollInterval = setInterval(this.doSend, intervalMs);
 		},
 		this.doSend = function () {
+			var isMobileApp = !!window.ThisIsAMobileApp;
 			if (that.sessionId === 'open')
 			{
-				if (that.readyState === 3)
-					global.app.console.debug('Error: sending on closed socket');
+				if (that.readyState === 3) {
+					if (!that._closedSocketLogOnce) {
+						global.app.console.debug('Error: sending on closed socket');
+						that._closedSocketLogOnce = true;
+					}
+					if (!that._reconnectPending) {
+						that._reconnectPending = true;
+						that.readyState = 0; // CONNECTING
+						that.getSessionId();
+					}
+				}
+				return;
+			}
+
+			if (isMobileApp && that.msgInflight >= 1)
+			{
+				var mobileNow = performance.now();
+				if (mobileNow - that.lastDataTimestamp > 20 * 1000)
+				{
+					global.app.console.debug('Close mobile connection after no response for 20secs');
+					that._signalErrorClose();
+				}
+				else if (mobileNow - that._lastMobileInflightWaitLogTs > 1500)
+				{
+					global.app.console.debug('High latency connection - mobile waiting for in-flight drain.');
+					that._lastMobileInflightWaitLogTs = mobileNow;
+				}
 				return;
 			}
 
 			if (that.msgInflight >= 4) // something went badly wrong.
 			{
+				that._highLatencyPauseCount++;
 				// We shouldn't get here because we throttle sending when we
 				// have something in flight, but if the server hangs, we
 				// will do up to 3 retries before we end up here and yield.
@@ -1480,9 +1394,29 @@ function showWelcomeSVG() {
 					that._signalErrorClose();
 				}
 				else
-					global.app.console.debug('High latency connection - too much in-flight, pausing.');
+				{
+					var now = performance.now();
+					if (now - that._lastPauseLogTs > 1500) {
+						global.app.console.debug('High latency connection - too much in-flight, pausing.');
+						that._lastPauseLogTs = now;
+					}
+					if (that._highLatencyPauseCount >= 24 &&
+						now - that.lastDataTimestamp > 15000 &&
+						that.sendQueue.length === 0 &&
+						that._deferredCriticalSends.size === 0) {
+						if (isMobileApp) {
+							global.app.console.debug('High latency persisted on mobile, skip forced reconnect and keep draining.');
+						} else if (now - that._lastForcedReconnectTs > 20000) {
+							that._lastForcedReconnectTs = now;
+							global.app.console.debug('High latency persisted, forcing reconnect to recover.');
+							that._signalErrorClose();
+						}
+					}
+				}
 				return;
 			}
+			that._highLatencyPauseCount = 0;
+			that._flushDeferredCriticalSends();
 
 			// Maximize the timeout, instead of stopping altogethr,
 			// so we don't hang when the following request takes
@@ -1585,6 +1519,8 @@ function showWelcomeSVG() {
 				{
 					that.sessionId = this.responseText;
 					that.readyState = 1;
+					that._closedSocketLogOnce = false;
+					that._reconnectPending = false;
 					that.onopen();
 					that._setPollInterval(that.curPollMs);
 				}
@@ -1597,6 +1533,13 @@ function showWelcomeSVG() {
 			this.openInflight++;
 		};
 		this.send = function(msg) {
+			var criticalKey = this._getCriticalMessageKey(msg);
+			if (criticalKey && that.msgInflight >= 4) {
+				this._deferredCriticalSends.set(criticalKey, msg);
+				global.app.console.debug('Deferred critical message during high latency: ' + criticalKey);
+				return;
+			}
+
 			var hadData = this.sendQueue.length > 0;
 			this.sendQueue = this.sendQueue.concat(
 				'B0x' + this.outSerial.toString(16) + '\n' +
@@ -1857,53 +1800,24 @@ function showWelcomeSVG() {
 		}
 	};
 
-	// Save the original method to call it when not in "mobile app"  mode
-	const originalStringToLocaleString = String.prototype.toLocaleString;
-
-	String.prototype.toLocaleString = function () {
-		// `this` is the string being localized
-		const string = this.valueOf();
-
+	global._ = function (string) {
+		// In the mobile app case we can't use the stuff from l10n-for-node, as that assumes HTTP.
 		if (global.ThisIsAMobileApp) {
+			// We use another approach just for iOS for now.
 			if (global.LOCALIZATIONS && Object.prototype.hasOwnProperty.call(global.LOCALIZATIONS, string)) {
-				let result = global.LOCALIZATIONS[string];
+				// global.postMobileDebug('_(' + string + '): YES: ' + global.LOCALIZATIONS[string]);
+				var result = global.LOCALIZATIONS[string];
 				if (global.LANG === 'de-CH') {
 					result = result.replace(/ß/g, 'ss');
 				}
 				return result;
 			} else {
+				// global.postMobileDebug('_(' + string + '): NO');
 				return string;
 			}
 		} else {
-			// fallback to original
-			return originalStringToLocaleString.call(this);
+			return string.toLocaleString();
 		}
-	};
-
-	// In the mobile app we have a separate localization dictionary for help strings
-	String.prototype.toLocaleHelpString = function () {
-		// `this` is the string being localized
-		const string = this.valueOf();
-
-		if (global.ThisIsAMobileApp) {
-			if (global.LOCALIZATIONS_HELP && Object.prototype.hasOwnProperty.call(global.LOCALIZATIONS_HELP, string)) {
-				let result = global.LOCALIZATIONS_HELP[string];
-				if (global.LANG === 'de-CH') {
-					result = result.replace(/ß/g, 'ss');
-				}
-				return result;
-			} else {
-				// try also the normal localization dictionary (global.LOCALIZATIONS) if not present in the help one
-				return string.toLocaleString();
-			}
-		} else {
-			// fallback to original
-			return originalStringToLocaleString.call(this);
-		}
-	};
-
-	global._ = function (string) {
-		return string.toLocaleString();
 	};
 
 	// Some global variables are defined in cool.html, among them:
@@ -1970,20 +1884,6 @@ function showWelcomeSVG() {
 		return root + encodedDocUrl + '/ws';
 	};
 
-	// Form a valid new Cool WebSocket URL from its components.
-	// ws://localhost:9980/cool/ws?WOPISrc=<encoded-document-URI>[&<docParams>]
-	global.makeWopiCoolWsUrl = function (root, docParams) {
-		var wopiSrc = '';
-		if (global.wopiSrc != '') {
-			wopiSrc = '?WOPISrc=' + encodeURIComponent(global.wopiSrc);
-
-			if (global.routeToken != '')
-				wopiSrc += '&RouteToken=' + global.routeToken;
-		}
-
-		return root + '/ws' + wopiSrc + '&' + docParams;
-	};
-
 	// Form a valid WS URL to the host with the given path and
 	// encode the document URL and params.
 	global.makeWsUrlWopiSrc = function (path, docUrlParams, suffix, wopiSrcParam) {
@@ -2033,21 +1933,13 @@ function showWelcomeSVG() {
 		return new TextDecoder().decode(bytes);
 	};
 
-
-	// Create a WebSocket to the server
-	// FIXME The Android and iOS apps use the new approach, other apps should follow
-	if (global.ThisIsAMobileApp && !global.ThisIsTheAndroidApp && !global.ThisIsTheiOSApp) {
-		// FIXME Remove FakeWebSocket when the mobile apps are updated to use the new approach
+	if (global.ThisIsTheGtkApp || global.ThisIsTheEmscriptenApp) {
 		global.socket = new global.FakeWebSocket();
 		global.TheFakeWebSocket = global.socket;
 	} else {
-		if (global.enableExperimentalFeatures) {
-			var websocketURI = global.makeWopiCoolWsUrl(global.makeWsUrl('/cool'), docParams);
-		} else {
-			// The URL may already contain a query (e.g., 'http://server.tld/foo/wopi/files/bar?desktop=baz') - then just append more params
-			var docParamsPart = docParams ? (global.docURL.includes('?') ? '&' : '?') + docParams : '';
-			var websocketURI = global.makeWsUrlWopiSrc('/cool/', global.docURL + docParamsPart);
-		}
+		// The URL may already contain a query (e.g., 'http://server.tld/foo/wopi/files/bar?desktop=baz') - then just append more params
+		var docParamsPart = docParams ? (global.docURL.includes('?') ? '&' : '?') + docParams : '';
+		var websocketURI = global.makeWsUrlWopiSrc('/cool/', global.docURL + docParamsPart);
 		try {
 			global.socket = global.createWebSocket(websocketURI);
 		} catch (err) {
@@ -2140,11 +2032,6 @@ function showWelcomeSVG() {
 				msg += ' timezone=' + Intl.DateTimeFormat().resolvedOptions().timeZone;
 				msg += ' clientvisiblearea=' + window.makeClientVisibleArea();
 
-				if (global.coolParams.get('welcome') === 'true') {
-					msg += ' batch=true';
-					showWelcomeSVG();
-				}
-
 				global.socket.send(msg);
 			}
 		};
@@ -2175,7 +2062,7 @@ function showWelcomeSVG() {
 
 		global.socket.binaryType = 'arraybuffer';
 
-		if (global.ThisIsAMobileApp && !global.ThisIsTheEmscriptenApp && !window.starterScreen) {
+		if (global.ThisIsAMobileApp && !global.ThisIsTheEmscriptenApp) {
 			// This corresponds to the initial GET request when creating a WebSocket
 			// connection and tells the app's code that it is OK to start invoking
 			// TheFakeWebSocket's onmessage handler. The app code that handles this

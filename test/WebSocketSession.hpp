@@ -9,30 +9,26 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * WebSocket session management for testing.
- */
-
 #pragma once
 
-#include <common/Log.hpp>
-#include <common/SigUtil.hpp>
-#include <common/Util.hpp>
-#include <net/HttpRequest.hpp>
-#include <net/NetUtil.hpp>
+#include <chrono>
+#include <cstdint>
+#include <iostream>
+#include <memory>
+#include <condition_variable>
+#include <mutex>
+#include <string>
+
+#include "NetUtil.hpp"
+#include "SigUtil.hpp"
 #include <net/Socket.hpp>
+#include <net/HttpRequest.hpp>
 #include <net/WebSocketHandler.hpp>
 #if ENABLE_SSL
 #include <net/SslSocket.hpp>
 #endif
-
-#include <chrono>
-#include <condition_variable>
-#include <cstdint>
-#include <iostream>
-#include <memory>
-#include <mutex>
-#include <string>
+#include "Log.hpp"
+#include "Util.hpp"
 
 // This is a partial implementation of RFC 6455
 // The WebSocket Protocol.
@@ -71,7 +67,7 @@ private:
     }
 
     /// Returns the given protocol's scheme.
-    static constexpr std::string_view getProtocolScheme(Protocol protocol)
+    static const char* getProtocolScheme(Protocol protocol)
     {
         switch (protocol)
         {
@@ -121,7 +117,7 @@ public:
         const bool secure
             = lowerScheme.starts_with("https") || lowerScheme.starts_with("wss");
 
-        const int portInt = port.empty() ? 0 : NumUtil::stoi(port);
+        const int portInt = port.empty() ? 0 : std::stoi(port);
         return create(host, secure ? Protocol::HttpSsl : Protocol::HttpUnencrypted, portInt);
     }
 
@@ -154,7 +150,7 @@ public:
     }
 
     /// Returns the current protocol scheme.
-    std::string_view getProtocolScheme() const { return getProtocolScheme(_protocol); }
+    const char* getProtocolScheme() const { return getProtocolScheme(_protocol); }
 
     const std::string& host() const { return _host; }
     const std::string& port() const { return _port; }
@@ -385,7 +381,7 @@ private:
                 const auto size = item.size();
                 assert(size && "Zero-sized messages must never be queued for sending.");
 
-                sendTextMessage(std::string_view(item.data(), size));
+                sendTextMessage(item.data(), size);
 
                 wrote += size;
                 LOG_TRC("WebSocketSession: performing writes, wrote " << size << " bytes, " << wrote

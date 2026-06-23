@@ -101,7 +101,7 @@ class SheetsBar {
 	onDocLayerInit() {
 		var docType = this.map.getDocType();
 		if (docType == 'spreadsheet') {
-			if (!window.mode.isSmallScreenDevice()) {
+			if (!window.mode.isMobile()) {
 				this.show();
 			}
 		}

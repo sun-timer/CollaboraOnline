@@ -9,11 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Debug utility to dump WSD server state.
- * Functions: dumpState()
- */
-
 #include <config.h>
 
 #include <wsd/COOLWSD.hpp>

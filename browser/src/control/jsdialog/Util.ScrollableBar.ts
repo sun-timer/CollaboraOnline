@@ -14,9 +14,9 @@
  * JSDialog.ScrollableBar - helper for creating toolbars with scrolling left/right
  */
 
-declare var JSDialog: any;
+/* global JSDialog $ */
 
-let pendingTask: TaskId | null = null;
+declare var JSDialog: any;
 
 function createScrollButtons(parent: Element, scrollable: Element) {
 	window.L.DomUtil.addClass(scrollable, 'ui-scroll-wrapper');
@@ -52,9 +52,7 @@ function setupResizeHandler(container: Element, scrollable: Element) {
 	var isRTL: boolean = document.documentElement.dir === 'rtl';
 	var timer: any; // for shift + mouse wheel up/down
 
-	const handlerImpl = () => {
-		pendingTask = null;
-
+	const handler = function () {
 		const rootContainer = scrollable.querySelector('div');
 		if (!rootContainer) return;
 
@@ -79,12 +77,7 @@ function setupResizeHandler(container: Element, scrollable: Element) {
 			showArrow(left, false);
 			showArrow(right, false);
 		}
-	};
-
-	const handler = () => {
-		if (pendingTask) app.layoutingService.cancelLayoutingTask(pendingTask);
-		pendingTask = app.layoutingService.appendLayoutingTask(handlerImpl);
-	};
+	}.bind(this);
 
 	// handler for toolbar and statusbar
 	// runs if shift + mouse wheel up/down are used

@@ -17,14 +17,10 @@ window.L.Control.DocumentNameInput = window.L.Control.extend({
 
 	onAdd: function (map) {
 		this.map = map;
-		if (window.mode.isSmallScreenDevice())
+		if (window.mode.isMobile())
 			this.progressBar = document.getElementById('mobile-progress-bar');
 		else
 			this.progressBar = document.getElementById('document-name-input-progress-bar');
-
-		var label = document.querySelector('label[for="document-name-input"]');
-		if (label)
-			label.textContent = _('Document name');
 
 		map.on('doclayerinit', this.onDocLayerInit, this);
 		map.on('wopiprops', this.onWopiProps, this);

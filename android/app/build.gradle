@@ -64,6 +64,14 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+
+    applicationVariants.all { variant ->
+        def buildTimestamp = new Date().format("yyyyMMdd-HHmm", TimeZone.getTimeZone("Asia/Shanghai"))
+        variant.outputs.all { output ->
+            def abi = output.getFilter(com.android.build.OutputFile.ABI) ?: 'universal'
+            outputFileName = "collabora-office-${buildTimestamp}-${variant.buildType.name}-${abi}.apk"
+        }
+    }
 }
 
 dependencies {

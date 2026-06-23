@@ -4,7 +4,7 @@
 # Declare variables to be passed into your templates.
 
 image:
-  repository: docker.io/collabora/code
+  repository: collabora/code
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
@@ -201,7 +201,6 @@ probes:
     enabled: true
     failureThreshold: 30
     periodSeconds: 3
-    path: /
 
   readiness:
     enabled: true
@@ -210,7 +209,6 @@ probes:
     timeoutSeconds: 30
     successThreshold: 1
     failureThreshold: 2
-    path: /
   liveness:
     enabled: true
     initialDelaySeconds: 0
@@ -218,7 +216,6 @@ probes:
     timeoutSeconds: 30
     successThreshold: 1
     failureThreshold: 4
-    path: /
 
 route:
   # -- enable an HTTPRoute resource for collabora.
@@ -543,8 +540,6 @@ dynamicConfig:
 trusted_certs_install:
   enabled: false
   trusted_certs: []
-
-priorityClassName: ""
 
 nodeSelector: {}
 

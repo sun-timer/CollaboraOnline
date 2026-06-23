@@ -22,7 +22,7 @@
 
 #include <test/testlog.hpp>
 
-#include <COKit/COKitInit.h>
+#include <LibreOfficeKit/LibreOfficeKitInit.h>
 
 class UnitBase;
 class UnitWSD;
@@ -150,7 +150,7 @@ public:
     /// Do we have a unit test library hooking things & loaded
     static bool isUnitTesting()
     {
-#if ENABLE_DEBUG
+#ifdef ENABLE_DEBUG
         return DlHandle;
 #else
         return false; // In non-debug builds unit-tests cannot be run. See test/run_unit.sh.
@@ -185,7 +185,7 @@ public:
     /// Message that is about to be sent via the websocket.
     /// To override, handle onFilterSendWebSocketMessage or any of the onDocument...() handlers.
     /// Returns true to stop processing the message further.
-    bool filterSendWebSocketMessage(std::string_view data, WSOpCode code, bool flush,
+    bool filterSendWebSocketMessage(const char* data, std::size_t len, WSOpCode code, bool flush,
                                     int& unitReturn);
 
     /// Hook the disk space check
@@ -331,10 +331,7 @@ private:
     /// Returns true iff there are more valid test instances to dereference.
     static bool haveMoreTests()
     {
-        // The last test is the dummy one, used to avoid having a null instance.
-        // Check that we have a valid one after the next one, otherwise it's the dummy.
-        return GlobalArray && GlobalIndex >= 0 && GlobalArray[GlobalIndex + 1] &&
-               GlobalArray[GlobalIndex + 2];
+        return GlobalArray && GlobalIndex >= 0 && GlobalArray[GlobalIndex + 1];
     }
 
     /// Self-test.
@@ -347,7 +344,7 @@ private:
     virtual bool onFilterLOKitMessage(const std::shared_ptr<Message>& /*message*/) { return false; }
 
     /// Handles messages sent via WebSocket.
-    virtual bool onFilterSendWebSocketMessage(std::string_view /*data*/,
+    virtual bool onFilterSendWebSocketMessage(const char* /*data*/, const std::size_t /*len*/,
                                               const WSOpCode /* code */, const bool /* flush */,
                                               int& /*unitReturn*/)
     {
@@ -362,10 +359,15 @@ private:
 
     std::string getReason() const;
 
+    static UnitBase* get(UnitType type);
+
+    /// setup global instance for get() method
+    static void rememberInstance(UnitType type, UnitBase* instance);
+
     static void* DlHandle; ///< The handle to the unit-test .so.
     static char *UnitLibPath;
     static UnitBase** GlobalArray; ///< All the tests.
-    static std::atomic_int_fast64_t GlobalIndex; ///< The index of the current test.
+    static int GlobalIndex; ///< The index of the current test.
     static TestOptions GlobalTestOptions; ///< The test options for this Test Suite.
     static TestResult GlobalResult; ///< The result of all tests. Latches at first failure.
 
@@ -402,10 +404,9 @@ class UnitWSD : public UnitBase
 {
     UnitWSDInterface *_wsd;
     bool _hasKitHooks;
-    std::atomic_bool _hasDocBroker;
 
 public:
-    explicit UnitWSD(const std::string& testname);
+    UnitWSD(const std::string& testname);
 
     virtual ~UnitWSD();
 
@@ -589,6 +590,10 @@ public:
 
     // ---------------- DocBroker events ----------------
 
+    /// Called when a DocumentBroker is created (from the constructor).
+    /// Useful to detect track the beginning of a document's life cycle.
+    virtual void onDocBrokerCreate(const std::string&) {}
+
     /// Called when the Kit process is attached to a DocBroker.
     virtual void onDocBrokerAttachKitProcess(const std::string&, int) {}
 
@@ -605,20 +610,11 @@ public:
     virtual void onDocBrokerPresetsInstallEnd(bool /*success*/) {}
 
 protected:
-    /// Called when a DocumentBroker is created (from the constructor).
-    /// Useful to detect track the beginning of a document's life cycle.
-    virtual void onDocBrokerCreate(const std::string&) {}
-
     /// Called when a DocumentBroker is destroyed (from the destructor).
     /// Useful to detect when unloading was clean and to (re)load again.
     virtual void onDocBrokerDestroy(const std::string&) {}
 
 public:
-    /// Called when a DocumentBroker is created (from the constructor).
-    /// Useful to detect when a document was created at all.
-    /// Handle by overriding onDocBrokerCreate.
-    void DocBrokerCreate(const std::string&);
-
     /// Called when a DocumentBroker is destroyed (from the destructor).
     /// Useful to detect when unloading was clean and to (re)load again.
     /// Handle by overriding onDocBrokerDestroy.
@@ -644,7 +640,6 @@ private:
     /// The actual test implementation.
     virtual void invokeWSDTest() {}
 
-    void startNextTest();
     void onExitTest(TestResult result, const std::string& reason = std::string()) override;
 };
 
@@ -703,10 +698,10 @@ public:
     /// After the kit process created a ChildSession
     virtual void postKitSessionCreated(Session* /*session*/) {}
 
-    /// Allow a custom COKit wrapper
-    virtual COKit *cok_init(const char * /* instdir */,
+    /// Allow a custom LibreOfficeKit wrapper
+    virtual LibreOfficeKit *lok_init(const char * /* instdir */,
                                      const char * /* userdir */,
-                                     CokHookFunction2 /* fn */)
+                                     LokHookFunction2 /* fn */)
     {
         return nullptr;
     }

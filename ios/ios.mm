@@ -17,6 +17,6 @@ const char *user_name = nullptr;
 
 int coolwsd_server_socket_fd = -1;
 
-COKit *lo_kit;
+LibreOfficeKit *lo_kit;
 
 // vim:set shiftwidth=4 softtabstop=4 expandtab:

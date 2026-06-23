@@ -9,11 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Implementation of host validation and alias parsing.
- * Functions: parseAliases(), isHostAllowed()
- */
-
 #include <config.h>
 
 // HostUtil is only used in non-mobile apps.
@@ -27,7 +22,6 @@
 #include <common/RegexUtil.hpp>
 
 #include <map>
-#include <regex>
 #include <set>
 #include <string>
 
@@ -90,15 +84,22 @@ std::string HostUtil::parseAlias(const std::string& aliasPattern)
 
     // check if it is plain uri, then convert to a strict regex for this uri if needed
     // Must be a full match.
-    // Group 2 captures the hostname.
-    std::regex re(
-        "^(https?://)?(([a-z0-9\\-]+)(\\.[a-z0-9\\-]+)*)(:[0-9]{1,5})?(/[a-z0-9\\-&?_]*)*$",
-        std::regex_constants::icase);
+    Poco::RegularExpression re(
+        "^(https?://)?(?<hostname>([a-z0-9\\-]+)(\\.[a-z0-9\\-]+)+)(:[0-9]{1,5})?(/[a-z0-9\\-&?_]*)*$",
+        Poco::RegularExpression::RE_CASELESS);
 
-    std::smatch matches;
-    if (std::regex_match(aliasPattern, matches, re) && matches.size() > 2)
+    std::vector<Poco::RegularExpression::Match> matches;
+    if (re.match(aliasPattern, 0, matches) && matches.size() > 1)
     {
-        std::string hostname = matches[2].str();
+        std::string hostname;
+        for (const auto& match : matches)
+        {
+            if (match.name == "hostname")
+            {
+                hostname = aliasPattern.substr(match.offset, match.length);
+                break;
+            }
+        }
 
         if (hostname.empty())
         {

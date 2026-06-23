@@ -24,8 +24,6 @@ class NavigatorPanel extends SidebarBase {
 
 	highlightTerm: string;
 	focusQuickFind: boolean;
-	dirtyWidth: boolean = true;
-	currentWidth: number = 0;
 
 	constructor(map: any) {
 		super(map, SidebarType.Navigator);
@@ -33,7 +31,6 @@ class NavigatorPanel extends SidebarBase {
 
 	onAdd(map: ReturnType<typeof window.L.map>) {
 		super.onAdd(map);
-		this.dirtyWidth = true;
 		this.map.on('navigator', this.onNavigator, this);
 		this.map.on('doclayerinit', this.onDocLayerInit, this);
 		this.map.on('focussearch', this.focusSearch, this);
@@ -63,7 +60,6 @@ class NavigatorPanel extends SidebarBase {
 		this.map.off('navigator');
 		this.map.off('zoomend');
 		this.map.off('doclayerinit');
-		this.dirtyWidth = true;
 	}
 
 	onDocLayerInit() {
@@ -71,7 +67,7 @@ class NavigatorPanel extends SidebarBase {
 		// for presentation show slide sorter navigation panel by default
 		if (
 			allowedDocTypes.includes(app.map.getDocType()) &&
-			!window.mode.isSmallScreenDevice()
+			!window.mode.isMobile()
 		) {
 			// Navigator panel should be visible and by default we should open slide sorter in case of impress/draw
 			this.showNavigationPanel(false);
@@ -280,8 +276,6 @@ class NavigatorPanel extends SidebarBase {
 			}
 			this.navigationPanel.prepend(navHeader);
 		}
-
-		this.dirtyWidth = true;
 	}
 
 	createFloatingNavigatorBtn() {
@@ -366,8 +360,6 @@ class NavigatorPanel extends SidebarBase {
 		} else {
 			this.closeSidebar();
 		}
-
-		this.dirtyWidth = true;
 	}
 
 	onJSUpdate(e: FireEvent) {
@@ -432,28 +424,6 @@ class NavigatorPanel extends SidebarBase {
 		} else if (!this.navigationPanel.classList.contains('visible')) {
 			this.floatingNavIcon.classList.add('visible');
 		}
-	}
-
-	getCurrentWidth() {
-		if (this.dirtyWidth) {
-			// Consider navigations sidebar width to place marker at correct position
-			const presentationControlsWrapper: HTMLDivElement =
-				document.querySelector('#navigation-sidebar');
-			let presentationControlsWrapperWidth: number = 0;
-
-			if (presentationControlsWrapper)
-				presentationControlsWrapperWidth =
-					presentationControlsWrapper.getBoundingClientRect().width;
-
-			this.currentWidth = presentationControlsWrapperWidth;
-			this.dirtyWidth = false;
-		}
-
-		return this.currentWidth;
-	}
-
-	requestShow() {
-		app.socket.sendMessage('uno .uno:Navigator');
 	}
 
 	showNavigationPanel(setFocus: boolean) {

@@ -9,22 +9,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for rendering options functionality.
- */
-
 #include <config.h>
-
-#include <common/Unit.hpp>
-#include <common/Util.hpp>
-
-#include <test/helpers.hpp>
-#include <test/lokassert.hpp>
-
-#include <Poco/URI.h>
 
 #include <memory>
 #include <string>
+
+#include <Poco/URI.h>
+#include <test/lokassert.hpp>
+
+#include <Unit.hpp>
+#include <Util.hpp>
+#include <helpers.hpp>
 
 /// Rendering options testcase.
 class UnitRenderingOptions : public UnitWSD
@@ -64,7 +59,7 @@ void UnitRenderingOptions::invokeWSDTest()
         Poco::Dynamic::Var statusJsonVar = parser.parse(status.substr(7));
         const Poco::SharedPtr<Poco::JSON::Object>& statusJsonObject = statusJsonVar.extract<Poco::JSON::Object::Ptr>();
 
-        const int height = NumUtil::stoi(statusJsonObject->get("height").toString());
+        const int height = std::stoi(statusJsonObject->get("height").toString());
         // HideWhitespace was ignored, this was 32532, should be around 16706.
         LOK_ASSERT(height < 20000);
     }

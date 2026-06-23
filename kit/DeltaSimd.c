@@ -20,11 +20,11 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <endian.h>
 
 #include "DeltaSimd.h"
 
 #if ENABLE_SIMD
-#  include <endian.h>
 #  include <immintrin.h>
 
 #define DEBUG_LUT 0
@@ -51,7 +51,7 @@ void init_gather_lut()
         while (i<8) // pad to copy first point
                 lut[i++] = 0;
 
-#if DEBUG_LUT
+#if DEBUG_LUG
         fprintf(stderr, "lut mask: 0x%x generates %d %d %d %d %d %d %d %d\n",
                 pattern, lut[7], lut[6], lut[5], lut[4], lut[3], lut[2], lut[1], lut[0]);
 #endif

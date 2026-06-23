@@ -16,7 +16,7 @@
 #import <cstring>
 
 #define LIBO_INTERNAL_ONLY
-#import <COKit/COKit.hxx>
+#import <LibreOfficeKit/LibreOfficeKit.hxx>
 
 #include <comphelper/lok.hxx>
 #include <i18nlangtag/languagetag.hxx>
@@ -30,7 +30,6 @@
 #import "FakeSocket.hpp"
 #import "Kit.hpp"
 #import "Log.hpp"
-#import "ProcUtil.hpp"
 #import "COOLWSD.hpp"
 #import "SetupKitEnvironment.hpp"
 #import "Util.hpp"
@@ -52,8 +51,8 @@ NSString *app_text_direction;
     else
         setupKitEnvironment("");
 
-    Log::initialize("Mobile", trace);
-    ProcUtil::setThreadName("main");
+    Log::initialize("Mobile", trace, false, false, {}, false, {});
+    Util::setThreadName("main");
 
     // Clear the cache directory if it is for another build of the app
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
@@ -110,9 +109,9 @@ NSString *app_text_direction;
     else
         app_text_direction = @"";
 
-    lo_kit = cok_init_2(nullptr, nullptr);
+    lo_kit = lok_init_2(nullptr, nullptr);
 
-    comphelper::COKit::setLanguageTag(LanguageTag(OUString::fromUtf8(OString([app_locale UTF8String])), true));
+    comphelper::LibreOfficeKit::setLanguageTag(LanguageTag(OUString::fromUtf8(OString([app_locale UTF8String])), true));
 
     // This fires off a thread running the LOKit runLoop()
     runKitLoopInAThread();
@@ -157,7 +156,7 @@ NSString *app_text_direction;
                        char *argv[2];
                        argv[0] = strdup([[NSBundle mainBundle].executablePath UTF8String]);
                        argv[1] = nullptr;
-                       ProcUtil::setThreadName("app");
+                       Util::setThreadName("app");
                        auto coolwsd = new COOLWSD();
                        coolwsd->run(1, argv);
 

@@ -30,10 +30,6 @@ abstract class JSDialogComponent {
 		this.model = new JSDialogModelState(name);
 	}
 
-	public getContainer(): HTMLElement | undefined {
-		return this.container;
-	}
-
 	/// connects component to the JSDialogMessageRouter
 	protected registerMessageHandlers() {
 		this.map.on('jsdialogupdate', this.onJSUpdate, this);

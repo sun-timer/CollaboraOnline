@@ -35,8 +35,9 @@
 /* Define to 1 if you have the `pam' library (-lpam). */
 #define HAVE_LIBPAM 0
 
-/* Define to 1 if you have the <COKit/COKit.h> header file. */
-#define HAVE_COKIT_COKIT_H 1
+/* Define to 1 if you have the <LibreOfficeKit/LibreOfficeKit.h> header file.
+   */
+#define HAVE_LIBREOFFICEKIT_LIBREOFFICEKIT_H 1
 
 /* Define to 1 if you have the <linux/seccomp.h> header file. */
 #define HAVE_LINUX_SECCOMP_H 0
@@ -137,10 +138,3 @@
 
 /* Version number of package */
 /* #undef VERSION */
-
-/* This config.h is used only for iOS and we don't need the Windows
- * version of EXPORT here, and not EXTERNC either.
- */
-
-#define EXTERNC /**/
-#define EXPORT /**/

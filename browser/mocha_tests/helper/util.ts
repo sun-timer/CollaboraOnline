@@ -10,6 +10,6 @@
  */
 
 function assertFloat(actual: number, expected: number, eps: number, msg: string) {
-	nodeassert.ok(Math.abs(actual - expected) < eps,
+	assert.ok(Math.abs(actual - expected) < eps,
 		msg + ` | actual : ${actual}, expected: ${expected}, eps: ${eps}`);
 }

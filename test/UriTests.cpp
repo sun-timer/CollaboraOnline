@@ -9,10 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for URI parsing and manipulation functionality.
- */
-
 #include <config.h>
 
 #include <common/Uri.hpp>

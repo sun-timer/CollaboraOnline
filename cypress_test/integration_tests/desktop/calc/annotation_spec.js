@@ -9,15 +9,11 @@ describe(['tagdesktop'], 'Annotation Tests', function() {
 	beforeEach(function() {
 		helper.setupAndLoadDocument('calc/annotation.ods');
 		desktopHelper.switchUIToNotebookbar();
-		cy.getFrameWindow().then((win) => {
-			this.win = win;
-			helper.processToIdle(win);
-		});
 	});
 
 	it('Insert',function() {
-		// Make sure we know the cell address.
-		calcHelper.enterCellAddressAndConfirm(this.win, 'B2');
+		// Make sure we know the cell adress.
+		helper.typeIntoInputField(helper.addressInputSelector, 'B2');
 
 		desktopHelper.insertComment();
 
@@ -103,7 +99,7 @@ describe(['tagdesktop'], 'Annotation Tests', function() {
 		cy.cGet('#comment-container-1').trigger('mouseover', {force: true});
 		cy.cGet('#annotation-content-area-1').should('contain','some text');
 		cy.cGet('#comment-annotation-menu-1').click();
-		cy.cGet('#comment-menu-1-dropdown').contains('.ui-combobox-entry.jsdialog.ui-grid-cell', 'Modify').click();
+		cy.cGet('body').contains('.context-menu-item','Modify').click();
 		cy.cGet('#annotation-modify-textarea-1').type(', some other text');
 		cy.cGet('#annotation-save-1').click();
 		cy.cGet('#comment-container-1').then(function (element) {
@@ -127,7 +123,7 @@ describe(['tagdesktop'], 'Annotation Tests', function() {
 		cy.cGet('#comment-container-1').trigger('mouseover', {force: true});
 		cy.cGet('#annotation-content-area-1').should('contain','some text');
 		cy.cGet('#comment-annotation-menu-1').click();
-		cy.cGet('#comment-menu-1-dropdown').contains('.ui-combobox-entry.jsdialog.ui-grid-cell', 'Reply').should('not.exist');
+		cy.cGet('.context-menu-list:visible .context-menu-item').should('not.have.text', 'Reply');
 	});
 
 	it('Remove',function() {
@@ -142,7 +138,7 @@ describe(['tagdesktop'], 'Annotation Tests', function() {
 		cy.cGet('#comment-container-1').trigger('mouseover', {force: true});
 		cy.cGet('#annotation-content-area-1').should('contain','some text');
 		cy.cGet('#comment-annotation-menu-1').click();
-		cy.cGet('#comment-menu-1-dropdown').contains('.ui-combobox-entry.jsdialog.ui-grid-cell', 'Remove').click();
+		cy.cGet('body').contains('.context-menu-item','Remove').click();
 		cy.cGet('#comment-container-1').should('not.exist');
 	});
 
@@ -185,14 +181,14 @@ describe(['tagdesktop'], 'Annotation Tests', function() {
 	});
 
 	it('View Jump', function() {
-		calcHelper.enterCellAddressAndConfirm(this.win, 'A100');
+		helper.typeIntoInputField(helper.addressInputSelector, 'A100');
 		desktopHelper.insertComment();
 		/* comments are hidden in calc by default, so no visibility assert */
 		cy.cGet('#comment-container-1').should('exist')
 		cy.cGet('#Home-tab-label').click();
 
-		calcHelper.enterCellAddressAndConfirm(this.win, 'A150');
-		calcHelper.enterCellAddressAndConfirm(this.win, 'A135');
+		helper.typeIntoInputField(helper.addressInputSelector, 'A150');
+		helper.typeIntoInputField(helper.addressInputSelector, 'A135');
 
 		/*
 			NOTE: this scrollbar position might change in future. one can
@@ -202,59 +198,6 @@ describe(['tagdesktop'], 'Annotation Tests', function() {
 		desktopHelper.assertScrollbarPosition('vertical', 249, 252);
 		desktopHelper.insertComment('second comment', false);
 		desktopHelper.assertScrollbarPosition('vertical', 249, 252);
-	});
-
-	it('Action_GoToComment postMessage navigates to a comment across sheets', function() {
-		// Put text and a comment in cell B2 on Sheet 1.
-		calcHelper.enterCellAddressAndConfirm(this.win, 'B2');
-		helper.typeIntoDocument('COMMENT_CELL{enter}');
-		calcHelper.enterCellAddressAndConfirm(this.win, 'B2');
-		desktopHelper.insertComment();
-		cy.cGet('#comment-container-1').should('exist');
-
-		// Move to a faraway cell, to check that GoToComment will scroll back
-		calcHelper.enterCellAddressAndConfirm(this.win, 'Z1000');
-		helper.typeIntoDocument('FAR_AWAY_CELL{enter}');
-
-		// Create a new sheet and put text there.
-		cy.cGet('#spreadsheet-toolbar #insertsheet').click();
-		calcHelper.assertNumberofSheets(2);
-		calcHelper.enterCellAddressAndConfirm(this.win, 'A1');
-		helper.typeIntoDocument('SHEET2_CELL{enter}');
-
-		// We are now on Sheet 2; the comment is on Sheet 1.
-
-		// Stub postMessage to capture the response.
-		cy.getFrameWindow().then(win => {
-			cy.stub(win.parent, 'postMessage').as('postMessage');
-		});
-
-		// Send Action_GoToComment postMessage with the comment's Id.
-		cy.getFrameWindow().then(win => {
-			var message = {
-				'MessageId': 'Action_GoToComment',
-				'Values': { 'Id': '1' }
-			};
-			win.postMessage(JSON.stringify(message), '*');
-		});
-
-		// Verify the response postMessage was sent with success and no error.
-		cy.get('@postMessage').should(stub => {
-			var calls = stub.getCalls().filter(call => {
-				try {
-					var msg = typeof call.args[0] === 'string' ? JSON.parse(call.args[0]) : call.args[0];
-					return msg.MessageId === 'Action_GoToComment_Resp';
-				} catch (e) { return false; }
-			});
-			expect(calls.length, 'Action_GoToComment_Resp was not posted').to.be.greaterThan(0);
-			var resp = typeof calls[0].args[0] === 'string' ? JSON.parse(calls[0].args[0]) : calls[0].args[0];
-			expect(resp.Values.success, 'Action_GoToComment_Resp reported error: ' + resp.Values.errorMsg).to.be.true;
-			expect(resp.Values.Id).to.equal('1');
-		});
-
-		// The comment should be visible and the anchor cell (B2) selected.
-		cy.cGet('#comment-container-1').should('be.visible');
-		cy.cGet(helper.addressInputSelector).should('have.prop', 'value', 'B2');
 	});
 
 });
@@ -338,7 +281,7 @@ describe(['tagdesktop'], 'Annotation Autosave Tests', function() {
 		cy.cGet('#comment-container-1').trigger('mouseover', {force: true});
 		cy.cGet('#annotation-content-area-1').should('have.text','some text0');
 		cy.cGet('#comment-annotation-menu-1').click();
-		cy.cGet('#comment-menu-1-dropdown').contains('.ui-combobox-entry.jsdialog.ui-grid-cell', 'Modify').click();
+		cy.cGet('body').contains('.context-menu-item','Modify').click();
 		cy.cGet('#annotation-modify-textarea-1').type(', some other text');
 		cy.cGet('#map').focus();
 		cy.cGet('.annotation-button-autosaved').should('be.visible');
@@ -367,7 +310,7 @@ describe(['tagdesktop'], 'Annotation Autosave Tests', function() {
 		cy.cGet('#comment-container-1').trigger('mouseover', {force: true});
 		cy.cGet('#annotation-content-area-1').should('have.text','some text0');
 		cy.cGet('#comment-annotation-menu-1').click();
-		cy.cGet('#comment-menu-1-dropdown').contains('.ui-combobox-entry.jsdialog.ui-grid-cell', 'Modify').click();
+		cy.cGet('body').contains('.context-menu-item','Modify').click();
 		cy.cGet('#annotation-modify-textarea-1').type(', some other text');
 		cy.cGet('#map').focus();
 		cy.cGet('.annotation-button-autosaved').should('be.visible');
@@ -404,7 +347,7 @@ describe(['tagdesktop'], 'Annotation Autosave Tests', function() {
 		cy.cGet('#comment-container-1').trigger('mouseover', {force: true});
 		cy.cGet('#annotation-content-area-1').should('have.text','some text0');
 		cy.cGet('#comment-annotation-menu-1').click();
-		cy.cGet('#comment-menu-1-dropdown').contains('.ui-combobox-entry.jsdialog.ui-grid-cell', 'Modify').click();
+		cy.cGet('body').contains('.context-menu-item','Modify').click();
 		cy.cGet('#annotation-modify-textarea-1').type('some other text, ');
 		cy.cGet('#map').focus();
 		cy.cGet('.annotation-button-autosaved').should('be.visible');

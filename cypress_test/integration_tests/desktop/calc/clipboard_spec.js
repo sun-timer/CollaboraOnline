@@ -226,18 +226,17 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Calc clipboard tests.', fu
 			const rect = items[0].getBoundingClientRect();
 			cy.cGet('body').rightclick(rect.left + 55, rect.top + 40);
 		});
-
-		const copyEntry = helper.getContextMenuItem('Copy');
-		copyEntry.should('be.visible');
-		copyEntry.click();
+		cy.cGet('.on-the-fly-context-menu').should('be.visible');
+		cy.cGet('body').contains('.on-the-fly-context-menu .context-menu-item', 'Copy').should('be.visible');
+		cy.cGet('body').contains('.on-the-fly-context-menu .context-menu-item', 'Copy').click();
 
 		helper.typeIntoDocument('{rightArrow}');
 		helper.typeIntoDocument('{rightArrow}');
 
 		cy.cGet('#canvas-container').rightclick(250, 35);
-		const pasteSpecialEntry = helper.getContextMenuItem('Paste Special');
-		pasteSpecialEntry.should('be.visible');
-		pasteSpecialEntry.click();
+		cy.cGet('.on-the-fly-context-menu').should('be.visible');
+		cy.cGet('body').contains('.on-the-fly-context-menu .context-menu-item', 'Paste Special').should('be.visible');
+		cy.cGet('body').contains('.on-the-fly-context-menu .context-menu-item', 'Paste Special').click();
 
 		cy.cGet('#modal-dialog-paste_special_dialog-box').should('be.visible');
 

@@ -13,7 +13,6 @@
 
 #include <wsd/TileDesc.hpp>
 
-#include <deque>
 #include <string>
 #include <vector>
 
@@ -38,7 +37,7 @@ public:
 };
 
 /// Queue for handling the Kit's messaging needs
-class KitQueue final
+class KitQueue
 {
     friend class KitQueueTests;
 
@@ -46,10 +45,7 @@ class KitQueue final
 public:
     using Payload = std::vector<char>;
 
-    explicit KitQueue(const TilePrioritizer& prio)
-        : _prio(prio)
-    {
-    }
+    KitQueue(const TilePrioritizer &prio) : _prio(prio) { }
     ~KitQueue() = default;
 
     KitQueue(const KitQueue&) = delete;
@@ -82,7 +78,7 @@ public:
         static std::string toString(int view, int type, const std::string& payload);
     };
 
-    /// Queue a COKit callback for later emission
+    /// Queue a LibreOfficeKit callback for later emission
     void putCallback(int view, int type, const std::string &message);
 
     /// Work back over the queue to simplify & return false if we should not queue.
@@ -113,7 +109,7 @@ public:
     }
 
     /// Obtain the next callback
-    [[nodiscard]] Callback getCallback()
+    Callback getCallback()
     {
         assert(_callbacks.size() > 0);
         Callback front = _callbacks.front();
@@ -121,9 +117,9 @@ public:
         return front;
     }
 
-    [[nodiscard]] bool getCallback(Callback& callback)
+    bool getCallback(Callback &callback)
     {
-        if (_callbacks.empty())
+        if (_callbacks.size() == 0)
             return false;
         callback = std::move(_callbacks.front());
         _callbacks.erase(_callbacks.begin());
@@ -155,7 +151,7 @@ public:
 
     void dumpState(std::ostream& oss);
 
-private:
+protected:
     /// Search the queue for a previous textinput message and if found, remove it and combine its
     /// input with that in the current textinput message. We check that there aren't any interesting
     /// messages inbetween that would make it wrong to merge the textinput messages.
@@ -172,6 +168,7 @@ private:
     /// @return New message to put into the queue. If empty, use what we got.
     std::string combineRemoveText(const StringVector& tokens);
 
+private:
     /// Search the queue for a duplicate callback and remove it (if present).
     ///
     /// This removes also callbacks that are made invalid by the current
@@ -185,14 +182,14 @@ private:
 
 private:
     /// Queue of incoming messages from coolwsd
-    std::deque<Payload> _queue;
+    std::vector<Payload> _queue;
 
     /// Queues of incoming tile requests from coolwsd
     using viewTileQueue = std::pair<CanonicalViewId, std::vector<TileDesc>>;
-    std::deque<viewTileQueue> _tileQueues;
+    std::vector<viewTileQueue> _tileQueues;
 
     /// Queue of callbacks from Kit to send out to coolwsd
-    std::deque<Callback> _callbacks;
+    std::vector<Callback> _callbacks;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const KitQueue::Callback &c)

@@ -14,12 +14,10 @@
 
 #include <sys/types.h>
 
-#include <common/ProcUtil.hpp>
-
 #ifdef TEST_TRACEEVENT_EXE
 #include <iostream>
 #else
-#include <common/Log.hpp>
+#include <Log.hpp>
 #endif
 
 // The base class for objects generating Trace Events when enabled.
@@ -58,7 +56,7 @@ protected:
             threadId = threadCounter++;
         return threadId;
 #else
-        return ProcUtil::getThreadId();
+    return Util::getThreadId();
 #endif
     }
 
@@ -90,7 +88,7 @@ protected:
 
     explicit TraceEvent(std::string args)
         : _args(std::move(args))
-        , _pid(recordingOn ? ProcUtil::getProcessId() : -1)
+        , _pid(recordingOn ? Util::getProcessId() : -1)
     {
     }
 

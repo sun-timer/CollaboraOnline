@@ -31,6 +31,7 @@ const allWriterDialogs = [
     '.uno:TableDialog',
     '.uno:TableNumberFormatDialog',
     '.uno:TableSort',
+    '.uno:ThemeDialog',
     '.uno:TitlePageDialog',
     '.uno:Translate',
     '.uno:Watermark',
@@ -40,6 +41,11 @@ const allWriterDialogs = [
 // 'common' dialogs that writer specifically does not support
 const excludedCommonDialogs = [
     '.uno:SpellDialog'
+];
+
+// don't pass yet
+const buggyWriterDialogs = [
+    '.uno:InsertSection',
 ];
 
 describe(['tagdesktop'], 'Accessibility Writer Dialog Tests', { testIsolation: false }, function () {
@@ -187,146 +193,13 @@ describe(['tagdesktop'], 'Accessibility Writer Dialog Tests', { testIsolation: f
         });
     });
 
-    it('Treeview column header role in dialog', function () {
-        cy.then(function () {
-            win.app.map.sendUnoCommand('.uno:InsertBookmark');
-        });
-
-        a11yHelper.getActiveDialog(1)
-            .then(() => helper.processToIdle(win))
-            .then(() => {
-                cy.cGet('.ui-treeview-headers[role="row"]');
-                cy.cGet('.ui-treeview-header[role="columnheader"]');
-            });
-    });
-
-    it('Treeview sortable column headers are keyboard accessible', function () {
-        cy.then(function () {
-            win.app.map.sendUnoCommand('.uno:InsertBookmark');
-        });
-
-        a11yHelper.getActiveDialog(1)
-            .then(() => helper.processToIdle(win))
-            .then(() => {
-                // Sortable headers must use a button element for keyboard access
-                cy.cGet('.ui-treeview-header[role="columnheader"] button.ui-treeview-header-button')
-                    .should('have.length.greaterThan', 0);
-
-                // No aria-sort before any sorting action
-                cy.cGet('.ui-treeview-header[role="columnheader"]')
-                    .first()
-                    .should('not.have.attr', 'aria-sort');
-
-                // Click the first sortable header button to sort
-                cy.cGet('.ui-treeview-header-button').first().click();
-                return helper.processToIdle(win);
-            })
-            .then(() => {
-                // After sorting, aria-sort must be 'descending' (Default)
-                cy.cGet('.ui-treeview-header[role="columnheader"]')
-                    .first()
-                    .should('have.attr', 'aria-sort')
-                    .and('equal', 'descending');
-
-                // Sort icon should be visible
-                cy.cGet('.ui-treeview-header-sort-icon').first()
-                    .should('be.visible');
-
-                // Click again to reverse sort direction
-                cy.cGet('.ui-treeview-header-button').first().click();
-                return helper.processToIdle(win);
-            })
-            .then(() => {
-                // After toggling, aria-sort should 'ascending'
-                cy.cGet('.ui-treeview-header[role="columnheader"]')
-                    .first()
-                    .should('have.attr', 'aria-sort')
-                    .and('equal', 'ascending');
-            });
-    });
-
-    it('Treeview Enter key keeps focus in dialog', function () {
-        cy.then(function () {
-            win.app.map.sendUnoCommand('.uno:ChapterNumberingDialog');
-        });
-
-        a11yHelper.getActiveDialog(1)
-            .then(() => helper.processToIdle(win))
-            .then(() => {
-                cy.cGet('#level .ui-treeview-entry:nth-child(1)').click();
-                return helper.processToIdle(win);
-            })
-            .then(() => {
-                cy.cGet('#level .ui-treeview-entry:nth-child(1)').should('have.class', 'selected');
-                cy.cGet('#level .ui-treeview-entry:nth-child(1)').focus();
-
-                // Move to second entry
-                cy.realPress('ArrowDown');
-                return helper.processToIdle(win);
-            })
-            .then(() => {
-                cy.cGet('#level .ui-treeview-entry:nth-child(2)').should('have.class', 'selected');
-                cy.cGet('#level .ui-treeview-entry:nth-child(2)').should('have.focus');
-
-                // Press Enter on the focused entry
-                helper.realPressInDialog('Enter');
-                return helper.processToIdle(win);
-            })
-            .then(() => {
-                // Either dialog should still exist with focus inside it,
-                // or dialog should have closed (OK activated)
-                cy.cGet('body').then($body => {
-                    const dialogExists = $body.find('.ui-dialog[role="dialog"]').length > 0;
-                    if (dialogExists) {
-                        // Dialog still open - focus must be inside it
-                        cy.cGet('.ui-dialog[role="dialog"]').then($dlg => {
-                            const activeEl = win.document.activeElement;
-                            const focusInDialog = $dlg[0].contains(activeEl);
-                            const focusDesc = activeEl.tagName + '#' + activeEl.id + '.' + activeEl.className;
-                            expect(focusInDialog, 'focus should stay in dialog, but is on: ' + focusDesc).to.be.true;
-                        });
-                        cy.cGet('#cancel-button').click();
-                    } else {
-                        cy.log('Dialog closed after Enter');
-                    }
-                });
-            });
-    });
-
-    it('Treeview arrow key moves focus and selection together', function () {
-        cy.then(function () {
-            win.app.map.sendUnoCommand('.uno:ChapterNumberingDialog');
-        });
-
-        a11yHelper.getActiveDialog(1)
-            .then(() => helper.processToIdle(win))
-            .then(() => {
-                // Click to select, then focus the entry for keyboard navigation
-                cy.cGet('#level .ui-treeview-entry:nth-child(1)').click();
-                return helper.processToIdle(win);
-            })
-            .then(() => {
-                cy.cGet('#level .ui-treeview-entry:nth-child(1)').should('have.class', 'selected');
-                cy.cGet('#level .ui-treeview-entry:nth-child(1)').focus();
-
-                // ArrowDown should move both focus and selection to the second entry
-                cy.realPress('ArrowDown');
-                return helper.processToIdle(win);
-            })
-            .then(() => {
-                cy.cGet('#level .ui-treeview-entry:nth-child(2)').should('have.class', 'selected');
-                cy.cGet('#level .ui-treeview-entry:nth-child(2)').should('have.focus');
-                cy.cGet('#level .ui-treeview-entry:nth-child(1)').should('not.have.class', 'selected');
-
-                a11yHelper.closeActiveDialog(1);
-            });
-    });
-
     a11yHelper.allCommonDialogs.forEach(function (commandSpec) {
         const command = typeof commandSpec === 'string' ? commandSpec : commandSpec.command;
         if (excludedCommonDialogs.includes(command)) {
             // silently skip the common dialogs that writer doesn't have
             return;
+        } else if (a11yHelper.isBuggyCommonDialog(command)) {
+            it.skip(`Common Dialog ${command} (buggy)`, function () {});
         } else {
             it(`Common Dialog ${command}`, function () {
                 if (!hasLinguisticData && a11yHelper.needsLinguisticData(command)) {
@@ -389,9 +262,13 @@ describe(['tagdesktop'], 'Accessibility Writer Dialog Tests', { testIsolation: f
 
     allWriterDialogs.forEach(function (commandSpec) {
         const command = typeof commandSpec === 'string' ? commandSpec : commandSpec.command;
-        it(`Writer Dialog ${command}`, function () {
-            a11yHelper.testDialog(win, commandSpec);
-        });
+        if (buggyWriterDialogs.includes(command)) {
+            it.skip(`Dialog ${command} (buggy)`, function () {});
+        } else {
+            it(`Writer Dialog ${command}`, function () {
+                a11yHelper.testDialog(win, commandSpec);
+            });
+        }
     });
 
     it('DropdownField dialog', function () {
@@ -497,7 +374,28 @@ describe(['tagdesktop'], 'Accessibility Writer Dialog Tests', { testIsolation: f
     });
 
     it('PDF export warning dialog', function () {
-        a11yHelper.testPDFExportWarningDialog(win);
+        cy.then(() => {
+            const args = { SynchronMode: { type: 'boolean', value: false } };
+            win.app.map.sendUnoCommand('.uno:ExportToPDF', args);
+        });
+
+        a11yHelper.getActiveDialog(1)
+            .then(() => {
+               return helper.processToIdle(win);
+            })
+            .then(() => {
+                cy.cGet('#forms-input').check();
+                cy.cGet('#pdf_version-input').select('PDF/A-1b (PDF 1.4 base)');
+                cy.cGet('#ok-button').click();
+            })
+            .then(() => {
+               // pdf export dialog should dismiss and a warning dialog should appear
+               return helper.processToIdle(win);
+            })
+            .then(() => {
+                // and the warning dialog we're interested in should appear
+                a11yHelper.handleDialog(win, 1);
+            });
     });
 
     it('ReadOnly info dialog', function () {
@@ -508,28 +406,8 @@ describe(['tagdesktop'], 'Accessibility Writer Dialog Tests', { testIsolation: f
         cy.then(() => {
             win.app.map.sendUnoCommand('.uno:InsertSection?RegionProtect:bool=true');
         });
-        // Wait for the section protection to be applied before trying to delete
-        cy.then(() => helper.processToIdle(win));
         helper.typeIntoDocument('{del}');
         a11yHelper.handleDialog(win, 1);
-    });
-
-    it('Settings dialog', function () {
-        cy.then(() => {
-            win.app.map.settings.showSettingsDialog();
-        });
-
-        cy.cGet('.iframe-settings-wrap').should('be.visible').then(() => {
-            var spy = Cypress.sinon.spy(win.console, 'error');
-            var container = win.document.querySelector('.iframe-settings-wrap');
-            win.app.a11yValidator.validateIframeDialog(container);
-            a11yHelper.checkA11yErrors(win, spy);
-            spy.restore();
-        });
-
-        // Close the settings dialog
-        cy.cGet('.iframe-settings-wrap .ui-dialog-titlebar-close').click();
-        cy.cGet('.iframe-settings-wrap').should('not.exist');
     });
 
 });

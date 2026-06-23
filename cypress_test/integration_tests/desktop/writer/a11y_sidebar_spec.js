@@ -14,7 +14,6 @@ describe(['tagdesktop'], 'Accessibility Writer Sidebar Tests', { testIsolation: 
 		desktopHelper.switchUIToNotebookbar();
 
 		// Hide sidebar before enabling UICoverage tracking
-		cy.cGet('#sidebar-dock-wrapper').should('be.visible').should('not.be.empty');
 		desktopHelper.sidebarToggle();
 		cy.cGet('#sidebar-dock-wrapper').should('not.be.visible');
 
@@ -72,11 +71,7 @@ describe(['tagdesktop'], 'Accessibility Writer Sidebar Tests', { testIsolation: 
 		// Default chart deck panels
 		runA11yValidation(win);
 
-		// Enter the chart's inner object hierarchy
-		cy.realPress('Enter');
-		helper.processToIdle(win);
-
-		// Select the first sub-object
+		// Now use tab to select the inner 'Chart' element
 		cy.realPress('Tab');
 		helper.processToIdle(win);
 		runA11yValidation(win);
@@ -91,24 +86,22 @@ describe(['tagdesktop'], 'Accessibility Writer Sidebar Tests', { testIsolation: 
 		helper.processToIdle(win);
 		runA11yValidation(win);
 
-		// Back up to Data Series: Column 1
-		cy.realPress('Escape');
+		cy.realPress('Escape'); // back up a level
+		cy.realPress('Tab'); // Data Series: Column 2
+		cy.realPress('Tab'); // Data Series: Column 3
+		cy.realPress('Tab'); // X Axis
 		helper.processToIdle(win);
 		runA11yValidation(win);
 
-		// Data Series: Column 2
-		cy.realPress('Tab');
+		cy.realPress('Escape'); // Go a level up the hierarchy
 		helper.processToIdle(win);
+
+		helper.processToIdle(win);
+		// Data series selected, expect data series panel to be tested.
 		runA11yValidation(win);
 
-		// X Axis
-		cy.realPress('Tab');
-		cy.realPress('Tab');
-		helper.processToIdle(win);
-		runA11yValidation(win);
-
-		// Esc out of chart navigation, chart edit mode, and chart selection
-		escLevel(win, 3);
+		// Two esc get us out of the chart navigation and then chart edit mode
+		escLevel(win, 2);
 		helper.processToIdle(win);
 
 		// At which point the sidebar disappears

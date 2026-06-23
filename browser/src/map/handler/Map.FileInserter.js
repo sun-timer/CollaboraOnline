@@ -245,15 +245,15 @@ window.L.Map.FileInserter = window.L.Handler.extend({
 						}
 					}
 					else if (xmlHttp.status === 404) {
-						map.fire('error', {msg: errorMessages.uploadfile.notfound, critical: false});
+						map.fire('error', {msg: errorMessages.uploadfile.notfound});
 					}
 					else if (xmlHttp.status === 413) {
-						map.fire('error', {msg: errorMessages.uploadfile.toolarge, critical: false});
+						map.fire('error', {msg: errorMessages.uploadfile.toolarge});
 					}
 					else {
 						var msg = _('Uploading file to server failed with status: {0}');
 						msg = msg.replace('{0}', xmlHttp.status);
-						map.fire('error', {msg: msg, critical: false});
+						map.fire('error', {msg: msg});
 					}
 				}
 			};

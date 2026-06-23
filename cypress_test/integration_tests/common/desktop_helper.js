@@ -83,15 +83,16 @@ function selectColorFromPalette(color) {
 	cy.log('<< selectColorFromPalette - end');
 }
 
-// Select an item from a listbox/combobox widget used on top toolbar.
+// Select an item from a listbox widget used on top toolbar.
 // Parameters:
 // item - item string, that we use a selector to find the right list item.
 function selectFromListbox(item) {
 	cy.log('>> selectFromListbox - start');
 
-	cy.cGet('[id$="-dropdown"].modalpopup').should('be.visible');
-	cy.cGet('[id$="-dropdown"].modalpopup').contains('span', item).click();
-	cy.cGet('[id$="-dropdown"].modalpopup').should('not.exist');
+	cy.cGet('.select2-dropdown').should('be.visible');
+	// We use force because the tooltip sometimes hides the items.
+	cy.cGet('body').contains('.select2-results__option', item).click();
+	cy.cGet('.select2-dropdown').should('not.exist');
 
 	cy.log('<< selectFromListbox - end');
 }
@@ -247,7 +248,7 @@ function insertImage() {
 		cy.cGet('#Insert-tab-label').click();
 		cy.cGet('#Insert-container .unoInsertGraphic').filter(':visible').click();
 	} else {
-		cy.cGet('#toolbar-up .unoInsertGraphic').filter(':visible').click();
+		cy.cGet('#toolbar-up .unoInsertGraphic').click();
 	}
 
 	cy.cGet('#insertgraphic[type=file]').attachFile('/desktop/writer/image_to_insert.png');
@@ -288,10 +289,6 @@ function closeNavigatorSidebar () {
 function insertComment(text = 'some text0', save = true) {
 	cy.log('>> insertComment - start');
 
-	cy.getFrameWindow().then(function(win) {
-		return helper.processToIdle(win);
-	});
-
 	var mode = Cypress.env('USER_INTERFACE');
 	if (mode === 'notebookbar') {
 		cy.cGet('#Insert-tab-label').click();
@@ -301,16 +298,9 @@ function insertComment(text = 'some text0', save = true) {
 		cy.cGet('#menu-insertcomment').click();
 	}
 
-	// Wait for the annotation to be created
-	cy.cGet('.cool-annotation').last({log: false}).find('#annotation-modify-textarea-new').should('exist');
-	// Wait for core to process and layouting to settle so the textarea has its final ID
-	cy.getFrameWindow().then(function(win) {
-		return helper.processToIdle(win);
-	});
-
-	// Use class selector since processToIdle may have caused the textarea ID to change from 'new' to a number
-	cy.cGet('.cool-annotation').last({log: false}).find('.modify-annotation .cool-annotation-textarea').should('not.have.attr','disabled');
-	cy.cGet('.cool-annotation').last({log: false}).find('.modify-annotation .cool-annotation-textarea').type(text);
+	// Use .last() because there might be multiple comments
+	cy.cGet('.cool-annotation').last({log: false}).find('#annotation-modify-textarea-new').should('not.have.attr','disabled');
+	cy.cGet('.cool-annotation').last({log: false}).find('#annotation-modify-textarea-new').type(text);
 	// Check that comment exists
 	cy.cGet('.cool-annotation').last({log: false}).find('.cool-annotation-textarea').should('contain',text);
 
@@ -324,9 +314,10 @@ function insertComment(text = 'some text0', save = true) {
 
 		// Wait for the animation to stop
 		cy.cGet('.cool-annotation').last({log: false}).invoke('attr','style').should('not.contain','transition');
-		cy.getFrameWindow().then(function(win) {
-			return helper.processToIdle(win);
-		});
+		// Need to wait even longer so that modify and reply work
+		// TODO: Find out why newly typed text gets overwritten, find
+		// a way to query for it, and wait only in relevant tests
+		cy.wait(500);
 	} else {
 		cy.cGet('.cool-annotation').last({log: false}).find('.cool-annotation-content').should('not.be.visible');
 		cy.cGet('.cool-annotation').last({log: false}).find('.modify-annotation').should('be.visible');
@@ -378,8 +369,6 @@ function switchUIToCompact() {
 		if (userInterfaceMode === 'notebookbar') {
 			cy.cGet('#View-tab-label').click();
 			getNbIcon('toggleuimode', 'View').click();
-			// Wait for the compact toolbar to load
-			cy.cGet('#toolbar-up').should('be.visible');
 		}
 	});
 
@@ -562,7 +551,7 @@ function getCompactIcon(unoCommand) {
 
 /// get icon for given uno command from notebookbar
 function getNbIcon(unoCommand, tabName) {
-	return cy.cGet((tabName ? '#' + tabName + '-container' : '') + '.notebookbar  .uno' + unoCommand + ' > button.unobutton:visible');
+	return cy.cGet((tabName ? '#' + tabName + '-container' : '') + '.notebookbar  .uno' + unoCommand + ' > button:visible');
 }
 
 /// get icon arrow for given uno command from classic toolbar to open the dropdown

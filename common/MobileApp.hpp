@@ -13,7 +13,10 @@
 
 #if MOBILEAPP
 
-#include <wsd/Storage.hpp>
+#define LIBO_INTERNAL_ONLY
+#include <LibreOfficeKit/LibreOfficeKit.hxx>
+
+#include <Storage.hpp>
 
 #ifdef IOS
 #import "CODocument.h"
@@ -23,7 +26,7 @@
 
 // On iOS at least we want to be able to have several documents open in the same app process.
 
-// It is somewhat complicated to make sure we access the same COKit object for the document
+// It is somewhat complicated to make sure we access the same LibreOfficeKit object for the document
 // in both the iOS-specific Objective-C++ code and in the mostly generic Online C++ code.
 
 // We pass around a numeric ever-increasing document identifier that gets bumped for each document
@@ -35,11 +38,6 @@
 // the core SfxViewShell::GetDocId() returns, but there might be situations where multi-threading
 // and opening of several documents in sequence very quickly might cause discrepancies, so it is
 // better to use a different counter to be sure. Patches to use just one counter welcome.
-
-namespace kit
-{
-class Document;
-}
 
 class DocumentData
 {
@@ -53,17 +51,16 @@ public:
     {
     }
 
-    kit::Document *loKitDocument;
+    lok::Document *loKitDocument;
 
     static DocumentData &allocate(unsigned docId);
     static DocumentData &get(unsigned docId);
     static void deallocate(unsigned docId);
-    static int count();
 
 #ifdef IOS
     CODocument *coDocument;
-#endif
     std::weak_ptr<DocumentBroker> docBroker;
+#endif
 };
 
 /// Stub/Dummy WOPI types/interface.

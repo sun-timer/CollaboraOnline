@@ -38,9 +38,6 @@ function staticTextControl(
 
 	if (data.hidden) $(statictext).hide();
 
-	if (data.allyRole) statictext.setAttribute('role', data.allyRole);
-	if (data.ariaLive) statictext.setAttribute('aria-live', data.ariaLive);
-
 	return false;
 }
 

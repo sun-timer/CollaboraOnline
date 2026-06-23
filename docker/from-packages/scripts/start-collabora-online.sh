@@ -32,18 +32,12 @@ fi
 user_id=$(id -u)
 group_id=$(id -g)
 if [ "$user_id" -ne 1001 ]; then
-  passwd_entry="cool:x:${user_id}:${group_id}::/opt/cool:/usr/sbin/nologin"
+  echo "cool:x:${user_id}:${group_id}::/opt/cool:/usr/sbin/nologin" >/tmp/passwd
 
-  if ls /lib/ld-musl-* >/dev/null 2>&1; then
-    # musl libc (Alpine) -- no NSS, write directly to /etc/passwd
-    echo "$passwd_entry" >> /etc/passwd
-  else
-    # glibc -- use libnss_wrapper to intercept NSS lookups
-    echo "$passwd_entry" >/tmp/passwd
-    export NSS_WRAPPER_PASSWD=/tmp/passwd
-    export NSS_WRAPPER_GROUP=/etc/group
-    export LD_PRELOAD=libnss_wrapper.so
-  fi
+  # Tell libc to use our files, via LD_PRELOAD
+  export NSS_WRAPPER_PASSWD=/tmp/passwd
+  export NSS_WRAPPER_GROUP=/etc/group
+  export LD_PRELOAD=libnss_wrapper.so
 fi
 
 # Start coolwsd

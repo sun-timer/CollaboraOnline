@@ -9,12 +9,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-function addCanvasToDom() {
-	const canvas = document.getElementById('document-canvas');
-	if (canvas) return;
-	const docCont = document.getElementById('document-container');
-	const canvCont = DomUtil.createWithId('div', 'canvas-container', docCont);
-	DomUtil.createWithId('canvas', 'document-canvas', canvCont);
+function canvasDomString() {
+    return `
+    <!DOCTYPE html>
+    <html>
+      <head></head>
+      <body>
+        <div id="canvas-container">
+            <canvas id="document-canvas"></canvas>
+        </div>
+      </body>
+    </html>`;
 }
 
 function setupCanvasContainer(width: number, height: number) {

@@ -11,23 +11,23 @@
 
 #include <config.h>
 
+#include <iterator>
+#include <optional>
+
 #include "WopiProxy.hpp"
 
 #include <common/Anonymizer.hpp>
-#include <common/FileUtil.hpp>
+#include "FileUtil.hpp"
+#include "HttpHelper.hpp"
+#include "HttpRequest.hpp"
+#include "Protocol.hpp"
+#include <COOLWSD.hpp>
+#include <Exceptions.hpp>
+#include <Log.hpp>
+#include <Util.hpp>
 #include <common/JsonUtil.hpp>
-#include <common/Log.hpp>
-#include <common/Protocol.hpp>
-#include <common/Util.hpp>
-#include <net/HttpHelper.hpp>
-#include <net/HttpRequest.hpp>
 #include <wopi/StorageConnectionManager.hpp>
 #include <wopi/WopiStorage.hpp>
-#include <wsd/COOLWSD.hpp>
-#include <wsd/Exceptions.hpp>
-
-#include <iterator>
-#include <optional>
 
 void WopiProxy::handleRequest(std::istream & message,
                               [[maybe_unused]] const std::shared_ptr<TerminatingPoll>& poll,
@@ -74,6 +74,7 @@ void WopiProxy::handleRequest(std::istream & message,
                                         << "] or no storage configured");
             throw BadRequestException("No Storage configured or invalid URI [" +
                                       COOLWSD::anonymizeUrl(uriPublic.toString()) + ']');
+            break;
 
         case StorageBase::StorageType::Unauthorized:
             LOG_ERR("No authorized hosts found matching the target host [" << uriPublic.getHost()
@@ -87,6 +88,7 @@ void WopiProxy::handleRequest(std::istream & message,
                                         << "] for conversion");
             throw BadRequestException("Invalid URI for conversion [" +
                                       COOLWSD::anonymizeUrl(uriPublic.toString()) + ']');
+            break;
 
 #if ENABLE_LOCAL_FILESYSTEM
         case StorageBase::StorageType::FileSystem:
@@ -169,7 +171,13 @@ void WopiProxy::checkFileInfo(const std::shared_ptr<TerminatingPoll>& poll, cons
             const StorageBase::FileInfo fileInfo(size, std::move(filename), std::move(ownerId),
                                                  std::move(lastModifiedTime));
 
+            // if (COOLWSD::AnonymizeUserData)
+            //     Anonymizer::mapAnonymized(Uri::getFilenameFromURL(filename),
+            //                         Uri::getFilenameFromURL(getUri().toString()));
+
             auto wopiInfo = std::make_unique<WopiStorage::WOPIFileInfo>(fileInfo, object, uri);
+            // if (wopiInfo->getSupportsLocks())
+            //     lockCtx.initSupportsLocks();
 
             std::string url = checkFileInfo.url().toString();
 
@@ -180,6 +188,7 @@ void WopiProxy::checkFileInfo(const std::shared_ptr<TerminatingPoll>& poll, cons
             if (!fileUrl.empty())
             {
                 const std::string fileUrlAnonym = COOLWSD::anonymizeUrl(fileUrl);
+                const auto uriPublic = RequestDetails::sanitizeURI(url);
                 try
                 {
                     LOG_INF("WOPI::GetFile using FileUrl: " << fileUrlAnonym);
@@ -240,11 +249,13 @@ void WopiProxy::transfer(const std::shared_ptr<TerminatingPoll>& poll, const std
         httpRequest.setBody(*postBody);
     }
 
+    const auto startTime = std::chrono::steady_clock::now();
+
     LOG_TRC("WOPI::GetFile request header for URI [" << uriAnonym << "]:\n"
                                                      << httpRequest.header());
 
     http::Session::FinishedCallback finishedCallback =
-        [this, poll, url, postBody, uriAnonym=std::move(uriAnonym),
+        [this, &poll, startTime, url, postBody, uriAnonym=std::move(uriAnonym),
          redirectLimit](const std::shared_ptr<http::Session>& session)
     {
         if (SigUtil::getShutdownRequestFlag())
@@ -264,7 +275,10 @@ void WopiProxy::transfer(const std::shared_ptr<TerminatingPoll>& poll, const std
         LOG_TRC("WOPI::GetFile returned " << httpResponse->statusLine().statusCode());
 
         const http::StatusCode statusCode = httpResponse->statusLine().statusCode();
-        if (http::isRedirectStatusCode(statusCode))
+        if (statusCode == http::StatusCode::MovedPermanently ||
+            statusCode == http::StatusCode::Found ||
+            statusCode == http::StatusCode::TemporaryRedirect ||
+            statusCode == http::StatusCode::PermanentRedirect)
         {
             if (redirectLimit)
             {
@@ -281,6 +295,11 @@ void WopiProxy::transfer(const std::shared_ptr<TerminatingPoll>& poll, const std
                                                                                       << ']');
             }
         }
+
+        std::chrono::milliseconds callDurationMs =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
+                                                                  startTime);
+        (void)callDurationMs;
 
         // Note: we don't log the response if obfuscation is enabled, except for failures.
         const bool failed = (httpResponse->statusLine().statusCode() != http::StatusCode::OK);

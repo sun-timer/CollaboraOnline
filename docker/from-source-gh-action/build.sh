@@ -13,7 +13,7 @@
 
 if [ -z "$CORE_ASSETS" ]; then
   if [ -z "$CORE_BRANCH" ]; then
-    CORE_BRANCH="main"
+    CORE_BRANCH="distro/collabora/co-25.04"
   fi;
   echo "Building core branch '$CORE_BRANCH'"
 else
@@ -31,7 +31,7 @@ echo "Building online branch '$COLLABORA_ONLINE_BRANCH' from '$COLLABORA_ONLINE_
 if [ -z "$CORE_BUILD_TARGET" ]; then
   CORE_BUILD_TARGET=""
 fi;
-echo "COKit (core) build target: '$CORE_BUILD_TARGET'"
+echo "LOKit (core) build target: '$CORE_BUILD_TARGET'"
 
 SRCDIR=$(realpath `dirname $0`)
 INSTDIR="$SRCDIR/instdir"
@@ -62,7 +62,7 @@ fi
 # only if CORE_ASSETS is not set
 if [ -z "$CORE_ASSETS" ]; then
   if test ! -d core ; then
-    git clone https://gerrit.collaboraoffice.com/core || exit 1
+    git clone https://git.libreoffice.org/core || exit 1
   fi
 
   ( cd core && git fetch --all && git checkout $CORE_BRANCH && ./g pull -r ) || exit 1
@@ -74,17 +74,21 @@ fi
 
 # Clone online repo
 if test ! -d online ; then
-  git clone --depth=1 --branch $COLLABORA_ONLINE_BRANCH "$COLLABORA_ONLINE_REPO" online || exit 1
+  git clone --depth=1 "$COLLABORA_ONLINE_REPO" online || exit 1
 fi
 
 ( cd online && git fetch --all && git checkout -f $COLLABORA_ONLINE_BRANCH && git clean -f -d && git pull -r ) || exit 1
 
-##### COKit (core) #####
+##### LOKit (core) #####
 
 # only if core assets are not set
 if [ -z "$CORE_ASSETS" ]; then
   # build
-  ( cd core && ./autogen.sh --with-distro=CPLinux-LOKit --disable-epm --without-package-format --disable-symbols ) || exit 1
+  if [ "$CORE_BRANCH" == "distro/collabora/co-22.05" ]; then
+    ( cd core && ./autogen.sh --with-distro=CPLinux-LOKit --disable-epm --without-package-format --disable-symbols ) || exit 1
+  else
+    ( cd core && ./autogen.sh --with-distro=LibreOfficeOnline ) || exit 1
+  fi
   ( cd core && make $CORE_BUILD_TARGET ) || exit 1
 
   # copy stuff

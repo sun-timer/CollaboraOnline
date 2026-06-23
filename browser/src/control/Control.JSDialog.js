@@ -298,16 +298,12 @@ window.L.Control.JSDialog = window.L.Control.extend({
 			let timeoutId = null;
 			const finallyClose = () => {
 				instance.that.close(instance.id, false);
-				app.timerRegistry.clearTimeout(timeoutId);
+				clearTimeout(timeoutId);
 			};
 
 			container.onanimationend = finallyClose;
 			// be sure it will be removed if onanimationend will not be executed
-			timeoutId = app.timerRegistry.setTimeout(
-				'jsdialog-deferred',
-				finallyClose,
-				700,
-			);
+			timeoutId = setTimeout(finallyClose, 700);
 		});
 	},
 
@@ -896,12 +892,6 @@ window.L.Control.JSDialog = window.L.Control.extend({
 			// Sometimes we get another full update for the same dialog
 			const existingNode = this.dialogs[instance.id];
 
-			// Don't rebuild dialog while inline cell editing is active;
-			// the backend will send an up-to-date state after editend.
-			if (existingNode && existingNode.container
-				&& existingNode.container.querySelector('.ui-treeview-inline-edit'))
-				return;
-
 			if (existingNode) {
 				instance.posx = existingNode.startX;
 				instance.posy = existingNode.startY;
@@ -1042,7 +1032,7 @@ window.L.Control.JSDialog = window.L.Control.extend({
 
 		if (entryChanges) {
 			app.layoutingService.appendLayoutingTask(() => {
-				// After entry changes we might have bigger/smaller content and need to reposition the dialog.
+				// After entry changes we might have bigger/smaller content and need to repositon the dialog.
 				dialog.updatePos(dialog);
 			});
 		}

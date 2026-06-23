@@ -9,19 +9,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Utilities for file server operations.
- * Functions: preprocessFile(), preprocessAdminFile()
- */
-
 #include <config.h>
 
-#include <common/JsonUtil.hpp>
-#include <common/StringVector.hpp>
-#include <common/base64.hpp>
-#include <wsd/FileServer.hpp>
+#include "FileServer.hpp"
+#include "StringVector.hpp"
+
+#include <JsonUtil.hpp>
 
 #include <cctype>
+
+#include <common/base64.hpp>
 
 PreProcessedFile::PreProcessedFile(std::string filename, const std::string& data)
     : _filename(std::move(filename))

@@ -172,11 +172,10 @@ class VRuler extends Ruler {
 		);
 		this._rWrapper.id = 'vertical-ruler';
 		this._rWrapper.classList.add('vruler');
-		this._rWrapper.setAttribute('aria-hidden', 'true');
 		this._rWrapper.style.visibility = 'hidden';
 
 		// We start it hidden rather than not initialzing at all.
-		// It is due to rulerupdate command that comes from COKit.
+		// It is due to rulerupdate command that comes from LOK.
 		// If we delay its initialization, we can't calculate its margins and have to wait for another rulerupdate message to arrive.
 		if (!this.options.showruler) {
 			window.L.DomUtil.setStyle(this._rWrapper, 'display', 'none');
@@ -259,7 +258,7 @@ class VRuler extends Ruler {
 		this._updateBreakPoints();
 	}
 
-	protected _updateParagraphIndentationsImpl() {
+	public _updateParagraphIndentations() {
 		// if ruler is hidden no need to calculate the indentation of the para
 		if (!this.options.showruler) return;
 		// for horizontal Ruler we need to also consider height of navigation and toolbar-wrapper

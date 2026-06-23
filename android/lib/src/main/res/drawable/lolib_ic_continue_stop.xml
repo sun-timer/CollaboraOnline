@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AI续写停止图标：白色圆角方块（对应设计稿红圆按钮内的白色 rx=3 方块） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="22"
+    android:viewportHeight="22">
+    <path
+        android:pathData="M4,3 L18,3 Q20,3 20,5 L20,17 Q20,19 18,19 L4,19 Q2,19 2,17 L2,5 Q2,3 4,3 Z"
+        android:fillColor="#FFFFFF" />
+</vector>

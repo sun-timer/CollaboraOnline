@@ -9,11 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Global variables shared between Kit and WSD.
- * Functions: getKitPid()
- */
-
 #include <config.h>
 
 #include <common/Globals.hpp>

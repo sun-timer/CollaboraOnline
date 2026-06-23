@@ -37,13 +37,13 @@ function onLoaded() {
 			strings: {}
 		};
 		getTranslatable(document.body, message.strings);
-		window.parent.postMessage(JSON.stringify(message), window.origin);
+		window.parent.postMessage(JSON.stringify(message), '*');
 	}
 }
 
 function onClose() {
 	if (window.parent !== window.self) {
-		window.parent.postMessage('{"MessageId":"welcome-close"}', window.origin);
+		window.parent.postMessage('{"MessageId":"welcome-close"}', '*');
 	}
 }
 
@@ -62,7 +62,7 @@ function onMessage(e) {
 		if (e.origin === window.origin && window.parent !== window.self
 			&& msg.MessageId === 'welcome-translate') {
 			setTranslatable(document.body, msg.strings);
-			window.parent.postMessage('{"MessageId":"welcome-show"}', window.origin);
+			window.parent.postMessage('{"MessageId":"welcome-show"}', '*');
 		}
 	} catch (err) {
 		return;

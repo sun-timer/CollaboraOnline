@@ -4,6 +4,10 @@ var helper = require('../../common/helper');
 var desktopHelper = require('../../common/desktop_helper');
 var a11yHelper = require('../../common/a11y_helper');
 
+// don't pass yet
+var buggyTabs = [
+];
+
 describe(['tagdesktop'], 'Accessibility Writer Notebookbar Tests', { testIsolation: false }, function () {
 	var tabs;
 	var allTabNames;
@@ -26,12 +30,9 @@ describe(['tagdesktop'], 'Accessibility Writer Notebookbar Tests', { testIsolati
 		});
 	});
 
-	// Context tabs that need complex setup not yet implemented
-	var skipContextTabs = ['Chart'];
-
 	after(function () {
 		var unvisited = allTabNames.filter(function (name) {
-			return !visitedTabNames.includes(name) && !skipContextTabs.includes(name);
+			return !visitedTabNames.includes(name);
 		});
 		expect(unvisited, 'unvisited notebookbar tabs').to.be.empty;
 	});
@@ -114,9 +115,17 @@ describe(['tagdesktop'], 'Accessibility Writer Notebookbar Tests', { testIsolati
 			var chain = cy.wrap(null);
 			nonContextTabs.forEach(function (tab) {
 				chain = chain.then(function () {
-					selectAndValidateTab(tab);
+					if (buggyTabs.includes(tab.name)) {
+						visitedTabNames.push(tab.name);
+					} else {
+						selectAndValidateTab(tab);
+					}
 				});
 			});
 		});
+	});
+
+	buggyTabs.forEach(function (name) {
+		it.skip('Notebookbar tab: ' + name + ' (buggy)', function () {});
 	});
 });

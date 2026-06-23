@@ -10,9 +10,6 @@ describe(['tagmobile', 'tagnextcloud'], 'Insert objects via insertion wizard.', 
 		helper.setupAndLoadDocument('writer/insert_object.odt');
 		// Click on edit button
 		mobileHelper.enableEditingMobile();
-		cy.getFrameWindow().then((win) => {
-			this.win = win;
-		});
 	});
 
 	it('Insert local image.', function() {
@@ -108,7 +105,6 @@ describe(['tagmobile', 'tagnextcloud'], 'Insert objects via insertion wizard.', 
 		cy.cGet('body').contains('.ui-header.level-1.mobile-wizard.ui-widget', 'Footer').click();
 		// Insert footer for All
 		cy.cGet('body').contains('.ui-content.level-1.mobile-wizard[title~="Footer"] .ui-header.level-2.mobile-wizard.ui-widget .menu-entry-no-icon', 'All').click();
-		helper.processToIdle(this.win);
 		// Check that the cursor was moved
 		cy.get('@cursorOrigTop')
 			.then(function(cursorOrigTop) {

@@ -9,35 +9,29 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Direct COKit client for testing and benchmarking.
- * Functions: Document loading, tile rendering, command execution
- */
-
 #include <config.h>
-
-#include <common/NumUtil.hpp>
-#include <common/Png.hpp>
-#include <common/Protocol.hpp>
-#include <common/Util.hpp>
-#include <kit/KitHelper.hpp>
-
-#define KIT_USE_UNSTABLE_API
-#include <COKit/COKitInit.h>
-#include <COKit/COKit.h>
-
-#include <Poco/String.h>
-#include <Poco/TemporaryFile.h>
-#include <Poco/URI.h>
-#include <Poco/Util/Application.h>
 
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sysexits.h>
 #include <unistd.h>
+
+#define LOK_USE_UNSTABLE_API
+#include <LibreOfficeKit/LibreOfficeKitInit.h>
+
+#include <Poco/String.h>
+#include <Poco/TemporaryFile.h>
+#include <Poco/URI.h>
+#include <Poco/Util/Application.h>
+
+#include <KitHelper.hpp>
+#include <Png.hpp>
+#include <Util.hpp>
+#include <Protocol.hpp>
 
 using Poco::TemporaryFile;
 using Poco::Util::Application;
@@ -48,7 +42,7 @@ extern "C"
 {
     static void myCallback(int type, const char* payload, void*)
     {
-        std::cout << "Callback: " << kitCallbackTypeToString(type)
+        std::cout << "Callback: " << lokCallbackTypeToString(type)
                   << " payload: " << payload << std::endl;
     }
 }
@@ -67,13 +61,13 @@ protected:
             return EX_USAGE;
         }
 
-        COKit *loKit;
-        COKitDocument *loKitDocument;
+        LibreOfficeKit *loKit;
+        LibreOfficeKitDocument *loKitDocument;
 
-        loKit = cok_init(args[0].c_str());
+        loKit = lok_init(args[0].c_str());
         if (!loKit)
         {
-            logger().fatal("COKit initialisation failed");
+            logger().fatal("LibreOfficeKit initialisation failed");
             return EX_UNAVAILABLE;
         }
 
@@ -109,9 +103,9 @@ protected:
                 std::cout <<
                     "Commands mimic COOL protocol but we talk directly to LOKit:" << std::endl <<
                     "    status" << std::endl <<
-                    "        calls COKitDocument::getDocumentType, getParts, getPartName, getDocumentSize" << std::endl <<
+                    "        calls LibreOfficeKitDocument::getDocumentType, getParts, getPartName, getDocumentSize" << std::endl <<
                     "    tile part pixelwidth pixelheight docposx docposy doctilewidth doctileheight" << std::endl <<
-                    "        calls COKitDocument::paintTile" << std::endl;
+                    "        calls LibreOfficeKitDocument::paintTile" << std::endl;
             }
             else if (tokens.equals(0, "status"))
             {
@@ -130,13 +124,13 @@ protected:
                     continue;
                 }
 
-                int partNumber(NumUtil::stoi(tokens[1]));
-                int canvasWidth(NumUtil::stoi(tokens[2]));
-                int canvasHeight(NumUtil::stoi(tokens[3]));
-                int tilePosX(NumUtil::stoi(tokens[4]));
-                int tilePosY(NumUtil::stoi(tokens[5]));
-                int tileWidth(NumUtil::stoi(tokens[6]));
-                int tileHeight(NumUtil::stoi(tokens[7]));
+                int partNumber(std::stoi(tokens[1]));
+                int canvasWidth(std::stoi(tokens[2]));
+                int canvasHeight(std::stoi(tokens[3]));
+                int tilePosX(std::stoi(tokens[4]));
+                int tilePosY(std::stoi(tokens[5]));
+                int tileWidth(std::stoi(tokens[6]));
+                int tileHeight(std::stoi(tokens[7]));
 
                 std::vector<unsigned char> pixmap(canvasWidth*canvasHeight*4);
                 loKitDocument->pClass->setPart(loKitDocument, partNumber);
@@ -146,7 +140,7 @@ protected:
                     continue;
 
                 std::vector<char> png;
-                const auto mode = static_cast<COKitTileMode>(loKitDocument->pClass->getTileMode(loKitDocument));
+                const auto mode = static_cast<LibreOfficeKitTileMode>(loKitDocument->pClass->getTileMode(loKitDocument));
 
                 Png::encodeBufferToPNG(pixmap.data(), canvasWidth, canvasHeight, png, mode);
 

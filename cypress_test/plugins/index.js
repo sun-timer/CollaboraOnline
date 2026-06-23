@@ -22,20 +22,6 @@ function plugin(on, config) {
 		config.video = true;
 	}
 
-	// Abort the run after the first spec failure so CI does not waste
-	// time running remaining specs when the build is already doomed.
-	// process.exit(1) is not sufficient: Cypress runs plugins in
-	// a child process, so it only kills this worker while the main
-	// Cypress process hangs forever. Cypress is launched via setsid
-	// in the Makefile so it has its own process group. Kill that
-	// group to take down Cypress and the browser it spawned without
-	// affecting the parent shell.
-	on('after:spec', (spec, results) => {
-		if (results && results.stats.failures > 0) {
-			process.kill(0, 'SIGTERM');
-		}
-	});
-
 	on('before:browser:launch', function(browser, launchOptions) {
 
 		if (process.env.ENABLE_CONSOLE_LOG) {
@@ -69,10 +55,6 @@ function plugin(on, config) {
 			if (process.env.ENABLE_LOGGING) {
 				launchOptions.args.push('--enable-logging=stderr');
 				launchOptions.args.push('--v=2');
-			}
-			// https://www.cypress.io/blog/generate-high-resolution-videos-and-screenshots
-			if (process.env.CYPRESS_WINDOW_SIZE) {
-				launchOptions.args.push('--window-size=' + process.env.CYPRESS_WINDOW_SIZE);
 			}
 			launchOptions.args.push('--simulate-outdated-no-au=\'2099-12-31T23:59:59.000000+00:00\'');
 		}

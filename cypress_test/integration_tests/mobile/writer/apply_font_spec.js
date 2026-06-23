@@ -33,7 +33,7 @@ describe(['tagmobile', 'tagnextcloud', 'tagproxy'], 'Apply font changes.', funct
 
 	it('Apply bold font.', function() {
 		helper.setDummyClipboardForCopy();
-		cy.cGet('#mobile-wizard .unoBold').scrollIntoView().click();
+		cy.cGet('.unoBold:visible').click();
 		writerHelper.selectAllTextOfDoc();
 		helper.copy();
 		cy.cGet('#copy-paste-container p b').should('exist');
@@ -41,7 +41,7 @@ describe(['tagmobile', 'tagnextcloud', 'tagproxy'], 'Apply font changes.', funct
 
 	it('Apply italic font.', function() {
 		helper.setDummyClipboardForCopy();
-		cy.cGet('#mobile-wizard .unoItalic').scrollIntoView().click();
+		cy.cGet('.unoItalic:visible').click();
 		writerHelper.selectAllTextOfDoc();
 		helper.copy();
 		cy.cGet('#copy-paste-container p i').should('exist');
@@ -49,7 +49,7 @@ describe(['tagmobile', 'tagnextcloud', 'tagproxy'], 'Apply font changes.', funct
 
 	it('Apply underline.', function() {
 		helper.setDummyClipboardForCopy();
-		cy.cGet('#mobile-wizard .unoUnderline').scrollIntoView().click();
+		cy.cGet('.unoUnderline:visible').click();
 		writerHelper.selectAllTextOfDoc();
 		helper.copy();
 		cy.cGet('#copy-paste-container p u').should('exist');

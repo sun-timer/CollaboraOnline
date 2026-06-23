@@ -10,19 +10,12 @@ describe(['tagmobile'], 'Annotation tests.', function() {
 		newFilePath = helper.setupAndLoadDocument('impress/annotation.odp');
 
 		mobileHelper.enableEditingMobile();
-
-		cy.getFrameWindow().then(function(win) {
-			this.win = win;
-		});
 	});
 
 	it('Saving comment.', function() {
 		mobileHelper.insertComment();
 
 		mobileHelper.selectHamburgerMenuItem(['File', 'Save']);
-
-		// Wait for save to complete before reloading
-		helper.processToIdle(this.win);
 
 		helper.reloadDocument(newFilePath);
 
@@ -44,9 +37,6 @@ describe(['tagmobile'], 'Annotation tests.', function() {
 		cy.cGet('#input-modal-input').type('{end}');
 		cy.cGet('#input-modal-input').type('modified');
 		cy.cGet('#response-ok').click();
-
-		helper.processToIdle(this.win);
-
 		cy.cGet('#toolbar-up #comment_wizard').click();
 		cy.cGet('[id^=annotation-content-area-]').should('exist');
 		cy.cGet('[id^=annotation-content-area-]').should('have.text', 'some textmodified');
@@ -59,8 +49,6 @@ describe(['tagmobile'], 'Annotation tests.', function() {
 		cy.cGet('#mobile-wizard .wizard-comment-box .cool-annotation-content').should('have.text', 'some text');
 
 		mobileHelper.selectAnnotationMenuItem('Remove');
-
-		helper.processToIdle(this.win);
 
 		cy.cGet('#mobile-wizard .wizard-comment-box .cool-annotation-content').should('not.exist');
 		cy.cGet('.annotation-marker').should('not.exist');

@@ -87,15 +87,7 @@ window.L.WriterTileLayer = window.L.CanvasTileLayer.extend({
 		}
 	},
 
-	_shouldIgnoreServerPageSync: function () {
-		return !this._map.isEditMode() && !app.file.textCursor.visible;
-	},
-
 	_onSetPartMsg: function (textMsg) {
-		if (this._shouldIgnoreServerPageSync()) {
-			return;
-		}
-
 		var part = parseInt(textMsg.match(/\d+/g)[0]);
 		if (part !== this._currentPage) {
 			this._currentPage = part;
@@ -116,13 +108,12 @@ window.L.WriterTileLayer = window.L.CanvasTileLayer.extend({
 			// of the first paragraph of the document so we want to ignore that
 			// to eliminate document jumping while reconnecting
 			this.persistCursorPositionInWriter = true;
-			if (this.lastCursorPos) {
-				// Save position to restore when we have the full layout of the document back
-				this._savedCursorPos = this.lastCursorPos.clone();
-			}
+			this._postMouseEvent('buttondown', this.lastCursorPos.center[0], this.lastCursorPos.center[1], 1, 1, 0);
+			this._postMouseEvent('buttonup', this.lastCursorPos.center[0], this.lastCursorPos.center[1], 1, 1, 0);
 		}
-		if (!statusJSON.width || !statusJSON.height || this._documentInfo === textMsg)
+		if (!statusJSON.width || !statusJSON.height || this._documentInfo === textMsg) {
 			return;
+		}
 
 		if (statusJSON.readonly && !this._documentInfo)
 			this._map.setPermission('readonly');
@@ -132,16 +123,6 @@ window.L.WriterTileLayer = window.L.CanvasTileLayer.extend({
 		if (statusJSON.viewid !== undefined) {
 			this._viewId = statusJSON.viewid;
 			app.activeDocument.setActiveViewID(this._viewId);
-		}
-
-		if (statusJSON.partHasComments !== undefined &&  statusJSON.partHasComments !== app.activeDocument.partHasComments) {
-			const hadValue = app.activeDocument.partHasComments !== undefined;
-			app.activeDocument.partHasComments = statusJSON.partHasComments;
-			// Only re-fit zoom when comment presence genuinely
-			// changes (added or removed), not on the first status
-			// message where it goes from undefined to a real value.
-			if (hadValue)
-				this._fitWidthZoom();
 		}
 
 		console.assert(this._viewId >= 0, 'Incorrect viewId received: ' + this._viewId);
@@ -165,9 +146,7 @@ window.L.WriterTileLayer = window.L.CanvasTileLayer.extend({
 			app.activeDocument.activeModes = [mode];
 
 		this._parts = 1;
-		if (!this._shouldIgnoreServerPageSync()) {
-			this._currentPage = statusJSON.selectedpart;
-		}
+		this._currentPage = statusJSON.selectedpart;
 		this._pages = statusJSON.partscount;
 		app.file.writer.pageRectangleList = statusJSON.pagerectangles.slice(); // Copy the array.
 		// Recalculate view layout so view size reflects the new pages.
@@ -180,11 +159,5 @@ window.L.WriterTileLayer = window.L.CanvasTileLayer.extend({
 			docType: this._docType
 		});
 		TileManager.resetPreFetching(true);
-
-		if (this._savedCursorPos && this._savedCursorPos.center[0] <= app.activeDocument.fileSize.x && this._savedCursorPos.center[1] <= app.activeDocument.fileSize.y) {
-			this._postMouseEvent('buttondown', this._savedCursorPos.center[0], this._savedCursorPos.center[1], 1, 1, 0);
-			this._postMouseEvent('buttonup', this._savedCursorPos.center[0], this._savedCursorPos.center[1], 1, 1, 0);
-			this._savedCursorPos = null;
-		}
 	},
 });

@@ -11,42 +11,30 @@
 
 #pragma once
 
-#include <common/Session.hpp>
-#include <common/StateEnum.hpp>
-#include <common/ThreadPool.hpp>
-#include <common/Util.hpp>
-#include <kit/KitQueue.hpp>
-#include <kit/LogUI.hpp>
-#include <net/Socket.hpp>
-#include <wsd/TileDesc.hpp>
-
-#include <COKit/COKitTypes.h>
-
 #include <Poco/Util/XMLConfiguration.h>
-
 #include <map>
 #include <string>
 
+#include <common/Util.hpp>
+#include <common/StateEnum.hpp>
+#include <common/Session.hpp>
+#include <common/ThreadPool.hpp>
+#include <kit/KitQueue.hpp>
+#include <kit/LogUI.hpp>
+
+#include <wsd/TileDesc.hpp>
+
+#include "Socket.hpp"
+
+#define LOK_USE_UNSTABLE_API
+#include <LibreOfficeKit/LibreOfficeKit.hxx>
+
 #if MOBILEAPP
 
-#include <future>
-
-#include <wsd/ClientSession.hpp>
-#include <wsd/DocumentBroker.hpp>
+#include "ClientSession.hpp"
+#include "DocumentBroker.hpp"
 
 #endif
-
-#ifdef IOS
-void runKitLoopInAThread();
-#endif
-
-namespace kit
-{
-class Document;
-class Office;
-}
-struct COKitStruct;
-using COKit = COKitStruct;
 
 void lokit_main(
 #if !MOBILEAPP
@@ -59,6 +47,10 @@ void lokit_main(
 #endif
     std::size_t numericIdentifier);
 
+#ifdef IOS
+void runKitLoopInAThread();
+#endif
+
 bool globalPreinit(const std::string& loTemplate);
 /// Wrapper around private Document::ViewCallback().
 void documentViewCallback(int type, const char* p, void* data);
@@ -66,7 +58,7 @@ void documentViewCallback(int type, const char* p, void* data);
 class Document;
 class DeltaGenerator;
 
-/// Descriptor class used to link a COKit
+/// Descriptor class used to link a LOK
 /// callback to a specific view.
 struct CallbackDescriptor
 {
@@ -137,7 +129,7 @@ enum class DocumentPasswordType : std::uint8_t
 };
 
 /// Check the ForkCounter, and if non-zero, fork more of them accordingly.
-void forkCOKit(const std::string& childRoot, const std::string& sysTemplate,
+void forkLibreOfficeKit(const std::string& childRoot, const std::string& sysTemplate,
                         const std::string& loTemplate, bool useMountNamespaces);
 
 class Document;
@@ -177,35 +169,22 @@ public:
         ~ReEntrancyGuard() { _count--; }
     };
 #endif
-
-    /// Handle the poll from the unipoll callback.
     int kitPoll(int timeoutMicroS);
-
-    /// Handle the wake up from the unipoll callback.
-    void kitWakeup();
-
-    /// Handle the 'has any input?' unipoll callback.
-    bool kitHasAnyInput(int mostUrgentPriority);
-
     void setDocument(std::shared_ptr<Document> document) { _document = std::move(document); }
     const std::shared_ptr<Document>& getDocument() const { return _document; }
 
-    // unusual COKit event from another thread, push into our loop to process.
-    static bool pushToMainThread(COKitCallback callback, int type, const char* p,
+    // unusual LOK event from another thread, push into our loop to process.
+    static bool pushToMainThread(LibreOfficeKitCallback callback, int type, const char* p,
                                  void* data);
 
-#if defined(IOS) || defined(QTAPP) || defined(MACOS) || defined(_WIN32)
+#ifdef IOS
     static std::mutex KSPollsMutex;
     static std::condition_variable KSPollsCV;
     static std::vector<std::weak_ptr<KitSocketPoll>> KSPolls;
 
-    struct TerminationData
-    {
-        std::mutex mutex;
-        std::condition_variable cv;
-        bool flag;
-    };
-    std::shared_ptr<TerminationData> termination;
+    std::mutex terminationMutex;
+    std::condition_variable terminationCV;
+    bool terminationFlag;
 #endif
 };
 
@@ -221,7 +200,7 @@ class ChildSession;
 class Document final : public std::enable_shared_from_this<Document>, private TilePrioritizer
 {
 public:
-    Document(const std::shared_ptr<kit::Office>& loKit, const std::string& jailId,
+    Document(const std::shared_ptr<lok::Office>& loKit, const std::string& jailId,
              const std::string& docKey, const std::string& docId, const std::string& url,
              const std::shared_ptr<WebSocketHandler>& websocketHandler, unsigned mobileAppDocId);
     ~Document() final;
@@ -229,7 +208,7 @@ public:
     const std::string& getUrl() const { return _url; }
 
     /// Post the message - in the unipoll world we're in the right thread anyway
-    bool postMessage(const std::string_view data, WSOpCode code) const;
+    bool postMessage(const char* data, int size, WSOpCode code) const;
 
     bool createSession(const std::string& sessionId);
 
@@ -242,9 +221,12 @@ public:
 
     void renderTiles(TileCombined& tileCombined);
 
-    bool sendTextFrame(const std::string_view message) const { return sendFrame(message); }
+    bool sendTextFrame(const std::string& message) const
+    {
+        return sendFrame(message.data(), message.size());
+    }
 
-    bool sendFrame(std::string_view data, WSOpCode opCode = WSOpCode::Text) const;
+    bool sendFrame(const char* buffer, int length, WSOpCode opCode = WSOpCode::Text) const;
 
     void alertNotAsync() const
     {
@@ -272,7 +254,7 @@ public:
     void trimIfInactive();
     void trimAfterInactivity();
 
-    // COKit callback entry points
+    // LibreOfficeKit callback entry points
     static void GlobalCallback(int type, const char* p, void* data);
     static void ViewCallback(int type, const char* p, void* data);
 
@@ -288,7 +270,7 @@ private:
 
     /// Calculate tile rendering priority from a TileDesc
     Priority getTilePriority(const TileDesc& desc) const override;
-    std::vector<ViewIdInactivity> getViewIdsByInactivity() const override;
+    virtual std::vector<ViewIdInactivity> getViewIdsByInactivity() const override;
 
 public:
     /// Request loading a document, or a new view, if one exists,
@@ -301,7 +283,7 @@ public:
     void onUnload(const ChildSession& session);
 
     /// Get a view ID <-> UserInfo map.
-    const std::map<int, UserInfo>& getViewInfo() const { return _sessionUserInfo; }
+    std::map<int, UserInfo> getViewInfo() { return _sessionUserInfo; }
 
     int getEditorId() const { return _editorId; }
 
@@ -309,7 +291,7 @@ public:
 
     bool haveDocPassword() const { return _haveDocPassword; }
 
-    const std::string& getDocPassword() const { return _docPassword; }
+    std::string getDocPassword() const { return _docPassword; }
 
     DocumentPasswordType getDocPasswordType() const { return _docPasswordType; }
 
@@ -372,7 +354,7 @@ private:
 
     std::string getDefaultBackgroundTheme(const std::shared_ptr<ChildSession>& session) const;
 
-    std::shared_ptr<kit::Document> load(const std::shared_ptr<ChildSession>& session,
+    std::shared_ptr<lok::Document> load(const std::shared_ptr<ChildSession>& session,
                                         const std::string& renderOpts);
 
     bool forwardToChild(std::string_view prefix, const std::vector<char>& payload);
@@ -420,13 +402,13 @@ public:
     /// Returns true iff we have a LOKit Document instance.
     bool isLoaded() const { return !!_loKitDocument; }
 
-    /// Return access to the kit::Office instance.
-    std::shared_ptr<kit::Office> getLOKit() const { return _loKit; }
+    /// Return access to the lok::Office instance.
+    std::shared_ptr<lok::Office> getLOKit() { return _loKit; }
 
-    /// Return access to the kit::Document instance.
-    std::shared_ptr<kit::Document> getLOKitDocument();
+    /// Return access to the lok::Document instance.
+    std::shared_ptr<lok::Document> getLOKitDocument();
 
-    const std::string& getObfuscatedFileId() const { return _obfuscatedFileId; }
+    std::string getObfuscatedFileId() { return _obfuscatedFileId; }
 
     bool isBackgroundSaveProcess() const { return _isBgSaveProcess; }
 
@@ -475,7 +457,7 @@ private:
     void flushAndExit(int code);
 
 private:
-    std::shared_ptr<kit::Office> _loKit;
+    std::shared_ptr<lok::Office> _loKit;
     const std::string _jailId;
     /// URL-based key. May be repeated during the lifetime of WSD.
     const std::string _docKey;
@@ -486,9 +468,9 @@ private:
     std::string _jailedUrl;
     std::string _renderOpts;
 
-    std::shared_ptr<kit::Document> _loKitDocument;
+    std::shared_ptr<lok::Document> _loKitDocument;
 #ifdef __ANDROID__
-    static std::shared_ptr<kit::Document> _loKitDocumentForAndroidOnly;
+    static std::shared_ptr<lok::Document> _loKitDocumentForAndroidOnly;
     static std::weak_ptr<DocumentBroker> _documentBrokerForAndroidOnly;
 #endif
     std::unique_ptr<KitQueue> _queue;
@@ -530,7 +512,7 @@ private:
     /// For showing disconnected user info in the doc repair dialog.
     std::map<int, UserInfo> _sessionUserInfo;
 #ifdef __ANDROID__
-    friend std::shared_ptr<kit::Document> getLOKDocumentForAndroidOnly();
+    friend std::shared_ptr<lok::Document> getLOKDocumentForAndroidOnly();
     friend std::shared_ptr<DocumentBroker> getDocumentBrokerForAndroidOnly();
 #endif
 
@@ -561,17 +543,17 @@ TileWireId getCurrentWireId(bool increment = false);
 
 #ifdef __ANDROID__
 /// For the Android app, for now, we need access to the one and only document open to perform eg. saveAs() for printing.
-std::shared_ptr<kit::Document> getLOKDocumentForAndroidOnly();
+std::shared_ptr<lok::Document> getLOKDocumentForAndroidOnly();
 std::shared_ptr<DocumentBroker> getDocumentBrokerForAndroidOnly();
 #endif
 
-extern COKit* loKitPtr;
+extern LibreOfficeKit* loKitPtr;
 
 /// Check if URP is enabled
 bool isURPEnabled();
 
 /// Start a URP connection, checking if URP is enabled and there is not already an active URP session
-bool startURP(const std::shared_ptr<kit::Office>& LOKit, void** ppURPContext);
+bool startURP(const std::shared_ptr<lok::Office>& LOKit, void** ppURPContext);
 
 /// Ensure all recorded traces hit the disk
 void flushTraceEventRecordings();

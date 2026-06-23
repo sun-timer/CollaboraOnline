@@ -27,15 +27,11 @@ class ViewLayoutCompareChanges extends ViewLayoutNewBase {
 	constructor() {
 		super();
 
-		app.events.on('resize', this.onResize.bind(this));
 		app.map.on('zoomend', this.onZoomEnd.bind(this));
 
 		this.adjustViewZoomLevel();
 
-		app.layoutingService.appendLayoutingTask(() => {
-			app.sectionContainer.reNewAllSections();
-			this.updateViewData();
-		});
+		app.layoutingService.appendLayoutingTask(() => this.updateViewData());
 	}
 
 	/// Refresh the view after scroll or zoom change.
@@ -44,36 +40,20 @@ class ViewLayoutCompareChanges extends ViewLayoutNewBase {
 		app.sectionContainer.requestReDraw();
 	}
 
-	private onResize(): void {
-		this.adjustViewZoomLevel();
-		this.refreshView();
-	}
-
 	private onZoomEnd(): void {
 		this.refreshView();
 	}
 
-	public override adjustViewZoomLevel() {
+	public adjustViewZoomLevel() {
 		Util.ensureValue(app.activeDocument);
 
 		const min = 0.1;
 		const max = 10;
 
 		const anchorSection = this.getDocumentAnchorSection();
+		this.halfWidth = Math.round(anchorSection.size[0] * 0.5);
 
-		// Reserve space for the comment section on the right side of the pages.
-		const commentReserve = app.activeDocument.partHasComments
-			? cool.CommentSection.getCommentWidth()
-			: 0;
-		// Shift the center divider to the left so comments fit on the right.
-		this.halfWidth = Math.round((anchorSection.size[0] - commentReserve) * 0.5);
-		// The gap between the two pages is 2 * viewGap (each page is offset
-		// by viewGap from the center divider).
-		const targetPageWidth = Math.round(
-			(anchorSection.size[0] - 2 * this.viewGap - commentReserve) * 0.5,
-		);
-
-		const ratio = targetPageWidth / app.activeDocument.fileSize.pX;
+		const ratio = this.halfWidth / app.activeDocument.fileSize.pX;
 		let zoom = app.map.getScaleZoom(ratio);
 		zoom = Math.min(max, Math.max(min, zoom));
 
@@ -82,7 +62,7 @@ class ViewLayoutCompareChanges extends ViewLayoutNewBase {
 		app.map.setZoom(zoom, { animate: false });
 	}
 
-	protected override refreshCurrentCoordList() {
+	protected refreshCurrentCoordList() {
 		super.refreshCurrentCoordList();
 
 		const additionalCoords: Array<TileCoordData> = [];
@@ -109,26 +89,14 @@ class ViewLayoutCompareChanges extends ViewLayoutNewBase {
 	}
 
 	protected refreshVisibleAreaRectangle(): void {
-		Util.ensureValue(app.activeDocument);
-
 		const documentAnchor = this.getDocumentAnchorSection();
 
-		// Both left and right pages need tiles from different X ranges due to
-		// their different screen positions (getDeflectionX). The right page may
-		// need tiles starting from X=0 even when scrolled far right. Cover the
-		// full document width with a small margin for twips rounding.
-		const margin = 15;
-
 		this._viewedRectangle = cool.SimpleRectangle.fromCorePixels([
-			-margin,
+			this.scrollProperties.viewX,
 			this.scrollProperties.viewY - this.yStart,
-			app.activeDocument.fileSize.pX + 2 * margin,
+			this.halfWidth - this.viewGap,
 			documentAnchor.size[1],
 		]);
-
-		// Notify the section container that the document visible area changed, necessary
-		// for comment positions to update.
-		app.sectionContainer.onNewDocumentTopLeft();
 	}
 
 	protected updateViewData() {
@@ -138,8 +106,8 @@ class ViewLayoutCompareChanges extends ViewLayoutNewBase {
 
 		this._viewSize = cool.SimplePoint.fromCorePixels([
 			Math.max(
-				anchorSection.size[0],
-				2 * app.activeDocument.fileSize.pX + 2 * this.viewGap,
+				this.halfWidth,
+				app.activeDocument.fileSize.pX + 2 * this.viewGap,
 			),
 			Math.max(
 				anchorSection.size[1],
@@ -156,59 +124,36 @@ class ViewLayoutCompareChanges extends ViewLayoutNewBase {
 		this.sendClientVisibleArea();
 
 		this.refreshCurrentCoordList();
-		TileManager.beginTransaction();
 		TileManager.checkRequestTiles(this.currentCoordList);
-		TileManager.endTransaction(null);
 	}
 
 	private getDeflectionX(mode: TileMode): number {
 		Util.ensureValue(app.activeDocument);
-
-		const canvasWidth = this.getDocumentAnchorSection().size[0];
-		const viewXCenter = Math.max(0, this._viewSize.pX - canvasWidth) * 0.5;
 
 		if (mode === TileMode.LeftSide)
 			return (
 				this.halfWidth -
 				app.activeDocument.fileSize.pX -
 				this.scrollProperties.viewX -
-				this.viewGap +
-				viewXCenter
+				this.viewGap
 			);
-		else
-			return (
-				this.halfWidth +
-				this.viewGap -
-				this.scrollProperties.viewX +
-				viewXCenter
-			);
+		else return this.halfWidth + this.viewGap - this.scrollProperties.viewX;
 	}
 
-	public override documentToViewX(point: cool.SimplePoint): number {
+	public documentToViewX(point: cool.SimplePoint): number {
 		Util.ensureValue(app.activeDocument);
 
 		// Default to right side.
 		if (point.mode === -1) point.mode = TileMode.RightSide;
 
-		return (
-			point.pX +
-			this.getDeflectionX(point.mode) +
-			this._documentAnchorPosition[0]
-		);
+		return point.pX + this.getDeflectionX(point.mode);
 	}
 
-	public override documentToViewY(point: cool.SimplePoint): number {
-		return (
-			point.pY +
-			this.yStart -
-			this.scrollProperties.viewY +
-			this._documentAnchorPosition[1]
-		);
+	public documentToViewY(point: cool.SimplePoint): number {
+		return point.pY + this.yStart - this.scrollProperties.viewY;
 	}
 
-	public override canvasToDocumentPoint(
-		point: cool.SimplePoint,
-	): cool.SimplePoint {
+	public canvasToDocumentPoint(point: cool.SimplePoint): cool.SimplePoint {
 		const result = point.clone();
 
 		point.mode =
@@ -217,35 +162,17 @@ class ViewLayoutCompareChanges extends ViewLayoutNewBase {
 		// Remember which tile mode was used last.
 		this.lastTileMode = point.mode;
 
-		result.pX -=
-			this.getDeflectionX(point.mode) + this._documentAnchorPosition[0];
-		result.pY +=
-			this.scrollProperties.viewY -
-			this.yStart -
-			this._documentAnchorPosition[1];
+		result.pX -= this.getDeflectionX(point.mode);
+		result.pY += this.scrollProperties.viewY - this.yStart;
 
 		return result;
 	}
 
-	public override canScrollHorizontal(
-		documentAnchor: CanvasSectionObject,
-	): boolean {
+	public canScrollHorizontal(documentAnchor: CanvasSectionObject): boolean {
 		return this.viewSize.pX > Math.round(documentAnchor.size[0] * 0.5);
 	}
 
-	public getTotalSideSpace(): number {
-		Util.ensureValue(app.activeDocument);
-
-		const anchorWidth = this.getDocumentAnchorSection().size[0];
-		// Right page edge is the width center position + page width (with its gap).
-		const rightPageRightEdge =
-			this.halfWidth + this.viewGap + app.activeDocument.fileSize.pX;
-		// Compute the actual right-side space and double it, because
-		// CommentSection.calculateAvailableSpace() halves the result.
-		return (anchorWidth - rightPageRightEdge) * 2;
-	}
-
-	public override scroll(pX: number, pY: number): boolean {
+	public scroll(pX: number, pY: number): boolean {
 		const scrolled = super.scroll(pX, pY);
 
 		if (scrolled) {

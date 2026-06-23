@@ -9,10 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for document loading error handling and bad document scenarios.
- */
-
 #include <config.h>
 
 #include <Png.hpp>
@@ -21,7 +17,6 @@
 #include <helpers.hpp>
 
 #include <Poco/Exception.h>
-#include <Poco/Net/HTTPRequest.h>
 #include <Poco/RegularExpression.h>
 #include <Poco/URI.h>
 #include <test/lokassert.hpp>

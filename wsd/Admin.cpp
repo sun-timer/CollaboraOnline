@@ -9,36 +9,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Implementation of administrative interface and websocket handlers.
- * Classes: AdminSocketHandler, MonitorSocketHandler, Admin
- */
-
 #include <config.h>
-
-#include "Admin.hpp"
-
-#include <common/Common.hpp>
-#include <common/ConfigUtil.hpp>
-#include <common/JsonUtil.hpp>
-#include <common/Log.hpp>
-#include <common/NumUtil.hpp>
-#include <common/Protocol.hpp>
-#include <common/SigUtil.hpp>
-#include <common/StringVector.hpp>
-#include <common/Unit.hpp>
-#include <common/Uri.hpp>
-#include <common/Util.hpp>
-#include <net/Socket.hpp>
-#if ENABLE_SSL
-#include <net/SslSocket.hpp>
-#endif
-#include <net/WebSocketHandler.hpp>
-#include <wsd/AdminModel.hpp>
-#include <wsd/Auth.hpp>
-#include <wsd/COOLWSD.hpp>
-
-#include <Poco/Net/HTTPRequest.h>
 
 #include <chrono>
 #include <csignal>
@@ -46,8 +17,32 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
-#include <poll.h>
+#include <sys/poll.h>
 #include <unistd.h>
+
+#include <Poco/Net/HTTPRequest.h>
+
+#include "Admin.hpp"
+#include "AdminModel.hpp"
+#include "Auth.hpp"
+#include "ConfigUtil.hpp"
+#include <Common.hpp>
+#include <COOLWSD.hpp>
+#include <Log.hpp>
+#include <Protocol.hpp>
+#include <StringVector.hpp>
+#include <Unit.hpp>
+#include <Util.hpp>
+#include <common/JsonUtil.hpp>
+#include <common/Uri.hpp>
+
+#include <net/Socket.hpp>
+#if ENABLE_SSL
+#include <SslSocket.hpp>
+#endif
+#include <net/WebSocketHandler.hpp>
+
+#include <common/SigUtil.hpp>
 
 using namespace COOLProtocol;
 
@@ -74,7 +69,7 @@ void AdminSocketHandler::handleMessage(const std::vector<char> &payload)
         if (tokens.size() < 2)
         {
             LOG_DBG("Auth command without any token");
-            sendTextMessage("InvalidAuthToken");
+            sendMessage("InvalidAuthToken");
             shutdown();
             ignoreInput();
             return;
@@ -102,7 +97,7 @@ void AdminSocketHandler::handleMessage(const std::vector<char> &payload)
         else
         {
             LOG_DBG("Invalid auth token");
-            sendTextMessage("InvalidAuthToken");
+            sendMessage("InvalidAuthToken");
             shutdown();
             ignoreInput();
             return;
@@ -113,7 +108,7 @@ void AdminSocketHandler::handleMessage(const std::vector<char> &payload)
     {
         LOG_DBG("Not authenticated - message is '" << firstLine << "' " <<
                 tokens.size() << " first: '" << tokens[0] << '\'');
-        sendTextMessage("NotAuthenticated");
+        sendMessage("NotAuthenticated");
         shutdown();
         ignoreInput();
         return;
@@ -184,7 +179,7 @@ void AdminSocketHandler::handleMessage(const std::vector<char> &payload)
     {
         try
         {
-            const int pid = NumUtil::stoi(tokens[1]);
+            const int pid = std::stoi(tokens[1]);
             LOG_INF("Admin request to kill PID: " << pid);
 
             std::set<pid_t> pids = model.getDocumentPids();
@@ -257,7 +252,7 @@ void AdminSocketHandler::handleMessage(const std::vector<char> &payload)
             int settingVal = 0;
             try
             {
-                settingVal = NumUtil::stoi(setting[1]);
+                settingVal = std::stoi(setting[1]);
             }
             catch (const std::exception& exc)
             {
@@ -464,7 +459,7 @@ void AdminSocketHandler::sendTextFrame(const std::string& message)
     if (_isAuthenticated)
     {
         LOG_TRC("send admin text frame '" << message << '\'');
-        sendTextMessage(message);
+        sendMessage(message);
     }
     else
         LOG_TRC("Skip sending message to non-authenticated client: '" << message << '\'');
@@ -610,7 +605,7 @@ Admin::~Admin()
 
 void Admin::pollingThread()
 {
-    _model.setThreadOwner(ProcUtil::getThreadId());
+    _model.setThreadOwner(std::this_thread::get_id());
 
     std::chrono::steady_clock::time_point lastCPU = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point lastMem = lastCPU;
@@ -841,8 +836,8 @@ size_t Admin::getTotalMemoryUsage() const
     // inside the forkit - we should account all of our fixed cost of
     // memory to the forkit; and then count only dirty pages in the clients
     // since we know that they share everything else with the forkit.
-    const size_t forkitRssKb = ProcUtil::getMemoryUsageRSS(_forKitPid);
-    const size_t wsdPssKb = ProcUtil::getMemoryUsagePSS(ProcUtil::getProcessId());
+    const size_t forkitRssKb = Util::getMemoryUsageRSS(_forKitPid);
+    const size_t wsdPssKb = Util::getMemoryUsagePSS(Util::getProcessId());
     const size_t kitsDirtyKb = _model.getKitsMemoryUsage();
     const size_t totalMem = wsdPssKb + forkitRssKb + kitsDirtyKb;
 
@@ -851,8 +846,8 @@ size_t Admin::getTotalMemoryUsage() const
 
 size_t Admin::getTotalCpuUsage() const
 {
-    const size_t forkitJ = ProcUtil::getCpuUsage(_forKitPid);
-    const size_t wsdJ = ProcUtil::getCpuUsage(ProcUtil::getProcessId());
+    const size_t forkitJ = Util::getCpuUsage(_forKitPid);
+    const size_t wsdJ = Util::getCpuUsage(Util::getProcessId());
 
     if (_lastJiffies == 0)
     {
@@ -1118,7 +1113,7 @@ void Admin::cleanupLostKits()
         if (internalKitPids.find(pid) == internalKitPids.end())
         {
             // Check if this is our kit process (forked from our ForKit process)
-            if (ProcUtil::getStatFromPid(pid, 3) == (size_t)_forKitPid)
+            if (Util::getStatFromPid(pid, 3) == (size_t)_forKitPid)
                 mapKitsLost.insert(std::pair<pid_t, std::time_t>(pid, std::time(nullptr)));
         }
         else

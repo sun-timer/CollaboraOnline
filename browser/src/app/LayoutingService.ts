@@ -60,15 +60,11 @@ class LayoutingService {
 		const task = this._layoutTasks.shift();
 		if (!task || !task.func) return false;
 
-		app.enterRAF();
-
 		try {
 			task.func();
 		} catch (ex) {
 			console.error('LayoutingTask exception: ' + ex);
 		}
-
-		app.exitRAF();
 
 		return true;
 	}
@@ -122,8 +118,6 @@ class LayoutingService {
 	}
 
 	private _runDrainCallbacks(): void {
-		app.enterRAF();
-
 		const callbacks = this._drainCallbacks;
 		this._drainCallbacks = [];
 		for (const cb of callbacks) {
@@ -133,8 +127,6 @@ class LayoutingService {
 				console.error('Drain callback exception: ' + ex);
 			}
 		}
-
-		app.exitRAF();
 	}
 
 	private _scheduleLayouting(): void {

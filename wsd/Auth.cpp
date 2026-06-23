@@ -9,32 +9,30 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Implementation of JWT authentication and authorization.
- * Classes: JWTAuth
- */
-
 #include <config.h>
 
 #include "Auth.hpp"
 
-#include <common/ConfigUtil.hpp>
-#include <common/JsonUtil.hpp>
-#include <common/Log.hpp>
-#include <common/Protocol.hpp>
-#include <common/Util.hpp>
+#include <cstdlib>
+#include <string>
 
 #include <Poco/Crypto/RSADigestEngine.h>
 #include <Poco/Crypto/RSAKey.h>
 #include <Poco/Dynamic/Var.h>
+#include <Poco/LineEndingConverter.h>
 #include <Poco/Net/HTTPClientSession.h>
 #include <Poco/Net/HTTPRequest.h>
 #include <Poco/Net/HTTPResponse.h>
 #include <Poco/Net/NetException.h>
 #include <Poco/URI.h>
 
-#include <cstdlib>
-#include <string>
+#include <JsonUtil.hpp>
+#include <Log.hpp>
+#include <Protocol.hpp>
+#include <Util.hpp>
+#include <common/ConfigUtil.hpp>
+
+using Poco::OutputLineEndingConverter;
 
 std::unique_ptr<Poco::Crypto::RSAKey> JWTAuth::_key(
     new Poco::Crypto::RSAKey(Poco::Crypto::RSAKey(Poco::Crypto::RSAKey::KL_2048, Poco::Crypto::RSAKey::EXP_LARGE)));
@@ -74,7 +72,7 @@ const std::string JWTAuth::getAccessToken()
     Poco::Crypto::DigestEngine::Digest digest = _digestEngine.signature();
 
     // The signature generated contains CRLF line endings.
-    std::string encodedSig = Util::base64Encode(digest);
+    std::string encodedSig = Util::base64EncodeRemovingNewLines(digest);
 
     // trim '=' from end of encoded signature
     encodedSig.erase(std::find_if(encodedSig.rbegin(), encodedSig.rend(),
@@ -109,7 +107,7 @@ bool JWTAuth::verify(const std::string& accessToken)
         Poco::Crypto::DigestEngine::Digest digest = _digestEngine.signature();
 
         // The signature generated contains CRLF line endings.
-        std::string encodedSig = Util::base64Encode(digest);
+        std::string encodedSig = Util::base64EncodeRemovingNewLines(digest);
 
         // trim '=' from end of encoded signature.
         encodedSig.erase(std::find_if(encodedSig.rbegin(), encodedSig.rend(),
@@ -134,7 +132,7 @@ bool JWTAuth::verify(const std::string& accessToken)
         // Verify if the token is not already expired
         Poco::JSON::Parser parser;
         Poco::Dynamic::Var result = parser.parse(decodedPayload);
-        const Poco::JSON::Object::Ptr& object = result.extract<Poco::JSON::Object::Ptr>();
+        Poco::JSON::Object::Ptr object = result.extract<Poco::JSON::Object::Ptr>();
         std::time_t decodedExptime = 0;
         object->get("exp").convert(decodedExptime);
 
@@ -166,7 +164,7 @@ const std::string JWTAuth::createHeader()
     const std::string header = R"({"alg":")" + _alg + R"(","typ":")" + _typ + "\"}";
 
     LOG_INF("JWT Header: " << header);
-    return Util::base64Encode(header);
+    return Util::base64EncodeRemovingNewLines(header);
 }
 
 const std::string JWTAuth::createPayload()
@@ -181,7 +179,63 @@ const std::string JWTAuth::createPayload()
                                 _aud + R"(","nme":")" + _name + R"(","exp":")" + exptime + "\"}";
 
     LOG_INF("JWT Payload: " << payload << " expires in " << expirySeconds << "seconds");
-    return Util::base64Encode(payload);
+    return Util::base64EncodeRemovingNewLines(payload);
+}
+
+//TODO: This MUST be done over TLS to protect the token.
+const std::string OAuth::getAccessToken()
+{
+    const std::string url = _tokenEndPoint
+                          + "?client_id=" + _clientId
+                          + "&client_secret=" + _clientSecret
+                          + "&grant_type=authorization_code"
+                          + "&code=" + _authorizationCode;
+                        // + "&redirect_uri="
+
+    Poco::URI uri(url);
+    Poco::Net::HTTPClientSession session(uri.getHost(), uri.getPort());
+    Poco::Net::HTTPRequest request(Poco::Net::HTTPRequest::HTTP_POST, url, Poco::Net::HTTPMessage::HTTP_1_1);
+    Poco::Net::HTTPResponse response;
+    session.sendRequest(request);
+
+    std::istream& rs = session.receiveResponse(response);
+    LOG_INF("Status: " <<  response.getStatus() << ' ' << response.getReason());
+
+    const std::string reply(std::istreambuf_iterator<char>(rs), {});
+    LOG_INF("Response: " << reply);
+    //TODO: Parse the token.
+
+    return std::string();
+}
+
+bool OAuth::verify(const std::string& token)
+{
+    const std::string url = _authVerifyUrl + token;
+    LOG_DBG("Verifying authorization token from: " << url);
+    Poco::URI uri(url);
+    Poco::Net::HTTPClientSession session(uri.getHost(), uri.getPort());
+    Poco::Net::HTTPRequest request(Poco::Net::HTTPRequest::HTTP_GET, url, Poco::Net::HTTPMessage::HTTP_1_1);
+    Poco::Net::HTTPResponse response;
+    session.sendRequest(request);
+
+    std::istream& rs = session.receiveResponse(response);
+    LOG_INF("Status: " <<  response.getStatus() << ' ' << response.getReason());
+
+    const std::string reply(std::istreambuf_iterator<char>(rs), {});
+    LOG_INF("Response: " << reply);
+
+    //TODO: Parse the response.
+    /*
+    // This is used for the demo site.
+    const auto lastLogTime = std::strtoul(reply.c_str(), nullptr, 0);
+    if (lastLogTime < 1)
+    {
+    //TODO: Redirect to login page.
+    return;
+    }
+    */
+
+    return true;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

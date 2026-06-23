@@ -44,6 +44,10 @@ class ViewLayoutBase {
 	public readonly type: string = 'ViewLayoutBase';
 
 	private lastViewedRectangle: cool.SimpleRectangle; // Previously viewed rectangle.
+	private lastClientVisibleAreaSentTs: number = 0;
+	private pendingClientVisibleAreaTimer:
+		| ReturnType<typeof setTimeout>
+		| undefined = undefined;
 
 	protected clientVisibleAreaCommand: string = ''; // Last visible area command. Checked to avoid sending the same command multiple times.
 	protected _viewedRectangle: cool.SimpleRectangle; // Currently viewed rectangle.
@@ -138,6 +142,18 @@ class ViewLayoutBase {
 			this.clientVisibleAreaCommand !== newClientVisibleAreaCommand ||
 			forceUpdate
 		) {
+			const now = Date.now();
+			const minIntervalMs = 90;
+			if (!forceUpdate && now - this.lastClientVisibleAreaSentTs < minIntervalMs) {
+				if (!this.pendingClientVisibleAreaTimer) {
+					this.pendingClientVisibleAreaTimer = setTimeout(() => {
+						this.pendingClientVisibleAreaTimer = undefined;
+						this.sendClientVisibleArea(true);
+					}, Math.max(8, minIntervalMs - (now - this.lastClientVisibleAreaSentTs)));
+				}
+				return;
+			}
+
 			// Only update on some change
 			if (app.map._docLayer._ySplitter) {
 				app.map._docLayer._ySplitter.onPositionChange();
@@ -147,6 +163,7 @@ class ViewLayoutBase {
 			}
 			// Visible area is dirty, update it on the server
 			app.socket.sendMessage(newClientVisibleAreaCommand);
+			this.lastClientVisibleAreaSentTs = now;
 			if (app.map.contextToolbar) app.map.contextToolbar.hideContextToolbar(); // hide context toolbar when scroll/window resize etc...
 			if (!app.map._fatal && app.idleHandler._active && app.socket.connected())
 				this.clientVisibleAreaCommand = newClientVisibleAreaCommand;
@@ -204,7 +221,7 @@ class ViewLayoutBase {
 	private calculateHorizontalScrollLength(
 		documentAnchor: CanvasSectionObject,
 	): void {
-		const canvasWidth: number = documentAnchor.size[0];
+		const result: number = documentAnchor.size[0];
 		this.scrollProperties.xOffset = documentAnchor.myTopLeft[0];
 
 		if (app.map._docLayer._docType === 'spreadsheet') {
@@ -217,12 +234,10 @@ class ViewLayoutBase {
 
 			this.scrollProperties.xOffset += splitPos.x;
 			this.scrollProperties.horizontalScrollLength =
-				canvasWidth -
-				splitPos.x -
-				this.scrollProperties.horizontalScrollRightOffset;
+				result - splitPos.x - this.scrollProperties.horizontalScrollRightOffset;
 		} else {
 			this.scrollProperties.horizontalScrollLength =
-				canvasWidth - this.scrollProperties.horizontalScrollRightOffset;
+				result - this.scrollProperties.horizontalScrollRightOffset;
 		}
 	}
 
@@ -330,7 +345,7 @@ class ViewLayoutBase {
 
 	protected refreshCurrentCoordList() {
 		this.currentCoordList.length = 0;
-		const zoom = Math.round(app.map.getZoom());
+		const zoom = app.map.getZoom();
 
 		const columnCount = Math.ceil(
 			this._viewedRectangle.pWidth / TileManager.tileSize,

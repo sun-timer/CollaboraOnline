@@ -12,6 +12,7 @@
 /// all tests based on the possible messages from wsd/protocol.txt
 describe('ServerCommand', function() {
 
+	const assert = require('assert').strict;
 	const mapzoom: MapZoomInterface = {
 		_docLayer: {
 			options: {
@@ -30,16 +31,16 @@ describe('ServerCommand', function() {
 
 		const msg = 'downloadas: downloadid=' + downloadid + ' port=' + port + ' id=' + id;
 		const sc = new ServerCommand(msg, mapzoom);
-		nodeassert.equal(downloadid, sc.downloadid);
-		nodeassert.equal(port, sc.port);
-		nodeassert.equal(id, sc.id);
+		assert.equal(downloadid, sc.downloadid);
+		assert.equal(port, sc.port);
+		assert.equal(id, sc.id);
 	});
 
 	it('getchildid', function() {
 		const id = '23456';
 		const msg = 'getchildid: id=' + id;
 		const sc = new ServerCommand(msg, mapzoom);
-		nodeassert.equal(id, sc.id);
+		assert.equal(id, sc.id);
 	});
 
 	it('invalidatetiles (specific region)', function() {
@@ -54,13 +55,13 @@ describe('ServerCommand', function() {
 		const msg = `invalidatetiles: part=${part} mode=${mode} x=${x} y=${y} width=${width} height=${height} wid=${wireId}`;
 
 		const sc = new ServerCommand(msg, mapzoom);
-		nodeassert.equal(part, sc.part);
-		nodeassert.equal(mode, sc.mode);
-		nodeassert.equal(x, sc.x);
-		nodeassert.equal(y, sc.y);
-		nodeassert.equal(width, sc.width);
-		nodeassert.equal(height, sc.height);
-		nodeassert.equal(wireId, sc.wireId);
+		assert.equal(part, sc.part);
+		assert.equal(mode, sc.mode);
+		assert.equal(x, sc.x);
+		assert.equal(y, sc.y);
+		assert.equal(width, sc.width);
+		assert.equal(height, sc.height);
+		assert.equal(wireId, sc.wireId);
 	});
 
 	it('invalidatetiles (all cached tiles)', function() {
@@ -71,7 +72,7 @@ describe('ServerCommand', function() {
 		const msg = `invalidatetiles: EMPTY, ${part}, ${mode}, wid=${wireId}`;
 
 		const sc = new ServerCommand(msg, mapzoom);
-		nodeassert.equal(wireId, sc.wireId);
+		assert.equal(wireId, sc.wireId);
 	});
 
 	it('loaded', function() {
@@ -81,7 +82,7 @@ describe('ServerCommand', function() {
 
 		const msg = `loaded: viewid=${viewid} views=${views} isfirst=${isfirst}`;
 		const sc = new ServerCommand(msg, mapzoom);
-		nodeassert.equal(viewid, sc.viewid);
+		assert.equal(viewid, sc.viewid);
 	});
 
 	it('pong', function() {
@@ -89,7 +90,7 @@ describe('ServerCommand', function() {
 		const msg = `pong rendercount=${rendercount}`;
 
 		const sc = new ServerCommand(msg, mapzoom);
-		nodeassert.equal(rendercount, sc.rendercount);
+		assert.equal(rendercount, sc.rendercount);
 	});
 
 	it('tile', function() {
@@ -108,14 +109,14 @@ describe('ServerCommand', function() {
 		const msg = `tile: nviewid=${nviewid} part=${part} width=${width} height=${height} tileposx=${tileposx} tileposy=${tileposy} tilewidth=${tilewidth} tileheight=${tileheight} wid=${wireId} ver=${ver} imgsize=${imgsize}`;
 
 		const sc = new ServerCommand(msg, mapzoom);
-		nodeassert.equal(nviewid, sc.nviewid);
-		nodeassert.equal(part, sc.part);
-		nodeassert.equal(width, sc.width);
-		nodeassert.equal(height, sc.height);
-		nodeassert.equal(tileposx, sc.x);
-		nodeassert.equal(tileposy, sc.y);
-		nodeassert.equal(tilewidth, sc.tileWidth);
-		nodeassert.equal(tileheight, sc.tileHeight);
-		nodeassert.equal(wireId, sc.wireId);
+		assert.equal(nviewid, sc.nviewid);
+		assert.equal(part, sc.part);
+		assert.equal(width, sc.width);
+		assert.equal(height, sc.height);
+		assert.equal(tileposx, sc.x);
+		assert.equal(tileposy, sc.y);
+		assert.equal(tilewidth, sc.tileWidth);
+		assert.equal(tileheight, sc.tileHeight);
+		assert.equal(wireId, sc.wireId);
 	});
 });

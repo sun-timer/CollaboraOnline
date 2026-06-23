@@ -1,16 +1,12 @@
 /* global describe it cy beforeEach require expect*/
 
 var helper = require('../../common/helper');
-var impressHelper = require('../../common/impress_helper');
 var mobileHelper = require('../../common/mobile_helper');
 
 describe(['tagmobile', 'tagproxy'], 'Focus tests', function() {
 
 	beforeEach(function() {
 		helper.setupAndLoadDocument('writer/focus.odt');
-		cy.getFrameWindow().then((win) => {
-			this.win = win;
-		});
 	});
 
 	it('Basic document focus.', function() {
@@ -71,20 +67,30 @@ describe(['tagmobile', 'tagproxy'], 'Focus tests', function() {
 		cy.cGet('.col.w2ui-icon.basicshapes_rectangle').click();
 		// Check that the shape is there
 		cy.cGet('#canvas-container > svg').should('exist');
-		helper.processToIdle(this.win);
 		// One tap on the shape
-		cy.cGet('#canvas-container > svg > svg').should('exist');
-		helper.getShapeSVGCenter().then(function(pos) {
-			cy.cGet('#document-canvas').click(pos.x, pos.y);
-		});
+		cy.cGet('#canvas-container > svg > svg')
+			.then(function(svg) {
+				expect(parseInt(svg[0].style.width.replace('px', ''))).to.be.greaterThan(0);
+				expect(parseInt(svg[0].style.height.replace('px', ''))).to.be.greaterThan(0);
+				var posX = parseInt(svg[0].style.width.replace('px', '')) + parseInt(svg[0].style.left.replace('px', '')) / 2;
+				var posY = parseInt(svg[0].style.height.replace('px', '')) + parseInt(svg[0].style.top.replace('px', '')) / 2;
+				cy.cGet('#document-container').click(posX, posY);
+			});
 
-		helper.processToIdle(this.win);
 		// No focus on the document
 		helper.assertFocus('tagName', 'BODY');
 
-		// Double tap on the shape to enter text editing
-		impressHelper.dblclickOnSelectedShape();
-		helper.processToIdle(this.win);
+		// Double tap on the shape
+		cy.cGet('#canvas-container > svg > svg')
+			.then(function(svg) {
+				expect(parseInt(svg[0].style.width.replace('px', ''))).to.be.greaterThan(0);
+				expect(parseInt(svg[0].style.height.replace('px', ''))).to.be.greaterThan(0);
+				var posX = parseInt(svg[0].style.width.replace('px', '')) + parseInt(svg[0].style.left.replace('px', '')) / 2;
+				var posY = parseInt(svg[0].style.height.replace('px', '')) + parseInt(svg[0].style.top.replace('px', '')) / 2;
+
+				cy.cGet('#document-container').dblclick(posX, posY);
+			});
+
 		cy.cGet('.blinking-cursor').should('be.visible');
 		// Document still has the focus
 		helper.assertFocus('className', 'clipboard');

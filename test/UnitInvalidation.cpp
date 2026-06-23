@@ -9,10 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for tile invalidation functionality.
- */
-
 #include <config.h>
 
 #include <memory>
@@ -22,7 +18,7 @@
 #include <test/lokassert.hpp>
 
 #include <Unit.hpp>
-#include <common/Util.hpp>
+#include <Util.hpp>
 #include <helpers.hpp>
 
 using namespace std::literals;
@@ -78,8 +74,7 @@ void UnitInvalidation::renderArea(const std::shared_ptr<http::WebSocketSession> 
             }
         }
 
-        helpers::sendTextFrame(session, "tileprocessed wids=" + Util::joinPair(wids, ","),
-                               testname);
+        helpers::sendTextFrame(session, "tileprocessed wids=" + Util::joinPair(wids, ","));
 }
 
 void UnitInvalidation::invokeWSDTest()
@@ -113,7 +108,7 @@ void UnitInvalidation::invokeWSDTest()
         std::shared_ptr<http::WebSocketSession> windowTwo = helpers::loadDocAndGetSession(
             socketPoll, Poco::URI(helpers::getTestServerURI()), documentURL, testname);
         setupSession(windowTwo);
-        // ensure all the same tiles are served from the cache, and not the COKit view.
+        // ensure all the same tiles are served from the cache, and not the LOK view.
         renderArea(windowTwo, 0);
 
         TST_LOG("Tab switch and edit: window one");

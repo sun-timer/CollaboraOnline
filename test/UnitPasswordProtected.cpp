@@ -9,10 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for password-protected document handling.
- */
-
 #include <config.h>
 
 #include <UnitWSDClient.hpp>

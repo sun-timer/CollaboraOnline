@@ -38,7 +38,7 @@ class SaveState {
 
 	// Function to show the saving status
 	showSavingStatus(): void {
-		if (window.mode.isSmallScreenDevice()) return;
+		if (window.mode.isMobile()) return;
 
 		if (!this.saveEle) this.initialize();
 
@@ -56,7 +56,7 @@ class SaveState {
 
 	// Function to show the saved status
 	showSavedStatus(): void {
-		if (window.mode.isSmallScreenDevice()) return;
+		if (window.mode.isMobile()) return;
 
 		if (!this.saveEle) this.initialize();
 
@@ -80,7 +80,7 @@ class SaveState {
 		if (this.saveEle) {
 			this.saveEle.classList.remove('saving');
 			this.saveEle.classList.remove('saved');
-			this.saveIconEl?.classList.remove('rotate-icon'); // Stop the icon rotation
+			this.saveIconEl.classList.remove('rotate-icon'); // Stop the icon rotation
 			this.saveEle.removeAttribute('disabled'); // Enable the button
 			this.saveEle.classList.add('savemodified');
 		}

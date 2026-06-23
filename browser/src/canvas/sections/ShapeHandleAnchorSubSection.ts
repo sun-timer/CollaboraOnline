@@ -27,7 +27,7 @@ class ShapeHandleAnchorSubSection extends HTMLObjectSection {
 
 	onMouseEnter() {
 		this.backgroundColor = 'grey';
-		this.context.canvas.style.cursor = 'url(' + app.LOUtil.getURL('images/cursors/grab.svg') + ') 12 12, grab';
+		this.context.canvas.style.cursor = 'grab';
 		this.containerObject.requestReDraw();
 	}
 
@@ -79,8 +79,6 @@ class ShapeHandleAnchorSubSection extends HTMLObjectSection {
 			else {
 				this.tableMouseUp(point, e);
 			}
-
-			this.sectionProperties.parentHandlerSection.hideSVG();
 		}
 	}
 

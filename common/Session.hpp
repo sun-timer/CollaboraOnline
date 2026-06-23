@@ -154,7 +154,7 @@ public:
         return sendTextFrame(text.data(), text.size());
     }
 
-    bool sendTextFrameAndLogError(const std::string_view text, LOG_CAPTURE_CALLER_DECLARATION)
+    bool sendTextFrameAndLogError(const std::string_view text)
     {
         LOG_ERR(text);
         return sendTextFrame(text.data(), text.size());
@@ -166,13 +166,13 @@ public:
     virtual void disconnect();
 
     /// clean & normal shutdown
-    void shutdownNormal(const std::string_view statusMessage = std::string_view())
+    void shutdownNormal(const std::string& statusMessage = std::string())
     {
         shutdown(false, statusMessage);
     }
 
     /// abnormal / hash shutdown end-point going away
-    void shutdownGoingAway(const std::string_view statusMessage = std::string_view())
+    void shutdownGoingAway(const std::string& statusMessage = std::string())
     {
         shutdown(true, statusMessage);
     }
@@ -286,27 +286,9 @@ public:
 
     const std::string& getInFilterOption() const { return _inFilterOptions; }
 
-    const std::string& getZoteroAPIKey() const { return _zoteroAPIKey; }
+    std::string getZoteroAPIKey() const { return _zoteroAPIKey; }
 
     void setZoteroAPIKey(const std::string& val) { _zoteroAPIKey = val; }
-
-    std::string getAIProviderAPIKey() const { return _aiProviderAPIKey; }
-    void setAIProviderAPIKey(const std::string& val) { _aiProviderAPIKey = val; }
-
-    std::string getAIProviderModel() const { return _aiProviderModel; }
-    void setAIProviderModel(const std::string& val) { _aiProviderModel = val; }
-
-    std::string getAIProviderURL() const { return _aiProviderURL; }
-    void setAIProviderURL(const std::string& val) { _aiProviderURL = val; }
-
-    std::string getAIImageModel() const { return _aiImageModel; }
-    void setAIImageModel(const std::string& val) { _aiImageModel = val; }
-
-    std::string getAIImageProviderAPIKey() const { return _aiImageProviderAPIKey; }
-    void setAIImageProviderAPIKey(const std::string& val) { _aiImageProviderAPIKey = val; }
-
-    std::string getAIImageProviderURL() const { return _aiImageProviderURL; }
-    void setAIImageProviderURL(const std::string& val) { _aiImageProviderURL = val; }
 
     const std::string& getSignatureCertificate() const { return _signatureCertificate; }
     void setSignatureCertificate(const std::string& cert) { _signatureCertificate = cert; }
@@ -333,15 +315,14 @@ protected:
     void dumpState(std::ostream& os) override;
 
     std::string getLogPrefix() const { return _name + ": "; }
-    void logPrefix(std::ostream& os) const { os <<  _name + ": "; }
+    void logPrefix(std::ostream& os) const { os << getLogPrefix(); }
 
     void setSignToUserPrivateConfig(const std::string& key,
                                     const Poco::JSON::Object::Ptr& signatureDataObject,
                                     Poco::JSON::Object::Ptr& userPrivateInfoObject);
 
 private:
-    void shutdown(bool goingAway = false,
-                  const std::string_view statusMessage = std::string_view());
+    void shutdown(bool goingAway = false, const std::string& statusMessage = std::string());
 
     virtual bool _handleInput(const char* buffer, int length) = 0;
 
@@ -476,24 +457,6 @@ private:
 
     /// Zotero API Key
     std::string _zoteroAPIKey;
-
-    /// AI Provider API key
-    std::string _aiProviderAPIKey;
-
-    // AI Provider model, e.g. "gpt-4", "gpt-3.5-turbo", etc.
-    std::string _aiProviderModel;
-
-    // AI Provider custom URL, if not using the default one for the specified model.
-    std::string _aiProviderURL;
-
-    // AI image generation model
-    std::string _aiImageModel;
-
-    // AI image generation API key (optional, falls back to _aiProviderAPIKey)
-    std::string _aiImageProviderAPIKey;
-
-    // AI image generation base URL (optional, falls back to _aiProviderURL)
-    std::string _aiImageProviderURL;
 
     /// Digital signature certificate, key, and CA
     std::string _signatureCertificate;

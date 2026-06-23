@@ -9,15 +9,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for WOPI version restore functionality.
- */
+#include "config.h"
 
-#include <config.h>
-
-#include <WopiTestServer.hpp>
-#include <Unit.hpp>
-#include <lokassert.hpp>
+#include "WopiTestServer.hpp"
+#include "Unit.hpp"
+#include "lokassert.hpp"
 
 #include <Poco/Net/HTTPRequest.h>
 #include <Poco/Util/LayeredConfiguration.h>
@@ -71,9 +67,10 @@ public:
         return true;
     }
 
-    bool onFilterSendWebSocketMessage(const std::string_view message, const WSOpCode /* code */,
+    bool onFilterSendWebSocketMessage(const char* data, const size_t len, const WSOpCode /* code */,
                                       const bool /* flush */, int& /*unitReturn*/) override
     {
+        std::string message(data, len);
         if (message == "close: versionrestore: prerestore_ack")
         {
             LOK_ASSERT_STATE(_phase, Phase::WaitPutFile);

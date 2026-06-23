@@ -11,6 +11,8 @@
 
 describe('SheetGeometry', function() {
 
+var assert = require('assert').strict;
+
 describe('SheetGeometry public methods tests', function () {
 
     // To debug tests for some/one particular zoom levels, add to this array.
@@ -57,13 +59,13 @@ describe('SheetGeometry bugfix tests', function () {
 
         var sg = new cool.SheetGeometry(sgObj, tileWidthTwips, tileHeightTwips, tileSizePx, 0);
         it('correctness of getRowGroupLevels() before ungroup', function () {
-            nodeassert.equal(sg.getRowGroupLevels(), 3);
+            assert.equal(sg.getRowGroupLevels(), 3);
         });
 
         it('correctness of getRowGroupLevels() after ungroup', function () {
             sgObj.rows.groups = "";
             sg.update(sgObj, true, 0);
-            nodeassert.equal(sg.getRowGroupLevels(), 0);
+            assert.equal(sg.getRowGroupLevels(), 0);
         });
     });
 });
@@ -102,94 +104,94 @@ function testsForDocZoom(testDataForZoom: TestDataForZoom) {
 
 function testsForPart(partTestData: PartTestData, part: number, zoom: number, sg: cool.SheetGeometry) {
     it('correctness of getPart()', function () {
-        nodeassert.equal(sg.getPart(), part);
+        assert.equal(sg.getPart(), part);
     });
 
     it('correctness of getViewColumnRange()', function () {
         var colrange = sg.getViewColumnRange();
-        nodeassert.deepEqual(colrange, partTestData.viewCellArea.columnrange);
+        assert.deepEqual(colrange, partTestData.viewCellArea.columnrange);
     });
 
     it('correctness of getViewRowRange()', function () {
         var rowrange = sg.getViewRowRange();
-        nodeassert.deepEqual(rowrange, partTestData.viewCellArea.rowrange);
+        assert.deepEqual(rowrange, partTestData.viewCellArea.rowrange);
     });
 
     it('correctness of getRowData()', function () {
         var possize = sg.getRowData(partTestData.rowData.rowIndex);
-        nodeassert.deepEqual(possize, partTestData.rowData.possize);
+        assert.deepEqual(possize, partTestData.rowData.possize);
     });
 
     it('correctness of getColumnGroupLevels()', function () {
         var levels = sg.getColumnGroupLevels();
-        nodeassert.equal(levels, partTestData.colGroupLevels);
+        assert.equal(levels, partTestData.colGroupLevels);
     });
 
     it('correctness of getRowGroupLevels()', function () {
         var levels = sg.getRowGroupLevels();
-        nodeassert.equal(levels, partTestData.rowGroupLevels);
+        assert.equal(levels, partTestData.rowGroupLevels);
     });
 
     it('correctness of getColumnGroupsDataInView()', function () {
         var groups = sg.getColumnGroupsDataInView();
-        nodeassert.deepEqual(groups, partTestData.colGroupsInView);
+        assert.deepEqual(groups, partTestData.colGroupsInView);
     });
 
     it('correctness of getRowGroupsDataInView()', function () {
         var groups = sg.getRowGroupsDataInView();
-        nodeassert.deepEqual(groups, partTestData.rowGroupsInView);
+        assert.deepEqual(groups, partTestData.rowGroupsInView);
     });
 
     it('correctness of getTileTwipsAtZoom()', function () {
         var ttwipsAtZoom = sg.getTileTwipsAtZoom(partTestData.tileTwipsAtZoom.inputPoint, partTestData.tileTwipsAtZoom.zoomScale);
-        nodeassert.deepEqual(ttwipsAtZoom, partTestData.tileTwipsAtZoom.outputPoint);
+        assert.deepEqual(ttwipsAtZoom, partTestData.tileTwipsAtZoom.outputPoint);
     });
 
     it('correctness of getTileTwipsPointFromPrint()', function () {
         var ttwips = sg.getTileTwipsPointFromPrint(partTestData.printTwipsToTile.inputPoint);
-        nodeassert.deepEqual(ttwips, partTestData.printTwipsToTile.outputPoint);
+        assert.deepEqual(ttwips, partTestData.printTwipsToTile.outputPoint);
     });
 
     it('correctness of getPrintTwipsPointFromTile()', function () {
         // Use the data for getTileTwipsPointFromPrint.
         var ptwips = sg.getPrintTwipsPointFromTile(partTestData.printTwipsToTile.outputPoint);
-        nodeassert.deepEqual(ptwips, partTestData.printTwipsToTile.inputPoint);
+        assert.deepEqual(ptwips, partTestData.printTwipsToTile.inputPoint);
     });
 
     it('correctness of getTileTwipsSheetAreaFromPrint()', function () {
         var ptwips = sg.getTileTwipsSheetAreaFromPrint(partTestData.printTwipsSheetAreatoTile.inputArea);
-        nodeassert.deepEqual(ptwips, partTestData.printTwipsSheetAreatoTile.outputArea);
+        assert.deepEqual(ptwips, partTestData.printTwipsSheetAreatoTile.outputArea);
     });
 
     it('correctness of getSize()', function () {
         var sheetSizeCorePixels = sg.getSize('corepixels');
-        nodeassert.deepEqual(sheetSizeCorePixels, partTestData.sheetSize.corePixels,
+        assert.deepEqual(sheetSizeCorePixels, partTestData.sheetSize.corePixels,
             'Incorrect sheet size returned in core-pixels');
 
         var sheetSizeTileTwips = sg.getSize('tiletwips');
-        nodeassert.deepEqual(sheetSizeTileTwips, partTestData.sheetSize.tileTwips,
+        assert.deepEqual(sheetSizeTileTwips, partTestData.sheetSize.tileTwips,
             'Incorrect sheet size returned in tile-twips');
 
         var sheetSizePrintTwips = sg.getSize('printtwips');
-        nodeassert.deepEqual(sheetSizePrintTwips, partTestData.sheetSize.printTwips,
+        assert.deepEqual(sheetSizePrintTwips, partTestData.sheetSize.printTwips,
             'Incorrect sheet size returned in print-twips');
     });
 
     it('correctness of getCellRect()', function () {
         var cellRectData = partTestData.cellRectData;
         var cellBounds = sg.getCellRect(cellRectData.col, cellRectData.row, cellRectData.zoomScale);
-        nodeassert.deepEqual(cellBounds, cellRectData.cpixBoundsAtZoom, 'Incorrect cell bounds at zoom returned');
+        assert.deepEqual(cellBounds, cellRectData.cpixBoundsAtZoom, 'Incorrect cell bounds at zoom returned');
 
         var selfZoomScale = zoomToAbsScale(zoom);
         cellBounds = sg.getCellRect(cellRectData.col, cellRectData.row, selfZoomScale);
-        nodeassert.deepEqual(cellBounds, cellRectData.cpixBoundsAtSelfZoom, 'Incorrect cell bounds at self zoom returned');
+        assert.deepEqual(cellBounds, cellRectData.cpixBoundsAtSelfZoom, 'Incorrect cell bounds at self zoom returned');
     });
 
     it('correctness of getCellFromPos()', function () {
         var cellRectData = partTestData.cellRectData;
         var midPoint = cellRectData.cpixBoundsAtSelfZoom.getCenter(true);
         var cell = sg.getCellFromPos(midPoint, 'corepixels');
-        nodeassert.deepEqual(cell, new cool.Point(cellRectData.col, cellRectData.row), 'Incorrect cell indices at self zoom returned');
+        assert.deepEqual(cell, new cool.Point(cellRectData.col, cellRectData.row), 'Incorrect cell indices at self zoom returned');
     });
 
     it('correctness of getSnapDocPosX() and getSnapDocPosY()', function () {
@@ -197,10 +199,10 @@ function testsForPart(partTestData: PartTestData, part: number, zoom: number, sg
         var midPoint = cellRectData.cpixBoundsAtSelfZoom.getCenter(true);
 
         var cellX = sg.getSnapDocPosX(midPoint.x, 'corepixels');
-        nodeassert.deepEqual(cellX, cellRectData.cpixBoundsAtSelfZoom.min.x, 'Incorrect cellX at self zoom returned');
+        assert.deepEqual(cellX, cellRectData.cpixBoundsAtSelfZoom.min.x, 'Incorrect cellX at self zoom returned');
 
         var cellY = sg.getSnapDocPosY(midPoint.y, 'corepixels');
-        nodeassert.deepEqual(cellY, cellRectData.cpixBoundsAtSelfZoom.min.y, 'Incorrect cellY at self zoom returned');
+        assert.deepEqual(cellY, cellRectData.cpixBoundsAtSelfZoom.min.y, 'Incorrect cellY at self zoom returned');
     });
 }
 

@@ -177,7 +177,7 @@ window.L.Map = window.L.Evented.extend({
 				this._fireInitComplete('doclayerinit');
 			}
 
-			if (window.mode.isSmallScreenDevice())
+			if (window.mode.isMobile())
 			{
 				document.getElementById('document-container').classList.add('mobile');
 				this._size = new cool.Point(0,0);
@@ -233,8 +233,24 @@ window.L.Map = window.L.Evented.extend({
 
 		//Last modified time of document saved state
 		this._lastModDateValue = '';
+		this._androidUndoRedoState = { undo: false, redo: false };
 
 		this.on('commandstatechanged', function(e) {
+			if (window.ThisIsTheAndroidApp &&
+					(e.commandName === '.uno:Undo' || e.commandName === '.uno:Redo')) {
+				var enabled = e.state === 'enabled';
+				if (e.commandName === '.uno:Undo') {
+					this._androidUndoRedoState.undo = enabled;
+				}
+				else {
+					this._androidUndoRedoState.redo = enabled;
+				}
+				if (typeof window.postMobileMessage === 'function') {
+					window.postMobileMessage('UNDOREDO undo=' +
+						(this._androidUndoRedoState.undo ? '1' : '0') +
+						' redo=' + (this._androidUndoRedoState.redo ? '1' : '0'));
+				}
+			}
 			if (e.commandName === '.uno:ModifiedStatus') {
 				this._everModified = this._everModified || (e.state === 'true');
 
@@ -291,7 +307,7 @@ window.L.Map = window.L.Evented.extend({
 					commentSection.clearList();
 			}
 
-			if (!window.mode.isSmallScreenDevice())
+			if (!window.mode.isMobile())
 				this.initializeModificationIndicator();
 
 			// We have loaded.
@@ -1713,10 +1729,8 @@ window.L.Map = window.L.Evented.extend({
 
 		if (this.getDocType() === 'spreadsheet') {
 			this._docLayer.goToCellViewCursor(id);
-		} else if (this.getDocType() === 'text') {
+		} else if (this.getDocType() === 'text' || this.getDocType() === 'presentation') {
 			this._docLayer.goToViewCursor(id);
-		} else if (this.getDocType() === 'presentation' || this.getDocType() === 'drawing') {
-			this._docLayer.goToOtherUserView(id);
 		}
 	},
 

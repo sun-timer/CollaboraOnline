@@ -77,20 +77,16 @@ public:
         assert(_initialized);
 
         // Don't incur a high cost in release builds.
-
-        if constexpr (Util::isDebugEnabled())
-        {
-            if (_initialized)
-            {
-                return _value;
-            }
-
-            throw std::runtime_error("RuntimeConstant instance read before being initialized.");
-        }
-        else
+#if ENABLE_DEBUG
+        if (_initialized)
         {
             return _value;
         }
+
+        throw std::runtime_error("RuntimeConstant instance read before being initialized.");
+#else // ENABLE_DEBUG
+        return _value;
+#endif // !ENABLE_DEBUG
     }
 
     void set(const T& value)
@@ -112,9 +108,6 @@ void initialize(const std::string& xml);
 
 /// Initialize the config given a pointer to a long-lived pointer.
 void initialize(const Poco::Util::AbstractConfiguration* config);
-
-/// Initialize the config from a file given it's name.
-void initializeFromFile(const std::string& filename);
 
 /// Check if the config has been initialized
 bool isInitialized();
@@ -166,7 +159,7 @@ inline bool isSSLTermination()
 }
 
 /// Return true if build is support key enabled (ENABLE_SUPPORT_KEY is defined)
-constexpr bool isSupportKeyEnabled()
+inline constexpr bool isSupportKeyEnabled()
 {
 #ifdef ENABLE_SUPPORT_KEY
     return ENABLE_SUPPORT_KEY;

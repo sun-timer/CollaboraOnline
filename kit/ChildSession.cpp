@@ -9,38 +9,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Kit process child session handling COKit commands.
- * Classes: ChildSession - Document session command processing
- */
-
 #include <config.h>
 
 #include "ChildSession.hpp"
 
 #include <common/Anonymizer.hpp>
-#include <common/Authorization.hpp>
-#include <common/Clipboard.hpp>
-#include <common/CommandControl.hpp>
-#include <common/ConfigUtil.hpp>
-#include <common/FileUtil.hpp>
 #include <common/HexUtil.hpp>
-#include <common/JsonUtil.hpp>
 #include <common/Log.hpp>
-#include <common/NumUtil.hpp>
-#include <common/Png.hpp>
-#include <common/SpookyV2.h>
-#include <common/TraceEvent.hpp>
 #include <common/Unit.hpp>
-#include <common/Uri.hpp>
 #include <common/Util.hpp>
-#include <common/base64.hpp>
-#include <kit/KitHelper.hpp>
-#include <kit/SlideCompressor.hpp>
 
-#define KIT_USE_UNSTABLE_API
-#include <COKit/COKit.hxx>
-#include <COKit/COKitEnums.h>
+#define LOK_USE_UNSTABLE_API
+#include <LibreOfficeKit/LibreOfficeKitEnums.h>
 
 #include <Poco/StreamCopier.h>
 #include <Poco/URI.h>
@@ -57,15 +37,28 @@
 #include <androidapp.hpp>
 #endif
 
+#include <common/base64.hpp>
+#include <common/ConfigUtil.hpp>
+#include <common/FileUtil.hpp>
+#include <common/JsonUtil.hpp>
+#include <common/Authorization.hpp>
+#include <common/TraceEvent.hpp>
+#include <common/SpookyV2.h>
+#include <common/Uri.hpp>
+#include "KitHelper.hpp"
+#include <Png.hpp>
+#include <Clipboard.hpp>
+#include <CommandControl.hpp>
+#include <SlideCompressor.hpp>
+
 #ifdef IOS
 #include "DocumentViewController.h"
 #endif
 
 #if WASMAPP
-#include <wasmapp.hpp>
+#include "wasmapp.hpp"
 #endif
 
-#include <cassert>
 #include <climits>
 #include <fstream>
 #include <sstream>
@@ -229,13 +222,13 @@ bool ChildSession::_handleInput(const char *buffer, int length)
         getLOKitDocument()->setView(_viewId);
 
         int curPart = 0;
-        if (getLOKitDocument()->getDocumentType() != KIT_DOCTYPE_TEXT)
+        if (getLOKitDocument()->getDocumentType() != LOK_DOCTYPE_TEXT)
             curPart = getLOKitDocument()->getPart();
 
         // Notify all views about updated view info
         _docManager->notifyViewInfo();
 
-        if (getLOKitDocument()->getDocumentType() != KIT_DOCTYPE_TEXT)
+        if (getLOKitDocument()->getDocumentType() != LOK_DOCTYPE_TEXT)
         {
             sendTextFrame("curpart: part=" + std::to_string(curPart));
             sendTextFrame("setpart: part=" + std::to_string(curPart));
@@ -247,7 +240,7 @@ bool ChildSession::_handleInput(const char *buffer, int length)
         if (_stateRecorder.isInvalidate())
         {
             const std::string payload = "0, 0, 1000000000, 1000000000, " + std::to_string(curPart);
-            loKitCallback(KIT_CALLBACK_INVALIDATE_TILES, payload);
+            loKitCallback(LOK_CALLBACK_INVALIDATE_TILES, payload);
         }
 
         for (const auto& viewPair : _stateRecorder.getRecordedViewEvents())
@@ -256,7 +249,7 @@ bool ChildSession::_handleInput(const char *buffer, int length)
             {
                 const RecordedEvent& event = eventPair.second;
                 LOG_TRC("Replaying missed view event: " << viewPair.first << ' '
-                                                        << kitCallbackTypeToString(event.getType())
+                                                        << lokCallbackTypeToString(event.getType())
                                                         << ": " << event.getPayload());
                 loKitCallback(event.getType(), event.getPayload());
             }
@@ -265,7 +258,7 @@ bool ChildSession::_handleInput(const char *buffer, int length)
         for (const auto& eventPair : _stateRecorder.getRecordedEvents())
         {
             const RecordedEvent& event = eventPair.second;
-            LOG_TRC("Replaying missed event: " << kitCallbackTypeToString(event.getType()) << ": "
+            LOG_TRC("Replaying missed event: " << lokCallbackTypeToString(event.getType()) << ": "
                                                << event.getPayload());
             loKitCallback(event.getType(), event.getPayload());
         }
@@ -273,13 +266,13 @@ bool ChildSession::_handleInput(const char *buffer, int length)
         for (const auto& pair : _stateRecorder.getRecordedStates())
         {
             LOG_TRC("Replaying missed state-change: " << pair.second);
-            loKitCallback(KIT_CALLBACK_STATE_CHANGED, pair.second);
+            loKitCallback(LOK_CALLBACK_STATE_CHANGED, pair.second);
         }
 
         for (const auto& event : _stateRecorder.getRecordedEventsVector())
         {
             LOG_TRC("Replaying missed event (part of sequence): " <<
-                    kitCallbackTypeToString(event.getType()) << ": " << event.getPayload());
+                    lokCallbackTypeToString(event.getType()) << ": " << event.getPayload());
             loKitCallback(event.getType(), event.getPayload());
         }
 
@@ -467,7 +460,7 @@ bool ChildSession::_handleInput(const char *buffer, int length)
         constexpr int offsetXTwips = 15 * 15; // start 15 pixels before the target to get a clearer thumbnail
         constexpr int offsetYTwips = 15 * 15;
 
-        const auto mode = static_cast<COKitTileMode>(getLOKitDocument()->getTileMode());
+        const auto mode = static_cast<LibreOfficeKitTileMode>(getLOKitDocument()->getTileMode());
 
         std::vector<unsigned char> thumbnail(width * height * 4);
         getLOKitDocument()->paintTile(thumbnail.data(), width, height, x - offsetXTwips, y - offsetYTwips, widthTwips, heightTwips);
@@ -501,6 +494,10 @@ bool ChildSession::_handleInput(const char *buffer, int length)
     {
         sendTextFrameAndLogError("error: cmd=" + tokens[0] + " kind=nodocloaded");
         return false;
+    }
+    else if (tokens.equals(0, "renderfont"))
+    {
+        sendFontRendering(tokens);
     }
     else if (tokens.equals(0, "setclientpart"))
     {
@@ -540,13 +537,13 @@ bool ChildSession::_handleInput(const char *buffer, int length)
     }
     else if (tokens.equals(0, "blockingcommandstatus"))
     {
-#if (ENABLE_FEATURE_LOCK || ENABLE_FEATURE_RESTRICTION || ENABLE_DEBUG) && !MOBILEAPP
+#if ENABLE_FEATURE_LOCK || ENABLE_FEATURE_RESTRICTION
         return updateBlockingCommandStatus(tokens);
 #endif
     }
     else
     {
-        // All other commands are such that they always require a COKitDocument session,
+        // All other commands are such that they always require a LibreOfficeKitDocument session,
         // i.e. need to be handled in a child process.
 
         assert(Util::isFuzzing() ||
@@ -669,11 +666,6 @@ bool ChildSession::_handleInput(const char *buffer, int length)
                 newTokens.push_back(firstLine.substr(4)); // Copy the remaining part.
                 return unoCommand(newTokens);
             }
-            else if (tokens[1].find(".uno:SaveGraphic") != std::string::npos)
-            {
-                // SaveGraphic is not a document save - it exports an image
-                return unoCommand(tokens);
-            }
             else if (tokens[1].find(".uno:Save") != std::string::npos)
             {
                 LOG_ERR("Unexpected UNO Save command in client");
@@ -724,8 +716,7 @@ bool ChildSession::_handleInput(const char *buffer, int length)
             if (!saving)
             { // fallback to foreground save
 
-                if (!Util::isMobileApp())
-                    UnitKit::get().preSaveHook();
+                UnitKit::get().preSaveHook();
 
                 // Disable processing of other messages while saving document
                 InputProcessingManager processInput(getProtocol(), false);
@@ -959,9 +950,7 @@ bool ChildSession::loadDocument(const StringVector& tokens)
 #if ENABLE_DEBUG && !MOBILEAPP
     if (std::getenv("PAUSEFORDEBUGGER"))
     {
-        std::cerr << getDocURL()
-                  << " paused waiting for a debugger to attach: " << ProcUtil::getProcessId()
-                  << std::endl;
+        std::cerr << getDocURL() << " paused waiting for a debugger to attach: " << Util::getProcessId() << std::endl;
         SigUtil::setDebuggerSignal();
         pause();
     }
@@ -1094,6 +1083,69 @@ bool ChildSession::saveDocumentBackground([[maybe_unused]] const StringVector& t
     return false;
 }
 
+bool ChildSession::sendFontRendering(const StringVector& tokens)
+{
+    std::string font, text, decodedFont, decodedChar;
+    bool success;
+
+    if (tokens.size() < 3 ||
+        !getTokenString(tokens[1], "font", font))
+    {
+        sendTextFrameAndLogError("error: cmd=renderfont kind=syntax");
+        return false;
+    }
+
+    getTokenString(tokens[2], "char", text);
+
+    try
+    {
+        URI::decode(font, decodedFont);
+        URI::decode(text, decodedChar);
+    }
+    catch (Poco::SyntaxException& exc)
+    {
+        LOG_ERR(exc.message());
+        sendTextFrameAndLogError("error: cmd=renderfont kind=syntax");
+        return false;
+    }
+
+    const std::string response = "renderfont: " + tokens.cat(' ', 1) + '\n';
+
+    std::vector<char> output;
+    output.resize(response.size());
+    std::memcpy(output.data(), response.data(), response.size());
+
+    const auto start = std::chrono::steady_clock::now();
+    // renderFont use a default font size (25) when width and height are 0
+    int width = 0, height = 0;
+
+    getLOKitDocument()->setView(_viewId);
+
+    ScopedBytes ptrFont(getLOKitDocument()->renderFont(decodedFont.c_str(), decodedChar.c_str(), &width, &height));
+
+    const auto duration = std::chrono::steady_clock::now() - start;
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+    LOG_TRC("renderFont [" << font << "] rendered in " << elapsed);
+
+    if (!ptrFont)
+    {
+        return sendTextFrame(output.data(), output.size());
+    }
+
+    const auto mode = static_cast<LibreOfficeKitTileMode>(getLOKitDocument()->getTileMode());
+
+    if (Png::encodeBufferToPNG(ptrFont.get(), width, height, output, mode))
+    {
+        success = sendTextFrame(output.data(), output.size());
+    }
+    else
+    {
+        success = sendTextFrameAndLogError("error: cmd=renderfont kind=failure");
+    }
+
+    return success;
+}
+
 bool ChildSession::getStatus()
 {
     std::string status;
@@ -1137,7 +1189,7 @@ void insertUserNames(const std::map<int, UserInfo>& viewInfo, std::string& json)
     Poco::JSON::Parser parser;
     const Poco::JSON::Object::Ptr root = parser.parse(json).extract<Poco::JSON::Object::Ptr>();
     std::vector<std::string> directions { "Undo", "Redo" };
-    for (const auto& directionName : directions)
+    for (auto& directionName : directions)
     {
         Poco::JSON::Object::Ptr direction = root->get(directionName).extract<Poco::JSON::Object::Ptr>();
         if (direction->get("actions").type() == typeid(Poco::JSON::Array::Ptr))
@@ -1318,13 +1370,6 @@ std::string ChildSession::getJailDocRoot() const
 
 bool ChildSession::downloadAs(const StringVector& tokens)
 {
-#ifdef IOS
-    NSLog(@"We should never come here, aborting");
-    std::abort();
-#elif defined(_WIN32)
-    // Presumably ditto for CODA-W
-    std::abort();
-#else
     std::string name, id, format, filterOptions;
 
     if (tokens.size() < 5 ||
@@ -1359,6 +1404,10 @@ bool ChildSession::downloadAs(const StringVector& tokens)
         filterOptions += std::string(",Watermark=") + getWatermarkText() + std::string("WATERMARKEND");
     }
 
+#ifdef IOS
+    NSLog(@"We should never come here, aborting");
+    std::abort();
+#else
     // Prevent user inputting anything funny here.
     // A "name" should always be a name, not a path
     const Poco::Path filenameParam(name);
@@ -1376,7 +1425,7 @@ bool ChildSession::downloadAs(const StringVector& tokens)
     const std::string filename = Poco::Path(nameAnonym).getFileName();
     const std::string urlAnonym = jailDoc + tmpDir + '/' + filename;
 
-    LOG_DBG("Calling COKit's saveAs with URL: ["
+    LOG_DBG("Calling LOK's saveAs with URL: ["
             << urlAnonym << "], Format: [" << (format.empty() ? "(nullptr)" : format.c_str())
             << "], Filter Options: ["
             << (filterOptions.empty() ? "(nullptr)" : filterOptions.c_str()) << ']');
@@ -1395,7 +1444,7 @@ bool ChildSession::downloadAs(const StringVector& tokens)
     // Register download id -> URL mapping in the DocumentBroker
     const std::string docBrokerMessage =
         "registerdownload: downloadid=" + tmpDir + " url=" + urlToSend + " clientid=" + getId();
-    _docManager->sendFrame(docBrokerMessage);
+    _docManager->sendFrame(docBrokerMessage.c_str(), docBrokerMessage.length());
 
     // Send download id to the client
     sendTextFrame("downloadas: downloadid=" + tmpDir + " port=" + std::to_string(ClientPortNumber) +
@@ -1441,8 +1490,8 @@ bool ChildSession::getTextSelection(const StringVector& tokens)
     std::string mimeType = mimeTypes[0];
     SigUtil::addActivity(getId(), "getTextSelection");
 
-    if (getLOKitDocument()->getDocumentType() != KIT_DOCTYPE_TEXT &&
-        getLOKitDocument()->getDocumentType() != KIT_DOCTYPE_SPREADSHEET)
+    if (getLOKitDocument()->getDocumentType() != LOK_DOCTYPE_TEXT &&
+        getLOKitDocument()->getDocumentType() != LOK_DOCTYPE_SPREADSHEET)
     {
         const std::string selection = getTextSelectionInternal(mimeType);
         if (selection.size() >= 1024 * 1024) // Don't return huge data.
@@ -1464,7 +1513,7 @@ bool ChildSession::getTextSelection(const StringVector& tokens)
         const int selectionType = getLOKitDocument()->getSelectionTypeAndText(type.c_str(), &textSelection);
         std::string selection(textSelection ? textSelection : "");
         free(textSelection);
-        if (selectionType == KIT_SELTYPE_LARGE_TEXT || selectionType == KIT_SELTYPE_COMPLEX)
+        if (selectionType == LOK_SELTYPE_LARGE_TEXT || selectionType == LOK_SELTYPE_COMPLEX)
         {
             // Flag complex data so the client will download async.
             sendTextFrame("complexselection:");
@@ -1697,20 +1746,7 @@ bool ChildSession::paste(const char* buffer, int length, const StringVector& tok
 
     const std::string firstLine = getFirstLine(buffer, length);
     const char* data = buffer + firstLine.size() + 1;
-    int size = length - firstLine.size() - 1;
-#if defined QTAPP || defined _WIN32
-    // In CODA-Q, to work around a qtwebchannel "Could not convert argument QJsonValue(object,
-    // QJsonObject()) to target type QString ." bug, _pasteTypedBlob in browser/src/map/Clipboard.js
-    // base64-encoded the payload:
-    //
-    // The same root problem in CODA-W, although there we end up with a "the server encountered a
-    // unknown error while parsing the [object command" error message.
-    std::string dec;
-    [[maybe_unused]] auto const res = macaron::Base64::Decode(std::string_view(data, size), dec);
-    assert(res.empty());
-    data = dec.data();
-    size = dec.size();
-#endif
+    const int size = length - firstLine.size() - 1;
     bool success = false;
     std::string result = "pasteresult: ";
     if (size > 0)
@@ -1825,10 +1861,10 @@ bool ChildSession::insertFile(const StringVector& tokens)
             macaron::Base64::Decode(data, binaryData);
             const std::string tempFile = FileUtil::createRandomTmpDir() + '/' + name;
             std::ofstream fileStream;
-            fileStream.open(tempFile, std::ios::out | std::ios::binary);
+            fileStream.open(tempFile);
             fileStream.write(binaryData.data(), binaryData.size());
             fileStream.close();
-            url = Poco::URI(Poco::Path(tempFile)).toString();
+            url = "file://" + tempFile;
         }
 
         std::string command;
@@ -1915,8 +1951,8 @@ bool ChildSession::extTextInputEvent(const StringVector& tokens)
     URI::decode(text, decodedText);
 
     getLOKitDocument()->setView(_viewId);
-    getLOKitDocument()->postWindowExtTextInputEvent(id, KIT_EXT_TEXTINPUT, decodedText.c_str());
-    getLOKitDocument()->postWindowExtTextInputEvent(id, KIT_EXT_TEXTINPUT_END, decodedText.c_str());
+    getLOKitDocument()->postWindowExtTextInputEvent(id, LOK_EXT_TEXTINPUT, decodedText.c_str());
+    getLOKitDocument()->postWindowExtTextInputEvent(id, LOK_EXT_TEXTINPUT_END, decodedText.c_str());
 
     return true;
 }
@@ -1945,7 +1981,7 @@ bool ChildSession::keyEvent(const StringVector& tokens,
 
     if (tokens.size() != expectedTokens ||
         !getTokenKeyword(tokens[counter++], "type",
-                         {{"input", KIT_KEYEVENT_KEYINPUT}, {"up", KIT_KEYEVENT_KEYUP}},
+                         {{"input", LOK_KEYEVENT_KEYINPUT}, {"up", LOK_KEYEVENT_KEYUP}},
                          type) ||
         !getTokenInteger(tokens[counter++], "char", charcode) ||
         !getTokenInteger(tokens[counter++], "key", keycode))
@@ -1957,9 +1993,7 @@ bool ChildSession::keyEvent(const StringVector& tokens,
     // Don't close LO window!
     constexpr int KEY_CTRL = 0x2000;
     constexpr int KEY_W = 0x0216;
-#if !MOBILEAPP
     constexpr int KEY_INSERT = 0x0505;
-#endif
     if (keycode == (KEY_CTRL | KEY_W))
     {
         return true;
@@ -1976,12 +2010,11 @@ bool ChildSession::keyEvent(const StringVector& tokens,
     getLOKitDocument()->setView(_viewId);
     if (target == LokEventTargetEnum::Document)
     {
-#if !MOBILEAPP
         // Check if override mode is disabled.
-        if (type == KIT_KEYEVENT_KEYINPUT && charcode == 0 && keycode == KEY_INSERT &&
+        if (type == LOK_KEYEVENT_KEYINPUT && charcode == 0 && keycode == KEY_INSERT &&
             !ConfigUtil::getBool("overwrite_mode.enable", false))
             return true;
-#endif
+
         getLOKitDocument()->postKeyEvent(type, charcode, keycode);
     }
     else if (winId != 0)
@@ -2056,9 +2089,9 @@ bool ChildSession::mouseEvent(const StringVector& tokens,
     int count = 0;
     if (tokens.size() < minTokens ||
         !getTokenKeyword(tokens[counter++], "type",
-                         {{"buttondown", KIT_MOUSEEVENT_MOUSEBUTTONDOWN},
-                          {"buttonup", KIT_MOUSEEVENT_MOUSEBUTTONUP},
-                          {"move", KIT_MOUSEEVENT_MOUSEMOVE}},
+                         {{"buttondown", LOK_MOUSEEVENT_MOUSEBUTTONDOWN},
+                          {"buttonup", LOK_MOUSEEVENT_MOUSEBUTTONUP},
+                          {"move", LOK_MOUSEEVENT_MOUSEMOVE}},
                          type) ||
         !getTokenInteger(tokens[counter++], "x", x) ||
         !getTokenInteger(tokens[counter++], "y", y) ||
@@ -2205,7 +2238,7 @@ bool ChildSession::renderSearchResult(const char* buffer, int length, const Stri
 
     getLOKitDocument()->setView(_viewId);
 
-    const auto tileMode = static_cast<COKitTileMode>(getLOKitDocument()->getTileMode());
+    const auto tileMode = static_cast<LibreOfficeKitTileMode>(getLOKitDocument()->getTileMode());
 
     unsigned char* bitmapBuffer = nullptr;
 
@@ -2327,7 +2360,7 @@ bool ChildSession::unoCommand(const StringVector& tokens)
 
     SigUtil::addActivity(getId(), formatUnoCommandInfo(tokens[1]));
 
-    // we need to get KIT_CALLBACK_UNO_COMMAND_RESULT callback when saving
+    // we need to get LOK_CALLBACK_UNO_COMMAND_RESULT callback when saving
     const bool notify = (tokens.equals(1, ".uno:Save") ||
                           tokens.equals(1, ".uno:Undo") ||
                           tokens.equals(1, ".uno:Redo") ||
@@ -2381,9 +2414,9 @@ bool ChildSession::selectText(const StringVector& tokens,
     {
         if (tokens.size() != 4 ||
             !getTokenKeyword(tokens[1], "type",
-                             {{"start", KIT_SETTEXTSELECTION_START},
-                              {"end", KIT_SETTEXTSELECTION_END},
-                              {"reset", KIT_SETTEXTSELECTION_RESET}},
+                             {{"start", LOK_SETTEXTSELECTION_START},
+                              {"end", LOK_SETTEXTSELECTION_END},
+                              {"reset", LOK_SETTEXTSELECTION_RESET}},
                              type) ||
             !getTokenInteger(tokens[2], "x", x) ||
             !getTokenInteger(tokens[3], "y", y))
@@ -2451,7 +2484,7 @@ bool ChildSession::renderNextSlideLayer(SlideCompressor& scomp, const unsigned w
     if (jsonMsg.empty())
         return true;
 
-    const auto tileMode = static_cast<COKitTileMode>(getLOKitDocument()->getTileMode());
+    const auto tileMode = static_cast<LibreOfficeKitTileMode>(getLOKitDocument()->getTileMode());
     scomp.pushWork(
         [=, this, pixmap = std::move(pixmap),
          jsonMsg = std::move(jsonMsg)](std::vector<char>& output)
@@ -2459,8 +2492,11 @@ bool ChildSession::renderNextSlideLayer(SlideCompressor& scomp, const unsigned w
             std::string json = jsonMsg;
             Poco::JSON::Parser parser;
             Poco::JSON::Object::Ptr root = parser.parse(json).extract<Poco::JSON::Object::Ptr>();
-            root->set("cacheKey", cacheKey);
-            root->set("isCompressed", isCompressed);
+            if (EnableExperimental)
+            {
+                root->set("cacheKey", cacheKey);
+                root->set("isCompressed", isCompressed);
+             }
 
             json = JsonUtil::jsonToString(root);
 
@@ -2495,45 +2531,71 @@ bool ChildSession::renderNextSlideLayer(SlideCompressor& scomp, const unsigned w
             if (size_t start = json.find("%IMAGECHECKSUM%"); start != std::string::npos)
                 json.replace(start, 15, std::to_string(pixmapHash));
 
-            // Use ZSTD to compress the slide layer
-            if (size_t start = json.find("%IMAGETYPE%"); start != std::string::npos)
-                json.replace(start, 11, "zstd");
-
-            root = parser.parse(json).extract<Poco::JSON::Object::Ptr>();
-            root->set("width", width);
-            root->set("height", height);
-            json = JsonUtil::jsonToString(root);
-
-            std::string response = "zstdslidelayer: " + json;
-
-            response += "\n";
-
-            size_t compressed_max_size = ZSTD_COMPRESSBOUND(pixmap->size());
-            size_t max_required_size = response.size() + compressed_max_size;
-            output.resize(max_required_size);
-            std::memcpy(output.data(), response.data(), response.size());
-
-            if (tileMode == COKitTileMode::KIT_TILEMODE_BGRA)
+            if (EnableExperimental) // ZSTD
             {
-                png_row_info rowInfo;
-                rowInfo.rowbytes = pixmap->size();
-                // Following function just needs row size to transform from BGRA to RGBA
-                // We have a flat array so its safe to pass pixmap size as row size
-                Png::unpremultiply_bgra_data(nullptr, &rowInfo, pixmap->data());
-            }
-            size_t compSize = ZSTD_compress(&output[response.size()], compressed_max_size,
-                                            pixmap->data(), pixmap->size(), -3);
+                if (size_t start = json.find("%IMAGETYPE%"); start != std::string::npos)
+                    json.replace(start, 11, "zstd");
 
-            if (ZSTD_isError(compSize))
+                {
+                    root = parser.parse(json).extract<Poco::JSON::Object::Ptr>();
+                    root->set("width", width);
+                    root->set("height", height);
+                    json = JsonUtil::jsonToString(root);
+                }
+
+                std::string response = "zstdslidelayer: " + json;
+
+                response += "\n";
+
+                size_t compressed_max_size = ZSTD_COMPRESSBOUND(pixmap->size());
+                size_t max_required_size = response.size() + compressed_max_size;
+                output.resize(max_required_size);
+                std::memcpy(output.data(), response.data(), response.size());
+                std::vector<char> compressedOutPut;
+                compressedOutPut.resize(ZSTD_COMPRESSBOUND(pixmap->size()));
+
+                if (tileMode == LibreOfficeKitTileMode::LOK_TILEMODE_BGRA)
+                {
+                    png_row_info rowInfo;
+                    rowInfo.rowbytes = pixmap->size();
+                    // Following function just needs row size to transform from BGRA to RGBA
+                    // We have a flat array so its safe to pass pixmap size as row size
+                    Png::unpremultiply_bgra_data(nullptr, &rowInfo, pixmap->data());
+                }
+                size_t compSize = ZSTD_compress(&output[response.size()], compressed_max_size,
+                                                pixmap->data(), pixmap->size(), -3);
+
+                if (ZSTD_isError(compSize))
+                {
+                    output.resize(0);
+                    LOG_ERR("Failed to compress slidelayer of size " << pixmap->size() << " with "
+                                                                    << ZSTD_getErrorName(compSize));
+                    return;
+                }
+                output.resize(response.size() + compSize);
+
+                LOG_TRC("Compressed slidelayer of size " << pixmap->size() << " to size " << compSize);
+            }
+            else // PNG
             {
-                output.resize(0);
-                LOG_ERR("Failed to compress slidelayer of size " << pixmap->size() << " with "
-                                                                << ZSTD_getErrorName(compSize));
-                return;
-            }
-            output.resize(response.size() + compSize);
+                if (size_t start = json.find("%IMAGETYPE%"); start != std::string::npos)
+                    json.replace(start, 11, "png");
 
-            LOG_TRC("Compressed slidelayer of size " << pixmap->size() << " to size " << compSize);
+                std::string response = "slidelayer: " + json;
+
+                response += "\n";
+
+                output.reserve(response.size() + pixmap->size());
+                output.resize(response.size());
+
+                std::memcpy(output.data(), response.data(), response.size());
+
+                if (!Png::encodeSubBufferToPNG(pixmap->data(), 0, 0, width, height, width, height, output, tileMode))
+                {
+                    LOG_ERR("Failed to encode into PNG.");
+                    output.resize(0);
+                }
+            }
         });
     return true;
 }
@@ -2552,17 +2614,17 @@ bool ChildSession::renderSlide(const StringVector& tokens)
     int part = -1;
     std::string partString;
     if (getTokenString(tokens[2], "part", partString))
-        part = NumUtil::stoi(partString);
+        part = std::stoi(partString);
 
     unsigned suggestedWidth = 0;
     std::string widthString;
     if (getTokenString(tokens[3], "width", widthString))
-        suggestedWidth = NumUtil::stoi(widthString);
+        suggestedWidth = std::stoi(widthString);
 
     unsigned suggestedHeight = 0;
     std::string heightString;
     if (getTokenString(tokens[4], "height", heightString))
-        suggestedHeight = NumUtil::stoi(heightString);
+        suggestedHeight = std::stoi(heightString);
 
     if (hash.empty() || part < 0 || suggestedWidth == 0 || suggestedHeight == 0)
     {
@@ -2573,12 +2635,12 @@ bool ChildSession::renderSlide(const StringVector& tokens)
     bool renderBackground = true;
     std::string renderBackgroundString;
     if (tokens.size() > 5 && getTokenString(tokens[5], "renderBackground", renderBackgroundString))
-        renderBackground = NumUtil::stoi(renderBackgroundString) > 0;
+        renderBackground = std::stoi(renderBackgroundString) > 0;
 
     bool renderMasterPage = true;
     std::string renderMasterPageString;
     if (tokens.size() > 6 && getTokenString(tokens[6], "renderMasterPage", renderMasterPageString))
-        renderMasterPage = NumUtil::stoi(renderMasterPageString) > 0;
+        renderMasterPage = std::stoi(renderMasterPageString) > 0;
 
     double devicePixelRatio = 1.0;
     std::string devicePixelRatioString;
@@ -2588,7 +2650,7 @@ bool ChildSession::renderSlide(const StringVector& tokens)
     bool compressedLayers = false;
     std::string compressedLayersString;
     if (tokens.size() > 8 && getTokenString(tokens[8], "compressedLayers", compressedLayersString))
-        compressedLayers = NumUtil::stoi(compressedLayersString) > 0;
+        compressedLayers = std::stoi(compressedLayersString) > 0;
 
     unsigned bufferWidth = suggestedWidth;
     unsigned bufferHeight = suggestedHeight;
@@ -2751,7 +2813,7 @@ bool ChildSession::renderWindow(const StringVector& tokens)
     output.resize(response.size());
     std::memcpy(output.data(), response.data(), response.size());
 
-    const auto mode = static_cast<COKitTileMode>(getLOKitDocument()->getTileMode());
+    const auto mode = static_cast<LibreOfficeKitTileMode>(getLOKitDocument()->getTileMode());
 
     // TODO: use png cache for dialogs too
     if (!Png::encodeSubBufferToPNG(pixmap.data(), 0, 0, width, height, bufferWidth, bufferHeight, output, mode))
@@ -2801,14 +2863,14 @@ bool ChildSession::resizeWindow(const StringVector& tokens)
 
 bool ChildSession::sendWindowCommand(const StringVector& tokens)
 {
-    const unsigned winId = (tokens.size() > 1 ? NumUtil::u64FromString(tokens[1], 0) : 0);
+    const unsigned winId = (tokens.size() > 1 ? std::stoul(tokens[1]) : 0);
 
     getLOKitDocument()->setView(_viewId);
 
     if (tokens.size() > 2 && tokens.equals(2, "close"))
-        getLOKitDocument()->postWindow(winId, KIT_WINDOW_CLOSE, nullptr);
+        getLOKitDocument()->postWindow(winId, LOK_WINDOW_CLOSE, nullptr);
     else if (tokens.size() > 3 && tokens.equals(2, "paste"))
-        getLOKitDocument()->postWindow(winId, KIT_WINDOW_PASTE, tokens[3].c_str());
+        getLOKitDocument()->postWindow(winId, LOK_WINDOW_PASTE, tokens[3].c_str());
 
     return true;
 }
@@ -2880,8 +2942,8 @@ bool ChildSession::selectGraphic(const StringVector& tokens)
     int type, x, y;
     if (tokens.size() != 4 ||
         !getTokenKeyword(tokens[1], "type",
-                         {{"start", KIT_SETGRAPHICSELECTION_START},
-                          {"end", KIT_SETGRAPHICSELECTION_END}},
+                         {{"start", LOK_SETGRAPHICSELECTION_START},
+                          {"end", LOK_SETGRAPHICSELECTION_END}},
                          type) ||
         !getTokenInteger(tokens[2], "x", x) ||
         !getTokenInteger(tokens[3], "y", y))
@@ -2988,7 +3050,7 @@ bool ChildSession::saveAs(const StringVector& tokens)
     // We don't have the FileId at this point, just a new filename to save-as.
     // So here the filename will be obfuscated with some hashing, which later will
     // get a proper FileId that we will use going forward.
-    LOG_DBG("Calling COKit's saveAs with URL: ["
+    LOG_DBG("Calling LOK's saveAs with URL: ["
             << anonymizeUrl(wopiFilename) << "], Format: ["
             << (format.empty() ? "(nullptr)" : format.c_str()) << "], Filter Options: ["
             << (filterOptions.empty() ? "(nullptr)" : filterOptions.c_str()) << ']');
@@ -3018,16 +3080,16 @@ bool ChildSession::saveAs(const StringVector& tokens)
         bool retry = true;
         switch (getLOKitDocument()->getDocumentType())
         {
-            case KIT_DOCTYPE_TEXT:         url += ".odt"; wopiFilename += ".odt"; break;
-            case KIT_DOCTYPE_SPREADSHEET:  url += ".ods"; wopiFilename += ".ods"; break;
-            case KIT_DOCTYPE_PRESENTATION: url += ".odp"; wopiFilename += ".odp"; break;
-            case KIT_DOCTYPE_DRAWING:      url += ".odg"; wopiFilename += ".odg"; break;
+            case LOK_DOCTYPE_TEXT:         url += ".odt"; wopiFilename += ".odt"; break;
+            case LOK_DOCTYPE_SPREADSHEET:  url += ".ods"; wopiFilename += ".ods"; break;
+            case LOK_DOCTYPE_PRESENTATION: url += ".odp"; wopiFilename += ".odp"; break;
+            case LOK_DOCTYPE_DRAWING:      url += ".odg"; wopiFilename += ".odg"; break;
             default:                       retry = false; break;
         }
 
         if (retry)
         {
-            LOG_DBG("Retry: calling COKit's saveAs with URL: ["
+            LOG_DBG("Retry: calling LOK's saveAs with URL: ["
                     << url << "], Format: [" << (format.empty() ? "(nullptr)" : format.c_str())
                     << "], Filter Options: ["
                     << (filterOptions.empty() ? "(nullptr)" : filterOptions.c_str()) << ']');
@@ -3079,26 +3141,25 @@ bool ChildSession::exportAs(const StringVector& tokens)
 
     // for PDF and EPUB show dialog with export options first
     // when options will be chosen and file exported we will
-    // receive KIT_CALLBACK_EXPORT_FILE message
+    // receive LOK_CALLBACK_EXPORT_FILE message
     std::string extension = FileUtil::extractFileExtension(wopiFilename);
 
     const bool isPDF = extension == "pdf";
     const bool isEPUB = extension == "epub";
-
-    // We don't have the FileId at this point, just a new filename to save-as.
-    // So here the filename will be obfuscated with some hashing, which later will
-    // get a proper FileId that we will use going forward.
-    LOG_DBG("Calling COKit's exportAs with: [" << anonymizeUrl(wopiFilename) << ']');
-
-    getLOKitDocument()->setView(_viewId);
-
-    std::string encodedWopiFilename;
-    Poco::URI::encode(wopiFilename, "", encodedWopiFilename);
-
-    _exportAsWopiUrl = std::move(encodedWopiFilename);
-
     if (isPDF || isEPUB)
     {
+        // We don't have the FileId at this point, just a new filename to save-as.
+        // So here the filename will be obfuscated with some hashing, which later will
+        // get a proper FileId that we will use going forward.
+        LOG_DBG("Calling LOK's exportAs with: [" << anonymizeUrl(wopiFilename) << ']');
+
+        getLOKitDocument()->setView(_viewId);
+
+        std::string encodedWopiFilename;
+        Poco::URI::encode(wopiFilename, "", encodedWopiFilename);
+
+        _exportAsWopiUrl = std::move(encodedWopiFilename);
+
         const std::string arguments = "{"
             "\"SynchronMode\":{"
                 "\"type\":\"boolean\","
@@ -3113,14 +3174,8 @@ bool ChildSession::exportAs(const StringVector& tokens)
         return true;
     }
 
-    // For image export (triggered from the image context menu).
-    // SaveGraphic writes the image in its native format to /tmp/
-    // and fires KIT_CALLBACK_EXPORT_FILE. If no graphic is selected,
-    // the command is a no-op.
-    // NOTE: new document export formats must be handled above this,
-    // like PDF and EPUB.
-    getLOKitDocument()->postUnoCommand(".uno:SaveGraphic", nullptr, false);
-    return true;
+    sendTextFrameAndLogError("error: cmd=exportas kind=unsupported");
+    return false;
 }
 
 bool ChildSession::setClientPart(const StringVector& tokens)
@@ -3135,7 +3190,7 @@ bool ChildSession::setClientPart(const StringVector& tokens)
 
     getLOKitDocument()->setView(_viewId);
 
-    if (getLOKitDocument()->getDocumentType() != KIT_DOCTYPE_TEXT && part != getLOKitDocument()->getPart())
+    if (getLOKitDocument()->getDocumentType() != LOK_DOCTYPE_TEXT && part != getLOKitDocument()->getPart())
     {
         getLOKitDocument()->setPart(part);
         _currentPart = part;
@@ -3158,7 +3213,7 @@ bool ChildSession::selectClientPart(const StringVector& tokens)
 
     getLOKitDocument()->setView(_viewId);
 
-    if (getLOKitDocument()->getDocumentType() != KIT_DOCTYPE_TEXT)
+    if (getLOKitDocument()->getDocumentType() != LOK_DOCTYPE_TEXT)
     {
         if (part != getLOKitDocument()->getPart())
         {
@@ -3190,7 +3245,7 @@ bool ChildSession::moveSelectedClientParts(const StringVector& tokens)
 
     getLOKitDocument()->setView(_viewId);
 
-    if (getLOKitDocument()->getDocumentType() != KIT_DOCTYPE_TEXT)
+    if (getLOKitDocument()->getDocumentType() != LOK_DOCTYPE_TEXT)
     {
         getLOKitDocument()->moveSelectedParts(position, false); // Move, don't duplicate.
 
@@ -3319,35 +3374,35 @@ bool ChildSession::getPresentationInfo()
  */
 void ChildSession::rememberEventsForInactiveUser(const int type, const std::string& payload)
 {
-    if (type == KIT_CALLBACK_INVALIDATE_TILES)
+    if (type == LOK_CALLBACK_INVALIDATE_TILES)
     {
         _stateRecorder.recordInvalidate(); // TODO remember the area, not just a bool ('true' invalidates everything)
     }
-    else if (type == KIT_CALLBACK_INVALIDATE_VISIBLE_CURSOR ||
-             type == KIT_CALLBACK_CURSOR_VISIBLE ||
-             type == KIT_CALLBACK_TEXT_SELECTION ||
-             type == KIT_CALLBACK_TEXT_SELECTION_START ||
-             type == KIT_CALLBACK_TEXT_SELECTION_END ||
-             type == KIT_CALLBACK_CELL_FORMULA ||
-             type == KIT_CALLBACK_CELL_CURSOR ||
-             type == KIT_CALLBACK_GRAPHIC_SELECTION ||
-             type == KIT_CALLBACK_DOCUMENT_SIZE_CHANGED ||
-             type == KIT_CALLBACK_INVALIDATE_HEADER ||
-             type == KIT_CALLBACK_INVALIDATE_SHEET_GEOMETRY ||
-             type == KIT_CALLBACK_CELL_ADDRESS ||
-             type == KIT_CALLBACK_REFERENCE_MARKS ||
-             type == KIT_CALLBACK_A11Y_FOCUS_CHANGED ||
-             type == KIT_CALLBACK_A11Y_CARET_CHANGED ||
-             type == KIT_CALLBACK_A11Y_TEXT_SELECTION_CHANGED)
+    else if (type == LOK_CALLBACK_INVALIDATE_VISIBLE_CURSOR ||
+             type == LOK_CALLBACK_CURSOR_VISIBLE ||
+             type == LOK_CALLBACK_TEXT_SELECTION ||
+             type == LOK_CALLBACK_TEXT_SELECTION_START ||
+             type == LOK_CALLBACK_TEXT_SELECTION_END ||
+             type == LOK_CALLBACK_CELL_FORMULA ||
+             type == LOK_CALLBACK_CELL_CURSOR ||
+             type == LOK_CALLBACK_GRAPHIC_SELECTION ||
+             type == LOK_CALLBACK_DOCUMENT_SIZE_CHANGED ||
+             type == LOK_CALLBACK_INVALIDATE_HEADER ||
+             type == LOK_CALLBACK_INVALIDATE_SHEET_GEOMETRY ||
+             type == LOK_CALLBACK_CELL_ADDRESS ||
+             type == LOK_CALLBACK_REFERENCE_MARKS ||
+             type == LOK_CALLBACK_A11Y_FOCUS_CHANGED ||
+             type == LOK_CALLBACK_A11Y_CARET_CHANGED ||
+             type == LOK_CALLBACK_A11Y_TEXT_SELECTION_CHANGED)
     {
         _stateRecorder.recordEvent(type, payload);
     }
-    else if (type == KIT_CALLBACK_INVALIDATE_VIEW_CURSOR ||
-             type == KIT_CALLBACK_TEXT_VIEW_SELECTION ||
-             type == KIT_CALLBACK_CELL_VIEW_CURSOR ||
-             type == KIT_CALLBACK_GRAPHIC_VIEW_SELECTION ||
-             type == KIT_CALLBACK_VIEW_CURSOR_VISIBLE ||
-             type == KIT_CALLBACK_VIEW_LOCK)
+    else if (type == LOK_CALLBACK_INVALIDATE_VIEW_CURSOR ||
+             type == LOK_CALLBACK_TEXT_VIEW_SELECTION ||
+             type == LOK_CALLBACK_CELL_VIEW_CURSOR ||
+             type == LOK_CALLBACK_GRAPHIC_VIEW_SELECTION ||
+             type == LOK_CALLBACK_VIEW_CURSOR_VISIBLE ||
+             type == LOK_CALLBACK_VIEW_LOCK)
     {
         Poco::JSON::Parser parser;
 
@@ -3355,7 +3410,7 @@ void ChildSession::rememberEventsForInactiveUser(const int type, const std::stri
         int viewId = root->getValue<int>("viewId");
         _stateRecorder.recordViewEvent(viewId, type, payload);
     }
-    else if (type == KIT_CALLBACK_STATE_CHANGED)
+    else if (type == LOK_CALLBACK_STATE_CHANGED)
     {
         std::string name;
         std::string value;
@@ -3364,9 +3419,9 @@ void ChildSession::rememberEventsForInactiveUser(const int type, const std::stri
             _stateRecorder.recordState(name, payload);
         }
     }
-    else if (type == KIT_CALLBACK_REDLINE_TABLE_SIZE_CHANGED ||
-             type == KIT_CALLBACK_REDLINE_TABLE_ENTRY_MODIFIED ||
-             type == KIT_CALLBACK_COMMENT)
+    else if (type == LOK_CALLBACK_REDLINE_TABLE_SIZE_CHANGED ||
+             type == LOK_CALLBACK_REDLINE_TABLE_ENTRY_MODIFIED ||
+             type == LOK_CALLBACK_COMMENT)
     {
         _stateRecorder.recordEventSequence(type, payload);
     }
@@ -3399,7 +3454,7 @@ int ChildSession::getSpeed()
     return _cursorInvalidatedEvent.size();
 }
 
-#if (ENABLE_FEATURE_LOCK || ENABLE_FEATURE_RESTRICTION || ENABLE_DEBUG) && !MOBILEAPP
+#if ENABLE_FEATURE_LOCK || ENABLE_FEATURE_RESTRICTION
 bool ChildSession::updateBlockingCommandStatus(const StringVector& tokens)
 {
     std::string lockStatus, restrictedStatus;
@@ -3415,20 +3470,7 @@ bool ChildSession::updateBlockingCommandStatus(const StringVector& tokens)
     }
     std::string blockedCommands;
     if (restrictedStatus == "true")
-    {
         blockedCommands += CommandControl::RestrictionManager::getRestrictedCommandListString();
-#if ENABLE_DEBUG
-        // Extract restricted commands passed from the wsd process.
-        // Format: blockingcommandstatus isRestrictedUser=true isLockedUser=... test_restrictedCommands=cmd1 cmd2 ...
-        std::string firstCmd;
-        if (tokens.size() > 3 && getTokenString(tokens[3], "test_restrictedCommands", firstCmd))
-        {
-            blockedCommands += firstCmd;
-            for (std::size_t i = 4; i < tokens.size(); ++i)
-                blockedCommands += " " + tokens[i];
-        }
-#endif
-    }
     if (lockStatus == "true")
         blockedCommands += blockedCommands.empty()
                                ? CommandControl::LockManager::getLockedCommandListString()
@@ -3438,7 +3480,7 @@ bool ChildSession::updateBlockingCommandStatus(const StringVector& tokens)
     return true;
 }
 
-std::string ChildSession::getBlockedCommandType(const std::string& command)
+std::string ChildSession::getBlockedCommandType(std::string command)
 {
     if(CommandControl::RestrictionManager::getRestrictedCommandList().find(command)
     != CommandControl::RestrictionManager::getRestrictedCommandList().end())
@@ -3475,7 +3517,7 @@ bool ChildSession::sendProgressFrame(const char* id, const std::string& jsonProp
 
 void ChildSession::loKitCallback(const int type, const std::string& payload)
 {
-    const char* const typeName = kitCallbackTypeToString(type);
+    const char* const typeName = lokCallbackTypeToString(type);
     LOG_TRC("ChildSession::loKitCallback: " << typeName << " [" << payload << ']');
 
     if (!Util::isMobileApp() && UnitKit::get().filterLoKitCallback(type, payload))
@@ -3498,7 +3540,7 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
         rememberEventsForInactiveUser(type, payload);
 
         // Pass save and ModifiedStatus notifications through, block others.
-        if (type != KIT_CALLBACK_UNO_COMMAND_RESULT || payload.find(".uno:Save") == std::string::npos)
+        if (type != LOK_CALLBACK_UNO_COMMAND_RESULT || payload.find(".uno:Save") == std::string::npos)
         {
             if (payload.find(".uno:ModifiedStatus") == std::string::npos)
             {
@@ -3508,9 +3550,9 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
         }
     }
 
-    switch (static_cast<COKitCallbackType>(type))
+    switch (static_cast<LibreOfficeKitCallbackType>(type))
     {
-    case KIT_CALLBACK_INVALIDATE_TILES:
+    case LOK_CALLBACK_INVALIDATE_TILES:
         {
             StringVector tokens(StringVector::tokenize(payload, ','));
             if (tokens.size() == 5 || tokens.size() == 6)
@@ -3518,14 +3560,13 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
                 int part, x, y, width, height, mode = 0;
                 try
                 {
-                    x = NumUtil::stoi(tokens[0]);
-                    y = NumUtil::stoi(tokens[1]);
-                    width = NumUtil::stoi(tokens[2]);
-                    height = NumUtil::stoi(tokens[3]);
-                    part = (_docType != "text" ? NumUtil::stoi(tokens[4])
-                                               : 0); // Writer renders everything as part 0.
+                    x = std::stoi(tokens[0]);
+                    y = std::stoi(tokens[1]);
+                    width = std::stoi(tokens[2]);
+                    height = std::stoi(tokens[3]);
+                    part = (_docType != "text" ? std::stoi(tokens[4]) : 0); // Writer renders everything as part 0.
                     if (tokens.size() == 6)
-                        mode = NumUtil::stoi(tokens[5]);
+                        mode = std::stoi(tokens[5]);
                 }
                 catch (const std::out_of_range&)
                 {
@@ -3569,43 +3610,43 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
             }
         }
         break;
-    case KIT_CALLBACK_INVALIDATE_VISIBLE_CURSOR:
+    case LOK_CALLBACK_INVALIDATE_VISIBLE_CURSOR:
         updateSpeed();
         updateCursorPositionJSON(payload);
         sendTextFrame("invalidatecursor: " + payload);
         break;
-    case KIT_CALLBACK_TEXT_SELECTION:
+    case LOK_CALLBACK_TEXT_SELECTION:
         sendTextFrame("textselection: " + payload);
         break;
-    case KIT_CALLBACK_TEXT_SELECTION_START:
+    case LOK_CALLBACK_TEXT_SELECTION_START:
         sendTextFrame("textselectionstart: " + payload);
         break;
-    case KIT_CALLBACK_TEXT_SELECTION_END:
+    case LOK_CALLBACK_TEXT_SELECTION_END:
         sendTextFrame("textselectionend: " + payload);
         break;
-    case KIT_CALLBACK_CURSOR_VISIBLE:
+    case LOK_CALLBACK_CURSOR_VISIBLE:
         sendTextFrame("cursorvisible: " + payload);
         break;
-    case KIT_CALLBACK_GRAPHIC_SELECTION:
+    case LOK_CALLBACK_GRAPHIC_SELECTION:
         sendTextFrame("graphicselection: " + payload);
         break;
-    case KIT_CALLBACK_SHAPE_INNER_TEXT:
+    case LOK_CALLBACK_SHAPE_INNER_TEXT:
         sendTextFrame("graphicinnertextarea: " + payload);
         break;
-    case KIT_CALLBACK_CELL_CURSOR:
+    case LOK_CALLBACK_CELL_CURSOR:
         updateCursorPosition(payload);
         sendTextFrame("cellcursor: " + payload);
         break;
-    case KIT_CALLBACK_CELL_FORMULA:
+    case LOK_CALLBACK_CELL_FORMULA:
         sendTextFrame("cellformula: " + payload);
         break;
-    case KIT_CALLBACK_MOUSE_POINTER:
+    case LOK_CALLBACK_MOUSE_POINTER:
         sendTextFrame("mousepointer: " + payload);
         break;
-    case KIT_CALLBACK_HYPERLINK_CLICKED:
+    case LOK_CALLBACK_HYPERLINK_CLICKED:
         sendTextFrame("hyperlinkclicked: " + payload);
         break;
-    case KIT_CALLBACK_STATE_CHANGED:
+    case LOK_CALLBACK_STATE_CHANGED:
     {
         if (payload == ".uno:NotesMode=true" || payload == ".uno:NotesMode=false" ||
             payload == ".uno:RedlineRenderMode=true" || payload == ".uno:RedlineRenderMode=false")
@@ -3638,27 +3679,27 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
 
         break;
     }
-    case KIT_CALLBACK_SEARCH_NOT_FOUND:
+    case LOK_CALLBACK_SEARCH_NOT_FOUND:
         sendTextFrame("searchnotfound: " + payload);
         break;
-    case KIT_CALLBACK_SEARCH_RESULT_SELECTION:
+    case LOK_CALLBACK_SEARCH_RESULT_SELECTION:
         sendTextFrame("searchresultselection: " + payload);
         break;
-    case KIT_CALLBACK_DOCUMENT_SIZE_CHANGED:
+    case LOK_CALLBACK_DOCUMENT_SIZE_CHANGED:
         getStatus();
         break;
-    case KIT_CALLBACK_SET_PART:
+    case LOK_CALLBACK_SET_PART:
     {
         int part;
         StringVector tokens(StringVector::tokenize(payload, ','));
         if (getTokenInteger(tokens[1], "part", part) &&
-            getLOKitDocument()->getDocumentType() != KIT_DOCTYPE_TEXT)
+            getLOKitDocument()->getDocumentType() != LOK_DOCTYPE_TEXT)
             _currentPart = part;
 
         sendTextFrame("setpart: " + payload);
         break;
     }
-    case KIT_CALLBACK_UNO_COMMAND_RESULT:
+    case LOK_CALLBACK_UNO_COMMAND_RESULT:
     {
         Parser parser;
         Poco::Dynamic::Var var = parser.parse(payload);
@@ -3714,7 +3755,7 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
             _docManager->handleSaveMessage(saveMessage);
     }
     break;
-    case KIT_CALLBACK_ERROR:
+    case LOK_CALLBACK_ERROR:
         {
             LOG_ERR("CALLBACK_ERROR: " << payload);
             Parser parser;
@@ -3725,73 +3766,73 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
                     " kind=" + object->get("kind").toString() + " code=" + object->get("code").toString());
         }
         break;
-    case KIT_CALLBACK_CONTEXT_MENU:
+    case LOK_CALLBACK_CONTEXT_MENU:
         sendTextFrame("contextmenu: " + payload);
         break;
-    case KIT_CALLBACK_STATUS_INDICATOR_START:
+    case LOK_CALLBACK_STATUS_INDICATOR_START:
         sendProgressFrame("start",
                           std::string(R"("text": ")") + JsonUtil::escapeJSONValue(payload) + "\"");
         break;
-    case KIT_CALLBACK_STATUS_INDICATOR_SET_VALUE:
+    case LOK_CALLBACK_STATUS_INDICATOR_SET_VALUE:
         sendProgressFrame("setvalue", std::string("\"value\": ") + payload);
         break;
-    case KIT_CALLBACK_STATUS_INDICATOR_FINISH:
+    case LOK_CALLBACK_STATUS_INDICATOR_FINISH:
         sendProgressFrame("finish", "");
         break;
-    case KIT_CALLBACK_INVALIDATE_VIEW_CURSOR:
+    case LOK_CALLBACK_INVALIDATE_VIEW_CURSOR:
         updateCursorPositionJSON(payload);
         sendTextFrame("invalidateviewcursor: " + payload);
         break;
-    case KIT_CALLBACK_TEXT_VIEW_SELECTION:
+    case LOK_CALLBACK_TEXT_VIEW_SELECTION:
         sendTextFrame("textviewselection: " + payload);
         break;
-    case KIT_CALLBACK_CELL_VIEW_CURSOR:
+    case LOK_CALLBACK_CELL_VIEW_CURSOR:
         updateCursorPositionJSON(payload);
         sendTextFrame("cellviewcursor: " + payload);
         break;
-    case KIT_CALLBACK_GRAPHIC_VIEW_SELECTION:
+    case LOK_CALLBACK_GRAPHIC_VIEW_SELECTION:
         sendTextFrame("graphicviewselection: " + payload);
         break;
-    case KIT_CALLBACK_VIEW_CURSOR_VISIBLE:
+    case LOK_CALLBACK_VIEW_CURSOR_VISIBLE:
         sendTextFrame("viewcursorvisible: " + payload);
         break;
-    case KIT_CALLBACK_VIEW_LOCK:
+    case LOK_CALLBACK_VIEW_LOCK:
         sendTextFrame("viewlock: " + payload);
         break;
-    case KIT_CALLBACK_REDLINE_TABLE_SIZE_CHANGED:
+    case LOK_CALLBACK_REDLINE_TABLE_SIZE_CHANGED:
         sendTextFrame("redlinetablechanged: " + payload);
         break;
-    case KIT_CALLBACK_REDLINE_TABLE_ENTRY_MODIFIED:
+    case LOK_CALLBACK_REDLINE_TABLE_ENTRY_MODIFIED:
         sendTextFrame("redlinetablemodified: " + payload);
         break;
-    case KIT_CALLBACK_COMMENT:
+    case LOK_CALLBACK_COMMENT:
     {
         sendTextFrame("comment: " + payload);
         getStatus();
         break;
     }
-    case KIT_CALLBACK_INVALIDATE_HEADER:
+    case LOK_CALLBACK_INVALIDATE_HEADER:
         sendTextFrame("invalidateheader: " + payload);
         break;
-    case KIT_CALLBACK_CELL_ADDRESS:
+    case LOK_CALLBACK_CELL_ADDRESS:
         sendTextFrame("celladdress: " + payload);
         break;
-    case KIT_CALLBACK_RULER_UPDATE:
+    case LOK_CALLBACK_RULER_UPDATE:
         sendTextFrame("hrulerupdate: " + payload);
         break;
-    case KIT_CALLBACK_VERTICAL_RULER_UPDATE:
+    case LOK_CALLBACK_VERTICAL_RULER_UPDATE:
         sendTextFrame("vrulerupdate: " + payload);
         break;
-    case KIT_CALLBACK_WINDOW:
+    case LOK_CALLBACK_WINDOW:
         sendTextFrame("window: " + payload);
         break;
-    case KIT_CALLBACK_VALIDITY_LIST_BUTTON:
+    case LOK_CALLBACK_VALIDITY_LIST_BUTTON:
         sendTextFrame("validitylistbutton: " + payload);
         break;
-    case KIT_CALLBACK_VALIDITY_INPUT_HELP:
+    case LOK_CALLBACK_VALIDITY_INPUT_HELP:
         sendTextFrame("validityinputhelp: " + payload);
         break;
-    case KIT_CALLBACK_CLIPBOARD_CHANGED:
+    case LOK_CALLBACK_CLIPBOARD_CHANGED:
     {
         if (_copyToClipboard)
         {
@@ -3804,59 +3845,59 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
 
         break;
     }
-    case KIT_CALLBACK_CONTEXT_CHANGED:
+    case LOK_CALLBACK_CONTEXT_CHANGED:
         sendTextFrame("context: " + payload);
         break;
-    case KIT_CALLBACK_SIGNATURE_STATUS:
+    case LOK_CALLBACK_SIGNATURE_STATUS:
         sendTextFrame("signaturestatus: " + payload);
         break;
 
-    case KIT_CALLBACK_PROFILE_FRAME:
-    case KIT_CALLBACK_DOCUMENT_PASSWORD:
-    case KIT_CALLBACK_DOCUMENT_PASSWORD_TO_MODIFY:
-    case KIT_CALLBACK_DOCUMENT_PASSWORD_RESET:
+    case LOK_CALLBACK_PROFILE_FRAME:
+    case LOK_CALLBACK_DOCUMENT_PASSWORD:
+    case LOK_CALLBACK_DOCUMENT_PASSWORD_TO_MODIFY:
+    case LOK_CALLBACK_DOCUMENT_PASSWORD_RESET:
         // these are not handled here.
         break;
-    case KIT_CALLBACK_CELL_SELECTION_AREA:
+    case LOK_CALLBACK_CELL_SELECTION_AREA:
         sendTextFrame("cellselectionarea: " + payload);
         break;
-    case KIT_CALLBACK_CELL_AUTO_FILL_AREA:
+    case LOK_CALLBACK_CELL_AUTO_FILL_AREA:
         sendTextFrame("cellautofillarea: " + payload);
         break;
-    case KIT_CALLBACK_TABLE_SELECTED:
+    case LOK_CALLBACK_TABLE_SELECTED:
         sendTextFrame("tableselected: " + payload);
         break;
-    case KIT_CALLBACK_REFERENCE_MARKS:
+    case LOK_CALLBACK_REFERENCE_MARKS:
         sendTextFrame("referencemarks: " + payload);
         break;
-    case KIT_CALLBACK_JSDIALOG:
+    case LOK_CALLBACK_JSDIALOG:
         sendTextFrame("jsdialog: " + payload);
         break;
-    case KIT_CALLBACK_CALC_FUNCTION_LIST:
+    case LOK_CALLBACK_CALC_FUNCTION_LIST:
         sendTextFrame("calcfunctionlist: " + payload);
         break;
-    case KIT_CALLBACK_TAB_STOP_LIST:
+    case LOK_CALLBACK_TAB_STOP_LIST:
         sendTextFrame("tabstoplistupdate: " + payload);
         break;
-    case KIT_CALLBACK_FORM_FIELD_BUTTON:
+    case LOK_CALLBACK_FORM_FIELD_BUTTON:
         sendTextFrame("formfieldbutton: " + payload);
         break;
-    case KIT_CALLBACK_INVALIDATE_SHEET_GEOMETRY:
+    case LOK_CALLBACK_INVALIDATE_SHEET_GEOMETRY:
         sendTextFrame("invalidatesheetgeometry: " + payload);
         break;
-    case KIT_CALLBACK_DOCUMENT_BACKGROUND_COLOR:
+    case LOK_CALLBACK_DOCUMENT_BACKGROUND_COLOR:
         sendTextFrame("documentbackgroundcolor: " + payload);
         break;
-    case KIT_CALLBACK_APPLICATION_BACKGROUND_COLOR:
+    case LOK_CALLBACK_APPLICATION_BACKGROUND_COLOR:
         sendTextFrame("applicationbackgroundcolor: " + payload);
         break;
-    case KIT_CALLBACK_MEDIA_SHAPE:
+    case LOK_CALLBACK_MEDIA_SHAPE:
         sendTextFrame("mediashape: " + payload);
         break;
-    case KIT_CALLBACK_CONTENT_CONTROL:
+    case LOK_CALLBACK_CONTENT_CONTROL:
         sendTextFrame("contentcontrol: " + payload);
         break;
-    case KIT_COMMAND_BLOCKED:
+    case LOK_COMMAND_BLOCKED:
         {
 #if ENABLE_FEATURE_LOCK || ENABLE_FEATURE_RESTRICTION
             LOG_INF("COMMAND_BLOCKED: " << payload);
@@ -3870,10 +3911,10 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
 #endif
         }
         break;
-    case KIT_CALLBACK_PRINT_RANGES:
+    case LOK_CALLBACK_PRINT_RANGES:
         sendTextFrame("printranges: " + payload);
         break;
-    case KIT_CALLBACK_FONTS_MISSING:
+    case LOK_CALLBACK_FONTS_MISSING:
         if constexpr (!Util::isMobileApp())
         {
             // This environment variable is always set in COOLWSD::innerInitialize().
@@ -3896,7 +3937,7 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
             }
         }
         break;
-    case KIT_CALLBACK_EXPORT_FILE:
+    case LOK_CALLBACK_EXPORT_FILE:
     {
         bool isAbort = payload == "ABORT";
         bool isError = payload == "ERROR";
@@ -3931,11 +3972,10 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
 
         if (exportWasRequested)
         {
-            // The payload from LOKit is already a properly encoded file:// URL
-            // (e.g., spaces as %20). Pass it through as-is — do NOT re-encode
-            // with Poco::URI::encode(), which would double-encode percent signs
-            // (%20 -> %2520) producing a path that doesn't match the file on disk.
-            sendTextFrame("exportas: url=" + payload + " filename=" + _exportAsWopiUrl);
+            std::string encodedURL;
+            Poco::URI::encode(payload, "", encodedURL);
+
+            sendTextFrame("exportas: url=" + encodedURL + " filename=" + _exportAsWopiUrl);
 
             _exportAsWopiUrl.clear();
             return;
@@ -3949,68 +3989,62 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
             CODocument *document = DocumentData::get(_docManager->getMobileAppDocId()).coDocument;
             [[document viewController] exportFileURL:payloadURL];
         });
-#elif defined(_WIN32) || defined(QTAPP)
-        // We don't need the registerdownload approach used by the browser.
-        // Send the exported file URL to JS, which forwards it to the native
-        // message handler for presenting a save dialog to the user.
-        sendTextFrame("exportfile: url=" + payload);
 #else
         // Register download id -> URL mapping in the DocumentBroker
         auto url = std::string("../../") + payload.substr(payload.find_last_of('/'));
         auto downloadId = Util::rng::getFilename(64);
-        const std::string docBrokerMessage =
-            "registerdownload: downloadid=" + downloadId + " url=" + url + " clientid=" + getId();
-        _docManager->sendFrame(docBrokerMessage);
+        std::string docBrokerMessage = "registerdownload: downloadid=" + downloadId + " url=" + url + " clientid=" + getId();
+        _docManager->sendFrame(docBrokerMessage.c_str(), docBrokerMessage.length());
         std::string message = "downloadas: downloadid=" + downloadId + " port=" + std::to_string(ClientPortNumber) + " id=export";
         sendTextFrame(message);
 #endif
         break;
     }
-    case KIT_CALLBACK_A11Y_FOCUS_CHANGED:
+    case LOK_CALLBACK_A11Y_FOCUS_CHANGED:
     {
         sendTextFrame("a11yfocuschanged: " + payload);
         break;
     }
-    case KIT_CALLBACK_A11Y_CARET_CHANGED:
+    case LOK_CALLBACK_A11Y_CARET_CHANGED:
     {
         sendTextFrame("a11ycaretchanged: " + payload);
         break;
     }
-    case KIT_CALLBACK_A11Y_TEXT_SELECTION_CHANGED:
+    case LOK_CALLBACK_A11Y_TEXT_SELECTION_CHANGED:
     {
         sendTextFrame("a11ytextselectionchanged: " + payload);
         break;
     }
-    case KIT_CALLBACK_A11Y_FOCUSED_CELL_CHANGED:
+    case LOK_CALLBACK_A11Y_FOCUSED_CELL_CHANGED:
     {
         sendTextFrame("a11yfocusedcellchanged: " + payload);
         break;
     }
-    case KIT_CALLBACK_COLOR_PALETTES:
+    case LOK_CALLBACK_COLOR_PALETTES:
         sendTextFrame("colorpalettes: " + payload);
         break;
-    case KIT_CALLBACK_A11Y_EDITING_IN_SELECTION_STATE:
+    case LOK_CALLBACK_A11Y_EDITING_IN_SELECTION_STATE:
     {
         sendTextFrame("a11yeditinginselectionstate: " + payload);
         break;
     }
-    case KIT_CALLBACK_A11Y_SELECTION_CHANGED:
+    case LOK_CALLBACK_A11Y_SELECTION_CHANGED:
     {
         sendTextFrame("a11yselectionchanged: " + payload);
         break;
     }
-    case KIT_CALLBACK_CORE_LOG:
+    case LOK_CALLBACK_CORE_LOG:
     {
         sendTextFrame("corelog: " + payload);
         break;
     }
-    case KIT_CALLBACK_TOOLTIP:
+    case LOK_CALLBACK_TOOLTIP:
     {
         sendTextFrame("tooltip: " + payload);
         break;
     }
     default:
-        LOG_ERR("Unknown callback event (" << kitCallbackTypeToString(type) << "): " << payload);
+        LOG_ERR("Unknown callback event (" << lokCallbackTypeToString(type) << "): " << payload);
     }
 }
 
@@ -4022,9 +4056,6 @@ void ChildSession::saveLogUiBackground()
 
 void LogUiCommands::logLine(LogUiCommandsLine &line, bool isUndoChange)
 {
-    if constexpr (Util::isMobileApp())
-        return;
-
     // log command
     double timeDiffStart = std::chrono::duration<double>(line._timeStart - _session._docManager->getLogUiCmd().getKitStartTimeSec()).count();
 
@@ -4076,9 +4107,6 @@ void LogUiCommands::logLine(LogUiCommandsLine &line, bool isUndoChange)
 
 void LogUiCommands::logSaveLoad(std::string cmd, const std::string & path, std::chrono::steady_clock::time_point timeStart)
 {
-    if constexpr (Util::isMobileApp())
-        return;
-
     LogUiCommandsLine uiLogLine;
     uiLogLine._timeStart = timeStart;
     uiLogLine._timeEnd = std::chrono::steady_clock::now();
@@ -4109,18 +4137,12 @@ void LogUiCommands::logSaveLoad(std::string cmd, const std::string & path, std::
 LogUiCommands::LogUiCommands(ChildSession& session, const StringVector* tokens)
     : _session(session), _tokens(tokens)
 {
-    if constexpr (Util::isMobileApp())
-        return;
-
     if (_session._isDocLoaded)
         _document = session.getLOKitDocument();
 }
 
 LogUiCommands::~LogUiCommands()
 {
-    if constexpr (Util::isMobileApp())
-        return;
-
     auto document = _document.lock();
     if (!document)
         return;

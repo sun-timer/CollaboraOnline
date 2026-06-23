@@ -311,6 +311,10 @@ jQuery contextMenu - Plugin for simple contextMenu handling
 Copyright (c) 2011-2020 SWIS BV and contributors
 MIT License
 
+jQuery Mousewheel
+Copyright jQuery Foundation and other contributors
+MIT License
+
 jQuery UI
 Copyright jQuery Foundation and other contributors
 MIT License
@@ -339,6 +343,14 @@ SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRU
 HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
 TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+ResizeObserverPolyfill.js – A polyfill for the Resize Observer API
+Copyright (c) 2016 Denis Rul
+MIT License
+
+Select2 – The jQuery replacement for select boxes
+Copyright (c) 2012-2017 Kevin Brown, Igor Vaynberg, and Select2 contributors
+MIT License
 
 SmartMenus jQuery Plugin
 Copyright Vasil Dinkov, Vadikom Web Ltd.

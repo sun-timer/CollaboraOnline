@@ -9,13 +9,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for WOPI document conflict resolution.
- */
-
 #include <config.h>
 
-#include <WOPIUploadConflictCommon.hpp>
+#include "WOPIUploadConflictCommon.hpp"
 
 #include <ctime>
 #include <string>
@@ -23,7 +19,7 @@
 
 #include <Poco/Net/HTTPRequest.h>
 
-#include <lokassert.hpp>
+#include "lokassert.hpp"
 
 class UnitWOPIDocumentConflict : public WOPIUploadConflictCommon
 {

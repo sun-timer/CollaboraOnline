@@ -1,11 +1,12 @@
 # bruh <quangtrung02hn16@gmail.com>, 2021.
+# Loc Huynh <huynhloc.contact@gmail.com>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-03-20 12:14+0200\n"
-"PO-Revision-Date: 2021-06-11 22:37+0000\n"
-"Last-Translator: bruh <quangtrung02hn16@gmail.com>\n"
+"POT-Creation-Date: 2026-03-12 07:19+0200\n"
+"PO-Revision-Date: 2026-02-13 15:39+0000\n"
+"Last-Translator: Loc Huynh <huynhloc.contact@gmail.com>\n"
 "Language-Team: Vietnamese <https://hosted.weblate.org/projects/"
 "collabora-online/app-store-descriptions/vi/>\n"
 "Language: vi\n"
@@ -26,7 +27,8 @@ msgid ""
 "LibreOffice based editor for Microsoft Office, LibreOffice and OpenOffice "
 "docs."
 msgstr ""
-"Trình chỉnh sửa dựa trên LibreOffice cho tài liệu Microsoft Office, LO và OO."
+"Chỉnh sửa dựa trên LibreOffice cho Microsoft Office, LibreOffice và "
+"OpenOffice."
 
 #. Long description
 #: descriptions/google-play.html%2Bhtml.body.p:13-1

@@ -9,20 +9,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for session-related functionality including XML/DOM parsing.
- */
-
 #include <config.h>
 
-#include <common/Unit.hpp>
-#include <common/Util.hpp>
-#include <net/HttpRequest.hpp>
-#include <net/Socket.hpp>
-#include <wsd/UserMessages.hpp>
-
-#include <test/helpers.hpp>
-#include <test/lokassert.hpp>
+#include <HttpRequest.hpp>
+#include <Socket.hpp>
 
 #include <Poco/DOM/DOMParser.h>
 #include <Poco/DOM/Document.h>
@@ -31,6 +21,12 @@
 #include <Poco/DOM/NodeIterator.h>
 #include <Poco/SAX/InputSource.h>
 #include <Poco/URI.h>
+#include <test/lokassert.hpp>
+
+#include <Unit.hpp>
+#include <UserMessages.hpp>
+#include <Util.hpp>
+#include <helpers.hpp>
 
 #include <memory>
 #include <regex>
@@ -109,7 +105,7 @@ UnitBase::TestResult UnitSession::testBadRequest()
         // TST_LOG("Response: " << response->header().toString());
         LOK_ASSERT_EQUAL(http::StatusCode::BadRequest, response->statusCode());
         LOK_ASSERT_EQUAL(false, session->isConnected());
-        LOK_ASSERT_EQUAL(http::Header::ConnectionToken::Close, response->header().getConnectionToken());
+        LOK_ASSERT(http::Header::ConnectionToken::Close == response->header().getConnectionToken());
     }
     catch (const Poco::Exception& exc)
     {
@@ -141,7 +137,7 @@ UnitBase::TestResult UnitSession::testHandshake()
                 const std::string msg(std::string(message.begin(), message.end()));
                 if (!msg.starts_with("error:"))
                 {
-                    LOK_ASSERT_EQUAL(true, COOLProtocol::matchPrefix("progress:", msg));
+                    LOK_ASSERT_EQUAL(COOLProtocol::matchPrefix("progress:", msg), true);
                     LOK_ASSERT(helpers::getProgressWithIdValue(msg, expectedId));
                 }
                 else
@@ -337,7 +333,7 @@ UnitBase::TestResult UnitSession::testSlideShow()
         StringVector tokens(StringVector::tokenize(docResponse.substr(11), ' '));
         // "downloadas: downloadId= port= id=slideshow"
         const std::string downloadId = tokens[0].substr(std::string("downloadId=").size());
-        const int port = NumUtil::stoi(tokens[1].substr(std::string("port=").size()));
+        const int port = std::stoi(tokens[1].substr(std::string("port=").size()));
         const std::string id = tokens[2].substr(std::string("id=").size());
         LOK_ASSERT(!downloadId.empty());
         LOK_ASSERT_EQUAL(static_cast<int>(Poco::URI(helpers::getTestServerURI()).getPort()), port);
@@ -469,16 +465,15 @@ UnitBase::TestResult UnitSession::testSlideShowMultiDL()
 
             StringVector tokens(StringVector::tokenize(response.substr(11), ' '));
             // "downloadas: downloadId= port= id=slideshow"
-            const std::string downloadId = tokens[0].substr(std::string_view("downloadId=").size());
-            const int port =
-                NumUtil::stoi(std::string_view(tokens[1]).substr(std::string_view("port=").size()));
+            const std::string downloadId = tokens[0].substr(std::string("downloadId=").size());
+            const int port = std::stoi(tokens[1].substr(std::string("port=").size()));
             const std::string id_has = tokens[2].substr(std::string("id=").size());
             LOK_ASSERT(!downloadId.empty());
             LOK_ASSERT_EQUAL(static_cast<int>(Poco::URI(helpers::getTestServerURI()).getPort()),
                              port);
             LOK_ASSERT_EQUAL(id_req, id_has);
             TST_LOG(testname << ": Download Response: " << id_has << ": count " << dlIter << "/"
-                             << dlCount << ": " << downloadId);
+                             << dlCount << ": " + downloadId);
             {
                 std::string encodedDoc;
                 Poco::URI::encode(documentPath, ":/?", encodedDoc);
@@ -565,7 +560,7 @@ UnitBase::TestResult UnitSession::testGetMetrics()
         LOK_ASSERT(response->header().hasContentLength());
         LOK_ASSERT(0 < response->header().getContentLength());
         LOK_ASSERT_EQUAL(http::StatusCode::OK, response->statusCode());
-        LOK_ASSERT_EQUAL(http::Header::ConnectionToken::Close, response->header().getConnectionToken());
+        LOK_ASSERT(http::Header::ConnectionToken::Close == response->header().getConnectionToken());
 
         // check metrics format and a few key values
         auto body = std::istringstream(response->getBody());

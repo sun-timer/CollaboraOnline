@@ -9,11 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Data model for admin console views and document tracking.
- * Classes: View, DocCleanupSettings, DocProcSettings, Document, Subscriber, AdminModel
- */
-
 #pragma once
 
 #include <common/Log.hpp>
@@ -45,9 +40,9 @@ public:
     }
 
     void expire() { _end = std::time(nullptr); }
-    const std::string& getUserName() const { return _userName; }
-    const std::string& getUserId() const { return _userId; }
-    const std::string& getSessionId() const { return _sessionId; }
+    std::string getUserName() const { return _userName; }
+    std::string getUserId() const { return _userId; }
+    std::string getSessionId() const { return _sessionId; }
     bool isExpired() const { return _end != 0 && std::time(nullptr) >= _end; }
     std::chrono::milliseconds getLoadDuration() const { return _loadDuration; }
     void setLoadDuration(std::chrono::milliseconds loadDuration) { _loadDuration = loadDuration; }
@@ -188,15 +183,15 @@ public:
     {
     }
 
-    const std::string& getDocKey() const { return _docKey; }
+    std::string getDocKey() const { return _docKey; }
 
     pid_t getPid() const { return _pid; }
 
-    const std::string& getFilename() const { return _filename; }
+    std::string getFilename() const { return _filename; }
 
-    const std::string& getHostName() const { return _hostName; }
+    std::string getHostName() const { return _hostName; }
 
-    const std::string& getWopiSrc() const { return _wopiSrc; }
+    std::string getWopiSrc() const { return _wopiSrc; }
 
     bool isExpired() const { return _end != 0 && std::time(nullptr) >= _end; }
 
@@ -339,9 +334,9 @@ class AdminModel final
     AdminModel(const AdminModel &) = delete;
     AdminModel& operator = (const AdminModel &) = delete;
 public:
-    AdminModel()
-        : _segFaultCount(0)
-        , _owner(ProcUtil::getThreadId())
+    AdminModel() :
+        _segFaultCount(0),
+        _owner(std::this_thread::get_id())
     {
         LOG_INF("AdminModel ctor.");
     }
@@ -349,7 +344,7 @@ public:
     ~AdminModel();
 
     /// All methods here must be called from the Admin socket-poll
-    void setThreadOwner(const ProcUtil::ThreadId id) { _owner = id; }
+    void setThreadOwner(const std::thread::id &id) { _owner = id; }
 
     std::string query(const std::string& command);
     std::string getAllHistory() const;
@@ -435,9 +430,9 @@ public:
     bool isDocReadOnly(const std::string&);
     void setMigratingInfo(const std::string& docKey, const std::string& routeToken, const std::string& serverId);
     void resetMigratingInfo();
-    const std::string& getCurrentMigDoc() const { return _currentMigDoc; }
-    const std::string& getCurrentMigToken() const { return _currentMigToken; }
-    const std::string& getTargetMigServerId() const { return _targetMigServerId; }
+    std::string getCurrentMigDoc() const { return _currentMigDoc; }
+    std::string getCurrentMigToken() const { return _currentMigToken; }
+    std::string getTargetMigServerId() const { return _targetMigServerId; }
     void sendMigrateMsgAfterSave(bool lastSaveSuccessful, const std::string& docKey);
     std::string getWopiSrcMap() const;
     std::string getFilename(int pid) const;
@@ -490,7 +485,7 @@ private:
     std::time_t _lastActivity = 0;
 
     /// We check the owner even in the release builds, needs to be always correct.
-    ProcUtil::ThreadId _owner;
+    std::thread::id _owner;
 
     std::string _currentMigDoc;
 

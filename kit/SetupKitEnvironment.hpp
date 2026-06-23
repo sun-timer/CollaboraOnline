@@ -14,38 +14,20 @@
 #include <cstdlib>
 #include <string>
 
-#include <common/Log.hpp>
-
-#if defined(MACOS) && MOBILEAPP
-#include <macos.h>
-#endif
-
-#ifdef _WIN32
-#include <windows.hpp>
-#endif
+#include <Log.hpp>
 
 inline void setupKitEnvironment(const std::string& userInterface)
 {
     // Setup & check environment
     std::string layers(
-#if defined(MACOS)
-        "xcsxcu:${BRAND_BASE_DIR}/Resources/registry "
-        "res:${BRAND_BASE_DIR}/Resources/registry "
-#else
         "xcsxcu:${BRAND_BASE_DIR}/share/registry "
         "res:${BRAND_BASE_DIR}/share/registry "
-#endif
         "bundledext:${${BRAND_BASE_DIR}/program/lounorc:BUNDLED_EXTENSIONS_USER}/registry/com.sun.star.comp.deployment.configuration.PackageRegistryBackend/configmgr.ini "
         "sharedext:${${BRAND_BASE_DIR}/program/lounorc:SHARED_EXTENSIONS_USER}/registry/com.sun.star.comp.deployment.configuration.PackageRegistryBackend/configmgr.ini "
         "userext:${${BRAND_BASE_DIR}/program/lounorc:UNO_USER_PACKAGES_CACHE}/registry/com.sun.star.comp.deployment.configuration.PackageRegistryBackend/configmgr.ini "
         );
 #ifdef IOS
     layers += "user:*${BRAND_BASE_DIR}/coolkitconfig.xcu ";
-#elif defined(_WIN32)
-    // app_installation_uri ends with a slash
-    layers += "user:*" + app_installation_uri + "../coolkitconfig.xcu ";
-#elif defined(MACOS) && MOBILEAPP
-    layers += "user:*" + getResourceURL("coolkitconfig", "xcu");
 #elif ENABLE_DEBUG && !defined(ANDROID) // '*' denotes non-writable.
     layers += "user:*file://" DEBUG_ABSSRCDIR "/coolkitconfig.xcu ";
 #else
@@ -71,7 +53,7 @@ inline void setupKitEnvironment(const std::string& userInterface)
 
     options += ":sc_print_twips_msgs";
 
-    ::setenv("SAL_KIT_OPTIONS", options.c_str(), 0);
+    ::setenv("SAL_LOK_OPTIONS", options.c_str(), 0);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

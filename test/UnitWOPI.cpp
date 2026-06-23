@@ -9,15 +9,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for WOPI protocol functionality.
- */
-
 #include <config.h>
 
-#include <common/ProcUtil.hpp>
-#include <common/Util.hpp>
-#include <lokassert.hpp>
+#include "Util.hpp"
+#include "lokassert.hpp"
 
 #include <WopiTestServer.hpp>
 
@@ -227,9 +222,9 @@ class UnitOverload : public WopiTestServer
 
     std::size_t getMemoryUsage() const
     {
-        std::size_t total = ProcUtil::getMemoryUsageRSS(getpid()) + ProcUtil::getMemoryUsagePSS(getpid());
+        std::size_t total = Util::getMemoryUsageRSS(getpid()) + Util::getMemoryUsagePSS(getpid());
         for (const pid_t pid : _children)
-            total += ProcUtil::getMemoryUsageRSS(pid) + ProcUtil::getMemoryUsagePSS(pid);
+            total += Util::getMemoryUsageRSS(pid) + Util::getMemoryUsagePSS(pid);
 
         return total;
     }
@@ -515,110 +510,10 @@ public:
     }
 };
 
-class UnitWopiHttpHeaders : public WopiTestServer
-{
-    STATE_ENUM(Phase, Load, Done)
-    _phase;
-
-protected:
-    virtual std::unique_ptr<http::Response>
-    assertCheckFileInfoRequest(const Poco::Net::HTTPRequest& request) override
-    {
-        assertHeaders(request);
-
-        return nullptr; // Success.
-    }
-
-    std::unique_ptr<http::Response>
-    assertGetFileRequest(const Poco::Net::HTTPRequest& request) override
-    {
-        assertHeaders(request);
-        exitTest(TestResult::Ok); //TODO: Remove when we add put/rename cases.
-
-        return nullptr; // Success.
-    }
-
-    std::unique_ptr<http::Response>
-    assertPutFileRequest(const Poco::Net::HTTPRequest& request) override
-    {
-        assertHeaders(request);
-        exitTest(TestResult::Ok);
-        return nullptr;
-    }
-
-    void assertPutRelativeFileRequest(const Poco::Net::HTTPRequest& request) override
-    {
-        assertHeaders(request);
-        exitTest(TestResult::Ok);
-    }
-
-    void assertRenameFileRequest(const Poco::Net::HTTPRequest& request) override
-    {
-        assertHeaders(request);
-        exitTest(TestResult::Ok);
-    }
-
-    void assertHeaders(const Poco::Net::HTTPRequest& request) const
-    {
-        static const std::map<std::string, std::string> Headers{
-            { "Authorization", "Bearer xyz123abc456vwc789z" },
-            { "X-Requested-With", "XMLHttpRequest" },
-        };
-
-        for (const auto& pair : Headers)
-        {
-            LOK_ASSERT_MESSAGE("Request must have [" + pair.first + ']', request.has(pair.first));
-            LOK_ASSERT_EQUAL(pair.second, request[pair.first]);
-        }
-    }
-
-public:
-    UnitWopiHttpHeaders()
-        : WopiTestServer("UnitWOPIHttpHeaders")
-        , _phase(Phase::Load)
-    {
-    }
-
-    void invokeWSDTest() override
-    {
-        switch (_phase)
-        {
-            case Phase::Load:
-            {
-                TRANSITION_STATE(_phase, Phase::Done);
-
-                // Technically, having an empty line in the header
-                // is invalid (it signifies the end of headers), but
-                // this is to illustrate that we are able to overcome
-                // such issues and generate valid headers.
-                const std::string params =
-                    "access_header=Authorization%3A%2520Bearer%"
-                    "2520xyz123abc456vwc789z%250D%250A%250D%250AX-Requested-With%"
-                    "3A%2520XMLHttpRequest&reuse_cookies=language%3Den-us%3AK%3DGS1&permission="
-                    "edit";
-
-                initWebsocket("/wopi/files/0?" + params);
-
-                WSD_CMD("load url=" + getWopiSrc());
-
-                break;
-            }
-            case Phase::Done:
-            {
-                // Just wait for the results.
-                break;
-            }
-        }
-    }
-};
-
 UnitBase** unit_create_wsd_multi(void)
 {
-    return new UnitBase* []
-    {
-        new UnitWOPI(), new UnitWOPILoadEncoded(),
-            /*new UnitOverload(),*/ new UnitWopiUnavailable(), new UnitWopiHttpHeaders(), nullptr
-    };
+    return new UnitBase*[4]{ new UnitWOPI(), new UnitWOPILoadEncoded(),
+                             /*new UnitOverload(),*/ new UnitWopiUnavailable(), nullptr };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

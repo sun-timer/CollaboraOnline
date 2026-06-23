@@ -361,35 +361,6 @@ class Dispatcher {
 		};
 	}
 
-	private addAICommands() {
-		this.actionsMap['aichat'] = function () {
-			if (!app.map.isAIConfigured) {
-				app.map.uiManager.showSnackbar(
-					_(
-						'AI is not configured. Go to File > Options > View Settings to set it up.',
-					),
-				);
-				return;
-			}
-			const sidebar = JSDialog.getAIChatSidebar();
-			sidebar.toggle();
-		};
-
-		this.actionsMap['helpfixformulaerror'] = function () {
-			if (!app.map.isAIConfigured) {
-				app.map.uiManager.showSnackbar(
-					_(
-						'AI is not configured. Go to File > Options > View Settings to set it up.',
-					),
-				);
-				return;
-			}
-			const sidebar = JSDialog.getAIChatSidebar();
-			if (!sidebar.isVisible()) sidebar.show();
-			sidebar.diagnoseFormulaError();
-		};
-	}
-
 	private addExportCommands() {
 		this.actionsMap['exportpdf'] = function () {
 			app.map.sendUnoCommand('.uno:ExportToPDF', {
@@ -421,7 +392,7 @@ class Dispatcher {
 
 	private addCalcCommands() {
 		this.actionsMap['acceptformula'] = function () {
-			if (window.mode.isSmallScreenDevice()) {
+			if (window.mode.isMobile()) {
 				app.map.focus();
 				app.map._docLayer.postKeyboardEvent(
 					'input',
@@ -452,7 +423,7 @@ class Dispatcher {
 		};
 
 		this.actionsMap['functiondialog'] = function () {
-			if (window.mode.isSmallScreenDevice() && app.map._functionWizardData) {
+			if (window.mode.isMobile() && app.map._functionWizardData) {
 				app.map._docLayer._closeMobileWizard();
 				app.map._docLayer._openMobileWizard(app.map._functionWizardData);
 				app.map.formulabarSetDirty();
@@ -537,11 +508,7 @@ class Dispatcher {
 		this.actionsMap['presentation'] = this.actionsMap[
 			'fullscreen-presentation'
 		] = () => {
-			if ((window as any).canvasSlideshowEnabled)
-				app.map.fire('newfullscreen', {
-					isWelcomePresentation:
-						window.coolParams.get('welcome') === 'true' ? true : false,
-				});
+			if ((window as any).canvasSlideshowEnabled) app.map.fire('newfullscreen');
 			else app.map.fire('fullscreen');
 		};
 
@@ -560,16 +527,9 @@ class Dispatcher {
 
 		this.actionsMap['presentinwindow'] = this.actionsMap['present-in-window'] =
 			() => {
-				const welcomePresentation =
-					window.coolParams.get('welcome') === 'true' ? true : false;
 				if ((window as any).canvasSlideshowEnabled)
-					app.map.fire('newpresentinwindow', {
-						isWelcomePresentation: welcomePresentation,
-					});
-				else
-					app.map.fire('presentinwindow', {
-						isWelcomePresentation: welcomePresentation,
-					});
+					app.map.fire('newpresentinwindow');
+				else app.map.fire('presentinwindow');
 			};
 
 		this.actionsMap['followmepresentation'] = this.actionsMap[
@@ -903,7 +863,6 @@ class Dispatcher {
 
 		this.addGeneralCommands();
 		this.addExportCommands();
-		this.addAICommands();
 
 		if (docType === 'text') {
 			this.addWriterCommands();
@@ -914,7 +873,7 @@ class Dispatcher {
 			this.addImpressAndDrawCommands();
 		}
 
-		if (window.mode.isSmallScreenDevice()) this.addMobileCommands();
+		if (window.mode.isMobile()) this.addMobileCommands();
 	}
 
 	public dispatch(action: string, data?: any) {
@@ -962,11 +921,6 @@ class Dispatcher {
 
 		if (this.actionsMap[action] !== undefined) {
 			this.actionsMap[action](data);
-			return;
-		}
-
-		if (window.ThisIsTheWindowsApp && action.startsWith('new-')) {
-			window.postMobileMessage(action);
 			return;
 		}
 

@@ -108,7 +108,6 @@ function handleTabKeydown(
 			break;
 
 		case 'ArrowDown':
-		case 'PageDown':
 			moveFocusIntoTabPage(contentDivs, currentTab);
 			break;
 

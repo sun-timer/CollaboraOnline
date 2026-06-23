@@ -85,7 +85,7 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		this._colorPickers = [];
 
 		// list of types which can have multiple children but are not considered as containers
-		this._nonContainerType = ['buttonbox', 'treelistbox', 'iconview', 'iconviewlist', 'combobox', 'listbox',
+		this._nonContainerType = ['buttonbox', 'treelistbox', 'iconview', 'combobox', 'listbox',
 			'scrollwindow', 'grid', 'tabcontrol', 'multilineedit', 'formulabaredit', 'frame', 'expander'];
 
 		this._controlHandlers = {};
@@ -93,7 +93,7 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		this._controlHandlers['overflowmanager'] = JSDialog.OverflowManager;
 		this._controlHandlers['radiobutton'] = JSDialog.RadioButton;
 		this._controlHandlers['progressbar'] = JSDialog.progressbar;
-		this._controlHandlers['pagemarginentry'] = JSDialog.PageMarginEntry;
+		this._controlHandlers['pagemarginentry'] = JSDialog.pageMarginEntry;
 		this._controlHandlers['newslidelayoutentry'] = JSDialog.slideLayoutEntry;
 		this._controlHandlers['pagesizeentry'] = JSDialog.pageSizeEntry;
 		this._controlHandlers['checkbox'] = JSDialog.Checkbox;
@@ -106,10 +106,10 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		this._controlHandlers['searchedit'] = JSDialog.searchEdit;
 		this._controlHandlers['formulabaredit'] = JSDialog.formulabarEdit;
 		this._controlHandlers['multilineedit'] = JSDialog.multilineEdit;
-		this._controlHandlers['pushbutton'] = JSDialog.pushButton;
-		this._controlHandlers['okbutton'] = JSDialog.pushButton;
-		this._controlHandlers['helpbutton'] = JSDialog.pushButton;
-		this._controlHandlers['cancelbutton'] = JSDialog.pushButton;
+		this._controlHandlers['pushbutton'] = this._pushbuttonControl;
+		this._controlHandlers['okbutton'] = this._pushbuttonControl;
+		this._controlHandlers['helpbutton'] = this._pushbuttonControl;
+		this._controlHandlers['cancelbutton'] = this._pushbuttonControl;
 		this._controlHandlers['combobox'] = JSDialog.combobox;
 		this._controlHandlers['comboboxentry'] = JSDialog.comboboxEntry;
 		this._controlHandlers['listbox'] = JSDialog.listbox;
@@ -143,11 +143,10 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		this._controlHandlers['colorlistbox'] = JSDialog.colorPickerButton;
 		this._controlHandlers['treelistbox'] = JSDialog.treeView;
 		this._controlHandlers['iconview'] = JSDialog.iconView;
-		this._controlHandlers['iconviewlist'] = JSDialog.notebookbarIconViewList;
 		this._controlHandlers['drawingarea'] = JSDialog.drawingArea;
-		this._controlHandlers['rootcomment'] = JSDialog.rootCommentControl;
-		this._controlHandlers['comment'] = JSDialog.commentControl;
-		this._controlHandlers['emptyCommentWizard'] = JSDialog.rootCommentControl;
+		this._controlHandlers['rootcomment'] = this._rootCommentControl;
+		this._controlHandlers['comment'] = this._commentControl;
+		this._controlHandlers['emptyCommentWizard'] = this._rootCommentControl;
 		this._controlHandlers['separator'] = this._separatorControl;
 		this._controlHandlers['menubutton'] = JSDialog.menubuttonControl;
 		this._controlHandlers['spinner'] = this._spinnerControl;
@@ -196,17 +195,14 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		if (!this._container)
 			return isValid;
 
-		var inputs = this._container.querySelectorAll('.spinfield');
+		var inputs = this._container.querySelectorAll('input[type="number"]');
 		for (var item = 0; item < inputs.length; item++) {
 			if (!inputs[item].checkVisibility())
 				continue;
 
-			var value = this._parseSpinFieldValue(inputs[item].value);
-			if (value !== '' && isNaN(parseFloat(value))) {
-				isValid = false;
-				inputs[item].focus();
+			isValid = inputs[item].reportValidity();
+			if (!isValid)
 				break;
-			}
 		}
 
 		return isValid;
@@ -248,15 +244,12 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		return false;
 	},
 
-	_numericCharPattern: function() {
-		return new RegExp('[0-9\\' + this._decimal + '\\' + this._minusSign + ']');
-	},
-
 	_preventNonNumericalInput: function(e) {
 		e = e || window.event;
 		var charCode = (typeof e.which == 'undefined') ? e.keyCode : e.which;
 		var charStr = String.fromCharCode(charCode);
-		if (!charStr.match(this._numericCharPattern()) && charCode !== 13)
+		var regex = new RegExp('^[0-9\\' + this._decimal + '\\' + this._minusSign + ']+$');
+		if (!charStr.match(regex) && charCode !== 13)
 			return e.preventDefault();
 
 		var value = e.target.value;
@@ -340,86 +333,11 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 
 				dispatcher.dispatch('closeapp');
 			}
-			builder._defaultCallbackHandlerSendMessage(objectType, eventType, object, data, builder);
+			this._defaultCallbackHandlerSendMessage(objectType, eventType, object, data, builder);
 		}
 	},
 
-	_formatSpinFieldValue: function(value, unit) {
-		var str = '' + value;
-		if (this._decimal !== '.')
-			str = str.replace('.', this._decimal);
-		if (unit) {
-			var noSpace = (unit === '°' || unit === '"' || unit === '\u2033' || unit === '%');
-			return noSpace ? str + unit : str + ' ' + unit;
-		}
-		return str;
-	},
-
-	_setSpinFieldValue: function(spinfield, displayValue, numericValue) {
-		spinfield.value = displayValue;
-		var num = parseFloat(numericValue != undefined ? numericValue : this._parseSpinFieldValue(displayValue));
-		if (!isNaN(num))
-			spinfield.setAttribute('aria-valuenow', num);
-		if (displayValue && displayValue !== '' + num)
-			spinfield.setAttribute('aria-valuetext', displayValue);
-		else
-			spinfield.removeAttribute('aria-valuetext');
-	},
-
-	_parseSpinFieldValue: function(displayValue) {
-		if (!displayValue) return '';
-		var pattern = this._numericCharPattern();
-		var value = '';
-		for (var i = 0; i < displayValue.length; i++) {
-			if (displayValue[i].match(pattern))
-				value += displayValue[i];
-		}
-		if (this._decimal !== '.')
-			value = value.replace(this._decimal, '.');
-		if (this._minusSign !== '-')
-			value = value.replace(this._minusSign, '-');
-		return value;
-	},
-
-	_clampSpinFieldValue: function(container, displayValue) {
-		var value = this._parseSpinFieldValue(displayValue);
-		var num = parseFloat(value);
-		if (!isNaN(num)) {
-			if (container._min != undefined && num < container._min)
-				num = container._min;
-			if (container._max != undefined && num > container._max)
-				num = container._max;
-			value = '' + num;
-		}
-		return value;
-	},
-
-	_getStepPrecision: function(step) {
-		var str = '' + Math.abs(step);
-		var dot = str.indexOf('.');
-		return dot >= 0 ? str.length - dot - 1 : 0;
-	},
-
-	_spinFieldStep: function(div, spinfield, direction) {
-		var step = div._step || 1;
-		var min = div._min;
-		var max = div._max;
-		var unit = div._unit || '';
-		var current = parseFloat(this._parseSpinFieldValue(spinfield.value));
-		if (isNaN(current)) current = 0;
-
-		var newVal = current + direction * step;
-		var precision = this._getStepPrecision(step);
-		newVal = parseFloat(newVal.toFixed(precision));
-
-		if (min != undefined && newVal < min) newVal = min;
-		if (max != undefined && newVal > max) newVal = max;
-
-		this._setSpinFieldValue(spinfield, this._formatSpinFieldValue(newVal, unit), newVal);
-		spinfield.dispatchEvent(new Event('change'));
-	},
-
-	baseSpinField: function(parentContainer, data, builder) {
+	baseSpinField: function(parentContainer, data, builder, customCallback) {
 		var controls = {};
 
 		var div = window.L.DomUtil.create('div', builder.options.cssClass + ' spinfieldcontainer', parentContainer);
@@ -428,10 +346,7 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 
 		var spinfield = window.L.DomUtil.create('input', builder.options.cssClass + ' spinfield', div);
 		spinfield.id = data.id + '-input';
-		spinfield.type = 'text';
-		spinfield.inputMode = 'decimal';
-		spinfield.setAttribute('role', 'spinbutton');
-		spinfield.setAttribute('spellcheck', 'false');
+		spinfield.type = 'number';
 		spinfield.dir = document.documentElement.dir;
 		spinfield.tabIndex = '0';
 		spinfield.setAttribute('autocomplete', 'off');
@@ -445,41 +360,59 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 
 		controls['spinfield'] = spinfield;
 
-		var unitStr = '';
 		if (data.unit && data.unit !== ':') {
-			unitStr = builder._unitToVisibleString(data.unit);
-		} else if (!data.unit) {
-			var textForUnits = data.text || (data.value != undefined ? '' + data.value : '');
-			if (textForUnits) {
-				var extracted = builder._extractUnits(textForUnits);
-				if (extracted)
-					unitStr = builder._unitToVisibleString(extracted);
+			var unit = window.L.DomUtil.create('span', builder.options.cssClass + ' spinfieldunit', div);
+			unit.textContent = builder._unitToVisibleString(data.unit);
+		}
+
+		var getPrecision = function (data) {
+			data = Math.abs(data);
+			var str = '' + data;
+			var dot = str.indexOf('.');
+			return dot > 0 ? 1 / Math.pow(10, str.length - dot - 1) : 1;
+		};
+
+		if (data.min != undefined)
+			$(spinfield).attr('min', data.min);
+
+		if (data.max != undefined)
+			$(spinfield).attr('max', data.max);
+
+		if (data.step != undefined) {
+			// we don't want to show error popups due to browser step validation
+			// so be sure all the values will be acceptted, check only precision
+
+			// these are set by core when there is no explicit min/max.
+			const noMin = -2147483648;
+			const noMax =  2147483647;
+			if (data.min === noMin && data.max === noMax && data.step === 1) {
+				// This is to allow decimal points in user input
+				// and the step button will increment/decrement
+				// according to current value's precision.
+				$(spinfield).attr('step', 'any');
+
+			} else {
+				var step = getPrecision(data.step);
+				var value = data.value ? getPrecision(data.value) : 1;
+				var minStep = getPrecision(data.min);
+				var maxStep = getPrecision(data.max);
+
+				step = Math.min(step, value, minStep, maxStep);
+
+				$(spinfield).attr('step', step);
 			}
 		}
-		div._unit = unitStr;
-		if (unitStr)
-			div.dataset.unit = unitStr;
-
-		if (data.min != undefined) {
-			div._min = data.min;
-			spinfield.setAttribute('aria-valuemin', data.min);
-		}
-
-		if (data.max != undefined) {
-			div._max = data.max;
-			spinfield.setAttribute('aria-valuemax', data.max);
-		}
-
-		div._step = data.step != undefined ? data.step : 1;
 
 		const isDisabled = data.enabled === false;
 
 		if (isDisabled) {
-			div.setAttribute('disabled', 'true');
+			div.disabled = true;
 			spinfield.setAttribute('disabled', 'true');
 		}
 
 		spinfield.setAttribute('aria-disabled', isDisabled);
+
+		JSDialog.SynchronizeDisabledState(div, [spinfield]);
 
 		if (data.readOnly === true)
 			$(spinfield).attr('readOnly', 'true');
@@ -487,58 +420,14 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		if (data.hidden)
 			$(spinfield).hide();
 
-		if (!window.L.Browser.cypressTest)
-			spinfield.onkeypress = window.L.bind(builder._preventNonNumericalInput, builder);
-
-		var cssClass = builder.options.cssClass;
-		var buttons = window.L.DomUtil.create('div', cssClass + ' spinfieldbuttons', div);
-		var up = window.L.DomUtil.create('button', cssClass + ' spinfieldbutton-up', buttons);
-		up.type = 'button';
-		up.tabIndex = -1;
-		up.setAttribute('aria-label', _('Increment value'));
-		var down = window.L.DomUtil.create('button', cssClass + ' spinfieldbutton-down', buttons);
-		down.type = 'button';
-		down.tabIndex = -1;
-		down.setAttribute('aria-label', _('Decrement value'));
-
-		if (isDisabled) {
-			up.setAttribute('disabled', 'true');
-			down.setAttribute('disabled', 'true');
-		}
-
-		// With native <input type="number"> the browser's built-in spin
-		// buttons followed the input's disabled state automatically. Our
-		// custom buttons need explicit synchronization.
-		JSDialog.SynchronizeDisabledState(div, [spinfield, up, down]);
-
-		up.addEventListener('mousedown', function(e) { e.preventDefault(); });
-		down.addEventListener('mousedown', function(e) { e.preventDefault(); });
-
-		up.addEventListener('click', function() {
-			builder._spinFieldStep(div, spinfield, 1);
-		});
-		down.addEventListener('click', function() {
-			builder._spinFieldStep(div, spinfield, -1);
-		});
-
-		spinfield.addEventListener('keydown', function(e) {
-			var ctrlKey = (window.L.Browser.mac || window.ThisIsTheiOSApp) ? e.metaKey : e.ctrlKey;
-			if (e.key === 'ArrowUp') {
-				e.preventDefault();
-				builder._spinFieldStep(div, spinfield, 1);
-			} else if (e.key === 'ArrowDown') {
-				e.preventDefault();
-				builder._spinFieldStep(div, spinfield, -1);
-			} else if (e.key === 'Home' && ctrlKey && div._min != undefined) {
-				e.preventDefault();
-				var unit = div._unit || '';
-				builder._setSpinFieldValue(spinfield, builder._formatSpinFieldValue(div._min, unit), div._min);
-				spinfield.dispatchEvent(new Event('change'));
-			} else if (e.key === 'End' && ctrlKey && div._max != undefined) {
-				e.preventDefault();
-				var unit = div._unit || '';
-				builder._setSpinFieldValue(spinfield, builder._formatSpinFieldValue(div._max, unit), div._max);
-				spinfield.dispatchEvent(new Event('change'));
+		spinfield.addEventListener('change', function() {
+			const isCurrentlyDisabled = div.hasAttribute('disabled');
+			var isValid = this.checkValidity();
+			if (!isCurrentlyDisabled && isValid) {
+				if (customCallback)
+					customCallback('spinfield', 'change', div, this.value, builder);
+				else
+					builder.callback('spinfield', 'change', div, this.value, builder);
 			}
 		});
 
@@ -547,15 +436,13 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 
 	listenNumericChanges: function (data, builder, controls, customCallback) {
 		controls.spinfield.addEventListener('change', function() {
-			if (controls.container.hasAttribute('disabled'))
+			if (!this.checkValidity())
 				return;
-			var value = builder._clampSpinFieldValue(controls.container, this.value);
+
 			if (customCallback)
 				customCallback();
-			else {
-				builder.callback('spinfield', 'change', controls.container, value, builder);
-				builder.callback('spinfield', 'value', controls.container, value, builder);
-			}
+			else
+				builder.callback('spinfield', 'value', controls.container, this.value, builder);
 		});
 	},
 
@@ -582,7 +469,7 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 	},
 
 	_stressAccessKey: function(element, accessKey) {
-		if (!accessKey || window.mode.isSmallScreenDevice() || window.getAccessibilityState())
+		if (!accessKey || window.mode.isMobile() || window.getAccessibilityState())
 			return;
 
 		var text = element.textContent;
@@ -845,13 +732,12 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		if (builder.wizard) {
 			var that = this;
 			var functionName = data.functionName;
-			$(rightDiv).click(e => {
-				e.stopPropagation();
+			$(rightDiv).click(() => {
 				builder.wizard.goLevelDown(mainContainer);
 				if (contentNode.onshow)
 					contentNode.onshow();
 			});
-			$(sectionTitle).click(() => {
+			$(leftDiv).click(() => {
 				if (functionName !== '') {
 					app.socket.sendMessage('completefunction name=' + functionName);
 					that.map.fire('closemobilewizard');
@@ -879,7 +765,6 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 				var headingLevel = Math.min(builder._expanderDepth + 2, 6);
 				var heading = window.L.DomUtil.create('h' + headingLevel, 'ui-expander-heading ' + builder.options.cssClass, expander);
 				var expanderBtn = window.L.DomUtil.create('button', 'ui-expander-btn ' + builder.options.cssClass, heading);
-				expanderBtn.id = prefix + '-button';
 				expanderBtn.tabIndex = '0';
 				expanderBtn.setAttribute('aria-controls', prefix + '-children');
 
@@ -1260,15 +1145,7 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 								let visibleContainer = Array.from(container[0].children).find(child =>
 									!child.classList.contains('hidden') && child.offsetParent !== null
 								);
-								
-								var allFocusables = visibleContainer ? Array.from(visibleContainer.querySelectorAll('*'))
-									.filter(function(el) { return el.checkVisibility() && JSDialog.IsFocusable(el); }) : [];
-
-								// Only leaf-level focusable elements are candidates.
-								var focusables = allFocusables.filter(function(el) {
-									return !allFocusables.some(function(other) { return other !== el && el.contains(other); });
-								});
-
+								let focusables = visibleContainer ? Array.from(visibleContainer.querySelectorAll('[tabindex="-1"]:not([disabled])')) : [];
 								if (focusables.length) {
 									let first = focusables[0];
 									let last = focusables[focusables.length - 1];
@@ -1399,18 +1276,14 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 			else if (data.children && data.children.length)
 				value = data.children[0].text;
 
-			var numeric = builder._cleanValueFromUnits(value);
-			builder._setSpinFieldValue(controls.spinfield, builder._formatSpinFieldValue(numeric, controls.container._unit), numeric);
+			$(controls.spinfield).val(builder._cleanValueFromUnits(value));
 		};
 
 		controls.spinfield.addEventListener('change', function() {
-			if (controls.container.hasAttribute('disabled'))
-				return;
-			var value = builder._clampSpinFieldValue(controls.container, this.value);
 			if (customCallback)
 				customCallback();
 			else
-				builder.callback('spinfield', 'set', controls.container, value, builder);
+				builder.callback('spinfield', 'set', controls.container, this.value, builder);
 		});
 
 		updateFunction();
@@ -1441,7 +1314,7 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 
 		value = parseFloat(data.value);
 
-		builder._setSpinFieldValue(controls.spinfield, builder._formatSpinFieldValue(value, controls.container._unit), value);
+		$(controls.spinfield).val(value);
 
 		return false;
 	},
@@ -1457,7 +1330,91 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		builder.listenNumericChanges(data, builder, controls, customCallback);
 
 		value = parseFloat(data.value);
-		builder._setSpinFieldValue(controls.spinfield, builder._formatSpinFieldValue(value, controls.container._unit), value);
+		$(controls.spinfield).val(value);
+
+		return false;
+	},
+
+	_customPushButtonTextForId: function(buttonId) {
+		if (buttonId == 'validref')
+			return _('Select range');
+
+		return '';
+	},
+
+	_pushbuttonControl: function(parentContainer, data, builder, customCallback) {
+		if (data.id && data.id === 'changepass' && builder.map['wopi'].IsOwner === false) {
+			data.enabled = false;
+		}
+		var wrapperClass = window.mode.isMobile() ? '' : 'd-flex justify-content-center';
+		var wrapper = window.L.DomUtil.create('div', wrapperClass + ' ui-pushbutton-wrapper ' + builder.options.cssClass, parentContainer); // need for locking overlay
+		wrapper.id = data.id;
+		var pushbutton = window.L.DomUtil.create('button', 'ui-pushbutton ' + builder.options.cssClass, wrapper);
+		pushbutton.id = wrapper.id + '-button';
+		pushbutton.setAttribute('tabindex', '0');
+		builder._setAccessKey(pushbutton, builder._getAccessKeyFromText(data.text));
+		var pushbuttonText = builder._customPushButtonTextForId(data.id) !== '' ? builder._customPushButtonTextForId(data.id) : builder._cleanText(data.text);
+		var image;
+		if (data.image && pushbuttonText !== '') {
+			window.L.DomUtil.addClass(pushbutton, 'has-img d-flex align-content-center justify-content-center align-items-center');
+			image = window.L.DomUtil.create('img', '', pushbutton);
+			image.src = data.image;
+			var text = window.L.DomUtil.create('span', '', pushbutton);
+			text.innerText = pushbuttonText;
+			builder._stressAccessKey(text, pushbutton.accessKey);
+		} else if (data.image) {
+			window.L.DomUtil.addClass(pushbutton, 'has-img d-flex align-content-center justify-content-center align-items-center');
+			image = window.L.DomUtil.create('img', '', pushbutton);
+			builder._isStringLCIcon(data.image) ? app.LOUtil.setImage(image, data.image, builder.map) : image.src = data.image;
+		} else if (data.symbol) {
+			window.L.DomUtil.addClass(pushbutton, 'has-img d-flex align-content-center justify-content-center align-items-center');
+			image = window.L.DomUtil.create('img', '', pushbutton);
+			app.LOUtil.setImage(image, 'symbol_' + data.symbol + '.svg', builder.map);
+		} else {
+			pushbutton.innerText = pushbuttonText;
+			builder._stressAccessKey(pushbutton, pushbutton.accessKey);
+		}
+		if (image)
+			image.alt = '';
+
+		const isDisabled = data.enabled === false;
+		if (isDisabled) {
+			wrapper.setAttribute('disabled', 'true');
+			pushbutton.setAttribute('disabled', 'true');
+			pushbutton.setAttribute('aria-disabled', true);
+		}
+
+		JSDialog.SynchronizeDisabledState(wrapper, [pushbutton]);
+
+		if (data.isToggle) {
+			wrapper.classList.add('ui-toggle');
+			if (data.checked === true)
+				wrapper.classList.add('checked');
+		}
+
+		if (customCallback)
+			pushbutton.onclick = customCallback;
+		else if (builder._responses[data.id] !== undefined)
+			pushbutton.onclick = builder.callback.bind(builder, 'responsebutton', 'click', { id: data.id }, builder._responses[data.id], builder);
+		else
+			pushbutton.onclick = builder.callback.bind(builder, 'pushbutton', data.isToggle ? 'toggle' : 'click', wrapper, data.command, builder);
+
+		JSDialog.SetupA11yLabelForLabelableElement(parentContainer, pushbutton, data, builder);
+
+		const tooltipText = (data.aria && data.aria.label) || data.text;
+		if (!pushbuttonText && tooltipText) {
+			pushbutton.setAttribute('data-cooltip', builder._cleanText(tooltipText));
+			window.L.control.attachTooltipEventListener(pushbutton, builder.map);
+		}
+
+		if (data.aria && data.aria.role) {
+			pushbutton.setAttribute('role', data.aria.role);
+		}
+
+		builder.map.hideRestrictedItems(data, wrapper, pushbutton);
+		builder.map.disableLockedItem(data, wrapper, pushbutton);
+		if (data.hidden)
+			$(wrapper).hide(); // Both pushbutton and its wrapper needs to be hidden.
 
 		return false;
 	},
@@ -1669,6 +1626,133 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		return false;
 	},
 
+	_createComment: function(container, data) {
+		// Create annotation copy and add it into the container.
+		container.appendChild(data.annotation.sectionProperties.container);
+
+		data.annotation.show();
+		data.annotation.update();
+		data.annotation.setExpanded();
+	},
+
+	_rootCommentControl: function(parentContainer, data, builder) {
+
+		if (data.type === 'emptyCommentWizard') {
+			builder._emptyCommentWizard(parentContainer, data, builder);
+			return;
+		}
+
+		var mainContainer = document.getElementById('explorable-entry level-' + builder._currentDepth + ' ' + data.id);
+		if (!mainContainer)
+			mainContainer = window.L.DomUtil.create('div', 'ui-explorable-entry level-' + builder._currentDepth + ' ' + builder.options.cssClass, parentContainer);
+
+		mainContainer.id = 'explorable-entry level-' + builder._currentDepth + ' ' + data.id;
+
+		var container = document.getElementById(data.id);
+		if (!container)
+			container = window.L.DomUtil.create('div',  'ui-header cool-annotation-header level-' + builder._currentDepth + ' ' + builder.options.cssClass + ' ui-widget', mainContainer);
+
+		container.annotation = data.annotation;
+		container.id = data.id;
+		builder._createComment(container, data);
+		if (data.children.length > 1 && mainContainer.id !== 'comment-thread' + data.id)
+		{
+			var numberOfReplies = data.children.length - 1;
+			if (numberOfReplies > 0)
+			{
+				var replyCountNode = document.getElementById('reply-count-node-' + data.id);
+
+				if (!replyCountNode)
+					replyCountNode = window.L.DomUtil.create('div','cool-annotation-reply-count cool-annotation-content', $(container).find('.cool-annotation-content-wrapper')[0]);
+
+				replyCountNode.id = 'reply-count-node-' + data.id;
+				replyCountNode.style.display = 'block';
+
+				var replyCountText;
+				if (numberOfReplies === 1) {
+					replyCountText = numberOfReplies + ' ' + _('reply');
+				}
+				else {
+					replyCountText = numberOfReplies + ' ' + _('replies');
+				}
+				$(replyCountNode).text(replyCountText);
+			}
+
+			var childContainer = document.getElementById('comment-thread' + data.id);
+
+			if (!childContainer)
+				childContainer = window.L.DomUtil.create('div', 'ui-content level-' + builder._currentDepth + ' ' + builder.options.cssClass, mainContainer);
+
+			childContainer.id = 'comment-thread' + data.id;
+			childContainer.title = _('Comment');
+
+			$(childContainer).hide();
+
+			if (builder.wizard) {
+				if ($(container).find('.cool-annotation-menubar').length > 0)
+					$(container).find('.cool-annotation-menubar')[0].style.display = 'none';
+
+				var arrowSpan = container.querySelector('[id=\'arrow span ' + data.id + '\']');
+
+				if (!arrowSpan)
+					arrowSpan = window.L.DomUtil.create('span','sub-menu-arrow', $(container).find('.cool-annotation-content-wrapper')[0]);
+
+				arrowSpan.style.display = 'block';
+				arrowSpan.textContent = '>';
+				arrowSpan.style.padding = '0px';
+				arrowSpan.id = 'arrow span ' + data.id;
+
+				$(container).find('.cool-annotation')[0].onclick = function() {
+					builder.wizard.goLevelDown(mainContainer);
+					childContainer.style.display = 'block';
+					if (!childContainer.childNodes.length)
+						builder.build(childContainer, data.children);
+				};
+
+				var backButton = document.getElementById('mobile-wizard-back');
+
+				backButton.onclick = function () {
+					if (backButton.className !== 'close-button') {
+						if (!mainContainer.childNodes.length)
+							builder.build(mainContainer, data);
+						if (data.type === 'rootcomment') {
+							var temp = document.getElementById('comment-thread' + data.id);
+							if (temp)
+								temp.style.display = 'block';
+						}
+					}
+				};
+			}
+		}
+
+		$(container).find('.cool-annotation')[0].addEventListener('click', function() {
+			app.sectionContainer.getSectionWithName(app.CSections.CommentList.name).highlightComment(data.annotation);
+		});
+		return false;
+	},
+
+	_commentControl: function(parentContainer, data, builder) {
+		builder._createComment(parentContainer, data, false);
+		return false;
+	},
+
+	_emptyCommentWizard: function(parentContainer, data, builder) {
+		window.L.DomUtil.addClass(parentContainer, 'content-has-no-comments');
+		var emptyCommentWizard = window.L.DomUtil.create('figure', 'empty-comment-wizard-container', parentContainer);
+		var imgNode = window.L.DomUtil.create('img', 'empty-comment-wizard-img', emptyCommentWizard);
+		app.LOUtil.setImage(imgNode, 'lc_showannotations.svg', builder.map);
+		imgNode.alt = data.text;
+
+		var textNode = window.L.DomUtil.create('figcaption', 'empty-comment-wizard', emptyCommentWizard);
+		textNode.innerText = data.text;
+		window.L.DomUtil.create('br', 'empty-comment-wizard', textNode);
+		if (app.isCommentEditingAllowed()) {
+			var linkNode = window.L.DomUtil.create('div', 'empty-comment-wizard-link', textNode);
+			linkNode.innerText = _('Insert Comment');
+			linkNode.onclick = builder.map.insertComment.bind(builder.map);
+		}
+	},
+
 	// Create a DOM node with an identifiable parent class
 	_createIdentifiable : function(type, classNames, parentContainer, data) {
 		return window.L.DomUtil.create(
@@ -1678,6 +1762,10 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 
 	_isStringCloseToURL : function(str) {
 		return str.indexOf('http') !== -1;
+	},
+
+	_isStringLCIcon: function (str) {
+		return str.indexOf('lc_') === 0;
 	},
 
 	// TODO: move to jsdialog/Widget.Toolitem.ts
@@ -1720,23 +1808,16 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		if (data.visible === false)
 			div.classList.add('hidden');
 
-		let enabledTooltip = null;
 		const setDisabled = (disabled) => {
 			if (disabled) {
 				div.setAttribute('disabled', 'true');
 				if (button) {
 					button.setAttribute('aria-disabled', true);
 				}
-				if (data.disabledTooltip) {
-					div.setAttribute('data-cooltip', builder._cleanText(data.disabledTooltip));
-				}
 			} else {
 				div.removeAttribute('disabled');
 				if (button) {
 					button.removeAttribute('aria-disabled');
-				}
-				if (data.disabledTooltip && enabledTooltip) {
-					div.setAttribute('data-cooltip', enabledTooltip);
 				}
 			}
 		};
@@ -1789,21 +1870,7 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 			else if (hasImage !== false){
 				if (data.icon) {
 					buttonImage = window.L.DomUtil.create('img', '', button);
-					if (this._isStringCloseToURL(data.icon)) {
-						buttonImage.src = data.icon;
-					} else {
-						app.LOUtil.setImage(buttonImage, data.icon, builder.map);
-						// Fall back to base64 PNG if the SVG is not available.
-						// checkIfImageExists sets display:none on error, so
-						// restore it when substituting the fallback image.
-						if (data.image) {
-							buttonImage.onerror = function() {
-								buttonImage.onerror = null;
-								buttonImage.src = data.image;
-								buttonImage.style.display = '';
-							};
-						}
-					}
+					this._isStringCloseToURL(data.icon) ? buttonImage.src = data.icon : app.LOUtil.setImage(buttonImage, data.icon, builder.map);
 				}
 				else if (data.image) {
 					buttonImage = window.L.DomUtil.create('img', '', button);
@@ -1848,7 +1915,6 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 			if (data.command && (!tooltip || !tooltip.includes('('))) // Add shortcut to tooltip based on command
 				tooltip = JSDialog.ShortcutsUtil.getShortcut(tooltip, data.command);
 			div.setAttribute('data-cooltip', tooltip);
-			enabledTooltip = tooltip;
 
 			// Set aria-pressed only if:
 			// 1. A real toggle button
@@ -1888,17 +1954,6 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 							'lc_' + iconName + '.svg',
 							builder.map,
 						);
-					}
-
-					// Swap tooltip text when activeTooltip is set
-					if (data.activeTooltip) {
-						if (isOn) {
-							div._wasActiveTooltip = true;
-							div.setAttribute('data-cooltip', data.activeTooltip);
-						} else if (div._wasActiveTooltip) {
-							div._wasActiveTooltip = false;
-							div.setAttribute('data-cooltip', enabledTooltip);
-						}
 					}
 				};
 
@@ -2013,11 +2068,8 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 					}
 				});
 
-				const closemenuParentId = parentContainer.id;
 				div.closeDropdown = function() {
-					builder.callback('toolbox', 'closemenu',
-						closemenuParentId ? {id: closemenuParentId} : parentContainer,
-						data.command, builder);
+					builder.callback('toolbox', 'closemenu', parentContainer, data.command, builder);
 
 					if (shouldArrowbackgroundButton) {
 						arrowbackground.setAttribute('aria-expanded', 'false');
@@ -2068,7 +2120,6 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		};
 
 		const hasLabel = !!controls.label;
-		const hasExplicitTooltip = !!data.tooltip;
 		const hasShortcut = JSDialog.ShortcutsUtil.hasShortcut(data.command);
 		var mouseEnterFunction = window.touch.mouseOnly(function () {
 			if (builder.map.tooltip)
@@ -2082,21 +2133,11 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 
 		$(controls.button).on('click', clickFunction);
 		$(controls.label).on('click', clickFunction);
-		if (data.doubleClickCommand) {
-			var doubleClickHandler = function(e) {
-				e.preventDefault();
-				e.stopPropagation();
-				if (div.hasAttribute('disabled')) return;
-				builder.map.sendUnoCommand(data.doubleClickCommand, data.doubleClickCommandArgs);
-			};
-			$(controls.button).on('dblclick', doubleClickHandler);
-			$(controls.label).on('dblclick', doubleClickHandler);
-		}
 		// We need a way to also handle the custom tooltip for any tool button like save in shortcut bar
 		if (data.isCustomTooltip) {
 			this._handleCustomTooltip(div, builder);
 		}
-		else if (!hasLabel || hasExplicitTooltip || hasShortcut) {
+		else if (!hasLabel || hasShortcut) {
 			$(div).on('mouseenter', mouseEnterFunction);
 			$(div).on('mouseleave', mouseLeaveFunction);
 		} else {
@@ -2295,7 +2336,7 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		builder._spinfieldControl(content, colsData, builder, callbackFunction);
 
 		var buttonData = { text: _('Insert Table') };
-		JSDialog.pushButton(content, buttonData, builder, function() {
+		builder._pushbuttonControl(content, buttonData, builder, function() {
 			var rowsCount = parseInt($('#rows > input.spinfield').get(0).value);
 			var colsCount = parseInt($('#cols > input.spinfield').get(0).value);
 			builder.map.sendUnoCommand('.uno:InsertTable?Columns=' + colsCount + '&Rows=' + rowsCount);
@@ -2324,8 +2365,7 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		if (!control && data.control)
 			control = this._getItemById(container, this._removeMenuId(data.control.id));
 		if (!control) {
-			window.app.console.warn('executeAction: not found control with id: "' + data.control_id +
-				'" to perform action: "' + data.action_type + '"');
+			window.app.console.warn('executeAction: not found control with id: "' + data.control_id + '"');
 			return;
 		}
 
@@ -2379,17 +2419,11 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 
 			// eg. in mobile wizard input is inside spin button div
 			var innerInput = control.querySelector('input');
-			var isSpinField = innerInput && control.classList.contains('spinfieldcontainer');
 			if (innerInput)
 				control = innerInput;
 
 			var currentText = this._cleanText(data.text);
-			if (isSpinField && control.parentElement._unit)
-				currentText = this._formatSpinFieldValue(currentText, control.parentElement._unit);
-			if (isSpinField)
-				this._setSpinFieldValue(control, currentText);
-			else
-				control.value = currentText;
+			control.value = currentText;
 			if (data.selection) {
 				var selection = data.selection.split(';');
 				if (selection.length === 2) {
@@ -2444,11 +2478,6 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 			}
 			break;
 
-		case 'rename':
-			control.setAttribute('modelId', data.new_id);
-			control.id = JSDialog.MakeIdUnique(data.new_id);
-			break;
-
 		case 'rendered_entry':
 		case 'rendered_combobox_entry':
 		{
@@ -2488,17 +2517,40 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		const elementId = this._removeMenuId(data.id);
 		const control = this._getItemById(container, elementId);
 		if (!control) {
+			if (elementId === 'PermissionMode' &&
+				window.ThisIsTheAndroidApp &&
+				window.app &&
+				app.socket &&
+				typeof app.socket.isTemporarilyReconnecting === 'function' &&
+				app.socket.isTemporarilyReconnecting()) {
+				var nowTs = Date.now();
+				if (!this._lastPermissionModeRecoverTs || nowTs - this._lastPermissionModeRecoverTs > 2000) {
+					this._lastPermissionModeRecoverTs = nowTs;
+					window.app.console.debug('PermissionMode update deferred during reconnect; scheduling refresh.');
+					window.setTimeout(function() {
+						if (!window.app || !app.map || !app.events || typeof app.events.fire !== 'function')
+							return;
+						var perm = (typeof app.map.isEditMode === 'function' && app.map.isEditMode()) ? 'edit' : 'readonly';
+						app.events.fire('updatepermission', {perm: perm});
+					}, 120);
+				}
+				return;
+			}
 			window.app.console.warn('jsdialogupdate: not found control with id: "' + elementId + '"');
+			if (elementId === 'zoom' && this.map && this.map.uiManager) {
+				var now = Date.now();
+				if (!this._lastZoomMissingRecoverTs || now - this._lastZoomMissingRecoverTs > 5000) {
+					this._lastZoomMissingRecoverTs = now;
+					window.app.console.warn('jsdialogupdate: zoom control missing, force UI rebuild');
+					this.map.uiManager.closeAll();
+					this.map.fire('closemobilewizard');
+				}
+			}
 			return;
 		}
 
 		var parent = control.parentNode;
 		if (!parent)
-			return;
-
-		// Don't rebuild a tree view while inline cell editing is active;
-		// the backend will send an up-to-date state after editend.
-		if (control.querySelector('.ui-treeview-inline-edit'))
 			return;
 
 		// Restore expander depth so heading levels are correct when
@@ -2514,12 +2566,6 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 		var focusedId = focusedElementInDialog ? focusedElementInDialog.id : null;
 
 		var temporaryParent = new DocumentFragment();
-
-		// Preserve spinfield unit across rebuilds: if the old element stored
-		// a unit and the incoming data does not carry one, inject it so the
-		// rebuilt widget keeps showing the unit.
-		if (!data.unit && control.dataset && control.dataset.unit)
-			data.unit = control.dataset.unit;
 
 		// Remove the id of the to-be-removed control, so JSDialog.MakeIdUnique() won't rename
 		// data.id to something we can't find later.
@@ -2604,11 +2650,6 @@ window.L.Control.JSDialogBuilder = window.L.Control.extend({
 
 		if (control) {
 			this._setGridStyles(control, data);
-
-			if (data.tooltip) {
-				control.setAttribute('data-cooltip', this._cleanText(data.tooltip));
-				window.L.control.attachTooltipEventListener(control, this.map);
-			}
 		}
 
 		// natural tab-order when using keyboard navigation

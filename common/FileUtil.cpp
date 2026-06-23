@@ -9,19 +9,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Cross-platform file and directory utilities.
- * Functions: copy(), removeFile(), stat(), updateTimestamps()
- */
-
 #include <config.h>
-
-#include "FileUtil.hpp"
 
 #include <common/Anonymizer.hpp>
 #include <common/Log.hpp>
 #include <common/Unit.hpp>
 #include <common/Util.hpp>
+
+#include "FileUtil.hpp"
 
 #include <Poco/File.h>
 #include <Poco/Path.h>
@@ -48,13 +43,11 @@ namespace FileUtil
         return name;
     }
 
-    namespace
-    {
     // Handle short writes and EINTR
-    ssize_t writeBuffer(int to, const char* buffer, size_t size, const std::string& toPath)
+    ssize_t writeBuffer(int to, const char *buffer, size_t size, const std::string& toPath)
     {
         size_t count = size;
-        const char* ptr = buffer;
+        const char *ptr = buffer;
         while (count)
         {
             ssize_t written;
@@ -67,10 +60,8 @@ namespace FileUtil
         }
         return size;
     }
-    } // namespace
 
-    bool copy(const std::string& fromPath, const std::string& toPath, bool log, bool throw_on_error,
-              LOG_CAPTURE_CALLER)
+    bool copy(const std::string& fromPath, const std::string& toPath, bool log, bool throw_on_error)
     {
         int from = -1, to = -1;
         try
@@ -177,8 +168,7 @@ namespace FileUtil
         return newTmp;
     }
 
-    bool copyAtomic(const std::string& fromPath, const std::string& toPath, bool preserveTimestamps,
-                    LOG_CAPTURE_CALLER)
+    bool copyAtomic(const std::string& fromPath, const std::string& toPath, bool preserveTimestamps)
     {
         const std::string randFilename = toPath + Util::rng::getFilename(12);
         if (copy(fromPath, randFilename, /*log=*/false, /*throw_on_error=*/false))
@@ -186,15 +176,13 @@ namespace FileUtil
             if (preserveTimestamps)
             {
                 const Stat st(fromPath);
-#ifndef _WIN32
                 updateTimestamps(randFilename,
-#if defined(IOS) || defined(MACOS)
+#ifdef IOS
                                  st.sb().st_atimespec, st.sb().st_mtimespec
 #else
                                  st.sb().st_atim, st.sb().st_mtim
 #endif
                                  );
-#endif
             }
 
             // Now rename atomically, replacing any existing files with the same name.
@@ -450,8 +438,11 @@ namespace FileUtil
         }
 
         // we should be able to run just OK with 5GB for production or 1GB for development
-        constexpr int64_t gb = Util::isDebugEnabled() ? 1 : 5;
-
+#if ENABLE_DEBUG
+        constexpr int64_t gb(1);
+#else
+        constexpr int64_t gb(5);
+#endif
         constexpr int64_t ENOUGH_SPACE = gb*1024*1024*1024;
 
         return platformDependentCheckDiskSpace(path, ENOUGH_SPACE);

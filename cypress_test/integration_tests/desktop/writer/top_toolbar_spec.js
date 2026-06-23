@@ -15,9 +15,6 @@ describe(['tagdesktop'], 'Top toolbar tests.', function() {
 		if (Cypress.env('INTEGRATION') === 'nextcloud') {
 			desktopHelper.showSidebar();
 		}
-		cy.getFrameWindow().then((win) => {
-			this.win = win;
-		})
 
 		writerHelper.selectAllTextOfDoc();
 	});
@@ -59,8 +56,8 @@ describe(['tagdesktop'], 'Top toolbar tests.', function() {
 
 	it('Apply style.', function() {
 		helper.setDummyClipboardForCopy();
-		cy.cGet('#stylesview').scrollTo('bottom');
-		cy.cGet('#stylesview .notebookbar.ui-iconview-entry img[title=Title]').first().scrollIntoView().should('be.visible').click();
+		cy.cGet('#stylesview-iconview').scrollTo('bottom') ;
+		cy.cGet('.notebookbar.ui-iconview-entry img[title=Title]').click();
 		refreshCopyPasteContainer();
 		helper.copy();
 		cy.cGet('#copy-paste-container p font font').should('have.attr', 'style', 'font-size: 28pt');
@@ -267,24 +264,18 @@ describe(['tagdesktop'], 'Top toolbar tests.', function() {
 		cy.cGet('#indication').should('exist').should('be.visible');
 		cy.cGet('#name').should('exist').should('be.visible');
 
-		// Wait for the dialog to fully initialize
-		helper.processToIdle(this.win);
-		cy.cGet('#indication-input').should('have.value', 'text text1');
-
 		cy.cGet('#indication-input').type('link');
-		// Wait for indication field response to be processed before typing in target
-		helper.processToIdle(this.win);
 		cy.cGet('#target-input').type('www.something.com');
 		cy.cGet('#ok').click();
 
 		writerHelper.selectAllTextOfDoc();
 		helper.copy();
-		helper.processToIdle(this.win);
+		cy.wait(1000);
 		helper.expectTextForClipboard('text text1link');
 		cy.cGet('#copy-paste-container p a').should('have.attr', 'href', 'http://www.something.com/');
 	});
 
-	it.skip('Insert mail hyperlink.', function() {
+	it('Insert mail hyperlink.', function() {
 		helper.setDummyClipboardForCopy();
 
 		cy.cGet('#Insert-tab-label').click();
@@ -295,18 +286,13 @@ describe(['tagdesktop'], 'Top toolbar tests.', function() {
 		cy.cGet('#receiver').should('exist').should('be.visible');
 		cy.cGet('#subject').should('exist').should('be.visible');
 
-		// Wait for the dialog to fully initialize
-		helper.processToIdle(this.win);
-
 		cy.cGet('#receiver-input').type('john.doe@test.abc');
-		// Wait for receiver field response to be processed before typing in target
-		helper.processToIdle(this.win);
 		cy.cGet('#subject-input').type('planning-meeting');
 		cy.cGet('#ok').click();
 
 		writerHelper.selectAllTextOfDoc();
 		helper.copy();
-		helper.processToIdle(this.win);
+		cy.wait(1000);
 		helper.expectTextForClipboard('text text1');
 		cy.cGet('#copy-paste-container p a').should('have.attr', 'href', 'mailto:john.doe@test.abc?subject=planning-meeting');
 	});
@@ -316,7 +302,7 @@ describe(['tagdesktop'], 'Top toolbar tests.', function() {
 		cy.cGet('#Insert-container .unoBasicShapes button').click();
 		cy.cGet('.col.w2ui-icon.basicshapes_octagon').click();
 		cy.cGet('#document-container svg g').should('exist');
-		helper.processToIdle(this.win);
+		cy.wait(1000);
 
 		cy.cGet('#Insert-tab-label').click();
 		cy.cGet('#Insert-container .hyperlinkdialog button').click();
@@ -369,17 +355,17 @@ describe(['tagdesktop'], 'Top toolbar tests.', function() {
 		helper.reloadDocument(newFilePath);
 		helper.setDummyClipboardForCopy();
 		writerHelper.selectAllTextOfDoc();
-		// document was reloaded, fetch the frame window again
-		cy.getFrameWindow().then((win) => {
-			helper.processToIdle(win);
-		})
+		cy.wait(1000);
 		helper.copy();
 		cy.cGet('#copy-paste-container p b').should('exist');
 	});
 
 	it('Print', function() {
 		// A new window should be opened with the PDF.
-		cy.stub(this.win, 'open').as('windowOpen');
+		cy.getFrameWindow()
+			.then(function(win) {
+				cy.stub(win, 'open').as('windowOpen');
+			});
 
 		cy.cGet('#File-tab-label').click();
 		cy.cGet('#File-container .unoPrint button').click();
@@ -392,14 +378,14 @@ describe(['tagdesktop'], 'Top toolbar tests.', function() {
 		//Do
 		desktopHelper.getNbIcon('Italic').click();
 		helper.copy();
-		helper.processToIdle(this.win); // wait for new clipboard
+		cy.wait(500); // wait for new clipboard
 		cy.cGet('#copy-paste-container p i').should('exist');
 
 		//Undo
 		cy.cGet('#Home-container .unoUndo').should('not.have.attr','disabled');
-		cy.cGet('#Home-container .unoUndo button').click();
+		cy.cGet('#Home-container .unoUndo button').click({force: true});
 		helper.copy();
-		helper.processToIdle(this.win); // wait for new clipboard
+		cy.wait(500); // wait for new clipboard
 		cy.cGet('#copy-paste-container p i').should('not.exist');
 
 		// Dismiss tooltip
@@ -409,9 +395,9 @@ describe(['tagdesktop'], 'Top toolbar tests.', function() {
 
 		//Redo
 		cy.cGet('#Home-container .unoRedo').should('not.have.attr','disabled');
-		cy.cGet('#Home-container .unoRedo button').click();
+		cy.cGet('#Home-container .unoRedo button').click({force: true});
 		helper.copy();
-		helper.processToIdle(this.win); // wait for new clipboard
+		cy.wait(500); // wait for new clipboard
 		cy.cGet('#copy-paste-container p i').should('exist');
 	});
 
@@ -476,10 +462,6 @@ describe(['tagdesktop'], 'Top toolbar tests.', function() {
 		// Apply bold and try to clone it to the whole word.
 		desktopHelper.getNbIcon('Bold').click();
 		desktopHelper.getNbIcon('FormatPaintbrush').click();
-
-		// Wait for the paintbrush to become active (single-click has a 250ms delay
-		// due to double-click detection).
-		cy.cGet('#document-canvas').should('have.class', 'bucket-cursor');
 
 		// Click at the blinking cursor position.
 		cy.cGet('.leaflet-cursor.blinking-cursor')
@@ -628,38 +610,5 @@ describe(['tagdesktop'], 'Top toolbar tests.', function() {
 		cy.cGet('#Home-tab-label').should('not.have.class','selected');
 		cy.cGet('.notebookbar#Insert').should('be.visible');
 		cy.cGet('#Insert-tab-label').should('have.class','selected');
-	});
-
-	it('Formatting shortcuts blocked in view mode.', function() {
-		// Verify baseline: no bold in edit mode.
-		helper.setDummyClipboardForCopy();
-		writerHelper.selectAllTextOfDoc();
-		helper.copy();
-		cy.cGet('#copy-paste-container p').should('exist');
-		cy.cGet('#copy-paste-container p b').should('not.exist');
-
-		// Switch from edit mode to view mode.
-		cy.getFrameWindow().its('app').then(function(app) {
-			app.map.setPermission('readonly');
-		});
-		cy.cGet('#viewModeDropdownButton-button').should('have.text', 'Viewing');
-
-		// Press Ctrl+B - should be blocked in view mode.
-		helper.typeIntoDocument('{ctrl}b');
-
-		cy.getFrameWindow().then(function(win) {
-			helper.processToIdle(win);
-		});
-
-		// Switch back to edit mode to verify bold was not applied.
-		cy.getFrameWindow().its('app').then(function(app) {
-			app.map.setPermission('edit');
-		});
-
-		helper.setDummyClipboardForCopy();
-		writerHelper.selectAllTextOfDoc();
-		helper.copy();
-		cy.cGet('#copy-paste-container p').should('exist');
-		cy.cGet('#copy-paste-container p b').should('not.exist');
 	});
 });

@@ -9,17 +9,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Common utilities for WOPI upload conflict testing scenarios.
- */
-
 #pragma once
 
 #include <string>
 
 #include <Poco/Net/HTTPRequest.h>
 
-#include <WopiTestServer.hpp>
+#include "WopiTestServer.hpp"
 
 /**
  * This is a base class with a number of test cases which assert that the
@@ -63,7 +59,7 @@ protected:
     _scenario;
 
     static constexpr auto OriginalDocContent = "Original contents";
-    static constexpr auto ModifiedOriginalDocContent = "aOriginal contents\n";
+    static constexpr auto ModifiedOriginalDocContent = "\ufeffaOriginal contents\n";
     static constexpr auto ConflictingDocContent = "Modified in-storage contents";
 
     std::size_t getExpectedCheckFileInfo() const { return _expectedCheckFileInfo; }

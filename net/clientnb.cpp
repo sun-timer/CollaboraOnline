@@ -9,15 +9,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Simple HTTP/WebSocket client for testing and benchmarking purposes.
- * Application: command-line test client using Poco networking
- */
-
 #include <config.h>
-
-#include <common/NumUtil.hpp>
-#include <common/Util.hpp>
 
 #include <cstdlib>
 #include <cstring>
@@ -42,6 +34,8 @@
 #include <Poco/Util/Option.h>
 #include <Poco/Util/OptionSet.h>
 #include <Poco/Runnable.h>
+
+#include <Util.hpp>
 
 using Poco::Runnable;
 using Poco::Net::HTTPRequest;
@@ -108,7 +102,7 @@ public:
         try {
 //            std::cerr << "try to get response\n";
             const std::string result = getResponseString();
-            number = NumUtil::stoi(result);
+            number = std::stoi(result);
         }
         catch (const Poco::Exception &e)
         {

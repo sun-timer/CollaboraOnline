@@ -9,31 +9,26 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Implementation of request vetting and validation.
- * Classes: RequestVettingStation
- */
-
 #include <config.h>
 
-#include "RequestVettingStation.hpp"
+#include <RequestVettingStation.hpp>
 
 #include <common/Anonymizer.hpp>
+#include <COOLWSD.hpp>
+#include <RequestDetails.hpp>
+#include <TraceEvent.hpp>
+#include <Exceptions.hpp>
+#include <Log.hpp>
+#include <DocumentBroker.hpp>
+#include <ClientSession.hpp>
+#include <common/JailUtil.hpp>
 #include <common/JsonUtil.hpp>
-#include <common/Log.hpp>
-#include <common/TraceEvent.hpp>
-#include <common/Util.hpp>
-#include <wsd/COOLWSD.hpp>
-#include <wsd/CacheUtil.hpp>
-#include <wsd/ClientSession.hpp>
-#include <wsd/DocumentBroker.hpp>
-#include <wsd/Exceptions.hpp>
-#include <wsd/RequestDetails.hpp>
-#include <wsd/ServerAuditUtil.hpp>
+#include <CacheUtil.hpp>
+#include <Util.hpp>
+#include <ServerAuditUtil.hpp>
 #include <wsd/Storage.hpp>
 
 #if !MOBILEAPP
-#include <common/JailUtil.hpp>
 #include <wopi/CheckFileInfo.hpp>
 #endif // !MOBILEAPP
 
@@ -440,9 +435,9 @@ std::shared_ptr<DocumentBroker> RequestVettingStation::createDocBroker(
         // Indicate to the client that we're connecting to the docbroker.
         if (_ws)
         {
-            static constexpr std::string_view statusConnect = "progress: { \"id\":\"connect\" }";
+            static constexpr const char* const statusConnect = "progress: { \"id\":\"connect\" }";
             LOG_TRC("Sending to Client [" << statusConnect << ']');
-            _ws->sendTextMessage(statusConnect);
+            _ws->sendMessage(statusConnect);
         }
 
         LOG_DBG("DocBroker [" << docKey << "] acquired for [" << url << ']');
@@ -456,18 +451,16 @@ std::shared_ptr<DocumentBroker> RequestVettingStation::createDocBroker(
     return nullptr;
 }
 
-namespace
-{
-void sendErrorAndShutdownWS(const std::shared_ptr<WebSocketHandler>& ws, const std::string_view msg,
-                            WebSocketHandler::StatusCodes statusCode)
+static void sendErrorAndShutdownWS(const std::shared_ptr<WebSocketHandler>& ws,
+                                   const std::string& msg,
+                                   WebSocketHandler::StatusCodes statusCode)
 {
     if (ws)
     {
-        ws->sendTextMessage(msg);
+        ws->sendMessage(msg);
         ws->shutdown(statusCode, msg); // And ignore input (done in shutdown()).
     }
 }
-} // namespace
 
 void RequestVettingStation::createClientSession(const std::shared_ptr<DocumentBroker>& docBroker,
                                                 const std::string& docKey, const std::string& url,
@@ -586,7 +579,7 @@ void RequestVettingStation::createClientSession(const std::shared_ptr<DocumentBr
         });
 }
 
-void RequestVettingStation::sendErrorAndShutdown(const std::string_view msg,
+void RequestVettingStation::sendErrorAndShutdown(const std::string& msg,
                                                  WebSocketHandler::StatusCodes statusCode)
 {
     sendErrorAndShutdownWS(_ws, msg, statusCode);

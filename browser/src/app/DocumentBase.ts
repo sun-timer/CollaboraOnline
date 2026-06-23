@@ -25,7 +25,6 @@ class DocumentBase {
 	public activeView: DocumentViewBase;
 	private activeViewSelectionColor = 'lightblue'; // Overwritten in constructor.
 
-	public partHasComments: boolean | undefined = undefined;
 	protected _fileSize: cool.SimplePoint;
 
 	constructor() {
@@ -72,13 +71,6 @@ class DocumentBase {
 	private addSections() {
 		this.mouseControl = new MouseControl(app.CSections.MouseControl.name);
 		app.sectionContainer.addSection(this.mouseControl);
-
-		if (
-			app.map._docLayer._docType === 'text' &&
-			app.map.uiManager?.isRulerVisible()
-		) {
-			app.sectionContainer.addSection(new cool.RulerSpacerSection());
-		}
 	}
 
 	public get fileSize(): cool.SimplePoint {

@@ -4,14 +4,6 @@ var helper = require('../../common/helper');
 var calcHelper = require('../../common/calc_helper');
 var desktopHelper = require('../../common/desktop_helper');
 
-// That properties popup doesn't go by itself.
-// So I close it here in order to prevent this test from failure when we fix that popup closing issue.
-function closeNotebookbarPopup() {
-	cy.cGet('body').type('{esc}');
-	cy.cGet('#document-canvas').realClick();
-	cy.cGet('.jsdialog-overlay').should('not.exist');
-}
-
 describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Test jumping on large cell selection', function() {
 
 	beforeEach(function() {
@@ -63,7 +55,8 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Test jumping on large cell
 
 	it('Scroll and check drawing on frozen part of the view', function() {
 		// We will add a new sheet. Go to a cell other than A1. We will check if the new sheet is added by checking the current cell.
-		calcHelper.enterCellAddressAndConfirm(this.win, 'B2');
+		helper.typeIntoInputField(helper.addressInputSelector, 'B2');
+		calcHelper.assertAddressAfterIdle(this.win, 'B2');
 
 		// Add a new sheet.
 		cy.cGet('#insertsheet-button').click();
@@ -71,23 +64,17 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Test jumping on large cell
 		calcHelper.assertAddressAfterIdle(this.win, 'A1');
 
 		// Go to a cell that we know is visible.
-		calcHelper.enterCellAddressAndConfirm(this.win, 'D7');
+		helper.typeIntoInputField(helper.addressInputSelector, 'D7');
+		calcHelper.assertAddressAfterIdle(this.win, 'D7');
 
 		// Find freeze panes button and click.
 		cy.cGet('#View-tab-label').click();
 		desktopHelper.getNbIconArrow('FreezePanes').click();
-		// There are two FreezePanes buttons, the first in the main
-		// toolbar we clicked to create the dropdown in which the
-		// second appears. We want to wait until that second one is
-		// available and click that one, not reclick the first.
-		desktopHelper.getNbIcon('FreezePanes').should('have.length', 2).last().click();
-		closeNotebookbarPopup();
-
-		// Wait for freeze panes statechanged message to arrive from core.
-		helper.waitForMapState('.uno:FreezePanes', 'true');
+		desktopHelper.getNbIcon('FreezePanes').last().click();
+		cy.cGet('.jsdialog-overlay').click(); // close popup
 
 		// Scroll down.
-		calcHelper.enterCellAddressAndConfirm(this.win, 'Z110');
+		helper.typeIntoInputField(helper.addressInputSelector, 'Z110');
 
 		// Now click on A1. Use click for this, not the input field. We also need to test the core coordinates.
 		calcHelper.clickOnFirstCell();
@@ -112,7 +99,11 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Test jumping on large cell
 		desktopHelper.getNbIconArrow('AlignTop').click();
 		desktopHelper.getNbIcon('WrapText').click();
 
-		closeNotebookbarPopup();
+		// Below 3 lines are to close the popup.
+		// That properties popup doesn't go by itself.
+		// So I close it here in order to prevent this test from failure when we fix that popup closing issue.
+		cy.cGet('body').type('{esc}'); // Close popup.
+		cy.cGet('#document-canvas').realClick();
 		helper.typeIntoInputField(helper.addressInputSelector, 'B10');
 
 		helper.typeIntoDocument('Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet.');
@@ -134,8 +125,6 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Test jumping on large cell
 			// Real mouse move to trigger the issue that previous commit fixes.
 			cy.cGet('body').realMouseMove(centerX, topY);
 			cy.cGet('body').rightclick(centerX, topY);
-
-			// Note: The context menu of the headers are still jquery based.
 			cy.cGet('.context-menu-link.insert-columns-before').should('exist');
 			cy.cGet('.context-menu-link.insert-columns-before').should('be.visible');
 
@@ -144,11 +133,8 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Test jumping on large cell
 			cy.cGet('#document-canvas').realClick();
 			cy.wait(300);
 			cy.cGet('body').rightclick(centerX, centerY);
-
-			// Note: The context menu of the document area uses jsdialog dropdown.
-			const pasteEntry = helper.getContextMenuItem('Paste');
-			pasteEntry.should('exist');
-			pasteEntry.should('be.visible');
+			cy.cGet('.context-menu-link.paste').should('exist');
+			cy.cGet('.context-menu-link.paste').should('be.visible');
 		});
 	});
 });
@@ -192,9 +178,8 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Test Cell Selections', fun
 		helper.typeIntoInputField(helper.addressInputSelector, 'Z1000');
 
 		cy.cGet('#document-container').rightclick();
-		const pasteEntry = helper.getContextMenuItem('Paste');
-		pasteEntry.should('exist');
-		pasteEntry.should('be.visible');
+		cy.cGet('.context-menu-link.paste').should('exist');
+		cy.cGet('.context-menu-link.paste').should('be.visible');
 
 		cy.cGet('#document-container').then(function(items) {
 			const rect = items[0].getBoundingClientRect();
@@ -252,8 +237,9 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Test triple click content 
 		});
 	});
 
-	it.skip('Triple click should select the cell content.', function() {
-		calcHelper.enterCellAddressAndConfirm(this.win, 'A1');
+	it('Triple click should select the cell content.', function() {
+		helper.typeIntoInputField(helper.addressInputSelector, 'A1');
+		calcHelper.assertAddressAfterIdle(this.win, 'A1');
 
 		// Triple click on second first in second row
 		cy.cGet('#document-container')
@@ -281,13 +267,15 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Test decimal separator of 
 	});
 
 	it('Check different decimal separators', function() {
-		calcHelper.enterCellAddressAndConfirm(this.win, 'A1');
+		helper.typeIntoInputField(helper.addressInputSelector, 'A1');
+		calcHelper.assertAddressAfterIdle(this.win, 'A1');
 
 		cy.wrap(this.win).then(win => {
 			cy.expect(win.app.calc.decimalSeparator).to.be.equal('.');
 		});
 
-		calcHelper.enterCellAddressAndConfirm(this.win, 'B1');
+		helper.typeIntoInputField(helper.addressInputSelector, 'B1');
+		calcHelper.assertAddressAfterIdle(this.win, 'B1');
 
 		cy.wrap(this.win).then(win => {
 			cy.expect(win.app.calc.decimalSeparator).to.be.equal(',');

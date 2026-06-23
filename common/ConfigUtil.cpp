@@ -9,25 +9,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Configuration file utilities and helpers.
- * Functions: getString(), getInt(), getBool() - Config value accessors
- */
-
 #include <config.h>
 
-#include "ConfigUtil.hpp"
-
-#include <common/Util.hpp>
+#include <ConfigUtil.hpp>
+#include <Util.hpp>
 
 #include <Poco/Util/AbstractConfiguration.h>
 #include <Poco/Util/XMLConfiguration.h>
 
 #include <cassert>
-#include <fstream>
-#include <sstream>
-#include <stdexcept>
 #include <string>
+#include <sstream>
 #include <unordered_map>
 
 
@@ -53,7 +45,11 @@ RuntimeConstant<bool> SslTermination;
 //       except for properties, which are sorted before the value, e.g.
 //       "setting[@name]" before "setting", which is more readable.
 static const std::unordered_map<std::string, std::string> DefAppConfig = {
+#if !MOBILEAPP
     { "accessibility.enable", "false" },
+#else
+    { "accessibility.enable", "true" },
+#endif
     { "admin_console.enable", "true" },
     { "admin_console.enable_pam", "false" },
     { "admin_console.logging.admin_action", "true" },
@@ -330,20 +326,6 @@ void initialize(const std::string& xml)
     std::istringstream iss(xml);
     XmlConfig.reset(new Poco::Util::XMLConfiguration(iss));
     initialize(XmlConfig);
-}
-
-void initializeFromFile(const std::string& filename)
-{
-    std::ifstream ifs(filename);
-    if (!ifs)
-    {
-        throw std::invalid_argument("The config xml file [" + filename +
-                                    "] is invalid or not found");
-    }
-
-    std::ostringstream oss;
-    oss << ifs.rdbuf();
-    initialize(oss.str());
 }
 
 bool isInitialized() { return Config != nullptr; }

@@ -80,7 +80,7 @@ class SearchEditWidget extends EditWidget {
 	}
 
 	private updateSearchButtons() {
-		var toolbar = (window as any).mode.isSmallScreenDevice()
+		var toolbar = (window as any).mode.isMobile()
 			? app.map.mobileSearchBar
 			: app.map.statusBar;
 		if (!toolbar) {
@@ -92,7 +92,7 @@ class SearchEditWidget extends EditWidget {
 		if (this.edit.input.value === '') {
 			toolbar.enableItem('searchprev', false);
 			toolbar.enableItem('searchnext', false);
-			if (window.mode.isSmallScreenDevice()) {
+			if (window.mode.isMobile()) {
 				toolbar.enableItem('cancelsearch', false);
 			} else {
 				toolbar.showItem('cancelsearch', false);
@@ -100,7 +100,7 @@ class SearchEditWidget extends EditWidget {
 		} else {
 			toolbar.enableItem('searchprev', true);
 			toolbar.enableItem('searchnext', true);
-			if (window.mode.isSmallScreenDevice()) {
+			if (window.mode.isMobile()) {
 				toolbar.enableItem('cancelsearch', true);
 			} else {
 				toolbar.showItem('cancelsearch', true);

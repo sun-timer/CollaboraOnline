@@ -5,17 +5,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * URI encoding and decoding utilities.
- * Classes: Uri - Functions: encode(), decode(), needsEncoding()
- */
-
 #include <config.h>
-
-#include "Uri.hpp"
 
 #include <common/Log.hpp>
 #include <common/Util.hpp>
+
+#include "Uri.hpp"
 
 #include <Poco/URI.h>
 
@@ -35,20 +30,6 @@ std::string Uri::decode(const std::string& uri)
     std::string decoded;
     Poco::URI::decode(uri, decoded);
     return decoded;
-}
-
-std::string Uri::encodeAllPercent(const std::string_view path)
-{
-    std::string result;
-    result.reserve(path.size());
-    for (const char c : path)
-    {
-        if (c == '%')
-            result += "%25";
-        else
-            result += c;
-    }
-    return result;
 }
 
 bool Uri::needsEncoding(const std::string& uri, const std::string& reserved)
@@ -86,13 +67,10 @@ bool Uri::hasReadonlyPermission(const std::string& url)
     //FIXME: Replace with our own implementation.
     for (const auto& param : Poco::URI(url).getQueryParameters())
     {
-        if (!param.first.empty())
+        LOG_TRC("Query param: " << param.first << ", value: " << param.second);
+        if (param.first == "permission" && param.second == "readonly")
         {
-            LOG_TRC("Query param: [" << param.first << "], value: [" << param.second << ']');
-            if (param.first == "permission" && param.second == "readonly")
-            {
-                return true;
-            }
+            return true;
         }
     }
 

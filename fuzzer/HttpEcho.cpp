@@ -5,16 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Simple HTTP echo server for fuzzing and testing.
- * Functions: HTTP request echo, socket handling
- */
-
 #include <config.h>
 
 #include <cstdlib>
 
-#include <Socket.hpp>
+#include "Socket.hpp"
 #include <test/HttpTestServer.hpp>
 
 #include <Poco/URI.h>
@@ -26,15 +21,15 @@
 #include <test/lokassert.hpp>
 
 #if ENABLE_SSL
-#include <Ssl.hpp>
+#include "Ssl.hpp"
 #include <net/SslSocket.hpp>
 #endif
 #include <net/ServerSocket.hpp>
 #include <net/DelaySocket.hpp>
 #include <net/HttpRequest.hpp>
 #include <net/AsyncDNS.hpp>
-#include <common/FileUtil.hpp>
-#include <common/Util.hpp>
+#include <FileUtil.hpp>
+#include <Util.hpp>
 #include <fuzzer/Common.hpp>
 
 class HttpRequestTests final

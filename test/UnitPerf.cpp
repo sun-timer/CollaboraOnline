@@ -9,84 +9,56 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for performance measurements.
- */
-
 #include <config.h>
 #include <config_version.h>
 
-#include <common/FileUtil.hpp>
-#include <common/JsonUtil.hpp>
-#include <common/Log.hpp>
-#include <common/StringVector.hpp>
-#include <common/Unit.hpp>
-#include <common/Util.hpp>
-#include <test/WebSocketSession.hpp>
-#include <test/helpers.hpp>
-#include <test/lokassert.hpp>
-#include <tools/Replay.hpp>
+#include <Unit.hpp>
+#include <Util.hpp>
+#include <JsonUtil.hpp>
+#include <FileUtil.hpp>
+#include <helpers.hpp>
+#include <StringVector.hpp>
+#include <WebSocketSession.hpp>
 #include <wsd/COOLWSD.hpp>
 #include <wsd/DocumentBroker.hpp>
-
+#include <test/lokassert.hpp>
 #include <Poco/Util/LayeredConfiguration.h>
+#include <tools/Replay.hpp>
+#include <common/Log.hpp>
 
-#include <atomic>
-#include <condition_variable>
-#include <memory>
-#include <mutex>
 #include <string>
 #include <thread>
 
 class UnitPerf : public UnitWSD
 {
-    Util::SysStopwatch _timer;
-    std::shared_ptr<Stats> _stats;
-    std::unique_ptr<std::thread> _thread;
-    std::mutex _mutex;
-    std::condition_variable _cv;
-    bool _brokerDestroyed;
-    std::atomic<bool> _done;
-
-    void testPerf(const std::string& testType, const std::string& fileType,
-                  const std::string& traceStr);
+    void testPerf(std::string testType, std::string fileType, std::string tracesStr);
 
     void configure(Poco::Util::LayeredConfiguration& config) override
     {
         config.setString("logging.level", "critical");
         config.setString("logging.level_startup", "critical");
-        config.setBool("admin_console.enable", false);
 
-        //        pfm_initialize();
+//        pfm_initialize();
         UnitWSD::configure(config);
     }
 
+public:
+    UnitPerf();
     void invokeWSDTest() override;
     void onPerfDocumentLoading() override;
     void onPerfDocumentLoaded() override;
-    void onDocBrokerDestroy(const std::string& docKey) override;
-    void workerThread();
-
-public:
-    UnitPerf();
-    ~UnitPerf() override;
+    std::unique_ptr<Util::SysStopwatch> _timer;
+    std::shared_ptr<Stats> stats;
 };
 
-void UnitPerf::testPerf(const std::string& testType, const std::string& fileType,
-                        const std::string& traceStr)
+void UnitPerf::testPerf(std::string testType, std::string fileType, std::string traceStr)
 {
-    std::shared_ptr<Stats> stats = std::make_shared<Stats>();
-    stats->setTypeOfTest(testType);
-
-    {
-        std::unique_lock<std::mutex> lock(_mutex);
-        _stats = stats;
-        _brokerDestroyed = false;
-    }
+    stats = std::make_shared<Stats>();
+    stats->setTypeOfTest(std::move(testType));
 
     std::shared_ptr<TerminatingPoll> poll = std::make_shared<TerminatingPoll>("performance test");
 
-    const std::string docName = "empty." + fileType;
+    std::string docName = "empty." + fileType;
 
     std::string filePath, dummy;
 
@@ -105,38 +77,24 @@ void UnitPerf::testPerf(const std::string& testType, const std::string& fileType
         poll->poll(TerminatingPoll::DefaultPollTimeoutMicroS);
     } while (poll->continuePolling() && poll->getSocketCount() > 0);
 
-    std::unique_lock<std::mutex> lock(_mutex);
-    _cv.wait_for(lock, std::chrono::seconds(10), [this] { return _brokerDestroyed; });
-
     TST_LOG("Stats: " << [&](std::ostream& os) { stats->dump(os); });
 }
 
-UnitPerf::UnitPerf()
-    : UnitWSD("UnitPerf")
-    , _brokerDestroyed(false)
-    , _done(false)
+
+
+UnitPerf::UnitPerf() : UnitWSD("UnitPerf")
 {
     // Double of the default.
-#if ENABLE_RUNTIME_OPTIMIZATIONS
     constexpr std::chrono::minutes timeout_minutes(1);
-#else
-    constexpr std::chrono::minutes timeout_minutes(2);
-#endif
     setTimeout(timeout_minutes);
+
+    _timer.reset(new Util::SysStopwatch());
 }
 
-UnitPerf::~UnitPerf()
+void UnitPerf::invokeWSDTest()
 {
-    if (_thread && _thread->joinable())
-    {
-        _thread->join();
-    }
-}
-
-void UnitPerf::workerThread()
-{
-    TST_LOG("startup: " << _timer.elapsedTime());
-    _timer.restart();
+    TST_LOG("startup: " << _timer->elapsedTime().count() << "us\n");
+    _timer->restart();
 
     testPerf("writer", "odt", "/../traces/perf-writer.txt");
 
@@ -146,55 +104,23 @@ void UnitPerf::workerThread()
 
     testPerf("draw", "odg", "/../traces/perf-draw.txt");
 
-    const auto cpuTime = _timer.elapsedTime();
+    long cpuTime = _timer->elapsedTime().count();
 
-    TST_LOG("test: " << cpuTime);
+    TST_LOG("test: " << cpuTime << "us\n");
 
-    _done = true;
-}
-
-void UnitPerf::invokeWSDTest()
-{
-    if (!_thread)
-    {
-        _thread = std::make_unique<std::thread>(&UnitPerf::workerThread, this);
-    }
-    else if (_done)
-    {
-        _thread->join();
-        exitTest(TestResult::Ok);
-    }
+    exitTest(TestResult::Ok);
 }
 
 //Called when document loading process starts e.g. setup finishes
 void UnitPerf::onPerfDocumentLoading()
 {
-    std::unique_lock<std::mutex> lock(_mutex);
-    if (_stats)
-    {
-        _stats->endPhase(Log::Phase::Setup);
-    }
+    stats->endPhase(Log::Phase::Setup);
 }
 
 //called when document has been loaded into core
 void UnitPerf::onPerfDocumentLoaded()
 {
-    std::unique_lock<std::mutex> lock(_mutex);
-    if (_stats)
-    {
-        _stats->endPhase(Log::Phase::Load);
-    }
-}
-
-void UnitPerf::onDocBrokerDestroy(const std::string& docKey)
-{
-    TST_LOG("Dockey [" << docKey << "] destroyed");
-
-    UnitWSD::onDocBrokerDestroy(docKey);
-
-    std::unique_lock<std::mutex> lock(_mutex);
-    _brokerDestroyed = true;
-    _cv.notify_one();
+    stats->endPhase(Log::Phase::Load);
 }
 
 UnitBase* unit_create_wsd(void) { return new UnitPerf(); }

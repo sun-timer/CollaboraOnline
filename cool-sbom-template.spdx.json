@@ -147,6 +147,14 @@
       "licenseConcluded": "MIT"
     },
     {
+      "SPDXID": "SPDXRef-jquery-mousewheel",
+      "name": "jQuery Mousewheel",
+      "versionInfo": "3.1.13",
+      "filesAnalyzed": false,
+      "downloadLocation": "NONE",
+      "licenseConcluded": "MIT"
+    },
+    {
       "SPDXID": "SPDXRef-jquery-ui",
       "name": "jQuery UI",
       "versionInfo": "1.13.2",
@@ -161,6 +169,22 @@
       "filesAnalyzed": false,
       "downloadLocation": "NONE",
       "licenseConcluded": "BSD-2-Clause"
+    },
+    {
+      "SPDXID": "SPDXRef-ResizeObserverPolyfill",
+      "name": "ResizeObserverPolyfill.js",
+      "versionInfo": "1.5.1",
+      "filesAnalyzed": false,
+      "downloadLocation": "NONE",
+      "licenseConcluded": "MIT"
+    },
+    {
+      "SPDXID": "SPDXRef-select2",
+      "name": "Select2",
+      "versionInfo": "4.0.13",
+      "filesAnalyzed": false,
+      "downloadLocation": "NONE",
+      "licenseConcluded": "MIT"
     },
     {
       "SPDXID": "SPDXRef-smartmenus",
@@ -302,12 +326,27 @@
     {
       "spdxElementId": "SPDXRef-coolwsd",
       "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-jquery-mousewheel"
+    },
+    {
+      "spdxElementId": "SPDXRef-coolwsd",
+      "relationshipType": "CONTAINS",
       "relatedSpdxElement": "SPDXRef-jquery-ui"
     },
     {
       "spdxElementId": "SPDXRef-coolwsd",
       "relationshipType": "CONTAINS",
       "relatedSpdxElement": "SPDXRef-leaflet"
+    },
+    {
+      "spdxElementId": "SPDXRef-coolwsd",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-ResizeObserverPolyfill"
+    },
+    {
+      "spdxElementId": "SPDXRef-coolwsd",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-select2"
     },
     {
       "spdxElementId": "SPDXRef-coolwsd",

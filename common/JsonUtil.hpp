@@ -11,8 +11,8 @@
 
 #pragma once
 
-#include <common/Util.hpp>
-#include <common/Log.hpp>
+#include "Util.hpp"
+#include <Log.hpp>
 
 #include <cassert>
 #include <cstddef>

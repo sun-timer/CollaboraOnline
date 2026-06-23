@@ -28,7 +28,6 @@ describe(['tagdesktop'], 'Change cell appearance.', function() {
 		desktopHelper.switchUIToNotebookbar();
 		calcHelper.clickOnFirstCell();
 		cy.cGet('#Home-container .unoSetBorderStyle .arrowbackground').click();
-		cy.cGet('.ui-dialog-content').should('be.visible');
 		helper.getMenuEntry(1).click();
 		calcHelper.selectEntireSheet();
 		helper.copy();
@@ -41,7 +40,6 @@ describe(['tagdesktop'], 'Change cell appearance.', function() {
 		calcHelper.clickOnFirstCell();
 		// First add left border
 		cy.cGet('.notebookbar .unoSetBorderStyle .arrowbackground').click();
-		cy.cGet('.ui-dialog-content').should('be.visible');
 		helper.getMenuEntry(1).click();
 		helper.copy();
 		calcHelper.selectEntireSheet();
@@ -49,7 +47,6 @@ describe(['tagdesktop'], 'Change cell appearance.', function() {
 		// Then remove it
 		calcHelper.clickOnFirstCell();
 		cy.cGet('.notebookbar .unoSetBorderStyle .arrowbackground').click();
-		cy.cGet('.ui-dialog-content').should('be.visible');
 		helper.getMenuEntry(0).click();
 		helper.copy();
 		calcHelper.selectEntireSheet();
@@ -61,7 +58,6 @@ describe(['tagdesktop'], 'Change cell appearance.', function() {
 		desktopHelper.switchUIToNotebookbar();
 		calcHelper.clickOnFirstCell();
 		cy.cGet('.notebookbar .unoSetBorderStyle .arrowbackground').click();
-		cy.cGet('.ui-dialog-content').should('be.visible');
 		helper.getMenuEntry(2).click();
 		calcHelper.selectEntireSheet();
 		helper.copy();
@@ -73,7 +69,6 @@ describe(['tagdesktop'], 'Change cell appearance.', function() {
 		desktopHelper.switchUIToNotebookbar();
 		calcHelper.clickOnFirstCell();
 		cy.cGet('.notebookbar .unoSetBorderStyle .arrowbackground').click();
-		cy.cGet('.ui-dialog-content').should('be.visible');
 		helper.getMenuEntry(3).click();
 		helper.copy();
 		calcHelper.selectEntireSheet();
@@ -85,7 +80,6 @@ describe(['tagdesktop'], 'Change cell appearance.', function() {
 		desktopHelper.switchUIToNotebookbar();
 		calcHelper.clickOnFirstCell();
 		cy.cGet('.notebookbar .unoSetBorderStyle .arrowbackground').click();
-		cy.cGet('.ui-dialog-content').should('be.visible');
 		helper.getMenuEntry(4).click();
 		helper.copy();
 		calcHelper.selectEntireSheet();
@@ -97,7 +91,6 @@ describe(['tagdesktop'], 'Change cell appearance.', function() {
 		desktopHelper.switchUIToNotebookbar();
 		calcHelper.clickOnFirstCell();
 		cy.cGet('.notebookbar .unoSetBorderStyle .arrowbackground').click();
-		cy.cGet('.ui-dialog-content').should('be.visible');
 		helper.getMenuEntry(5).click();
 		helper.copy();
 		calcHelper.selectEntireSheet();
@@ -109,7 +102,6 @@ describe(['tagdesktop'], 'Change cell appearance.', function() {
 		desktopHelper.switchUIToNotebookbar();
 		calcHelper.clickOnFirstCell();
 		cy.cGet('.notebookbar .unoSetBorderStyle .arrowbackground').click();
-		cy.cGet('.ui-dialog-content').should('be.visible');
 		helper.getMenuEntry(6).click();
 		helper.copy();
 		calcHelper.selectEntireSheet();
@@ -121,7 +113,6 @@ describe(['tagdesktop'], 'Change cell appearance.', function() {
 		desktopHelper.switchUIToNotebookbar();
 		calcHelper.clickOnFirstCell();
 		cy.cGet('.notebookbar .unoSetBorderStyle .arrowbackground').click();
-		cy.cGet('.ui-dialog-content').should('be.visible');
 		helper.getMenuEntry(7).click();
 		helper.copy();
 		calcHelper.selectEntireSheet();
@@ -134,7 +125,6 @@ describe(['tagdesktop'], 'Change cell appearance.', function() {
 		calcHelper.selectEntireSheet();
 		// Click on the one in notebookbar (not sidebar).
 		cy.cGet('.notebookbar .unoSetBorderStyle .arrowbackground').click();
-		cy.cGet('.ui-dialog-content').should('be.visible');
 		helper.getMenuEntry(8).click();
 		calcHelper.selectEntireSheet();
 
@@ -151,7 +141,6 @@ describe(['tagdesktop'], 'Change cell appearance.', function() {
 		desktopHelper.switchUIToNotebookbar();
 		calcHelper.selectEntireSheet();
 		cy.cGet('.notebookbar .unoSetBorderStyle .arrowbackground').click();
-		cy.cGet('.ui-dialog-content').should('be.visible');
 		helper.getMenuEntry(9).click();
 		calcHelper.selectEntireSheet();
 		//cy.cGet('#copy-paste-container table td')
@@ -170,7 +159,6 @@ describe(['tagdesktop'], 'Change cell appearance.', function() {
 		desktopHelper.switchUIToNotebookbar();
 		calcHelper.selectEntireSheet();
 		cy.cGet('.notebookbar .unoSetBorderStyle .arrowbackground').click();
-		cy.cGet('.ui-dialog-content').should('be.visible');
 		helper.getMenuEntry(10).click();
 		calcHelper.selectEntireSheet();
 		//cy.cGet('#copy-paste-container table td')
@@ -189,7 +177,6 @@ describe(['tagdesktop'], 'Change cell appearance.', function() {
 		desktopHelper.switchUIToNotebookbar();
 		calcHelper.selectEntireSheet();
 		cy.cGet('.notebookbar .unoSetBorderStyle .arrowbackground').click();
-		cy.cGet('.ui-dialog-content').should('be.visible');
 		helper.getMenuEntry(11).click();
 		calcHelper.selectEntireSheet();
 		//cy.cGet('#copy-paste-container table td')

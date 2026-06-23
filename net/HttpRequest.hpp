@@ -9,16 +9,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Asynchronous HTTP/1.1 client implementation with request/response handling.
- * Classes: http::Session, http::Request, http::Response, http::Header
- */
-
 #pragma once
 
 #include <common/Common.hpp>
 #include <common/Log.hpp>
-#include <common/NumUtil.hpp>
 #include <common/StateEnum.hpp>
 #include <common/StringVector.hpp>
 #include <common/Util.hpp>
@@ -153,9 +147,6 @@
 
 namespace http
 {
-static constexpr int64_t MaxBodyLen = 2LL * 1024 * 1024 * 1024; ///< Prevent runaway cases.
-static constexpr int64_t MaxChunkLen = 128LL * 1024 * 1024; ///< Prevent runaway cases.
-
 /// The parse-state of a field.
 STATE_ENUM(FieldParseState,
            Unknown, ///< Not yet parsed.
@@ -244,20 +235,6 @@ enum class StatusCode : unsigned
     NotExtended = 510, // RFC 2774
     NetworkAuthenticationRequired = 511, // RFC 6585
 };
-
-/// Returns true if the given StatusCode is a redirect (301, 302, 307, 308).
-constexpr bool isRedirectStatusCode(StatusCode code)
-{
-    return code == StatusCode::MovedPermanently || code == StatusCode::Found ||
-           code == StatusCode::TemporaryRedirect || code == StatusCode::PermanentRedirect;
-}
-
-/// Returns true for status codes that indicate authorization failure (401, 403, 404).
-constexpr bool isUnauthorizedStatusCode(StatusCode code)
-{
-    return code == StatusCode::Unauthorized || code == StatusCode::Forbidden ||
-           code == StatusCode::NotFound;
-}
 
 /// Returns the Reason Phrase for a given HTTP Status Code.
 /// If not defined, "Unknown" is returned.
@@ -448,13 +425,6 @@ public:
         const ConstIterator end = this->end();
         return std::find_if(begin(), end, [&key](const Pair& pair) -> bool
                             { return Util::iequal(pair.first, key); }) != end;
-    }
-
-    [[nodiscard]] ConstIterator find(const std::string_view key) const
-    {
-        const ConstIterator end = this->end();
-        return std::find_if(begin(), end, [&key](const Pair& pair) -> bool
-                            { return Util::iequal(pair.first, key); });
     }
 
     /// Remove the first matching HTTP header field (case insensitive), returning true if found and removed.
@@ -675,18 +645,11 @@ public:
     /// The header object.
     const Header& header() const { return _header; }
 
-    /// Returns true if the HTTP header field exists (case insensitive).
-    [[nodiscard]] bool has(const std::string_view key) const { return _header.has(key); }
-
-    /// Returns the iterator to the header's key in question, if found. Otherwise end().
-    [[nodiscard]] Header::ConstIterator find(const std::string_view key) const
-    {
-        return _header.find(key);
-    }
-    Header::ConstIterator end() const { return _header.end(); }
+    // Returns true if the HTTP header field exists (case insensitive)
+    bool has(const std::string& key) const { return _header.has(key); }
 
     /// Get a header entry value by key, if found, defaulting to @def, if missing.
-    [[nodiscard]] std::string get(const std::string_view key,
+    [[nodiscard]] std::string get(const std::string_view& key,
                                   const std::string& def = std::string()) const
     {
         return _header.get(key, def);
@@ -877,7 +840,7 @@ class MultipartDataParser final
     static constexpr std::size_t MaxLineLength = 512;
 
 public:
-    explicit MultipartDataParser(const std::string& boundary)
+    MultipartDataParser(const std::string& boundary)
         : _delimiter("\r\n--" + boundary)
         , _dashBoundary(&_delimiter[2], _delimiter.size() - 2) // Skip CRLF
         , _boundary(&_delimiter[4], _delimiter.size() - 4) // Skip CRLF--
@@ -932,7 +895,7 @@ public:
 
     /// Construct a parser from a Request instance.
     /// Typically used for testing.
-    explicit RequestParser(http::Request& request)
+    RequestParser(http::Request& request)
         : _recvBodySize(0)
     {
         // By default we store the body in memory.
@@ -1031,7 +994,7 @@ public:
 
     /// Construct a StatusLine with a given code and
     /// the default protocol version.
-    explicit StatusLine(unsigned statusCodeNumber)
+    StatusLine(unsigned statusCodeNumber)
         : _httpVersion(HTTP_1_1)
         , _versionMajor(1)
         , _versionMinor(1)
@@ -1040,7 +1003,7 @@ public:
     {
     }
 
-    explicit StatusLine(StatusCode statusCode)
+    StatusLine(StatusCode statusCode)
         : StatusLine(static_cast<unsigned>(statusCode))
     {
     }
@@ -1375,16 +1338,13 @@ private:
     {
         assert(!_host.empty() && portNumber > 0 && !_port.empty() &&
                "Invalid hostname and portNumber for http::Sesssion");
-
-        if constexpr (Util::isDebugEnabled())
-        {
-            std::string scheme;
-            std::string hostString;
-            std::string portString;
-            assert(net::parseUri(_host, scheme, hostString, portString) && scheme.empty() &&
-                   portString.empty() && hostString == _host &&
-                   "http::Session expects a hostname and not a URI");
-        }
+#if ENABLE_DEBUG
+        std::string scheme;
+        std::string hostString;
+        std::string portString;
+        assert(net::parseUri(_host, scheme, hostString, portString) && scheme.empty() && portString.empty()
+               && hostString == _host && "http::Session expects a hostname and not a URI");
+#endif
     }
 
     /// Returns the given protocol's scheme.
@@ -1438,9 +1398,9 @@ public:
         if (portString.empty())
             return create(std::move(hostname), protocol, getDefaultPort(protocol));
 
-        const auto [port, success] = NumUtil::i32FromString(portString);
-        if (success && port > 0)
-            return create(std::move(hostname), protocol, port);
+        const std::pair<std::int32_t, bool> portPair = Util::i32FromString(portString);
+        if (portPair.second && portPair.first > 0)
+            return create(std::move(hostname), protocol, portPair.first);
 
         LOG_ERR_S("Invalid port [" << portString << "] in URI [" << uri
                                    << "] to http::Session::create");
@@ -1623,7 +1583,7 @@ public:
         }
     }
 
-    std::string getSslVerifyMessage() const
+    std::string getSslVerifyMessage()
     {
 #if ENABLE_SSL
         std::shared_ptr<StreamSocket> socket = _socket.lock();
@@ -1635,7 +1595,7 @@ public:
 #endif
     }
 
-    long getSslVerifyResult() const
+    long getSslVerifyResult()
     {
 #if ENABLE_SSL
         std::shared_ptr<StreamSocket> socket = _socket.lock();
@@ -1647,7 +1607,7 @@ public:
 #endif
     }
 
-    std::string getSslCert(std::string& subjectHash) const
+    std::string getSslCert(std::string& subjectHash)
     {
 #if ENABLE_SSL
         std::shared_ptr<StreamSocket> socket = _socket.lock();
@@ -1659,7 +1619,7 @@ public:
         return std::string();
     }
 
-    net::AsyncConnectResult connectionResult() const
+    net::AsyncConnectResult connectionResult()
     {
         return _result;
     }
@@ -1830,7 +1790,7 @@ private:
         }
     }
 
-    void shutdown(bool /*goingAway*/, const std::string_view /*statusMessage*/) override
+    void shutdown(bool /*goingAway*/, const std::string& /*statusMessage*/) override
     {
         LOG_TRC("shutdown");
     }
@@ -2086,8 +2046,8 @@ private:
         return false;
     }
 
-    int sendTextMessage(std::string_view, bool) const override { return 0; }
-    int sendBinaryMessage(std::string_view, bool) const override { return 0; }
+    int sendTextMessage(const char*, const size_t, bool) const override { return 0; }
+    int sendBinaryMessage(const char*, const size_t, bool) const override { return 0; }
 
 private:
     const std::string _host;
@@ -2142,12 +2102,6 @@ inline std::ostream& operator<<(std::ostream& os, const http::StatusCode& status
 inline std::ostringstream& operator<<(std::ostringstream& os, const http::StatusCode& statusCode)
 {
     os << static_cast<int>(statusCode) << " (" << getReasonPhraseForCode(statusCode) << ')';
-    return os;
-}
-
-inline std::ostream& operator<<(std::ostream& os, const http::Header::ConnectionToken& token)
-{
-    os << http::Header::name(token);
     return os;
 }
 

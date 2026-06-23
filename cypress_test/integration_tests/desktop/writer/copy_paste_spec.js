@@ -16,7 +16,8 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Clipboard operations.', fu
 
 		helper.setDummyClipboardForCopy();
 
-		helper.getContextMenuItem('Copy').click();
+		cy.cGet('body').contains('.context-menu-link', 'Copy')
+			.click();
 
 		cy.cGet('#copy-paste-container div p').should('have.text', 'text');
 	});
@@ -77,9 +78,8 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Clipboard operations.', fu
 
 		helper.setDummyClipboardForCopy();
 
-		const copyEntry = helper.getContextMenuItem('Copy');
-		copyEntry.should('be.visible');
-		copyEntry.click();
+		cy.cGet('body').contains('.context-menu-link', 'Copy')
+			.click();
 
 		// With DisableCopy active we should not copy to clipboard
 		cy.cGet('#copy-paste-container div p').should('not.have.text', 'text');

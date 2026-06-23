@@ -50,9 +50,6 @@ var NotebookbarAccessibilityDefinitions = function() {
 					} else if (document.getElementById(id + '-input')) {
 						// checkbox
 						list.push({ id: id + '-input', focusBack: rawList[i].accessibility.focusBack, combination: combination });
-					} else if (rawList[i].type === 'iconviewlist') {
-						// iconviewlist
-						list.push({ id: id + '-expand-button', focusBack:  rawList[i].accessibility.focusBack, combination: combination });
 					} else {
 						// other
 						list.push({ id: id, focusBack: rawList[i].accessibility.focusBack, combination: combination });
@@ -60,6 +57,9 @@ var NotebookbarAccessibilityDefinitions = function() {
 				}
 				else if (rawList[i].children && Array.isArray(rawList[i].children) && rawList[i].children.length > 0) {
 					this.getContentListRecursive(rawList[i].children, list, language);
+				}
+				else if (rawList[i].siblings && Array.isArray(rawList[i].siblings) && rawList[i].siblings.length > 0) {
+					this.getContentListRecursive(rawList[i].siblings, list, language);
 				}
 			}
 		}

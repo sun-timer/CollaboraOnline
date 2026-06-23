@@ -267,7 +267,10 @@ function selectAnnotationMenuItem(menuItem) {
 	cy.cGet('#mobile-wizard .wizard-comment-box .cool-annotation-menu')
 		.click({force: true});
 
-	cy.cGet('body').contains('.ui-header.mobile-wizard.ui-widget', menuItem)
+	cy.cGet('.context-menu-list')
+		.should('exist');
+
+	cy.cGet('body').contains('.context-menu-item', menuItem)
 		.click();
 
 	cy.log('<< selectAnnotationMenuItem - end');
@@ -312,14 +315,10 @@ function insertComment(skipCommentCheck = false) {
 	cy.cGet('.cool-annotation-table').should('exist');
 	cy.cGet('#input-modal-input').type('some text');
 	cy.cGet('#response-ok').click();
-
-	// Wait for core to process the comment insertion
-	cy.getFrameWindow().then((win) => {
-		helper.processToIdle(win);
-	});
+	cy.wait(2000); // FIXME: skip DocModified message
 
 	if (!skipCommentCheck) {
-		cy.cGet('[id^=comment-container-]').should('exist');
+		cy.cGet('[id^=comment-container-]').should('exist').wait(300);
 		cy.cGet('[id^=annotation-content-area-]').should('be.visible');
 		cy.cGet('[id^=annotation-content-area-]').should('have.text', 'some text');
 	}

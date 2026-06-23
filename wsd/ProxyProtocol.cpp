@@ -20,14 +20,13 @@
 
 #include <config.h>
 
+#include "DocumentBroker.hpp"
+#include "ClientSession.hpp"
 #include "ProxyProtocol.hpp"
-
+#include "Exceptions.hpp"
+#include "COOLWSD.hpp"
 #include <common/Util.hpp>
-#include <net/Socket.hpp>
-#include <wsd/COOLWSD.hpp>
-#include <wsd/ClientSession.hpp>
-#include <wsd/DocumentBroker.hpp>
-#include <wsd/Exceptions.hpp>
+#include <Socket.hpp>
 
 #include <memory>
 #include <string>
@@ -84,8 +83,11 @@ void DocumentBroker::proxyOpenRequest(const std::shared_ptr<StreamSocket>& socke
                                       const std::string& id, const Poco::URI& uriPublic,
                                       const bool isReadOnly, const RequestDetails& requestDetails)
 {
-    const bool isLocal = Util::isDebugEnabled() ? true : socket->isLocal();
-
+#if ENABLE_DEBUG
+    bool isLocal = true;
+#else
+    bool isLocal = socket->isLocal();
+#endif
     LOG_TRC("proxy: validate that socket is from localhost: " << isLocal);
     if (!isLocal)
         throw BadRequestException("invalid host - only connect from localhost");
@@ -331,21 +333,21 @@ int ProxyProtocolHandler::sendMessage(const char *msg, const size_t len, bool te
     return len;
 }
 
-int ProxyProtocolHandler::sendTextMessage(std::string_view msg, bool flush) const
+int ProxyProtocolHandler::sendTextMessage(const char *msg, const size_t len, bool flush) const
 {
     ASSERT_CORRECT_THREAD();
-    LOG_TRC("ProxyHack - send text msg " << msg);
-    return const_cast<ProxyProtocolHandler *>(this)->sendMessage(msg.data(), msg.size(), true, flush);
+    LOG_TRC("ProxyHack - send text msg " << std::string(msg, len));
+    return const_cast<ProxyProtocolHandler *>(this)->sendMessage(msg, len, true, flush);
 }
 
-int ProxyProtocolHandler::sendBinaryMessage(const std::string_view data, bool flush) const
+int ProxyProtocolHandler::sendBinaryMessage(const char *data, const size_t len, bool flush) const
 {
     ASSERT_CORRECT_THREAD();
-    LOG_TRC("ProxyHack - send binary msg len " << data.size());
-    return const_cast<ProxyProtocolHandler *>(this)->sendMessage(data.data(), data.size(), false, flush);
+    LOG_TRC("ProxyHack - send binary msg len " << len);
+    return const_cast<ProxyProtocolHandler *>(this)->sendMessage(data, len, false, flush);
 }
 
-void ProxyProtocolHandler::shutdown(bool goingAway, const std::string_view statusMessage)
+void ProxyProtocolHandler::shutdown(bool goingAway, const std::string &statusMessage)
 {
     LOG_TRC("ProxyHack - shutdown " << goingAway << ": " << statusMessage);
 }
@@ -359,7 +361,7 @@ void ProxyProtocolHandler::dumpProxyState(std::ostream& os)
 {
     os << "proxy protocol sockets: " << _outSockets.size() << " writeQueue: " << _writeQueue.size() << ":\n";
     os << '\t';
-    for (const auto &it : _outSockets)
+    for (auto &it : _outSockets)
     {
         auto sock = it.lock();
         os << '#' << (sock ? sock->getFD() : -2) << ' ';

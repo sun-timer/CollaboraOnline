@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AI续写完成态「插入文档」胶囊：蓝→品红渐变（#1DA8FF → #DD00CE，对应设计稿 paint0_linear）+ 圆角 35dp。
+     注：红色 #FE3A3A 仅用于生成中态的停止按钮，完成态主按钮是品牌渐变。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="315"
+        android:startColor="#1DA8FF"
+        android:endColor="#DD00CE"
+        android:type="linear" />
+    <corners android:radius="35dp" />
+</shape>

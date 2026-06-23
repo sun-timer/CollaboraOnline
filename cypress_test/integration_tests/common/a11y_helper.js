@@ -23,12 +23,7 @@ function enableUICoverage(win) {
  * @param {boolean} hasLinguisticData - Whether linguistic data (thesaurus, etc.) is available
  */
 function reportUICoverage(win, hasLinguisticData = true) {
-	if (win.app.socket._onMessage.restore) {
-		// if _onMessage is already wrapped by Sinon, do not create a new spy
-		cy.wrap(win.app.socket._onMessage).as('onMessage');
-	} else {
-		cy.spy(win.app.socket, '_onMessage').as('onMessage').log(false);
-	}
+	cy.spy(win.app.socket, '_onMessage').as('onMessage').log(false);
 
 	cy.then(() => {
 		const endUICoverage = {
@@ -293,7 +288,7 @@ function traverseTabs(getContainer, win, level, command, isNested = false) {
 							} else if ((command == '.uno:PageDialog' || command == '.uno:PageFormatDialog') && tabAriaControls == 'Footer') {
 								cy.cGet('button.ui-pushbutton[aria-label="More..."]:visible').click();
 								handleDialog(win, level + 1);
-							} else if (command == '.uno:FormatArea' && tabAriaControls == 'lbhatch') {
+							} else if (command == '.uno:PageDialog' && tabAriaControls == 'lbhatch') {
 								cy.cGet('button.ui-pushbutton[aria-label="Add"]:visible').click();
 								testNameDialog(win, level);
 							}
@@ -392,14 +387,6 @@ function handleDialog(win, level, command, isWarningDialog) {
 
 				cy.cGet('#listbox-data .ui-treeview-entry > div:first-child').dblclick();
 				handleDialog(win, level + 1, '.uno:DataDataPilotRun:Data');
-			} else if (command == '.uno:InsertObjectChart') {
-				cy.cGet('#next').click();
-				helper.processToIdle(win);
-				cy.cGet('#IB_RANGE-button').click();
-				// At some point this might begin to behave as if the current dialog turned
-				// into a cell selector, in which case the dialog will be the same level
-				// not a level higher I imagine.
-				handleDialog(win, level + 1);
 			}
 
 			handleTabsInDialog(win, level, command);
@@ -443,7 +430,6 @@ const allCommonDialogs = [
 	'.uno:SpellingAndGrammarDialog',
 	'.uno:SplitCell',
 	'.uno:StyleNewByExample',
-	'.uno:ThemeDialog',
 	'.uno:ThesaurusDialog',
 	'.uno:WidgetTestDialog'
 ];
@@ -451,6 +437,10 @@ const allCommonDialogs = [
 const needLinguisticDataDialogs = [
 	'.uno:SpellDialog',
 	'.uno:SpellingAndGrammarDialog',
+	'.uno:ThesaurusDialog',
+];
+
+const buggyCommonDialogs = [
 	'.uno:ThesaurusDialog',
 ];
 
@@ -471,32 +461,12 @@ function needsLinguisticData(command) {
 }
 
 /**
- * Test the PDF export warning dialog by exporting with conflicting options.
- * @param {Object} win - The frame window object
+ * Check if a dialog command is known to be buggy.
+ * @param {string} command - The uno command
+ * @returns {boolean} - Whether the dialog is buggy
  */
-function testPDFExportWarningDialog(win) {
-	cy.then(() => {
-		const args = { SynchronMode: { type: 'boolean', value: false } };
-		win.app.map.sendUnoCommand('.uno:ExportToPDF', args);
-	});
-
-	getActiveDialog(1)
-		.then(() => {
-			return helper.processToIdle(win);
-		})
-		.then(() => {
-			cy.cGet('#forms-input').check();
-			cy.cGet('#pdf_version-input').select('PDF/A-1b (PDF 1.4 base)');
-			cy.cGet('#ok-button').click();
-		})
-		.then(() => {
-			// pdf export dialog should dismiss and a warning dialog should appear
-			return helper.processToIdle(win);
-		})
-		.then(() => {
-			// and the warning dialog we're interested in should appear
-			handleDialog(win, 1);
-		});
+function isBuggyCommonDialog(command) {
+	return buggyCommonDialogs.includes(command);
 }
 
 module.exports.enableUICoverage = enableUICoverage;
@@ -513,4 +483,4 @@ module.exports.handleDialog = handleDialog;
 module.exports.testDialog = testDialog;
 module.exports.allCommonDialogs = allCommonDialogs;
 module.exports.needsLinguisticData = needsLinguisticData;
-module.exports.testPDFExportWarningDialog = testPDFExportWarningDialog;
+module.exports.isBuggyCommonDialog = isBuggyCommonDialog;

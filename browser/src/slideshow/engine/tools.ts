@@ -44,9 +44,7 @@ function clampN(nValue: number, nMinimum: number, nMaximum: number) {
 }
 
 function hasValue(x: any): boolean {
-	if (x === undefined || x === null) return false;
-	if (typeof x === 'number' && Number.isNaN(x)) return false;
-	return true;
+	return x !== undefined && x !== null;
 }
 
 function booleanParser(sValue: string) {

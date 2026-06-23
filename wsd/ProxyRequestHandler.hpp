@@ -9,11 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Handles proxied requests through HTTP proxy.
- * Classes: ProxyRequestHandler
- */
-
 #pragma once
 
 #include <chrono>

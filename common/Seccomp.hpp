@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include <common/Protocol.hpp>
+#include <Protocol.hpp>
 
 namespace Seccomp
 {

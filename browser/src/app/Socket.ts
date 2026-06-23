@@ -23,8 +23,6 @@ class Socket {
 		TimeZone: '',
 	};
 	private IndirectSocketReconnectCount: number = 0;
-	private _initialConnectRetries: number = 0;
-	private _connectCount: number = 0;
 
 	/// Whether Trace Event recording is enabled or not. ("Enabled" here means whether it can be
 	/// turned on (and off again), not whether it is on.)
@@ -42,6 +40,27 @@ class Socket {
 	private _slurpDuringTransaction: boolean;
 	private _accessTokenExpireTimeout: TimeoutHdl | undefined;
 	private _reconnecting: boolean;
+	private _interactionBlockedForReconnect: boolean;
+	private _reconnectErrorTimer: TimeoutHdl | undefined;
+	private _reconnectBusyTimer: TimeoutHdl | undefined;
+	private _reconnectQueuedPointerMessages: Map<string, MessageInterface>;
+	private _lastReconnectQueueLogTs: number;
+	private _lastReconnectLoadDocTs: number;
+	private _lastReconnectDropLogTs: number;
+	private _mobileDocGestureGuardEnabled: boolean;
+	private _lastGestureGuardLogTs: number;
+	private _lastClientVisibleAreaSentTs: number;
+	private _lastInvalidClientVisibleAreaLogTs: number;
+	private _clientVisibleAreaFlushTimer: TimeoutHdl | undefined;
+	private _pendingClientVisibleAreaMsg: string | null;
+	private _isFlushingClientVisibleArea: boolean;
+	private _lastTileCombineSentTsByKey: Map<string, number>;
+	private _pendingTileCombineByKey: Map<string, string>;
+	private _tileCombineFlushTimer: TimeoutHdl | undefined;
+	private _isFlushingTileCombine: boolean;
+	private _tileCombineFlushReconnectRetryCount: number;
+	private static readonly TILE_COMBINE_FLUSH_RECONNECT_RETRY_MS = 120;
+	private static readonly TILE_COMBINE_FLUSH_RECONNECT_MAX_RETRIES = 25;
 	private _slurpTimer: TimeoutHdl | undefined;
 	private _renderEventTimer: TimeoutHdl | undefined;
 	private _renderEventTimerStart: DOMHighResTimeStamp | undefined;
@@ -68,6 +87,25 @@ class Socket {
 		this.threadLocalLoggingLevelToggle = false;
 		this._accessTokenExpireTimeout = undefined;
 		this._reconnecting = false;
+		this._interactionBlockedForReconnect = false;
+		this._reconnectErrorTimer = undefined;
+		this._reconnectBusyTimer = undefined;
+		this._reconnectQueuedPointerMessages = new Map();
+		this._lastReconnectQueueLogTs = 0;
+		this._lastReconnectLoadDocTs = 0;
+		this._lastReconnectDropLogTs = 0;
+		this._mobileDocGestureGuardEnabled = false;
+		this._lastGestureGuardLogTs = 0;
+		this._lastClientVisibleAreaSentTs = 0;
+		this._lastInvalidClientVisibleAreaLogTs = 0;
+		this._clientVisibleAreaFlushTimer = undefined;
+		this._pendingClientVisibleAreaMsg = null;
+		this._isFlushingClientVisibleArea = false;
+		this._lastTileCombineSentTsByKey = new Map();
+		this._pendingTileCombineByKey = new Map();
+		this._tileCombineFlushTimer = undefined;
+		this._isFlushingTileCombine = false;
+		this._tileCombineFlushReconnectRetryCount = 0;
 		this._slurpTimer = undefined;
 		this._renderEventTimer = undefined;
 		this._renderEventTimerStart = undefined;
@@ -77,26 +115,18 @@ class Socket {
 		this.socket = undefined;
 		this.traceEvents = new TraceEvents(this);
 
-		if (
-			window.Worker &&
-			(!(window as any).ThisIsAMobileApp || (window as any).mode.isCODesktop())
-		) {
+		if (window.Worker && !(window as any).ThisIsAMobileApp) {
 			window.app.console.info('Creating TaskWorkers');
 			for (let i = 0; i < 4; ++i) {
-				try {
-					this.workers.push(
-						new Worker(app.LOUtil.getURL('/src/app/TaskWorker.js')),
-					);
-					this.workers[i].addEventListener('message', (e: any) =>
-						this.onWorkerMessage(e),
-					);
-					this.workers[i].addEventListener('error', (e: any) =>
-						this.onWorkerError(e),
-					);
-				} catch (e) {
-					this.onWorkerError(e);
-					break;
-				}
+				this.workers.push(
+					new Worker(app.LOUtil.getURL('/src/app/TaskWorker.js')),
+				);
+				this.workers[i].addEventListener('message', (e: any) =>
+					this.onWorkerMessage(e),
+				);
+				this.workers[i].addEventListener('error', (e: any) =>
+					this.onWorkerError(e),
+				);
 			}
 		}
 	}
@@ -148,11 +178,500 @@ class Socket {
 		this.onWorkerError(null);
 	}
 
+	public isTemporarilyReconnecting(): boolean {
+		return this._interactionBlockedForReconnect || this._reconnecting;
+	}
+
+	private _setMobileDocGestureGuard(enabled: boolean, reason: string): void {
+		if (!window.ThisIsTheAndroidApp) return;
+		if (this._mobileDocGestureGuardEnabled === enabled) return;
+
+		this._mobileDocGestureGuardEnabled = enabled;
+		window.postMobileMessage(
+			'DOC_GESTURE_GUARD ' + (enabled ? 'on' : 'off'),
+		);
+
+		const now = Date.now();
+		if (now - this._lastGestureGuardLogTs > 800 || !enabled) {
+			window.app.console.debug(
+				'doc_gesture_guard ' + (enabled ? 'on' : 'off') + ' reason=' + reason,
+			);
+			this._lastGestureGuardLogTs = now;
+		}
+	}
+
+	private _finishMobileReconnectAfterDocalreadyloaded(errorKind: string): void {
+		window.app.console.warn(
+			'Completing mobile reconnect after transient load error: ' + errorKind,
+		);
+
+		this._resetReconnectTransientState('docalreadyloaded_reconnect_done');
+		this._reconnecting = false;
+		if (this._interactionBlockedForReconnect) {
+			this._interactionBlockedForReconnect = false;
+			this._map.fire('unblockUI');
+		}
+		this._setMobileDocGestureGuard(false, 'docalreadyloaded_reconnect_done');
+		this._map.hideBusy();
+
+		// Update client-side theme CSS (data-bg-theme, canvas background color).
+		// Core-side theme (ChangeTheme + InvertBackground) was already sent
+		// via _doSend in _onSocketOpen, right after the load message — before
+		// any queued messages or tile requests.
+		this._map.uiManager.setCanvasColorAfterModeChange();
+		this._map.uiManager.refreshTheme();
+
+		this._forceMobileVisibleTilesAfterReconnect('docalreadyloaded_reconnect_done');
+
+		if (this._reconnectBusyTimer) {
+			clearTimeout(this._reconnectBusyTimer);
+			this._reconnectBusyTimer = undefined;
+		}
+		if (this._reconnectErrorTimer) {
+			clearTimeout(this._reconnectErrorTimer);
+			this._reconnectErrorTimer = undefined;
+		}
+
+		// Step 3: Clear stale tile cache. Use redraw() instead of
+		// refreshTilesInBackground() to drop ALL cached tiles — stale tiles
+		// from before reconnect may have wrong colors.
+		if (this._map._docLayer) {
+			this._map._docLayer._resetClientVisArea();
+			TileManager.redraw();
+		}
+		this._map.fire('statusindicator', { statusType: 'reconnected' });
+		this._map.fire('docloaded', { status: true });
+
+		// After docalreadyloaded reconnect, _viewId may be undefined because
+		// status messages during this path don't carry viewid (unlike the
+		// initial-load status path). Without _viewId, tile rendering breaks:
+		// docLayer doesn't know which view's tiles to render → white screen.
+		// Restore from _viewInfo — in single-view docs this is unambiguous.
+		if (this._map._docLayer && (this._map._docLayer as any)._viewId == null) {
+			const viewIds = Object.keys((this._map as any)._viewInfo);
+			if (viewIds.length >= 1) {
+				const restoredId = parseInt(viewIds[0]);
+				(this._map._docLayer as any)._viewId = restoredId;
+				window.app.console.log('Restored viewId from _viewInfo after docalreadyloaded reconnect: ' + restoredId + ' (available views: ' + viewIds.join(',') + ')');
+			}
+		}
+
+	}
+
+	private _getPointerCompactionKey(msg: string): string | null {
+		if (msg.startsWith('mouse type=move')) return 'mouse:move';
+		if (msg.startsWith('mouse type=drag')) return 'mouse:drag';
+		if (msg.startsWith('selecttext type=start')) return 'selecttext:start';
+		if (msg.startsWith('selecttext type=end')) return 'selecttext:end';
+		return null;
+	}
+
+	private _isSelectionPointerMessage(msg: string): boolean {
+		return (
+			msg.startsWith('selecttext type=start') ||
+			msg.startsWith('selecttext type=end')
+		);
+	}
+
+	private _isCriticalReconnectMessage(msg: string): boolean {
+		return (
+			msg.startsWith('uno ') ||
+			msg.startsWith('key ') ||
+			msg.startsWith('textinput ') ||
+			this._isSelectionPointerMessage(msg) ||
+			msg.startsWith('mouse type=buttondown') ||
+			msg.startsWith('mouse type=buttonup') ||
+			msg.startsWith('useractive') ||
+			msg.startsWith('userinactive')
+		);
+	}
+
+	private _drainDeferredReconnectMessages(): void {
+		if (!this._reconnectQueuedPointerMessages.size) return;
+		this._reconnectQueuedPointerMessages.forEach((msg) => {
+			this._msgQueue.push(msg);
+		});
+		window.app.console.debug(
+			'Flushed compacted pointer messages after reconnect: ' +
+				this._reconnectQueuedPointerMessages.size,
+		);
+		this._reconnectQueuedPointerMessages.clear();
+	}
+
+	private _shouldDeferDuringReconnect(msg: MessageInterface): boolean {
+		if (typeof msg !== 'string') return true;
+		if (msg.startsWith('useractive') || msg.startsWith('userinactive')) {
+			return false;
+		}
+		// Keep caret placement responsive during transient reconnect windows.
+		// These are compact and critical for text cursor/selection updates.
+		if (msg.startsWith('mouse type=buttondown') || msg.startsWith('mouse type=buttonup')) {
+			return false;
+		}
+		return true;
+	}
+
+	private _isReconnectHeartbeatMessage(msg: string): boolean {
+		return msg.startsWith('useractive') || msg.startsWith('userinactive');
+	}
+
+	private _isReconnectHighVolumeMessage(msg: string): boolean {
+		return (
+			msg.startsWith('tilecombine ') ||
+			msg.startsWith('tileprocessed ') ||
+			msg.startsWith('clientvisiblearea ')
+		);
+	}
+
+	private _dropReconnectMessage(msg: MessageInterface, reason: string): boolean {
+		if (typeof msg !== 'string') return false;
+		if (this._isReconnectHeartbeatMessage(msg)) return false;
+		if (this._isSelectionPointerMessage(msg)) return false;
+
+		const shouldDrop =
+			reason === 'ui_blocked_reconnecting' ||
+			this._isReconnectHighVolumeMessage(msg);
+		if (!shouldDrop) return false;
+
+		const now = Date.now();
+		if (now - this._lastReconnectDropLogTs > 1500) {
+			window.app.console.debug(
+				'Dropped outgoing message during reconnect (' +
+					reason +
+					'): ' +
+					msg.substring(0, 80),
+			);
+			this._lastReconnectDropLogTs = now;
+		}
+		return true;
+	}
+
+	private _throttleClientVisibleArea(msg: MessageInterface): boolean {
+		if (!window.ThisIsAMobileApp) return false;
+		if (typeof msg !== 'string' || !msg.startsWith('clientvisiblearea ')) return false;
+		if (this._isInvalidClientVisibleArea(msg)) {
+			const now = Date.now();
+			if (now - this._lastInvalidClientVisibleAreaLogTs > 1500) {
+				window.app.console.debug(
+					'Dropped invalid mobile clientvisiblearea: ' +
+						msg.substring(0, 80),
+				);
+				this._lastInvalidClientVisibleAreaLogTs = now;
+			}
+			return true;
+		}
+		if (this._isFlushingClientVisibleArea) {
+			this._isFlushingClientVisibleArea = false;
+			this._lastClientVisibleAreaSentTs = Date.now();
+			return false;
+		}
+
+		this._pendingClientVisibleAreaMsg = msg;
+		if (this._clientVisibleAreaFlushTimer) return true;
+
+		const throttleMs = 90;
+		const elapsed = Date.now() - this._lastClientVisibleAreaSentTs;
+		const delayMs = Math.max(0, throttleMs - elapsed);
+		this._clientVisibleAreaFlushTimer = setTimeout(() => {
+			this._clientVisibleAreaFlushTimer = undefined;
+			if (!this._pendingClientVisibleAreaMsg) return;
+			const pending = this._pendingClientVisibleAreaMsg;
+			this._pendingClientVisibleAreaMsg = null;
+			this._isFlushingClientVisibleArea = true;
+			this.sendMessage(pending);
+		}, delayMs);
+		return true;
+	}
+
+	private _isInvalidClientVisibleArea(msg: string): boolean {
+		const widthMatch = msg.match(/\bwidth=(-?\d+)/);
+		const heightMatch = msg.match(/\bheight=(-?\d+)/);
+		if (!widthMatch || !heightMatch) return false;
+
+		const width = parseInt(widthMatch[1], 10);
+		const height = parseInt(heightMatch[1], 10);
+		return !isFinite(width) || !isFinite(height) || width <= 0 || height <= 0;
+	}
+
+	private _parseTileCombineCompactionKey(msg: string): string | null {
+		if (!msg.startsWith('tilecombine ')) return null;
+		const partMatch = msg.match(/\bpart=(\d+)/);
+		if (!partMatch) return null;
+		const modeMatch = msg.match(/\bmode=(\d+)/);
+		const mode = modeMatch ? modeMatch[1] : '0';
+		return partMatch[1] + ':' + mode;
+	}
+
+	private _scheduleTileCombineFlushAfterReconnectBlock(): void {
+		if (!window.ThisIsAMobileApp) return;
+		if (!this._pendingTileCombineByKey.size) {
+			this._tileCombineFlushReconnectRetryCount = 0;
+			return;
+		}
+		if (this._tileCombineFlushReconnectRetryCount >= Socket.TILE_COMBINE_FLUSH_RECONNECT_MAX_RETRIES) {
+			window.app.console.warn(
+				'tilecombine flush reconnect retry limit reached pending=' +
+					this._pendingTileCombineByKey.size,
+			);
+			this._tileCombineFlushReconnectRetryCount = 0;
+			return;
+		}
+		if (this._tileCombineFlushTimer) return;
+
+		this._tileCombineFlushReconnectRetryCount++;
+		window.app.console.debug(
+			'tilecombine flush deferred for reconnect reschedule attempt=' +
+				this._tileCombineFlushReconnectRetryCount +
+				' pending=' +
+				this._pendingTileCombineByKey.size,
+		);
+		this._tileCombineFlushTimer = setTimeout(
+			() => this._flushPendingTileCombineMessages(),
+			Socket.TILE_COMBINE_FLUSH_RECONNECT_RETRY_MS,
+		);
+	}
+
+	private _flushPendingTileCombineMessages(): void {
+		this._tileCombineFlushTimer = undefined;
+		if (!this._pendingTileCombineByKey.size) {
+			this._tileCombineFlushReconnectRetryCount = 0;
+			return;
+		}
+		if (this._reconnecting || this._interactionBlockedForReconnect) {
+			this._scheduleTileCombineFlushAfterReconnectBlock();
+			return;
+		}
+
+		this._tileCombineFlushReconnectRetryCount = 0;
+		const now = Date.now();
+		const throttleMs = 45;
+		let minWait = throttleMs;
+		const toFlush: string[] = [];
+
+		this._pendingTileCombineByKey.forEach((queuedMsg, key) => {
+			const lastTs = this._lastTileCombineSentTsByKey.get(key) || 0;
+			const elapsed = now - lastTs;
+			if (elapsed >= throttleMs) {
+				toFlush.push(queuedMsg);
+				this._pendingTileCombineByKey.delete(key);
+			} else {
+				minWait = Math.min(minWait, throttleMs - elapsed);
+			}
+		});
+
+		if (toFlush.length > 0) {
+			this._isFlushingTileCombine = true;
+			for (let i = 0; i < toFlush.length; i++) {
+				this.sendMessage(toFlush[i]);
+			}
+			this._isFlushingTileCombine = false;
+		}
+
+		if (this._pendingTileCombineByKey.size && !this._tileCombineFlushTimer) {
+			this._tileCombineFlushTimer = setTimeout(
+				() => this._flushPendingTileCombineMessages(),
+				Math.max(8, minWait),
+			);
+		}
+	}
+
+	private _forceMobileVisibleTilesAfterReconnect(reason: string): void {
+		if (!window.ThisIsAMobileApp) return;
+		if (!this._map || !this._map._docLayer || !app.activeDocument) return;
+
+		const refresh = (attempt: number) => {
+			if (!this._map || !this._map._docLayer || !app.activeDocument) return;
+			try {
+				const mapSize = this._map.getSize();
+				if (!mapSize || mapSize.x <= 0 || mapSize.y <= 0) {
+					window.app.console.debug(
+						'mobile reconnect visible tile refresh deferred invalid map size reason=' +
+							reason +
+							' attempt=' +
+							attempt,
+					);
+					return;
+				}
+				const docLayer = this._map._docLayer as any;
+				docLayer._resetClientVisArea();
+				if (typeof docLayer._sendClientZoom === 'function') {
+					docLayer._sendClientZoom(true);
+				}
+				if (typeof docLayer._requestNewTiles === 'function') {
+					docLayer._requestNewTiles();
+				}
+				if (attempt === 1 && typeof TileManager.redraw === 'function') {
+					TileManager.redraw();
+				} else {
+					TileManager.refreshTilesInBackground();
+					TileManager.update();
+				}
+				window.app.console.debug(
+					'mobile reconnect visible tile refresh reason=' +
+						reason +
+						' attempt=' +
+						attempt,
+				);
+			} catch (e) {
+				window.app.console.warn(
+					'mobile reconnect visible tile refresh failed reason=' +
+						reason +
+						' attempt=' +
+						attempt +
+						' error=' +
+						e,
+				);
+			}
+		};
+
+		setTimeout(() => refresh(1), 80);
+		setTimeout(() => refresh(2), 300);
+	}
+
+	private _throttleTileCombine(msg: MessageInterface): boolean {
+		if (!window.ThisIsAMobileApp) return false;
+		if (typeof msg !== 'string') return false;
+		const key = this._parseTileCombineCompactionKey(msg);
+		if (!key) return false;
+		if (this._isFlushingTileCombine) {
+			this._lastTileCombineSentTsByKey.set(key, Date.now());
+			return false;
+		}
+
+		const throttleMs = 45;
+		const lastTs = this._lastTileCombineSentTsByKey.get(key) || 0;
+		const elapsed = Date.now() - lastTs;
+		if (elapsed >= throttleMs) {
+			this._lastTileCombineSentTsByKey.set(key, Date.now());
+			return false;
+		}
+
+		this._pendingTileCombineByKey.set(key, msg);
+		if (!this._tileCombineFlushTimer) {
+			this._tileCombineFlushTimer = setTimeout(
+				() => this._flushPendingTileCombineMessages(),
+				Math.max(8, throttleMs - elapsed),
+			);
+		}
+		return true;
+	}
+
+	private _resetReconnectTransientState(reason: string): void {
+		const prevQueued = this._msgQueue.length;
+		const prevPointer = this._reconnectQueuedPointerMessages.size;
+		this._msgQueue = [];
+		this._reconnectQueuedPointerMessages.clear();
+		this._pendingTileCombineByKey.clear();
+		this._lastTileCombineSentTsByKey.clear();
+		this._pendingClientVisibleAreaMsg = null;
+		if (this._tileCombineFlushTimer) {
+			clearTimeout(this._tileCombineFlushTimer);
+			this._tileCombineFlushTimer = undefined;
+		}
+		if (this._clientVisibleAreaFlushTimer) {
+			clearTimeout(this._clientVisibleAreaFlushTimer);
+			this._clientVisibleAreaFlushTimer = undefined;
+		}
+		this._isFlushingTileCombine = false;
+		this._isFlushingClientVisibleArea = false;
+		this._tileCombineFlushReconnectRetryCount = 0;
+
+		if (typeof TileManager.resetReconnectTransientState === 'function')
+			TileManager.resetReconnectTransientState(reason);
+
+		if (prevQueued || prevPointer) {
+			window.app.console.debug(
+				'Reconnect transient state reset (' +
+					reason +
+					'), dropped queued=' +
+					prevQueued +
+					' pointer=' +
+					prevPointer,
+			);
+		}
+	}
+
+	private _enqueueMessageForReconnect(
+		msg: MessageInterface,
+		reason: string,
+	): void {
+		if (this._dropReconnectMessage(msg, reason)) return;
+
+		if (typeof msg === 'string') {
+			if (msg === 'uno .uno:SidebarHide') {
+				for (let i = 0; i < this._msgQueue.length; i++) {
+					if (this._msgQueue[i] === msg) return;
+				}
+			}
+			if (msg.startsWith('clientvisiblearea ')) {
+				for (let i = this._msgQueue.length - 1; i >= 0; i--) {
+					const queuedMsg = this._msgQueue[i];
+					if (
+						typeof queuedMsg === 'string' &&
+						queuedMsg.startsWith('clientvisiblearea ')
+					) {
+						this._msgQueue.splice(i, 1);
+					}
+				}
+			}
+
+			const pointerCompactionKey = this._getPointerCompactionKey(msg);
+			if (pointerCompactionKey) {
+				if (pointerCompactionKey === 'selecttext:start') {
+					this._reconnectQueuedPointerMessages.delete('selecttext:end');
+				}
+				this._reconnectQueuedPointerMessages.set(pointerCompactionKey, msg);
+				const now = Date.now();
+				if (now - this._lastReconnectQueueLogTs > 1500) {
+					window.app.console.debug(
+						'defer+compact pointer message during reconnect: ' +
+							pointerCompactionKey,
+					);
+					this._lastReconnectQueueLogTs = now;
+				}
+				return;
+			}
+		}
+
+		if (this._msgQueue.length >= 80) {
+			let dropped = false;
+			for (let i = 0; i < this._msgQueue.length; i++) {
+				const queuedMsg = this._msgQueue[i];
+				if (
+					typeof queuedMsg === 'string' &&
+					!this._isCriticalReconnectMessage(queuedMsg)
+				) {
+					this._msgQueue.splice(i, 1);
+					dropped = true;
+					break;
+				}
+			}
+			if (!dropped && this._msgQueue.length >= 80) {
+				this._msgQueue.shift();
+			}
+		}
+		this._msgQueue.push(msg);
+
+		const now = Date.now();
+		if (now - this._lastReconnectQueueLogTs > 1500) {
+			window.app.console.debug(
+				'Deferred outgoing message during reconnect (' +
+					reason +
+					'), queue=' +
+					this._msgQueue.length,
+			);
+			this._lastReconnectQueueLogTs = now;
+		}
+	}
+
 	public sendMessage(msg: MessageInterface): void {
 		if (!this.socket) {
 			console.error('sendMessage() called with non-existent socket!');
 			return;
 		}
+
+		if (this._throttleClientVisibleArea(msg)) return;
+		if (this._throttleTileCombine(msg)) return;
 
 		if (this._map._debug.eventDelayWatchdog) this._map._debug.timeEventDelay();
 
@@ -162,6 +681,13 @@ class Socket {
 		}
 
 		if (!app.idleHandler._active) {
+			if (
+				this._reconnecting &&
+				this._shouldDeferDuringReconnect(msg)
+			) {
+				this._enqueueMessageForReconnect(msg, 'inactive_reconnecting');
+				return;
+			}
 			// Avoid communicating when we're inactive.
 			if (typeof msg !== 'string') return;
 
@@ -173,18 +699,35 @@ class Socket {
 			}
 		}
 
+		if (
+			this._interactionBlockedForReconnect &&
+			this._shouldDeferDuringReconnect(msg)
+		) {
+			this._enqueueMessageForReconnect(msg, 'ui_blocked_reconnecting');
+			return;
+		}
 		if (this._map.uiManager && this._map.uiManager.isUIBlocked()) return;
 
 		const socketState = this.socket.readyState;
 		if (socketState === 2 || socketState === 3) {
-			this._map.loadDocument();
+			const shouldNudgeLoadDocument =
+				!window.ThisIsAMobileApp &&
+				!this._reconnecting &&
+				!this._interactionBlockedForReconnect;
+			if (shouldNudgeLoadDocument) {
+				const now = Date.now();
+				if (now - this._lastReconnectLoadDocTs > 1200) {
+					this._lastReconnectLoadDocTs = now;
+					this._map.loadDocument();
+				}
+			}
 		}
 
 		if (socketState === 1) {
 			this._doSend(msg);
 		} else {
 			// push message while trying to connect socket again.
-			this._msgQueue.push(msg);
+			this._enqueueMessageForReconnect(msg, 'socket_not_open');
 		}
 	}
 
@@ -236,18 +779,10 @@ class Socket {
 	}
 
 	private getWebSocketBaseURI(map: MapInterface): string {
-		if (window.enableExperimentalFeatures) {
-			// Use the new Cool WS URL.
-			return window.makeWopiCoolWsUrl(
-				window.makeWsUrl('/cool'),
-				$.param(map.options.docParams),
-			);
-		} else {
-			return window.makeWsUrlWopiSrc(
-				'/cool/',
-				map.options.doc + '?' + $.param(map.options.docParams),
-			);
-		}
+		return window.makeWsUrlWopiSrc(
+			'/cool/',
+			map.options.doc + '?' + $.param(map.options.docParams),
+		);
 	}
 
 	public connect(socket: SockInterface): void {
@@ -293,9 +828,6 @@ class Socket {
 		this.socket.onopen = this._onSocketOpen.bind(this);
 		this.socket.onmessage = this._slurpMessage.bind(this);
 		this.socket.binaryType = 'arraybuffer';
-
-		this._connectCount++;
-		this._faultInjection();
 		if (
 			map.options.docParams.access_token &&
 			parseInt(map.options.docParams.access_token_ttl as string)
@@ -343,6 +875,14 @@ class Socket {
 
 	private _onSocketOpen(evt: Event): void {
 		window.app.console.debug('_onSocketOpen:');
+		if (this._reconnectErrorTimer) {
+			clearTimeout(this._reconnectErrorTimer);
+			this._reconnectErrorTimer = undefined;
+		}
+		if (this._reconnectBusyTimer) {
+			clearTimeout(this._reconnectBusyTimer);
+			this._reconnectBusyTimer = undefined;
+		}
 		app.idleHandler._serverRecycling = false;
 		app.idleHandler._documentIdle = false;
 
@@ -416,26 +956,36 @@ class Socket {
 
 		msg += ' accessibilityState=' + window.getAccessibilityState();
 
-		msg += ' clientvisiblearea=' + window.makeClientVisibleArea();
+			msg += ' clientvisiblearea=' + window.makeClientVisibleArea();
 
-		this._doSend(msg);
-		for (let i = 0; i < this._msgQueue.length; i++) {
-			this._doSend(this._msgQueue[i]);
-		}
+			this._doSend(msg);
+			// Immediately after load, send theme restoration via _doSend.
+			// Must use _doSend (not sendMessage) because sendMessage queues
+			// when app.idleHandler._active is false (still false during
+			// reconnect). Core ignores darkTheme/darkBackground params in
+			// the load message for the docalreadyloaded case (ChildSession
+			// returns immediately), so these UNO commands are essential for
+			// correct tile text/background colors after reconnect.
+			if (this._map._docLayer) {
+				const themeCmd = { 'NewTheme': { 'type': 'string',
+					'value': darkTheme ? 'Dark' : 'Light' } };
+				this._doSend('uno .uno:ChangeTheme ' + JSON.stringify(themeCmd));
+				const bgCmd = { 'NewTheme': { 'type': 'string',
+					'value': darkBackground ? 'Dark' : 'Light' } };
+				this._doSend('uno .uno:InvertBackground ' + JSON.stringify(bgCmd));
+			}
+			this._drainDeferredReconnectMessages();
+			this._flushPendingTileCombineMessages();
+			for (let i = 0; i < this._msgQueue.length; i++) {
+				this._doSend(this._msgQueue[i]);
+			}
 		this._msgQueue = [];
 
 		app.idleHandler._activate();
 	}
 
 	private _onSocketClose(event: CloseEvent): void {
-		window.app.console.debug(
-			'_onSocketClose: code=' +
-				event.code +
-				' wasClean=' +
-				event.wasClean +
-				' reason=' +
-				event.reason,
-		);
+		window.app.console.debug('_onSocketClose:');
 		if (!this._map._docLoadedOnce && this.ReconnectCount === 0) {
 			let errorType: string = '';
 			let errorMsg: string;
@@ -458,18 +1008,6 @@ class Socket {
 					errorType = 'websocketgenericfailure';
 					errorMsg = window.errorMessages.websocketgenericfailure;
 				}
-			} else if (this._initialConnectRetries++ < 3) {
-				// Transient connection failure with no server error.
-				// Retry the initial connection before giving up.
-				window.app.console.debug(
-					'_onSocketClose: transient failure during initial load, attempt ' +
-						this._initialConnectRetries,
-				);
-				this._map['wopi'].resetAppLoaded();
-				setTimeout(() => {
-					this._scheduleReconnect();
-				}, 1);
-				return;
 			} else {
 				errorType = 'websocketproxyfailure';
 				errorMsg = window.errorMessages.websocketproxyfailure;
@@ -507,25 +1045,59 @@ class Socket {
 			if (this._map._docLayer._docType === 'presentation')
 				app.setCursorVisibility(false);
 
-			this._map._docLayer._resetCanonicalIdStatus();
+			// NOTE: Do NOT reset _canonicalIdInitialized here — the canonical view
+			// ID does not change across a socket reconnect. Resetting it to false
+			// would permanently block TileManager.update() because the core does
+			// not re-send canonicalidchange: when the canonical ID hasn't changed.
 			this._map._docLayer._resetViewId();
 			this._map._docLayer._resetDocumentInfo();
 		}
 
 		// We don't want them back on re-connection.
 		this._delayedMessages = [];
-
+		this._resetReconnectTransientState('socket_close');
+			
 		if (isActive && this._reconnecting) {
-			// Don't show this before first transparently trying to reconnect.
-			this._map.fire('error', {
-				msg: _(
-					'Well, this is embarrassing, we cannot connect to your document. Please try again.',
-				),
-				cmd: 'socket',
-				kind: 'closed',
-				id: 4,
-			});
+			if (this._reconnectErrorTimer) {
+				clearTimeout(this._reconnectErrorTimer);
+			}
+			this._reconnectErrorTimer = setTimeout(() => {
+				const socketState = this.socket ? this.socket.readyState : 3;
+				if (
+					this._reconnecting &&
+					socketState !== 0 &&
+					socketState !== 1
+				) {
+					this._map.fire('error', {
+						msg: _(
+							'Well, this is embarrassing, we cannot connect to your document. Please try again.',
+						),
+						cmd: 'socket',
+						kind: 'closed',
+						id: 4,
+					});
+				}
+				this._reconnectErrorTimer = undefined;
+			}, 3500);
 		}
+
+		if (window.ThisIsAMobileApp && !this._interactionBlockedForReconnect) {
+			this._interactionBlockedForReconnect = true;
+			this._setMobileDocGestureGuard(true, 'socket_close_reconnecting');
+		}
+		if (this._reconnectBusyTimer) {
+			clearTimeout(this._reconnectBusyTimer);
+		}
+		this._reconnectBusyTimer = setTimeout(() => {
+			if (
+				this._interactionBlockedForReconnect &&
+				this._reconnecting &&
+				!app.idleHandler._documentIdle
+			) {
+				this._map.showBusy(_('Reconnecting...'), false);
+			}
+			this._reconnectBusyTimer = undefined;
+		}, 2500);
 
 		// Reset wopi's app loaded so that reconnecting again informs outerframe about initialization
 		this._map['wopi'].resetAppLoaded();
@@ -539,12 +1111,18 @@ class Socket {
 		setTimeout(() => {
 			if (!this._reconnecting) {
 				this._reconnecting = true;
-				this._scheduleReconnect();
+				app.idleHandler._activate();
 			}
 		}, 1 /* ms */);
 
 		if (this._map.isEditMode()) {
-			this._map.setPermission('view');
+			if (window.ThisIsAMobileApp && this._interactionBlockedForReconnect) {
+				window.app.console.debug(
+					'Keep edit permission during transient reconnect on mobile.',
+				);
+			} else {
+				this._map.setPermission('view');
+			}
 		}
 
 		if (
@@ -552,42 +1130,13 @@ class Socket {
 			app.sectionContainer &&
 			!app.sectionContainer.testing
 		)
-			this._map.uiManager.showSnackbar(_('The server has been disconnected.'));
-	}
-
-	// Simulate error conditions for testing via the
-	// simulateError URL parameter.
-	private _faultInjection(): void {
-		if (
-			this._connectCount === 1 &&
-			this.socket &&
-			window.simulateError('socket:initialClose')
-		) {
-			const sock = this.socket;
-			if (sock.readyState === 1) {
-				// global.js may have already connected the socket
-				// before bundle.js loaded - close after current
-				// event processing
-				setTimeout(function () {
-					sock.close();
-				}, 0);
-			} else {
-				const realOnOpen = sock.onopen;
-				sock.onopen = function (evt: Event) {
-					realOnOpen(evt);
-					setTimeout(function () {
-						sock.close();
-					}, 0);
-				};
-			}
+		{
+			const transientMobileReconnect =
+				window.ThisIsAMobileApp &&
+				this._interactionBlockedForReconnect;
+			if (!transientMobileReconnect)
+				this._map.uiManager.showSnackbar(_('The server has been disconnected.'));
 		}
-	}
-
-	private _scheduleReconnect(): void {
-		app.idleHandler._active = false;
-		if (!app.idleHandler._documentIdle)
-			this._map.showBusy(_('Reconnecting...'), false);
-		app.idleHandler._activate();
 	}
 
 	private _onSocketError(evt: Event): void {
@@ -675,7 +1224,7 @@ class Socket {
 			this._map._debug.logIncomingMessages;
 		if (!logMessage) return;
 
-		if (window.ThisIsTheQtApp) window.postMobileDebug(type + ' ' + msg);
+		if (window.ThisIsTheGtkApp) window.postMobileDebug(type + ' ' + msg);
 
 		const debugOn = this._map._debug.debugOn;
 
@@ -683,7 +1232,7 @@ class Socket {
 			this._map._debug.setOverlayMessage('postMessage', type + ': ' + msg);
 		}
 
-		if (!debugOn && !window.L.Browser.cypressTest && msg.length > 256)
+		if (!debugOn && msg.length > 256)
 			// for reasonable performance.
 			msg =
 				msg.substring(0, 256) + '<truncated ' + (msg.length - 256) + 'chars>';
@@ -962,7 +1511,7 @@ class Socket {
 			// add the top toolbar and menubar controls to the map.
 			if (window.prefs.useBrowserSetting) {
 				if (
-					!window.mode.isSmallScreenDevice() &&
+					!window.mode.isMobile() &&
 					this._map.uiManager.getCurrentMode() === 'notebookbar'
 				)
 					this._map.uiManager.removeClassicUI();
@@ -1001,21 +1550,25 @@ class Socket {
 			this._map.fire('doclayerinit');
 		} else if (this._reconnecting) {
 			// we are reconnecting ...
+			this._resetReconnectTransientState('status_reconnected');
 			this._map._docLayer._resetClientVisArea();
-			TileManager.refreshTilesInBackground();
+			if (window.ThisIsAMobileApp && typeof TileManager.redraw === 'function')
+				TileManager.redraw();
+			else
+				TileManager.refreshTilesInBackground();
 			this._map.fire('statusindicator', { statusType: 'reconnected' });
 
-			const darkTheme = window.prefs.getBoolean('darkTheme');
-			this._map.uiManager.activateDarkModeInCore(darkTheme);
-			this._map.uiManager.applyInvert();
+			// Core-side theme restore already sent via _doSend in _onSocketOpen.
+			// Only need client-side CSS update here.
 			this._map.uiManager.setCanvasColorAfterModeChange();
 
-			if (!window.mode.isSmallScreenDevice())
+			if (!window.mode.isMobile())
 				this._map.uiManager.initializeNotebookbarInCore();
 
 			// close all the popups otherwise document textArea will not get focus
 			this._map.uiManager.closeAll();
 			this._map.setPermission(app.file.permission);
+			app.events.fire('updatepermission', { perm: app.file.permission });
 			window.migrating = false;
 			this._map.uiManager.initializeSidebar();
 			this._map.uiManager.refreshTheme();
@@ -1025,10 +1578,21 @@ class Socket {
 		if (this._map._docLayer) {
 			this._map._docLayer._onMessage(textMsg);
 
-			// call update view list viewId if it is not defined yet
+				// call update view list viewId if it is not defined yet
 			if (!this._map._docLayer._getViewId()) this._map.fire('updateviewslist');
 
 			this._reconnecting = false;
+			if (this._interactionBlockedForReconnect) {
+				this._interactionBlockedForReconnect = false;
+				this._map.fire('unblockUI');
+			}
+			this._setMobileDocGestureGuard(false, 'reconnect_done');
+			this._map.hideBusy();
+			this._flushPendingTileCombineMessages();
+			if (this._reconnectBusyTimer) {
+				clearTimeout(this._reconnectBusyTimer);
+				this._reconnectBusyTimer = undefined;
+			}
 
 			// Applying delayed messages
 			// note: delayed messages cannot be done before:
@@ -1211,6 +1775,7 @@ class Socket {
 		} else if (
 			!textMsg.startsWith('tile:') &&
 			!textMsg.startsWith('delta:') &&
+			!textMsg.startsWith('renderfont:') &&
 			!textMsg.startsWith('slidelayer:') &&
 			!textMsg.startsWith('zstdslidelayer:') &&
 			!textMsg.startsWith('windowpaint:')
@@ -1288,11 +1853,7 @@ class Socket {
 
 	private _extractTextImg(e: SlurpMessageEvent): void {
 		if (
-			(window.ThisIsTheiOSApp ||
-				window.ThisIsTheWindowsApp ||
-				window.ThisIsTheMacOSApp ||
-				window.ThisIsTheEmscriptenApp ||
-				window.ThisIsTheQtApp) &&
+			(window.ThisIsTheiOSApp || window.ThisIsTheEmscriptenApp) &&
 			typeof e.data === 'string'
 		) {
 			// Another fix for issue #5843 limit splitting on the first newline
@@ -1304,6 +1865,7 @@ class Socket {
 				e.data.startsWith('tile:') ||
 				e.data.startsWith('tilecombine:') ||
 				e.data.startsWith('delta:') ||
+				e.data.startsWith('renderfont:') ||
 				e.data.startsWith('rendersearchlist:') ||
 				e.data.startsWith('slidelayer:') ||
 				e.data.startsWith('zstdslidelayer:') ||
@@ -1336,6 +1898,7 @@ class Socket {
 		if (
 			!isTile &&
 			!isDelta &&
+			!e.textMsg.startsWith('renderfont:') &&
 			!e.textMsg.startsWith('slidelayer:') &&
 			!e.textMsg.startsWith('windowpaint:')
 		)
@@ -1383,6 +1946,7 @@ class Socket {
 		// imageElement.onerror expects a different type of handler according to tsc.
 		// (event: Event | string, source?: string, lineno?: number, colno?: number, error?: Error): any;
 		// So use addEventListener() for 'error' event.
+		imageElement.onerror;
 		imageElement.addEventListener(
 			'error',
 			function (this: Socket, err: ErrorEvent) {
@@ -1631,10 +2195,6 @@ class Socket {
 				// edit.
 				app.setPermission('edit');
 				this.close();
-				if (window.ThisIsTheQtApp || window.ThisIsTheWindowsApp) {
-					window.postMobileMessage('loaddocument url=' + this._map.options.doc);
-					this.socket?.onopen(new Event('open'));
-				}
 				this._map.loadDocument();
 				this._map.sendInitUNOCommands();
 				Util.ensureValue(command.filename);
@@ -1687,7 +2247,7 @@ class Socket {
 				let reloadMessage = _(
 					'Server is now reachable. We have to refresh the page now.',
 				);
-				if (window.mode.isSmallScreenDevice())
+				if (window.mode.isMobile())
 					reloadMessage = _('Server is now reachable...');
 
 				const reloadFunc = function () {
@@ -2114,10 +2674,20 @@ class Socket {
 
 			return true; // caller should exit immediately.
 		} else if (textMsg.startsWith('error:') && command.errorCmd === 'load') {
+			const errorKind = command.errorKind ? command.errorKind : '';
+			if (errorKind.startsWith('docalreadyloaded')) {
+				if (window.ThisIsAMobileApp && this._reconnecting) {
+					this._finishMobileReconnectAfterDocalreadyloaded(errorKind);
+				} else {
+					window.app.console.warn(
+						'Ignoring transient load error during reconnect: ' + errorKind,
+					);
+				}
+				return true; // caller should exit immediately.
+			}
+
 			this._map.hideBusy();
 			this.close();
-
-			const errorKind = command.errorKind ? command.errorKind : '';
 			let passwordNeeded = false;
 			if (errorKind.startsWith('passwordrequired')) {
 				passwordNeeded = true;

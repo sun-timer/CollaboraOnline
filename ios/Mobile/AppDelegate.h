@@ -7,7 +7,7 @@
 
 #import <UIKit/UIKit.h>
 
-#import <COKit/COKit.h>
+#import <LibreOfficeKit/LibreOfficeKit.h>
 
 @interface AppDelegate : UIResponder <UIApplicationDelegate>
 

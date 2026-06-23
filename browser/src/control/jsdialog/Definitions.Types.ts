@@ -22,16 +22,16 @@ interface WidgetJSON {
 	children?: Array<WidgetJSON>; // child nodes
 	title?: string;
 	text?: string; // TODO: remove, its for not yet defined widget types
-	tooltip?: string; // tooltip text (QuickHelpText from VCL)
 	top?: string; // placement in the grid - row
 	left?: string; // placement in the grid - column
 	width?: string; // inside grid - width in number of columns
-	labelledBy?: string | string[];
+	labelledBy?: string;
 	allyRole?: string;
-	accessibility?: NotebookbarAccessibilityDescriptor;
 	aria?: AriaLabelAttributes; // ARIA Label attributes
-	ariaLive?: 'polite' | 'assertive' | 'off';
 	gridKeyboardNavigation?: boolean; // receives keyboard navigation for elements in col/rows
+	icon?: string;
+	accessibility?: NotebookbarAccessibilityDescriptor;
+	opensPopup?: boolean;
 }
 
 interface JSBuilderOptions {
@@ -50,16 +50,15 @@ interface JSBuilderOptions {
 
 interface JSBuilder {
 	_currentDepth: number; // mobile-wizard only FIXME: encapsulate
-	_responses: any;
 
 	_unoToolButton: UnoToolButtonHandler; // special handler which returns toolitem object
 	_controlHandlers: { [key: string]: JSWidgetHandler }; // handlers for widget types
 	_menus: Map<string, Array<MenuDefinition>>;
+	_iconviewSiblingsData: Map<string, Array<WidgetJSON>>; // cache for siblings of notebookbar iconview entries, used for static items
 
 	options: JSBuilderOptions; // current state
 	map: MapInterface; // reference to map
 	rendersCache: any; // on demand content cache
-	wizard: any;
 	windowId?: WindowId | number;
 
 	build: (
@@ -81,9 +80,6 @@ interface JSBuilder {
 	_getGridRows: (data: WidgetJSON[]) => number;
 	_preventDocumentLosingFocusOnClick: (container: Element) => void;
 	_cleanText: (text: string) => string;
-	_setAccessKey: (element: HTMLElement, key: string) => void;
-	_getAccessKeyFromText: (text: string) => string;
-	_stressAccessKey: (element: HTMLElement, accessKey: string) => void;
 	_expanderHandler: any; // FIXME: use handlers getter instead
 }
 
@@ -140,7 +136,6 @@ interface ActionData {
 	control_id: string;
 	action_type: string;
 	data: any;
-	new_id?: string;
 }
 
 // JSDialog message (full, update or action)
@@ -178,7 +173,7 @@ interface DialogJSON extends JSDialogJSON {
 type NotebookbarAccessibilityDescriptor = {
 	focusBack: boolean;
 	combination: string;
-	[language: string]: string | boolean | null | undefined; // language-specific combinations (e.g. 'de' for German)
+	de?: string | null; // combination specific for german
 };
 
 type NotebookbarTabEntry = {
@@ -318,10 +313,6 @@ interface PushButtonWidget extends WidgetJSON {
 	symbol?: string;
 	text?: string;
 	image?: string;
-	isToggle?: boolean;
-	checked?: boolean;
-	command?: string;
-	hidden?: boolean; // todo: deprecate it in favor of WidgetJson.visible
 }
 
 // type: 'menubutton'
@@ -375,7 +366,7 @@ interface TreeColumnJSON {
 	link?: string;
 	collapsed?: string | boolean;
 	expanded?: string | boolean;
-	customEntryRenderer?: boolean; // has custom rendering enabled
+	customEntryRenderer?: boolean; // has custome rendering enabled
 	collapsedimage?: string;
 	expandedimage?: string;
 	editable?: boolean;
@@ -397,8 +388,6 @@ interface TreeHeaderJSON {
 	text: string;
 	sortable: boolean; // can be sorted by column
 	arrow?: 'up' | 'down'; // sorting arrow to show
-	color?: string; // series color as hex string (RRGGBB) for color bar indicator
-	headerName?: string; // series name for chart data table headers
 }
 
 interface TreeWidgetJSON extends WidgetJSON {
@@ -413,7 +402,7 @@ interface TreeWidgetJSON extends WidgetJSON {
 	highlightTerm?: string; // what, if any, entries are we highlighting?
 	customEntryRenderer?: boolean;
 	noSearchField?: boolean; // When true, the widget shouldn't have a search field added
-	sortLocally?: boolean; // When true, the widget will run sort algorithm in JS instead of callback (lists only)
+	sortLocally?: boolean; // When true, the widget will run sort algorithm in JS isntead of callback (lists only)
 	role?: string; // ARIA role from core: 'tree', 'treegrid', 'listbox', or 'grid'
 }
 
@@ -434,10 +423,7 @@ interface IconViewJSON extends WidgetJSON {
 	singleclickactivate: boolean; // activates element on single click instead of just selection
 	textWithIconEnabled: boolean; // To identify if we should add text below the icon or not.
 	selectionmode: string; // single or multiple
-}
-
-interface IconViewListJSON extends WidgetJSON {
-	children: Array<IconViewJSON>;
+	siblings?: Array<WidgetJSON>; // sibling elements i.e scroll-up, scroll-down, expand
 }
 
 interface IconViewElement extends HTMLElement {
@@ -446,11 +432,6 @@ interface IconViewElement extends HTMLElement {
 		placeholder: Element,
 		entryContainer: Element,
 	) => void;
-
-	updateRenders: (pos: number) => void;
-
-	updateRendersImpl: (pos: number, id: string, where: HTMLElement) => void;
-
 	builderCallback: (
 		objectType: string,
 		eventType: string,
@@ -465,7 +446,6 @@ interface EditWidgetJSON extends WidgetJSON {
 	password: boolean; // is password field
 	hidden: boolean; // is hidden, TODO: duplicate?
 	changedCallback: any; // callback  for 'change' event
-	widthInChars: number; // width hint in characters
 }
 
 // type: 'checkbox'

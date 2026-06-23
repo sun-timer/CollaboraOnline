@@ -9,23 +9,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Implementation of admin data model and document statistics.
- * Classes: Document, Subscriber, AdminModel
- */
-
 #include <config.h>
 
 #include "AdminModel.hpp"
-
-#include <common/ConfigUtil.hpp>
-#include <common/Log.hpp>
-#include <common/Protocol.hpp>
-#include <common/Unit.hpp>
-#include <common/Util.hpp>
-#include <net/WebSocketHandler.hpp>
-#include <wsd/COOLWSD.hpp>
-#include <wsd/Exceptions.hpp>
 
 #include <chrono>
 #include <cmath>
@@ -36,6 +22,15 @@
 #include <set>
 #include <sstream>
 #include <string>
+
+#include <Log.hpp>
+#include <Protocol.hpp>
+#include <Unit.hpp>
+#include <Util.hpp>
+#include <common/ConfigUtil.hpp>
+#include <net/WebSocketHandler.hpp>
+#include <wsd/COOLWSD.hpp>
+#include <wsd/Exceptions.hpp>
 
 #include <fnmatch.h>
 #include <dirent.h>
@@ -49,8 +44,9 @@ std::ostream& print(std::ostream& oss, const std::string_view prefix, const std:
     return oss;
 }
 
-std::string concat(const std::string_view prefix, const std::string_view name,
-                   const std::string_view suffix)
+
+std::string concat(const std::string_view &prefix, const std::string_view name,
+                    const std::string_view suffix)
 {
     std::ostringstream oss;
     print(oss, prefix, name, suffix);
@@ -174,7 +170,7 @@ void AdminDocument::updateMemoryDirty()
     {
         size_t lastMemDirty = _memoryDirty;
         auto procSMaps = _procSMaps.lock();
-        _memoryDirty = procSMaps ? ProcUtil::getPssAndDirtyFromSMaps(procSMaps.get()).second : 0;
+        _memoryDirty = procSMaps ? Util::getPssAndDirtyFromSMaps(procSMaps.get()).second : 0;
         _lastTimeSMapsRead = now;
         if (lastMemDirty != _memoryDirty)
             _hasMemDirtyChanged = true;
@@ -207,7 +203,7 @@ bool Subscriber::notify(const std::string& message)
         try
         {
             UNITWSD_CALL(onAdminNotifyMessage(message));
-            webSocket->sendTextMessage(message);
+            webSocket->sendMessage(message);
             return true;
         }
         catch (const std::exception& ex)
@@ -360,7 +356,7 @@ size_t AdminModel::getKitsJiffies() const
             const int pid = it.second.getPid();
             if (pid > 0)
             {
-                unsigned newJ = ProcUtil::getCpuUsage(pid);
+                unsigned newJ = Util::getCpuUsage(pid);
                 unsigned prevJ = it.second.getLastJiffies();
                 if(newJ >= prevJ)
                 {
@@ -1123,8 +1119,8 @@ struct KitProcStats
 {
     void UpdateAggregateStats(int pid)
     {
-        _threadCount.Update(ProcUtil::getStatFromPid(pid, 19));
-        _cpuTime.Update(ProcUtil::getCpuUsage(pid) / sysconf (_SC_CLK_TCK));
+        _threadCount.Update(Util::getStatFromPid(pid, 19));
+        _cpuTime.Update(Util::getCpuUsage(pid) / sysconf (_SC_CLK_TCK));
     }
 
     int unassignedCount;
@@ -1168,7 +1164,7 @@ void AdminModel::CalcDocAggregateStats(DocumentAggregateStats& stats) const
 {
     stats = ExpiredDocStats;
 
-    for (const auto& d : _documents)
+    for (auto& d : _documents)
         stats.Update(d.second, true);
 }
 
@@ -1201,19 +1197,16 @@ void AdminModel::getMetrics(std::ostream& oss) const
     ASSERT_CORRECT_THREAD_OWNER(_owner);
 
     oss << "coolwsd_count " << getPidsFromProcName(std::regex("coolwsd"), nullptr) << std::endl;
-    oss << "coolwsd_thread_count " << ProcUtil::getStatFromPid(ProcUtil::getProcessId(), 19)
-        << std::endl;
-    oss << "coolwsd_cpu_time_seconds "
-        << ProcUtil::getCpuUsage(ProcUtil::getProcessId()) / sysconf(_SC_CLK_TCK) << std::endl;
-    oss << "coolwsd_memory_used_bytes " << ProcUtil::getMemoryUsagePSS(ProcUtil::getProcessId()) * 1024
-        << std::endl;
+    oss << "coolwsd_thread_count " << Util::getStatFromPid(Util::getProcessId(), 19) << std::endl;
+    oss << "coolwsd_cpu_time_seconds " << Util::getCpuUsage(Util::getProcessId()) / sysconf (_SC_CLK_TCK) << std::endl;
+    oss << "coolwsd_memory_used_bytes " << Util::getMemoryUsagePSS(Util::getProcessId()) * 1024 << std::endl;
     oss << "coolwsd_tcp_connections_used " << StreamSocket::getExternalConnectionCount() << std::endl;
     oss << std::endl;
 
     oss << "forkit_count " << getPidsFromProcName(std::regex("forkit"), nullptr) << std::endl;
-    oss << "forkit_thread_count " << ProcUtil::getStatFromPid(_forKitPid, 19) << std::endl;
-    oss << "forkit_cpu_time_seconds " << ProcUtil::getCpuUsage(_forKitPid) / sysconf (_SC_CLK_TCK) << std::endl;
-    oss << "forkit_memory_used_bytes " << ProcUtil::getMemoryUsageRSS(_forKitPid) * 1024 << std::endl;
+    oss << "forkit_thread_count " << Util::getStatFromPid(_forKitPid, 19) << std::endl;
+    oss << "forkit_cpu_time_seconds " << Util::getCpuUsage(_forKitPid) / sysconf (_SC_CLK_TCK) << std::endl;
+    oss << "forkit_memory_used_bytes " << Util::getMemoryUsageRSS(_forKitPid) * 1024 << std::endl;
     oss << std::endl;
 
     DocumentAggregateStats docStats;

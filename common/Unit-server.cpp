@@ -5,25 +5,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Server-side unit test framework dynamic library loading.
- * Functions: linkAndCreateUnit(), closeUnit() - DL library management
- */
-
 #include <config.h>
 
+#include "Log.hpp"
 #include "Unit.hpp"
-
-#include <common/Log.hpp>
-#include <common/Util.hpp>
-
-#include <test/testlog.hpp>
-
-#include <stdexcept>
+#include "Util.hpp"
 
 // A "server" COOL is always running on a Unixish OS, so we can
 // include this unconditionally.
 #include <dlfcn.h>
+
+#include <test/testlog.hpp>
 
 UnitBase** UnitBase::linkAndCreateUnit([[maybe_unused]] UnitType type,
                                        [[maybe_unused]] const std::string& unitLibPath)
@@ -32,9 +24,8 @@ UnitBase** UnitBase::linkAndCreateUnit([[maybe_unused]] UnitType type,
     DlHandle = dlopen(unitLibPath.c_str(), RTLD_GLOBAL|RTLD_NOW);
     if (!DlHandle)
     {
-        const std::string error = std::string("Failed to load unit-test lib ") + dlerror();
-        LOG_ERR(error);
-        throw std::runtime_error(error); // Break.
+        LOG_ERR("Failed to load unit-test lib " << dlerror());
+        return nullptr;
     }
 
     // avoid std:string de-allocation during failure / exit.

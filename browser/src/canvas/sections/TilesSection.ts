@@ -18,7 +18,8 @@ namespace cool {
 
 export class TilesSection extends CanvasSectionObject {
 
-	anchor: any = [[app.CSections.RulerSpacer.name, 'bottom', app.CSections.ColumnHeader.name, 'bottom', 'top'], [app.CSections.RowHeader.name, 'right', 'left']];
+	// Below anchor list may be expanded. For example, Writer may have ruler section. Then ruler section should also be added here.
+	anchor: any = [[app.CSections.ColumnHeader.name, 'bottom', 'top'], [app.CSections.RowHeader.name, 'right', 'left']];
 	expand: any = ['top', 'left', 'bottom', 'right'];
 	processingOrder: number = app.CSections.Tiles.processingOrder;
 	drawingOrder: number = app.CSections.Tiles.drawingOrder;
@@ -181,7 +182,7 @@ export class TilesSection extends CanvasSectionObject {
 			tilePos.pY = tile.coords.part * partHeightPixels + tile.coords.y;
 		}
 
-		this.drawTileToCanvas(tile, this.context, tilePos.vX - this.myTopLeft[0], tilePos.vY - this.myTopLeft[1], TileManager.tileSize, TileManager.tileSize);
+		this.drawTileToCanvas(tile, this.context, tilePos.vX, tilePos.vY, TileManager.tileSize, TileManager.tileSize);
 	}
 
 	// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
@@ -369,12 +370,9 @@ export class TilesSection extends CanvasSectionObject {
 
 		for (let i = 0; i < visibleCoordList.length; i++) {
 			const tile = TileManager.get(visibleCoordList[i]);
+			const tilePos = tile.coords.getPosSimplePoint();
 
-			if (tile && tile.isReadyToDraw()) {
-				const tilePos = tile.coords.getPosSimplePoint();
-
-				this.drawTileToCanvas(tile, this.context, tilePos.vX, tilePos.vY, TileManager.tileSize, TileManager.tileSize);
-			}
+			this.drawTileToCanvas(tile, this.context, tilePos.vX, tilePos.vY, TileManager.tileSize, TileManager.tileSize);
 		}
 	}
 
@@ -390,16 +388,12 @@ export class TilesSection extends CanvasSectionObject {
 		var ctx = this.sectionProperties.tsManager._paintContext();
 
 		if (app.activeDocument && app.activeDocument.activeLayout.type === 'ViewLayoutMultiPage') {
-			this.context.translate(-this.myTopLeft[0], -this.myTopLeft[1]);
 			this.drawPageBackgrounds(ctx);
 			this.drawForViewLayoutMultiPage();
-			this.context.translate(this.myTopLeft[0], this.myTopLeft[1]);
 			return;
 		}
 		else if (app.activeDocument.activeLayout.type === 'ViewLayoutCompareChanges') {
-			this.context.translate(-this.myTopLeft[0], -this.myTopLeft[1]);
 			this.drawForViewLayoutCompareChanges();
-			this.context.translate(this.myTopLeft[0], this.myTopLeft[1]);
 			return;
 		}
 
@@ -413,13 +407,7 @@ export class TilesSection extends CanvasSectionObject {
 		} else if (!this.containerObject.isZoomChanged()) {
 			// Don't show page border and page numbers (drawn by drawPageBackgrounds) if zoom is changing
 			// after a zoom animation.
-
-			// drawPageBackgroundWriter uses absolute view coordinates (v1X, v1Y etc.)
-			// but the context is already translated by myTopLeft (by the section container).
-			// Compensate for this offset, same as the multipage view path.
-			this.context.translate(-this.myTopLeft[0], -this.myTopLeft[1]);
 			this.drawPageBackgrounds(ctx);
-			this.context.translate(this.myTopLeft[0], this.myTopLeft[1]);
 		}
 
 		var doneTiles = new Set();

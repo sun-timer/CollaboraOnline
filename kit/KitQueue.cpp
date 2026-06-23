@@ -9,29 +9,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Kit process callback queue management and optimization.
- * Classes: KitQueue, Callback - COKit callback handling and deduplication
- */
-
 #include <config.h>
 
 #include "KitQueue.hpp"
 
-#include <common/JsonUtil.hpp>
-
-#include <algorithm>
 #include <climits>
 #include <cstring>
-#include <iostream>
+#include <algorithm>
 #include <string>
 #include <string_view>
+#include <iostream>
+
+#include "JsonUtil.hpp"
 
 /* static */ std::string KitQueue::Callback::toString(int view, int type,
                                                       const std::string& payload)
 {
     std::ostringstream str;
-    str << view << ' ' << kitCallbackTypeToString(type) << ' '
+    str << view << ' ' << lokCallbackTypeToString(type) << ' '
         << COOLProtocol::getAbbreviatedMessage(payload);
     return str.str();
 }
@@ -117,6 +112,19 @@ std::string extractViewId(const std::string& payload)
     return json->get("viewId").toString();
 }
 
+/// Extract the .uno: command ID from the potential command.
+std::string extractUnoCommand(const std::string& command)
+{
+    if (!COOLProtocol::matchPrefix(".uno:", command))
+        return std::string();
+
+    size_t equalPos = command.find('=');
+    if (equalPos != std::string::npos)
+        return command.substr(0, equalPos);
+
+    return command;
+}
+
 /// Extract rectangle from the invalidation callback payload
 bool extractRectangle(const StringVector& tokens, int& x, int& y, int& w, int& h, int& part, int& mode)
 {
@@ -163,15 +171,15 @@ void KitQueue::putCallback(int view, int type, const std::string &payload)
 
 bool KitQueue::elideDuplicateCallback(int view, int type, const std::string &payload)
 {
-    const auto callbackType = static_cast<COKitCallbackType>(type);
+    const auto callbackType = static_cast<LibreOfficeKitCallbackType>(type);
 
     // Nothing to combine in this case:
-    if (_callbacks.empty())
+    if (_callbacks.size() == 0)
         return false;
 
     switch (callbackType)
     {
-        case KIT_CALLBACK_INVALIDATE_TILES: // invalidation
+        case LOK_CALLBACK_INVALIDATE_TILES: // invalidation
         {
             StringVector tokens = StringVector::tokenize(payload);
 
@@ -284,18 +292,11 @@ bool KitQueue::elideDuplicateCallback(int view, int type, const std::string &pay
         }
         break;
 
-        case KIT_CALLBACK_STATE_CHANGED: // state changed
+        case LOK_CALLBACK_STATE_CHANGED: // state changed
         {
-            constexpr std::string_view unoPrefix(".uno:");
-            if (!payload.starts_with(unoPrefix))
+            std::string unoCommand = extractUnoCommand(payload);
+            if (unoCommand.empty())
                 return false;
-
-            // Only elide .uno commands that have a value.
-            const size_t equalPos = payload.find('=', unoPrefix.size());
-            if (equalPos == std::string::npos)
-                return false;
-
-            const std::string_view unoCommand = std::string_view(payload).substr(0, equalPos);
 
             // This is needed because otherwise it creates some problems when
             // a save occurs while a cell is still edited in Calc.
@@ -303,16 +304,17 @@ bool KitQueue::elideDuplicateCallback(int view, int type, const std::string &pay
                 return false;
 
             // remove obsolete states of the same .uno: command
-            const size_t unoCommandLen = unoCommand.size();
+            size_t unoCommandLen = unoCommand.size();
             for (size_t i = 0; i < _callbacks.size(); ++i)
             {
-                const Callback& it = _callbacks[i];
+                Callback& it = _callbacks[i];
                 if (it._type != type || it._view != view)
                     continue;
 
-                // Skip if the current callback payload doesn't start with '<unoCommand>='.
-                if (it._payload.size() < unoCommandLen + 1 || it._payload[unoCommandLen] != '=' ||
-                    !it._payload.starts_with(unoCommand))
+                size_t payloadLen = it._payload.size();
+                if (payloadLen < unoCommandLen + 1 ||
+                    unoCommand.compare(0, unoCommandLen, it._payload) != 0 ||
+                    it._payload[unoCommandLen] != '=')
                     continue;
 
                 LOG_TRC("Remove obsolete uno command: " << it << " -> "
@@ -323,18 +325,18 @@ bool KitQueue::elideDuplicateCallback(int view, int type, const std::string &pay
         }
         break;
 
-        case KIT_CALLBACK_INVALIDATE_VISIBLE_CURSOR: // the cursor has moved
-        case KIT_CALLBACK_CURSOR_VISIBLE: // the cursor visibility has changed
-        case KIT_CALLBACK_STATUS_INDICATOR_SET_VALUE: // setting the indicator value
-        case KIT_CALLBACK_DOCUMENT_SIZE_CHANGED: // setting the document size
-        case KIT_CALLBACK_CELL_CURSOR: // the cell cursor has moved
-        case KIT_CALLBACK_INVALIDATE_VIEW_CURSOR: // the view cursor has moved
-        case KIT_CALLBACK_CELL_VIEW_CURSOR: // the view cell cursor has moved
-        case KIT_CALLBACK_VIEW_CURSOR_VISIBLE: // the view cursor visibility has changed
+        case LOK_CALLBACK_INVALIDATE_VISIBLE_CURSOR: // the cursor has moved
+        case LOK_CALLBACK_CURSOR_VISIBLE: // the cursor visibility has changed
+        case LOK_CALLBACK_STATUS_INDICATOR_SET_VALUE: // setting the indicator value
+        case LOK_CALLBACK_DOCUMENT_SIZE_CHANGED: // setting the document size
+        case LOK_CALLBACK_CELL_CURSOR: // the cell cursor has moved
+        case LOK_CALLBACK_INVALIDATE_VIEW_CURSOR: // the view cursor has moved
+        case LOK_CALLBACK_CELL_VIEW_CURSOR: // the view cell cursor has moved
+        case LOK_CALLBACK_VIEW_CURSOR_VISIBLE: // the view cursor visibility has changed
         {
-            const bool isViewCallback = (callbackType == KIT_CALLBACK_INVALIDATE_VIEW_CURSOR ||
-                                         callbackType == KIT_CALLBACK_CELL_VIEW_CURSOR ||
-                                         callbackType == KIT_CALLBACK_VIEW_CURSOR_VISIBLE);
+            const bool isViewCallback = (callbackType == LOK_CALLBACK_INVALIDATE_VIEW_CURSOR ||
+                                         callbackType == LOK_CALLBACK_CELL_VIEW_CURSOR ||
+                                         callbackType == LOK_CALLBACK_VIEW_CURSOR_VISIBLE);
 
             const std::string viewId
                 = (isViewCallback ? extractViewId(payload) : std::string());
@@ -556,15 +558,17 @@ namespace {
     struct SpeculativeTileDesc
     {
         const TileDesc& _prioTile;
-        const int _tilePosX;
-        const int _tilePosY;
+        int _tilePosX;
+        int _tilePosY;
 
-        SpeculativeTileDesc(const TileDesc& prioTile, int leftGridX, int vertDirection)
+        SpeculativeTileDesc(const TileDesc& prioTile,
+                            int leftGridX, int vertDirection)
             : _prioTile(prioTile)
-            , _tilePosX(leftGridX * prioTile.getTileWidth())
-            , _tilePosY(prioTile.getTilePosY() + (prioTile.getTileHeight() * vertDirection))
         {
+            _tilePosX = leftGridX * prioTile.getTileWidth();
+            _tilePosY = prioTile.getTilePosY() + (prioTile.getTileHeight() * vertDirection);
         }
+
     };
 
     bool operator<(const TileDesc& candidate, const SpeculativeTileDesc& other)
@@ -830,11 +834,11 @@ void KitQueue::dumpState(std::ostream& oss)
 {
     oss << "\tIncoming Queue size: " << _queue.size() << "\n";
     size_t i = 0;
-    for (const Payload &it : _queue)
+    for (Payload &it : _queue)
         oss << "\t\t" << i++ << ": " << COOLProtocol::getFirstLine(it) << "\n";
 
     oss << "\tTile Queues count: " << _tileQueues.size() << "\n";
-    for (const auto& queue : _tileQueues)
+    for (auto& queue : _tileQueues)
     {
         CanonicalViewId viewId = queue.first;
         const std::vector<TileDesc>& tileQueue = queue.second;
@@ -846,7 +850,7 @@ void KitQueue::dumpState(std::ostream& oss)
 
     oss << "\tCallbacks size: " << _callbacks.size() << "\n";
     i = 0;
-    for (const auto &it : _callbacks)
+    for (auto &it : _callbacks)
         oss << "\t\t" << i++ << ": " << it << "\n";
 }
 

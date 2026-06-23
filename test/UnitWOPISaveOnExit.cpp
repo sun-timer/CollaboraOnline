@@ -9,13 +9,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for WOPI save-on-exit functionality.
- */
-
 #include <config.h>
 
-#include <WOPIUploadConflictCommon.hpp>
+#include "WOPIUploadConflictCommon.hpp"
 
 #include <atomic>
 #include <string>
@@ -23,8 +19,8 @@
 
 #include <Poco/Net/HTTPRequest.h>
 
-#include <Unit.hpp>
-#include <lokassert.hpp>
+#include "Unit.hpp"
+#include "lokassert.hpp"
 
 class UnitWOPISaveOnExit : public WOPIUploadConflictCommon
 {

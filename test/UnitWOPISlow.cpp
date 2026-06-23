@@ -9,20 +9,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for WOPI slow connection scenarios.
- */
-
 #include <config.h>
 
 #include <chrono>
 
-#include <HttpRequest.hpp>
-#include <common/Util.hpp>
-#include <lokassert.hpp>
+#include "HttpRequest.hpp"
+#include "Util.hpp"
+#include "lokassert.hpp"
 
 #include <WopiTestServer.hpp>
-#include <common/Log.hpp>
+#include <Log.hpp>
 #include <Unit.hpp>
 #include <UnitHTTP.hpp>
 #include <cstddef>

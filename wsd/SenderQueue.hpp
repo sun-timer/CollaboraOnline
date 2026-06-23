@@ -9,20 +9,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Message queue for sending data to clients.
- * Classes: SenderQueue
- */
-
 #pragma once
 
-#include <common/Log.hpp>
-#include <common/Protocol.hpp>
 #include <common/SigUtil.hpp>
-#include <wsd/TileDesc.hpp>
+#include <common/Log.hpp>
+#include <TileDesc.hpp>
+#include <Protocol.hpp>
 
-#include <Poco/JSON/Object.h>
 #include <Poco/JSON/Parser.h>
+#include <Poco/JSON/Object.h>
 
 #include <deque>
 #include <mutex>

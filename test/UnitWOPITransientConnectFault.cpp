@@ -9,17 +9,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for WOPI transient connection fault handling.
- */
-
 #include <config.h>
 
-#include <HttpRequest.hpp>
-#include <lokassert.hpp>
+#include "HttpRequest.hpp"
+#include "lokassert.hpp"
 
 #include <WopiTestServer.hpp>
-#include <common/Log.hpp>
+#include <Log.hpp>
 #include <Unit.hpp>
 #include <UnitHTTP.hpp>
 #include <helpers.hpp>
@@ -83,7 +79,7 @@ public:
 
         ++_uploadFailures;
 
-        LOK_ASSERT_EQUAL(1, _uploadFailures);
+        LOK_ASSERT_EQUAL(_uploadFailures, 1);
 
         TRANSITION_STATE(_phase, Phase::WaitSuccessUpload);
 
@@ -101,7 +97,7 @@ public:
         LOK_ASSERT_STATE(_phase, Phase::WaitSuccessUpload);
         // we should have had an initial save failure, and this retry should
         // happen after that, if so all is well
-        LOK_ASSERT_EQUAL(1, _uploadFailures);
+        LOK_ASSERT_EQUAL(_uploadFailures, 1);
         bool ret = WopiTestServer::handleWopiUpload(request, message, socket);
         passTest("Finished, upload retry arrived.");
         return ret;

@@ -28,7 +28,7 @@ class ShapeHandleCustomSubSection extends CanvasSectionObject {
 		this.sectionProperties.parentHandlerSection = parentHandlerSection;
 		this.sectionProperties.ownInfo = ownInfo;
 
-		this.sectionProperties.mousePointerType = 'url(' + app.LOUtil.getURL('images/cursors/grab.svg') + ') 12 12, grab';
+		this.sectionProperties.mousePointerType = 'grab';
 	}
 
 	onDraw(frameCount?: number, elapsedTime?: number): void {

@@ -211,8 +211,6 @@ class CanvasSectionContainer {
 	private duration: number = null; // Duration for the animation.
 	private elapsedTime: number = null; // Time that passed since the animation started.
 
-	private dpiMediaQuery: MediaQueryList = null;
-
 	constructor (canvasDOMElement: HTMLCanvasElement, disableDrawing?: boolean) {
 		this.canvas = canvasDOMElement;
 		this.context = canvasDOMElement.getContext('2d', { alpha: false });
@@ -259,27 +257,6 @@ class CanvasSectionContainer {
 
 			this.disableDrawing();
 		}
-
-		this.setupDPIChangeListener();
-	}
-
-	private setupDPIChangeListener(): void {
-		if (!window.matchMedia) return;
-
-		const updateDPI = (): void => {
-			if (window.devicePixelRatio !== app.dpiScale) {
-				this.onResize(0, 0);
-			}
-			// Re-register since the query is for a specific dppx value
-			this.setupDPIChangeListener();
-		};
-		if (this.dpiMediaQuery) {
-			this.dpiMediaQuery.removeEventListener('change', updateDPI);
-		}
-		this.dpiMediaQuery = window.matchMedia(
-			'(resolution: ' + window.devicePixelRatio + 'dppx)'
-		);
-		this.dpiMediaQuery.addEventListener('change', updateDPI, { once: true });
 	}
 
 	private clearCanvas() {
@@ -667,24 +644,18 @@ class CanvasSectionContainer {
 	}
 
 	private redrawCallback(timestamp: number) {
-		app.enterRAF();
-
 		this.drawRequest = null;
 
-		if (!this.isCanvasSizeValidAfterDisplayChange()) {
-			app.exitRAF();
+		if (!this.isCanvasSizeValidAfterDisplayChange())
 			return;
-		}
 
-		this.flushLayoutingTasks();
 		this.resizeCanvas();
 		this.drawSections();
+		this.flushLayoutingTasks();
 		this.canvas.style.visibility = 'unset';
 
 		// need to check if we should continue animation
 		this.animate(timestamp);
-
-		app.exitRAF();
 	}
 
 	public requestReDraw() {
@@ -1674,8 +1645,8 @@ class CanvasSectionContainer {
 			this.createUpdateDivElements();
 		if (redraw && this.drawingAllowed())
 			this.requestReDraw();
-		else
-			this.resizeCanvas(); // Ensure canvas backing store is correctly sized even when drawing is disabled, to prevent blurriness on HiDPI displays
+		else if (window.L && window.L.Browser.safari && window.L.Browser.mobile)
+			this.resizeCanvas(); // HACK: On Mobile/Tablet Safari, not resizing the canvas here causes it to blur later... I have seen no evidence that this is a problem on Desktop Safari
 	}
 
 	private roundPositionAndSize(section: CanvasSectionObject) {
@@ -2096,8 +2067,6 @@ class CanvasSectionContainer {
 	}
 
 	private animate (timeStamp: number) {
-		app.enterRAF();
-
 		if (this.lastFrameStamp > 0)
 			this.elapsedTime += Math.max(0, timeStamp - this.lastFrameStamp);
 
@@ -2122,8 +2091,6 @@ class CanvasSectionContainer {
 			this.setAnimatingSectionName(null);
 			this.frameCount = this.elapsedTime = null;
 		}
-
-		app.exitRAF();
 	}
 
 	// Resets animation duration. Not to be called directly. Instead, use (inside section class) this.resetAnimation()

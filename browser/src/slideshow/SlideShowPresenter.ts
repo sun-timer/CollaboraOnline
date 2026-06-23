@@ -129,12 +129,11 @@ class SlideShowPresenter {
 	_slideNavContainer: HTMLDivElement | null = null;
 	_enableA11y: boolean = false;
 	_fromPresenterConsole: boolean = false;
-	_isWelcomePresentation: boolean = false;
 	private _pauseTimer: PauseTimerGl | PauseTimer2d;
 	private _slideControlsTimer: ReturnType<typeof setTimeout> | null = null;
 	private _slideShowHandler: SlideShowHandler;
 	private _slideShowNavigator: SlideShowNavigator;
-	public _metaPresentation: MetaPresentation;
+	private _metaPresentation: MetaPresentation;
 	private _startSlide: number;
 	private _startEffect: number;
 	private _presentationInfoChanged: boolean = false;
@@ -152,8 +151,6 @@ class SlideShowPresenter {
 	private _isFollower: boolean = false;
 	private _isFollowing: boolean = false;
 	private _followBtn: HTMLElement | null = null;
-	private _prevButton: HTMLImageElement | null = null;
-	private _nextButton: HTMLImageElement | null = null;
 
 	private showFollow(me: boolean) {
 		this._map.uiManager.showButton('slide-presentation-follow', !me);
@@ -243,13 +240,13 @@ class SlideShowPresenter {
 							? 0
 							: this._slideShowNavigator.getLeaderSlide(),
 					startEffectNumber:
-						this._slideShowNavigator.getLeaderEffect() === 0
+						this._slideShowNavigator.getLeaderEffect() === -1
 							? undefined
 							: this._slideShowNavigator.getLeaderEffect(),
 				});
 				break;
 			case 'dispatcheffect':
-				if (this.isFollowing()) this._slideShowNavigator.dispatchEffect(false);
+				if (this.isFollowing()) this._slideShowNavigator.dispatchEffect();
 				break;
 			case 'rewindeffect':
 				if (this.isFollowing()) this._slideShowNavigator.rewindEffect();
@@ -283,8 +280,6 @@ class SlideShowPresenter {
 				this.showFollow(false);
 				break;
 		}
-
-		this.updateControls();
 	}
 
 	private _handlePresenterCanvasClick(event: any) {
@@ -445,9 +440,6 @@ class SlideShowPresenter {
 		if (this._presenterContainer) {
 			window.L.DomUtil.remove(this._presenterContainer);
 			this._presenterContainer = null;
-			if (window.mode.isCODesktop()) {
-				app.socket.sendMessage('FULLSCREENPRESENTATION false');
-			}
 		}
 		// #7102 on exit from fullscreen we don't get a 'focus' event
 		// in Chrome so a later second attempt at launching a presentation
@@ -457,7 +449,6 @@ class SlideShowPresenter {
 
 	private centerCanvas() {
 		if (!this._slideShowCanvas) return;
-
 		let winWidth = 0;
 		let winHeight = 0;
 		if (this._slideShowWindowProxy) {
@@ -491,27 +482,7 @@ class SlideShowPresenter {
 		}
 	}
 
-	private _configureCloseButtonStyles(
-		closeBtn: HTMLElement,
-		closeImg: HTMLImageElement,
-	) {
-		closeBtn.style.position = 'absolute';
-		closeBtn.style.top = '10px';
-		closeBtn.style.right = '10px';
-		closeBtn.style.width = '24px';
-		closeBtn.style.height = '24px';
-		closeBtn.style.cursor = 'pointer';
-		closeImg.style.width = '100%';
-		closeImg.style.height = '100%';
-		closeImg.style.pointerEvents = 'none';
-	}
-
-	private _createPresenterHTML(
-		parent: Element,
-		width: number,
-		height: number,
-		showSwitchMonitors: boolean,
-	) {
+	private _createPresenterHTML(parent: Element, width: number, height: number) {
 		const presenterContainer = window.L.DomUtil.create(
 			'div',
 			'leaflet-slideshow2',
@@ -524,44 +495,15 @@ class SlideShowPresenter {
 			presenterContainer,
 		);
 		slideshowContainer.id = 'slideshow-container';
-
 		this._slideShowCanvas = this._createCanvas(
 			slideshowContainer,
 			width,
 			height,
-			showSwitchMonitors,
 		);
-
-		if (this._isWelcomePresentation) {
-			const closeBtn = window.L.DomUtil.create(
-				'div',
-				'welcome-slideshow-close-btn',
-				presenterContainer,
-			);
-			const closeImg = window.L.DomUtil.create(
-				'img',
-				'',
-				closeBtn,
-			) as HTMLImageElement;
-			closeImg.src = app.LOUtil.getImageURL('closedoc.svg');
-
-			this._configureCloseButtonStyles(closeBtn, closeImg);
-
-			closeBtn.onclick = function (e: MouseEvent) {
-				e.stopPropagation();
-				app.dispatcher.dispatch('closeapp');
-			};
-		}
-
 		return presenterContainer;
 	}
 
-	_createCanvas(
-		parent: Element,
-		width: number,
-		height: number,
-		showSwitchMonitors: boolean,
-	) {
+	_createCanvas(parent: Element, width: number, height: number) {
 		const canvas = window.L.DomUtil.create(
 			'canvas',
 			'leaflet-slideshow2',
@@ -578,11 +520,7 @@ class SlideShowPresenter {
 		}
 
 		this._progressBarContainer = this._createProgressBar(parent);
-		if (!this._isWelcomePresentation)
-			this._slideNavContainer = this._createSlideNav(
-				parent,
-				showSwitchMonitors,
-			);
+		this._slideNavContainer = this._createSlideNav(parent);
 
 		canvas.addEventListener(
 			'click',
@@ -667,10 +605,7 @@ class SlideShowPresenter {
 		JSDialog.progressbar(container, progressData, builderOptions);
 	}
 
-	private _createSlideNav(
-		parent: Element,
-		showSwitchMonitors: boolean,
-	): HTMLDivElement {
+	private _createSlideNav(parent: Element): HTMLDivElement {
 		const slideNavContainer = window.L.DomUtil.create(
 			'div',
 			'slideshow-nav-container',
@@ -678,7 +613,7 @@ class SlideShowPresenter {
 		);
 		slideNavContainer.tabIndex = -1;
 		this._configureSlideNavStyles(slideNavContainer);
-		this._initializeSlideNavWidget(slideNavContainer, showSwitchMonitors);
+		this._initializeSlideNavWidget(slideNavContainer);
 		return slideNavContainer;
 	}
 
@@ -704,19 +639,9 @@ class SlideShowPresenter {
 	}
 
 	private _onPrevNextSlide = (e: Event) => {
-		const currentSlide = this._slideShowNavigator.currentSlideIndex;
-		const isFollowing = this.isFollowing();
-		if ((e.target as any).id === 'previous') {
-			if (this._canGoPrev(currentSlide)) {
-				this._onPrevSlide(e);
-				if (isFollowing) this.setFollowing(false);
-			}
-		} else if ((e.target as any).id === 'next') {
-			if (this._canGoNext(currentSlide)) {
-				this._onNextSlide(e);
-				if (isFollowing) this.setFollowing(false);
-			}
-		}
+		if (this.isFollower()) this.setFollowing(false);
+		if ((e.target as any).id === 'previous') this._onPrevSlide(e);
+		else if ((e.target as any).id === 'next') this._onNextSlide(e);
 	};
 
 	private _onPrevSlide = (e: Event) => {
@@ -726,6 +651,13 @@ class SlideShowPresenter {
 
 	private _onNextSlide = (e: Event) => {
 		e.stopPropagation();
+		// Do not allow follower to go ahead of the leader
+		if (
+			this.isFollower() &&
+			this._slideShowNavigator.currentSlideIndex ===
+				this._slideShowNavigator.getLeaderSlide()
+		)
+			return;
 		if (this._navigateSkipTransition) this._slideShowNavigator.skipEffect();
 		else this._slideShowNavigator.dispatchEffect();
 	};
@@ -736,7 +668,6 @@ class SlideShowPresenter {
 	};
 
 	_hideSlideControls() {
-		if (!this._slideNavContainer) return;
 		this._slideNavContainer.style.visibility = 'hidden';
 		this._slideNavContainer.style.opacity = '0';
 		this._slideNavContainer.style.transition =
@@ -744,8 +675,6 @@ class SlideShowPresenter {
 	}
 
 	_showSlideControls() {
-		if (!this._slideNavContainer) return;
-
 		this._slideNavContainer.style.visibility = 'visible';
 		this._slideNavContainer.style.opacity = '1';
 		this._slideNavContainer.style.transition = 'opacity 1s linear';
@@ -757,71 +686,7 @@ class SlideShowPresenter {
 		);
 	}
 
-	private _setButtonState(
-		button: HTMLImageElement,
-		disabled: boolean,
-		tooltip: string,
-	) {
-		if (!button) return;
-		if (disabled) {
-			button.style.filter = 'brightness(0.5)';
-			button.style.cursor = 'default';
-			button.setAttribute('aria-disabled', 'true');
-		} else {
-			button.style.filter = '';
-			button.style.cursor = 'pointer';
-			button.setAttribute('aria-disabled', 'false');
-		}
-		button.setAttribute('aria-label', tooltip);
-		button.setAttribute('data-cooltip', tooltip);
-	}
-
-	private _canGoPrev(currentSlide: number): boolean {
-		if (this.isFollower()) {
-			return currentSlide > 0;
-		}
-		return true;
-	}
-
-	private _canGoNext(currentSlide: number): boolean {
-		if (this.isFollower()) {
-			const leaderSlide = this._slideShowNavigator.getLeaderSlide();
-			return leaderSlide !== -1 && currentSlide < leaderSlide;
-		}
-
-		// In normal mode, we can go next if there are more slides
-		return true;
-	}
-
-	private _updatePrevButtonState(currentSlide: number) {
-		const enabled = this._canGoPrev(currentSlide);
-		const tooltip = enabled ? _('Previous') : _('You are on the first slide');
-		this._setButtonState(this._prevButton, !enabled, tooltip);
-	}
-
-	private _updateNextButtonState(currentSlide: number) {
-		const enabled = this._canGoNext(currentSlide);
-		let tooltip = _('Next');
-		if (!enabled && this.isFollower()) {
-			tooltip = _('Waiting for presenter to advance');
-		}
-		this._setButtonState(this._nextButton, !enabled, tooltip);
-	}
-
-	updateControls() {
-		if (!this._prevButton || !this._nextButton || !this._slideShowNavigator)
-			return;
-
-		const currentSlide = this._slideShowNavigator.currentSlideIndex ?? 0;
-
-		this._updatePrevButtonState(currentSlide);
-		this._updateNextButtonState(currentSlide);
-	}
-
-	private _initializeSlideNavWidget(
-		container: HTMLDivElement,
-		showSwitchMonitors: boolean,
-	): void {
+	private _initializeSlideNavWidget(container: HTMLDivElement): void {
 		const closeImg = window.L.DomUtil.create('img', 'left-img', container);
 		const setImgSize = (img: HTMLImageElement) => {
 			img.style.width = '48px';
@@ -847,7 +712,6 @@ class SlideShowPresenter {
 		leftImg.setAttribute('aria-label', slideshowPrevText);
 		leftImg.setAttribute('data-cooltip', slideshowPrevText);
 		setImgSize(leftImg);
-		this._prevButton = leftImg;
 		window.L.control.attachTooltipEventListener(leftImg, this._map);
 		app.LOUtil.setImage(leftImg, 'slideshow-slidePrevious.svg', this._map);
 		leftImg.addEventListener('click', this._onPrevNextSlide);
@@ -855,7 +719,6 @@ class SlideShowPresenter {
 		const rightImg = window.L.DomUtil.create('img', 'right-img', container);
 		rightImg.id = 'next';
 		const slideshowNextText = _('Next');
-		this._nextButton = rightImg;
 		window.L.control.attachTooltipEventListener(rightImg, this._map);
 		rightImg.setAttribute('aria-label', slideshowNextText);
 		rightImg.setAttribute('data-cooltip', slideshowNextText);
@@ -891,29 +754,6 @@ class SlideShowPresenter {
 			}.bind(this),
 		);
 
-		if (showSwitchMonitors && window.mode.isCODesktop()) {
-			const ExchangeImg = window.L.DomUtil.create(
-				'img',
-				'right-img',
-				container,
-			);
-			ExchangeImg.id = 'exchange';
-			const followText = _('Exchange');
-			window.L.control.attachTooltipEventListener(ExchangeImg, this._map);
-			ExchangeImg.setAttribute('aria-label', followText);
-			ExchangeImg.setAttribute('data-cooltip', followText);
-			app.LOUtil.setImage(
-				ExchangeImg,
-				'slideshow-switchMonitor.svg',
-				this._map,
-			);
-			ExchangeImg.addEventListener('click', (e: Event) => {
-				e.stopPropagation();
-				this._onA11yString(e.target);
-				window.postMobileMessage('EXCHANGEMONITORS');
-			});
-		}
-
 		if (this.isFollower()) {
 			const followImg = window.L.DomUtil.create('img', 'right-img', container);
 			this._followBtn = followImg;
@@ -944,13 +784,9 @@ class SlideShowPresenter {
 				clearTimeout(this._slideControlsTimer);
 			}.bind(this),
 		);
-		container.addEventListener('click', (e: Event) => {
-			const target = e.target as HTMLElement;
-			if (target.getAttribute('aria-disabled') === 'true') return;
+		container.addEventListener('click', () => {
 			this.setFollowing(false);
 		});
-
-		this.updateControls();
 	}
 
 	private startTimer(loopAndRepeatDuration: number) {
@@ -971,29 +807,24 @@ class SlideShowPresenter {
 	}
 
 	endPresentation(force: boolean) {
-		app.console.debug('SlideShowPresenter.endPresentation');
-		if (this._pauseTimer) this._pauseTimer.stopTimer();
-
-		const settings = this._presentationInfo;
-		if (!force && !settings.isEndless && this.exitSlideshowWithWarning()) {
-			return;
-		}
-
 		this.sendSlideShowFollowMessage('endpresentation');
 		this.checkDarkMode(false);
 		this.setLeader(false);
 		this.setFollowing(false);
 
+		app.console.debug('SlideShowPresenter.endPresentation');
+		if (this._pauseTimer) this._pauseTimer.stopTimer();
+
+		const settings = this._presentationInfo;
 		if (force || !settings.isEndless) {
+			if (!force && this.exitSlideshowWithWarning()) {
+				return;
+			}
 			this._stopFullScreen();
 			this._closeSlideShowWindow();
-			if (window.mode.isCODesktop() && this._isWelcomePresentation) {
-				this._isWelcomePresentation = false;
-				app.dispatcher.dispatch('closeapp');
-			}
-		} else {
-			this.startTimer(settings.loopAndRepeatDuration);
+			return;
 		}
+		this.startTimer(settings.loopAndRepeatDuration);
 	}
 
 	public handleSlideShowProgressBar(event: { isVisible: boolean }): void {
@@ -1048,17 +879,22 @@ class SlideShowPresenter {
 	}
 
 	_closeSlideShowWindow() {
-		const proxy = this._slideShowWindowProxy;
 		setTimeout(
 			function () {
-				if (!proxy || !proxy.isConnected) {
+				if (
+					!this._slideShowWindowProxy ||
+					!this._slideShowWindowProxy.isConnected
+				) {
 					return;
 				}
 
-				proxy.parentElement.removeChild(proxy);
-				this._map.fire('presentinwindowclose');
-				if (this._slideShowWindowProxy === proxy)
+				if (this._slideShowWindowProxy) {
+					this._slideShowWindowProxy.parentElement.removeChild(
+						this._slideShowWindowProxy,
+					);
+					this._map.fire('presentinwindowclose');
 					this._slideShowWindowProxy = null;
+				}
 				// enable present in console on closeSlideShowWindow
 				this._enablePresenterConsole(false);
 				this._map.uiManager.closeSnackbar();
@@ -1070,14 +906,14 @@ class SlideShowPresenter {
 
 	_doFallbackPresentation() {
 		this._stopFullScreen();
-		this._doInWindowPresentation(false);
+		this._doInWindowPresentation();
 	}
 
 	_getProxyDocumentNode() {
 		return this._slideShowWindowProxy.contentWindow.document;
 	}
 
-	_doInWindowPresentation(showSwitchMonitors: boolean) {
+	_doInWindowPresentation() {
 		const popupTitle =
 			_('Windowed Presentation: ') + this._map['wopi'].BaseFileName;
 		const htmlContent = this._generateSlideWindowHtml(popupTitle);
@@ -1108,7 +944,6 @@ class SlideShowPresenter {
 			body,
 			window.screen.width,
 			window.screen.height,
-			showSwitchMonitors,
 		);
 
 		window.addEventListener('resize', this.onSlideWindowResize);
@@ -1130,8 +965,7 @@ class SlideShowPresenter {
 			true,
 		);
 
-		this._windowCloseInterval = app.timerRegistry.setInterval(
-			'slideshowwindowclose',
+		this._windowCloseInterval = setInterval(
 			function () {
 				if (!slideShowWindow.isConnected) this.slideshowWindowCleanUp();
 			}.bind(this),
@@ -1146,16 +980,11 @@ class SlideShowPresenter {
 	}
 
 	slideshowWindowCleanUp = () => {
-		app.timerRegistry.clearInterval(this._windowCloseInterval);
+		clearInterval(this._windowCloseInterval);
 		this._slideShowNavigator.quit();
 		this._map.uiManager.closeSnackbar();
 		this._slideShowCanvas = null;
-		if (this._presenterContainer) {
-			this._presenterContainer = null;
-			if (window.mode.isCODesktop()) {
-				app.socket.sendMessage('FULLSCREENPRESENTATION false');
-			}
-		}
+		this._presenterContainer = null;
 		this._slideShowWindowProxy = null;
 		window.removeEventListener('resize', this.onSlideWindowResize);
 		window.removeEventListener('beforeunload', this.slideshowWindowCleanUp);
@@ -1217,33 +1046,16 @@ class SlideShowPresenter {
 
 		if (!this._map['wopi'].DownloadAsPostMessage) {
 			if (inWindow) {
-				this._doInWindowPresentation(false);
-				return true;
-			}
-
-			if (window.mode.isCODesktop()) {
-				// a) For qt (under wayland), we would like to be able to distinguish
-				// between a presentation going full screen, in which case we create a
-				// new window for it, vs otherwise going full screen.
-				// b) It turns out that macOS appears to also do such a substitution
-				// automatically on going full-screen, so the window handle we have isn't
-				// that of the full screen window, and it seems impracticable to get access
-				// to it, which we need to be able to swap it from one monitor to another
-				app.socket.sendMessage('FULLSCREENPRESENTATION true');
-				this._doInWindowPresentation(true);
+				this._doInWindowPresentation();
 				return true;
 			}
 
 			// fullscreen
-			const width = window.screen.width;
-			const height = window.screen.height;
 			this._presenterContainer = this._createPresenterHTML(
 				this._map._container,
-				width,
-				height,
-				true,
+				window.screen.width,
+				window.screen.height,
 			);
-
 			if (this._presenterContainer.requestFullscreen) {
 				this._presenterContainer
 					.requestFullscreen()
@@ -1274,7 +1086,7 @@ class SlideShowPresenter {
 		this._map.uiManager.showInfoModal(
 			'allslidehidden-modal',
 			_('Empty Slide Show'),
-			_('All slides are hidden!'),
+			'All slides are hidden!',
 			'',
 			_('OK'),
 			() => {
@@ -1366,7 +1178,6 @@ class SlideShowPresenter {
 
 	/// called when user triggers the in-window presentation using UI
 	_onStartInWindow(that: any) {
-		this._isWelcomePresentation = that?.isWelcomePresentation ?? false;
 		this.sendSlideShowFollowMessage('newfollowmepresentation');
 		this._startSlide = that?.startSlideNumber ?? 0;
 		this._startEffect = that?.startEffectNumber;
@@ -1387,7 +1198,6 @@ class SlideShowPresenter {
 	/// called as a response on getpresentationinfo
 	onSlideShowInfo(data: PresentationInfo) {
 		app.console.debug('SlideShow: received information about presentation');
-
 		this._presentationInfo = data;
 
 		const numberOfSlides = this._getSlidesCount();
@@ -1512,7 +1322,6 @@ class SlideShowPresenter {
 				this._followBtn.setAttribute('data-cooltip', followText);
 			}
 		}
-		this.updateControls();
 	}
 
 	isFollowing(): boolean {

@@ -77,29 +77,15 @@ var map = window.L.map('map', {
 
 ////// Controls /////
 
+window.L.Map.THIS = map;
+app.map = map;
+
 map.uiManager = new UIManager();
 map.addControl(map.uiManager);
 if (!window.L.Browser.cypressTest)
 	map.tooltip = window.L.control.tooltip();
 
-window.L.Map.THIS = map;
-app.map = map;
-app.idleHandler.map = map;
-
-if (window.coolParams.get('starterMode')) {
-	if (window.ThisIsTheQtApp && !window.qtBridgeReady) {
-		window.addEventListener('qtbridgeready', () => {
-			map.uiManager.initializeBackstageView();
-		}, { once: true });
-	} else {
-		map.uiManager.initializeBackstageView();
-	}
-	return;
-}
-else if (window.coolParams.get('welcome'))
-	map.uiManager.initializeNonInteractiveUI();
-else
-	map.uiManager.initializeBasicUI();
+map.uiManager.initializeBasicUI();
 
 if (wopiSrc === '' && filePath === '' && !window.ThisIsAMobileApp) {
 	map.uiManager.showInfoModal('wrong-wopi-src-modal', '', errorMessages.wrongwopisrc, '', _('OK'), null, false);
@@ -107,6 +93,8 @@ if (wopiSrc === '' && filePath === '' && !window.ThisIsAMobileApp) {
 if (host === '' && !window.ThisIsAMobileApp) {
 	map.uiManager.showInfoModal('empty-host-url-modal', '', errorMessages.emptyhosturl, '', _('OK'), null, false);
 }
+
+app.idleHandler.map = map;
 
 if (window.ThisIsTheEmscriptenApp) {
 	var docParamsString = $.param(docParams);
@@ -144,8 +132,5 @@ if (uaLowerCase.indexOf('msie') != -1 || uaLowerCase.indexOf('trident') != -1) {
 		_('Warning! The browser you are using is not supported.'),
 		'', _('OK'), null, false);
 }
-
-if (window.ThisIsAMobileApp && !window.ThisIsTheEmscriptenApp)
-	window.postMobileMessage('SYNCSETTINGS');
 
 }(window));

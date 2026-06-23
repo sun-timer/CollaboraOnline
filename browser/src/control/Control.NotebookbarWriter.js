@@ -25,7 +25,6 @@ var formTabName = 'Form';
 var tableTabName = 'Table';
 var shapeTabName = 'Shape';
 var pictureTabName = 'Picture';
-var chartTabName = 'Chart';
 var viewTabName = 'View';
 var helpTabName = 'Help';
 var formulaTabName = 'Formula';
@@ -100,13 +99,6 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 				'accessibility': { focusBack: true, combination: 'PI', de: 'PI' }
 			},
 			{
-				'text': _('Chart'),
-				'id': chartTabName + '-tab-label',
-				'name': chartTabName,
-				'context': 'Chart|Series|ErrorBar|Axis|Grid|ChartElements|Trendline|ChartTitle|ChartLegend|ChartLabel',
-				'accessibility': { focusBack: true, combination: 'CH', de: 'CH' }
-			},
-			{
 				'text': _('View'),
 				'id': viewTabName + '-tab-label',
 				'name': viewTabName,
@@ -141,7 +133,6 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 			this.getTableTab(),
 			this.getShapeTab(),
 			this.getPictureTab(),
-			this.getChartTab(),
 			this.getViewTab(),
 			this.getHelpTab(),
 			this.getFormulaTab()
@@ -158,6 +149,7 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 		var hasRepair = !this.map['wopi'].HideRepairOption;
 		var hasSaveAs = !this.map['wopi'].UserCanNotWriteRelative;
 		var hasShare = this.map['wopi'].EnableShare;
+		var hideDownload = this.map['wopi'].HideExportOption;
 		var hasGroupedSaveAs = window.prefs.get('saveAsMode') === 'group';
 		var hasRunMacro = window.enableMacrosExecution;
 		var hasSave = !this.map['wopi'].HideSaveOption;
@@ -320,16 +312,13 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 			});
 		}
 
-		if (!this.map['wopi'].HideExportOption) {
+		if (!hideDownload) {
 			content.push({
 				'id': 'downloadas:DownloadAsMenu',
 				'command': 'downloadas',
 				'class': 'unodownloadas',
 				'type': 'exportmenubutton',
-				// In CODA-W, the functionality that we actually have at the moment is "Export as".
-				'text': !window.ThisIsAMobileApp ? _('Download') :
-					(window.ThisIsTheWindowsApp? _('Export as') :
-					 _('Save As')),
+				'text': !window.ThisIsAMobileApp ? _('Download') : _('Save As'),
 				'accessibility': { focusBack: true,	combination: 'A', de: 'M' }
 			});
 		}
@@ -374,7 +363,7 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 						'type': 'bigtoolitem',
 						'text': _('Signature'),
 						'command': '.uno:Signature',
-						'accessibility': { focusBack: true, combination: 'GN' }
+						'accessibility': { focusBack: true, combination: 'SN' }
 					}
 				]
 			});
@@ -431,7 +420,7 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 	},
 
 	getHelpTab: function() {
-		let hasLatestUpdates = window.enableWelcomeMessage || window.mode.isCODesktop();
+		var hasLatestUpdates = window.enableWelcomeMessage;
 		var hasFeedback = this.map.feedback;
 		var hasAccessibilitySupport = window.enableAccessibility;
 		var hasAccessibilityCheck = this.map.getDocType() === 'text';
@@ -440,6 +429,18 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 		var hasServerAudit = this.getHiddenItems() ? !this.getHiddenItems().includes('server-audit') : true;
 
 		var content = [
+				{
+					'type': 'toolbox',
+					'children': [
+						{
+							'id': 'forum',
+							'type': 'bigtoolitem',
+							'text': _('Forum'),
+							'command': '.uno:ForumHelp',
+							'accessibility': { focusBack: true, combination: 'C', de: null }
+						}
+					]
+				},
 				{
 					'type': 'toolbox',
 					'children': [
@@ -461,23 +462,63 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 							'type': 'bigtoolitem',
 							'text': _('Keyboard shortcuts'),
 							'command': '.uno:KeyboardShortcuts',
-							'accessibility': { focusBack: false, combination: 'SH', de: null }
+							'accessibility': { focusBack: false, combination: 'S', de: null }
 						}
 					]
 				},
 				{ type: 'separator', id: 'help-keyboardshortcuts-break', orientation: 'vertical' },
+				hasAccessibilitySupport ?
+					{
+						'id':'togglea11ystate',
+						'type': 'bigcustomtoolitem',
+						'text': _('Screen Reading'),
+						'accessibility': { focusBack: true,	combination: 'SR', de: null }
+					} : {},
+				hasAccessibilityCheck ?
+					{
+						'id': 'accessibility-check',
+						'class': 'unoAccessibilityCheck',
+						'type': 'bigtoolitem',
+						'text': _UNO('.uno:AccessibilityCheck', 'text', true),
+						'command': '.uno:SidebarDeck.A11yCheckDeck',
+						'accessibility': { focusBack: false, combination: 'A', de: null }
+					} : {},
+				hasAccessibilityCheck ?
+					{
+						'id': 'validatesidebara11y',
+						'type': 'bigcustomtoolitem',
+						'text': _('Validate Sidebar'),
+						'visible': isDebugOn ? 'true' : 'false',
+						'accessibility': { focusBack: true,	combination: 'VS', de: null }
+					} : {},
+				hasAccessibilityCheck ?
+					{
+						'id': 'validatedialogsa11y',
+						'type': 'bigcustomtoolitem',
+						'text': _('Validate Dialog'),
+						'visible': isDebugOn ? 'true' : 'false',
+						'accessibility': { focusBack: true,	combination: 'VD', de: null }
+					} : {},
+				hasAccessibilitySupport || hasAccessibilityCheck ?
+					{
+						'id': 'help-accessibility-break',
+						'type': 'separator',
+						'orientation': 'vertical'
+					} : {},
+				hasServerAudit ?
 				{
-					'type': 'toolbox',
-					'children': [
-						{
-							'id': 'forum',
-							'type': 'bigtoolitem',
-							'text': _('Forum'),
-							'command': '.uno:ForumHelp',
-							'accessibility': { focusBack: true, combination: 'C', de: null }
-						}
-					]
-				},
+					'id': 'server-audit',
+					'type': 'bigcustomtoolitem',
+					'text': _('Server audit'),
+					'command': 'serveraudit',
+					'accessibility': { focusBack: false, combination: 'SA', de: null }
+				} : {},
+				hasServerAudit ?
+				{
+				'id': 'help-serveraudit-break',
+				'type': 'separator',
+				'orientation': 'vertical'
+				} : {},
 				{
 					'type': 'toolbox',
 					'children': [
@@ -490,6 +531,7 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 						},
 					]
 				},
+				{ 'type': 'separator', 'id': 'help-reportissue-break', 'orientation': 'vertical' },
 				hasLatestUpdates ?
 					{
 						'type': 'toolbox',
@@ -516,62 +558,6 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 								'accessibility': { focusBack: true,	combination: 'SF', de: null }
 							}
 						]
-					} : {},
-				hasServerAudit ?
-					{
-						'id': 'help-serveraudit-break',
-						'type': 'separator',
-						'orientation': 'vertical'
-					} : {},
-				hasServerAudit ?
-					{
-						'id': 'server-audit',
-						'type': 'bigcustomtoolitem',
-						'text': _('Server audit'),
-						'command': 'serveraudit',
-						'accessibility': { focusBack: false, combination: 'SA', de: null }
-					} : {},
-				hasAccessibilitySupport || hasAccessibilityCheck ?
-					{
-						'id': 'help-accessibility-break',
-						'type': 'separator',
-						'orientation': 'vertical'
-					} : {},
-				hasAccessibilitySupport ?
-					{
-						'id':'togglea11ystate',
-						'type': 'bigcustomtoolitem',
-						'text': _('Screen Reading'),
-						'accessibility': { focusBack: true,	combination: 'SR', de: null }
-					} : {},
-				hasAccessibilityCheck ?
-					{
-						'id': 'accessibility-check',
-						'class': 'unoAccessibilityCheck',
-						'type': 'bigtoolitem',
-						'text': _UNO('.uno:AccessibilityCheck', 'text', true),
-						'command': '.uno:SidebarDeck.A11yCheckDeck',
-						'accessibility': { focusBack: false, combination: 'A', de: null }
-					} : {},
-					{
-						'id': 'validatesidebara11y',
-						'type': 'bigcustomtoolitem',
-						'text': _('Validate Sidebar'),
-						'visible': isDebugOn ? 'true' : 'false',
-						'accessibility': { focusBack: true,	combination: 'VS', de: null }
-					},
-					{
-						'id': 'validatedialogsa11y',
-						'type': 'bigcustomtoolitem',
-						'text': _('Validate Dialog'),
-						'visible': isDebugOn ? 'true' : 'false',
-						'accessibility': { focusBack: true,	combination: 'VD', de: null }
-					},
-				hasAbout ?
-					{
-						'id': 'help-about-break',
-						'type': 'separator',
-						'orientation': 'vertical'
 					} : {},
 				hasAbout ?
 					{
@@ -645,11 +631,7 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 									'id': 'home-brush',
 									'type': 'toolitem',
 									'text': _UNO('.uno:FormatPaintbrush'),
-									'tooltip': _('Clone Formatting (double click to keep active)'),
-									'activeTooltip': _('Clone Formatting is active (click again or press Esc to exit)'),
 									'command': '.uno:FormatPaintbrush',
-									'doubleClickCommand': '.uno:FormatPaintbrush',
-									'doubleClickCommandArgs': { PersistentCopy: { type: 'boolean', value: true } },
 									'accessibility': { focusBack: true,	combination: 'FP',	de: null }
 								}
 							]
@@ -959,19 +941,37 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 			   'name':_('Styles'),
 			   'children' : [
 					{
-						'id': 'stylesview-iconview-list',
-						'type': 'iconviewlist',
-						'accessibility': { focusBack: false, combination: 'SD' },
-						'children': [
+						'id': 'stylesview',
+						'type': 'iconview',
+						'entries': [],
+						'vertical': 'false',
+						'siblings' : [
 							{
-								'id': 'stylesview',
-								'type': 'iconview',
-								'entries': [],
-								'vertical': 'false'
-							}
+								'id': 'scroll-up',
+								'type': 'customtoolitem',
+								'text': _('Scroll up'),
+								'command': 'scrollpreviewup',
+								'icon': 'lc_searchprev.svg',
+							},
+							{
+								'id': 'scroll-down',
+								'type': 'customtoolitem',
+								'text': _('Scroll down'),
+								'command': 'scrollpreviewdown',
+								'icon': 'lc_searchnext.svg',
+							},
+							{
+								'id': 'format-style-list-dialog',
+								'type': 'toolitem',
+								'text': _('Style list'),
+								'command': '.uno:SidebarDeck.StyleListDeck',
+								'icon': 'lc_iconviewexpander.svg',
+								'accessibility': { focusBack: true, combination: 'SD', de: null },
+								'opensPopup': true,
+							},
 						]
 					},
-			  ]
+			   ]
 			},
 			{
 				'type': 'overflowgroup',
@@ -1135,7 +1135,7 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 				'type': 'bigtoolitem',
 				'text': _UNO('.uno:PageDialog', 'text'),
 				'command': '.uno:PageDialog',
-				'accessibility': { focusBack: false, combination: 'PD', de: null }
+				'accessibility': { focusBack: false, combination: 'D', de: null }
 			},
 			{ type: 'separator', id: 'format-pagedialog-break', orientation: 'vertical' },
 			{
@@ -1150,7 +1150,7 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 				'type': 'bigtoolitem',
 				'text': _UNO('.uno:EditRegion', 'text'),
 				'command': '.uno:EditRegion',
-				'accessibility': { focusBack: false, combination: 'RG', de: null }
+				'accessibility': { focusBack: false, combination: 'F', de: null }
 			},
 			{
 				'id': 'format-format-line',
@@ -1279,7 +1279,7 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 										'noLabel': true,
 										'text': _UNO('.uno:InsertGraphic'),
 										'command': '.uno:InsertGraphic',
-										'accessibility': { focusBack: true,	combination: 'PI',	de:	'BI' }
+										'accessibility': { focusBack: true,	combination: 'P',	de:	'BI' }
 									},
 								]
 							},
@@ -1799,14 +1799,6 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 				'command': '.uno:Navigator',
 				'accessibility': { focusBack: true, combination: 'K', de: 'V' }
 			},
-			!this.map['wopi'].DisableAISettings ? {
-				'id': 'view-ai-sidebar',
-				'type': 'bigcustomtoolitem',
-				'text': _('AI Assistant'),
-				'icon': 'lc_ai_sidebar.svg',
-				'command': 'aichat',
-				'accessibility': { focusBack: true, combination: 'AI', de: null }
-			} : {},
 		];
 
 		return this.getTabPage(viewTabName, content);
@@ -1843,7 +1835,7 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 						'type': 'menubutton',
 						'text': _UNO('.uno:Orientation', 'text'),
 						'enabled': 'true',
-						'accessibility': { focusBack: true, combination: 'OI', de: '4' }
+						'accessibility': { focusBack: true, combination: 'O', de: '4' }
 					}
 				]
 			},
@@ -2273,9 +2265,9 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 				'id': 'review-insert-annotation',
 				'class': 'unoAccessibilityCheck',
 				'type': 'bigtoolitem',
-				'text': _UNO('.uno:InsertAnnotation'),
+				'text': _('New Comment'),
 				'command': '.uno:InsertAnnotation',
-				'accessibility': { focusBack: false, combination: 'CM', de: 'N' }
+				'accessibility': { focusBack: false, combination: 'C', de: 'N' }
 			},
 			{ type: 'separator', id: 'review-comment-break', orientation: 'vertical' },
 			{
@@ -3429,198 +3421,6 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 		];
 
 		return this.getTabPage(pictureTabName, content);
-	},
-
-	getChartTab: function() {
-		var content = [
-			{
-				'id': 'chart-type',
-				'type': 'bigtoolitem',
-				'text': _UNO('.uno:DiagramType'),
-				'command': '.uno:DiagramType',
-				'accessibility': { focusBack: true, combination: 'CT', de: null }
-			},
-			{ type: 'separator', id: 'chart-type-break', orientation: 'vertical' },
-			{
-				'type': 'container',
-				'children': [
-					{
-						'type': 'toolbox',
-						'children': [
-							{
-								'id': 'chart-data-ranges',
-								'type': 'toolitem',
-								'text': _UNO('.uno:DataRanges'),
-								'command': '.uno:DataRanges',
-								'accessibility': { focusBack: true, combination: 'DR', de: null }
-							}
-						]
-					},
-					{
-						'type': 'toolbox',
-						'children': [
-							{
-								'id': 'chart-diagram-data',
-								'type': 'toolitem',
-								'text': _UNO('.uno:DiagramData'),
-								'command': '.uno:DiagramData',
-								'accessibility': { focusBack: true, combination: 'DD', de: null }
-							}
-						]
-					}
-				],
-				'vertical': 'true'
-			},
-			{ type: 'separator', id: 'chart-data-break', orientation: 'vertical' },
-			{
-				'id': 'chart-format-selection',
-				'type': 'bigtoolitem',
-				'text': _UNO('.uno:FormatSelection'),
-				'command': '.uno:FormatSelection',
-				'accessibility': { focusBack: true, combination: 'FS', de: null }
-			},
-			{ type: 'separator', id: 'chart-format-break', orientation: 'vertical' },
-			{
-				'type': 'container',
-				'children': [
-					{
-						'type': 'toolbox',
-						'children': [
-							{
-								'id': 'chart-insert-titles',
-								'type': 'toolitem',
-								'text': _UNO('.uno:InsertMenuTitles'),
-								'command': '.uno:InsertMenuTitles',
-								'accessibility': { focusBack: true, combination: 'TI', de: null }
-							}
-						]
-					},
-					{
-						'type': 'toolbox',
-						'children': [
-							{
-								'id': 'chart-legend',
-								'type': 'toolitem',
-								'text': _UNO('.uno:Legend'),
-								'command': '.uno:Legend',
-								'accessibility': { focusBack: true, combination: 'LG', de: null }
-							}
-						]
-					}
-				],
-				'vertical': 'true'
-			},
-			{
-				'id': 'chart-toggle-legend',
-				'type': 'bigtoolitem',
-				'text': _UNO('.uno:ToggleLegend'),
-				'command': '.uno:ToggleLegend',
-				'accessibility': { focusBack: true, combination: 'TL', de: null }
-			},
-			{ type: 'separator', id: 'chart-legend-break', orientation: 'vertical' },
-			{
-				'type': 'container',
-				'children': [
-					{
-						'type': 'toolbox',
-						'children': [
-							{
-								'id': 'chart-toggle-grid-horizontal',
-								'type': 'toolitem',
-								'text': _UNO('.uno:ToggleGridHorizontal'),
-								'command': '.uno:ToggleGridHorizontal',
-								'accessibility': { focusBack: true, combination: 'GH', de: null }
-							}
-						]
-					},
-					{
-						'type': 'toolbox',
-						'children': [
-							{
-								'id': 'chart-toggle-grid-vertical',
-								'type': 'toolitem',
-								'text': _UNO('.uno:ToggleGridVertical'),
-								'command': '.uno:ToggleGridVertical',
-								'accessibility': { focusBack: true, combination: 'GV', de: null }
-							}
-						]
-					}
-				],
-				'vertical': 'true'
-			},
-			{ type: 'separator', id: 'chart-grid-break', orientation: 'vertical' },
-			{
-				'type': 'container',
-				'children': [
-					{
-						'type': 'toolbox',
-						'children': [
-							{
-								'id': 'chart-diagram-axis-x',
-								'type': 'toolitem',
-								'text': _UNO('.uno:DiagramAxisX'),
-								'command': '.uno:DiagramAxisX',
-								'accessibility': { focusBack: true, combination: 'AX', de: null }
-							}
-						]
-					},
-					{
-						'type': 'toolbox',
-						'children': [
-							{
-								'id': 'chart-diagram-axis-y',
-								'type': 'toolitem',
-								'text': _UNO('.uno:DiagramAxisY'),
-								'command': '.uno:DiagramAxisY',
-								'accessibility': { focusBack: true, combination: 'AY', de: null }
-							}
-						]
-					}
-				],
-				'vertical': 'true'
-			},
-			{ type: 'separator', id: 'chart-axis-break', orientation: 'vertical' },
-			{
-				'type': 'container',
-				'children': [
-					{
-						'type': 'toolbox',
-						'children': [
-							{
-								'id': 'chart-diagram-area',
-								'type': 'toolitem',
-								'text': _UNO('.uno:DiagramArea'),
-								'command': '.uno:DiagramArea',
-								'accessibility': { focusBack: true, combination: 'CA', de: null }
-							}
-						]
-					},
-					{
-						'type': 'toolbox',
-						'children': [
-							{
-								'id': 'chart-diagram-wall',
-								'type': 'toolitem',
-								'text': _UNO('.uno:DiagramWall'),
-								'command': '.uno:DiagramWall',
-								'accessibility': { focusBack: true, combination: 'CW', de: null }
-							}
-						]
-					}
-				],
-				'vertical': 'true'
-			},
-			{ type: 'separator', id: 'chart-area-break', orientation: 'vertical' },
-			{
-				'id': 'chart-view-3d',
-				'type': 'bigtoolitem',
-				'text': _UNO('.uno:View3D'),
-				'command': '.uno:View3D',
-				'accessibility': { focusBack: true, combination: 'V3', de: null }
-			},
-		];
-
-		return this.getTabPage(chartTabName, content);
 	},
 
 	getNotebookbar: function(tabPages, selectedPage) {

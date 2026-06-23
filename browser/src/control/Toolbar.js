@@ -37,41 +37,79 @@ window.L.Map.include({
 		}
 	},
 
+	onFontSelect: function(e) {
+		var font = e.target.value;
+		this.applyFont(font);
+		this.focus();
+	},
+
 	_getCurrentFontName: function() {
 		return this['stateChangeHandler'].getItemValue('.uno:CharFontName');
 	},
 
-	createFontSelector: function(containerId) {
+	createFontSelector: function(nodeSelector) {
 		var that = this;
-		var container = document.getElementById(containerId);
-		if (!container)
-			return;
 
-		var populateEntries = function() {
+		var fontcombobox = $(nodeSelector);
+		if (!fontcombobox.hasClass('select2')) {
+			fontcombobox.select2({
+				placeholder: _('Font')
+			});
+		}
+
+		var createSelector = function() {
 			var commandValues = that.getToolbarCommandValues('.uno:CharFontName');
-			if (typeof commandValues === 'object' && container.updateEntries) {
-				var fontNames = Object.keys(commandValues);
-				container.updateEntries(fontNames);
+
+			var data = []; // reset data in order to avoid that the font select box is populated with styles, too.
+			// Old browsers don't like Object.keys with
+			// empty arguments
+			if (typeof commandValues === 'object') {
+				data = data.concat(Object.keys(commandValues));
 			}
-			var currentFont = that._getCurrentFontName();
-			if (currentFont && container.onSetText)
-				container.onSetText(currentFont);
+			fontcombobox.empty();
+			for (var i = 0; i < data.length; ++i) {
+				if (!data[i]) continue;
+				var option = document.createElement('option');
+				option.text = data[i];
+				option.value = data[i];
+				fontcombobox.append(option);
+			}
+			fontcombobox.on('select2:select', that.onFontSelect.bind(that));
+
+			fontcombobox.val(that._getCurrentFontName()).trigger('change');
 		};
 
-		populateEntries();
+		createSelector();
 
 		var onCommandStateChanged = function(e) {
-			if (e.commandName !== '.uno:CharFontName')
+			var commandName = e.commandName;
+
+			if (commandName !== '.uno:CharFontName')
 				return;
 
-			if (container.onSetText)
-				container.onSetText(e.state);
-			this['stateChangeHandler'].setItemValue('.uno:CharFontName', e.state);
+			var state = e.state;
+			var found = false;
+			fontcombobox.children('option').each(function () {
+				var value = this.value;
+				if (value.toLowerCase() === state.toLowerCase()) {
+					found = true;
+					return;
+				}
+			});
+
+			if (!found && state) {
+				fontcombobox
+					.append($('<option></option>')
+						.text(state));
+			}
+
+			fontcombobox.val(state).trigger('change');
+			this['stateChangeHandler'].setItemValue('.uno:CharFontName', state);
 		};
 
 		var onFontListChanged = function(e) {
 			if (e.commandName === '.uno:CharFontName')
-				populateEntries();
+				createSelector();
 		};
 
 		this.off('commandstatechanged', onCommandStateChanged);
@@ -80,32 +118,77 @@ window.L.Map.include({
 		this.on('updatetoolbarcommandvalues', onFontListChanged);
 	},
 
-	createFontSizeSelector: function(containerId) {
-		var container = document.getElementById(containerId);
-		if (!container)
-			return;
+	onFontSizeSelect: function(e) {
+		this.applyFontSize(e.target.value);
+		this.focus();
+	},
+
+	createFontSizeSelector: function(nodeSelector) {
+		var data = [6, 7, 8, 9, 10, 10.5, 11, 12, 13, 14, 15, 16, 18, 20,
+			22, 24, 26, 28, 32, 36, 40, 44, 48, 54, 60, 66, 72, 80, 88, 96];
+
+		var fontsizecombobox = $(nodeSelector);
+		if (!fontsizecombobox.hasClass('select2')) {
+			fontsizecombobox.select2({
+				dropdownAutoWidth: true,
+				width: 'auto',
+				placeholder: _('Font Size'),
+				//Allow manually entered font size.
+				createTag: function(query) {
+					return {
+						id: query.term,
+						text: query.term,
+						tag: true
+					};
+				},
+				tags: true,
+				sorter: function(data) { return data.sort(function(a, b) {
+					return parseFloat(a.text) - parseFloat(b.text);
+				});}
+			});
+		}
+
+		fontsizecombobox.empty();
+		for (var i = 0; i < data.length; ++i) {
+			var option = document.createElement('option');
+			option.text = data[i];
+			option.value = data[i];
+			fontsizecombobox.append(option);
+		}
+		fontsizecombobox.off('select2:select', this.onFontSizeSelect.bind(this)).on('select2:select', this.onFontSizeSelect.bind(this));
 
 		var onCommandStateChanged = function(e) {
-			if (e.commandName !== '.uno:FontHeight')
+			var commandName = e.commandName;
+
+			if (commandName !== '.uno:FontHeight')
 				return;
 
 			var state = e.state;
-			if (state === '0')
-				state = '';
+			var found = false;
 
-			if (container.onSetText)
-				container.onSetText(state);
+			if (state === '0') {
+				state = '';
+			}
+
+			fontsizecombobox.children('option').each(function (i, e) {
+				if ($(e).text() === state) {
+					found = true;
+				}
+			});
+
+			if (!found) {
+				// we need to add the size
+				fontsizecombobox
+					.append($('<option>')
+						.text(state).val(state));
+			}
+
+			fontsizecombobox.val(state).trigger('change');
 			this['stateChangeHandler'].setItemValue('.uno:FontHeight', state);
 		};
 
 		this.off('commandstatechanged', onCommandStateChanged);
 		this.on('commandstatechanged', onCommandStateChanged);
-
-		// Initialize with current state value if available
-		var currentState = this['stateChangeHandler'].getItemValue('.uno:FontHeight');
-		if (currentState) {
-			onCommandStateChanged.call(this, {commandName: '.uno:FontHeight', state: currentState});
-		}
 	},
 
 	applyFont: function (fontName) {
@@ -177,7 +260,7 @@ window.L.Map.include({
 	},
 
 	print: function (options) {
-		if (window.ThisIsTheiOSApp || window.ThisIsTheAndroidApp || window.ThisIsTheMacOSApp || window.ThisIsTheWindowsApp || window.ThisIsTheQtApp) {
+		if (window.ThisIsTheiOSApp || window.ThisIsTheAndroidApp) {
 			window.postMobileMessage('PRINT');
 		} else {
 			this.showBusy(_('Downloading...'), false);
@@ -277,7 +360,8 @@ window.L.Map.include({
 
 		if ((command.startsWith('.uno:Sidebar') && !command.startsWith('.uno:SidebarShow')) ||
 			command.startsWith('.uno:CustomAnimation') || command.startsWith('.uno:ModifyPage') ||
-			command.startsWith('.uno:MasterSlidesPanel') || command.startsWith('.uno:SidebarDeck')) {
+			command.startsWith('.uno:MasterSlidesPanel') || command.startsWith('.uno:SidebarDeck') ||
+			(command.startsWith('.uno:EditStyle') && command.indexOf('Family:short=') == -1)) {
 
 			// sidebar control is present only in desktop/tablet case
 			if (this.sidebar) {
@@ -294,9 +378,9 @@ window.L.Map.include({
 		}
 
 		var isAllowedInReadOnly = false;
-		var allowedCommands = ['.uno:Save', '.uno:SaveAs', '.uno:WordCountDialog',
+		var allowedCommands = ['.uno:Save', '.uno:WordCountDialog',
 			'.uno:Signature', '.uno:PrepareSignature', '.uno:DownloadSignature', '.uno:InsertSignatureLine',
-			'.uno:ShowResolvedAnnotations', '.uno:Open', '.uno:CloseWin',
+			'.uno:ShowResolvedAnnotations',
 			'.uno:ToolbarMode?Mode:string=notebookbar_online.ui', '.uno:ToolbarMode?Mode:string=Default',
 			'.uno:ExportToEPUB', '.uno:ExportToPDF', '.uno:ExportDirectToPDF', '.uno:MoveKeepInsertMode', '.uno:ShowRuler',
 			'.uno:Navigator', '.uno:GotoPage'];
@@ -439,28 +523,28 @@ window.L.Map.include({
 		var max;
 		var translatableContent = contentElement.querySelectorAll('h1');
 		for (i = 0, max = translatableContent.length; i < max; i++) {
-			translatableContent[i].innerHTML = translatableContent[i].innerHTML.toLocaleHelpString();
+			translatableContent[i].innerHTML = translatableContent[i].innerHTML.toLocaleString();
 		}
 		translatableContent = contentElement.querySelectorAll('h2');
 		for (i = 0, max = translatableContent.length; i < max; i++) {
-			translatableContent[i].innerHTML = translatableContent[i].innerHTML.toLocaleHelpString();
+			translatableContent[i].innerHTML = translatableContent[i].innerHTML.toLocaleString();
 		}
 		translatableContent = contentElement.querySelectorAll('h3');
 		for (i = 0, max = translatableContent.length; i < max; i++) {
-			translatableContent[i].innerHTML = translatableContent[i].innerHTML.toLocaleHelpString();
+			translatableContent[i].innerHTML = translatableContent[i].innerHTML.toLocaleString();
 		}
 		translatableContent = contentElement.querySelectorAll('h4');
 		for (i = 0, max = translatableContent.length; i < max; i++) {
-			translatableContent[i].innerHTML = translatableContent[i].innerHTML.toLocaleHelpString();
+			translatableContent[i].innerHTML = translatableContent[i].innerHTML.toLocaleString();
 		}
 		translatableContent = contentElement.querySelectorAll('td');
 		for (i = 0, max = translatableContent.length; i < max; i++) {
 			var orig = translatableContent[i].innerHTML;
-			var trans = translatableContent[i].innerHTML.toLocaleHelpString();
+			var trans = translatableContent[i].innerHTML.toLocaleString();
 			// Try harder to get translation of keyboard shortcuts (html2po trims starting <kbd> and ending </kbd>)
 			if (orig === trans && orig.indexOf('kbd') != -1) {
 				var trimmedOrig = orig.replace(/^(<kbd>)/,'').replace(/(<\/kbd>$)/,'');
-				var trimmedTrans = trimmedOrig.toLocaleHelpString();
+				var trimmedTrans = trimmedOrig.toLocaleString();
 				if (trimmedOrig !== trimmedTrans) {
 					trans = '<kbd>' + trimmedTrans + '</kbd>';
 				}
@@ -469,11 +553,11 @@ window.L.Map.include({
 		}
 		translatableContent = contentElement.querySelectorAll('p');
 		for (i = 0, max = translatableContent.length; i < max; i++) {
-			translatableContent[i].innerHTML = translatableContent[i].innerHTML.toLocaleHelpString();
+			translatableContent[i].innerHTML = translatableContent[i].innerHTML.toLocaleString();
 		}
 		translatableContent = contentElement.querySelectorAll('button'); // TOC
 		for (i = 0, max = translatableContent.length; i < max; i++) {
-			translatableContent[i].innerHTML = translatableContent[i].innerHTML.toLocaleHelpString();
+			translatableContent[i].innerHTML = translatableContent[i].innerHTML.toLocaleString();
 		}
 
 		//translatable screenshots
@@ -501,11 +585,11 @@ window.L.Map.include({
 		var searchInput = document.getElementById('online-help-search-input');
 		searchInput.setAttribute('placeholder',_('Search'));
 		searchInput.setAttribute('aria-label',_('Search'));
+		searchInput.focus(); // auto focus on user input field
 		var helpContentParent = document.getElementsByClassName('ui-dialog-content')[0];
 		var startFilter = false;
 		var isAnyMatchingContent = false;
-
-		const performSearch = function() {
+		searchInput.addEventListener('input', function () {
 			// Hide all elements within the #online-help-content on first key stroke/at start of filter content
 			if (!startFilter || !isAnyMatchingContent) {
 				helpContentParent.style.backgroundColor = 'var(--color-background-dark) !important';
@@ -527,24 +611,9 @@ window.L.Map.include({
 			}
 			else {
 				this.filterResults(searchTerm, isAnyMatchingContent, id);
-				this._focusContainer(id + '-box');
 			}
-		}.bind(this);
+		}.bind(this));
 
-		searchInput.addEventListener('keydown', function (e) {
-			if (e.key === 'Enter') {
-				performSearch();
-			}
-		});
-
-		const searchButton = document.getElementById('online-help-search-button');
-		searchButton.setAttribute('aria-label', _('Search'));
-		searchButton.addEventListener('click', performSearch);
-		searchButton.addEventListener('keydown', function (e) {
-			if (e.key === 'Enter') {
-				performSearch();
-			}
-		});
 
 		const onlineHelpContent = document.getElementById('online-help-content');
 		const buttons = onlineHelpContent.querySelectorAll('.scroll-button');
@@ -561,18 +630,17 @@ window.L.Map.include({
 			});
 		});
 
-		this._focusContainer(id + '-box');
+		if (id === 'keyboard-shortcuts-content') {
+			app.layoutingService.appendLayoutingTask(() => {
+				var contentContainer = document.getElementById('keyboard-shortcuts-content');
+				if (contentContainer) {
+					contentContainer.setAttribute('tabindex', '-1');
+					contentContainer.focus();
+				}
+			});
+		}
 	},
 
-	_focusContainer: function(id) {
-		app.layoutingService.appendLayoutingTask(() => {
-			var contentContainer = document.getElementById(id);
-			if (contentContainer) {
-				contentContainer.setAttribute('tabindex', '-1');
-				contentContainer.focus();
-			}
-		});
-	},
 
 	filterResults: function (searchTerm, isAnyMatchingContent, id) {
 
@@ -717,8 +785,7 @@ window.L.Map.include({
 	},
 
 	showLOAboutDialog: function() {
-		if (this.aboutDialog)
-			this.aboutDialog.show();
+		this.aboutDialog.show();
 	},
 
 	extractContent: function(html) {
@@ -764,18 +831,18 @@ window.L.Map.include({
 	},
 
 	cancelSearch: function() {
-		var toolbar = window.mode.isSmallScreenDevice() ? app.map.mobileSearchBar: app.map.statusBar;
+		var toolbar = window.mode.isMobile() ? app.map.mobileSearchBar: app.map.statusBar;
 		var searchInput = window.L.DomUtil.get('search-input');
 		app.searchService.resetSelection();
 		if (toolbar) {
-			if (!window.mode.isSmallScreenDevice()) {
+			if (!window.mode.isMobile()) {
 				toolbar.showItem('cancelsearch', false);
 			}
 			toolbar.enableItem('searchprev', false);
 			toolbar.enableItem('searchnext', false);
 		}
 		searchInput.value = '';
-		if (window.mode.isSmallScreenDevice()) {
+		if (window.mode.isMobile()) {
 			searchInput.focus();
 			toolbar.enableItem('cancelsearch', false);
 		}
@@ -800,7 +867,7 @@ window.L.Map.include({
 	},
 
 	onFormulaBarFocus: function() {
-		if (window.mode.isSmallScreenDevice() === true) {
+		if (window.mode.isMobile() === true) {
 			var mobileTopBar = this.mobileTopBar;
 			mobileTopBar.showItem('undo', false);
 			mobileTopBar.showItem('redo', false);
@@ -818,7 +885,7 @@ window.L.Map.include({
 	onFormulaBarBlur: function() {
 		var map = this;
 
-		if (window.mode.isSmallScreenDevice() && this.isEditMode()) {
+		if (window.mode.isMobile() && this.isEditMode()) {
 			var mobileTopBar = map.mobileTopBar;
 			mobileTopBar.showItem('cancelformula', false);
 			mobileTopBar.showItem('acceptformula', false);

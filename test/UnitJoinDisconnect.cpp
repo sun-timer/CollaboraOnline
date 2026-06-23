@@ -9,16 +9,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for client join and disconnect scenarios.
- */
-
 #include <config.h>
 
-#include <lokassert.hpp>
-#include <Unit.hpp>
+#include "lokassert.hpp"
+#include "Unit.hpp"
 #include <WopiTestServer.hpp>
-#include <common/Log.hpp>
+#include <Log.hpp>
 #include <helpers.hpp>
 #include <wsd/ClientSession.hpp>
 
@@ -74,16 +70,17 @@ public:
         return true;
     }
 
-    bool onFilterSendWebSocketMessage(const std::string_view message, const WSOpCode /* code */,
-                                      const bool /* flush */, int& /*unitReturn*/) override
+    bool onFilterSendWebSocketMessage(const char* data, const std::size_t len,
+                                      const WSOpCode /* code */, const bool /* flush */,
+                                      int& /*unitReturn*/) override
     {
+        const std::string message(data, len);
         TST_LOG("WS Message: [" << message << "] in phase: " << name(_phase));
 
         if (message.starts_with("viewinfo:"))
         {
             Poco::JSON::Parser parser0;
-            Poco::JSON::Array::Ptr array =
-                parser0.parse(std::string(message.substr(9))).extract<Poco::JSON::Array::Ptr>();
+            Poco::JSON::Array::Ptr array = parser0.parse(message.substr(9)).extract<Poco::JSON::Array::Ptr>();
             auto const viewsActive = array->size();
             if (_phase == Phase::ModifiedDoc && viewsActive == 1)
             {
@@ -272,16 +269,18 @@ public:
         return true;
     }
 
-    bool onFilterSendWebSocketMessage(const std::string_view message, const WSOpCode /* code */,
-                                      const bool /* flush */, int& /*unitReturn*/) override
+    bool onFilterSendWebSocketMessage(const char* data, const std::size_t len,
+                                      const WSOpCode /* code */, const bool /* flush */,
+                                      int& /*unitReturn*/) override
     {
+        const std::string message(data, len);
         TST_LOG("WS Message: [" << message << "] in phase: " << name(_phase));
 
         if (message.starts_with("viewinfo:"))
         {
             Poco::JSON::Parser parser0;
             Poco::JSON::Array::Ptr array =
-                parser0.parse(std::string(message.substr(9))).extract<Poco::JSON::Array::Ptr>();
+                parser0.parse(message.substr(9)).extract<Poco::JSON::Array::Ptr>();
             _viewsActive = array->size();
             TST_LOG("Views active: " << _viewsActive);
         }

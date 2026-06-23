@@ -9,11 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * SSL/TLS socket implementation using OpenSSL for encrypted connections.
- * Classes: SslStreamSocket
- */
-
 #pragma once
 
 #include <common/Log.hpp>
@@ -26,6 +21,13 @@
 #include <cerrno>
 #include <sstream>
 #include <string>
+
+/// Create an OpenSSL version number from its components
+/// that is comparable to OPENSSL_VERSION_NUMBER.
+/// The layout is 0xMNN00PPS where M is major, n is minor,
+/// P is patch-level, and S is 1 for pre-release.
+#define MAKE_OPENSSL_VERSION_NUMBER(MAJOR, MINOR, PATCH)                                           \
+    ((MAJOR << 28) | (MINOR << 20) | (PATCH << 4))
 
 /// An SSL/TSL, non-blocking, data streaming socket.
 class SslStreamSocket final : public StreamSocket
@@ -306,13 +308,14 @@ private:
             const unsigned long bioError = ERR_peek_error();
             if (bioError != 0)
             {
-                constexpr size_t errorStringLength = 256;
-                char errorString[errorStringLength + 1] = { '\0' };
-                ERR_error_string_n(bioError, errorString, errorStringLength);
+                const size_t errorStringLength = 256;
+                std::unique_ptr<char[]> errorString = std::make_unique<char[]>(errorStringLength);
+                ERR_error_string_n(bioError, errorString.get(), errorStringLength);
 
-                LOG_DBG("Unexpected SSL error (" << errorString
-                                                 << ") after success implies uncleared earlier "
-                                                    "errors or a bug in the SSL library");
+                LOG_DBG("Unexpected SSL error ("
+                        << "'" << errorString << "'"
+                        << ") after success implies uncleared earlier errors or "
+                           "a bug in the SSL library");
                 ERR_clear_error();
             }
 
@@ -331,7 +334,7 @@ private:
     }
 
     /// Maps SSL Error codes to their respective string form.
-    constexpr std::string_view sslErrorToName(int sslError) const
+    constexpr std::string_view sslErrorToName(int sslError)
     {
         switch (sslError)
         {
@@ -359,8 +362,10 @@ private:
                 return "WANT_ASYNC_JOB";
             case SSL_ERROR_WANT_CLIENT_HELLO_CB:
                 return "WANT_CLIENT_HELLO_CB";
+#if OPENSSL_VERSION_NUMBER > MAKE_OPENSSL_VERSION_NUMBER(3, 0, 0)
             case SSL_ERROR_WANT_RETRY_VERIFY:
                 return "WANT_RETRY_VERIFY";
+#endif
         }
 
         return "UNKNOWN";
@@ -409,9 +414,12 @@ private:
             // Retry: Need to read/write data. Effectively, EAGAIN but for a specific operation.
             case SSL_ERROR_WANT_READ: // 2
             case SSL_ERROR_WANT_WRITE: // 3
+                static_assert(MAKE_OPENSSL_VERSION_NUMBER(1, 1, 0) == 0x10100000L);
+#if OPENSSL_VERSION_NUMBER > MAKE_OPENSSL_VERSION_NUMBER(1, 1, 0)
                 LOG_TRC(sslErrorToName(sslError)
                         << " with " << (SSL_has_pending(_ssl) ? "(" : "no(") << SSL_pending(_ssl)
                         << ") pending data to read");
+#endif
                 _sslWantsTo =
                     sslError == SSL_ERROR_WANT_READ ? SslWantsTo::Read : SslWantsTo::Write;
                 return rc;
@@ -458,9 +466,14 @@ private:
                 // Effectively an EAGAIN error at the BIO layer
                 if (BIO_should_retry(_bio))
                 {
+                    static_assert(MAKE_OPENSSL_VERSION_NUMBER(1, 1, 0) == 0x10100000L);
+#if OPENSSL_VERSION_NUMBER > MAKE_OPENSSL_VERSION_NUMBER(1, 1, 0)
                     LOG_TRC("BIO asks for retry - underlying EAGAIN? with "
                             << (SSL_has_pending(_ssl) ? "(" : "no(") << SSL_pending(_ssl)
                             << ") pending data to read");
+#else
+                    LOG_TRC("BIO asks for retry - underlying EAGAIN?");
+#endif
                     last_errno = last_errno ? last_errno : EAGAIN; // Set errno if unset.
                     return -1; // poll is used to detect real errors.
                 }

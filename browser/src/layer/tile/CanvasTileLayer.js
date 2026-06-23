@@ -3,7 +3,7 @@
  * window.L.CanvasTileLayer is a layer with canvas based rendering.
  */
 
-/* global app JSDialog CanvasSectionContainer GraphicSelection CanvasOverlay CursorHeaderSection $ _ CPolyUtil CPolygon Cursor UNOKey cool OtherViewCellCursorSection TileManager SplitSection TextSelections CellSelectionMarkers URLPopUpSection CalcValidityDropDown DocumentBase CellCursorSection FormFieldButton TextCursorSection CStyleData CSelections CReferences OtherViewGraphicSelectionSection CompareChangesLabelSection */
+/* global app JSDialog CanvasSectionContainer GraphicSelection CanvasOverlay CursorHeaderSection $ _ CPolyUtil CPolygon Cursor UNOKey cool OtherViewCellCursorSection TileManager SplitSection TextSelections CellSelectionMarkers URLPopUpSection CalcValidityDropDown DocumentBase CellCursorSection FormFieldButton TextCursorSection CStyleData CSelections CReferences OtherViewGraphicSelectionSection */
 
 function clamp(num, min, max)
 {
@@ -374,7 +374,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		tileSize: window.tileSize,
 		opacity: 1,
 
-		updateWhenIdle: (window.mode.isSmallScreenDevice() || window.mode.isTablet()),
+		updateWhenIdle: (window.mode.isMobile() || window.mode.isTablet()),
 		updateInterval: 200,
 
 		attribution: null,
@@ -481,7 +481,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		app.sectionContainer.setDocumentAnchorSection(app.CSections.Tiles.name);
 
 		if (this._docType === 'text')
-			app.sectionContainer.addSection(new CompareChangesLabelSection());
+			app.sectionContainer.addSection(new app.definitions.compareChangesLabelSection());
 
 		app.sectionContainer.getSectionWithName('tiles').onResize();
 
@@ -492,7 +492,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 
 		// For mobile/tablet the hammerjs swipe handler already uses a requestAnimationFrame to fire move/drag events
 		// Using window.L.TileSectionManager's own requestAnimationFrame loop to do the updates in that case does not perform well.
-		if (window.mode.isSmallScreenDevice() || window.mode.isTablet()) {
+		if (window.mode.isMobile() || window.mode.isTablet()) {
 			this._map.on('move', this._painter.update, this._painter);
 			this._map.on('moveend', function () {
 				setTimeout(this.update.bind(this), 200);
@@ -630,7 +630,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 	},
 
 	_resetDocumentInfo: function () {
-		this._documentInfo = "";
+		this._documentInfo = null;
 	},
 
 	_getViewId: function () {
@@ -842,9 +842,6 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		else if (textMsg.startsWith('downloadas:')) {
 			this._onDownloadAsMsg(textMsg);
 		}
-		else if (textMsg.startsWith('exportfile:')) {
-			this._onExportFileMsg(textMsg);
-		}
 		else if (textMsg.startsWith('error:')) {
 			this._onErrorMsg(textMsg);
 		}
@@ -884,6 +881,9 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		}
 		else if (textMsg.startsWith('mousepointer:')) {
 			this._onMousePointerMsg(textMsg);
+		}
+		else if (textMsg.startsWith('renderfont:')) {
+			this._onRenderFontMsg(textMsg, img);
 		}
 		else if (textMsg.startsWith('searchnotfound:')) {
 			this._onSearchNotFoundMsg(textMsg);
@@ -945,16 +945,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			} else
 				// hack for ios and android to get selected text into hyperlink insertion dialog
 				this._selectedTextContent = textMsgHtml;
-
-			// Fire map event for external listeners
-			if (this._map) {
-				this._map.fire('textselectioncontent', {
-					msg: textMsg,
-					html: textMsgHtml,
-					plainText: textMsgPlainText
-				});
-			}
-	}
+		}
 		else if (textMsg.startsWith('clipboardchanged')) {
 			var jMessage = textMsg.substr(17);
 			jMessage = JSON.parse(jMessage);
@@ -984,8 +975,6 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		else if (textMsg.startsWith('complexselection:')) {
 			if (this._map._clip)
 				this._map._clip.onComplexSelection(textMsg.substr('complexselection:'.length));
-			if (this._map)
-				this._map.fire('complexselection', { msg: textMsg });
 		}
 		else if (textMsg.startsWith('windowpaint:')) {
 			this._onDialogPaintMsg(textMsg, img);
@@ -995,14 +984,6 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		}
 		else if (textMsg.startsWith('unocommandresult:')) {
 			this._onUnoCommandResultMsg(textMsg);
-		}
-		else if (textMsg.startsWith('aichatresult:')) {
-			try {
-				var json = JSON.parse(textMsg.substring('aichatresult:'.length));
-				this._map.fire('aichatresult', json);
-			} catch (e) {
-				window.app.console.error('Failed to parse aichatresult: ' + e);
-			}
 		}
 		else if (textMsg.startsWith('hrulerupdate:')) {
 			this._onRulerUpdate(textMsg);
@@ -1456,55 +1437,6 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		}
 		this._lastFormula = newFormula;
 		this._map.fire('cellformula', {formula: newFormula});
-
-		if (this.isCalc()) {
-			this._checkForFormulaError(newFormula);
-		}
-	},
-
-	_checkForFormulaError: function (formula) {
-		app.definitions.formulaErrorHelpSection.hide();
-
-		if (!app.map.isAIConfigured || !formula || !formula.startsWith('='))
-			return;
-
-		if (this._formulaErrorCheckTimer)
-			clearTimeout(this._formulaErrorCheckTimer);
-
-		this._formulaErrorCheckTimer = setTimeout(
-			this._doFormulaErrorCheck.bind(this),
-			300,
-		);
-	},
-
-	_doFormulaErrorCheck: function () {
-		this._formulaErrorCheckTimer = null;
-
-		var handleResponse = function (e) {
-			if (e.commandName === '.uno:FormulaDepChain') {
-				clearTimeout(timeout);
-				app.map.off('commandvalues', handleResponse);
-				if (
-					e.commandValues &&
-					e.commandValues.hasError &&
-					app.calc.cellCursorVisible
-				) {
-					var rect = app.calc.cellCursorRectangle;
-					var pos = new cool.SimplePoint(
-						rect.x2,
-						rect.y1,
-					);
-					app.definitions.formulaErrorHelpSection.show(pos);
-				}
-			}
-		};
-
-		var timeout = setTimeout(function () {
-			app.map.off('commandvalues', handleResponse);
-		}, 3000);
-
-		app.map.on('commandvalues', handleResponse);
-		app.socket.sendMessage('commandvalues command=.uno:FormulaDepChain');
 	},
 
 	_onCalcFunctionUsageMsg: function (textMsg) {
@@ -1518,7 +1450,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		} else {
 			var funcData = JSON.parse(textMsg);
 
-			if (window.mode.isSmallScreenDevice()) {
+			if (window.mode.isMobile()) {
 				this._closeMobileWizard();
 
 				var data = {
@@ -1659,14 +1591,6 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		}
 	},
 
-	_onExportFileMsg: function (textMsg) {
-		this._map.hideBusy();
-		var command = app.socket.parseServerCmd(textMsg);
-		if (command.url) {
-			window.postMobileMessage('exportfile url=' + command.url);
-		}
-	},
-
 	_onErrorMsg: function (textMsg) {
 		var command = app.socket.parseServerCmd(textMsg);
 
@@ -1713,13 +1637,9 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 
 		app.definitions.otherViewGraphicSelectionSection.addOrUpdateGraphicSelectionIndicator(viewId, strTwips, parseInt(obj.part), obj.mode !== undefined ? parseInt(obj.mode): 0);
 
-		if (app.getFollowedViewId() === viewId && app.isFollowingUser()) {
-			if (this.isImpress() || this.isDraw() || this.isWriter()) {
-				this.goToOtherUserView(viewId);
-			}
+		if (this.isCalc()) {
+			this._saveMessageForReplay(textMsg, viewId);
 		}
-
-		this._saveMessageForReplay(textMsg, viewId);
 	},
 
 	_onCellCursorMsg: function (textMsg) {
@@ -1764,9 +1684,6 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 
 		// Remove input help if there is any:
 		app.definitions.validityInputHelpSection.removeValidityInputHelp();
-
-		// Hide formula error help button when cell cursor changes.
-		app.definitions.formulaErrorHelpSection.hide();
 	},
 
 	_onDocumentRepair: function (textMsg) {
@@ -1784,10 +1701,9 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 	_onMousePointerMsg: function (textMsg) {
 		textMsg = textMsg.substring(14); // "mousepointer: "
 		textMsg = Cursor.getCustomCursor(textMsg) || textMsg;
-		this._coreMousePointer = textMsg;
-		const canvas = document.getElementById('document-canvas');
-		if (canvas && canvas.style.cursor !== textMsg) {
-			canvas.style.cursor = textMsg;
+		var mapPane = $('.leaflet-pane.leaflet-map-pane');
+		if (mapPane.css('cursor') !== textMsg) {
+			mapPane.css('cursor', textMsg);
 		}
 	},
 
@@ -1951,7 +1867,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		TextCursorSection.addOrUpdateOtherViewCursor(viewId, username, rectangle, parseInt(obj.part), mode);
 
 		if (app.getFollowedViewId() === viewId && (app.isFollowingEditor() || app.isFollowingUser())) {
-			if (this.isWriter() || this.isImpress() || this.isDraw()) {
+			if (this._map.getDocType() === 'text' || this._map.getDocType() === 'presentation') {
 				this.goToViewCursor(viewId);
 			}
 			else if (this._map.getDocType() === 'spreadsheet') {
@@ -2093,6 +2009,15 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		this._map.fire('updateviewslist');
 	},
 
+	_onRenderFontMsg: function (textMsg, img) {
+		var command = app.socket.parseServerCmd(textMsg);
+		this._map.fire('renderfont', {
+			font: command.font,
+			char: command.char,
+			img: img
+		});
+	},
+
 	_onSearchNotFoundMsg: function (textMsg) {
 		this._clearSearchResults();
 		var originalPhrase = textMsg.substring(16);
@@ -2198,9 +2123,6 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			// when json.commandName is '.uno:RowColSelCount'.
 			if (json.commandName && json.state !== undefined) {
 				this._map.fire('commandstatechanged', json);
-				if (window.ThisIsTheMacOSApp || window.ThisIsTheQtApp) {
-					window.postMobileMessage('COMMANDSTATECHANGED ' + JSON.stringify(json));
-				}
 			}
 		}
 		else if (textMsg.startsWith('.uno:Context=') && this.isImpress()) {
@@ -2210,11 +2132,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			var index = textMsg.indexOf('=');
 			var commandName = index !== -1 ? textMsg.substr(0, index) : '';
 			var state = index !== -1 ? textMsg.substr(index + 1) : '';
-			const json = {commandName : commandName, state : state};
-			this._map.fire('commandstatechanged', json);
-			if (window.ThisIsTheMacOSApp || window.ThisIsTheQtApp) {
-				window.postMobileMessage('COMMANDSTATECHANGED ' + JSON.stringify(json));
-			}
+			this._map.fire('commandstatechanged', {commandName : commandName, state : state});
 		}
 	},
 
@@ -2232,9 +2150,6 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 
 		this._map.hideBusy();
 		this._map.fire('commandresult', {commandName: commandName, success: success, result: obj.result});
-		if (window.ThisIsTheMacOSApp || window.ThisIsTheQtApp) {
-			window.postMobileMessage('COMMANDRESULT ' + textMsg);
-		}
 
 		if (this._map.CallPythonScriptSource != null) {
 			this._map.CallPythonScriptSource.postMessage(JSON.stringify({'MessageId': 'CallPythonScript-Result',
@@ -2772,23 +2687,6 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			}
 		}
 
-		if (type === 'move' && thereArePageLinks) {
-			let overLink = false;
-			for (const link of tempPageLinks) {
-				if (link.rectangle.containsPoint([x, y])) {
-					overLink = true;
-					break;
-				}
-			}
-			const canvas = document.getElementById('document-canvas');
-			if (overLink) {
-				if (canvas && canvas.style.cursor !== 'pointer')
-					canvas.style.cursor = 'pointer';
-			} else if (canvas && canvas.style.cursor === 'pointer') {
-				canvas.style.cursor = '';
-			}
-		}
-
 		if (type === 'buttondown')
 			this._clearSearchResults();
 
@@ -3066,7 +2964,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 	// enable or disable blinking cursor and the cursor overlay depending on
 	// the state of the document (if the flags are set)
 	_updateCursorAndOverlay: function (/*update*/) {
-		if (app.file.textCursor.visible   // only when COKit has told us it is ok
+		if (app.file.textCursor.visible   // only when LOK has told us it is ok
 			&& this._map.editorHasFocus()   // not when document is not focused
 			&& !this._map.isSearching()  	// not when searching within the doc
 			&& !this._isZooming             // not when zooming
@@ -3113,19 +3011,6 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		}
 	},
 
-	// Jump to view of user with given *viewId*
-	goToOtherUserView: function(viewId) {
-		const graphicSection = OtherViewGraphicSelectionSection.getViewSection(viewId);
-
-		if (graphicSection) {
-			if (this._selectedPart !== graphicSection.sectionProperties.part) {
-				this._map.deselectAll();
-				this._map.setPart(graphicSection.sectionProperties.part);
-			}
-			graphicSection.goToSection();
-		}
-	},
-
 	goToViewCursor: function(viewId) {
 		if (viewId === this._viewId) {
 			this._onUpdateCursor();
@@ -3134,16 +3019,12 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 
 		const section = TextCursorSection.getViewCursorSection(viewId);
 
-		if (section) {
-			if ((this.isImpress() || this.isDraw()) && this._selectedPart !== section.sectionProperties.part) {
-				this._map.deselectAll();
-				this._map.setPart(section.sectionProperties.part);
-			}
-
-			if (section.showSection) {
-				section.goToSection();
-				app.definitions.cursorHeaderSection.showCursorHeader(viewId);
-			}
+		if (section && section.showSection) {
+			const point = new cool.SimplePoint(section.position[0] * app.pixelsToTwips, section.position[1] * app.pixelsToTwips);
+			var isNewCursorVisible = app.isPointVisibleInTheDisplayedArea(point.toArray());
+			if (!isNewCursorVisible)
+				this.scrollToPos(point);
+			app.definitions.cursorHeaderSection.showCursorHeader(viewId);
 		}
 	},
 
@@ -3284,10 +3165,8 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			return;
 		}
 
-		if (!maxZoom) {
-			if (this.isImpress()) maxZoom = 10;
-			else if (this.isWriter()) maxZoom = 13;
-		}
+		if (this.isImpress() && !maxZoom)
+			maxZoom = 10;
 
 		if (this._invalidateZoomFirstFit) {
 			recalcFirstFit = true;
@@ -3303,13 +3182,6 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		oldSize.x *= app.dpiScale;
 		oldSize.y *= app.dpiScale;
 
-		let bringCommentsIntoView = false;
-		if (this.isWriter() && app.activeDocument.partHasComments && (recalcFirstFit || !this._includedCommentsInFirstFit)) {
-			bringCommentsIntoView = true;
-			this._includedCommentsInFirstFit = true;
-			this._firstFitDone = false;
-		}
-
 		// `recalcFirstFit` is used to recalculate/reset the zoom levels to the
 		// maximum possible zoom level based on the window (canvas) size.
 		if (recalcFirstFit)
@@ -3321,11 +3193,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		if (this._firstFitDone && newSize.x - oldSize.x === 0)
 			return;
 
-		const commentWidth = app.sectionContainer.getSectionWithName(app.CSections.CommentList.name).sectionProperties.commentWidth;
-		let documentWidth = app.activeDocument.fileSize.pX;
-		if (bringCommentsIntoView) documentWidth += commentWidth;
-
-		var ratio = newSize.x / documentWidth;
+		var ratio = newSize.x / app.activeDocument.fileSize.pX;
 		var zoom = this._map.getScaleZoom(ratio);
 
 		if (maxZoom)
@@ -3571,8 +3439,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 				'graphicviewselection',
 			] : [
 				'textviewselection',
-				'invalidateviewcursor',
-				'graphicviewselection'
+				'invalidateviewcursor'
 			];
 
 			this._printTwipsMessagesForReplay = new window.L.MessageStore(ownViewTypes, otherViewTypes);
@@ -3728,7 +3595,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 	},
 
 	_mobileChecksAfterResizeEvent: function(heightIncreased) {
-		if (!window.mode.isSmallScreenDevice()) return;
+		if (!window.mode.isMobile()) return;
 
 		const hasMobileWizardOpened = this._map.uiManager.mobileWizard ? this._map.uiManager.mobileWizard.isOpen() : false;
 		const hasIframeModalOpened = $('.iframe-dialog-modal').is(':visible');
@@ -3745,7 +3612,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 
 	_nonDesktopChecksAfterResizeEvent: function(heightIncreased) {
 		// We want to keep cursor visible when we show the keyboard on mobile device or tablet
-		if (!window.mode.isSmallScreenDevice() && !window.mode.isTablet()) return;
+		if (!window.mode.isMobile() && !window.mode.isTablet()) return;
 
 		const hasVisibleCursor = app.file.textCursor.visible
 			&& this._map._docLayer._cursorMarker && this._map._docLayer._cursorMarker.isDomAttached();
@@ -3846,7 +3713,6 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		 * UI code which triggers them.
 		 */
 		this._invalidateZoomFirstFit = false;
-		this._includedCommentsInFirstFit = false;
 
 		this._referencesAll = [];
 
@@ -3871,7 +3737,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			map.on('resize', this._fitWidthZoom, this);
 		}
 		this._map.on('resize', this._syncTileContainerSize, this);
-		// Retrieve the initial cell cursor position (as COKit only sends us an
+		// Retrieve the initial cell cursor position (as LOK only sends us an
 		// updated cell cursor when the selected cell is changed and not the initial
 		// cell).
 		map.on('statusindicator',
@@ -3887,7 +3753,6 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			if (e.detail.perm !== 'edit') {
 				this._clearSelections();
 			}
-			TileManager.update();
 		}.bind(this));
 
 		map.setPermission(app.file.permission);

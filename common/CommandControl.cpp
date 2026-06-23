@@ -9,11 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Feature lock and command control management.
- * Classes: LockManager - Manages locked commands and read-only hosts
- */
-
 #include <config.h>
 
 #include "CommandControl.hpp"
@@ -168,36 +163,37 @@ std::string RestrictionManager::RestrictedCommandListString;
 
 RestrictionManager::RestrictionManager() {}
 
-void RestrictionManager::setRestrictedCommandList(const std::string& commandListString)
+void RestrictionManager::generateRestrictedCommandList()
 {
-#if defined(ENABLE_FEATURE_RESTRICTION) || ENABLE_DEBUG
-    RestrictedCommandListString = Util::trimmed(commandListString);
-    RestrictedCommandList.clear();
+#ifdef ENABLE_FEATURE_RESTRICTION
+    RestrictedCommandListString = ConfigUtil::getString("restricted_commands", "");
+    Util::trim(RestrictedCommandListString);
+    StringVector commandList = StringVector::tokenize(RestrictedCommandListString);
+
+    std::string command;
+    for (std::size_t i = 0; i < commandList.size(); i++)
+    {
+        command = commandList[i];
+        if (!command.empty())
+        {
+            RestrictedCommandList.emplace(command);
+        }
+    }
 #endif
 }
 
 const std::unordered_set<std::string>& RestrictionManager::getRestrictedCommandList()
 {
-    if (RestrictedCommandList.empty() && !RestrictedCommandListString.empty())
-    {
-        StringVector commandList = StringVector::tokenize(RestrictedCommandListString);
-        for (std::size_t i = 0; i < commandList.size(); i++)
-        {
-            std::string command = commandList[i];
-            if (!command.empty())
-            RestrictedCommandList.emplace(command);
-        }
-    }
+    if (RestrictedCommandList.empty())
+        generateRestrictedCommandList();
 
     return RestrictedCommandList;
 }
 
 const std::string RestrictionManager::getRestrictedCommandListString()
 {
-#ifdef ENABLE_FEATURE_RESTRICTION
     if (RestrictedCommandListString.empty())
-        setRestrictedCommandList(ConfigUtil::getString("restricted_commands", ""));
-#endif
+        generateRestrictedCommandList();
 
     return RestrictedCommandListString;
 }

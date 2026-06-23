@@ -12,17 +12,15 @@
 
 #include <chrono>
 #include <thread>
+#include <vector>
 
 #include <FakeSocket.hpp>
 #include <Kit.hpp>
-#include <common/Log.hpp>
+#include <Log.hpp>
 #include <COOLWSD.hpp>
 #include <Protocol.hpp>
 #include <SetupKitEnvironment.hpp>
-#include <common/Util.hpp>
-
-#define LIBO_INTERNAL_ONLY
-#include <COKit/COKit.hxx>
+#include <Util.hpp>
 
 #include <osl/detail/android-bootstrap.h>
 
@@ -57,9 +55,9 @@ JNI_OnLoad(JavaVM* vm, void*) {
     // Uncomment the following to see the logs from the core too
     //setenv("SAL_LOG", "+WARN+INFO", 0);
 #if ENABLE_DEBUG
-    Log::initialize("Mobile", "debug");
+    Log::initialize("Mobile", "debug", false, false, {}, false, {});
 #else
-    Log::initialize("Mobile", "information");
+    Log::initialize("Mobile", "information", false, false, {}, false, {});
 #endif
     return JNI_VERSION_1_6;
 }
@@ -135,6 +133,9 @@ void closeDocument()
 {
     // Close one end of the socket pair, that will wake up the forwarding thread that was constructed in HULLO
     fakeSocketClose(closeNotificationPipeForForwardingThread[0]);
+    LOG_DBG("Waiting for Lokit to finish...");
+    std::unique_lock<std::mutex> lokitLock(COOLWSD::lokit_main_mutex);
+    LOG_DBG("Lokit has finished.");
     LOG_DBG("Waiting for COOLWSD to finish...");
     std::unique_lock<std::mutex> coolwsdLock(coolwsdRunningMutex);
     LOG_DBG("COOLWSD has finished.");
@@ -171,7 +172,7 @@ Java_org_libreoffice_androidlib_LOActivity_postMobileMessageNative(JNIEnv *env, 
             // Start another thread to read responses and forward them to the JavaScript
             std::thread([currentFakeClientFd]
                         {
-                            ProcUtil::setThreadName("app2js");
+                            Util::setThreadName("app2js");
                             JNIThreadContext ctx;
                             while (true)
                             {
@@ -268,7 +269,7 @@ Java_org_libreoffice_androidlib_LOActivity_createCOOLWSD(JNIEnv *env, jobject in
     lokInitialized = true;
     libreofficekit_initialize(env, dataDir, cacheDir, apkFile, assetManager);
 
-    ProcUtil::setThreadName("main");
+    Util::setThreadName("main");
 
     fakeSocketSetLoggingCallback([](const std::string& line)
                                  {
@@ -280,7 +281,7 @@ Java_org_libreoffice_androidlib_LOActivity_createCOOLWSD(JNIEnv *env, jobject in
                     char *argv[2];
                     argv[0] = strdup("mobile");
                     argv[1] = nullptr;
-                    ProcUtil::setThreadName("app");
+                    Util::setThreadName("app");
                     while (true)
                     {
                         LOG_DBG("Creating COOLWSD");
@@ -340,6 +341,20 @@ static jstring tojstringAndFree(JNIEnv *env, char *str)
     jstring ret = env->NewStringUTF(str);
     free(str);
     return ret;
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_org_libreoffice_androidlib_LOActivity_getTextSelection(JNIEnv* pEnv, jobject, jstring mimeType)
+{
+    if (!getLOKDocumentForAndroidOnly())
+        return pEnv->NewStringUTF("");
+
+    const char* pMimeType = pEnv->GetStringUTFChars(mimeType, nullptr);
+    char* text = getLOKDocumentForAndroidOnly()->getTextSelection(pMimeType, nullptr);
+    pEnv->ReleaseStringUTFChars(mimeType, pMimeType);
+
+    return tojstringAndFree(pEnv, text);
 }
 
 const char* copyJavaString(JNIEnv* pEnv, jstring aJavaString)
@@ -471,9 +486,9 @@ Java_org_libreoffice_androidlib_LOActivity_setClipboardContent(JNIEnv *env, jobj
     if (nEntrySize == 0)
         return;
 
-    size_t pSizes[nEntrySize];
-    const char* pMimeTypes[nEntrySize];
-    const char* pStreams[nEntrySize];
+    std::vector<size_t> pSizes(nEntrySize);
+    std::vector<const char*> pMimeTypes(nEntrySize);
+    std::vector<const char*> pStreams(nEntrySize);
 
     for (size_t nEntryIndex = 0; nEntryIndex < nEntrySize; ++nEntryIndex)
     {
@@ -492,7 +507,7 @@ Java_org_libreoffice_androidlib_LOActivity_setClipboardContent(JNIEnv *env, jobj
         pStreams[nEntryIndex] = dataArray;
     }
 
-    getLOKDocumentForAndroidOnly()->setClipboard(nEntrySize, pMimeTypes, pSizes, pStreams);
+    getLOKDocumentForAndroidOnly()->setClipboard(nEntrySize, pMimeTypes.data(), pSizes.data(), pStreams.data());
 }
 
 extern "C"

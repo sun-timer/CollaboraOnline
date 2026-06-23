@@ -9,14 +9,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Implementation of network latency simulation using delayed socket pairs.
- * Classes: DelaySocket (internal), Delay
- */
-
 #include <config.h>
 
-#include <common/Syscall.hpp>
 #include <net/DelaySocket.hpp>
 
 #include <memory>
@@ -72,8 +66,8 @@ public:
     {
         os << "\tfd: " << getFD()
            << "\n\tqueue: " << _chunks.size() << '\n';
-        const auto now = std::chrono::steady_clock::now();
-        for (const auto &chunk : _chunks)
+        auto now = std::chrono::steady_clock::now();
+        for (auto &chunk : _chunks)
         {
             os << "\t\tin: "
                << std::chrono::duration_cast<std::chrono::milliseconds>(chunk->getSendTime() - now)
@@ -258,7 +252,7 @@ int Delay::create(int delayMs, int physicalFd)
     if (delayPoll && delayPoll->isAlive())
     {
         int pair[2];
-        int rc = Syscall::socketpair_cloexec_nonblock(AF_UNIX, SOCK_STREAM /*| SOCK_NONBLOCK | SOCK_CLOEXEC*/, 0, pair);
+        int rc = socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, pair);
         assert(rc == 0);
         (void)rc;
         int internalFd = pair[0];

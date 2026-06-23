@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 复制图标：两个重叠的圆角矩形（描边），用于生成大纲结果区下方的复制条 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp"
+    android:height="40dp"
+    android:viewportWidth="40"
+    android:viewportHeight="40">
+    <path
+        android:strokeColor="#6A6A6A"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M11.7305,11.3019V7.82899C11.7305,6.66111 12.6772,5.71436 13.8451,5.71436H32.1719C33.3398,5.71436 34.2865,6.66111 34.2865,7.82899V26.1558C34.2865,27.3237 33.3398,28.2704 32.1719,28.2704H28.6598" />
+    <path
+        android:strokeColor="#6A6A6A"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round"
+        android:pathData="M26.1563,11.7295H7.82947C6.6616,11.7295 5.71484,12.6762 5.71484,13.8441V32.1709C5.71484,33.3388 6.6616,34.2856 7.82947,34.2856H26.1563C27.3242,34.2856 28.2709,33.3388 28.2709,32.1709V13.8441C28.2709,12.6762 27.3242,11.7295 26.1563,11.7295Z" />
+</vector>

@@ -42,7 +42,7 @@ window.L.Control.NotebookbarBuilder = window.L.Control.JSDialogBuilder.extend({
 		this._controlHandlers['combobox'] = this._comboboxControl;
 		this._controlHandlers['exportmenubutton'] = this._exportMenuButton;
 		this._controlHandlers['tabcontrol'] = this._overriddenTabsControlHandler;
-		this._controlHandlers['iconviewlist'] = JSDialog.notebookbarIconViewList;
+		this._controlHandlers['iconview'] = JSDialog.notebookbarIconView;
 		this._controlHandlers['tabpage'] = this._overriddenTabPageHandler;
 
 		this._toolitemHandlers['.uno:XLineColor'] = JSDialog.colorPickerButton;
@@ -202,9 +202,10 @@ window.L.Control.NotebookbarBuilder = window.L.Control.JSDialogBuilder.extend({
 			var row = window.L.DomUtil.create('div', 'notebookbar row', table);
 			var button = window.L.DomUtil.createWithId('button', data.id + 'ios', row);
 
-			$(table).addClass('ui-combobox jsdialog');
-			$(row).addClass('ui-combobox-content');
-			$(button).addClass('ui-combobox-content');
+			$(table).addClass('select2 select2-container select2-container--default');
+			// Fix issue #5838 Don't add the "select2-selection--single" class
+			$(row).addClass('select2-selection');
+			$(button).addClass('select2-selection__rendered');
 
 			if (data.selectedEntries.length && data.entries[data.selectedEntries[0]])
 				button.innerText = data.entries[data.selectedEntries[0]];
@@ -237,29 +238,10 @@ window.L.Control.NotebookbarBuilder = window.L.Control.JSDialogBuilder.extend({
 		const isDesktop = window.mode.isDesktop();
 		const tooltipCollapsed = isDesktop ? _('Click to expand') : _('Tap to expand');
 		const tooltipExpanded = isDesktop ? _('Click to collapse') : _('Tap to collapse');
-
-
-		var isFileTab = tabIds[t] === 'File-tab-label' || tabIds[t] === 'File';
-		var isFileTabForCoda = isFileTab && window.mode.isCODesktop();
-		if (!isFileTabForCoda) {
-			if ($(tabs[t]).hasClass('selected'))
-				tabs[t].setAttribute('data-cooltip', tooltipExpanded);
-			window.L.control.attachTooltipEventListener(tabs[t], builder.map);
-		} else {
-			tabs[t].removeAttribute('data-cooltip');
-		}
+		if ($(tabs[t]).hasClass('selected'))
+			tabs[t].setAttribute('data-cooltip', tooltipExpanded);
+		window.L.control.attachTooltipEventListener(tabs[t], builder.map);
 		return function(event) {
-			if (isFileTabForCoda) {
-				if (builder.map.backstageView) {
-					console.log('NotebookbarBuilder: Calling backstageView.toggle()');
-					builder.map.backstageView.toggle();
-				} else {
-					console.error('NotebookbarBuilder: backstageView is NOT initialized!');
-				}
-				event.preventDefault();
-				return;
-			}
-
 			var tabIsSelected = $(tabs[t]).hasClass('selected');
 			var notebookbarIsCollapsed = builder.wizard.isCollapsed();
 
@@ -399,20 +381,18 @@ window.L.Control.NotebookbarBuilder = window.L.Control.JSDialogBuilder.extend({
 					'action': !window.ThisIsAMobileApp ? 'exportdirectpdf' : 'downloadas-pdf',
 					'text': _('PDF Document (.pdf)'),
 					'command': !window.ThisIsAMobileApp ? 'exportdirectpdf' : 'downloadas-pdf'
-				}
-			];
-			submenuOpts.push({
-				'action': 'downloadas-html',
-				'text': _('HTML File (.html)')
-			});
-			if (!window.ThisIsTheAndroidApp)
-				submenuOpts.push({
+				},
+				{
+					'action': 'downloadas-html',
+					'text': _('HTML File (.html)')
+				},
+			].concat(!window.ThisIsTheAndroidApp ? [
+				{
 					'action': 'exportpdf' ,
-					'text': !window.mode.isCODesktop ?
-						_('PDF Document (.pdf) as...') :
-						_('PDF Document (.pdf) with options'),
+					'text': _('PDF Document (.pdf) as...'),
 					'command': 'exportpdf'
-				});
+				}
+			] : []);
 		} else if (docType === 'spreadsheet') {
 			submenuOpts = [
 				{
@@ -439,16 +419,14 @@ window.L.Control.NotebookbarBuilder = window.L.Control.JSDialogBuilder.extend({
 					'action': !window.ThisIsAMobileApp ? 'exportdirectpdf' : 'downloadas-pdf',
 					'text': _('PDF Document (.pdf)'),
 					'command': !window.ThisIsAMobileApp ? 'exportdirectpdf' : 'downloadas-pdf'
-				}
-			];
-			if (!window.ThisIsTheAndroidApp)
-				submenuOpts.push({
+				},
+			].concat(!window.ThisIsTheAndroidApp ? [
+				{
 					'action': 'exportpdf' ,
-					'text': !window.mode.isCODesktop ?
-						_('PDF Document (.pdf) as...') :
-						_('PDF Document (.pdf) with options'),
+					'text': _('PDF Document (.pdf) as...'),
 					'command': 'exportpdf'
-				});
+				}
+			] : []);
 		} else if (docType === 'presentation') {
 			submenuOpts = [
 				{
@@ -472,49 +450,100 @@ window.L.Control.NotebookbarBuilder = window.L.Control.JSDialogBuilder.extend({
 					'text': _('HTML Document (.html)')
 				},
 				{
-					'action': !window.ThisIsAMobileApp ? 'exportdirectpdf' : 'downloadas-pdf',
+					'action': !window.ThisIsAMobileApp
+						? 'exportdirectpdf'
+						: 'downloadas-pdf',
 					'text': _('PDF Document (.pdf)'),
-					'command': !window.ThisIsAMobileApp ? 'exportdirectpdf' : 'downloadas-pdf',
-				}
-			];
-			if (!window.ThisIsTheAndroidApp)
-				submenuOpts.push({
-					'action': 'exportpdf',
-					'text': !window.mode.isCODesktop ?
-						_('PDF Document (.pdf) as...') :
-						_('PDF Document (.pdf) with options'),
-					'command': 'exportpdf'
-				});
-			if (window.extraExportFormats.includes('impress_swf'))
-				submenuOpts.push({
-					'action': 'downloadas-swf',
-					'text': _('Shockwave Flash (.swf)')
-				});
-			if (window.extraExportFormats.includes('impress_svg'))
-				submenuOpts.push({
-					'action': 'downloadas-svg',
-					'text': _('Scalable Vector Graphics (.svg)')
-				});
-			if (window.extraExportFormats.includes('impress_bmp'))
-				submenuOpts.push({
-					'action': 'downloadas-bmp',
-					'text': _('Current slide as Bitmap (.bmp)')
-				});
-			if (window.extraExportFormats.includes('impress_gif'))
-				submenuOpts.push({
-					'action': 'downloadas-gif',
-					'text': _('Current slide as Graphics Interchange Format (.gif)')
-				});
-			if (window.extraExportFormats.includes('impress_png'))
-				submenuOpts.push({
-					'action': 'downloadas-png',
-					'text': _('Current slide as Portable Network Graphics (.png)')
-				});
-			if (window.extraExportFormats.includes('impress_tiff'))
-				submenuOpts.push({
-					'action': 'downloadas-tiff',
-					'text': _('Current slide as Tag Image File Format (.tiff)')
-				});
+					'command': !window.ThisIsAMobileApp
+						? 'exportdirectpdf'
+						: 'downloadas-pdf',
+				},
+			]
+				.concat(
+					!window.ThisIsTheAndroidApp
+						? [
+								{
+									'action': 'exportpdf',
+									'text': _(
+										'PDF Document (.pdf) as...',
+									),
+									'command': 'exportpdf',
+								},
+							]
+						: [],
+				)
+				.concat(
+					window.extraExportFormats.includes('impress_swf')
+						? [
+								{
+									'action': 'downloadas-swf',
+									'text': _(
+										'Shockwave Flash (.swf)',
+									),
+								},
+							]
+						: [],
+				)
+				.concat(
+					window.extraExportFormats.includes('impress_svg')
+						? [
+								{
+									'action': 'downloadas-svg',
+									'text': _(
+										'Scalable Vector Graphics (.svg)',
+									),
+								},
+							]
+						: [],
+				)
+				.concat(
+					window.extraExportFormats.includes('impress_bmp')
+						? [
+								{
+									'action': 'downloadas-bmp',
+									'text': _(
+										'Current slide as Bitmap (.bmp)',
+									),
+								},
+							]
+						: [],
+				)
+				.concat(
+					window.extraExportFormats.includes('impress_gif')
+						? [
+								{
+									'action': 'downloadas-gif',
+									'text': _(
+										'Current slide as Graphics Interchange Format (.gif)',
+									),
+								},
+							]
+						: [],
+				)
+				.concat(
+					window.extraExportFormats.includes('impress_png')
+						? [
+								{
+									'action': 'downloadas-png',
+									'text': _(
+										'Current slide as Portable Network Graphics (.png)',
+									),
+								},
+							]
+						: [],
+				)
+				.concat(
+					window.extraExportFormats.includes('impress_tiff')
+						? [
+								{
+									'action': 'downloadas-tiff',
+									'text': _(
+										'Current slide as Tag Image File Format (.tiff)',
+									),
+								},
+							]
+						: [],
+				);
 		} else if (docType === 'drawing') {
 			submenuOpts = [
 				{

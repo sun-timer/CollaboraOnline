@@ -151,7 +151,7 @@ export class Header extends CanvasSectionObject {
 	}
 
 	onContextMenu(point: cool.SimplePoint, evt: MouseEvent): void {
-		if ((window as any).mode.isSmallScreenDevice() && this._map.isEditMode()) {
+		if ((window as any).mode.isMobile() && this._map.isEditMode()) {
 			(window as any).contextMenuWizard = true;
 			this._map.fire('mobilewizard', {data: this._menuData});
 		}
@@ -171,10 +171,16 @@ export class Header extends CanvasSectionObject {
 	_reInitRowColumnHeaderStylesAfterModeChange(): void {
 		// add a separation to update row/column DOM element info
 		var isSheetView = app.calc.isSelectedPartSheetView();
+		var isSheetViewSynced = app.calc.isSelectedPartSheetViewSynced();
 
 		if (this._isColumn) {
 			// update column DOM element info
-			if (isSheetView) {
+			if (isSheetView && !isSheetViewSynced) {
+				this._initHeaderEntryStyles('spreadsheet-header-sheetview-unsynced-column');
+				this._initHeaderEntryHoverStyles('spreadsheet-header-sheetview-column-hover');
+				this._initHeaderEntrySelectedStyles('spreadsheet-header-sheetview-column-selected');
+			}
+			else if (isSheetView) {
 				this._initHeaderEntryStyles('spreadsheet-header-sheetview-column');
 				this._initHeaderEntryHoverStyles('spreadsheet-header-sheetview-column-hover');
 				this._initHeaderEntrySelectedStyles('spreadsheet-header-sheetview-column-selected');
@@ -188,7 +194,12 @@ export class Header extends CanvasSectionObject {
 		}
 		else {
 			// update row DOM element info
-			if (isSheetView) {
+			if (isSheetView && !isSheetViewSynced) {
+				this._initHeaderEntryStyles('spreadsheet-header-sheetview-unsynced-row');
+				this._initHeaderEntryHoverStyles('spreadsheet-header-sheetview-row-hover');
+				this._initHeaderEntrySelectedStyles('spreadsheet-header-sheetview-row-selected');
+			}
+			else if (isSheetView) {
 				this._initHeaderEntryStyles('spreadsheet-header-sheetview-row');
 				this._initHeaderEntryHoverStyles('spreadsheet-header-sheetview-row-hover');
 				this._initHeaderEntrySelectedStyles('spreadsheet-header-sheetview-row-selected');
@@ -531,7 +542,7 @@ export class Header extends CanvasSectionObject {
 	}
 
 	_bindContextMenu(): void {
-		if ((window as any).mode.isSmallScreenDevice()) {
+		if ((window as any).mode.isMobile()) {
 			// On mobile, we use the mobile wizard rather than the context menu
 			return;
 		}

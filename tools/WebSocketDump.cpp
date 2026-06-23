@@ -113,7 +113,9 @@ private:
         {
             request.read(message);
 
-            LOG_INF('#' << socket->getFD() << ": Client HTTP Request: " << request);
+            LOG_INF('#' << socket->getFD() << ": Client HTTP Request: " << request.getMethod()
+                        << ' ' << request.getURI() << ' ' << request.getVersion() << ' '
+                        << [&](auto& log) { Util::joinPair(log, request, " / "); });
 
             const std::streamsize contentLength = request.getContentLength();
             const auto offset = itBody - in.begin();
@@ -148,8 +150,8 @@ private:
             {
                 auto dumpHandler = std::make_shared<DumpSocketHandler>(_socket, request);
                 socket->setHandler(dumpHandler);
-                dumpHandler->sendTextMessage("version");
-                dumpHandler->sendTextMessage("documents");
+                dumpHandler->sendMessage("version");
+                dumpHandler->sendMessage("documents");
             }
             else
             {

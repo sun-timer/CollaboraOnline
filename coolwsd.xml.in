@@ -118,7 +118,6 @@
         <anonymize>
             <anonymize_user_data type="bool" desc="Enable to anonymize/obfuscate of user-data in logs. If default is true, it was forced at compile-time and cannot be disabled." default="@COOLWSD_ANONYMIZE_USER_DATA@">@COOLWSD_ANONYMIZE_USER_DATA@</anonymize_user_data>
             <anonymization_salt type="uint" desc="The salt used to anonymize/obfuscate user-data in logs. Use a secret 64-bit random number." default="82589933">82589933</anonymization_salt>
-            <high_strength type="bool" desc="Use cryptographic one-way hashing (PBKDF2-HMAC-SHA512) for anonymization instead of the default fast FNV-1a hash. This makes it computationally infeasible to reverse the anonymized values, even with knowledge of the salt. Slower but suitable when logs may be shared with third parties." default="false">false</high_strength>
         </anonymize>
         <docstats type="bool" desc="Enable to see document handling information in logs." default="false">false</docstats>
         <userstats desc="Enable user stats. i.e: logs the details of a file and user" type="bool" default="false">false</userstats>
@@ -247,6 +246,7 @@
       <jwt_expiry_secs desc="Time in seconds before the Admin Console's JWT token expires" type="int" default="1800">1800</jwt_expiry_secs>
       <enable_macros_execution desc="Specifies whether the macro execution is enabled in general. This will enable Basic and Python scripts to execute both installed and from documents. If it is set to false, the macro_security_level is ignored. If it is set to true, the mentioned entry specified the level of macro security." type="bool" default="false">false</enable_macros_execution>
       <macro_security_level desc="Level of Macro security. 1 (Medium) Confirmation required before executing macros from untrusted sources. 0 (Low, not recommended) All macros will be executed without confirmation." type="int" default="1">1</macro_security_level>
+      <enable_websocket_urp desc="Should we enable URP (UNO remote protocol) communication over the websocket. This allows full control of the Kit child server to anyone with access to the websocket including executing macros without confirmation or running arbitrary shell commands in the jail." type="bool" default="false">false</enable_websocket_urp>
       <enable_metrics_unauthenticated desc="When enabled, the /cool/getMetrics endpoint will not require authentication." type="bool" default="false">false</enable_metrics_unauthenticated>
       <server_signature desc="Whether to send server signature in HTTP response headers" type="bool" default="@SERVER_SIGNATURE@">@SERVER_SIGNATURE@</server_signature>
     </security>
@@ -259,8 +259,6 @@
       <opacity desc="Opacity of on-screen watermark from 0.0 to 1.0" type="double" default="0.2">0.2</opacity>
       <text desc="Watermark text to be displayed on the document if entered" type="string"></text>
     </watermark>
-
-    <comment_avatar desc="URL of an image to use as the avatar for all comments, overriding per-user avatars. When empty (default), normal user avatars are shown" type="string" default=""></comment_avatar>
 
     @WELCOME_CONFIG_FRAGMENT@
 

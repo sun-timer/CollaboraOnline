@@ -9,11 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Trace file recording for debugging and analysis.
- * Classes: TraceFileWriter, TraceFileReader
- */
-
 #pragma once
 
 #include <common/FileUtil.hpp>
@@ -30,7 +25,6 @@
 #include <Poco/InflatingStream.h>
 #include <Poco/URI.h>
 
-#include <chrono>
 #include <fstream>
 #include <mutex>
 #include <sstream>
@@ -49,10 +43,10 @@ public:
         Event = '~'
     };
 
-    TraceFileRecord()
-        : _dir(Direction::Invalid)
-        , _timestampUs(std::chrono::microseconds::zero())
-        , _pid(0)
+    TraceFileRecord() :
+        _dir(Direction::Invalid),
+        _timestampUs(0),
+        _pid(0)
     {
     }
 
@@ -75,9 +69,9 @@ public:
 
     Direction getDir() const { return _dir; }
 
-    void setTimestampUs(std::chrono::microseconds timestampUs) { _timestampUs = timestampUs; }
+    void setTimestampUs(unsigned timestampUs) { _timestampUs = timestampUs; }
 
-    std::chrono::microseconds getTimestampUs() const { return _timestampUs; }
+    unsigned getTimestampUs() const { return _timestampUs; }
 
     void setPid(unsigned pid) { _pid = pid; }
 
@@ -93,7 +87,7 @@ public:
 
 private:
     Direction _dir;
-    std::chrono::microseconds _timestampUs;
+    unsigned _timestampUs;
     unsigned _pid;
     std::string _sessionId;
     std::string _payload;
@@ -104,14 +98,17 @@ private:
 class TraceFileWriter
 {
 public:
-    TraceFileWriter(const std::string& path, const bool recordOutgoing, const bool compress,
-                    const bool takeSnapshot, const std::vector<std::string>& filters)
+    TraceFileWriter(const std::string& path,
+                    const bool recordOutgoing,
+                    const bool compress,
+                    const bool takeSnapshot,
+                    const std::vector<std::string>& filters)
         : _stream(processPath(path), compress ? std::ios::binary : std::ios::out)
         , _deflater(_stream, Poco::DeflatingStreamBuf::STREAM_GZIP)
         , _filter(true)
         , _path(Poco::Path(path).parent().toString())
-        , _epochStart(std::chrono::duration_cast<std::chrono::microseconds>(
-              std::chrono::system_clock::now().time_since_epoch()))
+        , _epochStart(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now()
+                                                            .time_since_epoch()).count())
         , _lastTime(_epochStart)
         , _recordOutgoing(recordOutgoing)
         , _compress(compress)
@@ -271,10 +268,9 @@ private:
     {
         Util::assertIsLocked(_mutex);
 
-        const std::chrono::microseconds usec =
-            std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::system_clock::now().time_since_epoch());
-        const std::chrono::microseconds deltaT = usec - _lastTime;
+        const int64_t usec = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        const int64_t deltaT = usec - _lastTime;
         _lastTime = usec;
         if (_compress)
         {
@@ -350,8 +346,8 @@ private:
     std::map<std::string, SnapshotData> _urlToSnapshot;
     std::mutex _mutex;
     const std::string _path;
-    const std::chrono::microseconds _epochStart;
-    std::chrono::microseconds _lastTime;
+    const int64_t _epochStart;
+    int64_t _lastTime;;
     const bool _recordOutgoing;
     const bool _compress;
     const bool _takeSnapshot;
@@ -373,8 +369,8 @@ public:
         _stream.close();
     }
 
-    std::chrono::microseconds getEpochStart() const { return _epochStart; }
-    std::chrono::microseconds getEpochEnd() const { return _epochEnd; }
+    int64_t getEpochStart() const { return _epochStart; }
+    int64_t getEpochEnd() const { return _epochEnd; }
 
     TraceFileRecord getNextRecord()
     {
@@ -416,8 +412,8 @@ private:
     TraceFileReader(const std::string& path, bool compressed, float latencyFactor)
         : _stream(path, compressed ? std::ios::binary : std::ios::in)
         , _inflater(_stream, Poco::InflatingStreamBuf::STREAM_GZIP)
-        , _epochStart(std::chrono::microseconds::zero())
-        , _epochEnd(std::chrono::microseconds::zero())
+        , _epochStart(0)
+        , _epochEnd(0)
         , _index(0)
         , _indexIn(-1)
         , _indexOut(-1)
@@ -432,7 +428,7 @@ private:
         _records.clear();
 
         std::string line;
-        std::chrono::microseconds lastTime = std::chrono::microseconds::zero();
+        unsigned lastTime = 0;
         for (;;)
         {
             if (_compressed)
@@ -472,8 +468,8 @@ private:
         _epochEnd = _records[_records.size() - 1].getTimestampUs();
     }
 
-    static bool extractRecord(const std::string& s, std::chrono::microseconds& lastTime,
-                              TraceFileRecord& rec, float latencyFactor)
+    static bool extractRecord(const std::string& s, unsigned& lastTime, TraceFileRecord& rec,
+                              float latencyFactor)
     {
         if (s.length() < 1)
             return false;
@@ -491,16 +487,13 @@ private:
             {
                 case 0:
                     if (s[pos] == '+') { // incremental timestamps
-                        auto time =
-                            std::chrono::microseconds(std::atol(s.substr(pos, next - pos).c_str()));
-                        time = std::chrono::duration_cast<std::chrono::microseconds>(time *
-                                                                                     latencyFactor);
+                        unsigned time = std::atol(s.substr(pos, next - pos).c_str());
+                        time *= latencyFactor;
                         rec.setTimestampUs(lastTime + time);
                         lastTime += time;
                     }
                     else
-                        rec.setTimestampUs(std::chrono::microseconds(
-                            std::atol(s.substr(pos, next - pos).c_str())));
+                        rec.setTimestampUs(std::atol(s.substr(pos, next - pos).c_str()));
                     break;
                 case 1:
                     rec.setPid(std::atoi(s.substr(pos, next - pos).c_str()));
@@ -539,8 +532,8 @@ private:
     std::ifstream _stream;
     Poco::InflatingInputStream _inflater;
     std::vector<TraceFileRecord> _records;
-    std::chrono::microseconds _epochStart;
-    std::chrono::microseconds _epochEnd;
+    int64_t _epochStart;
+    int64_t _epochEnd;
     unsigned _index;
     unsigned _indexIn;
     unsigned _indexOut;

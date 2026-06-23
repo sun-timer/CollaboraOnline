@@ -24,12 +24,16 @@
 #include <wsd/COOLWSD.hpp>
 #include <wsd/ClientSession.hpp>
 
-#include <Poco/URI.h>
+#include <Poco/Net/HTMLForm.h>
+#include <Poco/Net/HTTPResponse.h>
+#include <Poco/Net/HTTPServerRequest.h>
+#include <Poco/Net/StringPartSource.h>
 #include <Poco/Util/LayeredConfiguration.h>
 
 #include <sstream>
 
 using namespace std::literals;
+using namespace Poco::Net;
 
 // Inside the WSD process
 class UnitCopyPaste : public UnitWSD
@@ -101,8 +105,7 @@ public:
             removeSessionClipboardMeta(body);
             std::istringstream responseStream(body);
             auto clipboard = std::make_shared<ClipboardData>();
-            if (!clipboard->read(responseStream))
-                throw ParseError("error during reading the stream");
+            clipboard->read(responseStream);
             std::ostringstream oss(Util::makeDumpStateStream());
             clipboard->dumpState(oss);
 
@@ -178,29 +181,33 @@ public:
     }
 
     bool setClipboard(const std::string &clipURIstr, const std::string &rawData,
-                      http::StatusCode expected)
+                      HTTPResponse::HTTPStatus expected)
     {
         TST_LOG("connect to " << clipURIstr);
         Poco::URI clipURI(clipURIstr);
 
-        auto httpSession = http::Session::create(clipURIstr);
-        http::Request request(clipURI.getPathAndQuery(), http::Request::VERB_POST);
-        helpers::MultipartFormBody form;
-        form.addField("format", "txt");
-        form.addStringPart("data", rawData, "application/octet-stream", "clipboard");
-        form.applyTo(request);
-        const auto response = httpSession->syncRequest(request);
+        std::unique_ptr<HTTPClientSession> session(helpers::createSession(clipURI));
+        HTTPRequest request(HTTPRequest::HTTP_POST, clipURI.getPathAndQuery());
+        HTMLForm form;
+        form.setEncoding(HTMLForm::ENCODING_MULTIPART);
+        form.set("format", "txt");
+        form.addPart("data", new StringPartSource(rawData, "application/octet-stream", "clipboard"));
+        form.prepareSubmit(request);
+        form.write(session->sendRequest(request));
 
-        if (!response || response->state() == http::Response::State::Timeout)
-        {
+        HTTPResponse response;
+        std::stringstream actualStream;
+        try {
+            session->receiveResponse(response);
+        } catch (NoMessageException &) {
             TST_LOG("Error: No response from setting clipboard.");
             exitTest(TestResult::Failed);
             return false;
         }
 
-        if (response->statusCode() != expected)
+        if (response.getStatus() != expected)
         {
-            TST_LOG("Error: response for clipboard " << response->statusCode() << " != expected "
+            TST_LOG("Error: response for clipboard " << response.getStatus() << " != expected "
                                                      << expected);
             exitTest(TestResult::Failed);
             return false;
@@ -355,7 +362,7 @@ public:
         TST_LOG("Push new clipboard content");
         const std::string newcontent = "1234567890";
         helpers::sendAndWait(socket, testname, "uno .uno:Deselect", "statechanged:");
-        if (!setClipboard(_clipURI, buildClipboardText(newcontent), http::StatusCode::OK))
+        if (!setClipboard(_clipURI, buildClipboardText(newcontent), HTTPResponse::HTTP_OK))
             return;
         helpers::sendAndWait(socket, testname, "uno .uno:Paste", "statechanged:");
 
@@ -372,7 +379,7 @@ public:
         // Test setting HTML clipboard:
         std::string html("<!DOCTYPE html><html><body>myword</body></html>");
         // Intentionally no buildClipboardText() here, just raw HTML.
-        if (!setClipboard(_clipURI, html, http::StatusCode::OK))
+        if (!setClipboard(_clipURI, html, HTTPResponse::HTTP_OK))
             return;
         // This failed with: ERROR: Forced failure: Missing clipboard mime type, because we tried to
         // parse HTML when we expected a list of mimetype-size-bytes entries.
@@ -381,9 +388,9 @@ public:
 
         // Setup state that will be also asserted in postCloseTest():
         TST_LOG("Setup clipboards:");
-        if (!setClipboard(_clipURI2, buildClipboardText("kippers"), http::StatusCode::OK))
+        if (!setClipboard(_clipURI2, buildClipboardText("kippers"), HTTPResponse::HTTP_OK))
             return;
-        if (!setClipboard(_clipURI, buildClipboardText("herring"), http::StatusCode::OK))
+        if (!setClipboard(_clipURI, buildClipboardText("herring"), HTTPResponse::HTTP_OK))
             return;
         TST_LOG("Fetch clipboards:");
         if (!fetchClipboardAssert(_clipURI2, "text/plain;charset=utf-8", "kippers"))

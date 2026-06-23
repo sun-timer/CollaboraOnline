@@ -29,7 +29,6 @@ interface AboutDialogElements {
 	routeToken: HTMLElement;
 	timeZone: HTMLElement;
 	wopiHostId: HTMLElement;
-	licenseInfo: HTMLElement;
 	copyright: HTMLElement;
 }
 
@@ -171,7 +170,7 @@ class AboutDialog {
 		this.appendSpanAndLink(
 			elements.lokitVersion,
 			' git hash:\xA0',
-			`https://gerrit.collaboraoffice.com/plugins/gitiles/core/+log/${info.lokitHash}`,
+			`https://gerrit.libreoffice.org/core/+log/${info.lokitHash}`,
 			info.lokitHash.substring(0, 10),
 		);
 
@@ -215,7 +214,7 @@ class AboutDialog {
 			link.addEventListener('click', (e: MouseEvent) => {
 				e.preventDefault();
 				app.socket.sendMessage('uno .uno:WidgetTestDialog');
-				app.map.uiManager.closeModal('modal-dialog-about-dialog-box');
+				app.map.uiManager.closeModal('modal-dialog-about-dialog-box', false);
 			});
 
 			elements.jsDialog.appendChild(label);
@@ -224,17 +223,6 @@ class AboutDialog {
 
 		// WOPI Host ID
 		elements.wopiHostId.textContent = window.wopiHostId;
-
-		// License information (apps only)
-		if (window.ThisIsAMobileApp) {
-			const licenseLink = document.createElement('a');
-			licenseLink.href = 'javascript:void(0)';
-			licenseLink.textContent = _UNO('.uno:ShowLicense');
-			licenseLink.addEventListener('click', () =>
-				window.postMobileMessage('LICENSE'),
-			);
-			elements.licenseInfo.appendChild(licenseLink);
-		}
 
 		// Copyright and vendor
 		const span = document.createElement('span');
@@ -371,7 +359,7 @@ class AboutDialog {
 		}
 
 		const addLine = (label: string, value: string) => {
-			if (value && value.trim()) {
+			if (value.trim()) {
 				text += `${label}: ${value.trim()}\n`;
 			}
 		};
@@ -390,10 +378,7 @@ class AboutDialog {
 
 		text = text.replace(/\u00A0/g, ' ');
 
-		if (window.mode.isCODesktop()) {
-			(window as any).postMobileMessage('TEXTCLIPBOARD ' + text);
-			this.contentHasBeenCopiedShowSnackbar();
-		} else if (navigator.clipboard && window.isSecureContext) {
+		if (navigator.clipboard && window.isSecureContext) {
 			navigator.clipboard
 				.writeText(text)
 				.then(
@@ -427,7 +412,7 @@ class AboutDialog {
 	private contentHasBeenCopiedShowSnackbar() {
 		const timeout = 1000;
 		this.map.uiManager.showSnackbar(
-			_('Version information has been copied'),
+			'Version information has been copied',
 			null,
 			null,
 			timeout,
@@ -522,14 +507,6 @@ class AboutDialog {
 			infoDiv.appendChild(wopiHostId);
 		}
 
-		// License information (apps only)
-		const licenseInfo = AboutDialog.createElement('div', {
-			id: 'license-information',
-		});
-		if (window.ThisIsAMobileApp) {
-			infoDiv.appendChild(licenseInfo);
-		}
-
 		// Copyright
 		const copyright = AboutDialog.createElement('p', {
 			className: 'about-dialog-info-div',
@@ -545,7 +522,6 @@ class AboutDialog {
 			routeToken,
 			timeZone,
 			wopiHostId,
-			licenseInfo,
 			copyright,
 		};
 	}

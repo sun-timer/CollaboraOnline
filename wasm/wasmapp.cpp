@@ -13,10 +13,10 @@
 
 #include "wasmapp.hpp"
 
-#include <common/Log.hpp>
-#include <common/Util.hpp>
-#include <net/FakeSocket.hpp>
-#include <wsd/COOLWSD.hpp>
+#include <FakeSocket.hpp>
+#include <Log.hpp>
+#include <COOLWSD.hpp>
+#include <Util.hpp>
 
 #include <emscripten/fetch.h>
 
@@ -63,7 +63,7 @@ void handle_cool_message(const char *string_value)
 {
     std::cout << "================ handle_cool_message(): '" << string_value << "'" << std::endl;
 
-    if (string_value == std::string_view("HULLO"))
+    if (strcmp(string_value, "HULLO") == 0)
     {
         // Now we know that the JS has started completely
 
@@ -79,7 +79,7 @@ void handle_cool_message(const char *string_value)
         // Start another thread to read responses and forward them to the JavaScript
         std::thread([]
                     {
-                        ProcUtil::setThreadName("app2js");
+                        Util::setThreadName("app2js");
                         while (true)
                         {
                            struct pollfd pollfd[2];
@@ -128,7 +128,7 @@ void handle_cool_message(const char *string_value)
 
         fakeSocketWriteQueue(fakeClientFd, fileURL.c_str(), fileURL.size());
     }
-    else if (string_value == std::string_view("BYE"))
+    else if (strcmp(string_value, "BYE") == 0)
     {
         LOG_TRC_NOFILE("Document window terminating on JavaScript side. Closing our end of the socket.");
 
@@ -196,8 +196,8 @@ int main(int argc, char* argv_main[])
 
     assert(argc == 3);
 
-    Log::initialize("WASM", "error");
-    ProcUtil::setThreadName("main");
+    Log::initialize("WASM", "error", false, false, {}, false, {});
+    Util::setThreadName("main");
 
     fakeSocketSetLoggingCallback([](const std::string& line)
                                  {
@@ -214,7 +214,7 @@ int main(int argc, char* argv_main[])
     std::thread(
         [&]
         {
-            ProcUtil::setThreadName("COOLWSD::run");
+            Util::setThreadName("COOLWSD::run");
 
             const std::string docKind = std::string(argv_main[1]);
             const std::string docDesc = std::string(argv_main[2]);

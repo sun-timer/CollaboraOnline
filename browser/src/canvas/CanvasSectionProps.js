@@ -30,7 +30,6 @@ app.CSections.Debug = {}; // For keeping things simple.
 // First definitions. Other properties will be written according to their orders.
 app.CSections.MouseControl =        { name: "mouse-control"     , zIndex: 5 }; // Handles the event if no section prevented it.
 app.CSections.CommentList =			{ name: 'comment list'		, zIndex: 5	};
-app.CSections.RulerSpacer =			{ name: 'ruler spacer'		, zIndex: 5 };
 app.CSections.Tiles = 				{ name: 'tiles'				, zIndex: 5 };
 app.CSections.CompareChangesLabel =	{ name: 'compare changes label', zIndex: 5 };
 app.CSections.Overlays =				{ name: 'overlay'			, zIndex: 5 };
@@ -68,7 +67,6 @@ app.CSections.ContentControl =        { name: 'content control'   , zIndex: 11 }
 app.CSections.TooltipAnchorLeft =     { name: 'tooltip anchor left' , zIndex: 11 };
 app.CSections.TooltipAnchorRight =    { name: 'tooltip anchor right' };
 app.CSections.CalcValidityDropDown =  { name: 'calc validity dropdown', zIndex: 11 };
-app.CSections.FormulaErrorHelpButton = { name: 'formula error help button', zIndex: 11 };
 
 app.CSections.Scroll =				{ name: 'scroll'			, zIndex: 13 };
 
@@ -86,7 +84,6 @@ app.CSections.ColumnGroup.processingOrder =			29; // Calc.
 app.CSections.CornerHeader.processingOrder =			30; // Calc.
 app.CSections.RowHeader.processingOrder =				40; // Calc.
 app.CSections.ColumnHeader.processingOrder =			50; // Calc.
-app.CSections.RulerSpacer.processingOrder =			55; // Writer. Before tiles so it is located first.
 app.CSections.Tiles.processingOrder = 				60; // Writer & Impress & Calc.
 app.CSections.CompareChangesLabel.processingOrder =	61; // Writer.
 app.CSections.FocusCell.processingOrder =     		61; // Calc.
@@ -107,7 +104,6 @@ app.CSections.ShapeHandlesSection.processingOrder =	75;
 app.CSections.Splitter.processingOrder = 			    80; // Calc.
 
 app.CSections.CalcGrid.drawingOrder = 				40; // Calc.
-app.CSections.RulerSpacer.drawingOrder =				49; // Writer. Before tiles.
 app.CSections.Tiles.drawingOrder = 					50; // Writer & Impress & Calc.
 app.CSections.CompareChangesLabel.drawingOrder =	51; // Writer.
 app.CSections.MouseControl.drawingOrder =           51; // After tiles section.

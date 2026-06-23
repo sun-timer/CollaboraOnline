@@ -29,15 +29,16 @@ interface PageMarginOptions {
 	[id: string]: PageMarginOption;
 }
 
-JSDialog.PageMarginEntry = function (
-	parentContainer: Element,
-	data: any,
-	builder: any,
-): boolean {
+function createPageMarginEntryWidget(data: any, builder: any): HTMLElement {
 	const inchesToHMM = (inches: number) => Math.round(inches * 25.4 * 100);
 	const options: PageMarginOptions = data.options;
+	const container = document.createElement('div');
 	const map = builder.map;
 	const isCalc = map._docLayer.isCalc();
+	container.className = 'margins-popup-container';
+	container.setAttribute('role', 'listbox');
+	container.setAttribute('aria-label', _('Page margin options'));
+	container.setAttribute('tabindex', '0');
 
 	const lang = window.coolParams.get('lang') || 'en-US';
 	const useImperial = lang === 'en-US' || lang === 'en'; // we need to consider both short form as some user can user lang=en-US using document URL
@@ -113,6 +114,7 @@ JSDialog.PageMarginEntry = function (
 		if (isFirstItem) {
 			item.classList.add('selected');
 			item.setAttribute('aria-selected', 'true');
+			container.setAttribute('aria-activedescendant', item.id);
 
 			data.initialSelectedId = item.id;
 		}
@@ -170,21 +172,19 @@ JSDialog.PageMarginEntry = function (
 
 		item.appendChild(img);
 		item.appendChild(textWrap);
-		parentContainer.appendChild(item);
+		container.appendChild(item);
 	});
 
 	const hr = document.createElement('hr');
 	hr.className = 'jsdialog ui-separator horizontal';
-	parentContainer.appendChild(hr);
+	container.appendChild(hr);
 
 	const custom = document.createElement('div');
 	custom.className = 'margin-item custom-margins-link';
 	custom.id = 'customMarginsLink';
 	custom.textContent = _('Custom Margins…');
-	custom.setAttribute('aria-selected', 'false');
-	custom.setAttribute('aria-haspopup', 'dialog');
-	custom.setAttribute('role', 'option');
-	custom.setAttribute('tabindex', '-1');
+	custom.setAttribute('role', 'button');
+	custom.setAttribute('tabindex', '0');
 
 	const customClickEventHdl = () => {
 		map.sendUnoCommand(isCalc ? '.uno:PageFormatDialog' : '.uno:PageDialog');
@@ -201,7 +201,17 @@ JSDialog.PageMarginEntry = function (
 			event.preventDefault();
 		}
 	});
-	parentContainer.appendChild(custom);
+	container.appendChild(custom);
 
+	return container;
+}
+
+JSDialog.pageMarginEntry = function (
+	parentContainer: Element,
+	data: any,
+	builder: any,
+): boolean {
+	const element = createPageMarginEntryWidget(data, builder);
+	parentContainer.appendChild(element);
 	return false;
 };

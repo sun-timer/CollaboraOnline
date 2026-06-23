@@ -25,9 +25,12 @@
 #include <wsd/COOLWSD.hpp>
 #include <wsd/ClientSession.hpp>
 
-#include <Poco/URI.h>
+#include <Poco/Net/HTMLForm.h>
+#include <Poco/Net/HTTPResponse.h>
+#include <Poco/Net/StringPartSource.h>
 
 using namespace std::literals;
+using namespace Poco::Net;
 
 // Inside the WSD process
 class UnitClipboardClose : public UnitWSD
@@ -79,29 +82,35 @@ public:
     }
 
     bool setClipboard(const std::string& clipURIstr, const std::string& rawData,
-                      http::StatusCode expected)
+                      HTTPResponse::HTTPStatus expected)
     {
         TST_LOG("setClipboard: connect to " << clipURIstr);
         Poco::URI clipURI(clipURIstr);
 
-        auto httpSession = http::Session::create(clipURIstr);
-        http::Request request(clipURI.getPathAndQuery(), http::Request::VERB_POST);
-        helpers::MultipartFormBody form;
-        form.addField("format", "txt");
-        form.addStringPart("data", rawData, "application/octet-stream", "clipboard");
-        form.applyTo(request);
-        const auto response = httpSession->syncRequest(request);
+        std::unique_ptr<HTTPClientSession> session(helpers::createSession(clipURI));
+        HTTPRequest request(HTTPRequest::HTTP_POST, clipURI.getPathAndQuery());
+        HTMLForm form;
+        form.setEncoding(HTMLForm::ENCODING_MULTIPART);
+        form.set("format", "txt");
+        form.addPart("data", new StringPartSource(rawData, "application/octet-stream", "clipboard"));
+        form.prepareSubmit(request);
+        form.write(session->sendRequest(request));
 
-        if (!response || response->state() == http::Response::State::Timeout)
+        HTTPResponse response;
+        try
+        {
+            session->receiveResponse(response);
+        }
+        catch (NoMessageException&)
         {
             TST_LOG("Error: No response from setting clipboard.");
             exitTest(TestResult::Failed);
             return false;
         }
 
-        if (response->statusCode() != expected)
+        if (response.getStatus() != expected)
         {
-            TST_LOG("Error: response for clipboard " << response->statusCode()
+            TST_LOG("Error: response for clipboard " << response.getStatus()
                     << " != expected " << expected);
             exitTest(TestResult::Failed);
             return false;
@@ -148,7 +157,7 @@ public:
 
                 TST_LOG("Posting JSON clipboard to trigger async download");
                 LOK_ASSERT(setClipboard(_clipURI, jsonPayload,
-                                        http::StatusCode::OK));
+                                        HTTPResponse::HTTP_OK));
 
                 TRANSITION_STATE(_phase, Phase::WaitDocClose);
 

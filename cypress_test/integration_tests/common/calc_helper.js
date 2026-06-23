@@ -58,22 +58,16 @@ function clickOnFirstCell(firstClick = true, dblClick = false, expectedCell = 'A
 		helper.processToIdle(win);
 	});
 
-	// Compute the screen position of the centre of the first cell
-	cy.getFrameWindow().then(function(win) {
-		var anchor = win.app.sectionContainer.getDocumentAnchor();
-		var dpiScale = win.app.dpiScale;
-		var cellRect = win.app.map._docLayer.sheetGeometry.getCellRect(0, 0);
-		var cellWidth = cellRect.max.x - cellRect.min.x;
-		var cellHeight = cellRect.max.y - cellRect.min.y;
-		var container = win.document.getElementById('canvas-container');
-		var bcr = container.getBoundingClientRect();
-		var XPos = bcr.left + (anchor[0] + cellWidth / 2) / dpiScale;
-		var YPos = bcr.top + (anchor[1] + cellHeight / 2) / dpiScale;
-		if (dblClick)
-			cy.cGet('body').dblclick(XPos, YPos);
-		else
-			cy.cGet('body').click(XPos, YPos);
-	});
+	// Use the tile's edge to find the first cell's position
+	cy.cGet('#canvas-container').then(function(items) {
+			expect(items).to.have.lengthOf(1);
+			const XPos = items[0].getBoundingClientRect().left + 60;
+			const YPos = items[0].getBoundingClientRect().top + 30;
+			if (dblClick)
+				cy.cGet('body').dblclick(XPos, YPos);
+			else
+				cy.cGet('body').click(XPos, YPos);
+		});
 
 	if (firstClick && !dblClick) {
 		cy.cGet('#test-div-OwnCellCursor').should('exist');
@@ -315,8 +309,8 @@ function selectCellsInRange(range) {
 function openAutoFilterMenu(secondColumn) {
 	cy.log('>> openAutoFilterMenu - start');
 
-	// Get canvas container first.
-	// Then get its coordinates relative to window.
+	// Get canvas contiainer first.
+	// Then get its coordinatates relative to window.
 	// Then calculate the position of the autofilter easier.
 	cy.cGet('#canvas-container').then(function(items) {
 		const clientRect = items[0].getBoundingClientRect();
@@ -373,8 +367,7 @@ function assertAddressAfterIdle(win, expectedAddress) {
 	cy.log('Param - expectedAddress: ' + expectedAddress);
 
 	helper.processToIdle(win);
-	// Use a longer timeout to account for slow operations like search wrap-around
-	cy.cGet(helper.addressInputSelector, {timeout: 15000}).should('have.value', expectedAddress);
+	cy.cGet(helper.addressInputSelector).should('have.value', expectedAddress);
 
 	cy.log('<< assertAddressAfterIdle - end');
 }
@@ -397,11 +390,3 @@ module.exports.selectOptionFromContextMenu = selectOptionFromContextMenu;
 module.exports.selectOptionMobileWizard = selectOptionMobileWizard;
 module.exports.hideSelectedRows = hideSelectedRows;
 module.exports.assertAddressAfterIdle = assertAddressAfterIdle;
-
-// Navigate to a cell address by typing into the address input field,
-// then wait for the core to be idle and assert the address is correct.
-function enterCellAddressAndConfirm(win, address) {
-	helper.typeIntoInputField(helper.addressInputSelector, address);
-	assertAddressAfterIdle(win, address);
-}
-module.exports.enterCellAddressAndConfirm = enterCellAddressAndConfirm;

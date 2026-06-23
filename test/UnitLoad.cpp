@@ -9,13 +9,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for document loading functionality.
- */
-
 #include <config.h>
 
-#include <common/Util.hpp>
+#include "Util.hpp"
 #include <Unit.hpp>
 #include <WebSocketSession.hpp>
 #include <helpers.hpp>
@@ -303,7 +299,7 @@ UnitBase::TestResult UnitLoad::testLoadSessionRace()
 //        helpers::assertResponseString(socket, "status:", testname);
 
         // This is the race - notice we don't send the 'load url' at all from this view.
-        // We should have a 'session' command already sent to the Kit, but no COKit view yet.
+        // We should have a 'session' command already sent to the Kit, but no LOK view yet.
 
         TST_LOG("Shutting down after second session partially setup");
         socket2->asyncShutdown();

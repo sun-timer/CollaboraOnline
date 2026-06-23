@@ -9,21 +9,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Core socket abstractions: non-blocking I/O, polling, and protocol handling.
- * Classes: Socket, StreamSocket, SocketPoll, ProtocolHandlerInterface, SocketDisposition
- */
-
 #pragma once
-
-#include <common/Log.hpp>
-#include <common/ProcUtil.hpp>
-#include <common/SigUtil.hpp>
-#include <common/StateEnum.hpp>
-#include <common/Util.hpp>
-#include <net/Buffer.hpp>
-#include <net/FakeSocket.hpp>
-#include <net/NetUtil.hpp>
 
 #if !MOBILEAPP
 #include <poll.h>
@@ -47,6 +33,15 @@
 #include <mutex>
 #include <thread>
 
+#include <common/StateEnum.hpp>
+#include "Log.hpp"
+#include "NetUtil.hpp"
+#include "Util.hpp"
+#include "Buffer.hpp"
+#include "SigUtil.hpp"
+
+#include "FakeSocket.hpp"
+
 #ifdef __linux__
 #define HAVE_ABSTRACT_UNIX_SOCKETS
 #endif
@@ -54,7 +49,8 @@
 // Enable to dump socket traffic as hex in logs.
 // #define LOG_SOCKET_DATA ENABLE_DEBUG
 
-#define ASSERT_CORRECT_SOCKET_THREAD(socket) socket->assertCorrectThread();
+#define ASSERT_CORRECT_SOCKET_THREAD(socket) \
+    socket->assertCorrectThread(__FILE__, __LINE__);
 
 namespace http
 {
@@ -77,7 +73,6 @@ std::ostream& operator<<(std::ostream& os, const Socket &s);
 
 class Watchdog;
 class SocketPoll;
-class UnxSocketPath;
 
 /// Helper to allow us to easily defer the movement of a socket
 /// between polls to clarify thread ownership.
@@ -131,6 +126,11 @@ private:
 };
 
 class SocketThreadOwnerChange;
+
+namespace ThreadChecks
+{
+    extern std::atomic<bool> Inhibit;
+}
 
 /// A non-blocking, streaming socket.
 class Socket
@@ -368,13 +368,13 @@ public:
     virtual void dumpState(std::ostream&) {}
 
     /// Returns the owner thread's id.
-    ProcUtil::ThreadId getThreadOwner() const { return _owner; }
+    const std::thread::id& getThreadOwner() const { return _owner; }
 
     /// Asserts in the debug builds, otherwise just logs.
-    void assertCorrectThread(LOG_CAPTURE_CALLER_DECLARATION) const
+    void assertCorrectThread(const char* fileName = "", int lineNo = 0) const
     {
         if (!ThreadChecks::Inhibit)
-            ProcUtil::assertCorrectThread(_owner, LOG_PASS_PARENT_CALLER);
+            Util::assertCorrectThread(_owner, fileName, lineNo);
     }
 
     bool ignoringInput() const { return _ignoreInput; }
@@ -407,7 +407,7 @@ protected:
         init();
     }
 
-    void logPrefix(std::ostream& os) const { os << '#' << _fd << ": "; }
+    inline void logPrefix(std::ostream& os) const { os << '#' << _fd << ": "; }
 
     /// Adds `len` sent bytes to statistic
     void notifyBytesSent(uint64_t len) { _bytesSent += len; }
@@ -421,22 +421,24 @@ protected:
     void setShutdown() { _isShutdown = true; }
 
     /// Set the thread-id we're bound to
-    virtual void setThreadOwner(const ProcUtil::ThreadId id, LOG_CAPTURE_CALLER_DECLARATION)
+    virtual void setThreadOwner(const std::thread::id &id)
     {
         if (id != _owner)
         {
-            LOG_TRC("Thread affinity of Socket #" << _fd << " set to " << id << " (was " << _owner << ')');
+            LOG_TRC("Thread affinity of Socket set to " << Log::to_string(id) << " (was "
+                                                        << Log::to_string(_owner) << ')');
             _owner = id;
         }
     }
 
     /// Reset the thread-id while it's in transition.
-    virtual void resetThreadOwner(LOG_CAPTURE_CALLER_DECLARATION)
+    virtual void resetThreadOwner()
     {
-        if (ProcUtil::ThreadId() != _owner)
+        if (std::thread::id() != _owner)
         {
-            LOG_TRC("Resetting thread affinity of Socket #" << _fd << " while in transit (was " << _owner << ')');
-            _owner = ProcUtil::ThreadId();
+            LOG_TRC("Resetting thread affinity of Socket while in transit (was "
+                    << Log::to_string(_owner) << ')');
+            _owner = std::thread::id();
         }
     }
 
@@ -459,8 +461,9 @@ private:
         _ignoreInput = false;
         _noShutdown = false;
         _sendBufferSize = DefaultSendBufferSize;
-        _owner = ProcUtil::getThreadId();
-        LOG_DBG("Created socket #" << _fd << ". Thread affinity set to " << _owner);
+        _owner = std::this_thread::get_id();
+        LOG_DBG("Created socket. Thread affinity set to " << Log::to_string(_owner) << ", "
+                                                          << toStringImpl());
 
         if constexpr (!Util::isMobileApp())
         {
@@ -507,7 +510,7 @@ private:
     uint64_t _bytesRcvd;
 
     /// We check the owner even in the release builds, needs to be always correct.
-    ProcUtil::ThreadId _owner;
+    std::thread::id _owner;
 
     unsigned int _clientPort;
     int _fd;
@@ -530,15 +533,14 @@ private:
     friend class SocketDisposition;
     friend class SocketPoll;
 
-    static void setThreadOwner(Socket& socket, const ProcUtil::ThreadId id,
-                               LOG_CAPTURE_CALLER_DECLARATION)
+    static void setThreadOwner(Socket& socket, const std::thread::id &id)
     {
-        socket.setThreadOwner(id, LOG_PASS_PARENT_CALLER);
+        socket.setThreadOwner(id);
     }
 
-    static void resetThreadOwner(Socket& socket, LOG_CAPTURE_CALLER_DECLARATION)
+    static void resetThreadOwner(Socket& socket)
     {
-        socket.resetThreadOwner(LOG_PASS_PARENT_CALLER);
+        socket.resetThreadOwner();
     }
 };
 
@@ -562,12 +564,12 @@ protected:
     std::string getLogPrefix() const { return '#' + std::to_string(_fdSocket) + ": "; }
 
     /// Used by the logging macros to automatically log a context prefix.
-    void logPrefix(std::ostream& os) const { os << getLogPrefix(); }
+    inline void logPrefix(std::ostream& os) const { os << getLogPrefix(); }
 
 public:
     ProtocolHandlerInterface()
         : _fdSocket(-1)
-        , _owner(ProcUtil::getThreadId())
+        , _owner(std::this_thread::get_id())
     {
     }
 
@@ -577,10 +579,10 @@ public:
     virtual ~ProtocolHandlerInterface() = default;
 
     /// Asserts in the debug builds, otherwise just logs.
-    void assertCorrectThread(LOG_CAPTURE_CALLER_DECLARATION) const
+    void assertCorrectThread(const char* fileName = "", int lineNo = 0) const
     {
         if (!ThreadChecks::Inhibit)
-            ProcUtil::assertCorrectThread(_owner, LOG_PASS_PARENT_CALLER);
+            Util::assertCorrectThread(_owner, fileName, lineNo);
     }
 
     /// Called when the socket is newly created to
@@ -635,17 +637,24 @@ public:
     /// Sends a text message.
     /// Returns the number of bytes written (including frame overhead) on success,
     /// 0 for closed/invalid socket, and -1 for other errors.
-    virtual int sendTextMessage(std::string_view msg, bool flush = false) const = 0;
+    virtual int sendTextMessage(const char* msg, size_t len, bool flush = false) const = 0;
+
+    /// Convenience wrapper
+    int sendTextMessage(const std::string_view msg, bool flush = false) const
+    {
+        ASSERT_CORRECT_THREAD();
+        return sendTextMessage(msg.data(), msg.size(), flush);
+    }
 
     /// Sends a binary message.
     /// Returns the number of bytes written (including frame overhead) on success,
     /// 0 for closed/invalid socket, and -1 for other errors.
-    virtual int sendBinaryMessage(std::string_view data, bool flush = false) const = 0;
+    virtual int sendBinaryMessage(const char* data, size_t len, bool flush = false) const = 0;
 
     /// Shutdown the socket and specify if the endpoint is going away or not (useful for WS).
     /// Optionally provide a message sent in the close frame (useful for WS).
     virtual void shutdown(bool goingAway = false,
-                          const std::string_view statusMessage = std::string_view()) = 0;
+                          const std::string& statusMessage = std::string()) = 0;
 
     virtual void getIOStats(uint64_t &sent, uint64_t &recv) = 0;
 
@@ -660,28 +669,28 @@ public:
 private:
     friend class ProtocolThreadOwnerChange;
 
-    void setThreadOwner(const ProcUtil::ThreadId id, LOG_CAPTURE_CALLER_DECLARATION)
+    void setThreadOwner(const std::thread::id &id)
     {
         if (id != _owner)
         {
-            LOG_TRC("Thread affinity of ProtocolHandlerInterface set to " << id << " (was "
-                                                                          << _owner << ')');
+            LOG_TRC("Thread affinity of ProtocolHandlerInterface set to "
+                    << Log::to_string(id) << " (was " << Log::to_string(_owner) << ')');
             _owner = id;
         }
     }
 
-    void resetThreadOwner(LOG_CAPTURE_CALLER_DECLARATION)
+    void resetThreadOwner()
     {
-        if (ProcUtil::ThreadId() != _owner)
+        if (std::thread::id() != _owner)
         {
             LOG_TRC("Resetting thread affinity of ProtocolHandlerInterface while in transit (was "
-                    << _owner << ')');
-            _owner = ProcUtil::ThreadId();
+                    << Log::to_string(_owner) << ')');
+            _owner = std::thread::id();
         }
     }
 
     int _fdSocket; ///< The socket file-descriptor.
-    ProcUtil::ThreadId _owner;
+    std::thread::id _owner;
 };
 
 class StreamSocket;
@@ -692,15 +701,14 @@ class ProtocolThreadOwnerChange
 {
     friend class StreamSocket;
 
-    static void setThreadOwner(ProtocolHandlerInterface& handler, const ProcUtil::ThreadId id,
-                               LOG_CAPTURE_CALLER_DECLARATION)
+    static void setThreadOwner(ProtocolHandlerInterface& handler, const std::thread::id &id)
     {
-        handler.setThreadOwner(id, LOG_PASS_PARENT_CALLER);
+        handler.setThreadOwner(id);
     }
 
-    static void resetThreadOwner(ProtocolHandlerInterface& handler, LOG_CAPTURE_CALLER_DECLARATION)
+    static void resetThreadOwner(ProtocolHandlerInterface& handler)
     {
-        handler.resetThreadOwner(LOG_PASS_PARENT_CALLER);
+        handler.resetThreadOwner();
     }
 
 };
@@ -713,9 +721,9 @@ class SimpleSocketHandler : public ProtocolHandlerInterface
 {
 public:
     SimpleSocketHandler() = default;
-    int sendTextMessage(std::string_view, bool) const override { return 0; }
-    int sendBinaryMessage(std::string_view, bool) const override { return 0; }
-    void shutdown(bool, const std::string_view) override {}
+    int sendTextMessage(const char*, const size_t, bool) const override { return 0; }
+    int sendBinaryMessage(const char*, const size_t, bool) const override { return 0; }
+    void shutdown(bool, const std::string &) override {}
     void getIOStats(uint64_t &, uint64_t &) override {}
 };
 
@@ -725,7 +733,7 @@ class MessageHandlerInterface :
 {
 protected:
     std::shared_ptr<ProtocolHandlerInterface> _protocol;
-    explicit MessageHandlerInterface(std::shared_ptr<ProtocolHandlerInterface> protocol)
+    MessageHandlerInterface(std::shared_ptr<ProtocolHandlerInterface> protocol)
         : _protocol(std::move(protocol))
     {
     }
@@ -857,17 +865,20 @@ public:
     /// Executed inside the poll in case of a wakeup
     virtual void wakeupHook() {}
 
-    ProcUtil::ThreadId getThreadOwner() const { return _owner; }
+    const std::thread::id &getThreadOwner()
+    {
+        return _owner;
+    }
 
     /// Are we running in either shutdown, or the polling thread.
     /// Asserts in the debug builds, otherwise just logs.
-    void assertCorrectThread(LOG_CAPTURE_CALLER_DECLARATION) const
+    void assertCorrectThread(const char* fileName = "?", int lineNo = 0) const
     {
         if (!ThreadChecks::Inhibit && isAlive())
-            ProcUtil::assertCorrectThread(_owner, LOG_PASS_PARENT_CALLER);
+            Util::assertCorrectThread(_owner, fileName, lineNo);
     }
 
-    /// Kit poll can be called from COKit's Yield in any thread, adapt to that.
+    /// Kit poll can be called from LOK's Yield in any thread, adapt to that.
     void checkAndReThread();
 
     /// Poll the sockets for available data to read or buffer to write.
@@ -903,7 +914,7 @@ public:
     }
 
     /// Wakeup the main polling loop in another thread
-    void wakeup() const
+    void wakeup()
     {
         // There is a race when shutting down because
         // SocketPoll threads exit when shutting down.
@@ -974,12 +985,12 @@ public:
                                 const std::shared_ptr<WebSocketHandler>& websocketHandler);
 
     bool insertNewUnixSocket(
-        const UnxSocketPath &location,
+        const std::string &location,
         const std::string &pathAndQuery,
         const std::shared_ptr<WebSocketHandler>& websocketHandler,
         const std::vector<int>* shareFDs = nullptr);
 #else
-    bool insertNewFakeSocket(
+    void insertNewFakeSocket(
         int peerSocket,
         const std::shared_ptr<ProtocolHandlerInterface>& websocketHandler);
 #endif
@@ -1105,8 +1116,11 @@ private:
     [[nodiscard]] std::string logInfo() const
     {
         std::ostringstream os;
-        os << "SocketPoll[this " << std::hex << this << std::dec << ", thread[name " << _name
-           << ", id[owner " << _owner << ", caller " << ProcUtil::getThreadId() << "]]]";
+        os << "SocketPoll[this " << std::hex << this << std::dec
+           << ", thread[name " << _name
+           << ", id[owner " << Log::to_string(_owner)
+           << ", caller " << Log::to_string(std::this_thread::get_id())
+           << "]]]";
         return os.str();
     }
 
@@ -1162,12 +1176,15 @@ private:
     size_t _pollStartIndex;
     /// The polling thread.
     std::thread _thread;
-    ProcUtil::ThreadId _owner;
+    std::thread::id _owner;
     /// Flag the thread to stop.
     std::atomic<int64_t> _threadStarted;
 #if !MOBILEAPP
     std::atomic<uint64_t> _watchdogTime;
 #endif
+
+    /// Time-stamp for profiling
+    int _ownerThreadId;
 
     std::atomic<bool> _stop;
     std::atomic<bool> _threadFinished;
@@ -1223,21 +1240,7 @@ public:
     {
         LOG_TRC("StreamSocket dtor called with pending write: " << _outBuffer.size()
                                                                 << ", read: " << _inBuffer.size());
-        if (!_doneDisconnect)
-        {
-            // This dtor could be called from a different thread when we are owned by
-            // a weak_ptr elevated to a shared_ptr while the real owning shared_ptr
-            // is destroyed. This can happen when we remove a closed socket from the
-            // poll while in another thread a weak_ptr on it has temporarily lock()'d
-            // and got another valid reference to it.
-            // In that case, the real owner should've called ensureDisconnected()
-            // and we won't need it again here, hence the conditional, and won't get
-            // tripped-up by the ASSERT_CORRECT_SOCKET_THREAD check inside it.
-            // Otherwise, we will invoke it and it's only fair to catch the thread
-            // affinity violation.
-            ensureDisconnected();
-        }
-
+        ensureDisconnected();
         _socketHandler.reset();
 
         if (!_shutdownSignalled)
@@ -1345,7 +1348,7 @@ public:
     }
 
     /// Send a string to the socket peer.
-    void send(const std::string_view str, const bool doFlush = true)
+    void send(const std::string& str, const bool doFlush = true)
     {
         send(str.data(), str.size(), doFlush);
     }
@@ -1368,7 +1371,7 @@ public:
 
     /// Safely attempt to write any outgoing data.
     /// Returns true iff no data is left in the buffer.
-    bool attemptWrites()
+    inline bool attemptWrites()
     {
         if (!_outBuffer.empty())
             writeOutgoingData();
@@ -1409,7 +1412,7 @@ public:
         int* fdsField = (int *)CMSG_DATA(cmsg);
         memcpy(fdsField, fds.data(), fds_size);
 
-        msg.msg_control = adata;
+        msg.msg_control = const_cast<char*>(adata);
         msg.msg_controllen = CMSG_LEN(fds_size);
         msg.msg_flags = 0;
 
@@ -1521,11 +1524,7 @@ public:
                 len = readData(buf.data(), available);
                 assert(len == available);
                 notifyBytesRcvd(len);
-                // It might happen that several messages need to be buffered if they arrive quicker
-                // than we can handle them. In the non-MOBILEAPP case they are WebSocket messages so
-                // they already contain a header indicating their length. Not so in the MOBILEAPP
-                // case, so prefix them with a length header.
-                _inBuffer.append((const char*)&len, sizeof(ssize_t));
+                assert(_inBuffer.empty());
                 _inBuffer.append(buf.data(), len);
             }
         }
@@ -1592,12 +1591,12 @@ public:
     /// Remove the first @count bytes from input buffer
     void eraseFirstInputBytes(const std::size_t count)
     {
-        const size_t toErase = std::min(count, _inBuffer.size());
+        size_t toErase = std::min(count, _inBuffer.size());
         if (toErase < count)
             LOG_ERR("Attempted to remove: " << count << " which is > size: " << _inBuffer.size()
                                             << " clamped to " << toErase);
         if (toErase > 0)
-            _inBuffer.eraseFirst(toErase);
+            _inBuffer.eraseFirst(count);
     }
 
     /// Compacts chunk headers away leaving just the data we want
@@ -1621,7 +1620,6 @@ public:
 
     Buffer& getInBuffer() { return _inBuffer; }
 
-    const Buffer& getOutBuffer() const { return _outBuffer; }
     Buffer& getOutBuffer()
     {
         return _outBuffer;
@@ -1977,18 +1975,18 @@ protected:
         return _shutdownSignalled;
     }
 
-    void setThreadOwner(const ProcUtil::ThreadId id, LOG_CAPTURE_CALLER_DECLARATION) override
+    void setThreadOwner(const std::thread::id &id) override
     {
-        Socket::setThreadOwner(id, LOG_PASS_PARENT_CALLER);
+        Socket::setThreadOwner(id);
         if (_socketHandler)
-            ProtocolThreadOwnerChange::setThreadOwner(*_socketHandler, id, LOG_PASS_PARENT_CALLER);
+            ProtocolThreadOwnerChange::setThreadOwner(*_socketHandler, id);
     }
 
-    void resetThreadOwner(LOG_CAPTURE_CALLER_DECLARATION) override
+    void resetThreadOwner() override
     {
-        Socket::resetThreadOwner(LOG_PASS_PARENT_CALLER);
+        Socket::resetThreadOwner();
         if (_socketHandler)
-            ProtocolThreadOwnerChange::resetThreadOwner(*_socketHandler, LOG_PASS_PARENT_CALLER);
+            ProtocolThreadOwnerChange::resetThreadOwner(*_socketHandler);
     }
 
 #if ENABLE_DEBUG
@@ -2048,5 +2046,9 @@ enum class WSOpCode : unsigned char {
     Pong         = 0xa
     // ... reserved
 };
+
+namespace HttpHelper
+{
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

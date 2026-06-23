@@ -16,14 +16,11 @@
 #include <kit/StateRecorder.hpp>
 #include <kit/Watermark.hpp>
 
+#define LOK_USE_UNSTABLE_API
+#include <LibreOfficeKit/LibreOfficeKit.hxx>
+
 #include <chrono>
 #include <queue>
-
-namespace kit
-{
-class Document;
-class Office;
-}
 
 class Document;
 class ChildSession;
@@ -47,7 +44,7 @@ public:
     ~LogUiCommands();
     void logSaveLoad(std::string cmd, const std::string & path, std::chrono::steady_clock::time_point timeStart);
 private:
-    std::weak_ptr<kit::Document> _document;
+    std::weak_ptr<lok::Document> _document;
     // list the commands to log here.
     std::set<std::string> _cmdToLog = {
         "uno", "key", "mouse", "textinput", "removetextcontext",
@@ -123,7 +120,7 @@ public:
             return false;
         }
         const auto msg = "client-" + getId() + ' ' + std::string(buffer, length);
-        return _docManager->sendFrame(msg, WSOpCode::Text);
+        return _docManager->sendFrame(msg.data(), msg.size(), WSOpCode::Text);
     }
 
     bool sendBinaryFrame(const char* buffer, int length) override
@@ -135,7 +132,7 @@ public:
             return false;
         }
         const auto msg = "client-" + getId() + ' ' + std::string(buffer, length);
-        return _docManager->sendFrame(msg, WSOpCode::Binary);
+        return _docManager->sendFrame(msg.data(), msg.size(), WSOpCode::Binary);
     }
 
     bool sendProgressFrame(const char* id, const std::string& jsonProps,
@@ -162,7 +159,7 @@ public:
 
     void setDumpTiles(bool dumpTiles) { _isDumpingTiles = dumpTiles; }
 
-    const std::string& getViewRenderState() const { return _viewRenderState; }
+    std::string getViewRenderState() { return _viewRenderState; }
 
     TilePrioritizer::Priority getTilePriority(const TileDesc &desc) const;
 
@@ -177,6 +174,7 @@ private:
     bool loadDocument(const StringVector& tokens);
     bool saveDocumentBackground(const StringVector &tokens);
 
+    bool sendFontRendering(const StringVector& tokens);
     bool getCommandValues(const StringVector& tokens);
 
     bool clientZoom(const StringVector& tokens);
@@ -217,9 +215,9 @@ private:
     bool askSignatureStatus(const char* buffer, int length, const StringVector& tokens);
     bool renderShapeSelection(const StringVector& tokens);
     bool removeTextContext(const StringVector& tokens);
-#if ENABLE_FEATURE_LOCK || ENABLE_FEATURE_RESTRICTION || ENABLE_DEBUG
+#if ENABLE_FEATURE_LOCK || ENABLE_FEATURE_RESTRICTION
     bool updateBlockingCommandStatus(const StringVector& tokens);
-    std::string getBlockedCommandType(const std::string& command);
+    std::string getBlockedCommandType(std::string command);
 #endif
     bool handleZoteroMessage(const StringVector& tokens);
     bool formFieldEvent(const char* buffer, int length, const StringVector& tokens);
@@ -237,12 +235,12 @@ private:
 
     static void dumpRecordedUnoCommands();
 
-    std::shared_ptr<kit::Document> getLOKitDocument() const
+    std::shared_ptr<lok::Document> getLOKitDocument() const
     {
         return _docManager->getLOKitDocument();
     }
 
-    std::shared_ptr<kit::Office> getLOKit() const
+    std::shared_ptr<lok::Office> getLOKit() const
     {
         return _docManager->getLOKit();
     }

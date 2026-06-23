@@ -1,4 +1,4 @@
-/* -*- js-indent-level: 8; fill-column: 100 -*- */
+/* -*- js-indent-level: 8 -*- */
 /*
  * Copyright the Collabora Online contributors.
  *
@@ -81,19 +81,17 @@ class StatusBar extends JSDialog.Toolbar {
 				this.map.setZoom(selected[0].scale, null, true /* animate? */);
 			return;
 		} else if (object.id === 'StateTableCellMenu') {
-			var clicked = parseInt(data);
-			var current = parseInt(app.map['stateChangeHandler'].getItemValue('.uno:StatusBarFunc')) || 0;
+			// TODO: multi-selection
+			var selected = [];
+			if (data === '1') { // 'None' was clicked, remove all other options
+				selected = ['1'];
+			} else { // Something else was clicked, remove the 'None' option from the array
+				selected = [data];
+			}
 
-			var value;
-			if (clicked === 1) {
-				// 'None' was clicked — clear everything
-				value = 0;
-			} else {
-				// Toggle the clicked bit
-				value = current ^ clicked;
-				// Clear the 'None' bit (1) if any function is now active
-				if (value & ~1)
-					value = value & ~1;
+			var value = 0;
+			for (var it = 0; it < selected.length; it++) {
+				value = +value + parseInt(selected[it]);
 			}
 
 			var command = {
@@ -115,7 +113,7 @@ class StatusBar extends JSDialog.Toolbar {
 		if (e.count === 0) {
 			this.enableItem('searchprev', false);
 			this.enableItem('searchnext', false);
-			if (window.mode.isSmallScreenDevice()) {
+			if (window.mode.isMobile()) {
 				this.enableItem('cancelsearch', false);
 			} else {
 				this.showItem('cancelsearch', false);
@@ -300,7 +298,7 @@ class StatusBar extends JSDialog.Toolbar {
 			this.showItem('overview', false);
 			this.showItem('overviewbreak', false);
 
-			if (!window.mode.isSmallScreenDevice()) {
+			if (!window.mode.isMobile()) {
 				this.showItem('statusdocpos-container', true);
 				this.showItem('rowcolselcount-container', true);
 				this.showItem('insertmode-container', true);
@@ -319,7 +317,7 @@ class StatusBar extends JSDialog.Toolbar {
 			this.showItem('overview', false);
 			this.showItem('overviewbreak', false);
 
-			if (!window.mode.isSmallScreenDevice()) {
+			if (!window.mode.isMobile()) {
 				this.showItem('statepagenumber-container', true);
 				this.showItem('statewordcount-container', true);
 				this.showItem('insertmode-container', true);
@@ -337,7 +335,7 @@ class StatusBar extends JSDialog.Toolbar {
 			break;
 
 		case 'presentation':
-			if (!window.mode.isSmallScreenDevice()) {
+			if (!window.mode.isMobile()) {
 				this.showItem('slidestatus-container', true);
 				this.showItem('languagestatus', !app.map.isReadOnlyMode());
 				this.showItem('languagestatusbreak', !app.map.isReadOnlyMode());
@@ -346,7 +344,7 @@ class StatusBar extends JSDialog.Toolbar {
 			}
 			break;
 		case 'drawing':
-			if (!window.mode.isSmallScreenDevice()) {
+			if (!window.mode.isMobile()) {
 				this.showItem('pagestatus-container', true);
 				this.showItem('languagestatus', !app.map.isReadOnlyMode());
 				this.showItem('languagestatusbreak', !app.map.isReadOnlyMode());
@@ -412,19 +410,8 @@ class StatusBar extends JSDialog.Toolbar {
 		var NotEditDocMode = false;
 		if (app.map['stateChangeHandler'].getItemValue('EditDoc') !== undefined) {
 			NotEditDocMode = app.map['stateChangeHandler'].getItemValue('EditDoc') === "false"; // can be true, false or disabled
-			if (NotEditDocMode) {
-				if (window.mode.isCODesktop()) {
-					app.map.uiManager.showSnackbar(_('The document is probably locked and has been opened as view-only'));
-					// Don't let the user even try to make the document
-					// editable, as that will lead to things Online is not
-					// prepared to handle.
-					const button = document.querySelector('#mobile-edit-button');
-					if (button)
-						button.style.setProperty('display', 'none');
-				}
-				else
-					app.map.uiManager.showSnackbar(_('To prevent accidental changes, the author has set this file to open as view-only'));
-			}
+			if (NotEditDocMode)
+				app.map.uiManager.showSnackbar(_('To prevent accidental changes, the author has set this file to open as view-only'));
 		}
 
 		canUserWrite = canUserWrite && !NotEditDocMode;
@@ -445,23 +432,6 @@ class StatusBar extends JSDialog.Toolbar {
 		});
 
 		JSDialog.RefreshScrollables();
-
-		if (!window.mode.isSmallScreenDevice()) {
-			this.showItem('languagestatus', !isReadOnlyMode);
-			this.showItem('languagestatusbreak', !isReadOnlyMode);
-			if (this.map.getDocType() === 'spreadsheet') {
-				this.showItem('StateTableCellMenu', !isReadOnlyMode);
-				this.showItem('statetablebreak', !isReadOnlyMode);
-			}
-
-			// updateLanguageItem() is a no-op in read-only mode, so the
-			// widget may never have received its text.  Populate it now.
-			if (!isReadOnlyMode) {
-				var language = app.map['stateChangeHandler'].getItemValue('.uno:LanguageStatus');
-				if (language)
-					this.updateLanguageItem(this.extractLanguageFromStatus(language));
-			}
-		}
 	}
 
 	extractLanguageFromStatus(state) {

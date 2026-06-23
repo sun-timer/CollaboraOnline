@@ -9,10 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#pragma once
-
-#include <common/ProcUtil.hpp>
-
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -21,7 +17,7 @@
 class BackgroundSaveWatchdog
 {
 public:
-    BackgroundSaveWatchdog(unsigned mobileAppDocId, ProcUtil::ThreadId savingTid);
+    BackgroundSaveWatchdog(unsigned mobileAppDocId, int savingTid);
     ~BackgroundSaveWatchdog();
     void complete();
 

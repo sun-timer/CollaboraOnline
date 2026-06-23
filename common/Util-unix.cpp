@@ -9,11 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unix-specific utility implementations.
- * Functions: getURandom(), getBytes() - Random number generation
- */
-
 #include <config.h>
 
 #include <common/Log.hpp>
@@ -78,18 +73,20 @@ namespace Util
         }
     } // namespace rng
 
+    long getProcessId()
+    {
+        return getpid();
+    }
+
+    std::tm *time_t_to_localtime(std::time_t t, std::tm& tm)
+    {
+        return localtime_r(&t, &tm);
+    }
+
     std::tm *time_t_to_gmtime(std::time_t t, std::tm& tm)
     {
         return gmtime_r(&t, &tm);
     }
 } // namespace Util
-
-namespace ProcUtil
-{
-    long getProcessId()
-    {
-        return getpid();
-    }
-} // namespace ProcUtil
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

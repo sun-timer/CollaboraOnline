@@ -9,20 +9,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Implementation of remote configuration polling.
- * Classes: RemoteConfigPoll
- */
-
-#include <config.h>
-
 #if defined(MOBILEAPP) && MOBILEAPP
 #error This file should be excluded from Mobile App builds
 #endif // MOBILEAPP
 
+#include <config.h>
+
 #include "RemoteConfig.hpp"
 
-#include <common/CommandControl.hpp>
 #include <common/JsonUtil.hpp>
 #include <net/HttpRequest.hpp>
 #include <net/Socket.hpp>
@@ -30,6 +24,7 @@
 #include <wsd/COOLWSD.hpp>
 #include <wsd/HostUtil.hpp>
 #include <wsd/wopi/StorageConnectionManager.hpp>
+#include <CommandControl.hpp>
 
 #include <Poco/URI.h>
 #include <Poco/Util/LayeredConfiguration.h>
@@ -48,16 +43,14 @@ void RemoteJSONPoll::start()
             LOG_INF("Remote " << _expectedKind << " is not specified in coolwsd.xml");
             return; // no remote config server setup.
         }
-
-        if constexpr (!Util::isDebugEnabled())
+#if !ENABLE_DEBUG
+        if (Util::iequal(remoteServerURI.getScheme(), "http"))
         {
-            if (Util::iequal(remoteServerURI.getScheme(), "http"))
-            {
-                LOG_ERR("Remote config url should only use HTTPS protocol: "
-                        << remoteServerURI.toString());
-                return;
-            }
+            LOG_ERR(
+                "Remote config url should only use HTTPS protocol: " << remoteServerURI.toString());
+            return;
         }
+#endif
     }
 
     startThread();
@@ -72,15 +65,14 @@ void RemoteJSONPoll::pollingThread()
         // don't try to fetch from an empty URI
         bool valid = !remoteServerURI.empty();
 
-        if constexpr (!Util::isDebugEnabled())
+#if !ENABLE_DEBUG
+        if (Util::iequal(remoteServerURI.getScheme(), "http"))
         {
-            if (Util::iequal(remoteServerURI.getScheme(), "http"))
-            {
-                LOG_ERR("Remote config url should only use HTTPS protocol: "
-                        << remoteServerURI.toString());
-                valid = false;
-            }
+            LOG_ERR(
+                "Remote config url should only use HTTPS protocol: " << remoteServerURI.toString());
+            valid = false;
         }
+#endif
 
         if (valid)
         {
@@ -715,7 +707,7 @@ void RemoteFontConfigPoll::handleJSON(const Poco::JSON::Object::Ptr& remoteJson)
 void RemoteFontConfigPoll::handleUnchangedJSON()
 {
     // Iterate over the fonts that were mentioned in the JSON file when it was last downloaded.
-    for (const auto& it : fonts)
+    for (auto& it : fonts)
     {
         // If the JSON has a "stamp" for the font, and we have already downloaded it, by
         // definition we don't need to do anything when the JSON file has not changed.

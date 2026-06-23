@@ -9,21 +9,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Server-side signal handling and process state management.
- * Functions: setTerminationSignals(), requestShutdown(), dumpState()
- */
-
 #include <config.h>
 
+#include "Common.hpp"
+#include "Log.hpp"
+#include "SigHandlerTrap.hpp"
 #include "SigUtil.hpp"
-
-#include <common/Common.hpp>
-#include <common/Log.hpp>
-#include <common/SigHandlerTrap.hpp>
-#include <common/Util.hpp>
-#include <net/Socket.hpp>
+#include <Socket.hpp>
 #include <test/testlog.hpp>
+#include "Util.hpp"
 
 #include <array>
 #include <atomic>
@@ -34,6 +28,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <poll.h>
 #include <sstream>
@@ -45,11 +41,11 @@
 #include <thread>
 #include <unistd.h>
 
-#if defined(__GLIBC__)
+#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
 #  include <execinfo.h>
 #endif
 
-#if !defined(ANDROID) && !defined(IOS) && !defined(MACOS) && !defined(__FreeBSD__)
+#if !defined(ANDROID) && !defined(IOS) && !defined(__FreeBSD__)
 #  include <sys/prctl.h>
 #endif
 #if defined(__FreeBSD__)
@@ -227,7 +223,12 @@ void resetTerminationFlags()
         fsync(SignalLogFD);
     }
 
-    void signalLogPrefix() { signalLog(Log::prefix("SIG").data()); }
+    void signalLogPrefix()
+    {
+        std::array<char, 1024> buffer;
+        Log::prefix<buffer.size()>(buffer, "SIG");
+        signalLog(buffer.data());
+    }
 
     // We need a signal safe means of writing messages
     //   $ man 7 signal
@@ -466,7 +467,7 @@ void resetTerminationFlags()
 
     void dumpBacktrace()
     {
-#if defined(__GLIBC__)
+#if !defined(__ANDROID__)
         signalLog("\nBacktrace ");
         signalLogNumber(static_cast<std::size_t>(getpid()));
         if (VersionInfo)
@@ -587,7 +588,7 @@ void resetTerminationFlags()
 
     void dieOnParentDeath()
     {
-#if defined(__linux__) && !defined(ANDROID)
+#if !defined(ANDROID) && !defined(__FreeBSD__)
         prctl(PR_SET_PDEATHSIG, SIGKILL);
 #endif
 #if defined(__FreeBSD__)
@@ -610,13 +611,11 @@ void resetTerminationFlags()
         }
         else if (signal == SIGUSR2)
         {
-#if defined(__GLIBC__)
             constexpr int maxSlots = 250;
             void* backtraceBuffer[maxSlots];
             const int numSlots = backtrace(backtraceBuffer, maxSlots);
             if (numSlots > 0)
                 backtrace_symbols_fd(backtraceBuffer, numSlots, SignalLogFD);
-#endif
 
             ForwardSigUsr2Flag = true;
         }
@@ -640,7 +639,7 @@ void resetTerminationFlags()
         sigaction(SIGUSR1, &action, nullptr);
         sigaction(SIGUSR2, &action, nullptr);
 
-#if defined(__GLIBC__)
+#if !defined(__ANDROID__)
         // Prime backtrace to make sure libgcc is loaded.
         constexpr int maxSlots = 1;
         void* backtraceBuffer[maxSlots + 1];

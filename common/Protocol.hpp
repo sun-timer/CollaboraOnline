@@ -11,9 +11,8 @@
 
 #pragma once
 
-#include <common/NumUtil.hpp>
-#include <common/StringVector.hpp>
-#include <common/Util.hpp>
+#include <StringVector.hpp>
+#include <Util.hpp>
 
 #include <cstdint>
 #include <cstdlib>
@@ -23,8 +22,8 @@
 #include <string_view>
 #include <vector>
 
-#define KIT_USE_UNSTABLE_API
-#include <COKit/COKitEnums.h>
+#define LOK_USE_UNSTABLE_API
+#include <LibreOfficeKit/LibreOfficeKitEnums.h>
 
 namespace COOLProtocol
 {
@@ -32,38 +31,6 @@ namespace COOLProtocol
     // See protocol.txt.
     constexpr unsigned ProtocolMajorVersionNumber = 0;
     constexpr unsigned ProtocolMinorVersionNumber = 1;
-
-    static constexpr const char* binaryMessageTypes[] {
-        "tile:",
-        "tilecombine:",
-        "delta:",
-        "rendersearchresult:",
-        "slidelayer:",
-        "zstdslidelayer:",
-        "windowpaint:",
-        "urp:"
-    };
-
-    static inline bool isMessageOfType(const char* message, const std::string& type, size_t length)
-    {
-        if (length < type.length() + 2)
-            return false;
-        for (size_t i = 0; i < type.length(); i++)
-            if (message[i] != type[i])
-                return false;
-        return true;
-    }
-
-    static inline bool isBinaryMessage(const char *buffer, size_t length)
-    {
-        for (auto i : COOLProtocol::binaryMessageTypes)
-        {
-            if (isMessageOfType(buffer, i, length))
-                return true;
-        }
-
-        return false;
-    }
 
     inline std::string GetProtocolVersion()
     {
@@ -78,21 +45,21 @@ namespace COOLProtocol
     inline bool stringToInteger(const std::string_view input, int& value)
     {
         bool res;
-        std::tie(value, res) = NumUtil::i32FromString(input);
+        std::tie(value, res) = Util::i32FromString(input);
         return res;
     }
 
     inline bool stringToUInt32(const std::string_view input, uint32_t& value)
     {
         bool res;
-        std::tie(value, res) = NumUtil::i32FromString(input);
+        std::tie(value, res) = Util::i32FromString(input);
         return res;
     }
 
     inline bool stringToUInt64(const std::string_view input, uint64_t& value)
     {
         bool res;
-        std::tie(value, res) = NumUtil::u64FromString(input);
+        std::tie(value, res) = Util::u64FromString(input);
         return res;
     }
 
@@ -139,9 +106,10 @@ namespace COOLProtocol
         static_assert(N > 1, "Token name must be at least one character long.");
         if (token.size() > N && token[N - 1] == '=' && token.compare(0, N - 1, name) == 0)
         {
-            bool success;
-            std::tie(value, success) = NumUtil::i32FromString(token.substr(N));
-            return success;
+            const char* str = token.data() + N;
+            char* endptr = nullptr;
+            value = std::strtol(str, &endptr, 10);
+            return (endptr > str);
         }
 
         return false;
@@ -375,7 +343,7 @@ namespace COOLProtocol
         return std::string(message, spanLen);
     }
 
-    inline std::string getAbbreviatedMessage(const std::string_view message)
+    inline std::string getAbbreviatedMessage(const std::string& message)
     {
         const size_t spanLen = Util::getDelimiterPosition(message.data(),
             std::min<size_t>(message.size(), maxNonAbbreviatedMsgLen), '\n');
@@ -384,7 +352,7 @@ namespace COOLProtocol
         if (shouldEllipse(message.data(), message.size(), spanLen))
             return truncateUtf8(message.data(), message.size(), spanLen) + "...";
 
-        return std::string(message.substr(0, spanLen));
+        return message.substr(0, spanLen);
     }
 
     template <typename T>

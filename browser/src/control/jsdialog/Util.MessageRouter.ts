@@ -51,11 +51,7 @@ class JSDialogMessageRouter {
 				(msgData.jsontype === 'addressinputfield' &&
 					!app.socket._map.addressInputField)
 			) {
-				app.timerRegistry.setTimeout(
-					'jsdialog-deferred',
-					fireJSDialogEvent,
-					1000,
-				);
+				setTimeout(fireJSDialogEvent, 1000);
 				return;
 			} else if (fireJSDialogEvent() === true) {
 				return;
@@ -68,7 +64,7 @@ class JSDialogMessageRouter {
 		if (msgData.jsontype === 'popup') return;
 
 		// re/create component
-		if (window.mode.isSmallScreenDevice()) {
+		if (window.mode.isMobile()) {
 			// allow to use desktop's JSDialog component to show dropdowns
 			if (
 				msgData.type === 'dropdown' ||

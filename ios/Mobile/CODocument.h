@@ -13,8 +13,8 @@
 
 #import <UIKit/UIKit.h>
 
-#define KIT_USE_UNSTABLE_API
-#import <COKit/COKit.h>
+#define LOK_USE_UNSTABLE_API
+#import <LibreOfficeKit/LibreOfficeKit.h>
 
 @class DocumentViewController;
 

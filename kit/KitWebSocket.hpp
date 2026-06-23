@@ -8,33 +8,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-
-#pragma once
-
 /*
- * The main entry point for the COKit process serving
+ * The main entry point for the LibreOfficeKit process serving
  * a document editing session.
  */
 
 #include <net/WebSocketHandler.hpp>
 
-#include <memory>
-#include <string>
-
-class ChildSession;
 class Document;
 class KitQueue;
 class KitSocketPoll;
 
-namespace kit
-{
-class Office;
-}
-
 class KitWebSocketHandler final : public WebSocketHandler
 {
     std::string _socketName;
-    std::shared_ptr<kit::Office> _loKit;
+    std::shared_ptr<lok::Office> _loKit;
     std::string _jailId;
     std::string _docKey; ///< When we get it while creating a new view.
     std::shared_ptr<Document> _document;
@@ -43,7 +31,7 @@ class KitWebSocketHandler final : public WebSocketHandler
     bool _backgroundSaver;
 
 public:
-    KitWebSocketHandler(const std::string& socketName, const std::shared_ptr<kit::Office>& loKit,
+    KitWebSocketHandler(const std::string& socketName, const std::shared_ptr<lok::Office>& loKit,
                         const std::string& jailId, std::shared_ptr<KitSocketPoll> ksPoll,
                         unsigned mobileAppDocId)
         : WebSocketHandler(/* isClient = */ true, /* isMasking */ false)
@@ -62,6 +50,8 @@ public:
     }
 
     void shutdownForBackgroundSave();
+
+    int getKitId() const { return _mobileAppDocId; }
 
 protected:
     virtual void handleMessage(const std::vector<char>& data) override;
@@ -98,11 +88,24 @@ class BgSaveParentWebSocketHandler final : public WebSocketHandler
     std::shared_ptr<ChildSession> _session;
 
 public:
-    BgSaveParentWebSocketHandler(const std::string& socketName, const pid_t childPid,
+    BgSaveParentWebSocketHandler(const std::string& socketName,
+                                 const pid_t childPid,
                                  std::shared_ptr<Document> document,
-                                 const std::shared_ptr<ChildSession>& session);
+                                 const std::shared_ptr<ChildSession> &session)
+        : WebSocketHandler(/* isClient = */ false, /* isMasking */ false)
+        , _childPid(childPid)
+        , _saveCompleted(false)
+        , _socketName(socketName)
+        , _document(std::move(document))
+        , _session(session)
+    {
+        _document->bgSaveStarted();
+    }
 
-    ~BgSaveParentWebSocketHandler();
+    ~BgSaveParentWebSocketHandler()
+    {
+        _document->bgSaveEnded();
+    }
 
 protected:
     virtual void handleMessage(const std::vector<char>& data) override;

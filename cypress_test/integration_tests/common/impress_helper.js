@@ -93,18 +93,23 @@ function selectTextShapeInTheCenter() {
 	cy.log('<< selectTextShapeInTheCenter - end');
 }
 
-function selectTableInTheCenter(win) {
+function selectTableInTheCenter() {
 	cy.log('>> selectTableInTheCenter - start');
 
-	// First click selects the table as a shape.
-	clickCenterOfSlide();
-	helper.processToIdle(win);
+	// Click on the center of the slide to select the text shape there
+	// Retry until it works
+	cy.waitUntil(function() {
+		cy.cGet('#document-container')
+			.then(function(items) {
+				expect(items).to.have.length(1);
+				var XPos = (items[0].getBoundingClientRect().left + items[0].getBoundingClientRect().right) / 2;
+				var YPos = (items[0].getBoundingClientRect().top + items[0].getBoundingClientRect().bottom) / 2;
+				cy.cGet('body').click(XPos, YPos);
+			});
 
-	// Second click enters the table and places the cursor in a cell.
-	clickCenterOfSlide();
-	helper.processToIdle(win);
+		return cy.cGet('.leaflet-cursor-container').should('be.visible');
+	});
 
-	cy.cGet('.leaflet-cursor-container').should('be.visible');
 	cy.cGet('.table-row-resize-marker').should($el => { expect(Cypress.dom.isDetached($el)).to.eq(false); }).should('be.visible');
 	cy.cGet('#document-container svg g.Page g').should('exist');
 
@@ -131,17 +136,8 @@ function removeShapeSelection() {
 		helper.processToIdle(win);
 	});
 
-	helper.typeIntoDocument('{esc}');
-
-	cy.getFrameWindow().then(function(win) {
-		helper.processToIdle(win);
-	});
-
-	helper.typeIntoDocument('{esc}');
-
-	cy.getFrameWindow().then(function(win) {
-		helper.processToIdle(win);
-	});
+	cy.cGet('body').type('{esc}');
+	cy.cGet('body').type('{esc}');
 
 	cy.cGet('#document-container')
 		.should(function(overlay) {
@@ -180,10 +176,14 @@ function triggerNewSVGForShapeInTheCenter() {
 function selectTextOfShape() {
 	cy.log('>> selectTextOfShape - start');
 
-	dblclickOnSelectedShape();
-	helper.typeIntoDocument('{ctrl}a');
-	cy.cGet('.text-selection-handle-start, .text-selection-handle-end')
-		.should('exist');
+	// Double click onto the selected shape
+	// Retry until the cursor appears and the text is selected
+	cy.waitUntil(function() {
+		dblclickOnSelectedShape();
+		helper.typeIntoDocument('{ctrl}a');
+		return cy.cGet('.text-selection-handle-start, .text-selection-handle-end').should('exist');
+	});
+
 	cy.cGet('.leaflet-cursor-container, .text-selection-handle-start')
 		.should('exist');
 
@@ -196,9 +196,13 @@ function selectTextOfShape() {
 function dblclickOnSelectedShape() {
 	cy.log('>> dblclickOnSelectedShape - start');
 
-	helper.getShapeSVGCenter().then(function(pos) {
-		cy.cGet('#document-canvas').dblclick(pos.x, pos.y, { force: true });
-	});
+	cy.cGet('#canvas-container > svg')
+		.then(function(element) {
+			expect(element).to.have.length(1);
+			const x = parseInt(element[0].style.left.replace('px', '')) + parseInt(element[0].style.width.replace('px', '')) / 2;
+			const y = parseInt(element[0].style.top.replace('px', '')) + parseInt(element[0].style.height.replace('px', '')) / 2;
+			cy.cGet('#document-canvas').dblclick(x, y, { force: true });
+		});
 
 	// check if any of text input markers exist
 	cy.cGet('.leaflet-cursor-container, .text-selection-handle-start, .leaflet-cursor.blinking-cursor')
@@ -244,32 +248,6 @@ function changeSlide(changeNum,direction) {
 	cy.log('<< changeSlide - end');
 }
 
-function getSlideShow() {
-	return cy.cGet('#slideshow-cypress-iframe');
-}
-
-function getSlideShowContent() {
-	return getSlideShow().its('0.contentDocument');
-}
-
-function getSlideShowCanvas() {
-	return getSlideShowContent().find('#slideshow-canvas');
-}
-
-// Wait for the slideshow to have loaded a slide and for any
-// animations/transitions to finish. Waits for the navigator's
-// currentSlideIndex to be set (slide loaded via fetchAndRun)
-// then waits for no active 'slideshowupdate' timers.
-function waitForSlideShowIdle(win) {
-	cy.waitUntil(() => {
-		var presenter = win.app && win.app.map && win.app.map.slideShowPresenter;
-		if (!presenter || !presenter._slideShowNavigator)
-			return false;
-		return presenter._slideShowNavigator.currentSlideIndex !== undefined;
-	}, { timeout: Cypress.config('defaultCommandTimeout'), interval: 50 });
-	helper.waitForTimers(win, 'slideshowupdate');
-}
-
 module.exports.assertNotInTextEditMode = assertNotInTextEditMode;
 module.exports.assertInTextEditMode = assertInTextEditMode;
 module.exports.typeTextAndVerify = typeTextAndVerify;
@@ -283,7 +261,3 @@ module.exports.dblclickOnSelectedShape = dblclickOnSelectedShape;
 module.exports.addSlide = addSlide;
 module.exports.changeSlide = changeSlide;
 module.exports.selectTableInTheCenter = selectTableInTheCenter;
-module.exports.getSlideShow = getSlideShow;
-module.exports.getSlideShowContent = getSlideShowContent;
-module.exports.getSlideShowCanvas = getSlideShowCanvas;
-module.exports.waitForSlideShowIdle = waitForSlideShowIdle;

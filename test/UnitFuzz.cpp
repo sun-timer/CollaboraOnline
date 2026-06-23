@@ -9,10 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for fuzzing functionality.
- */
-
 #include <config.h>
 
 #include <iostream>
@@ -21,11 +17,9 @@
 #include <Common.hpp>
 #include <Protocol.hpp>
 #include <Unit.hpp>
-#include <common/Util.hpp>
+#include <Util.hpp>
 
 #include <Poco/Net/HTTPServerRequest.h>
-
-using namespace std::chrono_literals;
 
 // Inside the WSD process
 class UnitFuzz : public UnitWSD

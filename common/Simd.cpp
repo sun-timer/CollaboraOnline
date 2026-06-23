@@ -9,14 +9,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * SIMD feature detection and initialization.
- * Functions: init() - Detects AVX2 support
- */
-
 #include <config.h>
 
-#include "Simd.hpp"
+#include <Simd.hpp>
 
 #if ENABLE_SIMD
 #  include <immintrin.h>

@@ -9,11 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Document quarantine for suspicious files.
- * Functions: quarantineFile()
- */
-
 #pragma once
 
 #include <cstddef>

@@ -9,41 +9,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Common fuzzing initialization and utilities.
- * Functions: DoInitialization() - Sets up fuzzing environment
- */
-
-#include <config.h>
-
 #include <fuzzer/Common.hpp>
 
-#include <common/Clipboard.hpp>
-#include <common/ConfigUtil.hpp>
-#include <common/Log.hpp>
-#include <net/Ssl.hpp>
-#include <wsd/COOLWSD.hpp>
-#include <wsd/FileServer.hpp>
-
-#include <Poco/AutoPtr.h>
-
-#include <cstdlib>
 #include <map>
-#include <memory>
 #include <string>
+
+#include "config.h"
+#include <Log.hpp>
+#include <Ssl.hpp>
 
 namespace fuzzer
 {
 bool DoInitialization()
 {
-    ConfigUtil::initializeFromFile("coolwsd.xml");
-
-    COOLWSD::SavedClipboards = std::make_unique<ClipboardCache>();
-    COOLWSD::FileRequestHandler =
-        std::make_unique<FileServerRequestHandler>(COOLWSD::FileServerRoot);
-
-    const char* level = std::getenv("LOG_LEVEL");
-    const std::string logLevel(level ? level : "fatal");
+    std::string logLevel("fatal");
     bool withColor = false;
     bool logToFile = false;
     std::map<std::string, std::string> logProperties;

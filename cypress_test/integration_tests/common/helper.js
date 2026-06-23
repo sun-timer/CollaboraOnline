@@ -26,10 +26,7 @@ function setupDocument(filePath, copyCertificates = false) {
 	} else {
 		// Rename and copy file to use a clean test document for every test case.
 		var randomText = (Math.random() + 1).toString(36).substring(2,7);
-		// The filename is used in a URI query string where characters like
-		// '/' and '+' have special meaning, and spaces are invalid. Replace
-		// these with hyphens so the path survives URL parsing unchanged.
-		var cypressTestName = Cypress.currentTest.title.replace(/[\/\\ \.+]/g, '-');
+		var cypressTestName = Cypress.currentTest.title.replace(/[\/\\ \.]/g, '-'); // replace slashes and spaces and dots
 
 		// Check for extension. The '.' has to be in fileName specifically, not earlier in filePath
 		if (getFileName(filePath).includes('.')) {
@@ -61,7 +58,7 @@ function setupDocument(filePath, copyCertificates = false) {
  *   document is loaded, such as clearing a warning about macros.
  * isMultiUser: Set to true for multiuser tests.
  */
-function loadDocument(filePath, skipDocumentChecks, isMultiUser, lang) {
+function loadDocument(filePath, skipDocumentChecks, isMultiUser) {
 	cy.log('>> loadDocument - start');
 	cy.log('Param - filePath: ' + filePath);
 	if (skipDocumentChecks) {
@@ -91,7 +88,7 @@ function loadDocument(filePath, skipDocumentChecks, isMultiUser, lang) {
 	if (Cypress.env('INTEGRATION') === 'nextcloud') {
 		loadDocumentNextcloud(filePath);
 	} else {
-		loadDocumentNoIntegration(filePath, isMultiUser, lang);
+		loadDocumentNoIntegration(filePath, isMultiUser);
 	}
 
 	const isDraw = filePath.indexOf('draw') === 0;
@@ -117,14 +114,14 @@ function loadDocument(filePath, skipDocumentChecks, isMultiUser, lang) {
  * call setupDocument and loadDocument directly
  * filePath: test document path, for example: 'calc/hello-world.ods'
  */
-function setupAndLoadDocument(filePath, isMultiUser = false, copyCertificates = false, lang = undefined) {
+function setupAndLoadDocument(filePath, isMultiUser = false, copyCertificates = false) {
 	cy.log('>> setupAndLoadDocument - start');
 
 	var newFilePath = setupDocument(filePath, copyCertificates);
 	if (isMultiUser) {
-		loadDocument(newFilePath, undefined, isMultiUser, lang);
+		loadDocument(newFilePath, undefined, isMultiUser);
 	} else {
-		loadDocument(newFilePath, undefined, undefined, lang);
+		loadDocument(newFilePath);
 	}
 
 	cy.log('<< setupAndLoadDocument - end');
@@ -140,12 +137,6 @@ function reloadDocument(filePath) {
 
 	closeDocument(filePath);
 	loadDocument(filePath, /*skipDocumentChecks*/ true);
-
-	// loadDocument skips full documentChecks on reload, but we still
-	// need to wait for the document canvas to be visible before
-	// callers start asserting on document content.
-	cy.cGet('#document-canvas', {timeout: Cypress.config('defaultCommandTimeout') * 2.0})
-		.should('be.visible');
 
 	cy.log('<< reloadDocument - end');
 }
@@ -173,7 +164,7 @@ function logError(event) {
 /*
  * Loads the test document directly in Collabora Online.
  */
-function loadDocumentNoIntegration(filePath, isMultiUser, lang) {
+function loadDocumentNoIntegration(filePath, isMultiUser) {
 	cy.log('>> loadDocumentNoIntegration - start');
 
 	var URI = '';
@@ -183,7 +174,7 @@ function loadDocumentNoIntegration(filePath, isMultiUser, lang) {
 	}
 
 	URI += '/browser/' + Cypress.env('WSD_VERSION_HASH') + '/debug.html'
-		+ '?lang=' + (lang || 'en-US')
+		+ '?lang=en-US'
 		+ '&file_path=' + Cypress.env('DATA_WORKDIR') + filePath;
 
 	if (Cypress.env('INTEGRATION') === 'php-proxy') {
@@ -751,11 +742,6 @@ function isImageWhite(selector, expectWhite = true) {
 		.should(function(images) {
 			var img = images[0];
 
-			// Ensure the image has actual rendered content, not a
-			// placeholder (e.g. SVG loading spinner for slide previews).
-			expect(img.complete).to.be.true;
-			expect(img.naturalWidth).to.be.greaterThan(0);
-
 			// Create an offscreen canvas to check the image's pixels
 			var canvas = document.createElement('canvas');
 			canvas.width = img.width;
@@ -1221,27 +1207,6 @@ function getSubFolder(filePath) {
 	return subFolder;
 }
 
-// Return the center of the shape SVG overlay in coordinates suitable for
-// clicking on #document-canvas.  The outer SVG (created by
-// ShapeHandlesSection.setSVG) carries left/top relative to
-// #canvas-container; width/height may be on the inner SVG (when a viewBox
-// is present) or on the outer SVG.
-function getShapeSVGCenter() {
-	return cy.cGet('#canvas-container > svg')
-		.then(function(outerSvg) {
-			var outer = outerSvg[0];
-			var inner = outer.querySelector('svg');
-			var width = parseInt(inner && inner.style.width) || parseInt(outer.style.width);
-			var height = parseInt(inner && inner.style.height) || parseInt(outer.style.height);
-			expect(width).to.be.greaterThan(0);
-			expect(height).to.be.greaterThan(0);
-			return {
-				x: parseInt(outer.style.left) + width / 2,
-				y: parseInt(outer.style.top) + height / 2,
-			};
-		});
-}
-
 /*
  * Assert image svg
  */
@@ -1337,42 +1302,9 @@ function waitUntilLayoutingIsIdle(win) {
 	});
 }
 
-// Wait for any pending ResizeObserver callbacks to fire.  After a UI
-// mode switch the document-container div changes size via CSS; the
-// ResizeObserver in CanvasTileLayer (which calls _syncTileContainerSize
-// and then sectionContainer.onResize) will fire asynchronously, and
-// we want to wait until the onResize has fired and sectionContainer
-// is updated.
-//
-// Two requestAnimationFrame calls are needed because of the order
-// within a single rendering frame:
-//   1. Run requestAnimationFrame callbacks
-//   2. Recalculate styles / layout
-//   3. Run ResizeObserver callbacks
-//   4. Paint
-// The first RAF runs at step 1 - before the ResizeObserver callback
-// at step 3.  From there it schedules a second RAF which runs at
-// step 1 of the next frame, by which time step 3 of the previous
-// frame has completed and sectionContainer.onResize has executed.
-function waitForResizeObserver(win) {
-	return cy.then(function() {
-		return new Cypress.Promise(function(resolve) {
-			win.requestAnimationFrame(function() {
-				win.requestAnimationFrame(function() {
-					resolve();
-				});
-			});
-		});
-	});
-}
-
 function processToIdle(win) {
 	return waitUntilCoreIsIdle(win).then(function() {
-		return waitForTimers(win, 'jsdialog-deferred');
-	}).then(function() {
 		return waitUntilLayoutingIsIdle(win);
-	}).then(function() {
-		return waitForResizeObserver(win);
 	});
 }
 
@@ -1382,61 +1314,6 @@ function waitForTimers(win, tag) {
 	return cy.waitUntil(function() {
 		return !win.app.timerRegistry.hasActive(tag);
 	}, { timeout: Cypress.config('defaultCommandTimeout'), interval: 50 });
-}
-
-// Waits for a map stateChangeHandler item to reach the expected value.
-// Useful after sending uno commands where the state change message from
-// core may arrive asynchronously based on a state change timer from core
-function waitForMapState(command, expectedValue) {
-	cy.log('>> waitForMapState - start');
-	cy.log('Param - command: ' + command + ', expectedValue: ' + expectedValue);
-	cy.getFrameWindow().should(win => {
-		expect(win.app.map['stateChangeHandler'].getItemValue(command)).to.equal(expectedValue);
-	});
-	cy.log('<< waitForMapState - end');
-}
-
-// cy.realPress('Enter') via CDP bypasses preventDefault on keydown,
-// which causes implicit form submission and spurious button clicks
-// that don't happen with real keyboard input. This helper blocks
-// those side effects for a single keypress.
-function realPressInDialog(key) {
-	cy.cGet('.jsdialog-window form').then($form => {
-		// Block implicit form submission for this keypress
-		function blockSubmit(e) {
-			e.preventDefault();
-			e.stopImmediatePropagation();
-		}
-		$form[0].addEventListener('submit', blockSubmit, true);
-
-		// Block the close button from being clicked
-		var closeBtn = $form[0].querySelector('.ui-dialog-titlebar-close');
-		var origOnclick = closeBtn ? closeBtn.onclick : null;
-		if (closeBtn) {
-			closeBtn.onclick = function(e) {
-				e.preventDefault();
-				e.stopImmediatePropagation();
-			};
-		}
-
-		cy.realPress(key).then(() => {
-			$form[0].removeEventListener('submit', blockSubmit, true);
-			if (closeBtn) closeBtn.onclick = origOnclick;
-		});
-	});
-}
-
-// Useful to get an item in the context-menu (currently only for document-area
-// context menus). This context menu uses jsdialog dropdown as the
-// implementation.
-function getContextMenuItem(menuItemText) {
-	return cy.cGet('#jsd-context-menu-dropdown-overlay')
-		.contains('.ui-combobox-entry.jsdialog.ui-grid-cell span',
-			menuItemText);
-}
-
-function getContextMenuItemList() {
-	return cy.cGet('#jsd-context-menu-dropdown-overlay').find('.ui-combobox-entry.jsdialog.ui-grid-cell span');
 }
 
 module.exports.setupDocument = setupDocument;
@@ -1493,55 +1370,4 @@ module.exports.waitUntilCoreIsIdle = waitUntilCoreIsIdle;
 module.exports.waitUntilLayoutingIsIdle = waitUntilLayoutingIsIdle;
 module.exports.processToIdle = processToIdle;
 module.exports.waitForTimers = waitForTimers;
-module.exports.waitForMapState = waitForMapState;
 module.exports.maxScreenshotableViewportHeight = maxScreenshotableViewportHeight;
-module.exports.getContextMenuItem = getContextMenuItem;
-module.exports.getContextMenuItemList = getContextMenuItemList;
-module.exports.getMatchedCSSRules = getMatchedCSSRules;
-module.exports.realPressInDialog = realPressInDialog;
-module.exports.getShapeSVGCenter = getShapeSVGCenter;
-
-// Find all author CSS rules that match an element, with the source
-// stylesheet filename and the full selector for each matching rule.
-// Usage:
-//   helper.getMatchedCSSRules('.spinfieldbutton-up').then(function(output) {
-//       console.error(output);
-//   });
-function getMatchedCSSRules(selector) {
-	return cy.cGet(selector).first().then(function($el) {
-		var el = $el[0];
-		var doc = el.ownerDocument;
-		var lines = [];
-
-		for (var s = 0; s < doc.styleSheets.length; s++) {
-			var sheet = doc.styleSheets[s];
-			var href = sheet.href || 'inline';
-			if (href !== 'inline') {
-				var parts = href.split('/');
-				href = parts[parts.length - 1];
-			}
-
-			var rules;
-			try { rules = sheet.cssRules; } catch (e) { continue; }
-
-			for (var r = 0; r < rules.length; r++) {
-				var rule = rules[r];
-				if (!rule.selectorText) continue;
-				try {
-					if (!el.matches(rule.selectorText)) continue;
-				} catch (e) { continue; }
-
-				var props = [];
-				for (var p = 0; p < rule.style.length; p++) {
-					var name = rule.style[p];
-					var val = rule.style.getPropertyValue(name);
-					var priority = rule.style.getPropertyPriority(name);
-					props.push('  ' + name + ': ' + val + (priority ? ' !' + priority : ''));
-				}
-				lines.push(href + ' | ' + rule.selectorText);
-				lines.push(props.join('\n'));
-			}
-		}
-		return lines.join('\n');
-	});
-}

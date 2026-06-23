@@ -9,16 +9,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * WOPI authorization token and header management.
- * Classes: Authorization
- */
-
 #include <config.h>
 
 #include "Authorization.hpp"
-#include <common/Log.hpp>
-#include <common/StringVector.hpp>
+#include "Log.hpp"
+#include "StringVector.hpp"
 #include <common/Uri.hpp>
 
 #include <Poco/Net/HTTPRequest.h>
@@ -67,7 +62,7 @@ void Authorization::authorizeRequest(Poco::Net::HTTPRequest& request) const
             StringVector tokens(StringVector::tokenizeAnyOf(_data, "\n\r"));
             for (auto it = tokens.begin(); it != tokens.end(); ++it)
             {
-                const std::string token = tokens.getParam(*it);
+                std::string token = tokens.getParam(*it);
 
                 std::size_t separator = token.find_first_of(':');
                 if (separator != std::string::npos)
@@ -114,7 +109,7 @@ Authorization Authorization::create(const Poco::URI& uri)
             decoded = Uri::decode(param.second);
             type = Authorization::Type::Header;
         } else if (param.first == "no_auth_header") {
-            const std::string value = Uri::decode(param.second);
+            std::string value = Uri::decode(param.second);
             if (value == "1" || value == "true") {
                 noHeader = true;
             }

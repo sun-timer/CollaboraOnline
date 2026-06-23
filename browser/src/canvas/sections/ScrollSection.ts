@@ -110,10 +110,7 @@ export class ScrollSection extends CanvasSectionObject {
 		// comes from a mouse-wheel or a touchpad.
 		this.sectionProperties.scrollQuirks = true;
 
-		this.sectionProperties.alwaysDrawVerticalScrollBar =
-			(this.map._docLayer._docType === 'spreadsheet' &&
-				!(<any>window).mode.isDesktop()) ||
-			(app.map.getDocType() === 'text' && (<any>window).mode.isDesktop());
+		this.sectionProperties.alwaysDrawVerticalScrollBar = this.map._docLayer._docType === 'spreadsheet' && !(<any>window).mode.isDesktop();
 	}
 
 	public completePendingScroll(): void {
@@ -360,7 +357,7 @@ export class ScrollSection extends CanvasSectionObject {
 			this.calculateCurrentAlpha(elapsedTime);
 
 		if ((this.sectionProperties.drawVerticalScrollBar || this.sectionProperties.alwaysDrawVerticalScrollBar)) {
-			if ((<any>window).mode.isSmallScreenDevice())
+			if ((<any>window).mode.isMobile())
 				this.DrawVerticalScrollBarMobile();
 			else
 				this.drawVerticalScrollBar();
@@ -772,20 +769,15 @@ export class ScrollSection extends CanvasSectionObject {
 	}
 
 	public onMouseDown (point: cool.SimplePoint, e: MouseEvent): void {
-		const layout = (app.activeDocument as DocumentBase).activeLayout;
-		const scrollProps: ScrollProperties = layout.scrollProperties;
+		const scrollProps: ScrollProperties = (app.activeDocument as DocumentBase).activeLayout.scrollProperties;
 
 		this.clearQuickScrollTimeout();
 		this.onMouseMove(point, null, e);
 		this.isMouseOnScrollBar(point);
 
 		const mirrorX = this.isRTL();
-		const documentAnchor = app.sectionContainer.getSectionWithName(app.CSections.Tiles.name);
 
-		// For CompareChanges view, viewedRectangle.pY1 can be negative while scrolling is possible.
-		const initialVerticalCheck = layout.type === 'ViewLayoutCompareChanges' ? true : layout.viewedRectangle.pY1 >= 0;
-
-		if (initialVerticalCheck) {
+		if (app.activeDocument.activeLayout.viewedRectangle.pY1 >= 0) {
 			if ((!mirrorX && point.pX >= this.size[0] - scrollProps.usableThickness)
 				|| (mirrorX && point.pY <= scrollProps.usableThickness)) {
 				if (point.pY > scrollProps.yOffset) {
@@ -805,12 +797,7 @@ export class ScrollSection extends CanvasSectionObject {
 			}
 		}
 
-		// Same reasoning as vertical: CompareChanges can have negative pX1.
-		const canScrollH = layout.type === 'ViewLayoutCompareChanges'
-			? layout.canScrollHorizontal(documentAnchor)
-			: layout.viewedRectangle.pX1 >= 0;
-
-		if (canScrollH) {
+		if (app.activeDocument.activeLayout.viewedRectangle.pX1 >= 0) {
 			if (point.pY >= this.size[1] - scrollProps.usableThickness) {
 				if ((!mirrorX && point.pX >= scrollProps.xOffset && point.pX <= this.size[0] - scrollProps.horizontalScrollRightOffset)
 					|| (mirrorX && point.pX >= scrollProps.xOffset && point.pX >= scrollProps.horizontalScrollRightOffset)) {

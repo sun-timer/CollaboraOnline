@@ -9,32 +9,26 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for admin console functionality.
- */
-
 #include <config.h>
 
-#include <common/Common.hpp>
-#include <common/Log.hpp>
-#include <common/Unit.hpp>
-#include <common/Util.hpp>
-
-#include <test/UnitHTTP.hpp>
-#include <test/helpers.hpp>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+#include <chrono>
 
 #include <Poco/Net/HTTPBasicCredentials.h>
 #include <Poco/Net/HTTPCookie.h>
-#include <Poco/Net/HTTPRequest.h>
 #include <Poco/Net/HTTPResponse.h>
 #include <Poco/Net/NameValueCollection.h>
 #include <Poco/Net/NetException.h>
 #include <Poco/URI.h>
 
-#include <chrono>
-#include <condition_variable>
-#include <mutex>
-#include <thread>
+#include <Common.hpp>
+#include <Log.hpp>
+#include <Unit.hpp>
+#include <UnitHTTP.hpp>
+#include <Util.hpp>
+#include <helpers.hpp>
 
 #define UNIT_URI "/coolwsd/unit-admin"
 
@@ -241,7 +235,7 @@ private:
             }
 
             // store document pid
-            _docPid1 = NumUtil::stoi(tokens[1]);
+            _docPid1 = std::stoi(tokens[1]);
             _usersCount++;
         }
         _docsCount++;
@@ -269,7 +263,7 @@ private:
             }
 
             // store document pid
-            _docPid2 = NumUtil::stoi(tokens[1]);
+            _docPid2 = std::stoi(tokens[1]);
             _usersCount++;
         }
 
@@ -304,7 +298,7 @@ private:
             }
 
             // store document pid
-            _docPid3 = NumUtil::stoi(tokens[1]);
+            _docPid3 = std::stoi(tokens[1]);
             _usersCount++;
         }
         _docsCount++;
@@ -334,7 +328,7 @@ private:
             LOG_INF("testUsersCount: Unrecognized message format");
             return TestResult::Failed;
         }
-        else if (NumUtil::stoi(tokens[1]) != _usersCount)
+        else if (std::stoi(tokens[1]) != _usersCount)
         {
             LOG_INF("testUsersCount: Incorrect users count "
                       ", expected: " + std::to_string(_usersCount) +
@@ -361,13 +355,14 @@ private:
         lock.unlock();
 
         StringVector tokens(StringVector::tokenize(_messageReceived, ' '));
-        if (tokens.size() != 2 || tokens[0] != "active_docs_count" ||
-            NumUtil::stoi(tokens[1]) != _docsCount)
+        if (tokens.size() != 2 ||
+            tokens[0] != "active_docs_count" ||
+            std::stoi(tokens[1]) != _docsCount)
         {
             LOG_INF("testDocCount: Unrecognized message format");
             return TestResult::Failed;
         }
-        else if (NumUtil::stoi(tokens[1]) != _docsCount)
+        else if (std::stoi(tokens[1]) != _docsCount)
         {
             LOG_INF("testDocCount: Incorrect doc count "
                       ", expected: " + std::to_string(_docsCount) +

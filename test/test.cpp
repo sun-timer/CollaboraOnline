@@ -9,10 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Main test runner for client tests.
- */
-
 #include <config.h>
 
 #define TST_LOG_REDIRECT
@@ -35,7 +31,7 @@
 
 #include <Poco/DirectoryIterator.h>
 #include <Poco/FileStream.h>
-#include <regex>
+#include <Poco/RegularExpression.h>
 #include <Poco/StreamCopier.h>
 #include <Poco/Util/LayeredConfiguration.h>
 
@@ -45,12 +41,13 @@
 #include <Ssl.hpp>
 #include <SslSocket.hpp>
 #endif
-#include <common/Log.hpp>
+#include <Log.hpp>
 #include <common/ConfigUtil.hpp>
 
 bool filterTests(CPPUNIT_NS::TestRunner& runner, CPPUNIT_NS::Test* testRegistry, const std::string& testName)
 {
-    std::regex re(testName, std::regex_constants::icase);
+    Poco::RegularExpression re(testName, Poco::RegularExpression::RE_CASELESS);
+    Poco::RegularExpression::Match reMatch;
 
     bool haveTests = false;
     for (int i = 0; i < testRegistry->getChildTestCount(); ++i)
@@ -61,7 +58,7 @@ bool filterTests(CPPUNIT_NS::TestRunner& runner, CPPUNIT_NS::Test* testRegistry,
             CPPUNIT_NS::Test* testCase = testSuite->getChildTestAt(j);
             try
             {
-                if (std::regex_search(testCase->getName(), re))
+                if (re.match(testCase->getName(), reMatch))
                 {
                     runner.addTest(testCase);
                     haveTests = true;
@@ -79,6 +76,8 @@ bool filterTests(CPPUNIT_NS::TestRunner& runner, CPPUNIT_NS::Test* testRegistry,
 
 #ifdef STANDALONE_CPPUNIT
 
+static bool IsDebugrun = false;
+
 // coverity[root_function] : don't warn about uncaught exceptions
 int main(int argc, char** argv)
 {
@@ -90,6 +89,10 @@ int main(int argc, char** argv)
         if (arg == "--verbose")
         {
             verbose = true;
+        }
+        else if (arg == "--debugrun")
+        {
+            IsDebugrun = true;
         }
         else if (arg == "--cert-path" && ++i < argc)
         {
@@ -153,6 +156,7 @@ bool isStandalone()
 }
 
 static std::mutex ErrorMutex;
+static bool IsVerbose = false;
 static std::ostringstream ErrorsStream;
 
 class TestProgressListener : public CppUnit::TestListener
@@ -209,6 +213,7 @@ private:
 // returns true on success
 bool runClientTests(const char* cmd, bool standalone, bool verbose)
 {
+    IsVerbose = verbose;
     IsStandalone = standalone;
 
     CPPUNIT_NS::TestResult controller;

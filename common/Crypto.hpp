@@ -23,7 +23,7 @@ class SupportKey {
     std::unique_ptr<SupportKeyImpl> _impl;
 
 public:
-    explicit SupportKey(const std::string &key);
+    SupportKey(const std::string &key);
     virtual ~SupportKey();
 
     /// Check the key is validly signed.

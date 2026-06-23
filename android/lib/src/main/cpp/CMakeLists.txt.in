@@ -11,11 +11,8 @@ add_library(androidapp SHARED
             ../../../../../common/Crypto-stub.cpp
             ../../../../../common/FileUtil.cpp
             ../../../../../common/FileUtil-unix.cpp
-            ../../../../../common/Log-poco.cpp
-            ../../../../../common/Log-common.cpp
-            ../../../../../common/MobileApp.cpp
+            ../../../../../common/Log.cpp
             ../../../../../common/TraceEvent.cpp
-            ../../../../../common/ProcUtil.cpp
             ../../../../../common/Protocol.cpp
             ../../../../../common/RegexUtil.cpp
             ../../../../../common/Simd.cpp
@@ -99,7 +96,7 @@ target_include_directories(androidapp PRIVATE
                            ${POCOINCLUDE_ABI}         # POCO
                            ${ZSTDINCLUDE_ABI}         # ZSTD
                            ${LOBUILDDIR_ABI}/workdir/UnpackedTarball/libpng # libpng
-                           ${LOBUILDDIR_ABI}/include                        # COKit
+                           ${LOBUILDDIR_ABI}/include                        # LibreOfficeKit
 )
 
 add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/lib/${ANDROID_ABI}/liblo-native-code.so"

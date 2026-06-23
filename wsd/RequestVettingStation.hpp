@@ -9,22 +9,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Request validation and authorization gateway.
- * Classes: RequestVettingStation
- */
-
 #pragma once
 
-#include <common/Util.hpp>
-#include <net/WebSocketHandler.hpp>
-#include <wsd/RequestDetails.hpp>
-#include <wsd/Storage.hpp>
+#include "RequestDetails.hpp"
+#include <Storage.hpp>
+#include "Util.hpp"
+#include "WebSocketHandler.hpp"
 
 #include <Poco/URI.h>
 
 #include <string>
-#include <string_view>
 
 class CheckFileInfo;
 class PresetsInstallTask;
@@ -57,7 +51,7 @@ public:
     {
     }
 
-    void logPrefix(std::ostream& os) const
+    inline void logPrefix(std::ostream& os) const
     {
         auto socket = _socket.lock();
         int logContextFD = socket ? socket->getFD() : -1;
@@ -104,7 +98,8 @@ private:
     void sendUnauthorizedErrorAndShutdown();
 
     /// Send an error to the client and disconnect the socket.
-    void sendErrorAndShutdown(std::string_view msg, WebSocketHandler::StatusCodes statusCode);
+    void sendErrorAndShutdown(const std::string& msg,
+                              WebSocketHandler::StatusCodes statusCode);
 
 #if !MOBILEAPP
     void launchInstallPresets();

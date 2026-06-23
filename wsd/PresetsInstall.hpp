@@ -9,11 +9,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Installation and management of configuration presets.
- * Functions: applyPresetConfig()
- */
-
 #pragma once
 
 #include <net/Socket.hpp>

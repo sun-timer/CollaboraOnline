@@ -11,7 +11,7 @@
 
 declare var JSDialog: any;
 
-function _createButtonForNotebookbarIconview(
+function _createButtonForNotebookbarIconView(
 	parentContainer: Element,
 	id: string,
 	buttonClass: string,
@@ -63,34 +63,19 @@ function _createButtonForNotebookbarIconview(
 	button.onclick = onClickCallback;
 }
 
-function _getDropdownContent(data: IconViewListJSON, builder: JSBuilder) {
-	const dropdownContent: Array<MenuDefinition> = [];
-	for (const child of data.children) {
-		// get up-to-date copy from model, TODO: more clean way to do that
-		const childData = (
-			builder?.options?.mobileWizard as any
-		)?.getWidgetSnapshot(child.id);
-
-		dropdownContent.push({
-			id: 'dropdown-entry-' + child.id,
-			type: 'json',
-			content: childData ? childData : undefined,
-		});
-	}
-
-	if (data.children.length === 1 && data.children[0].id === 'stylesview') {
+function _getDropdownContent(data: any) {
+	const dropdownContent = [{ type: 'json', content: data }];
+	if (data.id === 'stylesview') {
 		dropdownContent.push(
 			{
-				id: 'dropdown-entry-stylesview',
 				type: 'json',
 				content: {
 					type: 'separator',
 					id: 'iconview-button-separator',
 					orientation: 'horizontal',
-				} as SeparatorWidgetJSON,
+				},
 			},
 			{
-				id: 'dropdown-entry-more',
 				type: 'json',
 				content: {
 					id: 'format-style-list-dialog',
@@ -98,7 +83,7 @@ function _getDropdownContent(data: IconViewListJSON, builder: JSBuilder) {
 					text: _('Open Styles Sidebar'),
 					command: 'showstylelistdeck',
 					icon: 'lc_stylepreviewmore.svg',
-				} as ToolItemWidgetJSON,
+				},
 			},
 		);
 	}
@@ -106,127 +91,124 @@ function _getDropdownContent(data: IconViewListJSON, builder: JSBuilder) {
 	return dropdownContent;
 }
 
-JSDialog.notebookbarIconViewList = function (
+JSDialog.notebookbarIconView = function (
 	parentContainer: Element,
-	data: IconViewListJSON,
+	data: IconViewJSON,
 	builder: JSBuilder,
 ) {
-	const rootNode = window.L.DomUtil.create(
-		'div',
-		builder.options.cssClass + ' ui-iconview-root',
-		parentContainer,
-	);
-	rootNode.id = data.id;
+	if (!builder._iconviewSiblingsData) {
+		builder._iconviewSiblingsData = new Map<string, Array<WidgetJSON>>();
+	}
+
+	let siblingsData = builder._iconviewSiblingsData.get(data.id);
+
+	// Store current siblings data if not already stored
+	if (!siblingsData && data.siblings) {
+		builder._iconviewSiblingsData.set(data.id, data.siblings);
+		siblingsData = data.siblings;
+	}
 
 	const commonContainer = window.L.DomUtil.create(
 		'div',
 		builder.options.cssClass + ' ui-iconview-window',
-		rootNode,
+		parentContainer,
 	);
-	commonContainer.id = data.id + '-window';
+	commonContainer.id = data.id;
 
-	let firstIconViewIndex = 0;
-
-	while (data.children && data.children[firstIconViewIndex]) {
-		if (data.children[firstIconViewIndex].type === 'iconview') break;
-		firstIconViewIndex++;
+	/*
+		deep copy to not repeat id. below we override
+		`iconview.requestRenders` and `iconview.updateRenders`
+		because core knows this iconview by the id
+		without `-iconview` at the end and thus any
+		updates/requests should be sent with that `id`.
+	*/
+	let innerData: IconViewJSON | null = null;
+	if (window.structuredClone) {
+		try {
+			innerData = window.structuredClone(data);
+			innerData.id = innerData.id + '-iconview';
+		} catch (e) {
+			app.console.debug('NotebookbarIconView: ' + e);
+			return false;
+		}
 	}
 
-	const iconViewData = data.children[firstIconViewIndex];
+	// create the inner iconview
+	JSDialog.iconView(commonContainer, innerData, builder);
+	const iconview = commonContainer.querySelector('.ui-iconview') as any;
 
-	// we insert into DOM only the first iconview (rest is accessible only in the dropdown)
-	JSDialog.iconView(commonContainer, iconViewData, builder);
-	// builder will not do it for us - we manage children (return is false in this handler)
-	builder.postProcess(commonContainer, iconViewData);
-
-	const iconview = commonContainer.querySelector('.ui-iconview');
-	if (!iconview) {
-		app.console.error('IconView cannot be created: ' + data.id);
-		return false;
-	}
-
-	const buttonsContainer = window.L.DomUtil.create(
-		'div',
-		builder.options.cssClass + ' ui-iconview-buttons-container',
-		rootNode,
-	);
-	buttonsContainer.id = data.id + '-buttons-container';
-
-	// be aware the child iconviews can get update and be replaced in DOM
-	// we need to use firstChild to get correct instance at the time of execution
-	const scrollUpCallback = () => {
-		commonContainer.firstChild.scrollBy({
-			top: -commonContainer.firstChild.offsetHeight,
-			behavior: 'smooth',
-		});
-	};
-
-	const scrollDownCallback = () => {
-		commonContainer.firstChild.scrollBy({
-			top: commonContainer.firstChild.offsetHeight,
-			behavior: 'smooth',
-		});
-	};
-
-	const notebookbarIconViewCallback = (
-		objectType: string,
-		eventType: string,
-		object: any,
-		entry_data: string,
-	) => {
-		builder.callback(objectType, eventType, object, entry_data, builder);
-		/*
-			the dropdown can have controls to trigger dialogs
-			or sidebars. when that happens, we want the dropdown
-			to move out of our way.
-		*/
-		if (objectType !== 'iconview') JSDialog.CloseAllDropdowns();
-	};
-
-	const expanderCallback = () => {
-		JSDialog.CloseAllDropdowns();
-
-		JSDialog.OpenDropdown(
-			data.id,
-			rootNode,
-			_getDropdownContent(data, builder),
-			notebookbarIconViewCallback,
+	if (siblingsData) {
+		// create the button's container
+		const buttonsContainer = window.L.DomUtil.create(
+			'div',
+			builder.options.cssClass + ' ui-iconview-buttons-container',
+			parentContainer,
 		);
-	};
+		buttonsContainer.id = data.id + '-buttons-container';
 
-	_createButtonForNotebookbarIconview(
-		buttonsContainer,
-		data.id + '-scroll-up',
-		'ui-iconview-scroll-up-button',
-		'lc_searchprev.svg',
-		_('Scroll up'),
-		builder,
-		scrollUpCallback,
-	);
+		const scrollUpCallback = () => {
+			iconview.scrollBy({
+				top: -iconview.offsetHeight,
+				behavior: 'smooth',
+			});
+		};
 
-	_createButtonForNotebookbarIconview(
-		buttonsContainer,
-		data.id + '-scroll-down',
-		'ui-iconview-scroll-down-button',
-		'lc_searchnext.svg',
-		_('Scroll down'),
-		builder,
-		scrollDownCallback,
-	);
+		const scrollDownCallback = () => {
+			iconview.scrollBy({
+				top: iconview.offsetHeight,
+				behavior: 'smooth',
+			});
+		};
 
-	_createButtonForNotebookbarIconview(
-		buttonsContainer,
-		data.id + '-expand',
-		'ui-iconview-expander-button',
-		'lc_iconviewexpander.svg',
-		_('More options'),
-		builder,
-		expanderCallback,
-		{ focusBack: true, combination: 'SD', de: null },
-		true /* opensPopup */,
-	);
+		const notebookbarIconViewCallback = (
+			objectType: string,
+			eventType: string,
+			object: any,
+			entry_data: string,
+		) => {
+			builder.callback(objectType, eventType, object, entry_data, builder);
+			/*
+				the dropdown can have controls to trigger dialogs
+				or sidebars. when that happens, we want the dropdown
+				to move out of our way.
+			*/
+			if (objectType !== 'iconview') JSDialog.CloseAllDropdowns();
+		};
 
-	rootNode._onDropDown = function (opened: boolean) {
+		const expanderCallback = () => {
+			JSDialog.OpenDropdown(
+				data.id,
+				commonContainer,
+				_getDropdownContent(data),
+				notebookbarIconViewCallback,
+			);
+			bIsExpanded = true;
+		};
+
+		const getCallback = function (id: string) {
+			if (id === 'scroll-up') return scrollUpCallback;
+			else if (id === 'scroll-down') return scrollDownCallback;
+			else if (id === 'format-style-list-dialog') return expanderCallback;
+		};
+
+		for (const childData of siblingsData) {
+			_createButtonForNotebookbarIconView(
+				buttonsContainer,
+				childData.id + '-' + data.id,
+				'ui-iconview-' + childData.id + '-button',
+				childData.icon || '',
+				childData.text || '',
+				builder,
+				getCallback(childData.id),
+				childData.accessibility,
+				childData.opensPopup,
+			);
+		}
+
+		commonContainer.appendChild(buttonsContainer);
+	}
+
+	commonContainer._onDropDown = function (opened: boolean) {
 		if (opened) {
 			app.layoutingService.appendLayoutingTask(() => {
 				app.layoutingService.appendLayoutingTask(() => {
@@ -240,19 +222,7 @@ JSDialog.notebookbarIconViewList = function (
 					const overlay = expander.parentNode;
 					overlay.style.position = 'fixed';
 					overlay.style.zIndex = '20000';
-					rootNode.appendChild(overlay);
-
-					// setup correct callbacks for rendering actions for fresh instance
-					// both in notebookbar and inside dropdown
-					const currentIconView = commonContainer.firstChild as IconViewElement;
-					currentIconView.updateRenders = (pos: number) => {
-						currentIconView.updateRendersImpl(
-							pos,
-							iconViewData.id,
-							currentIconView,
-						);
-						currentIconView.updateRendersImpl(pos, iconViewData.id, expander);
-					};
+					commonContainer.appendChild(overlay);
 				});
 			});
 		}
@@ -282,15 +252,22 @@ JSDialog.notebookbarIconViewList = function (
 		when the overflowgroups collapse displacing the
 		underlying iconview.
 	*/
+	let bIsExpanded = false;
 
 	// update indexes on resize
 	const resizeObserver = new ResizeObserver(() => {
 		updateAllIndexes();
-		const dropdown = JSDialog.GetDropdown(data.id);
-		if (dropdown) JSDialog.CloseDropdown(data.id);
+		if (bIsExpanded) JSDialog.CloseDropdown(data.id);
 	});
 
-	resizeObserver.observe(rootNode);
+	/*
+	 * NOTE: `resizeObserver` observes the iconview, not the dropdown.
+	 * and since the iconview grid is always max height (with overflow),
+	 * height changes do not trigger the observer as only the container's
+	 * height changes and it looks as if the iconview's dimentions
+	 * changd.
+	 */
+	resizeObserver.observe(iconview);
 
 	// Do not animate on creation - eg. when opening sidebar with icon view it might move the app
 	const firstSelected = $(iconview).children('.selected').get(0);
@@ -299,5 +276,45 @@ JSDialog.notebookbarIconViewList = function (
 		iconview.scrollTop = offsetTop;
 	}
 
+	commonContainer.updateRenders = iconview.updateRenders = (pos: number) => {
+		iconview.updateRendersImpl(pos, data.id, iconview);
+
+		// also update the dropdown (if any);
+		const dropdownContainer = JSDialog.GetDropdown(data.id);
+		if (dropdownContainer)
+			iconview.updateRendersImpl(pos, data.id, dropdownContainer);
+	};
+
+	iconview.updateSelection = (position: number) => {
+		iconview.updateSelectionImpl(position, data);
+	};
+
+	/*
+		we need to override `iconview.requestRenders` because `iconview` is created
+		with an `id = data.id + '-iconview'` which core doesn't recoganize. so
+		we pass the original widget's id while requesting icons.
+	*/
+	iconview.requestRenders = (
+		entry: IconViewEntry,
+		placeholder: Element,
+		entryContainer: Element,
+	) => {
+		iconview.requestRendersImpl(data.id, entry, placeholder, entryContainer);
+	};
+
+	/*
+		we override this for the same reason for which we
+		override `iconview.requestRenders` above.
+	*/
+	iconview.builderCallback = (
+		objectType: string,
+		eventType: string,
+		entry: any,
+		builder: JSBuilder,
+	) => {
+		builder.callback(objectType, eventType, data, entry, builder);
+	};
+
+	commonContainer.onSelect = iconview.onSelect;
 	return false;
 };

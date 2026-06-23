@@ -9,31 +9,25 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Implementation of WOPI proof key verification.
- * Classes: ProofKey
- */
-
 #include <config.h>
 
 #include "ProofKey.hpp"
-
-#include <common/Log.hpp>
-#include <common/Util.hpp>
-#include <wsd/Exceptions.hpp>
-
-#include <common/base64.hpp>
-
-#include <Poco/Crypto/RSADigestEngine.h>
-#include <Poco/Crypto/RSAKey.h>
 
 #include <algorithm>
 #include <cassert>
 #include <cstdlib>
 #include <vector>
 
-namespace
-{
+#include <Poco/Base64Decoder.h>
+#include <Poco/Crypto/RSADigestEngine.h>
+#include <Poco/Crypto/RSAKey.h>
+#include <Poco/LineEndingConverter.h>
+
+#include "Exceptions.hpp"
+#include <Log.hpp>
+#include <Util.hpp>
+
+namespace{
 
 std::vector<unsigned char> getBytesLE(const unsigned char* bytesInHostOrder, const size_t n)
 {
@@ -79,9 +73,15 @@ std::vector<unsigned char> ToNetworkOrderBytes(const T& x)
 
 std::vector<unsigned char> Proof::Base64ToBytes(const std::string &str)
 {
-    std::string decoded;
-    macaron::Base64::Decode(str, decoded);
-    return std::vector<unsigned char>(decoded.begin(), decoded.end());
+    std::istringstream oss(str);
+    Poco::Base64Decoder decoder(oss);
+
+    char c = 0;
+    std::vector<unsigned char> vec;
+    while (decoder.get(c))
+        vec.push_back(static_cast<unsigned char>(c));
+
+    return vec;
 }
 
 void Proof::initialize()

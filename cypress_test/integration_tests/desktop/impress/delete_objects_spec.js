@@ -8,18 +8,13 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Delete Objects', function(
 	beforeEach(function() {
 		helper.setupAndLoadDocument('impress/delete_objects.odp');
 		desktopHelper.switchUIToCompact();
-
-		cy.getFrameWindow().then((win) => {
-			this.win = win;
-			helper.processToIdle(win);
-		});
 	});
 
 	it('Delete Text', function() {
 		helper.setDummyClipboardForCopy();
 		cy.cGet('#document-container').dblclick('center');
 		cy.cGet('#document-container svg g').should('exist');
-		helper.processToIdle(this.win);
+		cy.wait(500);
 		helper.typeIntoDocument('text');
 		helper.selectAllText();
 		helper.copy();
@@ -35,15 +30,12 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Delete Objects', function(
 
 		// Check / wait for the inserted page.
 		cy.cGet('#preview-img-part-1').should('exist');
-		helper.processToIdle(this.win);
 
 		// Activate the inserted page.
 		cy.cGet('#preview-img-part-1').click();
-		helper.processToIdle(this.win);
 
 		// Click on canvas to activate the document.
 		cy.cGet('#document-canvas').click(100, 100);
-		helper.processToIdle(this.win);
 
 		// Press delete button. If the document is correctly activated, the second page shouldn't be deleted.
 		helper.typeIntoDocument('{del}');
@@ -66,7 +58,6 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Delete Objects', function(
 		desktopHelper.getCompactIconArrow('BasicShapes').click();
 		cy.cGet('.col.w2ui-icon.symbolshapes').should($el => { expect(Cypress.dom.isDetached($el)).to.eq(false); }).click();
 		cy.cGet('#test-div-shapeHandlesSection').should('exist');
-		helper.processToIdle(this.win);
 
 		//delete
 		helper.typeIntoDocument('{del}');
@@ -78,8 +69,6 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Delete Objects', function(
 		//insert
 		desktopHelper.getCompactIcon('InsertObjectChart').click();
 		cy.cGet('#test-div-shapeHandlesSection').should('exist');
-		helper.processToIdle(this.win);
-
 		//delete
 		helper.typeIntoDocument('{del}');
 		cy.cGet('#test-div-shapeHandlesSection').should('not.exist');
@@ -91,10 +80,8 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Delete Objects', function(
 		cy.cGet('#menu-table').click();
 		cy.cGet('body').contains('Insert Table...').click();
 		cy.cGet('.lokdialog_canvas').click();
-		helper.processToIdle(this.win);
 
 		helper.typeIntoDocument('{shift}{enter}');
-		helper.processToIdle(this.win);
 
 		// Table is inserted with the markers shown
 		cy.cGet('.table-column-resize-marker').should('exist');
@@ -105,7 +92,7 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Delete Objects', function(
 			cy.cGet('body').rightclick(x + 20, y + 20);
 		});
 
-		helper.getContextMenuItem('Delete').click();
+		cy.cGet('body').contains('.context-menu-item', 'Delete').click();
 		cy.cGet('.table-column-resize-marker').should('not.exist');
 	});
 
@@ -114,7 +101,6 @@ describe(['tagdesktop', 'tagnextcloud', 'tagproxy'], 'Delete Objects', function(
 		cy.cGet('body').contains('a','Fontwork...').click();
 		cy.cGet('#ok').click();
 		cy.cGet('#test-div-shapeHandlesSection').should('exist');
-		helper.processToIdle(this.win);
 
 		//delete
 		helper.typeIntoDocument('{del}');

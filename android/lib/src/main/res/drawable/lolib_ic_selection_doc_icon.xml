@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+    <!-- Document shape -->
+    <path
+        android:fillColor="#1278D9"
+        android:pathData="M6,4 L20,4 L26,10 L26,28 L6,28 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20,4 L20,10 L26,10 Z" />
+    <!-- Lines on document -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M10,14 L22,14 M10,18 L22,18 M10,22 L18,22"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round" />
+</vector>

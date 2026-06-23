@@ -9,21 +9,25 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Configuration file manipulation utility.
- * Functions: Password generation, config setting/getting, XML editing
- */
-
 #include <config.h>
 
 #include <common/Anonymizer.hpp>
 #include <common/ConfigUtil.hpp>
 #include <common/Crypto.hpp>
-#include <common/NumUtil.hpp>
 #include <common/Util.hpp>
 
-#include <openssl/evp.h>
+#include <iostream>
+#include <iomanip>
+#include <pwd.h>
+#include <sstream>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sysexits.h>
+#include <termios.h>
+#include <unistd.h>
+
 #include <openssl/rand.h>
+#include <openssl/evp.h>
 
 #include <Poco/Crypto/RSAKey.h>
 #include <Poco/Exception.h>
@@ -33,16 +37,6 @@
 #include <Poco/Util/Option.h>
 #include <Poco/Util/OptionSet.h>
 #include <Poco/Util/XMLConfiguration.h>
-
-#include <iomanip>
-#include <iostream>
-#include <pwd.h>
-#include <sstream>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sysexits.h>
-#include <termios.h>
-#include <unistd.h>
 
 using Poco::Util::Application;
 using Poco::Util::HelpFormatter;
@@ -229,7 +223,7 @@ void Config::handleOption(const std::string& optionName, const std::string& opti
     }
     else if (optionName == "pwd-salt-length")
     {
-        unsigned len = NumUtil::stoi(optionValue);
+        unsigned len = std::stoi(optionValue);
         if (len < MIN_PWD_SALT_LENGTH)
         {
             len = MIN_PWD_SALT_LENGTH;
@@ -239,7 +233,7 @@ void Config::handleOption(const std::string& optionName, const std::string& opti
     }
     else if (optionName == "pwd-iterations")
     {
-        unsigned len = NumUtil::stoi(optionValue);
+        unsigned len = std::stoi(optionValue);
         if (len < MIN_PWD_ITERATIONS)
         {
             len = MIN_PWD_ITERATIONS;
@@ -249,7 +243,7 @@ void Config::handleOption(const std::string& optionName, const std::string& opti
     }
     else if (optionName == "pwd-hash-length")
     {
-        unsigned len = NumUtil::stoi(optionValue);
+        unsigned len = std::stoi(optionValue);
         if (len < MIN_PWD_HASH_LENGTH)
         {
             len = MIN_PWD_HASH_LENGTH;

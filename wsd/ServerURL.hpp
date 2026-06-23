@@ -9,16 +9,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * URL construction and manipulation for server endpoints.
- * Classes: ServerURL
- */
-
 #pragma once
 
 #include <string>
-#include <RequestDetails.hpp>
-#include <COOLWSD.hpp>
+#include "RequestDetails.hpp"
+#include "COOLWSD.hpp"
 
 /** This class helps us to build a URL that will reliably point back
  * at our service. It does very simple splitting of proxy URL
@@ -53,7 +48,7 @@ public:
 
         // A well formed ProxyPrefix will override it.
         const std::string& url = proxyPrefix;
-        if (url.empty())
+        if (url.size() <= 0)
             return;
 
         std::size_t pos = url.find("://");

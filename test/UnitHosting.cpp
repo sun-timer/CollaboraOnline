@@ -9,25 +9,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for hosting-related functionality.
- */
-
 #include <config.h>
 
-#include <common/Png.hpp>
-#include <common/Unit.hpp>
 #include <net/HttpRequest.hpp>
-#include <test/helpers.hpp>
-#include <test/lokassert.hpp>
+
+#include <memory>
+#include <string>
 
 #include <Poco/DOM/AutoPtr.h>
 #include <Poco/DOM/DOMParser.h>
 #include <Poco/DOM/Document.h>
 #include <Poco/DOM/NodeList.h>
+#include <test/lokassert.hpp>
 
-#include <memory>
-#include <string>
+#include <Png.hpp>
+#include <Unit.hpp>
+#include <helpers.hpp>
 
 /// Test suite for /hosting, etc.
 class UnitHosting : public UnitWSD
@@ -138,7 +135,7 @@ UnitBase::TestResult UnitHosting::testCapabilities()
 
         Poco::JSON::Parser parser;
         Poco::Dynamic::Var jsonFile = parser.parse(responseString);
-        const Poco::JSON::Object::Ptr& features = jsonFile.extract<Poco::JSON::Object::Ptr>();
+        Poco::JSON::Object::Ptr features = jsonFile.extract<Poco::JSON::Object::Ptr>();
         LOK_ASSERT(features);
         LOK_ASSERT(features->has("convert-to"));
 

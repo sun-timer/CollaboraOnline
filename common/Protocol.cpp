@@ -9,24 +9,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * COOL protocol parsing and message formatting.
- * Functions: ParseVersion(), getAbbreviatedMessage(), tokenize()
- */
-
 #include <config.h>
 
 #include "Protocol.hpp"
-
-#include <common/NumUtil.hpp>
 
 #include <cstring>
 #include <map>
 #include <string>
 #include <string_view>
 
-#define KIT_USE_UNSTABLE_API
-#include <COKit/COKitEnums.h>
+#define LOK_USE_UNSTABLE_API
+#include <LibreOfficeKit/LibreOfficeKitEnums.h>
 
 namespace COOLProtocol
 {
@@ -39,7 +32,7 @@ namespace COOLProtocol
         StringVector firstTokens(StringVector::tokenize(version, '.'));
         if (firstTokens.size() > 0)
         {
-            major = NumUtil::stoi(firstTokens[0]);
+            major = std::stoi(firstTokens[0]);
 
             StringVector secondTokens;
             if (firstTokens.size() > 1)
@@ -48,7 +41,7 @@ namespace COOLProtocol
             }
             if (secondTokens.size() > 0)
             {
-                minor = NumUtil::stoi(secondTokens[0]);
+                minor = std::stoi(secondTokens[0]);
             }
 
             if (secondTokens.size() > 1)
@@ -63,9 +56,10 @@ namespace COOLProtocol
             token.compare(0, name.size(), name) == 0 &&
             token[name.size()] == '=')
         {
-            bool success;
-            std::tie(value, success) = NumUtil::i32FromString(token.substr(name.size() + 1));
-            return success;
+            const char* str = token.data() + name.size() + 1;
+            char* endptr = nullptr;
+            value = strtol(str, &endptr, 10);
+            return (endptr > str);
         }
 
         return false;

@@ -8,7 +8,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-
 /*
  * Code to lock-down the environment of the processes we run, to avoid
  * exotic or un-necessary system calls to be used to break containment.
@@ -19,7 +18,6 @@
 #include "Seccomp.hpp"
 
 #include <common/Log.hpp>
-#include <common/NumUtil.hpp>
 #include <common/SigUtil.hpp>
 
 #include <dlfcn.h>
@@ -36,6 +34,7 @@
 #if DISABLE_SECCOMP == 0
 #include <linux/seccomp.h>
 #endif
+#include <malloc.h>
 #include <signal.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
@@ -139,7 +138,7 @@ bool lockdown([[maybe_unused]] Type type)
         ACCEPT_SYSCALL(write),
         ACCEPT_SYSCALL(futex),
 
-        // 'poll' implementation may use these epoll syscalls:
+        // glibc's 'poll' has to answer for this lot:
 #if !defined(__NR_epoll_wait) && defined(__NR_epoll_pwait)
         ACCEPT_SYSCALL(epoll_pwait),
 #else
@@ -330,20 +329,19 @@ bool handleSetrlimitCommand(const StringVector& tokens)
     {
         if (tokens.equals(1, "limit_virt_mem_mb"))
         {
-            setRLimit(NumUtil::stoi(tokens[2]) * 1024 * 1024, RLIMIT_AS, "RLIMIT_AS", "bytes");
+            setRLimit(std::stoi(tokens[2]) * 1024 * 1024, RLIMIT_AS, "RLIMIT_AS", "bytes");
         }
         else if (tokens.equals(1, "limit_stack_mem_kb"))
         {
-            setRLimit(NumUtil::stoi(tokens[2]) * 1024, RLIMIT_STACK, "RLIMIT_STACK", "bytes");
+            setRLimit(std::stoi(tokens[2]) * 1024, RLIMIT_STACK, "RLIMIT_STACK", "bytes");
         }
         else if (tokens.equals(1, "limit_file_size_mb"))
         {
-            setRLimit(NumUtil::stoi(tokens[2]) * 1024 * 1024, RLIMIT_FSIZE, "RLIMIT_FSIZE",
-                      "bytes");
+            setRLimit(std::stoi(tokens[2]) * 1024 * 1024, RLIMIT_FSIZE, "RLIMIT_FSIZE", "bytes");
         }
         else if (tokens.equals(1, "limit_num_open_files"))
         {
-            setRLimit(NumUtil::stoi(tokens[2]), RLIMIT_NOFILE, "RLIMIT_NOFILE", "files");
+            setRLimit(std::stoi(tokens[2]), RLIMIT_NOFILE, "RLIMIT_NOFILE", "files");
         }
         else
             return false;

@@ -20,8 +20,7 @@ class DiscoveryHandler(xml.sax.handler.ContentHandler):
         # Dict of app -> {extension -> action}
         self.appActions = {}
         self.app = None
-        # A dict of 'extension, (actions)'
-        self.allExtensions = dict()
+        self.allExtensions = set()
 
     def startElement(self, name, attrs):
         if name == "app":
@@ -47,16 +46,10 @@ class DiscoveryHandler(xml.sax.handler.ContentHandler):
                     # specific extensions are imported using
                     # New-SPWOPIBinding's parameters, avoiding
                     # the duplication.
-                    # Note 2026: we register them with two different actions.
-                    if action not in self.allExtensions[ext]:
-                        print("info: Registering extension '{}' for {} with a different action '{}' (current: '{}'.".format(ext, self.app, action, self.allExtensions[ext]))
-                        self.allExtensions[ext].append(action)
-                    else:
-                        print("warning: extension '" + ext +
-                              "' exists for '" + self.app + "', " +
-                              "but already used earlier in discovery.xml")
-                else:
-                    self.allExtensions[ext] = [action]
+                    print("warning: extension '" + ext +
+                          "' exists for '" + self.app + "', " +
+                          "but already used earlier in discovery.xml")
+                self.allExtensions.add(ext)
 
     def endElement(self, name):
         if name == "app" and self.app:
@@ -235,10 +228,6 @@ def main():
     # Parse core.git filter definitions to build a
     # 'document service' -> {'extension' -> 'filter flags'} dictionary.
     extensionProperties = getExtensionProperties(filterDir)
-
-    for ext, actions in discoveryHandler.allExtensions.items():
-        if 'edit' in actions and not 'view' in actions:
-            print(f"warning: extension '{ext}' doesn't have 'view' but has 'edit'.")
 
     proposed = {}
 

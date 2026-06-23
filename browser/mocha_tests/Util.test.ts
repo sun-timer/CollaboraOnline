@@ -9,6 +9,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+var assert = require('assert');
+var jsdom = require('jsdom');
+
 describe('Util', function () {
 
 	describe('stamp()', function () {
@@ -17,23 +20,23 @@ describe('Util', function () {
 		let obj1Id = Util.stamp(obj1);
 		let obj2Id = Util.stamp(obj2);
 		it('first: id must be > 0', function() {
-			nodeassert.ok(obj1Id > 0);
+			assert.ok(obj1Id > 0);
 		});
 
 		it('second: id must be > 0', function() {
-			nodeassert.ok(obj2Id > 0);
+			assert.ok(obj2Id > 0);
 		});
 
 		it('first objects id must be less than id of second object', function() {
-			nodeassert.ok(obj1Id < obj2Id);
+			assert.ok(obj1Id < obj2Id);
 		});
 
 		it('first: id must not change', function () {
-			nodeassert.equal(obj1Id, Util.stamp(obj1));
+			assert.equal(obj1Id, Util.stamp(obj1));
 		});
 
 		it('second: id must not change', function () {
-			nodeassert.equal(obj2Id, Util.stamp(obj2));
+			assert.equal(obj2Id, Util.stamp(obj2));
 		});
 
 	});
@@ -66,97 +69,97 @@ describe('Util', function () {
 
 	describe('trimStart()', function () {
 		it('whole string is prefix', function () {
-			nodeassert.strictEqual(Util.trimStart('ABC', 'ABC'), '');
+			assert.strictEqual(Util.trimStart('ABC', 'ABC'), '');
 		});
 
 		it('whole string shorter than prefix', function () {
-			nodeassert.strictEqual(Util.trimStart('ABC', 'ABCD'), 'ABC');
+			assert.strictEqual(Util.trimStart('ABC', 'ABCD'), 'ABC');
 		});
 
 		it('No prefix', function () {
-			nodeassert.strictEqual(Util.trimStart('XYZ', 'ABCD'), 'XYZ');
+			assert.strictEqual(Util.trimStart('XYZ', 'ABCD'), 'XYZ');
 		});
 
 		it('Multi prefix', function () {
-			nodeassert.strictEqual(Util.trimStart('ABCDABCDXYZ', 'ABCD'), 'ABCDXYZ');
+			assert.strictEqual(Util.trimStart('ABCDABCDXYZ', 'ABCD'), 'ABCDXYZ');
 		});
 	});
 
 	describe('trimEnd()', function () {
 		it('whole string is suffix', function () {
-			nodeassert.strictEqual(Util.trimEnd('ABC', 'ABC'), '');
+			assert.strictEqual(Util.trimEnd('ABC', 'ABC'), '');
 		});
 
 		it('whole string shorter than suffix', function () {
-			nodeassert.strictEqual(Util.trimEnd('ABC', 'ABCD'), 'ABC');
+			assert.strictEqual(Util.trimEnd('ABC', 'ABCD'), 'ABC');
 		});
 
 		it('No suffix', function () {
-			nodeassert.strictEqual(Util.trimEnd('XYZ', 'ABCD'), 'XYZ');
+			assert.strictEqual(Util.trimEnd('XYZ', 'ABCD'), 'XYZ');
 		});
 
 		it('Multi suffix', function () {
-			nodeassert.strictEqual(Util.trimEnd('XYZABCDABCD', 'ABCD'), 'XYZABCD');
+			assert.strictEqual(Util.trimEnd('XYZABCDABCD', 'ABCD'), 'XYZABCD');
 		});
 	});
 
 	describe('trim()', function () {
 		it('trim() with no prefix or suffix argument', function () {
-			nodeassert.strictEqual(Util.trim('\t  \tCONTENT \t\t \t'), 'CONTENT');
+			assert.strictEqual(Util.trim('\t  \tCONTENT \t\t \t'), 'CONTENT');
 		});
 
 		it('whole string is prefix', function () {
-			nodeassert.strictEqual(Util.trim('ABC', 'ABC'), '');
+			assert.strictEqual(Util.trim('ABC', 'ABC'), '');
 		});
 
 		it('whole string shorter than prefix', function () {
-			nodeassert.strictEqual(Util.trim('ABC', 'ABCD'), 'ABC');
+			assert.strictEqual(Util.trim('ABC', 'ABCD'), 'ABC');
 		});
 
 		it('whole string is suffix', function () {
-			nodeassert.strictEqual(Util.trim('ABC', ' ', 'ABC'), '');
+			assert.strictEqual(Util.trim('ABC', ' ', 'ABC'), '');
 		});
 
 		it('whole string shorter than suffix', function () {
-			nodeassert.strictEqual(Util.trim('ABC', '', 'ABCD'), 'ABC');
+			assert.strictEqual(Util.trim('ABC', '', 'ABCD'), 'ABC');
 		});
 
 		it('No prefix', function () {
-			nodeassert.strictEqual(Util.trim('XYZ', 'ABCD'), 'XYZ');
+			assert.strictEqual(Util.trim('XYZ', 'ABCD'), 'XYZ');
 		});
 
 		it('No suffix', function () {
-			nodeassert.strictEqual(Util.trim('XYZ', '', 'ABCD'), 'XYZ');
+			assert.strictEqual(Util.trim('XYZ', '', 'ABCD'), 'XYZ');
 		});
 
 		it('Multi prefix and suffix', function () {
-			nodeassert.strictEqual(Util.trim('ABCDABCDXYZABCDABCD', 'ABCD', 'ABCD'), 'ABCDXYZABCD');
+			assert.strictEqual(Util.trim('ABCDABCDXYZABCDABCD', 'ABCD', 'ABCD'), 'ABCDXYZABCD');
 		});
 
 		it('Overlapping prefix and suffix', function () {
-			nodeassert.strictEqual(Util.trim('ABCDAB', 'ABCD', 'CDAB'), 'AB');
+			assert.strictEqual(Util.trim('ABCDAB', 'ABCD', 'CDAB'), 'AB');
 		});
 	});
 
 	describe('splitWords()', function () {
 		it('split empty string', function () {
-			nodeassert.deepEqual(Util.splitWords(''), ['']);
+			assert.deepEqual(Util.splitWords(''), ['']);
 		});
 
 		it('split string with white spaces', function () {
-			nodeassert.deepEqual(Util.splitWords('  \t  \t\t  '), ['']);
+			assert.deepEqual(Util.splitWords('  \t  \t\t  '), ['']);
 		});
 
 		it('split string with single word', function () {
-			nodeassert.deepEqual(Util.splitWords('ABC'), ['ABC']);
+			assert.deepEqual(Util.splitWords('ABC'), ['ABC']);
 		});
 
 		it('split string with single word surrounded by multi white-spaces', function () {
-			nodeassert.deepEqual(Util.splitWords(' \t \t   \t\t  ABC\t \t\t   \t'), ['ABC']);
+			assert.deepEqual(Util.splitWords(' \t \t   \t\t  ABC\t \t\t   \t'), ['ABC']);
 		});
 
 		it('split string with two words', function () {
-			nodeassert.deepEqual(Util.splitWords(' \t \t   \t\t  ABC\t \t\t   \tXYZ    \t\t   \t'), ['ABC', 'XYZ']);
+			assert.deepEqual(Util.splitWords(' \t \t   \t\t  ABC\t \t\t   \tXYZ    \t\t   \t'), ['ABC', 'XYZ']);
 		});
 	});
 
@@ -188,27 +191,27 @@ describe('Util', function () {
 
 	describe('template()', function () {
 		it('empty string', function () {
-			nodeassert.strictEqual(Util.template('', {}), '');
+			assert.strictEqual(Util.template('', {}), '');
 		});
 
 		it('no substitutions', function () {
-			nodeassert.strictEqual(Util.template('cool apps', {'cool': 32}), 'cool apps');
+			assert.strictEqual(Util.template('cool apps', {'cool': 32}), 'cool apps');
 		});
 
 		it('one key one substitution', function () {
-			nodeassert.strictEqual(Util.template('cool {  app  } abcd', {'cool': 32, 'app': 'calc'}), 'cool calc abcd');
+			assert.strictEqual(Util.template('cool {  app  } abcd', {'cool': 32, 'app': 'calc'}), 'cool calc abcd');
 		});
 
 		it('one key two substitutions', function () {
-			nodeassert.strictEqual(Util.template('A {app   } cool {   app} abcd', {'cool': 32, 'app': 'calc'}), 'A calc cool calc abcd');
+			assert.strictEqual(Util.template('A {app   } cool {   app} abcd', {'cool': 32, 'app': 'calc'}), 'A calc cool calc abcd');
 		});
 
 		it('two keys multiple substitutions', function () {
-			nodeassert.strictEqual(Util.template('A) {  app1}, B) {app2 }, C) { app2}, D) { app1 } ', {'cool': 32, 'app': 'calc', 'app1': 'draw', 'app2': 'impress'}), 'A) draw, B) impress, C) impress, D) draw ');
+			assert.strictEqual(Util.template('A) {  app1}, B) {app2 }, C) { app2}, D) { app1 } ', {'cool': 32, 'app': 'calc', 'app1': 'draw', 'app2': 'impress'}), 'A) draw, B) impress, C) impress, D) draw ');
 		});
 
 		it('key function', function () {
-			nodeassert.strictEqual(Util.template('{fkey }, { key }', {
+			assert.strictEqual(Util.template('{fkey }, { key }', {
 				'key': '1234',
 				'fkey': function(data: any) {
 					return data['key'] + '_999';
@@ -243,7 +246,7 @@ describe('DocUtil', function () {
 			const expected = pair[1];
 			const name = pair[2];
 			it('test ' + name, function() {
-				nodeassert.equal(expected, DocUtil.stripHTML(input, domParser));
+				assert.equal(expected, DocUtil.stripHTML(input, domParser));
 			});
 		});
 	});

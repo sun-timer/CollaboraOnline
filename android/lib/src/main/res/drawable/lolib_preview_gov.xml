@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 党政公文预览缩略图（红头文件风格） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <!-- 发文机关名称（红色大标题，居中） -->
+    <path
+        android:strokeColor="#BE3030"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M35 16H85" />
+    <path
+        android:strokeColor="#BE3030"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M42 24H78" />
+    <!-- 红色分隔线 -->
+    <path
+        android:strokeColor="#BE3030"
+        android:strokeWidth="2"
+        android:pathData="M20 33H100" />
+    <!-- 发文字号（居中） -->
+    <path
+        android:strokeColor="#999999"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M42 42H78" />
+    <!-- 公文标题（居中加粗） -->
+    <path
+        android:strokeColor="#2D2D2D"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M38 54H82" />
+    <!-- 正文行 -->
+    <path
+        android:strokeColor="#B0B0B0"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M25 66H95" />
+    <path
+        android:strokeColor="#B0B0B0"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M25 73H95" />
+    <path
+        android:strokeColor="#B0B0B0"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M25 80H90" />
+    <!-- 落款（右对齐） -->
+    <path
+        android:strokeColor="#2D2D2D"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M60 94H95" />
+    <path
+        android:strokeColor="#2D2D2D"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M68 101H95" />
+</vector>

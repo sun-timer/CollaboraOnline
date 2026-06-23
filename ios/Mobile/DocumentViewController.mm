@@ -26,14 +26,10 @@
 #import "COOLWSD.hpp"
 #import "Log.hpp"
 #import "MobileApp.hpp"
-#import "ProcUtil.hpp"
 #import "SigUtil.hpp"
 #import "Util.hpp"
 #import "Clipboard.hpp"
 #import "CoolURLSchemeHandler.h"
-
-#define LIBO_INTERNAL_ONLY
-#import <COKit/COKit.hxx>
 
 #import "DocumentViewController.h"
 
@@ -547,7 +543,7 @@ static IMP standardImpOfInputAccessoryView = nil;
             // Start another thread to read responses and forward them to the JavaScript
             dispatch_async(dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
                            ^{
-                               ProcUtil::setThreadName("app2js");
+                               Util::setThreadName("app2js");
                                while (true) {
                                    struct pollfd p[2];
                                    p[0].fd = self.document->fakeClientFd;
@@ -594,10 +590,13 @@ static IMP standardImpOfInputAccessoryView = nil;
             // First we simply send the Online C++ parts the URL and the appDocId. This corresponds
             // to the GET request with Upgrade to WebSocket.
             std::string url([[self.document->copyFileURL absoluteString] UTF8String]);
+            p.fd = self.document->fakeClientFd;
+            p.events = POLLOUT;
+            fakeSocketPoll(&p, 1, -1);
 
-            // This is read in the code in ClientRequestDispatcher::handleIncomingMessage()
+            // This is read in the iOS-specific code in ClientRequestDispatcher::handleIncomingMessage() in COOLWSD.cpp
             std::string message(url + " " + std::to_string(self.document->appDocId));
-            fakeSocketWriteQueue(self.document->fakeClientFd, message.c_str(), message.size());
+            fakeSocketWrite(self.document->fakeClientFd, message.c_str(), message.size());
 
             return;
         } else if ([message.body isEqualToString:@"BYE"]) {

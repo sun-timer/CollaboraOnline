@@ -158,6 +158,7 @@ interface AppInterface {
 		pivotTableFilterCell: any; // The cell of the current pivot table filter popup.
 		isRTL(): boolean;
 		isSelectedPartSheetView(): boolean;
+		isSelectedPartSheetViewSynced(): boolean;
 	};
 	impress: {
 		partList: any; // Info for parts.
@@ -195,7 +196,7 @@ interface AppInterface {
 	colorPalettes: any; // TODO declare according to Widget.ColorPicker.ts
 	colorNames: any; // TODO declare according to Widget.ColorPicker.ts
 	console: Console;
-	map: MapInterface; // TODO should be window.L.Map
+	map: any; // TODO should be window.L.Map
 	// file defined in: src/docstate.ts
 	file: {
 		editComment: boolean;
@@ -334,11 +335,9 @@ interface Window {
 		get(name: string): string;
 	};
 	mode: {
-		isSmallScreenDevice(): boolean;
+		isMobile(): boolean;
 		isDesktop(): boolean;
 		isTablet(): boolean;
-		isCODesktop(): boolean;
-		isNewDocument(): boolean;
 		getDeviceFormFactor(): string;
 	};
 	prefs: {
@@ -353,7 +352,6 @@ interface Window {
 	};
 	KeyboardShortcuts: KeyboardShortcuts;
 
-	starterScreen: boolean;
 	allowUpdateNotification: boolean;
 	autoShowWelcome: boolean;
 	bundlejsLoaded: boolean;
@@ -363,7 +361,6 @@ interface Window {
 	enableAccessibility: boolean;
 	enableExperimentalFeatures: boolean;
 	enableDebug: boolean;
-	simulateError: (name: string) => boolean;
 	enableMacrosExecution: boolean;
 	enableWelcomeMessage: boolean;
 	expectedServerId: string;
@@ -380,10 +377,7 @@ interface Window {
 	userInterfaceMode: string;
 	ThisIsAMobileApp: boolean;
 	ThisIsTheEmscriptenApp: boolean;
-	ThisIsTheiOSApp: boolean;
-	ThisIsTheMacOSApp: boolean;
-	ThisIsTheQtApp: boolean;
-	ThisIsTheWindowsApp: boolean;
+	ThisIsTheGtkApp: boolean;
 	wopiSrc: string;
 	zoteroEnabled: boolean;
 	accessToken: string;
@@ -402,7 +396,6 @@ interface Window {
 	errorMessages: ErrorMessages;
 	queueMsg: MessageInterface[];
 
-	makeWopiCoolWsUrl(path: string, docUrlParams: string): string;
 	makeWsUrlWopiSrc(
 		path: string,
 		docUrlParams: string,
@@ -427,9 +420,6 @@ interface Window {
 	getAccessibilityState(): boolean;
 	makeClientVisibleArea(): string;
 	postMobileDebug(msg: string): void;
-
-	removeAccessKey(text: string): string;
-	contextMenuWizard: boolean;
 }
 
 // For localization

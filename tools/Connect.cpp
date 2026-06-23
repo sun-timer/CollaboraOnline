@@ -9,18 +9,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * WebSocket connection utility for connecting to COOL server.
- * Functions: connectToURL(), saveResponse()
- */
-
 #include <config.h>
 
-#include <common/Common.hpp>
-#include <common/Log.hpp>
-#include <common/Protocol.hpp>
-#include <common/Util.hpp>
-#include <tools/COOLWebSocket.hpp>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <iostream>
+#include <mutex>
+#include <sysexits.h>
+#include <thread>
 
 #include <Poco/Net/AcceptCertificateHandler.h>
 #include <Poco/Net/Context.h>
@@ -36,13 +33,11 @@
 #include <Poco/URI.h>
 #include <Poco/Util/Application.h>
 
-#include <cstdlib>
-#include <cstring>
-#include <fstream>
-#include <iostream>
-#include <mutex>
-#include <sysexits.h>
-#include <thread>
+#include <Common.hpp>
+#include <Protocol.hpp>
+#include "COOLWebSocket.hpp"
+#include <Log.hpp>
+#include <Util.hpp>
 
 using namespace COOLProtocol;
 

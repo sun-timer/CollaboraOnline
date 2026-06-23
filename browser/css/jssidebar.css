@@ -1,7 +1,7 @@
 /* general */
 
 .sidebar * {
-	font-family: var(--cool-font);
+	font-family: var(--jquery-ui-font);
 	text-transform: none !important;
 	color: var(--color-main-text);
 }
@@ -188,7 +188,6 @@ div.sidebar.ui-grid .checkbutton.sidebar,
 #gradientstyle > .sidebar.ui-listbox,
 #gradangle > .sidebar.spinfield,
 #fontsizecombobox .sidebar.ui-listbox,
-#fontsizecombobox .sidebar.ui-combobox,
 #TableEditPanel .sidebar.spinfieldcontainer input,
 #ParaPropertyPanel .sidebar.spinfieldcontainer input {
 	min-width: 87px;
@@ -196,9 +195,7 @@ div.sidebar.ui-grid .checkbutton.sidebar,
 }
 
 #fontnamecombobox > .sidebar.jsdialog.ui-listbox,
-#fontnamecombobox > .sidebar.jsdialog.ui-combobox,
-#applystyle > .sidebar.jsdialog.ui-listbox,
-#applystyle > .sidebar.jsdialog.ui-combobox {
+#applystyle > .sidebar.jsdialog.ui-listbox {
 	width: 198px;
 }
 
@@ -612,7 +609,7 @@ span.jsdialog.sidebar.ui-treeview-notexpandable {
 }
 
 #QuickFindPanel .ui-treeview-cell-text-content.page-divider {
-	/* TODO The treeview entry should have disabled listeners for these items */
+	/* TODO The treeview entry should have disabled listenners for these items */
 	color: var(--color-text-lighter);
 }
 

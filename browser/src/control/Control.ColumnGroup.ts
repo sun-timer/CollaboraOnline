@@ -84,13 +84,38 @@ export class ColumnGroup extends GroupBase {
 	drawGroupControl (group: GroupEntry): void {
 		let startX = this.getRelativeX(group.startPos);
 		let startY = this._levelSpacing + (this._groupHeadSize + this._levelSpacing) * group.level;
-		startX = Math.round(startX);
-		startY = Math.round(startY);
 		const strokeColor = this.getColors().strokeColor;
 		const endX = this.getEndPosition(group.endPos);
 
 		if (this.isGroupHeaderVisible(startX, group.startPos)) {
-			this.drawGroupBoxes(startX, startY, group.hidden);
+			// draw head
+			this.context.beginPath();
+			this.context.fillStyle = this.backgroundColor;
+			this.context.fillRect(this.transformRectX(startX, this._groupHeadSize), startY, this._groupHeadSize, this._groupHeadSize);
+			this.context.strokeStyle = strokeColor;
+			this.context.lineWidth = 1.0;
+			this.context.strokeRect(this.transformRectX(startX + 0.5, this._groupHeadSize), startY + 0.5, this._groupHeadSize, this._groupHeadSize);
+
+			if (!group.hidden) {
+				// draw '-'
+				this.context.beginPath();
+				this.context.moveTo(this.transformX(startX + this._groupHeadSize * 0.25), startY + this._groupHeadSize * 0.5 + 0.5);
+				this.context.lineTo(this.transformX(startX + this._groupHeadSize * 0.75 + app.roundedDpiScale), startY + this._groupHeadSize * 0.5 + 0.5);
+				this.context.stroke();
+			}
+			else {
+				// draw '+'
+				this.context.beginPath();
+				this.context.moveTo(this.transformX(startX + this._groupHeadSize * 0.25), startY + this._groupHeadSize * 0.5 + 0.5);
+				this.context.lineTo(this.transformX(startX + this._groupHeadSize * 0.75 + app.roundedDpiScale), startY + this._groupHeadSize * 0.5 + 0.5);
+
+				this.context.stroke();
+
+				this.context.moveTo(this.transformX(startX + this._groupHeadSize * 0.50 + 0.5), startY + this._groupHeadSize * 0.25);
+				this.context.lineTo(this.transformX(startX + this._groupHeadSize * 0.50 + 0.5), startY + this._groupHeadSize * 0.75 + app.roundedDpiScale);
+
+				this.context.stroke();
+			}
 		}
 
 		if (!group.hidden && endX > this._cornerHeaderWidth + this._groupHeadSize && endX > startX) {
@@ -102,9 +127,9 @@ export class ColumnGroup extends GroupBase {
 			startX = Math.round(startX) + 1;
 			startY = Math.round(startY);
 			this.context.strokeStyle = strokeColor;
-			this.context.lineWidth = 1.0;
-			this.context.moveTo(this.transformX(startX) + 0.5, startY + 0.5);
-			this.context.lineTo(this.transformX(endX - app.roundedDpiScale) + 0.5, startY + 0.5);
+			this.context.lineWidth = 2.0;
+			this.context.moveTo(this.transformX(startX), startY);
+			this.context.lineTo(this.transformX(endX - app.roundedDpiScale), startY);
 			this.context.stroke();
 		}
 	}
@@ -126,7 +151,7 @@ export class ColumnGroup extends GroupBase {
 		ctx.font = this._getFont();
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		ctx.fillText((level + 1).toString(), this.transformX(startX + (ctrlHeadSize / 2)), startY + (ctrlHeadSize / 1.9));
+		ctx.fillText((level + 1).toString(), this.transformX(startX + (ctrlHeadSize / 2)), startY + (ctrlHeadSize / 2) + 2 * app.dpiScale);
 	}
 
 	// Handle user interaction.

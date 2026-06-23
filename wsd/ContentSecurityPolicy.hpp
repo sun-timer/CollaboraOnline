@@ -9,16 +9,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Content Security Policy header generation for HTTP responses.
- * Classes: ContentSecurityPolicy
- */
-
 #pragma once
 
-#include <common/Log.hpp>
-#include <common/StringVector.hpp>
-#include <common/Util.hpp>
+#include "Log.hpp"
+#include "StringVector.hpp"
+#include "Util.hpp"
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -49,7 +44,7 @@ public:
         // with a char delimiter stops at the first newline.
         std::string cspLine = csp;
         std::replace(cspLine.begin(), cspLine.end(), '\n', ' ');
-        StringVector tokens = StringVector::tokenize(std::move(cspLine), ';');
+        StringVector tokens = StringVector::tokenize(cspLine, ';');
         for (std::size_t i = 0; i < tokens.size(); ++i)
         {
             const std::string token = Util::trimmed(tokens[i]);

@@ -42,22 +42,6 @@ function _createEntryImage(
 		img.alt = '';
 	}
 
-	// FIXME: not beautiful - would be great to know the dimensions
-	// for all of these up-front and do this nicely @ dpiscale for
-	// all icon views.
-	if (
-		parent &&
-		parent.parentElement &&
-		parent.parentElement.id &&
-		parent.parentElement.id.startsWith('stylesview')
-	) {
-		img.addEventListener('load', () => {
-			const ratio = window.devicePixelRatio || 1;
-			img.style.width = img.naturalWidth / ratio + 'px';
-			img.style.height = img.naturalHeight / ratio + 'px';
-		});
-	}
-
 	if (entryData.tooltip) img.title = entryData.tooltip;
 	else if (entryData.text) img.title = entryData.text;
 	else img.title = '';
@@ -98,20 +82,11 @@ function _iconViewEntry(
 	const ariaStateAttr = isMultiSelect ? 'aria-selected' : 'aria-checked';
 
 	if (entry.separator && entry.separator === true) {
-		if (entry.text) {
-			const label = window.L.DomUtil.create(
-				'div',
-				builder.options.cssClass + ' ui-iconview-separator label',
-				parentContainer,
-			);
-			label.innerText = entry.text;
-		} else {
-			window.L.DomUtil.create(
-				'hr',
-				builder.options.cssClass + ' ui-iconview-separator',
-				parentContainer,
-			);
-		}
+		window.L.DomUtil.create(
+			'hr',
+			builder.options.cssClass + ' ui-iconview-separator',
+			parentContainer,
+		);
 		return;
 	}
 
@@ -224,6 +199,35 @@ function _iconViewEntry(
 		}
 		builder._preventDocumentLosingFocusOnClick(entryContainer);
 
+		const getUNOKeyCodeWithModifiers = function (
+			e: KeyboardEvent,
+			builder: any,
+			app: any,
+		): number {
+			let keyCode = e.keyCode;
+
+			const shift =
+				keyCode === builder.map.keyboard.keyCodes.SHIFT
+					? app.UNOModifier.SHIFT
+					: 0;
+			const ctrl =
+				keyCode === builder.map.keyboard.keyCodes.CTRL || e.metaKey
+					? app.UNOModifier.CTRL
+					: 0;
+			const alt =
+				keyCode === builder.map.keyboard.keyCodes.ALT ? app.UNOModifier.ALT : 0;
+
+			const modifier = shift | ctrl | alt;
+
+			if (modifier) {
+				keyCode = e.key.toUpperCase().charCodeAt(0);
+				keyCode = builder.map.keyboard._toUNOKeyCode(keyCode);
+				keyCode |= modifier;
+			}
+
+			return keyCode;
+		};
+
 		const isInNotebookbar = builder.options.cssClass === 'notebookbar';
 		entryContainer.addEventListener('keydown', function (e: KeyboardEvent) {
 			if (e.key === ' ' || e.code === 'Space')
@@ -249,7 +253,7 @@ function _iconViewEntry(
 				parentContainer.builderCallback(
 					'iconview',
 					'keypress',
-					JSDialog.getUNOKeyCodeWithModifiers(e, builder.map),
+					getUNOKeyCodeWithModifiers(e, builder, app),
 					builder,
 				);
 			}
@@ -259,7 +263,7 @@ function _iconViewEntry(
 			parentContainer.builderCallback(
 				'iconview',
 				'keyrelease',
-				JSDialog.getUNOKeyCodeWithModifiers(e, builder.map),
+				getUNOKeyCodeWithModifiers(e, builder, app),
 				builder,
 			);
 		});
@@ -287,12 +291,8 @@ JSDialog.iconView = function (
 		iconview.setAttribute('role', 'radiogroup');
 	}
 
-	if (data.labelledBy) {
-		const ids = Array.isArray(data.labelledBy)
-			? data.labelledBy.join(' ')
-			: data.labelledBy;
-		iconview.setAttribute('aria-labelledby', ids);
-	}
+	if (data.labelledBy)
+		iconview.setAttribute('aria-labelledby', data.labelledBy);
 
 	const disabled = data.enabled === false;
 	if (disabled) window.L.DomUtil.addClass(iconview, 'disabled');
@@ -336,8 +336,8 @@ JSDialog.iconView = function (
 			});
 
 		const entry =
-			position >= 0 && iconview.children.length > position
-				? iconview.children[position]
+			position >= 0 && iconview?.children.length > position
+				? iconview?.children[position]
 				: null;
 
 		iconview.updateSelection(position);
@@ -457,13 +457,10 @@ JSDialog.iconView = function (
 
 	app.layoutingService.appendLayoutingTask(() => {
 		const shouldSelectFirstEntry =
-			data.entries?.length > 0
+			data?.entries?.length > 0
 				? !data.entries.some((entry) => entry.selected === true)
 				: false;
-		if (shouldSelectFirstEntry) {
-			const firstValid = data.entries.find((entry) => !entry.separator);
-			if (firstValid) firstValid.selected = true;
-		}
+		if (shouldSelectFirstEntry) data.entries[0].selected = true;
 
 		for (const i in data.entries) {
 			_iconViewEntry(iconview, data, data.entries[i], builder);

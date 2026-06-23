@@ -9,17 +9,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for user preset functionality.
- */
+#include "config.h"
 
-#include <config.h>
-
-#include <WopiTestServer.hpp>
-#include <Unit.hpp>
-#include <lokassert.hpp>
-#include <testlog.hpp>
-#include <common/FileUtil.hpp>
+#include "WopiTestServer.hpp"
+#include "Unit.hpp"
+#include "lokassert.hpp"
+#include "testlog.hpp"
+#include "FileUtil.hpp"
 #include <wsd/DocumentBroker.hpp>
 #include <wsd/Process.hpp>
 

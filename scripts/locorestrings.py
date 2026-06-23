@@ -10,7 +10,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-import json
 import os
 import polib
 import sys
@@ -110,10 +109,6 @@ if __name__ == "__main__":
         poFile = dir + lang + '/svtools/messages.po'
         extractFromPo(poFile, ["STR_ARR_SVT_LANGUAGE_TABLE"], translations)
 
-        # extract 'Info'
-        poFile = dir + lang + '/sfx2/messages.po'
-        extractFromPo(poFile, ["SFX_CB_PROPERTY_STRINGARRAY"], translations)
-
         f = open(onlineDir + '/browser/l10n/locore/' + lang + '.json', 'w', encoding='utf-8')
         f.write('{\n')
 
@@ -123,8 +118,8 @@ if __name__ == "__main__":
                 f.write(',\n')
             else:
                 writeComma = True
-            f.write(json.dumps(key, ensure_ascii=False) + ':'
-                    + json.dumps(translations[key], ensure_ascii=False))
+            f.write(
+                ('"' + key + '":"' + translations[key] + '"'))
 
         f.write('\n}\n')
 

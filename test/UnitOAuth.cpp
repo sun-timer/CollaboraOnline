@@ -9,19 +9,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Unit test for OAuth authentication functionality.
- */
-
 #include <config.h>
 
 #include <HttpRequest.hpp>
 #include <WopiTestServer.hpp>
-#include <common/Log.hpp>
+#include <Log.hpp>
 #include <Unit.hpp>
 #include <UnitHTTP.hpp>
 #include <helpers.hpp>
-#include <common/Util.hpp>
+#include <Util.hpp>
 
 #include <Poco/Net/HTTPRequest.h>
 #include <Poco/Net/OAuth20Credentials.h>

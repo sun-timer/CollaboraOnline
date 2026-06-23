@@ -33,7 +33,7 @@ class ShapeHandleScalingSubSection extends CanvasSectionObject {
 		this.sectionProperties.initialAngle = null; // Initial angle of the point (handle) to the center in radians.
 		this.sectionProperties.distanceToCenter = null; // Distance to center.
 		this.sectionProperties.cropModeEnabled = cropModeEnabled;
-		this.sectionProperties.cropCursor = 'url(' + app.LOUtil.getURL("images/cursors/crop.svg") + ') 8 8, auto';
+		this.sectionProperties.cropCursor = 'url(' + app.LOUtil.getURL("images/cursors/crop.png") + ') 8 8, auto';
 
 		this.setMousePointerType();
 
@@ -177,13 +177,10 @@ class ShapeHandleScalingSubSection extends CanvasSectionObject {
 	}
 
 	private doWeKeepRatio(e: MouseEvent) {
-		if (this.sectionProperties.cropModeEnabled)
-			return false;
-
 		let keep = e.ctrlKey && e.shiftKey;
 
 		// For images, the keepRatio shortcut works the opposite way.
-		if (app.map.context && app.map.context.context === 'Graphic')
+		if (app.map.context.context === 'Graphic')
 			keep = !keep;
 
 		return keep;

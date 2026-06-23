@@ -9,32 +9,34 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * WOPI test server implementation for unit tests.
- */
-
 #pragma once
 
-#include <common/JsonUtil.hpp>
-#include <common/Log.hpp>
-#include <common/Protocol.hpp>
-#include <common/StringVector.hpp>
-#include <common/Unit.hpp>
-#include <common/Util.hpp>
-#include <net/HttpRequest.hpp>
+#include "Protocol.hpp"
+#include "HttpRequest.hpp"
+#include "helpers.hpp"
+#include "Log.hpp"
+#include "Unit.hpp"
+#include "Util.hpp"
+#include "UnitWSDClient.hpp"
+#include "StringVector.hpp"
+#include "lokassert.hpp"
 
-#include <test/UnitWSDClient.hpp>
-#include <test/helpers.hpp>
-#include <test/lokassert.hpp>
-
-#include <Poco/Net/HTTPRequest.h>
+#include <JsonUtil.hpp>
 #include <Poco/URI.h>
 #include <Poco/Util/LayeredConfiguration.h>
 
 #include <cctype>
 #include <sstream>
-#include <string_view>
 #include <vector>
+
+namespace Poco
+{
+namespace Net
+{
+class HTTPRequest;
+}
+
+} // namespace Poco
 
 /// Simulates a WOPI server for testing purposes.
 /// Currently only serves one file contents.
@@ -199,7 +201,7 @@ protected:
 
         if (filename.size() == 1 && std::isdigit(filename[0]))
         {
-            const auto number = NumUtil::stoi(filename);
+            const auto number = std::stoi(filename);
             if (number >= 1 && number <= 9)
             {
                 // Fake filename, depends on implicit filename.
@@ -232,13 +234,13 @@ protected:
     }
 
     /// Returns true iff @uriPath is a Wopi path but not to the contents.
-    static bool isWopiInfoRequest(const std::string_view uriPath)
+    static bool isWopiInfoRequest(const std::string& uriPath)
     {
         return uriPath.starts_with(getURIRootPath()) && !uriPath.ends_with("/contents");
     }
 
     /// Returns true iff @uriPath is a Wopi path to the contents of a file.
-    static bool isWopiContentRequest(const std::string_view uriPath)
+    static bool isWopiContentRequest(const std::string& uriPath)
     {
         return uriPath.starts_with(getURIRootPath()) && uriPath.ends_with("/contents");
     }
@@ -251,11 +253,6 @@ protected:
 
         // Reset to default.
         config.setBool("storage.wopi.is_legacy_server", false);
-
-        // Reduce the save retry time.
-        config.setUInt("per_document.min_time_between_saves_ms", 100);
-        // Reduce the upload retry time.
-        config.setUInt("per_document.min_time_between_uploads_ms", 500);
     }
 
     /// Returns the default CheckFileInfo json.
@@ -550,15 +547,20 @@ protected:
     {
         Poco::URI uriReq(Uri::decode(request.getURI()));
 
-        TST_LOG("FakeWOPIHost: " << request.getMethod() << " request URI [" << uriReq.toString()
-                                 << "]: " <<
-                [&](auto& log)
-                {
-                    Util::joinPair(log, request, " / ");
-                } << (UnitBase::get().isFinished() ? " - Ignoring as test has finished" : ""));
+        {
+            std::ostringstream oss;
+            oss << "FakeWOPIHost: " << request.getMethod() << " request URI [" << uriReq.toString()
+                << "]:\n";
+            Util::joinPair(oss, request, " / ");
 
-        if (UnitBase::get().isFinished())
-            return false;
+            if (UnitBase::get().isFinished())
+                oss << "\nIgnoring as test has finished";
+
+            TST_LOG(oss.str());
+
+            if (UnitBase::get().isFinished())
+                return false;
+        }
 
         assertTargetTest(uriReq);
 

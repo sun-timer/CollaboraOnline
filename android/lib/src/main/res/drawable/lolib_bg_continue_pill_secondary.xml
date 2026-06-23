@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AI续写完成态「重写生成」胶囊：浅灰底（≈black/0.06）+ 圆角 35dp -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#F0F0F0" />
+    <corners android:radius="35dp" />
+</shape>

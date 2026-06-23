@@ -10,12 +10,12 @@
  */
 
 #define LIBO_INTERNAL_ONLY
-#include <COKit/COKit.hxx>
+#include <LibreOfficeKit/LibreOfficeKit.hxx>
 
 extern const char *user_name;
 
 extern int coolwsd_server_socket_fd;
 
-extern COKit *lo_kit;
+extern LibreOfficeKit *lo_kit;
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

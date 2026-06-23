@@ -65,6 +65,9 @@ TRACEEVENT name=<name> ph=<letter> ts=<timestamp> <more parameters>... [ args=<J
     ph is one of the following, and the rest of the parameters depend
     on what it is.
 
+    args is an optional parameter, and its value is a JSON string
+    where the keys and values are strings with no spaces in them.
+
     'i': An "Instant" event.
 
     'S', 'F': The start and finish of an "Async" event. In addition to
@@ -74,9 +77,6 @@ TRACEEVENT name=<name> ph=<letter> ts=<timestamp> <more parameters>... [ args=<J
     'X': A "complete" event. The "dur" parameter is the duration
     between the beginning of the thing being timed and the time when
     the 'X' message was emitted, also in microseconds.
-
-    args is an optional parameter, and its value is a JSON string
-    where the keys and values are strings with no spaces in them.
 
 tileprocessed wids=<wid1,wid2,...>
 
@@ -106,20 +106,6 @@ paste mimetype=<mimeType>
 <binaryPasteData>
 
     Paste content at the current cursor position.
-
-aichat: <json>
-
-    Send chat messages to the AI assistant. The JSON payload contains:
-    - messages: Array of chat messages in OpenAI format [{role, content}, ...]
-    - requestId: Unique identifier for matching the response
-    The server proxies the request to the configured AI provider and returns
-    the result via 'aichatresult' message. If the AI provider returns an
-    image, the result will contain imageData instead of content.
-
-aichatcancel: <requestId>
-
-    Cancel an in-progress AI chat request. <requestId> is the identifier
-    from the original 'aichat' message.
 
 insertfile name=<name> type=<type>
 
@@ -193,6 +179,11 @@ ping
 
     requests a 'pong' server message.
 
+renderfont font=<font> char=<characters>
+
+    requests the rendering of the given font.
+    The font parameter is URL encoded
+    The char parameter is URL encoded
 
 resetselection
 
@@ -392,25 +383,13 @@ commandvalues command=<UNOCommand>[?param1=value1&param2=value2...]
         - <UNOCommand> is the command to be executed (e.g., .uno:ViewAnnotations).
         - Optional query parameters can be appended to specify additional command details.
 
-    .uno:FormulaDepChain (Calc only)
-        Requests the formula dependency chain for the currently selected cell.
-        Returns a JSON object with:
-        - hasError: boolean indicating if the cell has a formula error
-        - reason: if no error, one of "not_formula" or "no_error"
-        - cell: object with address, sheet, formula, error, errorCode
-        - dependencies: array of dependency objects (recursive), each with:
-          - address, sheet, type (formula/value/string/empty/range/circular)
-          - For formulas: formula text, optional error/value, nested dependencies
-          - For values/strings: the cell value
-        Maximum recursion depth: 10 levels. Maximum cells: 50.
-
 completefunction name=<FunctionName>
 
     Requests the execution of a spreadsheet function in MobileWizard.Clients can request to complete a function name partially typed in the formula input box.
 
     <FunctionName> is the name of the function to be applied, such as SUM, MIN, AVG, MAX, etc.
 
-    This command allows the client to request calculation functions dynamically.
+This command allows the client to request calculation functions dynamically.
 
 dialogevent <windowId> { "id": "<objectId>", "cmd": "<eventType>", "data": "<data>", "type": "<objectType>" }
 
@@ -549,8 +528,8 @@ lokitversion <JSON string>
     JSON string contains version information in format:
     {ProductName: <>, ProductVersion: <>, ProductExtension: <>, BuildId: <>}
 
-    Eg: {"ProductName": "Collabora Office",
-         "ProductVersion": "26.04",
+    Eg: {"ProductName": "LibreOffice",
+         "ProductVersion": "5.3",
          "ProductExtension": ".0.0.alpha0",
          "BuildId": "<full 40 char git hash>"}
 
@@ -600,7 +579,7 @@ error: cmd=<command> kind=<kind> [code=<error_code>] [params=1,2,3,...,N]
     <kind> is some single-word classification
 
     <code> (when provided) further specifies the error as forwarded from
-    Collabora Office
+    LibreOffice
 
 close: <reason>
 
@@ -700,15 +679,6 @@ complexselection:
     Complex selections with embedded objects and large text selections need special export handling.
     This response signifies that the payload is large and/or complex and needs to be retrieved via the clipboard API.
 
-aichatresult:<json>
-
-    Response from the AI chat assistant. The JSON payload contains:
-    - success: Boolean indicating if the request succeeded
-    - content: The AI response text (on success, for text responses)
-    - imageData: Base64-encoded PNG image data (on success, for image responses)
-    - error: Error message (on failure)
-    - requestId: The request identifier from the original 'aichat' message
-
 tile: part=<partNumber> width=<width> height=<height> tileposx=<xpos> tileposy=<ypos> tilewidth=<tileWidth> tileheight=<tileHeight> [timestamp=<time>] [wid=<wireId>]
 <binaryPngImage>
 
@@ -745,7 +715,7 @@ invalidatecursor: <payload>
 
     The communication between the parent process (the one keeping open the
     Websocket connections to the clients) and a child process (handling
-    one document through COKit) uses the same protocol, with
+    one document through LibreOfficeKit) uses the same protocol, with
     the following additions and changes:
 
 unocommandresult: <payload>
@@ -1315,7 +1285,7 @@ lokitversion <JSON string>
     JSON string contains version information in format:
     {ProductName: <>, ProductVersion: <>, ProductExtension: <>, BuildId: <>}
 
-    Eg: {"ProductName": "Collabora Office",
-         "ProductVersion": "26.04",
+    Eg: {"ProductName": "LibreOffice",
+         "ProductVersion": "5.3",
          "ProductExtension": ".0.0.alpha0",
          "BuildId": "<full 40 char git hash>"}

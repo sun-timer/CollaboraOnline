@@ -9,23 +9,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * Dispatches incoming client HTTP/WebSocket requests to appropriate handlers.
- * Classes: ClientRequestDispatcher
- */
-
 #pragma once
 
-#include <net/Socket.hpp>
-#include <wsd/RequestDetails.hpp>
-#include <wsd/RequestVettingStation.hpp>
+#include <RequestVettingStation.hpp>
+#include <RequestDetails.hpp>
+#include <Socket.hpp>
 #if !MOBILEAPP
 #include <wopi/WopiProxy.hpp>
 #endif // !MOBILEAPP
 
 #include <cstdint>
-#include <memory>
 #include <string>
+#include <memory>
 
 /// Handles incoming connections and dispatches to the appropriate handler.
 class ClientRequestDispatcher final : public SimpleSocketHandler
@@ -110,8 +105,11 @@ private:
     /// @return true if request has been handled synchronously and response sent, otherwise false
     static bool handleMediaRequest(const Poco::Net::HTTPRequest& request,
                                    SocketDisposition& /*disposition*/,
-                                   const std::shared_ptr<StreamSocket>& socket,
-                                   bool bVTT);
+                                   const std::shared_ptr<StreamSocket>& socket);
+
+    static std::string getContentType(const std::string& fileName);
+
+    static bool isSpreadsheet(const std::string& fileName);
 
     /// @return true if request has been handled synchronously and response sent, otherwise false
     bool handlePostRequest(const RequestDetails& requestDetails,

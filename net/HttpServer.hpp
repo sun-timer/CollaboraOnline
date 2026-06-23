@@ -9,15 +9,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * HTTP server session for handling asynchronous responses with range support.
- * Classes: http::ServerSession
- */
-
 #pragma once
-
-#include <common/NumUtil.hpp>
-#include <net/HttpRequest.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -25,6 +17,8 @@
 #include <iostream>
 #include <string>
 #include <utility>
+
+#include <net/HttpRequest.hpp>
 
 namespace http
 {
@@ -149,44 +143,55 @@ public:
             endString = range.substr(dashPos + 1);
         }
 
+        int start = 0;
+        int end = -1;
+        bool startIsSuffix = false;
+
         if (startString.empty())
         {
             // Could be a suffix
-            auto [start, success] = NumUtil::i32FromString(endString);
-            const bool startIsSuffix = success;
-            if (!success)
-                start = 0;
+            try
+            {
+                start = std::stoi(endString);
+                startIsSuffix = true;
+            }
+            catch (std::invalid_argument&)
+            {
+            }
+            catch (std::out_of_range&)
+            {
+            }
 
-            constexpr int end = -1;
             return asyncUpload(std::move(fromFile), std::move(responseHeaders), start, end,
                                startIsSuffix, http::StatusCode::PartialContent);
         }
 
-        auto [start, startOk] = NumUtil::i32FromString(startString);
-        auto end = NumUtil::i32FromString(endString, -1);
-        if (!startOk)
+        try
         {
-            start = 0;
-            end = -1;
+            start = std::stoi(std::string(startString));
+            end = std::stoi(endString) + 1;
         }
-        else if (end >= 0)
+        catch (std::invalid_argument&)
         {
-            ++end; // The end is exclusive in our implementation.
+        }
+        catch (std::out_of_range&)
+        {
         }
 
         // FIXME: does not support ranges that specify multiple comma-separated values
+
         return asyncUpload(std::move(fromFile), std::move(responseHeaders), start, end,
-                           /*startIsSuffix=*/false, http::StatusCode::PartialContent);
+                           startIsSuffix, http::StatusCode::PartialContent);
     }
 
-    int getStart() const
+    int getStart()
     {
         if (_startIsSuffix)
             return _size - _start;
         return _start;
     }
 
-    int getEnd() const
+    int getEnd()
     {
         if (_startIsSuffix)
             return _size;
@@ -199,7 +204,7 @@ public:
     }
 
     /// Calculate how much we're going to send based on the file size and the range
-    int getSendSize() const
+    int getSendSize()
     {
         int end = getEnd();
         int start = getStart();
@@ -210,7 +215,7 @@ public:
         return end - start;
     }
 
-    void asyncShutdown() const
+    void asyncShutdown()
     {
         LOG_TRC("asyncShutdown");
         std::shared_ptr<StreamSocket> socket = _socket.lock();
@@ -280,7 +285,7 @@ private:
         }
     }
 
-    void shutdown(bool /*goingAway*/, const std::string_view /*statusMessage*/) override
+    void shutdown(bool /*goingAway*/, const std::string& /*statusMessage*/) override
     {
         LOG_TRC("shutdown");
     }
@@ -330,24 +335,20 @@ private:
         std::shared_ptr<StreamSocket> socket = _socket.lock();
         if (socket)
         {
-            Buffer& out = socket->getOutBuffer();
+            const Buffer& out = socket->getOutBuffer();
             LOG_TRC("performWrites: " << out.size() << " bytes, capacity: " << capacity);
 
-            while (_fd >= 0)
+            while (_fd >= 0 && capacity > 0)
             {
-                const auto provisioned = std::min<size_t>(capacity, getEnd() - _pos);
-                if (provisioned <= 0)
-                    break;
-
-                char* buffer = out.provision(provisioned);
+                //FIXME: replace with in-place read into the output buffer.
+                char buffer[64 * 1024];
+                const auto size = std::min({ sizeof(buffer), capacity, (size_t)(getEnd() - _pos) });
                 int n;
-                while ((n = ::read(_fd, buffer, provisioned)) < 0 && errno == EINTR)
+                while ((n = ::read(_fd, buffer, size)) < 0 && errno == EINTR)
                     LOG_TRC("EINTR reading from " << _filename);
 
                 if (n <= 0 || _pos >= getEnd())
                 {
-                    out.commit(provisioned, 0); // Rollback, nothing written.
-
                     if (n >= 0)
                     {
                         LOG_TRC("performWrites finished uploading");
@@ -363,8 +364,7 @@ private:
                     break;
                 }
 
-                out.commit(provisioned, n);
-                socket->writeOutgoingData();
+                socket->send(buffer, n);
                 _pos += n;
                 LOG_ASSERT(static_cast<std::size_t>(n) <= capacity);
                 capacity -= n;
@@ -389,8 +389,8 @@ private:
         _connected = false;
     }
 
-    int sendTextMessage(std::string_view, bool) const override { return 0; }
-    int sendBinaryMessage(std::string_view, bool) const override { return 0; }
+    int sendTextMessage(const char*, const size_t, bool) const override { return 0; }
+    int sendBinaryMessage(const char*, const size_t, bool) const override { return 0; }
 
     std::string getMimeType() const
     {

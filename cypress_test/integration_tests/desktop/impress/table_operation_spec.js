@@ -11,10 +11,6 @@ describe(['tagdesktop'], 'Table operations', function() {
 		cy.viewport(1920,1080);
 
 		desktopHelper.switchUIToNotebookbar();
-
-		cy.getFrameWindow().then(function(win) {
-			this.win = win;
-		});
 	});
 
 	function retriggerNewSvgForTableInTheCenter() {
@@ -23,17 +19,23 @@ describe(['tagdesktop'], 'Table operations', function() {
 		helper.typeIntoDocument('{ctrl}{a}');
 	}
 
-	function selectFullTable(win) {
-		impressHelper.selectTableInTheCenter(win);
+	function selectFullTable() {
+		helper.typeIntoDocument('{ctrl}{a}');
 
+		impressHelper.selectTableInTheCenter();
 		cy.cGet('.table-row-resize-marker')
 			.should('have.length', 3);
 		cy.cGet('.table-column-resize-marker')
 			.should('have.length', 3); // One is invisible but it is included here.
+
+		// Click doesn't work without wait
+		cy.wait(500);
+		cy.cGet('text.SVGTextShape').click({force: true});
+
 	}
 
 	it('Insert Row Before', function() {
-		selectFullTable(this.win);
+		selectFullTable();
 		desktopHelper.getNbIcon('InsertRowsBefore', 'Table').click();
 		cy.cGet('.table-row-resize-marker').should('have.length', 4);
 		retriggerNewSvgForTableInTheCenter();
@@ -52,7 +54,7 @@ describe(['tagdesktop'], 'Table operations', function() {
 	});
 
 	it('Insert Row After', function() {
-		selectFullTable(this.win);
+		selectFullTable();
 		desktopHelper.getNbIcon('InsertRowsAfter', 'Table').click();
 
 		cy.cGet('.table-row-resize-marker').should('have.length', 4);
@@ -75,7 +77,7 @@ describe(['tagdesktop'], 'Table operations', function() {
 	});
 
 	it('Insert column before.', function() {
-		selectFullTable(this.win);
+		selectFullTable();
 		desktopHelper.getNbIcon('InsertColumnsBefore', 'Table').click();
 
 		cy.cGet('.table-column-resize-marker')
@@ -100,7 +102,7 @@ describe(['tagdesktop'], 'Table operations', function() {
 	});
 
 	it('Insert column after.', function() {
-		selectFullTable(this.win);
+		selectFullTable();
 		desktopHelper.getNbIcon('InsertColumnsAfter', 'Table').click();
 
 		cy.cGet('.table-column-resize-marker')
@@ -125,7 +127,7 @@ describe(['tagdesktop'], 'Table operations', function() {
 	});
 
 	it('Delete row.', function() {
-		selectFullTable(this.win);
+		selectFullTable();
 		desktopHelper.getNbIcon('DeleteRows', 'Table').click();
 
 		cy.cGet('.table-row-resize-marker')
@@ -146,7 +148,7 @@ describe(['tagdesktop'], 'Table operations', function() {
 	});
 
 	it('Delete Column.', function() {
-		selectFullTable(this.win);
+		selectFullTable();
 		desktopHelper.getNbIcon('InsertColumnsBefore', 'Table').click();
 
 		cy.cGet('.table-column-resize-marker')
@@ -176,7 +178,7 @@ describe(['tagdesktop'], 'Table operations', function() {
 	});
 
 	it('Delete Table', function() {
-		selectFullTable(this.win);
+		selectFullTable();
 		desktopHelper.getNbIcon('DeleteTable', 'Table').click();
 
 		retriggerNewSvgForTableInTheCenter();
@@ -189,7 +191,7 @@ describe(['tagdesktop'], 'Table operations', function() {
 	});
 
 	it('Merge Row', function() {
-		selectFullTable(this.win);
+		selectFullTable();
 
 		cy.cGet('.table-row-resize-marker')
 			.should('have.length', 3);
@@ -216,7 +218,7 @@ describe(['tagdesktop'], 'Table operations', function() {
 	});
 
 	it('Merge Column', function() {
-		selectFullTable(this.win);
+		selectFullTable();
 
 		cy.cGet('.table-row-resize-marker')
 			.should('have.length', 3);
@@ -244,7 +246,7 @@ describe(['tagdesktop'], 'Table operations', function() {
 
 	it.skip('Split Cells', function() {
 		// ToDo: Merge cells before calling split cells function.
-		impressHelper.selectTableInTheCenter(this.win);
+		impressHelper.selectTableInTheCenter();
 
 		cy.cGet('.table-row-resize-marker')
 			.should('have.length', 4);

@@ -11,10 +11,16 @@
 
 describe('CanvasSectionContainer', function() {
 
-addCanvasToDom();
-addMockCanvas(window);
-global.requestAnimationFrame = window.requestAnimationFrame;
-global.cancelAnimationFrame = window.cancelAnimationFrame;
+var jsdom = require('jsdom');
+var assert = require('assert').strict;
+
+var dom = new jsdom.JSDOM(canvasDomString(), { pretendToBeVisual: true });
+
+addMockCanvas(dom.window);
+global.window = dom.window;
+global.document = dom.window.document;
+global.requestAnimationFrame = dom.window.requestAnimationFrame;
+global.cancelAnimationFrame = dom.window.cancelAnimationFrame;
 
 const canvasWidth = 1024;
 const canvasHeight = 768;
@@ -50,7 +56,7 @@ describe('Singleton section container', function() {
     });
 
     it('Container should have OnlySection', function() {
-        nodeassert.ok(app.sectionContainer.doesSectionExist('OnlySection'));
+        assert.ok(app.sectionContainer.doesSectionExist('OnlySection'));
     });
 
     it('OnlySection PosSize checks', function () {
@@ -107,11 +113,11 @@ describe('Horizontally packed two section container', function() {
     });
 
     it('Container should have LeftSection', function() {
-        nodeassert.ok(app.sectionContainer.doesSectionExist('LeftSection'));
+        assert.ok(app.sectionContainer.doesSectionExist('LeftSection'));
     });
 
     it('Container should have RightSection', function() {
-        nodeassert.ok(app.sectionContainer.doesSectionExist('RightSection'));
+        assert.ok(app.sectionContainer.doesSectionExist('RightSection'));
     });
 
     it('LeftSection PosSize checks', function () {
@@ -180,11 +186,11 @@ describe('Vertically packed two section container', function() {
     });
 
     it('Container should have TopSection', function() {
-        nodeassert.ok(app.sectionContainer.doesSectionExist('TopSection'));
+        assert.ok(app.sectionContainer.doesSectionExist('TopSection'));
     });
 
     it('Container should have BottomSection', function() {
-        nodeassert.ok(app.sectionContainer.doesSectionExist('BottomSection'));
+        assert.ok(app.sectionContainer.doesSectionExist('BottomSection'));
     });
 
     it('TopSection PosSize checks', function () {
@@ -255,11 +261,11 @@ describe('Horizontally packed two section container with -left layout', function
 
 
     it('Container should have LeftSection', function() {
-        nodeassert.ok(app.sectionContainer.doesSectionExist('LeftSection'));
+        assert.ok(app.sectionContainer.doesSectionExist('LeftSection'));
     });
 
     it('Container should have RightSection', function() {
-        nodeassert.ok(app.sectionContainer.doesSectionExist('RightSection'));
+        assert.ok(app.sectionContainer.doesSectionExist('RightSection'));
     });
 
     it('LeftSection PosSize checks', function () {

@@ -8,25 +8,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
+#include "config.h"
 
-/*
- * Forking mode entry point for COOLWSD daemon.
- * Functions: main()
- */
-
-#include <config.h>
-
-#include <common/StringVector.hpp>
-#include <common/TraceEvent.hpp>
-#include <common/Util.hpp>
-#include <wsd/COOLWSD.hpp>
+#include "StringVector.hpp"
+#include "Util.hpp"
+#include "TraceEvent.hpp"
+#include "COOLWSD.hpp"
 
 void setKitInProcess() { Util::setKitInProcess(false); }
 
 int createForkit(const std::string& forKitPath, const StringVector& args)
 {
     // create forkit in a process
-    return ProcUtil::spawnProcess(forKitPath, args);
+    return Util::spawnProcess(forKitPath, args);
 };
 
 // FIXME: Somewhat idiotically, the parameter to emitOneRecordingIfEnabled() should end with a

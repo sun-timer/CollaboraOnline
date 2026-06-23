@@ -210,61 +210,6 @@ class LOUtil {
 		return rectangles;
 	}
 
-	// Map of locale → icon filenames that have locale-specific variants.
-	private static localizedIcons: Record<string, string[]> = {
-		ar: ['lc_chapternumberingdialog.svg', 'lc_linenumberingdialog.svg'],
-		de: [
-			'lc_bold.svg',
-			'lc_italic.svg',
-			'lc_numberformatdecdecimals.svg',
-			'lc_numberformatdecimal.svg',
-			'lc_numberformatincdecimals.svg',
-			'lc_numberformatthousands.svg',
-		],
-		es: ['lc_bold.svg', 'lc_underline.svg', 'lc_underlinedouble.svg'],
-		fr: ['lc_bold.svg'],
-		hu: ['lc_italic.svg', 'lc_underline.svg', 'lc_underlinedouble.svg'],
-		it: ['lc_italic.svg'],
-		km: [
-			'lc_bold.svg',
-			'lc_italic.svg',
-			'lc_underline.svg',
-			'lc_underlinedouble.svg',
-		],
-		ko: [
-			'lc_bold.svg',
-			'lc_charfontname.svg',
-			'lc_color.svg',
-			'lc_datasort.svg',
-			'lc_editstyle.svg',
-			'lc_fontdialog.svg',
-			'lc_grow.svg',
-			'lc_italic.svg',
-			'lc_overline.svg',
-			'lc_shadowed.svg',
-			'lc_shrink.svg',
-			'lc_sortascending.svg',
-			'lc_sortdescending.svg',
-			'lc_strikeout.svg',
-			'lc_stylenewbyexample.svg',
-			'lc_styleupdatebyexample.svg',
-			'lc_text.svg',
-			'lc_underline.svg',
-			'lc_underlinedouble.svg',
-			'lc_verticaltext.svg',
-		],
-		nl: ['lc_bold.svg', 'lc_underline.svg', 'lc_underlinedouble.svg'],
-		pl: ['lc_underline.svg', 'lc_underlinedouble.svg'],
-		ru: ['lc_bold.svg', 'lc_underline.svg', 'lc_underlinedouble.svg'],
-		sl: ['lc_bold.svg', 'lc_italic.svg'],
-		tr: ['lc_italic.svg'],
-	};
-
-	private static getUILanguageCode(): string {
-		const lang = (String as any).locale || '';
-		return lang.split('-')[0].split('_')[0].toLowerCase();
-	}
-
 	// Some items will only be present in dark mode so we will not check errors
 	// for those in other mode.
 	public static onlydarkModeItems: string[] = ['invertbackground'];
@@ -310,12 +255,8 @@ class LOUtil {
 	public static getURL(path: string): string {
 		if (path === '') return '';
 		const customWindow = window as any;
-		if (customWindow.host === '' && customWindow.serviceRoot === '') {
-			// Mobile / desktop app: return a relative path so it resolves
-			// against the page's file:// origin rather than the filesystem root.
-			if (path.startsWith('/')) return path.substring(1);
-			return path;
-		}
+		if (customWindow.host === '' && customWindow.serviceRoot === '')
+			return path; // mobile app
 
 		let url = customWindow.makeHttpUrl('/browser/' + customWindow.versionPath);
 		if (path.substr(0, 1) !== '/') url += '/';
@@ -372,16 +313,9 @@ class LOUtil {
 			return defaultImageURL;
 		}
 
-		const lang = LOUtil.getUILanguageCode();
-		const hasLocalized = lang && LOUtil.localizedIcons[lang]?.includes(imgName);
-
 		if ((window as any).prefs.getBoolean('darkTheme')) {
-			if (hasLocalized)
-				return LOUtil.getURL('images/dark/' + lang + '/' + imgName);
 			return LOUtil.getURL('images/dark/' + imgName);
 		}
-
-		if (hasLocalized) return LOUtil.getURL('images/' + lang + '/' + imgName);
 
 		const dummyEmptyImg =
 			'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
@@ -406,23 +340,16 @@ class LOUtil {
 		}
 
 		// Skip icon lookup for numeric-only IDs (JSDialog artifacts like 1, 5, 65535)
-		// and core sr* resource IDs (like sr20006)
-		if (/^\d+$/.test(cleanName) || /^sr\d+$/.test(cleanName)) return '';
+		if (/^\d+$/.test(cleanName)) return '';
 
 		// Skip icon lookup for overflow button pseudo-commands
 		if (cleanName.startsWith('overflow-button-')) return '';
-
-		// Strip 'sc_' prefix from sidebar controller command names
-		// (core's small-command icon prefix that doesn't apply to COOL)
-		if (cleanName.startsWith('sc_')) cleanName = cleanName.substring(3);
 
 		var iconURLAliases: IconNameMap = {
 			// lc_closemobile.svg is generated when loading in NB mode then
 			// switch to compact mode: 1st hidden element in the top toolbar
 			closemobile: 'closedocmobile',
 			'file-saveas': 'saveas',
-			savegraphic: 'saveas',
-			saveimagetowopi: 'saveasremote',
 			'home-search': 'recsearch',
 			searchdialog3finitialfocusreplace3abool3dtrue: 'searchreplace',
 			'addmb-menu': 'ok',
@@ -437,7 +364,6 @@ class LOUtil {
 			formatsparklinemenu: 'insertsparkline',
 			insertdatecontentcontrol: 'datefield',
 			editheaderandfooter: 'headerandfooter',
-			insertfooter: 'insertpagefooter',
 			exportas: 'saveas',
 			insertheaderfooter: 'headerandfooter',
 			previoustrackedchange: 'prevrecord',
@@ -462,7 +388,6 @@ class LOUtil {
 			insertrowsafter: 'insertrowsmenu',
 			insertobjectchart: 'drawchart',
 			textpropertypanel: 'sidebartextpanel',
-			textbodyparastyle: 'parastyle',
 			spacepara15: 'linespacing',
 			orientationdegrees: 'rotation',
 			clearoutline: 'delete',
@@ -525,7 +450,6 @@ class LOUtil {
 			tabledeletemenu: 'deletetable',
 			insertcalctable: 'inserttable',
 			removecalctable: 'deletetable',
-			calculatedfieldrun: 'functiondialog',
 			databasesettings: 'tabledesign',
 			tracechangemode: 'trackchanges',
 			deleteallannotation: 'deleteallnotes',
@@ -534,8 +458,6 @@ class LOUtil {
 			tableautofitmenu: 'columnwidth',
 			menucolumnwidth: 'columnwidth',
 			hyphenation: 'hyphenate',
-			validatedialogsa11y: 'validation',
-			validatesidebara11y: 'validation',
 			objectbackone: 'behindobject',
 			deleteannotation: 'deletenote',
 			areapropertypanel: 'chartareapanel',
@@ -640,10 +562,7 @@ class LOUtil {
 			graphicfiltersharpen: 'graphicfiltersharpen',
 			graphicfiltersobel: 'graphicfiltersobel',
 			effects: 'pictureeffectsmenu',
-			showmultiplepages: 'multipageview',
-			showtwopages: 'multipageview',
 			fitwidthzoom: 'pagewidth',
-			open: 'formularesfapopen',
 			'exportas-pdf': 'exportpdf',
 			'exportas-epub': 'exportepub',
 			'fullscreen-drawing': 'presentation',
@@ -928,26 +847,6 @@ class LOUtil {
 			return DOMPurify.sanitize(html, { USE_PROFILES: { [profile]: true } });
 		}
 		return '';
-	}
-
-	public static getDocumentLogoClass(docType: string) {
-		let iconClass: string;
-		let iconTooltip: string;
-		if (docType === 'text') {
-			iconClass = 'writer-icon-img';
-			iconTooltip = 'Writer';
-		} else if (docType === 'spreadsheet') {
-			iconClass = 'calc-icon-img';
-			iconTooltip = 'Calc';
-		} else if (docType === 'presentation') {
-			iconClass = 'impress-icon-img';
-			iconTooltip = 'Impress';
-		} else if (docType === 'drawing') {
-			iconClass = 'draw-icon-img';
-			iconTooltip = 'Draw';
-		}
-
-		return [iconClass, iconTooltip];
 	}
 }
 

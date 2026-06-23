@@ -9,18 +9,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*
- * HAProxy protocol support for client IP forwarding.
- * Functions: parseProxyHeader()
- */
-
 #pragma once
 
-#include <common/StateEnum.hpp>
-#include <net/Socket.hpp>
-
+#include "StateEnum.hpp"
 #include <map>
 #include <memory>
+#include <net/Socket.hpp>
 
 /**
  * Implementation that builds a websocket like protocol from many
@@ -63,10 +57,9 @@ public:
     /// Clear all external references
     void dispose() override { _msgHandler.reset(); }
 
-    int sendTextMessage(std::string_view msg, bool flush = false) const override;
-    int sendBinaryMessage(std::string_view data, bool flush = false) const override;
-    void shutdown(bool goingAway = false,
-                  const std::string_view statusMessage = std::string_view()) override;
+    int sendTextMessage(const char* msg, size_t len, bool flush = false) const override;
+    int sendBinaryMessage(const char* data, size_t len, bool flush = false) const override;
+    void shutdown(bool goingAway = false, const std::string &statusMessage = "") override;
     void getIOStats(uint64_t &sent, uint64_t &recv) override;
     // don't duplicate ourselves for every socket
     void dumpState(std::ostream&, const std::string&) const override {}
