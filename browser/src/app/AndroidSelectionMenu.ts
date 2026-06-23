@@ -47,6 +47,14 @@ class AndroidSelectionMenu {
 		return !!app.map && app.map.getDocType() === 'text';
 	}
 
+	private static isEditMode(): boolean {
+		return (
+			!!app.map &&
+			typeof app.map.isReadOnlyMode === 'function' &&
+			!app.map.isReadOnlyMode()
+		);
+	}
+
 	private static clearLocalTextSelection(): void {
 		try {
 			if (TextSelections && typeof TextSelections.deactivate === 'function') {
@@ -238,9 +246,10 @@ class AndroidSelectionMenu {
 		if (!window.ThisIsTheAndroidApp || typeof window.postMobileMessage !== 'function') {
 			return;
 		}
-		if (!app.map || typeof app.map.isReadOnlyMode !== 'function' || !app.map.isReadOnlyMode()) {
+		if (!app.map || typeof app.map.isReadOnlyMode !== 'function') {
 			return;
 		}
+		// Both preview (read-only) and edit mode are allowed for Writer docs.
 		if (app.map.getDocType() !== 'text') {
 			return;
 		}
@@ -279,7 +288,7 @@ class AndroidSelectionMenu {
 			Math.round(topViewY) + Math.round(canvasRect.y * app.dpiScale),
 		);
 
-		window.postMobileMessage('SELECTIONMENU show ' + anchor.x + ' ' + anchor.y);
+		window.postMobileMessage('SELECTIONMENU show');
 		AndroidSelectionMenu.pendingLongPressSelection = false;
 		AndroidSelectionMenu.selectionStartTwips = null;
 	}
@@ -453,30 +462,45 @@ class AndroidSelectionMenu {
 			const original = layer._onTextSelectionMsg.bind(layer);
 			layer._onTextSelectionMsg = function (textMsg: string) {
 				original(textMsg);
-				if (!AndroidSelectionMenu.isPreviewWriterMode()) {
+				const payload = textMsg.replace('textselection:', '').trim();
+
+				// Preview (read-only) Writer mode: original gesture-driven logic.
+				if (AndroidSelectionMenu.isPreviewWriterMode()) {
+					if (payload && payload !== 'EMPTY') {
+						const findBridge = (window as any).AndroidFindReplaceBridge;
+						if (
+							findBridge &&
+							typeof findBridge.consumeSuppressSelectionMenu === 'function' &&
+							findBridge.consumeSuppressSelectionMenu()
+						) {
+							AndroidSelectionMenu.hide();
+							return;
+						}
+						if (AndroidSelectionMenu.nativeSelectionDragActive) {
+							return;
+						}
+						if (AndroidSelectionMenu.shouldUseGestureTryShow()) {
+							AndroidSelectionMenu.scheduleTryShowAfterGesture();
+						} else if (!AndroidSelectionMenu.pendingLongPressSelection) {
+							AndroidSelectionMenu.scheduleTryShowFromCoreSelection();
+						}
+					} else {
+						AndroidSelectionMenu.onEmptyTextSelection();
+					}
 					return;
 				}
-				const payload = textMsg.replace('textselection:', '').trim();
-				if (payload && payload !== 'EMPTY') {
-					const findBridge = (window as any).AndroidFindReplaceBridge;
-					if (
-						findBridge &&
-						typeof findBridge.consumeSuppressSelectionMenu === 'function' &&
-						findBridge.consumeSuppressSelectionMenu()
-					) {
-						AndroidSelectionMenu.hide();
-						return;
-					}
-					if (AndroidSelectionMenu.nativeSelectionDragActive) {
-						return;
-					}
-					if (AndroidSelectionMenu.shouldUseGestureTryShow()) {
-						AndroidSelectionMenu.scheduleTryShowAfterGesture();
-					} else if (!AndroidSelectionMenu.pendingLongPressSelection) {
+
+				// Edit mode (Writer): show popup when a non-degenerate selection exists,
+				// hide when selection is cleared.
+				if (
+					AndroidSelectionMenu.isWriterDoc() &&
+					AndroidSelectionMenu.isEditMode()
+				) {
+					if (payload && payload !== 'EMPTY') {
 						AndroidSelectionMenu.scheduleTryShowFromCoreSelection();
+					} else {
+						AndroidSelectionMenu.hide();
 					}
-				} else {
-					AndroidSelectionMenu.onEmptyTextSelection();
 				}
 			};
 		};

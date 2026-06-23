@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AI排版类型卡片背景：渐变填充 + 圆角 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="45"
+        android:startColor="#E8F1FB"
+        android:endColor="#D4E4F7"
+        android:type="linear" />
+    <corners android:radius="20dp" />
+</shape>

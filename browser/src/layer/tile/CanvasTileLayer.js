@@ -630,7 +630,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 	},
 
 	_resetDocumentInfo: function () {
-		this._documentInfo = "";
+		this._documentInfo = null;
 	},
 
 	_getViewId: function () {

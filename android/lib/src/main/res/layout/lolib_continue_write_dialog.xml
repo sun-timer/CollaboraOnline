@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AI续写浮层 panel：标题 + 内容卡片(可滚动) + 两态底部(生成中=红色停止 / 完成=重写生成+插入文档)。
+     尺寸(宽≈屏宽-48dp / 高≈屏高80%)由 LOActivity.positionContinueDialogCenter() 运行时覆写。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/continue_dialog_root"
+    android:layout_width="328dp"
+    android:layout_height="560dp"
+    android:background="@drawable/lolib_bg_continue_dialog"
+    android:elevation="50dp"
+    android:orientation="vertical"
+    android:paddingStart="20dp"
+    android:paddingTop="20dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="24dp">
+
+    <!-- ========== 标题栏（标题居中 + 右上角关闭×，对应设计稿顶部横栏）========== -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <TextView
+            android:id="@+id/continue_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="AI 续写"
+            android:textColor="#15171A"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/continue_close_button"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="top|end"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:contentDescription="关闭"
+            android:focusable="true"
+            android:src="@android:drawable/ic_menu_close_clear_cancel" />
+    </FrameLayout>
+
+    <!-- ========== 内容卡片(可滚动) ========== -->
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/continue_content_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <TextView
+            android:id="@+id/continue_content_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="top"
+            android:lineSpacingExtra="4dp"
+            android:text=""
+            android:textColor="#15171A"
+            android:textColorHint="#9AA0A6"
+            android:textSize="16sp" />
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- ========== 复制栏（完成态显示，复制续写内容到剪贴板）========== -->
+    <LinearLayout
+        android:id="@+id/continue_copy_bar"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:layout_marginTop="12dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:contentDescription="复制"
+            android:src="@drawable/lolib_ic_continue_copy" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:text="复制"
+            android:textColor="#6A6A6A"
+            android:textSize="15sp" />
+    </LinearLayout>
+
+    <!-- ========== 生成中态：红色停止按钮 ========== -->
+    <FrameLayout
+        android:id="@+id/continue_stop_button"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/lolib_bg_continue_stop_button"
+        android:clickable="true"
+        android:focusable="true">
+
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_gravity="center"
+            android:contentDescription="停止生成"
+            android:src="@drawable/lolib_ic_continue_stop" />
+    </FrameLayout>
+
+    <!-- ========== 完成态：重写生成 + 插入文档 ========== -->
+    <LinearLayout
+        android:id="@+id/continue_completed_group"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/continue_regenerate_button"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/lolib_bg_continue_pill_secondary"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="重写生成"
+            android:textColor="#15171A"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/continue_insert_button"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/lolib_bg_continue_pill_primary"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="插入文档"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+</LinearLayout>

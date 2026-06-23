@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Selection popup: 602x365 panel, 3 sections split by #D8D8D8 dividers.
+     Section 1: copy/cut/paste/select_all
+     Section 2: translate/outline/continue_write/article_generate
+     Section 3: expand/polish/condense/rewrite -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/selection_popup_root"
+    android:layout_width="602dp"
+    android:layout_height="365dp"
+    android:background="@drawable/lolib_bg_selection_popup"
+    android:elevation="40dp"
+    android:orientation="vertical"
+    android:paddingStart="8dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="8dp"
+    android:paddingBottom="8dp">
+
+    <!-- ========== Section 1: 基础操作 ========== -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:id="@+id/selection_op_copy"
+            style="@style/SelectionPopupButton">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_selection_copy" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="复制" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/selection_op_cut"
+            style="@style/SelectionPopupButton">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_selection_cut" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="剪切" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/selection_op_paste"
+            style="@style/SelectionPopupButton">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_selection_paste" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="粘贴" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/selection_op_select_all"
+            style="@style/SelectionPopupButton">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_selection_select_all" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="全选" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Divider 1 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#D8D8D8" />
+
+    <!-- ========== Section 2: AI 操作 (1) ========== -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:id="@+id/selection_op_translate"
+            style="@style/SelectionPopupButton">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_ai_translate" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="翻译" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/selection_op_outline"
+            style="@style/SelectionPopupButton">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_ai_outline" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="总结大纲" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/selection_op_continue_write"
+            style="@style/SelectionPopupButton">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_ai_continue_write" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="文案续写" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/selection_op_article_generate"
+            style="@style/SelectionPopupButton">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_ai_article_generate" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="文案生成" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Divider 2 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#D8D8D8" />
+
+    <!-- ========== Section 3: AI 操作 (2) ========== -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:id="@+id/selection_op_expand"
+            style="@style/SelectionPopupButton">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_ai_expand" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="文案扩写" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/selection_op_polish"
+            style="@style/SelectionPopupButton">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_ai_polish" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="文案润色" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/selection_op_condense"
+            style="@style/SelectionPopupButton">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_ai_condense" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="文案缩写" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/selection_op_rewrite"
+            style="@style/SelectionPopupButton">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_ai_rewrite" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="文案重写" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

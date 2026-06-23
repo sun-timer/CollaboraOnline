@@ -904,7 +904,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
             if (aiSwitch.isChecked()) {
                 pendingAutoOpenAiAfterCreate = true;
-                pendingAutoAiPrompt = buildAutoAiPromptForRequestCode(requestCode);
+                pendingAutoAiPrompt = buildAutoAiPromptForRequestCode(requestCode, name);
             } else {
                 pendingAutoOpenAiAfterCreate = false;
                 pendingAutoAiPrompt = "";
@@ -988,15 +988,18 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         }
     }
 
-    private String buildAutoAiPromptForRequestCode(int requestCode) {
+    private String buildAutoAiPromptForRequestCode(int requestCode, String title) {
+        String titleHint = (title != null && !title.isEmpty())
+                ? "主题：《" + title + "》。请围绕该主题，"
+                : "请";
         switch (requestCode) {
             case CREATE_SPREADSHEET_REQUEST_CODE:
-                return "请先给出一个清晰的数据表结构大纲（列名和用途），再输出可直接粘贴到电子表格的完整示例内容，至少包含10行数据。";
+                return titleHint + "先给出一个清晰的数据表结构大纲（列名和用途），再输出可直接粘贴到电子表格的完整示例内容，至少包含10行数据。";
             case CREATE_PRESENTATION_REQUEST_CODE:
-                return "请先生成一份6页演示的大纲（每页标题+要点），再输出可直接用于演示文稿的完整正文内容。";
+                return titleHint + "先生成一份6页演示的大纲（每页标题+要点），再输出可直接用于演示文稿的完整正文内容。";
             case CREATE_DOCUMENT_REQUEST_CODE:
             default:
-                return "请先生成文档大纲（章节标题），再基于大纲输出完整正文，风格专业、结构清晰。";
+                return titleHint + "先生成文档大纲（章节标题），再基于大纲输出完整正文，风格专业、结构清晰。";
         }
     }
 

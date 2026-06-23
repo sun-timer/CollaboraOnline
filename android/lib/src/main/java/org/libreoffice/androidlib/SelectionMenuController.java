@@ -3,13 +3,13 @@ package org.libreoffice.androidlib;
 import android.content.Context;
 import android.util.Log;
 import android.view.View;
-import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import androidx.constraintlayout.widget.ConstraintLayout;
 
 /**
  * Native floating menu for text selection in mobile preview (read-only UI) mode.
+ * Shows a 12-button popup panel with basic operations and AI operations.
  */
 public class SelectionMenuController {
     private static final String TAG = "SelectionMenu";
@@ -30,6 +30,10 @@ public class SelectionMenuController {
         void performPasteCommand();
 
         void hideQuickActionPanel();
+
+        boolean onAiOperation(String taskType);
+
+        void onSelectionPopupShown();
     }
 
     private final Host host;
@@ -43,16 +47,29 @@ public class SelectionMenuController {
 
     public void setup() {
         overlayView = host.findViewById(R.id.selection_menu_overlay);
-        menuView = host.findViewById(R.id.selection_menu_panel);
+        menuView = host.findViewById(R.id.selection_popup_panel);
         if (overlayView == null || menuView == null) {
             return;
         }
 
         overlayView.setOnClickListener(v -> hide());
-        host.findViewById(R.id.selection_menu_select_all).setOnClickListener(v -> onSelectAll());
-        host.findViewById(R.id.selection_menu_copy).setOnClickListener(v -> onCopy());
-        host.findViewById(R.id.selection_menu_paste).setOnClickListener(v -> onPaste());
-        host.findViewById(R.id.selection_menu_cut).setOnClickListener(v -> onCut());
+
+        // Basic operations
+        host.findViewById(R.id.selection_op_copy).setOnClickListener(v -> onCopy());
+        host.findViewById(R.id.selection_op_paste).setOnClickListener(v -> onPaste());
+        host.findViewById(R.id.selection_op_cut).setOnClickListener(v -> onCut());
+        host.findViewById(R.id.selection_op_select_all).setOnClickListener(v -> onSelectAll());
+
+        // AI operations
+        host.findViewById(R.id.selection_op_translate).setOnClickListener(v -> onAiOperation("translate"));
+        host.findViewById(R.id.selection_op_outline).setOnClickListener(v -> onAiOperation("outline"));
+        host.findViewById(R.id.selection_op_continue_write).setOnClickListener(v -> onAiOperation("continue_write"));
+        host.findViewById(R.id.selection_op_article_generate).setOnClickListener(v -> onAiOperation("article_generate"));
+        host.findViewById(R.id.selection_op_expand).setOnClickListener(v -> onAiOperation("expand"));
+        host.findViewById(R.id.selection_op_polish).setOnClickListener(v -> onAiOperation("polish"));
+        host.findViewById(R.id.selection_op_condense).setOnClickListener(v -> onAiOperation("condense"));
+        host.findViewById(R.id.selection_op_rewrite).setOnClickListener(v -> onAiOperation("rewrite"));
+
         updateEditActionVisibility();
         hide();
     }
@@ -69,8 +86,10 @@ public class SelectionMenuController {
         overlayView.setVisibility(View.VISIBLE);
         visible = true;
 
-        menuView.post(() -> positionMenuAtWindow(windowX, windowY));
-        Log.i(TAG, "selection_menu_show x=" + windowX + " y=" + windowY);
+        menuView.post(() -> positionPopupAtCenter());
+        // Pre-read selection so AI buttons work immediately when tapped.
+        host.onSelectionPopupShown();
+        Log.i(TAG, "selection_popup_show x=" + windowX + " y=" + windowY);
     }
 
     public void hide() {
@@ -86,16 +105,11 @@ public class SelectionMenuController {
         return visible;
     }
 
-    private void positionMenuAtWindow(float windowX, float windowY) {
+    private void positionPopupAtCenter() {
         View parent = (View) menuView.getParent();
         if (!(parent instanceof ConstraintLayout)) {
             return;
         }
-
-        int[] parentLoc = new int[2];
-        parent.getLocationInWindow(parentLoc);
-        float anchorX = windowX - parentLoc[0];
-        float anchorY = windowY - parentLoc[1];
 
         int parentWidth = parent.getWidth();
         int parentHeight = parent.getHeight();
@@ -105,16 +119,14 @@ public class SelectionMenuController {
             return;
         }
 
-        float margin = dpToPx(12);
-        float x = anchorX - menuWidth / 2f;
-        float y = anchorY - menuHeight - dpToPx(16);
-
-        x = Math.max(margin, Math.min(x, parentWidth - menuWidth - margin));
-        y = Math.max(margin, Math.min(y, parentHeight - menuHeight - margin));
+        // Center horizontally; place vertically in the upper-middle area
+        // (clears the bottom toolbar and stays visible above the selection).
+        float margin = dpToPx(16);
+        float x = (parentWidth - menuWidth) / 2f;
+        float y = Math.max(margin, (parentHeight - menuHeight) / 2f - dpToPx(40));
 
         ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) menuView.getLayoutParams();
-        lp.width = FrameLayout.LayoutParams.WRAP_CONTENT;
-        lp.height = FrameLayout.LayoutParams.WRAP_CONTENT;
+        // Keep the fixed 602x365 size from the layout; only reposition.
         lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
         lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
         lp.endToEnd = ConstraintLayout.LayoutParams.UNSET;
@@ -154,14 +166,21 @@ public class SelectionMenuController {
         host.ensureEditModeThen(() -> host.executeUnoCommand(".uno:Cut"));
     }
 
+    private void onAiOperation(String taskType) {
+        hide();
+        if (host.onAiOperation(taskType)) {
+            Log.i(TAG, "ai_operation started: " + taskType);
+        }
+    }
+
     private void toastReadOnlyDocument() {
         Toast.makeText(host.getContext(), "当前文档为只读，无法粘贴或剪切", Toast.LENGTH_SHORT).show();
     }
 
     private void updateEditActionVisibility() {
         boolean showEditActions = host.isEditModeActive();
-        View paste = host.findViewById(R.id.selection_menu_paste);
-        View cut = host.findViewById(R.id.selection_menu_cut);
+        View paste = host.findViewById(R.id.selection_op_paste);
+        View cut = host.findViewById(R.id.selection_op_cut);
         if (paste != null) {
             paste.setVisibility(showEditActions ? View.VISIBLE : View.GONE);
         }

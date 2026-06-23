@@ -111,8 +111,9 @@ window.L.WriterTileLayer = window.L.CanvasTileLayer.extend({
 			this._postMouseEvent('buttondown', this.lastCursorPos.center[0], this.lastCursorPos.center[1], 1, 1, 0);
 			this._postMouseEvent('buttonup', this.lastCursorPos.center[0], this.lastCursorPos.center[1], 1, 1, 0);
 		}
-		if (!statusJSON.width || !statusJSON.height || this._documentInfo === textMsg)
+		if (!statusJSON.width || !statusJSON.height || this._documentInfo === textMsg) {
 			return;
+		}
 
 		if (statusJSON.readonly && !this._documentInfo)
 			this._map.setPermission('readonly');

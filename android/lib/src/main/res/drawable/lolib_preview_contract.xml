@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 合同协议预览缩略图 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <!-- 合同标题（居中） -->
+    <path
+        android:strokeColor="#2D2D2D"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M35 16H85" />
+    <path
+        android:strokeColor="#2D2D2D"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M45 24H75" />
+    <!-- 甲乙方信息 -->
+    <path
+        android:strokeColor="#1278D9"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M25 36H60" />
+    <path
+        android:strokeColor="#1278D9"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M25 43H60" />
+    <!-- 条款标题 -->
+    <path
+        android:strokeColor="#2D2D2D"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M25 55H55" />
+    <!-- 条款内容 -->
+    <path
+        android:strokeColor="#B0B0B0"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M25 64H95" />
+    <path
+        android:strokeColor="#B0B0B0"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M25 71H95" />
+    <!-- 条款标题2 -->
+    <path
+        android:strokeColor="#2D2D2D"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M25 82H55" />
+    <path
+        android:strokeColor="#B0B0B0"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M25 91H95" />
+    <!-- 签名行（右对齐） -->
+    <path
+        android:strokeColor="#999999"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M55 104H95" />
+</vector>

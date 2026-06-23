@@ -9,6 +9,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.HorizontalScrollView;
 import android.widget.FrameLayout;
+import androidx.core.widget.NestedScrollView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -147,7 +148,7 @@ public class FunctionPanelController {
     private final Host host;
     private BottomSheetDialog dialog;
     private LinearLayout tabBar;
-    private FrameLayout contentContainer;
+    private NestedScrollView contentContainer;
     private final List<TextView> tabViews = new ArrayList<>();
     private final List<FunctionTab> tabs;
     private int selectedTabIndex = 0;

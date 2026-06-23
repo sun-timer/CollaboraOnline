@@ -291,13 +291,39 @@
             app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
 
         <include
-            android:id="@+id/selection_menu_panel"
-            layout="@layout/lolib_selection_menu"
+            android:id="@+id/selection_popup_panel"
+            layout="@layout/lolib_selection_popup"
+            android:layout_width="602dp"
+            android:layout_height="365dp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <!-- AI续写浮层遮罩（点击关闭） -->
+        <View
+            android:id="@+id/continue_dialog_overlay"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="#80000000"
+            android:clickable="true"
+            android:elevation="45dp"
+            android:focusable="true"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
+
+        <!-- AI续写浮层 panel（尺寸/位置由 LOActivity.positionContinueDialogCenter() 运行时设置） -->
+        <include
+            android:id="@+id/continue_write_dialog_panel"
+            layout="@layout/lolib_continue_write_dialog"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:visibility="gone"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
+            app:layout_constraintTop_toTopOf="parent" />
 
         <LinearLayout
             android:id="@+id/toolbar_quick_panel"

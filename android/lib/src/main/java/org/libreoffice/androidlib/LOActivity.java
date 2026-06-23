@@ -65,6 +65,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.PopupMenu;
 import android.widget.ScrollView;
 import android.widget.RatingBar;
 import android.widget.TextView;
@@ -110,6 +111,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.GravityCompat;
 import androidx.core.view.WindowCompat;
+import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
@@ -274,6 +276,42 @@ public class LOActivity extends AppCompatActivity {
     private View aiOperationSheetPanel;
     private TextView aiOpSelectionHint;
     private String aiOpPendingSelection = "";
+    // AI排版相关
+    private BottomSheetDialog typesetSelectSheet;
+    private BottomSheetDialog typesetPreviewSheet;
+    private String pendingTypesetType;  // "paper" | "gov" | "contract" | "general"
+    private String pendingTypesetHtml;  // AI 返回的排版结果
+    // 生成大纲相关
+    private AlertDialog outlineDialog;
+    private TextView outlineTypeLabel;
+    private EditText outlineDescEdit;
+    private TextView outlineResultText;
+    private View outlineDescCard;
+    private View outlineResultCard;
+    private View outlineGenerateBtn;
+    private View outlineDoneRow;
+    private View outlineCopyRow;  // 结果区下方的复制横条
+    private String outlineContextText;  // 入口A=选区文字，入口B=null→生成时提取全文
+    private String pendingOutlineType = AiChatCoordinator.OUTLINE_TYPE_GENERAL;
+    private String pendingOutlineDesc;
+    private String pendingOutlineResult;
+    private String outlineActiveRequestId = "";  // 当前大纲请求 id（流式注册/清理用）
+    // AI续写浮层（弹窗式续写：生成中态/完成态，复用 aiStreamingViewByRequestId 流式接入）
+    private View continueDialogOverlay;
+    private View continueDialogPanel;
+    private TextView continueContentView;
+    private View continueCopyBar;
+    private View continueStopBtn;
+    private View continueCompletedGroup;
+    private View continueRegenBtn;
+    private View continueInsertBtn;
+    private String continueSelection = "";        // 打开弹窗时缓存的选区上下文，供重写生成复用
+    private String continueActiveRequestId = "";  // 当前续写请求 id（""=无在途）
+    private String continueResultText = "";       // 完成/停止时捕获的全文，供插入文档使用
+    // 所有续写请求 id（含已结束/被取代的），用于在 onDone/onError 抑制 operate-mode 自动粘贴：
+    // AiRequestManager 流自然结束时 onDone 无 cancel 守卫，dismiss/regenerate 后漏出的 onDone 不能误触粘贴。
+    private final java.util.Set<String> continueWriteRequestIds =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     private float aiFabDragOffsetY = 0f;
     private boolean pendingAutoOpenAiPanel = false;
     private boolean pendingAutoGenerateAiContent = false;
@@ -597,6 +635,7 @@ public class LOActivity extends AppCompatActivity {
             setupTopToolbar();
             setupBottomToolbar();
             setupSelectionMenu();
+            setupContinueWriteDialog();
             mWebView.setOnDocumentLongPressListener(new COWebView.OnDocumentLongPressListener() {
                 @Override
                 public void onDocumentLongPress(float viewX, float viewY) {
@@ -1109,16 +1148,31 @@ public class LOActivity extends AppCompatActivity {
 
     @Override
     protected void onPause() {
-        // A Save similar to an autosave
-        if (documentLoaded)
-            postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1");
-
+        // 注意：BottomSheetDialog 弹起时 Activity 会 onPause（FLAG_WORKSPACE 或系统行为），
+        // onPause 里的 save 消息会让 core 退出编辑态，导致"跳回主页"现象。
+        // 修复：彻底移除这里的 save，文档保存由其他机制（auto-save / 用户手动保存）负责。
+        Log.i(TAG, "onPause.. documentLoaded=" + documentLoaded
+                + " aiSheetShowing=" + (aiOperationSheet != null && aiOperationSheet.isShowing()));
         super.onPause();
-        Log.d(TAG, "onPause() - hinting to save, we might need to return to the doc");
+    }
+
+    @Override
+    public void onBackPressed() {
+        Log.i(TAG, "onBackPressed.. isFinishing=" + isFinishing() + " aiSheetShowing="
+                + (aiOperationSheet != null && aiOperationSheet.isShowing()));
+        super.onBackPressed();
+    }
+
+    @Override
+    public void onUserLeaveHint() {
+        Log.i(TAG, "onUserLeaveHint..");
+        super.onUserLeaveHint();
     }
 
     @Override
     protected void onDestroy() {
+        Log.i(TAG, "onDestroy.. documentLoaded=" + documentLoaded + " isFinishing=" + isFinishing()
+                + " aiSheetShowing=" + (aiOperationSheet != null && aiOperationSheet.isShowing()));
         if (!documentLoaded) {
             resetAiSessionState(true);
             super.onDestroy();
@@ -1150,6 +1204,8 @@ public class LOActivity extends AppCompatActivity {
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent intent) {
+        Log.i(TAG, "onActivityResult requestCode=" + requestCode + " resultCode=" + resultCode
+                + " aiSheetShowing=" + (aiOperationSheet != null && aiOperationSheet.isShowing()));
         super.onActivityResult(requestCode, resultCode, intent);
         if (requestCode == REQUEST_SELECT_IMAGE_FILE) {
             imagePickerInFlight = false;
@@ -1634,7 +1690,7 @@ public class LOActivity extends AppCompatActivity {
                 return false;
             case "DOC_MODIFIED_STATUS":
                 documentModified = messageAndParam.length > 1 && "true".equalsIgnoreCase(messageAndParam[1]);
-                Log.i(TAG, "doc_modified_status modified=" + documentModified);
+                Log.d(TAG, "doc_modified_status modified=" + documentModified);
                 return false;
             case "downloadas":
                 initiateSaveAs(messageAndParam[1]);
@@ -1719,21 +1775,30 @@ public class LOActivity extends AppCompatActivity {
                     getMainHandler().post(() -> ensureSelectionMenuController().hide());
                     return false;
                 }
-                if (messageAndParam.length > 1 && messageAndParam[1] != null &&
-                        messageAndParam[1].startsWith("show ")) {
-                    try {
-                        String[] parts = messageAndParam[1].split(" ");
-                        if (parts.length >= 3) {
-                            final float anchorX = Float.parseFloat(parts[1]);
-                            final float anchorY = Float.parseFloat(parts[2]);
-                            getMainHandler().post(() -> {
-                                ensureSelectionMenuController().showAtWindow(anchorX, anchorY);
-                                getMainHandler().postDelayed(() ->
-                                        recoverVisibleTilesAfterPreviewSelection("selection_menu_show"), 180);
-                            });
+                if (messageAndParam.length > 1 && messageAndParam[1] != null) {
+                    if (messageAndParam[1].startsWith("show ")) {
+                        // show with coordinates: "show x y"
+                        try {
+                            String[] parts = messageAndParam[1].split(" ");
+                            if (parts.length >= 3) {
+                                final float anchorX = Float.parseFloat(parts[1]);
+                                final float anchorY = Float.parseFloat(parts[2]);
+                                getMainHandler().post(() -> {
+                                    ensureSelectionMenuController().showAtWindow(anchorX, anchorY);
+                                    getMainHandler().postDelayed(() ->
+                                            recoverVisibleTilesAfterPreviewSelection("selection_menu_show"), 180);
+                                });
+                            }
+                        } catch (NumberFormatException e) {
+                            Log.w(TAG, "selection_menu_bad_anchor", e);
                         }
-                    } catch (NumberFormatException e) {
-                        Log.w(TAG, "selection_menu_bad_anchor", e);
+                    } else if ("show".equals(messageAndParam[1])) {
+                        // show without coordinates - fixed center position
+                        getMainHandler().post(() -> {
+                            ensureSelectionMenuController().showAtWindow(0, 0);
+                            getMainHandler().postDelayed(() ->
+                                    recoverVisibleTilesAfterPreviewSelection("selection_menu_show"), 180);
+                        });
                     }
                     return false;
                 }
@@ -1753,13 +1818,21 @@ public class LOActivity extends AppCompatActivity {
                 }
                 long now = android.os.SystemClock.uptimeMillis();
                 if (changed || now - lastDocGestureGuardLogAt > 1200) {
-                    Log.i(TAG, "doc_gesture_guard " + (enable ? "on" : "off"));
+                    Log.d(TAG, "doc_gesture_guard " + (enable ? "on" : "off"));
                     lastDocGestureGuardLogAt = now;
                 }
                 if (!enable && changed) {
+                    Log.i(TAG, "reconnect_trigger editMode=" + mIsEditModeActive
+                            + " pid=" + android.os.Process.myPid());
                     triggerSelectionStateSync("reconnect_done", mIsEditModeActive);
                     recoverVisibleTilesAfterEditMode("reconnect_done_editmode");
                 }
+                return false;
+            }
+            case "DEBUG_HTML_PROBE": {
+                // 诊断：paste 测试 HTML 实测 Writer HTML Import Filter 保留哪些属性（color/hr/font size/align/table/CSS）。
+                // 从 Chrome 远程调试控制台触发：window.postMobileMessage("DEBUG_HTML_PROBE")，须在编辑模式下。
+                probeHtmlFilterCapability();
                 return false;
             }
             case "hideProgressbar": {
@@ -2030,6 +2103,20 @@ public class LOActivity extends AppCompatActivity {
                 messages = AiChatCoordinator.buildOperateMessages(taskType, selection);
                 Log.i(TAG, "ai_operate_mode requestId=" + requestId + " mode=" + taskType
                         + " selectionChars=" + selection.length());
+            } else if (AiChatCoordinator.MODE_TYPESET.equals(taskType)) {
+                String typesetType = request.optString("typesetType", "general");
+                String fullText = request.optString("selection", "");
+                messages = AiChatCoordinator.buildTypesetMessages(typesetType, fullText);
+                Log.i(TAG, "ai_typeset_mode requestId=" + requestId + " typesetType=" + typesetType
+                        + " docChars=" + fullText.length());
+            } else if (AiChatCoordinator.MODE_OUTLINE.equals(taskType)) {
+                String outlineType = request.optString("outlineType", AiChatCoordinator.OUTLINE_TYPE_GENERAL);
+                JSONObject ctxObj = request.optJSONObject("context");
+                String ctxText = request.optString("selection", "");
+                String desc = ctxObj != null ? ctxObj.optString("description", "") : "";
+                messages = AiChatCoordinator.buildOutlineMessages(outlineType, ctxText, desc);
+                Log.i(TAG, "ai_outline_mode requestId=" + requestId + " outlineType=" + outlineType
+                        + " contextChars=" + ctxText.length() + " descChars=" + desc.length());
             } else {
                 messages.put(new JSONObject().put("role", "user").put("content", buildAiUserPrompt(request)));
             }
@@ -2056,8 +2143,22 @@ public class LOActivity extends AppCompatActivity {
 
                         @Override
                         public void onDone(String callbackRequestId, String fullText) throws JSONException {
-                            if (AiChatCoordinator.isOperateMode(taskType)) {
+                            if (callbackRequestId.equals(continueActiveRequestId)) {
+                                // 续写弹窗请求：不自动粘贴，切到完成态（重写生成/插入文档）
+                                onContinueWriteDone(callbackRequestId, fullText);
+                            } else if (continueWriteRequestIds.contains(callbackRequestId)) {
+                                // 已结束/被取代的续写请求（dismiss 或 regenerate 后漏出的 onDone）：抑制 operate-mode 自动粘贴
+                                Log.i(TAG, "continue_write_done_suppressed requestId=" + callbackRequestId);
+                            } else if (AiChatCoordinator.isOperateMode(taskType)) {
                                 onAiOperationDone(callbackRequestId, fullText);
+                            } else if (AiChatCoordinator.MODE_TYPESET.equals(taskType)) {
+                                // typeset 模式：显示预览，不直接粘贴
+                                Log.i(TAG, "ai_typeset_done requestId=" + callbackRequestId + " htmlChars=" + fullText.length());
+                                runOnUiThread(() -> showTypesetPreviewSheet(fullText));
+                            } else if (AiChatCoordinator.MODE_OUTLINE.equals(taskType)) {
+                                // 生成大纲：在弹窗结果区展示，不自动粘贴
+                                Log.i(TAG, "ai_outline_done requestId=" + callbackRequestId + " chars=" + fullText.length());
+                                runOnUiThread(() -> showOutlineResult(fullText));
                             }
                             JSONObject donePayload = new JSONObject();
                             donePayload.put("requestId", callbackRequestId);
@@ -2069,9 +2170,22 @@ public class LOActivity extends AppCompatActivity {
                         public void onError(String callbackRequestId, String code, String message) {
                             String safeMsg = message == null ? "" : (message.length() > 120 ? message.substring(0, 120) + "..." : message);
                             Log.i(TAG, "ai_operation_error requestId=" + callbackRequestId + " code=" + code + " msg=" + safeMsg);
-                            if (AiChatCoordinator.isOperateMode(taskType)) {
+                            if (continueWriteRequestIds.contains(callbackRequestId)) {
+                                // 续写请求失败：提示并关闭浮层，不走 operate-mode "AI 操作失败" 分支
+                                runOnUiThread(() -> {
+                                    toastTodo("续写失败：" + safeMsg);
+                                    dismissContinueWriteDialog();
+                                });
+                            } else if (AiChatCoordinator.isOperateMode(taskType)) {
                                 cleanupOperationSheet();
                                 runOnUiThread(() -> toastTodo("AI 操作失败：" + message));
+                            } else if (AiChatCoordinator.MODE_TYPESET.equals(taskType)) {
+                                runOnUiThread(() -> toastTodo("AI排版失败：" + message));
+                            } else if (AiChatCoordinator.MODE_OUTLINE.equals(taskType)) {
+                                runOnUiThread(() -> {
+                                    toastTodo("大纲生成失败：" + message);
+                                    switchOutlineDialogState(false);
+                                });
                             }
                             dispatchAiError(callbackRequestId, code, message);
                         }
@@ -2424,9 +2538,321 @@ public class LOActivity extends AppCompatActivity {
                 public void hideQuickActionPanel() {
                     LOActivity.this.hideQuickActionPanel();
                 }
+
+                @Override
+                public boolean onAiOperation(String taskType) {
+                    return LOActivity.this.startAiOperationFromSelection(taskType);
+                }
+
+                @Override
+                public void onSelectionPopupShown() {
+                    LOActivity.this.preReadSelectionForPopup();
+                }
             });
         }
         selectionMenuController.setup();
+    }
+
+    // ==================== AI续写浮层（弹窗式续写）====================
+
+    /**
+     * 绑定续写浮层视图与监听。浮层挂在 lolib_activity_main.xml 的 doc_main_content 内
+     * （overlay + include panel），仿选区浮层用 setVisibility 切换，避免 BottomSheetDialog
+     * dismiss 触发 socket 重连（CLAUDE.md issue #1 Step 4）。
+     */
+    private void setupContinueWriteDialog() {
+        continueDialogOverlay = findViewById(R.id.continue_dialog_overlay);
+        continueDialogPanel = findViewById(R.id.continue_write_dialog_panel);
+        if (continueDialogOverlay == null || continueDialogPanel == null) {
+            return;
+        }
+        continueContentView = continueDialogPanel.findViewById(R.id.continue_content_text);
+        continueStopBtn = continueDialogPanel.findViewById(R.id.continue_stop_button);
+        continueCompletedGroup = continueDialogPanel.findViewById(R.id.continue_completed_group);
+        continueRegenBtn = continueDialogPanel.findViewById(R.id.continue_regenerate_button);
+        continueInsertBtn = continueDialogPanel.findViewById(R.id.continue_insert_button);
+        continueCopyBar = continueDialogPanel.findViewById(R.id.continue_copy_bar);
+        if (continueCopyBar != null) {
+            continueCopyBar.setOnClickListener(v -> onContinueWriteCopy());
+        }
+
+        continueDialogOverlay.setOnClickListener(v -> dismissContinueWriteDialog());
+        // 右上角关闭×（设计稿顶部横栏，两态都有）
+        View closeBtn = continueDialogPanel.findViewById(R.id.continue_close_button);
+        if (closeBtn != null) {
+            closeBtn.setOnClickListener(v -> dismissContinueWriteDialog());
+        }
+        if (continueStopBtn != null) {
+            continueStopBtn.setOnClickListener(v -> onContinueWriteStop());
+        }
+        if (continueRegenBtn != null) {
+            continueRegenBtn.setOnClickListener(v -> onContinueWriteRegenerate());
+        }
+        if (continueInsertBtn != null) {
+            continueInsertBtn.setOnClickListener(v -> onContinueWriteInsert());
+        }
+    }
+
+    /**
+     * 打开续写浮层并自动发起续写请求。由 runAiOperation 在 mode=continue_write 且浮层已初始化时
+     * divert 调用，覆盖选区弹窗 + AI 功能面板两个入口。
+     */
+    private void openContinueWriteDialog(String selection) {
+        continueSelection = selection == null ? "" : selection;
+        if (selectionMenuController != null) {
+            selectionMenuController.hide();
+        }
+        setContinueDialogState(true);
+        continueDialogOverlay.setVisibility(View.VISIBLE);
+        continueDialogPanel.setVisibility(View.VISIBLE);
+        continueDialogPanel.post(this::positionContinueDialogCenter);
+        Log.i(TAG, "continue_write_dialog_open chars=" + continueSelection.length());
+        startContinueWriteRequest();
+    }
+
+    /**
+     * 居中定位续写浮层（仿 SelectionMenuController.positionPopupAtCenter）。
+     * 宽≈屏宽-48dp、高≈屏高 80%，水平+垂直居中。
+     */
+    private void positionContinueDialogCenter() {
+        if (continueDialogPanel == null) {
+            return;
+        }
+        View parent = (View) continueDialogPanel.getParent();
+        if (!(parent instanceof ConstraintLayout)) {
+            return;
+        }
+        int parentWidth = parent.getWidth();
+        int parentHeight = parent.getHeight();
+        if (parentWidth <= 0 || parentHeight <= 0) {
+            return;
+        }
+        int targetWidth = parentWidth - dpToPx(48);
+        int targetHeight = Math.max(dpToPx(400), (int) (parentHeight * 0.8));
+        int x = Math.max(0, (parentWidth - targetWidth) / 2);
+        int y = Math.max(0, (parentHeight - targetHeight) / 2);
+
+        ConstraintLayout.LayoutParams lp =
+                (ConstraintLayout.LayoutParams) continueDialogPanel.getLayoutParams();
+        lp.width = targetWidth;
+        lp.height = targetHeight;
+        lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.endToEnd = ConstraintLayout.LayoutParams.UNSET;
+        lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET;
+        lp.horizontalBias = 0f;
+        lp.verticalBias = 0f;
+        lp.leftMargin = x;
+        lp.topMargin = y;
+        continueDialogPanel.setLayoutParams(lp);
+    }
+
+    /**
+     * 构建并发起续写请求。复用 operate-mode continue_write prompt（AiChatCoordinator.buildOperateMessages），
+     * 关键差异：把流式目标注册到续写浮层的内容 TextView（aiStreamingViewByRequestId），
+     * 由 handleAiNativeEvent 的 ai.stream/ai.done 自动渲染进来，无需另写流式代码。
+     */
+    private void startContinueWriteRequest() {
+        String selection = continueSelection;
+        if (selection == null || selection.trim().isEmpty()) {
+            Toast.makeText(this, "请先选择文本", Toast.LENGTH_SHORT).show();
+            dismissContinueWriteDialog();
+            return;
+        }
+        try {
+            JSONObject context = new JSONObject();
+            context.put("prompt", "");
+            context.put("question", "");
+            context.put("source", "android-continue-write-dialog");
+            context.put("selection", selection);
+
+            JSONObject request = new JSONObject();
+            String requestId = "cw-" + UUID.randomUUID().toString();
+            request.put("requestId", requestId);
+            request.put("taskType", AiChatCoordinator.MODE_CONTINUE);
+            request.put("selection", selection);
+            request.put("context", context);
+            request.put("modelMode", "base");
+            request.put("history", new JSONArray());
+
+            aiActiveRequestId = requestId;
+            aiStreamingRequestId = requestId;
+            aiRequestModeById.put(requestId, AiChatCoordinator.MODE_CONTINUE);
+            aiTextByRequestId.put(requestId, new StringBuilder());
+            if (continueContentView != null) {
+                aiStreamingViewByRequestId.put(requestId, continueContentView);
+            }
+            continueActiveRequestId = requestId;
+            continueWriteRequestIds.add(requestId);
+
+            Log.i(TAG, "continue_write_request requestId=" + requestId
+                    + " selectionChars=" + selection.length());
+            startAiRequestSession(request, -1);
+        } catch (JSONException e) {
+            dispatchAiError("", "invalid_payload", "Failed to build continue-write request");
+            Log.e(TAG, "Failed to build continue-write request", e);
+            dismissContinueWriteDialog();
+        }
+    }
+
+    /**
+     * 切换续写浮层两态。generating=true：显示停止按钮、隐藏完成胶囊组、清空内容；
+     * false：隐藏停止按钮、显示完成胶囊组（内容保留，已由 handleAiNativeEvent 渲染）。
+     */
+    private void setContinueDialogState(boolean generating) {
+        if (continueStopBtn != null) {
+            continueStopBtn.setVisibility(generating ? View.VISIBLE : View.GONE);
+        }
+        if (continueCompletedGroup != null) {
+            continueCompletedGroup.setVisibility(generating ? View.GONE : View.VISIBLE);
+        }
+        if (continueCopyBar != null) {
+            continueCopyBar.setVisibility(generating ? View.GONE : View.VISIBLE);
+        }
+        if (generating) {
+            if (continueContentView != null) {
+                continueContentView.setText("");
+            }
+            continueResultText = "";
+        }
+    }
+
+    /**
+     * 续写请求自然完成（onDone 回调在 requestId==continueActiveRequestId 时 divert，请求线程触发）。
+     * 内容已由 handleAiNativeEvent 的 ai.done 分支重渲进 continueContentView，这里只切到完成态。
+     */
+    private void onContinueWriteDone(String requestId, String fullText) {
+        final String text = fullText == null ? "" : fullText;
+        runOnUiThread(() -> {
+            continueResultText = text;
+            setContinueDialogState(false);
+            Log.i(TAG, "continue_write_done requestId=" + requestId + " chars=" + text.length());
+        });
+    }
+
+    /**
+     * 点红色停止按钮：取消在途请求，保留已流式部分，切到完成态。
+     */
+    private void onContinueWriteStop() {
+        String rid = continueActiveRequestId;
+        if (!rid.isEmpty()) {
+            cancelAiRequest(rid);
+        }
+        StringBuilder partial = aiTextByRequestId.get(rid);
+        String text = partial == null ? "" : partial.toString();
+        if (text.isEmpty() && continueContentView != null) {
+            text = continueContentView.getText().toString();
+        }
+        continueResultText = text;
+        if (!rid.isEmpty()) {
+            aiStreamingViewByRequestId.remove(rid);
+        }
+        setContinueDialogState(false);
+        Log.i(TAG, "continue_write_stopped requestId=" + rid + " chars=" + text.length());
+    }
+
+    /**
+     * 点「重写生成」：取消在途请求，清空内容，用同一选区上下文重新发一轮。
+     */
+    private void onContinueWriteRegenerate() {
+        if (!continueActiveRequestId.isEmpty()) {
+            cancelAiRequest(continueActiveRequestId);
+            aiStreamingViewByRequestId.remove(continueActiveRequestId);
+        }
+        setContinueDialogState(true);
+        Log.i(TAG, "continue_write_regenerate");
+        startContinueWriteRequest();
+    }
+
+    /**
+     * 点「插入文档」：把续写结果写入文档（ensureEditModeThen 包裹，兼容预览模式触发）。
+     */
+    private void onContinueWriteInsert() {
+        String text = continueResultText;
+        if ((text == null || text.isEmpty()) && continueContentView != null) {
+            text = continueContentView.getText().toString();
+        }
+        if (text == null || text.trim().isEmpty()) {
+            Toast.makeText(this, "没有可插入的内容", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+        Log.i(TAG, "continue_write_insert chars=" + text.length());
+        dismissContinueWriteDialog();
+        ensureEditModeThen(() -> paste("text/plain;charset=utf-8", bytes));
+    }
+
+    /**
+     * 点复制栏：将续写内容复制到剪贴板。
+     */
+    private void onContinueWriteCopy() {
+        String text = continueResultText;
+        if ((text == null || text.isEmpty()) && continueContentView != null) {
+            text = continueContentView.getText().toString();
+        }
+        if (text == null || text.trim().isEmpty()) {
+            return;
+        }
+        if (clipboardManager != null) {
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("continue_write", text));
+        }
+        Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show();
+        Log.i(TAG, "continue_write_copy chars=" + text.length());
+    }
+
+    /**
+     * 关闭续写浮层：取消在途请求、清理流式注册、隐藏 overlay+panel。
+     */
+    private void dismissContinueWriteDialog() {
+        if (!continueActiveRequestId.isEmpty()) {
+            cancelAiRequest(continueActiveRequestId);
+            aiStreamingViewByRequestId.remove(continueActiveRequestId);
+            continueActiveRequestId = "";
+        }
+        if (continueDialogOverlay != null) {
+            continueDialogOverlay.setVisibility(View.GONE);
+        }
+        if (continueDialogPanel != null) {
+            continueDialogPanel.setVisibility(View.GONE);
+        }
+        Log.i(TAG, "continue_write_dialog_dismiss");
+    }
+
+    // ==================== AI续写浮层结束 ====================
+
+    /**
+     * 选中弹窗显示后预读当前选区，填充 aiOpPendingSelection，
+     * 使 AI 按钮点击时能立即拿到选中文本（编辑模式 JNI getTextSelection 主路径）。
+     */
+    /*package*/ void preReadSelectionForPopup() {
+        getSelectedTextFromJs(selection -> {
+            aiOpPendingSelection = selection == null ? "" : selection;
+            Log.i(TAG, "selection_popup_preread chars=" + aiOpPendingSelection.length());
+        });
+    }
+
+    /*package*/ boolean startAiOperationFromSelection(String taskType) {
+        // 生成大纲：弹出生成大纲对话框（入口 A，使用选区文字）
+        if (AiChatCoordinator.MODE_OUTLINE.equals(taskType)) {
+            showOutlineDialog(aiOpPendingSelection);
+            return true;
+        }
+        // 选区已在弹窗显示时预读缓存，优先使用
+        if (aiOpPendingSelection != null && !aiOpPendingSelection.isEmpty()) {
+            runAiOperation(taskType);
+            return true;
+        }
+        // 兜底：异步读取当前选区后再执行
+        getSelectedTextFromJs(selection -> {
+            aiOpPendingSelection = selection == null ? "" : selection;
+            if (aiOpPendingSelection.trim().isEmpty()) {
+                runOnUiThread(() ->
+                        Toast.makeText(this, "请先选择文本", Toast.LENGTH_SHORT).show());
+                return;
+            }
+            runAiOperation(taskType);
+        });
+        return true;
     }
 
     private SelectionMenuController ensureSelectionMenuController() {
@@ -3669,7 +4095,7 @@ public class LOActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             if (mWebView != null) {
                 mWebView.evaluateJavascript(script,
-                        value -> Log.i(TAG, "socket_nudge reason=" + reason + " result=" + value));
+                        value -> Log.d(TAG, "socket_nudge reason=" + reason + " result=" + value));
             }
         });
     }
@@ -3715,6 +4141,15 @@ public class LOActivity extends AppCompatActivity {
                 + "function applyRecover(tag,hard){"
                 + "var tm=window.TileManager||(typeof TileManager!=='undefined'?TileManager:null);"
                 + "if(!hasValidMapSize()){if(app.console&&typeof app.console.debug==='function'){app.console.debug('android editmode tile recover skipped invalid map size tag='+tag+' reason='+reason);}return;}"
+                // Re-assert dark/light theme to core BEFORE requesting tiles.
+                // On the docalreadyoaded reconnect path, Socket.ts enqueues ChangeTheme AFTER
+                // the tile requests, so tiles can render with the stale theme (white text on
+                // white bg in dark mode). Calling the UIManager theme trio here — same JS turn,
+                // before _requestNewTiles — guarantees core switches theme first (ChangeTheme is
+                // enqueued ahead of the tile request). refreshTheme() is NOT used because it is a
+                // no-op here (window.initializedUI is never defined in this build). Throttled via
+                // a window-level timestamp so the 4 retry ticks + nearby callers don't spam core.
+                + "try{var _ts=Date.now();if(!window.__coolThemeReassertTs||_ts-window.__coolThemeReassertTs>1200){window.__coolThemeReassertTs=_ts;if(window.app&&app.map&&app.map.uiManager&&window.prefs&&typeof window.prefs.getBoolean==='function'){var _dt=window.prefs.getBoolean('darkTheme');if(typeof app.map.uiManager.activateDarkModeInCore==='function'){app.map.uiManager.activateDarkModeInCore(_dt);}if(typeof app.map.uiManager.applyInvert==='function'){app.map.uiManager.applyInvert();}if(typeof app.map.uiManager.setCanvasColorAfterModeChange==='function'){app.map.uiManager.setCanvasColorAfterModeChange();}if(app.console&&typeof app.console.debug==='function'){app.console.debug('android theme reassert dark='+_dt+' tag='+tag+' reason='+reason);}}}}catch(_te){}"
                 + "if(typeof app.map.invalidateSize==='function'){app.map.invalidateSize(false);}"
                 + "if(app.map._docLayer&&typeof app.map._docLayer._resetClientVisArea==='function'){app.map._docLayer._resetClientVisArea();}"
                 + "if(app.map._docLayer&&typeof app.map._docLayer._sendClientZoom==='function'){app.map._docLayer._sendClientZoom(true);}"
@@ -3744,7 +4179,7 @@ public class LOActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             if (mWebView != null) {
                 mWebView.evaluateJavascript(script,
-                        value -> Log.i(TAG, "editmode_tile_recover reason=" + reason + " result=" + value));
+                        value -> Log.d(TAG, "editmode_tile_recover reason=" + reason + " result=" + value));
             }
             nudgeSocketIfStalled("editmode_tile_recover");
         });
@@ -3920,6 +4355,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void showNativeAiOperationSheet() {
+        Log.i(TAG, "ai_op_show_entry isFinishing=" + isFinishing() + " isEditMode=" + mIsEditModeActive);
         if (isFinishing()) {
             return;
         }
@@ -3933,13 +4369,42 @@ public class LOActivity extends AppCompatActivity {
         View cancelButton = panel.findViewById(R.id.ai_op_cancel);
 
         // Bind operation buttons with their modes
+        // 6 个有 AI 链路的 operate mode 按钮（依赖选区）
         bindAiOpButton(panel, R.id.ai_op_continue_write, AiChatCoordinator.MODE_CONTINUE);
         bindAiOpButton(panel, R.id.ai_op_expand, AiChatCoordinator.MODE_EXPAND);
         bindAiOpButton(panel, R.id.ai_op_polish, AiChatCoordinator.MODE_POLISH);
-        bindAiOpButton(panel, R.id.ai_op_summarize, AiChatCoordinator.MODE_SUMMARIZE);
         bindAiOpButton(panel, R.id.ai_op_condense, AiChatCoordinator.MODE_CONDENSE);
         bindAiOpButton(panel, R.id.ai_op_rewrite, AiChatCoordinator.MODE_REWRITE);
         bindAiOpButton(panel, R.id.ai_op_translate, AiChatCoordinator.MODE_TRANSLATE);
+
+        // 5 个新功能占位按钮（暂未接入 AI 链路，点击弹 toast）
+        // 生成大纲：弹出大纲生成对话框（入口 B，使用全文）
+        LinearLayout aiOpOutline = panel.findViewById(R.id.ai_op_outline);
+        if (aiOpOutline != null) {
+            aiOpOutline.setOnClickListener(v -> {
+                Log.i(TAG, "ai_op_outline_clicked");
+                if (aiOperationSheet != null) {
+                    aiOperationSheet.dismiss();
+                }
+                showOutlineDialog(null);
+            });
+        }
+        bindAiOpPlaceholderButton(panel, R.id.ai_op_article_generate, "文案生成");
+        bindAiOpPlaceholderButton(panel, R.id.ai_op_text_extract, "文字萃取");
+        bindAiOpPlaceholderButton(panel, R.id.ai_op_image_retouch, "AI修图");
+        bindAiOpPlaceholderButton(panel, R.id.ai_op_image_generate, "AI图片");
+
+        // AI排版按钮：点击后弹出类型选择 BottomSheet
+        LinearLayout aiOpTypeset = panel.findViewById(R.id.ai_op_typeset);
+        if (aiOpTypeset != null) {
+            aiOpTypeset.setOnClickListener(v -> {
+                Log.i(TAG, "ai_op_typeset_clicked");
+                if (aiOperationSheet != null) {
+                    aiOperationSheet.dismiss();
+                }
+                showTypesetSelectSheet();
+            });
+        }
 
         if (cancelButton != null) {
             cancelButton.setOnClickListener(v -> cancelAiOperation());
@@ -3955,12 +4420,16 @@ public class LOActivity extends AppCompatActivity {
 
         aiOperationSheet = new BottomSheetDialog(this);
         aiOperationSheet.setContentView(panel);
+        aiOperationSheet.setCanceledOnTouchOutside(true);
         aiOperationSheet.setOnDismissListener(dialog -> {
+            Log.i(TAG, "ai_op_sheet_dismissed");
             aiOperationSheet = null;
             aiOperationSheetPanel = null;
             aiOpSelectionHint = null;
             aiOpPendingSelection = "";
         });
+        aiOperationSheet.setOnCancelListener(dialog -> Log.i(TAG, "ai_op_sheet_canceled"));
+        aiOperationSheet.setOnShowListener(dialog -> Log.i(TAG, "ai_op_sheet_onshow"));
 
         // Apply same configuration as AI panel
         int screenHeight = getResources().getDisplayMetrics().heightPixels;
@@ -3970,6 +4439,18 @@ public class LOActivity extends AppCompatActivity {
                 getResources().getConfiguration().orientation);
 
         aiOperationSheet.show();
+        Log.i(TAG, "ai_op_sheet_shown");
+
+        // 隐藏 IME：BottomSheet 弹起时 IME 可能仍处于显示态（编辑模式下尤其）。
+        // 注意：不能 requestFocus() —— 那会反过来触发 IME 弹起。直接 hide 即可。
+        android.view.inputmethod.InputMethodManager imm =
+                (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            View currentFocus = getCurrentFocus();
+            if (currentFocus != null) {
+                imm.hideSoftInputFromWindow(currentFocus.getWindowToken(), 0);
+            }
+        }
 
         // Read selection from JS and update hint
         getSelectedTextFromJs(selection -> {
@@ -4010,9 +4491,11 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void setAiOpButtonsEnabled(View panel, boolean enabled) {
+        // 仅控制 6 个 operate mode 按钮（依赖选区）。
+        // 5 个新功能占位按钮不依赖选区，保留常亮常可点。
         int[] buttonIds = {
                 R.id.ai_op_continue_write, R.id.ai_op_expand, R.id.ai_op_polish,
-                R.id.ai_op_summarize, R.id.ai_op_condense, R.id.ai_op_rewrite,
+                R.id.ai_op_condense, R.id.ai_op_rewrite,
                 R.id.ai_op_translate
         };
         for (int id : buttonIds) {
@@ -4024,9 +4507,553 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 新功能按钮占位绑定：点击后弹 toast「功能开发中」，不触发 AI 请求。
+     * 等对应 AiChatCoordinator.MODE_* 与 buildOperateMessages prompt 落地后再替换为 bindAiOpButton。
+     */
+    private void bindAiOpPlaceholderButton(View panel, int viewId, String featureLabel) {
+        View button = panel.findViewById(viewId);
+        if (button != null) {
+            button.setOnClickListener(v ->
+                    Toast.makeText(LOActivity.this,
+                            "「" + featureLabel + "」功能开发中",
+                            Toast.LENGTH_SHORT).show());
+        }
+    }
+
+    // ==================== AI排版相关方法 ====================
+
+    /**
+     * 显示AI排版类型选择 BottomSheet
+     */
+    private void showTypesetSelectSheet() {
+        Log.i(TAG, "ai_typeset_select_show");
+        if (isFinishing()) {
+            return;
+        }
+        typesetSelectSheet = new BottomSheetDialog(this);
+        View sheetView = getLayoutInflater().inflate(R.layout.lolib_sheet_typeset_select, null);
+        typesetSelectSheet.setContentView(sheetView);
+
+        // 配置 BottomSheet
+        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        aiPanelController.configureBottomSheet(typesetSelectSheet,
+                screenHeight, screenWidth,
+                getResources().getConfiguration().orientation);
+
+        // 关闭按钮
+        sheetView.findViewById(R.id.typeset_select_close).setOnClickListener(v -> {
+            Log.i(TAG, "ai_typeset_select_dismissed");
+            typesetSelectSheet.dismiss();
+        });
+
+        // 4 个类型选项
+        sheetView.findViewById(R.id.typeset_type_paper).setOnClickListener(v -> startTypeset("paper"));
+        sheetView.findViewById(R.id.typeset_type_gov).setOnClickListener(v -> startTypeset("gov"));
+        sheetView.findViewById(R.id.typeset_type_contract).setOnClickListener(v -> startTypeset("contract"));
+        sheetView.findViewById(R.id.typeset_type_general).setOnClickListener(v -> startTypeset("general"));
+
+        typesetSelectSheet.setOnDismissListener(dialog -> {
+            Log.i(TAG, "ai_typeset_select_dismissed");
+            typesetSelectSheet = null;
+        });
+
+        typesetSelectSheet.show();
+        Log.i(TAG, "ai_typeset_select_shown");
+    }
+
+    /**
+     * 原生全文提取（AI排版用）——替代旧剪贴板链路（SelectAll→Copy→剪贴板轮询）。
+     * 用 JNI postUnoCommand 发 SelectAll（底层逻辑，非剪贴板），再轮询 JNI getTextSelection
+     * 直到非空且长度稳定（core 异步应用 SelectAll）。须在后台线程调用（LOK JNI 子线程安全）。
+     * 返回全文纯文本，失败返回 null/空。
+     */
+    private String extractFullTextNative(String tag) {
+        try {
+            postUnoCommand(".uno:SelectAll", "{}", false);
+            String prev = null;
+            int stableCount = 0;
+            long deadline = System.currentTimeMillis() + 2500;
+            while (System.currentTimeMillis() < deadline) {
+                try {
+                    Thread.sleep(120);
+                } catch (InterruptedException ie) {
+                    break;
+                }
+                String cur = getTextSelection("text/plain;charset=utf-8");
+                if (cur != null && !cur.isEmpty()) {
+                    if (prev != null && prev.length() == cur.length()) {
+                        stableCount++;
+                        if (stableCount >= 1) {
+                            return cur;
+                        }
+                    } else {
+                        stableCount = 0;
+                    }
+                    prev = cur;
+                }
+            }
+            return prev;
+        } catch (Exception e) {
+            Log.w(TAG, "extractFullTextNative_failed tag=" + tag, e);
+            return null;
+        }
+    }
+
+    /**
+     * 诊断：paste 一段测试 HTML，实测 Writer HTML Import Filter 保留哪些属性（color / hr /
+     * font size / align / table / CSS）。从 Chrome 远程调试控制台触发（须编辑模式）：
+     *   window.postMobileMessage("DEBUG_HTML_PROBE")
+     * 结果看真机 Writer 文档里哪些格式生效——决定 AI排版可用 HTML 词汇（尤其 color / 党政公文红线）。
+     */
+    private void probeHtmlFilterCapability() {
+        if (mWebView == null) {
+            return;
+        }
+        final String html =
+                "<h1>HTML Filter 能力实测</h1>"
+                + "<p>普通段落黑字 (default)</p>"
+                + "<p><font color=\"red\">红色字 font color=red（若红→color 支持）</font></p>"
+                + "<p><font color=\"#0000FF\">蓝色字 font color=#0000FF</font></p>"
+                + "<p><font size=\"6\">大字号 font size=6</font></p>"
+                + "<p><u>下划线 u</u> <strong>加粗 strong</strong> <em>斜体 em</em></p>"
+                + "<div align=\"center\">居中 div align=center</div>"
+                + "<hr>"
+                + "<p>↑ 上方应为横线 hr（默认色）</p>"
+                + "<p><font color=\"red\">━━━━━━━━━━━━━━━━━━━━━━</font></p>"
+                + "<p>↑ 红色字模拟红线（若 color 支持→可见红线，是党政公文红线 fallback 方案）</p>"
+                + "<table border=\"1\"><tr><th>表头A</th><th>表头B</th></tr>"
+                + "<tr><td>单元格1</td><td>单元格2</td></tr></table>"
+                + "<div style=\"color:green\">CSS 绿色字 div style=color（若绿→CSS 也支持；预期不支持）</div>";
+        Log.i(TAG, "htmlfilter_probe start bytes=" + html.length());
+        new Thread(() -> {
+            try {
+                byte[] htmlBytes = html.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                paste("text/html", htmlBytes);
+                Log.i(TAG, "htmlfilter_probe pasted bytes=" + htmlBytes.length
+                        + " — 查看文档：红字?hr?红线?字号?表格?");
+                runOnUiThread(() -> Toast.makeText(this,
+                        "已 paste 测试 HTML，查看文档里哪些格式生效", Toast.LENGTH_LONG).show());
+            } catch (Exception e) {
+                Log.w(TAG, "htmlfilter_probe_failed", e);
+            }
+        }).start();
+    }
+
+    /**
+     * 启动AI排版：提取全文 → 发送AI请求
+     * @param typesetType 排版类型：paper | gov | contract | general
+     */
+    private void startTypeset(String typesetType) {
+        Log.i(TAG, "ai_typeset_start type=" + typesetType);
+        if (typesetSelectSheet != null) {
+            typesetSelectSheet.dismiss();
+        }
+        pendingTypesetType = typesetType;
+
+        // 显示 loading 提示
+        toastTodo("正在提取文档全文...");
+
+        // 原生全文提取（SelectAll → JNI getTextSelection，弃用旧剪贴板链路）
+        new Thread(() -> {
+            String docText = extractFullTextNative("typeset-" + typesetType);
+            if (docText == null || docText.isEmpty()) {
+                runOnUiThread(() -> {
+                    toastTodo("文档全文提取失败，请稍后重试");
+                    Log.w(TAG, "ai_typeset_doc_extract_failed");
+                });
+                return;
+            }
+            Log.i(TAG, "ai_typeset_doc_extracted chars=" + docText.length());
+
+            runOnUiThread(() -> {
+                toastTodo("正在排版...");
+                try {
+                    JSONObject request = new JSONObject();
+                    String requestId = "typeset-" + UUID.randomUUID().toString();
+                    request.put("requestId", requestId);
+                    request.put("taskType", AiChatCoordinator.MODE_TYPESET);
+                    request.put("typesetType", typesetType);  // 新增字段
+                    request.put("selection", docText);  // 全文作为 selection
+                    request.put("source", "android-typeset");
+
+                    JSONObject context = new JSONObject();
+                    context.put("modelMode", "base");
+                    request.put("context", context);
+                    request.put("history", new JSONArray());
+
+                    aiActiveRequestId = requestId;
+                    aiStreamingRequestId = requestId;
+                    aiRequestModeById.put(requestId, AiChatCoordinator.MODE_TYPESET);
+                    aiTextByRequestId.put(requestId, new StringBuilder());
+
+                    startAiRequestSession(request, -1);
+                } catch (JSONException e) {
+                    Log.e(TAG, "ai_typeset_request_error", e);
+                    toastTodo("启动排版失败");
+                }
+            });
+        }, "cool-ai-typeset-extract").start();
+    }
+
+    /**
+     * 显示AI排版结果预览 BottomSheet
+     * @param htmlContent AI返回的排版后的HTML内容
+     */
+    /** 清洗 AI 排版返回的 HTML：剥离 markdown 代码块围栏（```html / ```）、前后空白。
+     *  AI 有时把 HTML 包在 ```html ... ``` 里返回，导致字面符号泄漏进文档。 */
+    private static String sanitizeTypesetHtml(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String s = raw.trim();
+        if (s.startsWith("```")) {
+            int nl = s.indexOf('\n');
+            if (nl >= 0 && nl <= 12) {
+                s = s.substring(nl + 1);
+            } else if (nl < 0 && s.length() <= 12) {
+                s = "";
+            } else {
+                s = s.substring(3);
+            }
+            s = s.trim();
+            if (s.endsWith("```")) {
+                s = s.substring(0, s.length() - 3).trim();
+            }
+        }
+        return s;
+    }
+
+    /** 判断字符串是否像有效 HTML（含至少一个常见标签），拦截 AI 返回纯文本/垃圾的情况。 */
+    private static boolean isLikelyHtml(String s) {
+        if (s == null || s.isEmpty()) {
+            return false;
+        }
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                "<\\s*(html|body|h[1-6]|p|div|ul|ol|li|table|tr|td|span|font|br|hr|strong|em|a|blockquote|pre)\\b",
+                java.util.regex.Pattern.CASE_INSENSITIVE);
+        return p.matcher(s).find();
+    }
+
+    private void showTypesetPreviewSheet(String htmlContent) {
+        String cleaned = sanitizeTypesetHtml(htmlContent);
+        Log.i(TAG, "ai_typeset_preview_show htmlChars=" + (cleaned != null ? cleaned.length() : 0)
+                + " rawChars=" + (htmlContent != null ? htmlContent.length() : 0));
+        if (!isLikelyHtml(cleaned)) {
+            Log.w(TAG, "ai_typeset_preview_not_html — AI 未返回有效 HTML，放弃预览");
+            Toast.makeText(this, "AI 未返回有效的排版 HTML，请重试", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (isFinishing()) {
+            return;
+        }
+        pendingTypesetHtml = cleaned;
+
+        typesetPreviewSheet = new BottomSheetDialog(this);
+        View sheetView = getLayoutInflater().inflate(R.layout.lolib_sheet_typeset_preview, null);
+        typesetPreviewSheet.setContentView(sheetView);
+
+        // 配置 BottomSheet
+        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        aiPanelController.configureBottomSheet(typesetPreviewSheet,
+                screenHeight, screenWidth,
+                getResources().getConfiguration().orientation);
+
+        WebView webView = sheetView.findViewById(R.id.typeset_preview_webview);
+        if (webView != null) {
+            // 配置 WebView
+            webView.getSettings().setJavaScriptEnabled(false);
+            webView.getSettings().setSupportZoom(true);
+            webView.setBackgroundColor(Color.WHITE);
+
+            // 渲染 HTML（添加基础样式以提升预览效果）
+            String wrappedHtml = "<html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><style>" +
+                    "body { font-family: sans-serif; padding: 16px; line-height: 1.6; margin: 0; } " +
+                    "h1, h2, h3 { margin-top: 1em; margin-bottom: 0.5em; } " +
+                    "p { margin: 0.5em 0; } " +
+                    "table { border-collapse: collapse; width: 100%; margin: 1em 0; } " +
+                    "td, th { border: 1px solid #ccc; padding: 8px; } " +
+                    "ul, ol { margin: 0.5em 0; padding-left: 2em; } " +
+                    "</style></head><body>" + (htmlContent != null ? htmlContent : "") + "</body></html>";
+            webView.loadDataWithBaseURL(null, wrappedHtml, "text/html", "UTF-8", null);
+        }
+
+        // 关闭按钮
+        sheetView.findViewById(R.id.typeset_preview_close).setOnClickListener(v -> {
+            Log.i(TAG, "ai_typeset_preview_dismissed");
+            typesetPreviewSheet.dismiss();
+        });
+
+        // 取消按钮
+        sheetView.findViewById(R.id.typeset_preview_cancel).setOnClickListener(v -> {
+            typesetPreviewSheet.dismiss();
+            toastTodo("已取消排版");
+            Log.i(TAG, "ai_typeset_preview_cancelled");
+        });
+
+        // 应用按钮
+        sheetView.findViewById(R.id.typeset_preview_apply).setOnClickListener(v -> {
+            typesetPreviewSheet.dismiss();
+            applyTypesetResult();
+        });
+
+        typesetPreviewSheet.setOnDismissListener(dialog -> {
+            Log.i(TAG, "ai_typeset_preview_dismissed");
+            typesetPreviewSheet = null;
+        });
+
+        typesetPreviewSheet.show();
+        Log.i(TAG, "ai_typeset_preview_shown");
+    }
+
+    /**
+     * 应用AI排版结果：将HTML粘贴到文档
+     */
+    private void applyTypesetResult() {
+        Log.i(TAG, "ai_typeset_apply htmlChars=" + (pendingTypesetHtml != null ? pendingTypesetHtml.length() : 0));
+        if (pendingTypesetHtml == null || pendingTypesetHtml.isEmpty()) {
+            toastTodo("排版结果为空");
+            return;
+        }
+
+        final byte[] htmlBytes = pendingTypesetHtml.getBytes(StandardCharsets.UTF_8);
+        runOnUiThread(() -> {
+            paste("text/html", htmlBytes);
+            toastTodo("AI排版已应用");
+        });
+
+        pendingTypesetHtml = null;
+        pendingTypesetType = null;
+    }
+
+    // ==================== AI排版相关方法结束 ====================
+
+    // ==================== 生成大纲相关方法 ====================
+
+    private static final String[] OUTLINE_TYPE_KEYS = {
+            AiChatCoordinator.OUTLINE_TYPE_PAPER,
+            AiChatCoordinator.OUTLINE_TYPE_REPORT,
+            AiChatCoordinator.OUTLINE_TYPE_SPEECH,
+            AiChatCoordinator.OUTLINE_TYPE_EVENT,
+            AiChatCoordinator.OUTLINE_TYPE_GENERAL
+    };
+    private static final String[] OUTLINE_TYPE_LABELS = {
+            "论文", "工作报告", "演讲稿", "活动策划", "通用文档"
+    };
+
+    /**
+     * 弹出生成大纲对话框。
+     * @param selectionText 入口 A 传选区文字；入口 B 传 null（生成时提取全文）
+     */
+    private void showOutlineDialog(String selectionText) {
+        if (outlineDialog != null && outlineDialog.isShowing()) {
+            outlineDialog.dismiss();
+        }
+        outlineContextText = selectionText;
+        pendingOutlineType = AiChatCoordinator.OUTLINE_TYPE_GENERAL;
+        pendingOutlineResult = null;
+
+        final AlertDialog dialog = new AlertDialog.Builder(this).create();
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_outline, null);
+
+        outlineTypeLabel = root.findViewById(R.id.outline_type_label);
+        outlineDescEdit = root.findViewById(R.id.outline_desc_edit);
+        outlineResultText = root.findViewById(R.id.outline_result_text);
+        outlineDescCard = root.findViewById(R.id.outline_desc_card);
+        outlineResultCard = root.findViewById(R.id.outline_result_card);
+        outlineGenerateBtn = root.findViewById(R.id.outline_generate_btn);
+        outlineDoneRow = root.findViewById(R.id.outline_done_row);
+        outlineCopyRow = root.findViewById(R.id.outline_copy_row);
+
+        root.findViewById(R.id.outline_close_btn).setOnClickListener(v -> dialog.dismiss());
+        root.findViewById(R.id.outline_type_card).setOnClickListener(v -> showOutlineTypePicker());
+        outlineGenerateBtn.setOnClickListener(v -> startOutlineGeneration());
+        root.findViewById(R.id.outline_regenerate_btn).setOnClickListener(v -> startOutlineGeneration());
+        root.findViewById(R.id.outline_apply_btn).setOnClickListener(v -> applyOutlineResult());
+        outlineCopyRow.setOnClickListener(v -> copyOutlineResult());
+
+        dialog.setOnDismissListener(d -> {
+            Log.i(TAG, "outline_dialog_dismissed");
+            aiStreamingViewByRequestId.remove(outlineActiveRequestId);
+            outlineActiveRequestId = "";
+            outlineDialog = null;
+        });
+        dialog.setView(root);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            dialog.getWindow().setLayout(dpToPx(670), dpToPx(756));
+        }
+        outlineDialog = dialog;
+        switchOutlineDialogState(false);
+    }
+
+    private void showOutlineTypePicker() {
+        PopupMenu popup = new PopupMenu(this, outlineTypeLabel);
+        for (int i = 0; i < OUTLINE_TYPE_LABELS.length; i++) {
+            popup.getMenu().add(0, i, i, OUTLINE_TYPE_LABELS[i]);
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            int idx = item.getItemId();
+            if (idx >= 0 && idx < OUTLINE_TYPE_KEYS.length) {
+                pendingOutlineType = OUTLINE_TYPE_KEYS[idx];
+                outlineTypeLabel.setText(OUTLINE_TYPE_LABELS[idx]);
+                Log.i(TAG, "outline_type_selected type=" + pendingOutlineType);
+                return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+    private void startOutlineGeneration() {
+        pendingOutlineDesc = outlineDescEdit.getText().toString().trim();
+        Log.i(TAG, "ai_outline_start type=" + pendingOutlineType
+                + " hasContext=" + (outlineContextText != null && !outlineContextText.isEmpty())
+                + " descChars=" + pendingOutlineDesc.length());
+
+        // 入口 B（无选区文字）→ 先提取全文
+        if (outlineContextText == null || outlineContextText.isEmpty()) {
+            toastTodo("正在提取文档全文...");
+            new Thread(() -> {
+                String full = extractFullTextNative("outline");
+                if (full == null || full.isEmpty()) {
+                    runOnUiThread(() -> {
+                        toastTodo("文档全文提取失败，请稍后重试");
+                        Log.w(TAG, "ai_outline_doc_extract_failed");
+                    });
+                    return;
+                }
+                Log.i(TAG, "ai_outline_doc_extracted chars=" + full.length());
+                outlineContextText = full;
+                runOnUiThread(this::sendOutlineRequest);
+            }, "cool-ai-outline-extract").start();
+        } else {
+            sendOutlineRequest();
+        }
+    }
+
+    private void sendOutlineRequest() {
+        toastTodo("正在生成大纲...");
+        if (outlineResultText != null) {
+            outlineResultText.setText("正在生成大纲...");
+        }
+        switchOutlineDialogState(true);  // 切到完成态骨架
+
+        try {
+            JSONObject request = new JSONObject();
+            String requestId = "outline-" + UUID.randomUUID().toString();
+            request.put("requestId", requestId);
+            request.put("taskType", AiChatCoordinator.MODE_OUTLINE);
+            request.put("outlineType", pendingOutlineType);
+            request.put("selection", outlineContextText != null ? outlineContextText : "");
+            request.put("source", "android-outline");
+
+            JSONObject context = new JSONObject();
+            context.put("description", pendingOutlineDesc != null ? pendingOutlineDesc : "");
+            context.put("modelMode", "base");
+            request.put("context", context);
+            request.put("history", new JSONArray());
+
+            aiActiveRequestId = requestId;
+            aiStreamingRequestId = requestId;
+            aiRequestModeById.put(requestId, AiChatCoordinator.MODE_OUTLINE);
+            aiTextByRequestId.put(requestId, new StringBuilder());
+            // 注册流式目标：ai.stream 事件经 dispatchAiEvent→handleAiNativeEvent 自动渲染到该 TextView
+            // （streaming=true → AiMarkdownRenderer 走纯文本分支，"一、/1./(1)" 编号不会被转 markdown 列表）
+            aiStreamingViewByRequestId.remove(outlineActiveRequestId);
+            outlineActiveRequestId = requestId;
+            if (outlineResultText != null) {
+                aiStreamingViewByRequestId.put(requestId, outlineResultText);
+            }
+
+            startAiRequestSession(request, -1);
+        } catch (JSONException e) {
+            Log.e(TAG, "ai_outline_request_error", e);
+            toastTodo("启动大纲生成失败");
+            switchOutlineDialogState(false);
+        }
+    }
+
+    private void showOutlineResult(String text) {
+        pendingOutlineResult = text;
+        if (outlineResultText != null) {
+            outlineResultText.setText(text);
+        }
+        switchOutlineDialogState(true);
+        if (outlineDialog != null && outlineDialog.getWindow() != null) {
+            outlineDialog.getWindow().setLayout(dpToPx(670), dpToPx(972));
+        }
+    }
+
+    private void switchOutlineDialogState(boolean completed) {
+        if (outlineDescCard != null) {
+            outlineDescCard.setVisibility(completed ? View.GONE : View.VISIBLE);
+        }
+        if (outlineGenerateBtn != null) {
+            outlineGenerateBtn.setVisibility(completed ? View.GONE : View.VISIBLE);
+        }
+        if (outlineResultCard != null) {
+            outlineResultCard.setVisibility(completed ? View.VISIBLE : View.GONE);
+        }
+        if (outlineDoneRow != null) {
+            outlineDoneRow.setVisibility(completed ? View.VISIBLE : View.GONE);
+        }
+        if (outlineCopyRow != null) {
+            outlineCopyRow.setVisibility(completed ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void applyOutlineResult() {
+        Log.i(TAG, "ai_outline_apply chars=" + (pendingOutlineResult != null ? pendingOutlineResult.length() : 0));
+        if (pendingOutlineResult == null || pendingOutlineResult.isEmpty()) {
+            toastTodo("大纲为空");
+            return;
+        }
+        final byte[] bytes = pendingOutlineResult.getBytes(StandardCharsets.UTF_8);
+        // 先跳到文末（同时取消任何选区），再粘贴——避免替换当前选中的内容（入口 A 可能仍有选区处于选中状态）
+        runOnUiThread(() -> postUnoCommand(".uno:GoToEndOfDoc", "{}", false));
+        new Thread(() -> {
+            try {
+                Thread.sleep(300);  // 等待 GoToEndOfDoc 生效
+            } catch (InterruptedException ignored) {
+            }
+            paste("text/plain;charset=utf-8", bytes);
+            Log.i(TAG, "ai_outline_inserted_at_end chars=" + bytes.length);
+            runOnUiThread(() -> {
+                toastTodo("大纲已插入到文末");
+                if (outlineDialog != null) {
+                    outlineDialog.dismiss();
+                }
+            });
+        }, "cool-ai-outline-apply").start();
+        pendingOutlineResult = null;
+    }
+
+    private void copyOutlineResult() {
+        if (pendingOutlineResult == null || pendingOutlineResult.isEmpty()) {
+            toastTodo("暂无大纲可复制");
+            return;
+        }
+        if (clipboardManager != null) {
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("outline", pendingOutlineResult));
+            toastTodo("大纲已复制，可粘贴到任意位置");
+            Log.i(TAG, "ai_outline_copied chars=" + pendingOutlineResult.length());
+        }
+    }
+
+    // ==================== 生成大纲相关方法结束 ====================
+
     private void runAiOperation(String mode) {
         String selection = aiOpPendingSelection;
         if (selection == null || selection.trim().isEmpty()) {
+            return;
+        }
+        // continue_write 走弹窗式续写（浮层初始化成功时 divert；否则回退到下方 operate-mode 自动粘贴）
+        if (AiChatCoordinator.MODE_CONTINUE.equals(mode) && continueDialogPanel != null) {
+            openContinueWriteDialog(selection);
             return;
         }
         try {
@@ -4098,26 +5125,30 @@ public class LOActivity extends AppCompatActivity {
                 return;
             }
             // Fallback: JS bridge (preview mode _selectedTextContent / edit mode _selectionPlainTextContent)
-            if (mWebView == null) {
-                runOnUiThread(() -> callback.accept(""));
-                return;
-            }
-            mWebView.evaluateJavascript(
-                "window.__coolAiBridge?window.__coolAiBridge.getSelectedText():''",
-                value -> {
-                    String jsText = "";
-                    if (value != null && !"null".equals(value)) {
-                        try {
-                            jsText = new JSONObject("{\"v\":" + value + "}").optString("v", "");
-                        } catch (JSONException e) {
-                            jsText = "";
+            // ⚠️ WebView.evaluateJavascript 必须在主线程调用，否则 checkThread() 抛 RuntimeException，
+            // 致子线程未捕获异常 → 进程崩溃（"跳回主页"闪退）。这里切回主线程执行。
+            runOnUiThread(() -> {
+                if (mWebView == null) {
+                    callback.accept("");
+                    return;
+                }
+                mWebView.evaluateJavascript(
+                    "window.__coolAiBridge?window.__coolAiBridge.getSelectedText():''",
+                    value -> {
+                        String jsText = "";
+                        if (value != null && !"null".equals(value)) {
+                            try {
+                                jsText = new JSONObject("{\"v\":" + value + "}").optString("v", "");
+                            } catch (JSONException e) {
+                                jsText = "";
+                            }
                         }
-                    }
-                    if (!jsText.isEmpty()) {
-                        Log.i(TAG, "ai_op_selection_js_bridge chars=" + jsText.length());
-                    }
-                    callback.accept(jsText);
-                });
+                        if (!jsText.isEmpty()) {
+                            Log.i(TAG, "ai_op_selection_js_bridge chars=" + jsText.length());
+                        }
+                        callback.accept(jsText);
+                    });
+            });
         }, "cool-ai-op-selection").start();
     }
 
@@ -4769,7 +5800,7 @@ public class LOActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             if (mWebView != null) {
                 mWebView.evaluateJavascript(script,
-                        value -> Log.i(TAG, "doc_state_bridge result=" + value));
+                        value -> Log.d(TAG, "doc_state_bridge result=" + value));
             }
         });
     }

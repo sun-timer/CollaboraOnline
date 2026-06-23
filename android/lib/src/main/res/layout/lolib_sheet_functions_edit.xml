@@ -51,10 +51,11 @@
             android:padding="4dp" />
     </HorizontalScrollView>
 
-    <FrameLayout
+    <androidx.core.widget.NestedScrollView
         android:id="@+id/function_edit_content_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp" />
+        android:layout_marginTop="10dp"
+        android:fillViewport="true" />
 
 </LinearLayout>

@@ -22,10 +22,10 @@ public class BottomToolbarController {
     private static final int[] PREVIEW_MODE_TOOLBAR_ITEM_IDS = new int[] {
             R.id.toolbar_item_function,
             R.id.toolbar_item_mobile_preview,
-            R.id.toolbar_item_ai_assistant
+            R.id.toolbar_item_ai_assistant,
+            R.id.toolbar_item_ai_feature
     };
     private static final int[] EDIT_MODE_EXTRA_TOOLBAR_ITEM_IDS = new int[] {
-            R.id.toolbar_item_ai_feature,
             R.id.toolbar_item_keyboard,
             R.id.toolbar_item_character,
             R.id.toolbar_item_paragraph,
@@ -214,7 +214,10 @@ public class BottomToolbarController {
     private void bindToolbarClick(int viewId, View.OnClickListener listener) {
         View view = host.findViewById(viewId);
         if (view != null) {
-            view.setOnClickListener(listener);
+            view.setOnClickListener(v -> {
+                Log.i(TAG, "bottom_toolbar_click id=" + viewId);
+                listener.onClick(v);
+            });
         }
     }
 

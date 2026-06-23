@@ -213,7 +213,16 @@ class Socket {
 		}
 		this._setMobileDocGestureGuard(false, 'docalreadyloaded_reconnect_done');
 		this._map.hideBusy();
+
+		// Update client-side theme CSS (data-bg-theme, canvas background color).
+		// Core-side theme (ChangeTheme + InvertBackground) was already sent
+		// via _doSend in _onSocketOpen, right after the load message — before
+		// any queued messages or tile requests.
+		this._map.uiManager.setCanvasColorAfterModeChange();
+		this._map.uiManager.refreshTheme();
+
 		this._forceMobileVisibleTilesAfterReconnect('docalreadyloaded_reconnect_done');
+
 		if (this._reconnectBusyTimer) {
 			clearTimeout(this._reconnectBusyTimer);
 			this._reconnectBusyTimer = undefined;
@@ -223,20 +232,30 @@ class Socket {
 			this._reconnectErrorTimer = undefined;
 		}
 
+		// Step 3: Clear stale tile cache. Use redraw() instead of
+		// refreshTilesInBackground() to drop ALL cached tiles — stale tiles
+		// from before reconnect may have wrong colors.
 		if (this._map._docLayer) {
 			this._map._docLayer._resetClientVisArea();
-			TileManager.refreshTilesInBackground();
+			TileManager.redraw();
 		}
 		this._map.fire('statusindicator', { statusType: 'reconnected' });
-
-		// Re-apply dark mode to core after reconnect — matches _onStatusMsg path.
-		// Without this, tiles re-render with wrong colors (e.g. white text on white bg).
-		const darkTheme = window.prefs.getBoolean('darkTheme');
-		this._map.uiManager.activateDarkModeInCore(darkTheme);
-		this._map.uiManager.applyInvert();
-		this._map.uiManager.setCanvasColorAfterModeChange();
-
 		this._map.fire('docloaded', { status: true });
+
+		// After docalreadyloaded reconnect, _viewId may be undefined because
+		// status messages during this path don't carry viewid (unlike the
+		// initial-load status path). Without _viewId, tile rendering breaks:
+		// docLayer doesn't know which view's tiles to render → white screen.
+		// Restore from _viewInfo — in single-view docs this is unambiguous.
+		if (this._map._docLayer && (this._map._docLayer as any)._viewId == null) {
+			const viewIds = Object.keys((this._map as any)._viewInfo);
+			if (viewIds.length >= 1) {
+				const restoredId = parseInt(viewIds[0]);
+				(this._map._docLayer as any)._viewId = restoredId;
+				window.app.console.log('Restored viewId from _viewInfo after docalreadyloaded reconnect: ' + restoredId + ' (available views: ' + viewIds.join(',') + ')');
+			}
+		}
+
 	}
 
 	private _getPointerCompactionKey(msg: string): string | null {
@@ -940,6 +959,21 @@ class Socket {
 			msg += ' clientvisiblearea=' + window.makeClientVisibleArea();
 
 			this._doSend(msg);
+			// Immediately after load, send theme restoration via _doSend.
+			// Must use _doSend (not sendMessage) because sendMessage queues
+			// when app.idleHandler._active is false (still false during
+			// reconnect). Core ignores darkTheme/darkBackground params in
+			// the load message for the docalreadyloaded case (ChildSession
+			// returns immediately), so these UNO commands are essential for
+			// correct tile text/background colors after reconnect.
+			if (this._map._docLayer) {
+				const themeCmd = { 'NewTheme': { 'type': 'string',
+					'value': darkTheme ? 'Dark' : 'Light' } };
+				this._doSend('uno .uno:ChangeTheme ' + JSON.stringify(themeCmd));
+				const bgCmd = { 'NewTheme': { 'type': 'string',
+					'value': darkBackground ? 'Dark' : 'Light' } };
+				this._doSend('uno .uno:InvertBackground ' + JSON.stringify(bgCmd));
+			}
 			this._drainDeferredReconnectMessages();
 			this._flushPendingTileCombineMessages();
 			for (let i = 0; i < this._msgQueue.length; i++) {
@@ -1011,7 +1045,10 @@ class Socket {
 			if (this._map._docLayer._docType === 'presentation')
 				app.setCursorVisibility(false);
 
-			this._map._docLayer._resetCanonicalIdStatus();
+			// NOTE: Do NOT reset _canonicalIdInitialized here — the canonical view
+			// ID does not change across a socket reconnect. Resetting it to false
+			// would permanently block TileManager.update() because the core does
+			// not re-send canonicalidchange: when the canonical ID hasn't changed.
 			this._map._docLayer._resetViewId();
 			this._map._docLayer._resetDocumentInfo();
 		}
@@ -1019,7 +1056,7 @@ class Socket {
 		// We don't want them back on re-connection.
 		this._delayedMessages = [];
 		this._resetReconnectTransientState('socket_close');
-
+			
 		if (isActive && this._reconnecting) {
 			if (this._reconnectErrorTimer) {
 				clearTimeout(this._reconnectErrorTimer);
@@ -1521,9 +1558,8 @@ class Socket {
 				TileManager.refreshTilesInBackground();
 			this._map.fire('statusindicator', { statusType: 'reconnected' });
 
-			const darkTheme = window.prefs.getBoolean('darkTheme');
-			this._map.uiManager.activateDarkModeInCore(darkTheme);
-			this._map.uiManager.applyInvert();
+			// Core-side theme restore already sent via _doSend in _onSocketOpen.
+			// Only need client-side CSS update here.
 			this._map.uiManager.setCanvasColorAfterModeChange();
 
 			if (!window.mode.isMobile())
@@ -1542,7 +1578,7 @@ class Socket {
 		if (this._map._docLayer) {
 			this._map._docLayer._onMessage(textMsg);
 
-			// call update view list viewId if it is not defined yet
+				// call update view list viewId if it is not defined yet
 			if (!this._map._docLayer._getViewId()) this._map.fire('updateviewslist');
 
 			this._reconnecting = false;
