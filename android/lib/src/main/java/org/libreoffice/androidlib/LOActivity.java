@@ -43,6 +43,7 @@ import android.print.PrintDocumentAdapter;
 import android.print.PrintManager;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.HapticFeedbackConstants;
 import android.view.LayoutInflater;
@@ -112,6 +113,7 @@ import androidx.core.content.ContextCompat;
 import androidx.core.view.GravityCompat;
 import androidx.core.view.WindowCompat;
 import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.core.widget.NestedScrollView;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
@@ -127,6 +129,8 @@ import org.libreoffice.androidlib.ai.AiMarkdownRenderer;
 import org.libreoffice.androidlib.ai.AiPanelController;
 import org.libreoffice.androidlib.ai.AiRequestManager;
 import org.libreoffice.androidlib.ai.AiRequestSession;
+import org.libreoffice.androidlib.ai.ArticleTemplate;
+import org.libreoffice.androidlib.ai.ArticleTemplateRegistry;
 import org.libreoffice.androidlib.lok.LokClipboardData;
 import org.libreoffice.androidlib.lok.LokClipboardEntry;
 
@@ -283,11 +287,12 @@ public class LOActivity extends AppCompatActivity {
     private String pendingTypesetHtml;  // AI 返回的排版结果
     // 生成大纲相关
     private AlertDialog outlineDialog;
+    private View outlineDialogRoot;
     private TextView outlineTypeLabel;
     private EditText outlineDescEdit;
     private TextView outlineResultText;
     private View outlineDescCard;
-    private View outlineResultCard;
+    private NestedScrollView outlineResultCard;
     private View outlineGenerateBtn;
     private View outlineDoneRow;
     private View outlineCopyRow;  // 结果区下方的复制横条
@@ -296,6 +301,28 @@ public class LOActivity extends AppCompatActivity {
     private String pendingOutlineDesc;
     private String pendingOutlineResult;
     private String outlineActiveRequestId = "";  // 当前大纲请求 id（流式注册/清理用）
+    // 文案生成相关
+    private static final int ARTICLE_STAGE_SELECT = 1;
+    private static final int ARTICLE_STAGE_FORM = 2;
+    private static final int ARTICLE_STAGE_RESULT = 3;
+    private AlertDialog articleDialog;
+    private View articleDialogRoot;
+    private TextView articleCategoryLabel;
+    private TextView articleSubTypeLabel;
+    private View articleSubTypeCard;
+    private View articleStageHint;
+    private View articleStageForm;
+    private LinearLayout articleFormContainer;
+    private TextView articleGenerateBtnText;
+    private NestedScrollView articleResultCard;
+    private TextView articleResultText;
+    private View articleCopyRow;
+    private View articleDoneRow;
+    private String pendingArticleCategory;
+    private ArticleTemplate pendingArticleTemplate;
+    private String[] pendingArticleValues;
+    private String pendingArticleResult;
+    private String articleActiveRequestId = "";
     // AI续写浮层（弹窗式续写：生成中态/完成态，复用 aiStreamingViewByRequestId 流式接入）
     private View continueDialogOverlay;
     private View continueDialogPanel;
@@ -2122,6 +2149,24 @@ public class LOActivity extends AppCompatActivity {
                 messages = AiChatCoordinator.buildOutlineMessages(outlineType, ctxText, desc);
                 Log.i(TAG, "ai_outline_mode requestId=" + requestId + " outlineType=" + outlineType
                         + " contextChars=" + ctxText.length() + " descChars=" + desc.length());
+            } else if (AiChatCoordinator.MODE_ARTICLE_GENERATE.equals(taskType)) {
+                String templateKey = request.optString("articleTemplateKey", "");
+                ArticleTemplate template = ArticleTemplateRegistry.findByKey(templateKey);
+                JSONObject ctxObj = request.optJSONObject("context");
+                JSONArray valuesArr = ctxObj != null ? ctxObj.optJSONArray("articleValues") : null;
+                String[] values = new String[0];
+                if (valuesArr != null) {
+                    values = new String[valuesArr.length()];
+                    for (int i = 0; i < valuesArr.length(); i++) {
+                        values[i] = valuesArr.optString(i, "");
+                    }
+                }
+                if (template == null) {
+                    throw new JSONException("Unknown article template: " + templateKey);
+                }
+                messages = AiChatCoordinator.buildArticleMessages(template, values);
+                Log.i(TAG, "ai_article_mode requestId=" + requestId + " template=" + templateKey
+                        + " vars=" + values.length);
             } else {
                 messages.put(new JSONObject().put("role", "user").put("content", buildAiUserPrompt(request)));
             }
@@ -2164,6 +2209,9 @@ public class LOActivity extends AppCompatActivity {
                                 // 生成大纲：在弹窗结果区展示，不自动粘贴
                                 Log.i(TAG, "ai_outline_done requestId=" + callbackRequestId + " chars=" + fullText.length());
                                 runOnUiThread(() -> showOutlineResult(fullText));
+                            } else if (AiChatCoordinator.MODE_ARTICLE_GENERATE.equals(taskType)) {
+                                Log.i(TAG, "ai_article_done requestId=" + callbackRequestId + " chars=" + fullText.length());
+                                runOnUiThread(() -> showArticleGenerateResult(fullText));
                             }
                             JSONObject donePayload = new JSONObject();
                             donePayload.put("requestId", callbackRequestId);
@@ -2190,6 +2238,15 @@ public class LOActivity extends AppCompatActivity {
                                 runOnUiThread(() -> {
                                     toastTodo("大纲生成失败：" + message);
                                     switchOutlineDialogState(false);
+                                });
+                            } else if (AiChatCoordinator.MODE_ARTICLE_GENERATE.equals(taskType)) {
+                                runOnUiThread(() -> {
+                                    toastTodo("文案生成失败：" + message);
+                                    if (pendingArticleTemplate != null) {
+                                        switchArticleDialogStage(ARTICLE_STAGE_FORM);
+                                    } else {
+                                        switchArticleDialogStage(ARTICLE_STAGE_SELECT);
+                                    }
                                 });
                             }
                             dispatchAiError(callbackRequestId, code, message);
@@ -2845,6 +2902,14 @@ public class LOActivity extends AppCompatActivity {
         // 生成大纲：弹出生成大纲对话框（入口 A，使用选区文字）
         if (AiChatCoordinator.MODE_OUTLINE.equals(taskType)) {
             showOutlineDialog(aiOpPendingSelection);
+            return true;
+        }
+        // 文案生成：弹出文案生成对话框（不依赖选区）
+        if (AiChatCoordinator.MODE_ARTICLE_GENERATE.equals(taskType)) {
+            if (selectionMenuController != null) {
+                selectionMenuController.hide();
+            }
+            showArticleGenerateDialog();
             return true;
         }
         // 选区已在弹窗显示时预读缓存，优先使用
@@ -4404,7 +4469,16 @@ public class LOActivity extends AppCompatActivity {
                 showOutlineDialog(null);
             });
         }
-        bindAiOpPlaceholderButton(panel, R.id.ai_op_article_generate, "文案生成");
+        LinearLayout aiOpArticle = panel.findViewById(R.id.ai_op_article_generate);
+        if (aiOpArticle != null) {
+            aiOpArticle.setOnClickListener(v -> {
+                Log.i(TAG, "ai_op_article_generate_clicked");
+                if (aiOperationSheet != null) {
+                    aiOperationSheet.dismiss();
+                }
+                showArticleGenerateDialog();
+            });
+        }
         bindAiOpPlaceholderButton(panel, R.id.ai_op_text_extract, "文字萃取");
         bindAiOpPlaceholderButton(panel, R.id.ai_op_image_retouch, "AI修图");
         bindAiOpPlaceholderButton(panel, R.id.ai_op_image_generate, "AI图片");
@@ -4872,6 +4946,7 @@ public class LOActivity extends AppCompatActivity {
 
         final AlertDialog dialog = new AlertDialog.Builder(this).create();
         View root = getLayoutInflater().inflate(R.layout.lolib_dialog_outline, null);
+        outlineDialogRoot = root;
 
         outlineTypeLabel = root.findViewById(R.id.outline_type_label);
         outlineDescEdit = root.findViewById(R.id.outline_desc_edit);
@@ -4894,15 +4969,54 @@ public class LOActivity extends AppCompatActivity {
             aiStreamingViewByRequestId.remove(outlineActiveRequestId);
             outlineActiveRequestId = "";
             outlineDialog = null;
+            outlineDialogRoot = null;
         });
         dialog.setView(root);
         dialog.show();
         if (dialog.getWindow() != null) {
             dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            dialog.getWindow().setLayout(dpToPx(670), dpToPx(756));
         }
         outlineDialog = dialog;
         switchOutlineDialogState(false);
+        root.post(this::applyOutlineDialogSize);
+    }
+
+    /**
+     * 约束大纲弹窗尺寸：宽 min(670dp, 屏宽-48dp)，高 min(756dp, 屏高 80%)，输入/完成态共用。
+     */
+    private void applyOutlineDialogSize() {
+        if (outlineDialog == null || outlineDialog.getWindow() == null) {
+            return;
+        }
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int margin = dpToPx(48);
+        int targetWidth = Math.min(dpToPx(670), dm.widthPixels - margin);
+        targetWidth = Math.max(targetWidth, dpToPx(280));
+
+        int targetHeight = Math.min(dpToPx(756), (int) (dm.heightPixels * 0.80f));
+        targetHeight = Math.max(targetHeight, dpToPx(320));
+        targetHeight = Math.min(targetHeight, dm.heightPixels - dpToPx(24));
+
+        outlineDialog.getWindow().setLayout(targetWidth, targetHeight);
+        if (outlineDialogRoot != null) {
+            ViewGroup.LayoutParams lp = outlineDialogRoot.getLayoutParams();
+            if (lp == null) {
+                lp = new ViewGroup.LayoutParams(targetWidth, targetHeight);
+            } else {
+                lp.width = targetWidth;
+                lp.height = targetHeight;
+            }
+            outlineDialogRoot.setLayoutParams(lp);
+        }
+        Log.d(TAG, "outline_dialog_size w=" + targetWidth + " h=" + targetHeight
+                + " screen=" + dm.widthPixels + "x" + dm.heightPixels);
+    }
+
+    private void scrollOutlineResultToBottom() {
+        if (outlineResultCard == null || outlineResultCard.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        outlineResultCard.post(() -> outlineResultCard.fullScroll(View.FOCUS_DOWN));
     }
 
     private void showOutlineTypePicker() {
@@ -4998,9 +5112,7 @@ public class LOActivity extends AppCompatActivity {
             outlineResultText.setText(text);
         }
         switchOutlineDialogState(true);
-        if (outlineDialog != null && outlineDialog.getWindow() != null) {
-            outlineDialog.getWindow().setLayout(dpToPx(670), dpToPx(972));
-        }
+        scrollOutlineResultToBottom();
     }
 
     private void switchOutlineDialogState(boolean completed) {
@@ -5018,6 +5130,13 @@ public class LOActivity extends AppCompatActivity {
         }
         if (outlineCopyRow != null) {
             outlineCopyRow.setVisibility(completed ? View.VISIBLE : View.GONE);
+        }
+        if (completed) {
+            if (outlineDialogRoot != null) {
+                outlineDialogRoot.post(this::applyOutlineDialogSize);
+            } else {
+                applyOutlineDialogSize();
+            }
         }
     }
 
@@ -5058,6 +5177,354 @@ public class LOActivity extends AppCompatActivity {
             Log.i(TAG, "ai_outline_copied chars=" + pendingOutlineResult.length());
         }
     }
+
+    // ==================== 文案生成相关方法 ====================
+
+    private void showArticleGenerateDialog() {
+        if (articleDialog != null && articleDialog.isShowing()) {
+            articleDialog.dismiss();
+        }
+        pendingArticleCategory = null;
+        pendingArticleTemplate = null;
+        pendingArticleValues = null;
+        pendingArticleResult = null;
+
+        final AlertDialog dialog = new AlertDialog.Builder(this).create();
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_article_generate, null);
+        articleDialogRoot = root;
+
+        articleCategoryLabel = root.findViewById(R.id.article_category_label);
+        articleSubTypeLabel = root.findViewById(R.id.article_subtype_label);
+        articleSubTypeCard = root.findViewById(R.id.article_subtype_card);
+        articleStageHint = root.findViewById(R.id.article_stage_hint);
+        articleStageForm = root.findViewById(R.id.article_stage_form);
+        articleFormContainer = root.findViewById(R.id.article_form_container);
+        articleGenerateBtnText = root.findViewById(R.id.article_generate_btn_text);
+        articleResultCard = root.findViewById(R.id.article_result_card);
+        articleResultText = root.findViewById(R.id.article_result_text);
+        articleCopyRow = root.findViewById(R.id.article_copy_row);
+        articleDoneRow = root.findViewById(R.id.article_done_row);
+
+        root.findViewById(R.id.article_close_btn).setOnClickListener(v -> dialog.dismiss());
+        root.findViewById(R.id.article_category_card).setOnClickListener(v -> showArticleCategoryPicker());
+        articleSubTypeCard.setOnClickListener(v -> showArticleSubTypePicker());
+        root.findViewById(R.id.article_generate_btn).setOnClickListener(v -> startArticleGeneration());
+        root.findViewById(R.id.article_regenerate_btn).setOnClickListener(v -> {
+            if (pendingArticleTemplate != null) {
+                switchArticleDialogStage(ARTICLE_STAGE_FORM);
+            }
+        });
+        root.findViewById(R.id.article_apply_btn).setOnClickListener(v -> applyArticleResult());
+        articleCopyRow.setOnClickListener(v -> copyArticleResult());
+
+        dialog.setOnDismissListener(d -> {
+            Log.i(TAG, "article_dialog_dismissed");
+            aiStreamingViewByRequestId.remove(articleActiveRequestId);
+            articleActiveRequestId = "";
+            articleDialog = null;
+            articleDialogRoot = null;
+        });
+        dialog.setView(root);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+        articleDialog = dialog;
+        switchArticleDialogStage(ARTICLE_STAGE_SELECT);
+        root.post(this::applyArticleDialogSize);
+    }
+
+    private void applyArticleDialogSize() {
+        if (articleDialog == null || articleDialog.getWindow() == null) {
+            return;
+        }
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int margin = dpToPx(48);
+        int targetWidth = Math.min(dpToPx(670), dm.widthPixels - margin);
+        targetWidth = Math.max(targetWidth, dpToPx(280));
+
+        int targetHeight = Math.min(dpToPx(756), (int) (dm.heightPixels * 0.80f));
+        targetHeight = Math.max(targetHeight, dpToPx(320));
+        targetHeight = Math.min(targetHeight, dm.heightPixels - dpToPx(24));
+
+        articleDialog.getWindow().setLayout(targetWidth, targetHeight);
+        if (articleDialogRoot != null) {
+            ViewGroup.LayoutParams lp = articleDialogRoot.getLayoutParams();
+            if (lp == null) {
+                lp = new ViewGroup.LayoutParams(targetWidth, targetHeight);
+            } else {
+                lp.width = targetWidth;
+                lp.height = targetHeight;
+            }
+            articleDialogRoot.setLayoutParams(lp);
+        }
+        Log.d(TAG, "article_dialog_size w=" + targetWidth + " h=" + targetHeight
+                + " screen=" + dm.widthPixels + "x" + dm.heightPixels);
+    }
+
+    private void showArticleCategoryPicker() {
+        PopupMenu popup = new PopupMenu(this, articleCategoryLabel);
+        String[] categories = ArticleTemplateRegistry.getCategories();
+        for (int i = 0; i < categories.length; i++) {
+            popup.getMenu().add(0, i, i, categories[i]);
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            int idx = item.getItemId();
+            if (idx >= 0 && idx < categories.length) {
+                pendingArticleCategory = categories[idx];
+                articleCategoryLabel.setText(pendingArticleCategory);
+                articleSubTypeLabel.setText("请选择子类");
+                pendingArticleTemplate = null;
+                pendingArticleValues = null;
+                articleSubTypeCard.setVisibility(View.VISIBLE);
+                switchArticleDialogStage(ARTICLE_STAGE_SELECT);
+                Log.i(TAG, "article_category_selected category=" + pendingArticleCategory);
+                return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+    private void showArticleSubTypePicker() {
+        if (pendingArticleCategory == null || pendingArticleCategory.isEmpty()) {
+            toastTodo("请先选择分类");
+            return;
+        }
+        java.util.List<ArticleTemplate> templates =
+                ArticleTemplateRegistry.getByCategory(pendingArticleCategory);
+        if (templates.isEmpty()) {
+            return;
+        }
+        PopupMenu popup = new PopupMenu(this, articleSubTypeLabel);
+        for (int i = 0; i < templates.size(); i++) {
+            popup.getMenu().add(0, i, i, templates.get(i).subTypeLabel);
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            int idx = item.getItemId();
+            if (idx >= 0 && idx < templates.size()) {
+                ArticleTemplate tmpl = templates.get(idx);
+                pendingArticleTemplate = tmpl;
+                articleSubTypeLabel.setText(tmpl.subTypeLabel);
+                renderArticleForm(tmpl);
+                Log.i(TAG, "article_subtype_selected key=" + tmpl.key);
+                return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+    private void renderArticleForm(ArticleTemplate tmpl) {
+        if (articleFormContainer == null || tmpl == null) {
+            return;
+        }
+        articleFormContainer.removeAllViews();
+        pendingArticleValues = new String[tmpl.variables.length];
+        float density = getResources().getDisplayMetrics().density;
+        int labelTop = (int) (12 * density);
+        int fieldBottom = (int) (8 * density);
+        int fieldPadding = (int) (16 * density);
+
+        for (int i = 0; i < tmpl.variables.length; i++) {
+            ArticleTemplate.Variable variable = tmpl.variables[i];
+
+            TextView label = new TextView(this);
+            label.setText(variable.label);
+            label.setTextColor(Color.parseColor("#999999"));
+            label.setTextSize(14);
+            LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (i > 0) {
+                labelLp.topMargin = labelTop;
+            }
+            label.setLayoutParams(labelLp);
+            articleFormContainer.addView(label);
+
+            EditText field = new EditText(this);
+            field.setTag("article_field_" + i);
+            field.setHint(variable.hint);
+            field.setTextColor(Color.parseColor("#333333"));
+            field.setHintTextColor(Color.parseColor("#999999"));
+            field.setTextSize(16);
+            field.setBackgroundResource(R.drawable.lolib_bg_outline_edit);
+            field.setPadding(fieldPadding, fieldPadding, fieldPadding, fieldPadding);
+            field.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                    | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                    | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+            field.setMaxLines(3);
+            LinearLayout.LayoutParams fieldLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            fieldLp.bottomMargin = fieldBottom;
+            field.setLayoutParams(fieldLp);
+            articleFormContainer.addView(field);
+        }
+
+        if (articleGenerateBtnText != null) {
+            articleGenerateBtnText.setText("开始生成");
+        }
+        switchArticleDialogStage(ARTICLE_STAGE_FORM);
+    }
+
+    private void startArticleGeneration() {
+        if (pendingArticleTemplate == null || articleFormContainer == null) {
+            toastTodo("请先选择文案类型");
+            return;
+        }
+        ArticleTemplate tmpl = pendingArticleTemplate;
+        String[] values = new String[tmpl.variables.length];
+        for (int i = 0; i < tmpl.variables.length; i++) {
+            View child = articleFormContainer.findViewWithTag("article_field_" + i);
+            if (child instanceof EditText) {
+                values[i] = ((EditText) child).getText().toString().trim();
+            } else {
+                values[i] = "";
+            }
+        }
+        pendingArticleValues = values;
+        sendArticleRequest(tmpl, values);
+    }
+
+    private void sendArticleRequest(ArticleTemplate tmpl, String[] values) {
+        toastTodo("正在生成文案...");
+        if (articleResultText != null) {
+            articleResultText.setText("正在生成文案...");
+        }
+        switchArticleDialogStage(ARTICLE_STAGE_RESULT);
+
+        try {
+            JSONObject request = new JSONObject();
+            String requestId = "article-" + UUID.randomUUID().toString();
+            request.put("requestId", requestId);
+            request.put("taskType", AiChatCoordinator.MODE_ARTICLE_GENERATE);
+            request.put("articleTemplateKey", tmpl.key);
+            request.put("selection", "");
+            request.put("source", "android-article");
+
+            JSONObject context = new JSONObject();
+            JSONArray valuesArr = new JSONArray();
+            for (String v : values) {
+                valuesArr.put(v == null ? "" : v);
+            }
+            context.put("articleValues", valuesArr);
+            context.put("modelMode", "base");
+            request.put("context", context);
+            request.put("history", new JSONArray());
+
+            aiActiveRequestId = requestId;
+            aiStreamingRequestId = requestId;
+            aiRequestModeById.put(requestId, AiChatCoordinator.MODE_ARTICLE_GENERATE);
+            aiTextByRequestId.put(requestId, new StringBuilder());
+            aiStreamingViewByRequestId.remove(articleActiveRequestId);
+            articleActiveRequestId = requestId;
+            if (articleResultText != null) {
+                aiStreamingViewByRequestId.put(requestId, articleResultText);
+            }
+
+            Log.i(TAG, "ai_article_start requestId=" + requestId + " template=" + tmpl.key);
+            startAiRequestSession(request, -1);
+        } catch (JSONException e) {
+            Log.e(TAG, "ai_article_request_error", e);
+            toastTodo("启动文案生成失败");
+            switchArticleDialogStage(ARTICLE_STAGE_FORM);
+        }
+    }
+
+    private void showArticleGenerateResult(String text) {
+        pendingArticleResult = text;
+        if (articleResultText != null) {
+            articleResultText.setText(text);
+        }
+        switchArticleDialogStage(ARTICLE_STAGE_RESULT);
+        scrollArticleResultToBottom();
+    }
+
+    private void scrollArticleResultToBottom() {
+        if (articleResultCard == null || articleResultCard.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        articleResultCard.post(() -> articleResultCard.fullScroll(View.FOCUS_DOWN));
+    }
+
+    private void switchArticleDialogStage(int stage) {
+        boolean select = stage == ARTICLE_STAGE_SELECT;
+        boolean form = stage == ARTICLE_STAGE_FORM;
+        boolean result = stage == ARTICLE_STAGE_RESULT;
+
+        View categoryCard = articleDialogRoot != null
+                ? articleDialogRoot.findViewById(R.id.article_category_card) : null;
+        if (categoryCard != null) {
+            categoryCard.setVisibility(result ? View.GONE : View.VISIBLE);
+        }
+        if (articleSubTypeCard != null) {
+            articleSubTypeCard.setVisibility((select && pendingArticleCategory != null)
+                    || form ? View.VISIBLE : View.GONE);
+            if (result) {
+                articleSubTypeCard.setVisibility(View.GONE);
+            }
+        }
+
+        if (articleStageHint != null) {
+            articleStageHint.setVisibility(select ? View.VISIBLE : View.GONE);
+        }
+        if (articleStageForm != null) {
+            articleStageForm.setVisibility(form ? View.VISIBLE : View.GONE);
+        }
+        if (articleResultCard != null) {
+            articleResultCard.setVisibility(result ? View.VISIBLE : View.GONE);
+        }
+        if (articleCopyRow != null) {
+            articleCopyRow.setVisibility(result ? View.VISIBLE : View.GONE);
+        }
+        if (articleDoneRow != null) {
+            articleDoneRow.setVisibility(result ? View.VISIBLE : View.GONE);
+        }
+
+        if (result && articleDialogRoot != null) {
+            articleDialogRoot.post(this::applyArticleDialogSize);
+        } else if (form && articleDialogRoot != null) {
+            articleDialogRoot.post(this::applyArticleDialogSize);
+        }
+    }
+
+    private void applyArticleResult() {
+        Log.i(TAG, "ai_article_apply chars=" + (pendingArticleResult != null ? pendingArticleResult.length() : 0));
+        if (pendingArticleResult == null || pendingArticleResult.isEmpty()) {
+            toastTodo("文案为空");
+            return;
+        }
+        final byte[] bytes = pendingArticleResult.getBytes(StandardCharsets.UTF_8);
+        runOnUiThread(() -> postUnoCommand(".uno:GoToEndOfDoc", "{}", false));
+        new Thread(() -> {
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException ignored) {
+            }
+            paste("text/plain;charset=utf-8", bytes);
+            Log.i(TAG, "ai_article_inserted_at_end chars=" + bytes.length);
+            runOnUiThread(() -> {
+                toastTodo("文案已插入到文末");
+                if (articleDialog != null) {
+                    articleDialog.dismiss();
+                }
+            });
+        }, "cool-ai-article-apply").start();
+        pendingArticleResult = null;
+    }
+
+    private void copyArticleResult() {
+        if (pendingArticleResult == null || pendingArticleResult.isEmpty()) {
+            toastTodo("暂无文案可复制");
+            return;
+        }
+        if (clipboardManager != null) {
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("article", pendingArticleResult));
+            toastTodo("文案已复制，可粘贴到任意位置");
+            Log.i(TAG, "ai_article_copied chars=" + pendingArticleResult.length());
+        }
+    }
+
+    // ==================== 文案生成相关方法结束 ====================
 
     // ==================== 生成大纲相关方法结束 ====================
 
@@ -5650,6 +6117,12 @@ public class LOActivity extends AppCompatActivity {
                 }
                 if (streamViewSnapshot != null && streamViewSnapshot.isAttachedToWindow()) {
                     renderAiMessageContent(accumulatedText, streamViewSnapshot, false, true);
+                    if (requestId.equals(outlineActiveRequestId)) {
+                        scrollOutlineResultToBottom();
+                    }
+                    if (requestId.equals(articleActiveRequestId)) {
+                        scrollArticleResultToBottom();
+                    }
                 }
             });
             setNativeAiPanelState(AI_STATE_STREAMING, "AI response streaming");
@@ -5693,6 +6166,12 @@ public class LOActivity extends AppCompatActivity {
                 if (streamViewSnapshot != null && streamViewSnapshot.isAttachedToWindow()) {
                     renderAiMessageContent(fullText, streamViewSnapshot, false, false);
                     Log.i(TAG, "ai_done_render_markdown requestId=" + requestId + " chars=" + fullText.length());
+                    if (requestId.equals(outlineActiveRequestId)) {
+                        scrollOutlineResultToBottom();
+                    }
+                    if (requestId.equals(articleActiveRequestId)) {
+                        scrollArticleResultToBottom();
+                    }
                 }
                 cleanupRequestUiState(requestId);
                 setNativeAiPanelState(AI_STATE_READY, "AI response completed");

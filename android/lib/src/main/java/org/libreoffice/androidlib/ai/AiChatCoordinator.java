@@ -20,6 +20,7 @@ public class AiChatCoordinator {
     public static final String MODE_TRANSLATE = "translate";
     public static final String MODE_TYPESET = "typeset";
     public static final String MODE_OUTLINE = "outline";
+    public static final String MODE_ARTICLE_GENERATE = "article_generate";
 
     // 大纲类型（生成大纲功能）
     public static final String OUTLINE_TYPE_PAPER = "paper";     // 论文
@@ -315,6 +316,44 @@ public class AiChatCoordinator {
         JSONObject userMsg = new JSONObject();
         userMsg.put("role", "user");
         userMsg.put("content", userPrompt.toString());
+        messages.put(userMsg);
+
+        return messages;
+    }
+
+    /**
+     * 构建文案生成消息
+     * @param template 文案模板
+     * @param values 与 template.variables 顺序对应的用户输入值
+     */
+    public static JSONArray buildArticleMessages(ArticleTemplate template, String[] values)
+            throws JSONException {
+        if (template == null) {
+            throw new JSONException("Article template is null");
+        }
+        String systemPrompt = "你是中文文案写作专家，请根据用户提供的要素撰写一份规范、得体的"
+                + template.subTypeLabel + "。只输出正文内容，不要输出解释或标题前缀。";
+
+        String userPrompt = template.promptTemplate;
+        ArticleTemplate.Variable[] vars = template.variables;
+        for (int i = 0; i < vars.length; i++) {
+            String placeholder = "{变量" + (i + 1) + "}";
+            String value = (values != null && i < values.length) ? values[i] : "";
+            if (value == null || value.trim().isEmpty()) {
+                value = vars[i].hint;
+            }
+            userPrompt = userPrompt.replace(placeholder, value.trim());
+        }
+
+        JSONArray messages = new JSONArray();
+        JSONObject sysMsg = new JSONObject();
+        sysMsg.put("role", "system");
+        sysMsg.put("content", systemPrompt);
+        messages.put(sysMsg);
+
+        JSONObject userMsg = new JSONObject();
+        userMsg.put("role", "user");
+        userMsg.put("content", userPrompt);
         messages.put(userMsg);
 
         return messages;
