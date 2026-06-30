@@ -42,6 +42,7 @@ import android.print.PrintAttributes;
 import android.print.PrintDocumentAdapter;
 import android.print.PrintManager;
 import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -61,8 +62,11 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ArrayAdapter;
+import android.widget.Spinner;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -110,6 +114,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.core.view.GravityCompat;
 import androidx.core.view.WindowCompat;
 import androidx.constraintlayout.widget.ConstraintLayout;
@@ -131,6 +136,7 @@ import org.libreoffice.androidlib.ai.AiRequestManager;
 import org.libreoffice.androidlib.ai.AiRequestSession;
 import org.libreoffice.androidlib.ai.ArticleTemplate;
 import org.libreoffice.androidlib.ai.ArticleTemplateRegistry;
+import org.libreoffice.androidlib.ai.FormatBatchProcessor;
 import org.libreoffice.androidlib.ai.PolishStyleRegistry;
 import org.libreoffice.androidlib.ai.TranslateLanguageRegistry;
 import org.libreoffice.androidlib.lok.LokClipboardData;
@@ -346,6 +352,53 @@ public class LOActivity extends AppCompatActivity {
     private String pendingTextOperateResult;
     private String pendingPolishStyle = AiChatCoordinator.POLISH_STYLE_QUICK;
     private String pendingTextOperateRequirement = "";
+    // 格式批量处理弹窗
+    private static final int FORMAT_BATCH_STAGE_INPUT = 1;
+    private static final int FORMAT_BATCH_STAGE_RESULT = 2;
+    private AlertDialog formatBatchDialog;
+    private View formatBatchDialogRoot;
+    private String formatBatchSelection = "";
+    private String pendingFormatBatchResult;
+    private View formatBatchOptionsContainer;
+    private View formatBatchExecuteBtn;
+    private NestedScrollView formatBatchResultCard;
+    private TextView formatBatchResultText;
+    private View formatBatchCopyRow;
+    private View formatBatchDoneRow;
+    private CheckBox[] formatBatchCheckBoxes = new CheckBox[FormatBatchProcessor.RULE_COUNT];
+    // 文字提取弹窗
+    private static final int TEXT_EXTRACT_STAGE_INPUT = 1;
+    private static final int TEXT_EXTRACT_STAGE_RESULT = 2;
+    private AlertDialog textExtractDialog;
+    private View textExtractDialogRoot;
+    private View textExtractInputContainer;
+    private NestedScrollView textExtractResultCard;
+    private TextView textExtractResultText;
+    private View textExtractCopyRow;
+    private View textExtractDoneRow;
+    private String textExtractActiveRequestId = "";
+    private String pendingTextExtractResult;
+    private Uri pendingTextExtractCameraUri;
+    // AI图片弹窗
+    private static final int AI_IMAGE_STAGE_INPUT = 1;
+    private static final int AI_IMAGE_STAGE_RESULT = 2;
+    private AlertDialog aiImageDialog;
+    private View aiImageDialogRoot;
+    private View aiImageInputContainer;
+    private EditText aiImagePromptEdit;
+    private Spinner aiImageRatioSpinner;
+    private View aiImageGenerateBtn;
+    private View aiImageGalleryContainer;
+    private ImageView aiImageMainView;
+    private ImageView[] aiImageThumbViews = new ImageView[3];
+    private View aiImageLoading;
+    private View aiImageDoneRow;
+    private java.util.List<String> aiImageBase64List = new java.util.ArrayList<>();
+    private int aiImageSelectedIndex = 0;
+    private String aiImageActiveRequestId = "";
+    private java.util.List<AiRequestSession> aiImageSessions = new java.util.ArrayList<>();
+    private AlertDialog aiImagePreviewDialog;
+    private int aiImagePreviewCurrentIndex = 0;
     // 翻译弹窗
     private static final int TRANSLATE_STAGE_INPUT = 1;
     private static final int TRANSLATE_STAGE_RESULT = 2;
@@ -428,6 +481,9 @@ public class LOActivity extends AppCompatActivity {
     public static final int REQUEST_SAVEAS_XLS = 511;
     public static final int REQUEST_SAVEAS_EPUB = 512;
     public static final int REQUEST_COPY = 600;
+    public static final int REQUEST_TEXT_EXTRACT_ALBUM = 700;
+    public static final int REQUEST_TEXT_EXTRACT_CAMERA = 701;
+    public static final int PERMISSION_TEXT_EXTRACT_CAMERA = 720;
 
     /** Broadcasting event for passing info back to the shell. */
     public static final String LO_ACTIVITY_BROADCAST = "LOActivityBroadcast";
@@ -1062,6 +1118,13 @@ public class LOActivity extends AppCompatActivity {
                     break;
                 }
                 break;
+            case PERMISSION_TEXT_EXTRACT_CAMERA:
+                if (permissions.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    startCameraForTextExtract();
+                } else {
+                    toastTodo("需要相机权限才能拍照识别");
+                }
+                break;
             default:
                 super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         }
@@ -1310,6 +1373,19 @@ public class LOActivity extends AppCompatActivity {
             }
         }
         switch (requestCode) {
+            case REQUEST_TEXT_EXTRACT_ALBUM: {
+                if (intent == null || intent.getData() == null) {
+                    return;
+                }
+                handleTextExtractImageUri(intent.getData());
+                return;
+            }
+            case REQUEST_TEXT_EXTRACT_CAMERA: {
+                if (pendingTextExtractCameraUri != null) {
+                    handleTextExtractImageUri(pendingTextExtractCameraUri);
+                }
+                return;
+            }
             case REQUEST_SELECT_IMAGE_FILE:
                 if (valueCallback == null)
                     return;
@@ -2103,6 +2179,29 @@ public class LOActivity extends AppCompatActivity {
             endpoint = endpoint == null ? "" : endpoint.trim();
             apiKey = apiKey == null ? "" : apiKey.trim();
             model = model == null ? "" : model.trim();
+        } else if ("vision".equalsIgnoreCase(modelMode)) {
+            SharedPreferences modelPrefs = getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
+            endpoint = modelPrefs.getString("AI_MODEL_VISION_url", endpoint);
+            apiKey = modelPrefs.getString("AI_MODEL_VISION_api_key", apiKey);
+            model = modelPrefs.getString("AI_MODEL_VISION_model_name", model);
+            endpoint = endpoint == null ? "" : endpoint.trim();
+            apiKey = apiKey == null ? "" : apiKey.trim();
+            model = model == null ? "" : model.trim();
+        } else if ("image".equalsIgnoreCase(modelMode)) {
+            SharedPreferences modelPrefs = getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
+            endpoint = modelPrefs.getString("AI_MODEL_IMAGE_url", endpoint);
+            apiKey = modelPrefs.getString("AI_MODEL_IMAGE_api_key", apiKey);
+            model = modelPrefs.getString("AI_MODEL_IMAGE_model_name", model);
+            endpoint = endpoint == null ? "" : endpoint.trim();
+            apiKey = apiKey == null ? "" : apiKey.trim();
+            model = model == null ? "" : model.trim();
+        }
+
+        // endpoint 兜底规范化：按协议补全路径后缀，避免配址错配（如图片模型错配 chat/completions）
+        if ("image".equalsIgnoreCase(modelMode)) {
+            endpoint = normalizeEndpoint(endpoint, "/images/generations");
+        } else if ("base".equalsIgnoreCase(modelMode) || "vision".equalsIgnoreCase(modelMode)) {
+            endpoint = normalizeEndpoint(endpoint, "/chat/completions");
         }
 
         // Only fallback to persisted values when the field is absent in the request.
@@ -2118,7 +2217,9 @@ public class LOActivity extends AppCompatActivity {
         }
 
         if (endpoint == null || endpoint.isEmpty()) {
-            String message = "请先在设置中配置基础模型的接口地址。";
+            String modelLabel = "vision".equalsIgnoreCase(modelMode) ? "视觉模型"
+                    : "image".equalsIgnoreCase(modelMode) ? "图片生成模型" : "基础模型";
+            String message = "请先在设置中配置" + modelLabel + "的接口地址。";
             Log.w(TAG, "ai_config_missing requestId=" + requestId + " field=endpoint modelMode=" + modelMode);
             dispatchAiState(requestId, AI_STATE_UNCONFIGURED, message);
             dispatchAiError(requestId, "config_missing", message);
@@ -2126,7 +2227,9 @@ public class LOActivity extends AppCompatActivity {
         }
 
         if (apiKey == null || apiKey.isEmpty()) {
-            String message = "请先在设置中配置基础模型的 API Key。";
+            String modelLabel = "vision".equalsIgnoreCase(modelMode) ? "视觉模型"
+                    : "image".equalsIgnoreCase(modelMode) ? "图片生成模型" : "基础模型";
+            String message = "请先在设置中配置" + modelLabel + "的 API Key。";
             Log.w(TAG, "ai_config_missing requestId=" + requestId + " field=apiKey modelMode=" + modelMode);
             dispatchAiState(requestId, AI_STATE_UNCONFIGURED, message);
             dispatchAiError(requestId, "config_missing", message);
@@ -2238,9 +2341,16 @@ public class LOActivity extends AppCompatActivity {
                 Log.i(TAG, "ai_translate_mode requestId=" + requestId + " src=" + sourceLang
                         + " tgt=" + targetLang + " textChars=" + text.length());
             } else if (AiChatCoordinator.MODE_REWRITE.equals(taskType)) {
+                JSONObject ctxObj = request.optJSONObject("context");
                 String selection = request.optString("selection", "");
-                messages = AiChatCoordinator.buildRewriteMessages(selection);
+                String requirement = ctxObj != null ? ctxObj.optString("requirement", "") : "";
+                messages = AiChatCoordinator.buildRewriteMessages(selection, requirement);
                 Log.i(TAG, "ai_rewrite_mode requestId=" + requestId + " selectionChars=" + selection.length());
+            } else if (AiChatCoordinator.MODE_TEXT_EXTRACT.equals(taskType)) {
+                JSONObject ctxObj = request.optJSONObject("context");
+                String imageBase64 = ctxObj != null ? ctxObj.optString("image", "") : "";
+                messages = AiChatCoordinator.buildTextExtractMessages(imageBase64);
+                Log.i(TAG, "ai_text_extract_mode requestId=" + requestId + " imageChars=" + imageBase64.length());
             } else {
                 messages.put(new JSONObject().put("role", "user").put("content", buildAiUserPrompt(request)));
             }
@@ -2297,6 +2407,10 @@ public class LOActivity extends AppCompatActivity {
                                 Log.i(TAG, "ai_translate_done requestId=" + callbackRequestId
                                         + " chars=" + fullText.length());
                                 runOnUiThread(() -> showTranslateResult(fullText));
+                            } else if (AiChatCoordinator.MODE_TEXT_EXTRACT.equals(taskType)) {
+                                Log.i(TAG, "ai_text_extract_done requestId=" + callbackRequestId
+                                        + " chars=" + fullText.length());
+                                runOnUiThread(() -> showTextExtractResult(fullText));
                             }
                             JSONObject donePayload = new JSONObject();
                             donePayload.put("requestId", callbackRequestId);
@@ -2345,6 +2459,11 @@ public class LOActivity extends AppCompatActivity {
                                 runOnUiThread(() -> {
                                     toastTodo("翻译失败：" + message);
                                     switchTranslateStage(TRANSLATE_STAGE_INPUT);
+                                });
+                            } else if (AiChatCoordinator.MODE_TEXT_EXTRACT.equals(taskType)) {
+                                runOnUiThread(() -> {
+                                    toastTodo("识别失败：" + message);
+                                    switchTextExtractStage(TEXT_EXTRACT_STAGE_INPUT);
                                 });
                             }
                             dispatchAiError(callbackRequestId, code, message);
@@ -4196,6 +4315,16 @@ public class LOActivity extends AppCompatActivity {
         if (mWebView == null) {
             return;
         }
+        SelectionMenuController menuController = ensureSelectionMenuController();
+        boolean selectionMenuVisible = menuController != null && menuController.isVisible();
+        Log.i(TAG, "focus_ime_start selectionMenuVisible=" + selectionMenuVisible
+                + " webViewFocused=" + mWebView.isFocused()
+                + " imeAllowed=" + mWebView.isImeAllowedByUser());
+        // 呼出键盘前先关闭选区浮层，释放全屏 overlay 的焦点/触摸拦截
+        if (selectionMenuVisible) {
+            Log.i(TAG, "focus_ime_hide_selection_menu");
+            menuController.hide();
+        }
         mWebView.setImeAllowedByUser(true);
         mWebView.requestFocus();
         mWebView.evaluateJavascript(
@@ -4609,9 +4738,45 @@ public class LOActivity extends AppCompatActivity {
                 showArticleGenerateDialog();
             });
         }
-        bindAiOpPlaceholderButton(panel, R.id.ai_op_text_extract, "文字萃取");
-        bindAiOpPlaceholderButton(panel, R.id.ai_op_image_retouch, "AI修图");
-        bindAiOpPlaceholderButton(panel, R.id.ai_op_image_generate, "AI图片");
+        // 文字提取：系统选图/相机 + 视觉模型 OCR
+        LinearLayout aiOpTextExtract = panel.findViewById(R.id.ai_op_text_extract);
+        if (aiOpTextExtract != null) {
+            aiOpTextExtract.setOnClickListener(v -> {
+                Log.i(TAG, "ai_op_text_extract_clicked");
+                if (aiOperationSheet != null) {
+                    aiOperationSheet.dismiss();
+                }
+                showTextExtractDialog();
+            });
+        }
+        // AI图片：图片生成大模型
+        LinearLayout aiOpImageGenerate = panel.findViewById(R.id.ai_op_image_generate);
+        if (aiOpImageGenerate != null) {
+            aiOpImageGenerate.setOnClickListener(v -> {
+                Log.i(TAG, "ai_op_image_generate_clicked");
+                if (aiOperationSheet != null) {
+                    aiOperationSheet.dismiss();
+                }
+                showAiImageDialog();
+            });
+        }
+
+        // 格式批量处理：需选中文本，本地正则处理
+        LinearLayout aiOpFormatBatch = panel.findViewById(R.id.ai_op_format_batch);
+        if (aiOpFormatBatch != null) {
+            aiOpFormatBatch.setOnClickListener(v -> {
+                Log.i(TAG, "ai_op_format_batch_clicked");
+                String selection = aiOpPendingSelection == null ? "" : aiOpPendingSelection;
+                if (selection.isEmpty()) {
+                    Toast.makeText(LOActivity.this, "请先在文档中选择文本", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                if (aiOperationSheet != null) {
+                    aiOperationSheet.dismiss();
+                }
+                showFormatBatchDialog(selection);
+            });
+        }
 
         // AI排版按钮：点击后弹出类型选择 BottomSheet
         LinearLayout aiOpTypeset = panel.findViewById(R.id.ai_op_typeset);
@@ -5675,6 +5840,1056 @@ public class LOActivity extends AppCompatActivity {
         paste("text/html", bytes);
     }
 
+    // ==================== 图片插入 / base64 工具 ====================
+
+    /** 把 base64 图片通过 insertfile 消息插入文档（复用 kit 层 .uno:InsertGraphic 链路）。 */
+    private void insertImageBase64(String base64, String fileName) {
+        if (base64 == null || base64.isEmpty()) {
+            return;
+        }
+        ensureEditModeThen(() -> sendInsertFileWhenSocketOpen(base64, fileName, 0));
+    }
+
+    /**
+     * 等待文档 socket 处于 OPEN(1) 再发 insertfile，避免在 reconnect/closed 状态下
+     * 原生发送命中 "sending on closed socket" 导致图片丢失。
+     * 轮询 readyState，OPEN 时走高效原生路径；超时则退回 JS sendMessage 队列兜底。
+     */
+    private void sendInsertFileWhenSocketOpen(String base64, String fileName, int attempt) {
+        if (mWebView == null) {
+            Log.w(TAG, "ai_image_insert_abort no_webview name=" + fileName);
+            return;
+        }
+        final String script = "(function(){try{return window.socket?window.socket.readyState:-1;}catch(e){return -1;}})()";
+        mWebView.evaluateJavascript(script, value -> {
+            int state = parseSocketReadyState(value);
+            if (state == 1) {
+                String message = "insertfile name=" + fileName + " type=image/png data=" + base64;
+                postMobileMessage(message);
+                nudgeSocketIfStalled("insert_ai_image");
+                Log.i(TAG, "ai_image_inserted name=" + fileName + " bytes=" + base64.length()
+                        + " socket=open attempt=" + attempt);
+            } else if (attempt < 40) {
+                // socket 未就绪（reconnecting/closed），150ms 后重试，最长约 6s
+                if (attempt == 0 || attempt % 5 == 0) {
+                    Log.i(TAG, "ai_image_insert_wait name=" + fileName + " state=" + state
+                            + " attempt=" + attempt);
+                }
+                getMainHandler().postDelayed(
+                        () -> sendInsertFileWhenSocketOpen(base64, fileName, attempt + 1), 150L);
+            } else {
+                // 超时：退回 JS sendMessage 队列，由 Socket.ts 在重连完成后 flush
+                Log.w(TAG, "ai_image_insert_timeout name=" + fileName + " fallback=js_queue");
+                sendInsertFileViaJsQueue(base64, fileName);
+            }
+        });
+    }
+
+    /** 通过 JS app.socket.sendMessage 发送，利用 Socket.ts 的重连队列保证送达。 */
+    private void sendInsertFileViaJsQueue(String base64, String fileName) {
+        if (mWebView == null) {
+            return;
+        }
+        // base64 字符集为 [A-Za-z0-9+/=]，无引号/反斜杠/换行，可安全嵌入双引号 JS 字符串
+        final String js = "(function(){try{"
+                + "if(window.app&&window.app.socket&&typeof window.app.socket.sendMessage==='function'){"
+                + "window.app.socket.sendMessage(\"insertfile name=" + fileName
+                + " type=image/png data=" + base64 + "\");return 'queued';}"
+                + "return 'no_socket';}catch(e){return 'err';}})()";
+        mWebView.evaluateJavascript(js, value -> {
+            Log.i(TAG, "ai_image_insert_jsqueue name=" + fileName + " result=" + value);
+            nudgeSocketIfStalled("insert_ai_image_jsqueue");
+        });
+    }
+
+    /** 解析 evaluateJavascript 返回的 readyState（形如 "1" 或 "1\n"）。 */
+    private int parseSocketReadyState(String value) {
+        if (value == null) {
+            return -1;
+        }
+        String s = value.trim();
+        if (s.isEmpty()) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(s);
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /** 读取图片 Uri 为 base64 字符串（NO_WRAP，不含 data: 前缀）。 */
+    private String readImageUriAsBase64(Uri uri) {
+        if (uri == null) {
+            return "";
+        }
+        InputStream is = null;
+        try {
+            is = getContentResolver().openInputStream(uri);
+            if (is == null) {
+                return "";
+            }
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
+            int read;
+            while ((read = is.read(chunk)) != -1) {
+                buffer.write(chunk, 0, read);
+            }
+            return android.util.Base64.encodeToString(buffer.toByteArray(), android.util.Base64.NO_WRAP);
+        } catch (IOException e) {
+            Log.e(TAG, "readImageUriAsBase64 failed uri=" + uri, e);
+            return "";
+        } finally {
+            if (is != null) {
+                try {
+                    is.close();
+                } catch (IOException ignored) {
+                }
+            }
+        }
+    }
+
+    /** base64 字符串转 Bitmap。 */
+    private android.graphics.Bitmap base64ToBitmap(String base64) {
+        if (base64 == null || base64.isEmpty()) {
+            return null;
+        }
+        try {
+            byte[] bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+            return android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+        } catch (Exception e) {
+            Log.e(TAG, "base64ToBitmap failed", e);
+            return null;
+        }
+    }
+
+    /**
+     * endpoint 兜底规范化：确保 url 以 targetSuffix 结尾。
+     * 若已含目标后缀则原样返回；否则截到版本段（/v1、/v2…），拼接 targetSuffix；
+     * 无版本段则在域名根后拼 /v1 + targetSuffix。
+     * 例：chat/completions 配址错配到 images 模型时，自动改成 images/generations。
+     */
+    private String normalizeEndpoint(String rawUrl, String targetSuffix) {
+        if (rawUrl == null) return "";
+        String url = rawUrl.trim();
+        if (url.isEmpty()) return "";
+        if (url.contains(targetSuffix)) return url;
+        while (url.endsWith("/")) {
+            url = url.substring(0, url.length() - 1);
+        }
+        // 形如 .../v1 结尾
+        if (java.util.regex.Pattern.matches(".*?/v\\d+$", url)) {
+            return url + targetSuffix;
+        }
+        // 中间含 /vN/，截到版本段
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("/v\\d+/").matcher(url);
+        if (m.find()) {
+            return url.substring(0, m.end() - 1) + targetSuffix;
+        }
+        // 无版本段，拼 /v1
+        return url + "/v1" + targetSuffix;
+    }
+
+    /** 生成"生成中"灰底占位图（无 Glide，用 Canvas 绘制文字）。 */
+    private android.graphics.Bitmap createGeneratingPlaceholder() {
+        int w = 240, h = 240;
+        android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(w, h,
+                android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(bmp);
+        canvas.drawColor(0xFFE8E8E8);
+        android.graphics.Paint paint = new android.graphics.Paint();
+        paint.setColor(0xFF888888);
+        paint.setTextSize(30);
+        paint.setAntiAlias(true);
+        paint.setTextAlign(android.graphics.Paint.Align.CENTER);
+        canvas.drawText("生成中", w / 2f, h / 2f + 10, paint);
+        return bmp;
+    }
+
+    // ==================== 格式批量处理弹窗 ====================
+
+    private void showFormatBatchDialog(String selection) {
+        if (formatBatchDialog != null && formatBatchDialog.isShowing()) {
+            formatBatchDialog.dismiss();
+        }
+        formatBatchSelection = selection != null ? selection : "";
+        pendingFormatBatchResult = null;
+
+        final AlertDialog dialog = new AlertDialog.Builder(this).create();
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_format_batch, null);
+        formatBatchDialogRoot = root;
+
+        formatBatchOptionsContainer = root.findViewById(R.id.format_batch_options_container);
+        formatBatchExecuteBtn = root.findViewById(R.id.format_batch_execute_btn);
+        formatBatchResultCard = root.findViewById(R.id.format_batch_result_card);
+        formatBatchResultText = root.findViewById(R.id.format_batch_result_text);
+        formatBatchCopyRow = root.findViewById(R.id.format_batch_copy_row);
+        formatBatchDoneRow = root.findViewById(R.id.format_batch_done_row);
+
+        formatBatchCheckBoxes[FormatBatchProcessor.RULE_EN_TO_ZH_PUNCT] = root.findViewById(R.id.fb_option_en_to_zh);
+        formatBatchCheckBoxes[FormatBatchProcessor.RULE_ZH_TO_EN_PUNCT] = root.findViewById(R.id.fb_option_zh_to_en);
+        formatBatchCheckBoxes[FormatBatchProcessor.RULE_GHOST_TO_SPACE] = root.findViewById(R.id.fb_option_ghost);
+        formatBatchCheckBoxes[FormatBatchProcessor.RULE_REMOVE_EXTRA_BLANK_LINES] = root.findViewById(R.id.fb_option_blank_lines);
+        formatBatchCheckBoxes[FormatBatchProcessor.RULE_REMOVE_WAVY_UNDERLINE] = root.findViewById(R.id.fb_option_wavy);
+        formatBatchCheckBoxes[FormatBatchProcessor.RULE_REMOVE_HYPERLINK] = root.findViewById(R.id.fb_option_hyperlink);
+
+        // 默认勾选 #4 #5（对应图3：删除多余空行、消除下滑波浪线）
+        if (formatBatchCheckBoxes[FormatBatchProcessor.RULE_REMOVE_EXTRA_BLANK_LINES] != null) {
+            formatBatchCheckBoxes[FormatBatchProcessor.RULE_REMOVE_EXTRA_BLANK_LINES].setChecked(true);
+        }
+        if (formatBatchCheckBoxes[FormatBatchProcessor.RULE_REMOVE_WAVY_UNDERLINE] != null) {
+            formatBatchCheckBoxes[FormatBatchProcessor.RULE_REMOVE_WAVY_UNDERLINE].setChecked(true);
+        }
+
+        root.findViewById(R.id.format_batch_close_btn).setOnClickListener(v -> dialog.dismiss());
+        formatBatchExecuteBtn.setOnClickListener(v -> executeFormatBatch());
+        root.findViewById(R.id.format_batch_regenerate_btn).setOnClickListener(v -> switchFormatBatchStage(FORMAT_BATCH_STAGE_INPUT));
+        root.findViewById(R.id.format_batch_apply_btn).setOnClickListener(v -> applyFormatBatchResult());
+        formatBatchCopyRow.setOnClickListener(v -> copyFormatBatchResult());
+
+        dialog.setOnDismissListener(d -> {
+            Log.i(TAG, "format_batch_dialog_dismissed");
+            formatBatchDialog = null;
+            formatBatchDialogRoot = null;
+        });
+        dialog.setView(root);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+        formatBatchDialog = dialog;
+        switchFormatBatchStage(FORMAT_BATCH_STAGE_INPUT);
+        root.post(this::applyFormatBatchDialogSize);
+        Log.i(TAG, "format_batch_dialog_show selectionChars=" + formatBatchSelection.length());
+    }
+
+    private void applyFormatBatchDialogSize() {
+        if (formatBatchDialog == null || formatBatchDialog.getWindow() == null) {
+            return;
+        }
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int margin = dpToPx(48);
+        int targetWidth = Math.min(dpToPx(670), dm.widthPixels - margin);
+        targetWidth = Math.max(targetWidth, dpToPx(280));
+        boolean resultStage = formatBatchResultCard != null && formatBatchResultCard.getVisibility() == View.VISIBLE;
+        int targetHeight;
+        if (resultStage) {
+            targetHeight = Math.min(dpToPx(756), (int) (dm.heightPixels * 0.80f));
+            targetHeight = Math.max(targetHeight, dpToPx(320));
+            targetHeight = Math.min(targetHeight, dm.heightPixels - dpToPx(24));
+        } else {
+            targetHeight = dpToPx(440);
+        }
+        formatBatchDialog.getWindow().setLayout(targetWidth, targetHeight);
+        if (formatBatchDialogRoot != null) {
+            ViewGroup.LayoutParams lp = formatBatchDialogRoot.getLayoutParams();
+            if (lp == null) {
+                lp = new ViewGroup.LayoutParams(targetWidth, targetHeight);
+            } else {
+                lp.width = targetWidth;
+                lp.height = targetHeight;
+            }
+            formatBatchDialogRoot.setLayoutParams(lp);
+        }
+    }
+
+    private void switchFormatBatchStage(int stage) {
+        boolean input = stage == FORMAT_BATCH_STAGE_INPUT;
+        if (formatBatchOptionsContainer != null) {
+            formatBatchOptionsContainer.setVisibility(input ? View.VISIBLE : View.GONE);
+        }
+        if (formatBatchExecuteBtn != null) {
+            formatBatchExecuteBtn.setVisibility(input ? View.VISIBLE : View.GONE);
+        }
+        if (formatBatchResultCard != null) {
+            formatBatchResultCard.setVisibility(input ? View.GONE : View.VISIBLE);
+        }
+        if (formatBatchCopyRow != null) {
+            formatBatchCopyRow.setVisibility(input ? View.GONE : View.VISIBLE);
+        }
+        if (formatBatchDoneRow != null) {
+            formatBatchDoneRow.setVisibility(input ? View.GONE : View.VISIBLE);
+        }
+        if (formatBatchDialogRoot != null) {
+            formatBatchDialogRoot.post(this::applyFormatBatchDialogSize);
+        }
+    }
+
+    private void executeFormatBatch() {
+        boolean[] options = new boolean[FormatBatchProcessor.RULE_COUNT];
+        for (int i = 0; i < FormatBatchProcessor.RULE_COUNT; i++) {
+            if (formatBatchCheckBoxes[i] != null) {
+                options[i] = formatBatchCheckBoxes[i].isChecked();
+            }
+        }
+        String result = FormatBatchProcessor.process(formatBatchSelection, options);
+        pendingFormatBatchResult = result;
+        if (formatBatchResultText != null) {
+            formatBatchResultText.setText(result);
+        }
+        switchFormatBatchStage(FORMAT_BATCH_STAGE_RESULT);
+        Log.i(TAG, "format_batch_executed inChars=" + formatBatchSelection.length() + " outChars=" + result.length());
+    }
+
+    private void applyFormatBatchResult() {
+        if (pendingFormatBatchResult == null || pendingFormatBatchResult.isEmpty()) {
+            toastTodo("没有可插入的内容");
+            return;
+        }
+        Log.i(TAG, "format_batch_apply chars=" + pendingFormatBatchResult.length());
+        final String text = pendingFormatBatchResult;
+        if (formatBatchDialog != null) {
+            formatBatchDialog.dismiss();
+        }
+        ensureEditModeThen(() -> pasteAiTextAsHtml(text));
+    }
+
+    private void copyFormatBatchResult() {
+        if (pendingFormatBatchResult == null || pendingFormatBatchResult.isEmpty()) {
+            toastTodo("没有可复制的内容");
+            return;
+        }
+        if (clipboardManager != null) {
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("format_batch", pendingFormatBatchResult));
+            toastTodo("已复制");
+            Log.i(TAG, "format_batch_copied chars=" + pendingFormatBatchResult.length());
+        }
+    }
+
+    // ==================== 文字提取弹窗 ====================
+
+    private void showTextExtractDialog() {
+        if (textExtractDialog != null && textExtractDialog.isShowing()) {
+            textExtractDialog.dismiss();
+        }
+        pendingTextExtractResult = null;
+        textExtractActiveRequestId = "";
+
+        final AlertDialog dialog = new AlertDialog.Builder(this).create();
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_text_extract, null);
+        textExtractDialogRoot = root;
+
+        textExtractInputContainer = root.findViewById(R.id.text_extract_input_container);
+        textExtractResultCard = root.findViewById(R.id.text_extract_result_card);
+        textExtractResultText = root.findViewById(R.id.text_extract_result_text);
+        textExtractCopyRow = root.findViewById(R.id.text_extract_copy_row);
+        textExtractDoneRow = root.findViewById(R.id.text_extract_done_row);
+
+        root.findViewById(R.id.text_extract_close_btn).setOnClickListener(v -> dialog.dismiss());
+        root.findViewById(R.id.text_extract_album_btn).setOnClickListener(v -> launchTextExtractAlbum());
+        root.findViewById(R.id.text_extract_camera_btn).setOnClickListener(v -> launchTextExtractCamera());
+        root.findViewById(R.id.text_extract_re_recognize_btn).setOnClickListener(v -> switchTextExtractStage(TEXT_EXTRACT_STAGE_INPUT));
+        root.findViewById(R.id.text_extract_apply_btn).setOnClickListener(v -> applyTextExtractResult());
+        textExtractCopyRow.setOnClickListener(v -> copyTextExtractResult());
+
+        dialog.setOnDismissListener(d -> {
+            Log.i(TAG, "text_extract_dialog_dismissed");
+            aiStreamingViewByRequestId.remove(textExtractActiveRequestId);
+            if (!textExtractActiveRequestId.isEmpty()) {
+                cancelAiRequest(textExtractActiveRequestId);
+            }
+            textExtractActiveRequestId = "";
+            textExtractDialog = null;
+            textExtractDialogRoot = null;
+        });
+        dialog.setView(root);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+        textExtractDialog = dialog;
+        switchTextExtractStage(TEXT_EXTRACT_STAGE_INPUT);
+        root.post(this::applyTextExtractDialogSize);
+        Log.i(TAG, "text_extract_dialog_show");
+    }
+
+    private void applyTextExtractDialogSize() {
+        if (textExtractDialog == null || textExtractDialog.getWindow() == null) {
+            return;
+        }
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int margin = dpToPx(48);
+        int targetWidth = Math.min(dpToPx(670), dm.widthPixels - margin);
+        targetWidth = Math.max(targetWidth, dpToPx(280));
+        boolean resultStage = textExtractResultCard != null && textExtractResultCard.getVisibility() == View.VISIBLE;
+        int targetHeight;
+        if (resultStage) {
+            targetHeight = Math.min(dpToPx(756), (int) (dm.heightPixels * 0.80f));
+            targetHeight = Math.max(targetHeight, dpToPx(320));
+            targetHeight = Math.min(targetHeight, dm.heightPixels - dpToPx(24));
+        } else {
+            targetHeight = dpToPx(340);
+        }
+        textExtractDialog.getWindow().setLayout(targetWidth, targetHeight);
+        if (textExtractDialogRoot != null) {
+            ViewGroup.LayoutParams lp = textExtractDialogRoot.getLayoutParams();
+            if (lp == null) {
+                lp = new ViewGroup.LayoutParams(targetWidth, targetHeight);
+            } else {
+                lp.width = targetWidth;
+                lp.height = targetHeight;
+            }
+            textExtractDialogRoot.setLayoutParams(lp);
+        }
+    }
+
+    private void switchTextExtractStage(int stage) {
+        boolean input = stage == TEXT_EXTRACT_STAGE_INPUT;
+        if (textExtractInputContainer != null) {
+            textExtractInputContainer.setVisibility(input ? View.VISIBLE : View.GONE);
+        }
+        if (textExtractResultCard != null) {
+            textExtractResultCard.setVisibility(input ? View.GONE : View.VISIBLE);
+        }
+        if (textExtractCopyRow != null) {
+            textExtractCopyRow.setVisibility(input ? View.GONE : View.VISIBLE);
+        }
+        if (textExtractDoneRow != null) {
+            textExtractDoneRow.setVisibility(input ? View.GONE : View.VISIBLE);
+        }
+        if (textExtractDialogRoot != null) {
+            textExtractDialogRoot.post(this::applyTextExtractDialogSize);
+        }
+    }
+
+    private void launchTextExtractAlbum() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.setType("image/*");
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            startActivityForResult(Intent.createChooser(intent, "选择图片"), REQUEST_TEXT_EXTRACT_ALBUM);
+        } catch (ActivityNotFoundException e) {
+            toastTodo("未找到相册应用");
+        }
+    }
+
+    private void launchTextExtractCamera() {
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, PERMISSION_TEXT_EXTRACT_CAMERA);
+            return;
+        }
+        startCameraForTextExtract();
+    }
+
+    private void startCameraForTextExtract() {
+        try {
+            File photoFile = new File(getCacheDir(), "text_extract_" + System.currentTimeMillis() + ".jpg");
+            pendingTextExtractCameraUri = FileProvider.getUriForFile(this,
+                    getApplicationContext().getPackageName() + ".fileprovider", photoFile);
+            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, pendingTextExtractCameraUri);
+            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            startActivityForResult(intent, REQUEST_TEXT_EXTRACT_CAMERA);
+        } catch (Exception e) {
+            toastTodo("无法启动相机");
+            Log.e(TAG, "startCameraForTextExtract failed", e);
+        }
+    }
+
+    /** onActivityResult 回调入口：读取图片为 base64 并发起 OCR 请求。 */
+    private void handleTextExtractImageUri(Uri uri) {
+        if (uri == null) {
+            toastTodo("未获取到图片");
+            return;
+        }
+        switchTextExtractStage(TEXT_EXTRACT_STAGE_RESULT);
+        if (textExtractResultText != null) {
+            textExtractResultText.setText("正在识别...");
+        }
+        new Thread(() -> {
+            final String base64 = readImageUriAsBase64(uri);
+            runOnUiThread(() -> {
+                if (base64.isEmpty()) {
+                    toastTodo("图片读取失败");
+                    switchTextExtractStage(TEXT_EXTRACT_STAGE_INPUT);
+                } else {
+                    startTextExtractRequest(base64);
+                }
+            });
+        }, "text-extract-read").start();
+    }
+
+    private void startTextExtractRequest(String base64Image) {
+        try {
+            JSONObject request = new JSONObject();
+            String requestId = "textextract-" + java.util.UUID.randomUUID().toString();
+            request.put("requestId", requestId);
+            request.put("taskType", AiChatCoordinator.MODE_TEXT_EXTRACT);
+            request.put("source", "android-text-extract");
+
+            JSONObject context = new JSONObject();
+            context.put("image", base64Image);
+            request.put("context", context);
+            request.put("modelMode", "vision");
+            request.put("history", new JSONArray());
+
+            // 取消上一次识别请求
+            if (!textExtractActiveRequestId.isEmpty()) {
+                cancelAiRequest(textExtractActiveRequestId);
+            }
+            textExtractActiveRequestId = requestId;
+            aiStreamingViewByRequestId.remove(requestId);
+            if (textExtractResultText != null) {
+                aiStreamingViewByRequestId.put(requestId, textExtractResultText);
+            }
+            Log.i(TAG, "text_extract_request_start requestId=" + requestId);
+            startAiRequestSession(request, -1);
+        } catch (JSONException e) {
+            Log.e(TAG, "startTextExtractRequest error", e);
+            toastTodo("启动识别失败");
+            switchTextExtractStage(TEXT_EXTRACT_STAGE_INPUT);
+        }
+    }
+
+    private void showTextExtractResult(String text) {
+        pendingTextExtractResult = text;
+        if (textExtractResultText != null) {
+            textExtractResultText.setText(text);
+        }
+        switchTextExtractStage(TEXT_EXTRACT_STAGE_RESULT);
+        Log.i(TAG, "text_extract_result_shown chars=" + (text == null ? 0 : text.length()));
+    }
+
+    private void applyTextExtractResult() {
+        if (pendingTextExtractResult == null || pendingTextExtractResult.isEmpty()) {
+            toastTodo("没有可插入的内容");
+            return;
+        }
+        Log.i(TAG, "text_extract_apply chars=" + pendingTextExtractResult.length());
+        final String text = pendingTextExtractResult;
+        if (textExtractDialog != null) {
+            textExtractDialog.dismiss();
+        }
+        ensureEditModeThen(() -> pasteAiTextAsHtml(text));
+    }
+
+    private void copyTextExtractResult() {
+        if (pendingTextExtractResult == null || pendingTextExtractResult.isEmpty()) {
+            toastTodo("没有可复制的内容");
+            return;
+        }
+        if (clipboardManager != null) {
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("text_extract", pendingTextExtractResult));
+            toastTodo("已复制");
+            Log.i(TAG, "text_extract_copied chars=" + pendingTextExtractResult.length());
+        }
+    }
+
+    // ==================== AI图片弹窗 ====================
+
+    private static final String[] AI_IMAGE_RATIOS = {"1:1", "9:16", "16:9"};
+    private static final String[] AI_IMAGE_SIZES = {"1024x1024", "720x1280", "1280x720"};
+
+    private void showAiImageDialog() {
+        if (aiImageDialog != null && aiImageDialog.isShowing()) {
+            aiImageDialog.dismiss();
+        }
+        aiImageBase64List.clear();
+        aiImageSelectedIndex = 0;
+
+        final AlertDialog dialog = new AlertDialog.Builder(this).create();
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_ai_image, null);
+        aiImageDialogRoot = root;
+
+        aiImageInputContainer = root.findViewById(R.id.ai_image_input_container);
+        aiImagePromptEdit = root.findViewById(R.id.ai_image_prompt_edit);
+        aiImageRatioSpinner = root.findViewById(R.id.ai_image_ratio_spinner);
+        aiImageGenerateBtn = root.findViewById(R.id.ai_image_generate_btn);
+        aiImageGalleryContainer = root.findViewById(R.id.ai_image_gallery_container);
+        aiImageMainView = root.findViewById(R.id.ai_image_main);
+        aiImageThumbViews[0] = root.findViewById(R.id.ai_image_thumb_1);
+        aiImageThumbViews[1] = root.findViewById(R.id.ai_image_thumb_2);
+        aiImageThumbViews[2] = root.findViewById(R.id.ai_image_thumb_3);
+        aiImageLoading = root.findViewById(R.id.ai_image_loading);
+        aiImageDoneRow = root.findViewById(R.id.ai_image_done_row);
+
+        if (aiImageRatioSpinner != null) {
+            ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+                    android.R.layout.simple_spinner_item, AI_IMAGE_RATIOS);
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            aiImageRatioSpinner.setAdapter(adapter);
+        }
+
+        root.findViewById(R.id.ai_image_close_btn).setOnClickListener(v -> dialog.dismiss());
+        aiImageGenerateBtn.setOnClickListener(v -> startAiImageGeneration());
+        root.findViewById(R.id.ai_image_regenerate_btn).setOnClickListener(v -> startAiImageGeneration());
+        if (aiImageMainView != null) {
+            aiImageMainView.setOnClickListener(v -> showAiImagePreview(0));
+        }
+        for (int i = 0; i < aiImageThumbViews.length; i++) {
+            final int idx = i + 1;
+            if (aiImageThumbViews[i] != null) {
+                aiImageThumbViews[i].setOnClickListener(v -> showAiImagePreview(idx));
+            }
+        }
+
+        dialog.setOnDismissListener(d -> {
+            Log.i(TAG, "ai_image_dialog_dismissed");
+            cancelAiImageRequest();
+            aiImageDialog = null;
+            aiImageDialogRoot = null;
+        });
+        dialog.setView(root);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+        aiImageDialog = dialog;
+        switchAiImageStage(AI_IMAGE_STAGE_INPUT);
+        root.post(this::applyAiImageDialogSize);
+        Log.i(TAG, "ai_image_dialog_show");
+    }
+
+    private void applyAiImageDialogSize() {
+        if (aiImageDialog == null || aiImageDialog.getWindow() == null) {
+            return;
+        }
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int margin = dpToPx(48);
+        int targetWidth = Math.min(dpToPx(670), dm.widthPixels - margin);
+        targetWidth = Math.max(targetWidth, dpToPx(280));
+        boolean resultStage = aiImageGalleryContainer != null
+                && aiImageGalleryContainer.getVisibility() == View.VISIBLE;
+        int targetHeight;
+        if (resultStage) {
+            targetHeight = Math.min(dpToPx(756), (int) (dm.heightPixels * 0.80f));
+            targetHeight = Math.max(targetHeight, dpToPx(360));
+            targetHeight = Math.min(targetHeight, dm.heightPixels - dpToPx(24));
+        } else {
+            targetHeight = dpToPx(360);
+        }
+        aiImageDialog.getWindow().setLayout(targetWidth, targetHeight);
+        if (aiImageDialogRoot != null) {
+            ViewGroup.LayoutParams lp = aiImageDialogRoot.getLayoutParams();
+            if (lp == null) {
+                lp = new ViewGroup.LayoutParams(targetWidth, targetHeight);
+            } else {
+                lp.width = targetWidth;
+                lp.height = targetHeight;
+            }
+            aiImageDialogRoot.setLayoutParams(lp);
+        }
+    }
+
+    private void switchAiImageStage(int stage) {
+        boolean input = stage == AI_IMAGE_STAGE_INPUT;
+        if (aiImageInputContainer != null) {
+            aiImageInputContainer.setVisibility(input ? View.VISIBLE : View.GONE);
+        }
+        if (aiImageGenerateBtn != null) {
+            aiImageGenerateBtn.setVisibility(input ? View.VISIBLE : View.GONE);
+        }
+        if (aiImageGalleryContainer != null) {
+            aiImageGalleryContainer.setVisibility(input ? View.GONE : View.VISIBLE);
+        }
+        if (aiImageDoneRow != null) {
+            aiImageDoneRow.setVisibility(input ? View.GONE : View.VISIBLE);
+        }
+        if (aiImageDialogRoot != null) {
+            aiImageDialogRoot.post(this::applyAiImageDialogSize);
+        }
+    }
+
+    private void startAiImageGeneration() {
+        String prompt = aiImagePromptEdit != null ? aiImagePromptEdit.getText().toString().trim() : "";
+        if (prompt.isEmpty()) {
+            toastTodo("请输入图片的引导词");
+            return;
+        }
+        int ratioIdx = aiImageRatioSpinner != null ? aiImageRatioSpinner.getSelectedItemPosition() : 0;
+        if (ratioIdx < 0 || ratioIdx >= AI_IMAGE_SIZES.length) {
+            ratioIdx = 0;
+        }
+        String size = AI_IMAGE_SIZES[ratioIdx];
+
+        // 校验 MODEL_IMAGE 配置
+        SharedPreferences modelPrefs = getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
+        String endpoint = modelPrefs.getString("AI_MODEL_IMAGE_url", "");
+        String apiKey = modelPrefs.getString("AI_MODEL_IMAGE_api_key", "");
+        String model = modelPrefs.getString("AI_MODEL_IMAGE_model_name", "");
+        endpoint = endpoint == null ? "" : endpoint.trim();
+        apiKey = apiKey == null ? "" : apiKey.trim();
+        model = model == null ? "" : model.trim();
+        // endpoint 兜底规范化：图片模型确保以 /images/generations 结尾
+        endpoint = normalizeEndpoint(endpoint, "/images/generations");
+        if (endpoint.isEmpty()) {
+            toastTodo("请先在设置中配置图片生成模型的接口地址");
+            return;
+        }
+        if (apiKey.isEmpty()) {
+            toastTodo("请先在设置中配置图片生成模型的 API Key");
+            return;
+        }
+
+        cancelAiImageRequest();
+        final String requestId = "aiimage-" + System.currentTimeMillis();
+        aiImageActiveRequestId = requestId;
+        Log.i(TAG, "ai_image_request_start requestId=" + requestId + " size=" + size + " promptChars=" + prompt.length());
+
+        final String finalModel = model;
+        final String finalEndpoint = endpoint;
+        final String finalApiKey = apiKey;
+        final String finalSize = size;
+        final int expectedCount = 4;
+
+        // 预占位：4 个槽位先填 null（生成中），gallery 显示占位图
+        aiImageBase64List.clear();
+        for (int i = 0; i < expectedCount; i++) {
+            aiImageBase64List.add(null);
+        }
+        aiImageSelectedIndex = 0;
+
+        // 立即进入结果页：4 格显示「生成中」占位，不再在输入页转圈
+        renderAiImageGallery();
+        switchAiImageStage(AI_IMAGE_STAGE_RESULT);
+
+        // 先发一次 n=4 的请求；若接口不支持 n 只返回 <4 张，再并发补齐
+        requestAiImageOnce(finalEndpoint, finalApiKey, finalModel, prompt, finalSize, expectedCount,
+                new AiRequestManager.ImageGenCallback() {
+                    @Override
+                    public void onImages(java.util.List<String> base64List) {
+                        runOnUiThread(() -> {
+                            if (base64List == null || base64List.isEmpty()) {
+                                toastTodo("图片生成返回为空");
+                                switchAiImageStage(AI_IMAGE_STAGE_INPUT);
+                                return;
+                            }
+                            // 填充已返回的图到前 N 个槽位
+                            int filled = Math.min(base64List.size(), expectedCount);
+                            for (int i = 0; i < filled; i++) {
+                                aiImageBase64List.set(i, base64List.get(i));
+                            }
+                            aiImageSelectedIndex = 0;
+                            renderAiImageGallery();
+                            Log.i(TAG, "ai_image_done count=" + base64List.size());
+
+                            // 兜底：返回不足 4 张，并发补齐剩余槽位
+                            if (filled < expectedCount) {
+                                int remaining = expectedCount - filled;
+                                Log.i(TAG, "ai_image_fallback_concurrent remaining=" + remaining
+                                        + " returned=" + base64List.size());
+                                for (int i = 0; i < remaining; i++) {
+                                    final int slot = filled + i;
+                                    requestAiImageOnce(finalEndpoint, finalApiKey, finalModel, prompt,
+                                            finalSize, 1, new AiRequestManager.ImageGenCallback() {
+                                                @Override
+                                                public void onImages(java.util.List<String> extra) {
+                                                    runOnUiThread(() -> {
+                                                        if (extra != null && !extra.isEmpty()
+                                                                && slot < aiImageBase64List.size()) {
+                                                            aiImageBase64List.set(slot, extra.get(0));
+                                                            renderAiImageGallery();
+                                                            Log.i(TAG, "ai_image_fallback_slot_done slot=" + slot);
+                                                        }
+                                                    });
+                                                }
+
+                                                @Override
+                                                public void onError(String code, String message) {
+                                                    runOnUiThread(() -> {
+                                                        Log.w(TAG, "ai_image_fallback_slot_error slot=" + slot
+                                                                + " code=" + code);
+                                                        // 该槽位失败保留占位，不阻断其它
+                                                    });
+                                                }
+                                            });
+                                }
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onError(String code, String message) {
+                        runOnUiThread(() -> {
+                            String safeMsg = message == null ? "" : (message.length() > 80 ? message.substring(0, 80) + "..." : message);
+                            toastTodo("图片生成失败：" + safeMsg);
+                            switchAiImageStage(AI_IMAGE_STAGE_INPUT);
+                            Log.i(TAG, "ai_image_error code=" + code + " msg=" + safeMsg);
+                        });
+                    }
+                });
+    }
+
+    /** 发起一次图片生成请求（独立线程 + 独立 session，便于并发与取消）。 */
+    private void requestAiImageOnce(String endpoint, String apiKey, String model, String prompt,
+                                    String size, int n, AiRequestManager.ImageGenCallback callback) {
+        AiRequestSession session = new AiRequestSession();
+        aiImageSessions.add(session);
+        new Thread(() -> aiRequestManager.executeImageGen(endpoint, apiKey, model, prompt,
+                size, n, session, callback), "ai-image-gen-" + n).start();
+    }
+
+    private void renderAiImageGallery() {
+        // 主图：第 0 个槽位；为 null 时显示生成中占位
+        if (aiImageMainView != null) {
+            if (aiImageBase64List.size() > 0 && aiImageBase64List.get(0) != null) {
+                aiImageMainView.setImageBitmap(base64ToBitmap(aiImageBase64List.get(0)));
+            } else {
+                aiImageMainView.setImageBitmap(createGeneratingPlaceholder());
+            }
+        }
+        for (int i = 0; i < aiImageThumbViews.length; i++) {
+            if (aiImageThumbViews[i] == null) {
+                continue;
+            }
+            int idx = i + 1;
+            if (idx < aiImageBase64List.size()) {
+                if (aiImageBase64List.get(idx) != null) {
+                    aiImageThumbViews[i].setVisibility(View.VISIBLE);
+                    aiImageThumbViews[i].setImageBitmap(base64ToBitmap(aiImageBase64List.get(idx)));
+                } else {
+                    // 生成中占位
+                    aiImageThumbViews[i].setVisibility(View.VISIBLE);
+                    aiImageThumbViews[i].setImageBitmap(createGeneratingPlaceholder());
+                }
+            } else {
+                aiImageThumbViews[i].setVisibility(View.INVISIBLE);
+            }
+        }
+    }
+
+    private void showAiImagePreview(int index) {
+        if (index < 0 || index >= aiImageBase64List.size()) {
+            return;
+        }
+        // 生成中的槽位不支持预览
+        if (aiImageBase64List.get(index) == null) {
+            toastTodo("图片生成中，请稍候");
+            return;
+        }
+        aiImagePreviewCurrentIndex = index;
+        aiImageSelectedIndex = index;
+        if (aiImagePreviewDialog != null && aiImagePreviewDialog.isShowing()) {
+            aiImagePreviewDialog.dismiss();
+        }
+        final AlertDialog dialog = new AlertDialog.Builder(this).create();
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_ai_image_preview, null);
+        final ImageView previewImg = root.findViewById(R.id.ai_image_preview_img);
+        final LinearLayout dotsContainer = root.findViewById(R.id.ai_image_preview_dots);
+
+        // 初始渲染当前大图 + 圆点
+        renderPreviewImage(previewImg, aiImagePreviewCurrentIndex);
+        renderPreviewDots(dotsContainer, aiImagePreviewCurrentIndex, aiImageBase64List.size());
+
+        // 返回箭头：回到 gallery
+        root.findViewById(R.id.ai_image_preview_back_btn).setOnClickListener(v -> dialog.dismiss());
+        // 关闭 X：整体退出 AI 图片
+        root.findViewById(R.id.ai_image_preview_close_btn).setOnClickListener(v -> {
+            dialog.dismiss();
+            if (aiImageDialog != null && aiImageDialog.isShowing()) {
+                aiImageDialog.dismiss();
+            }
+        });
+        // 重新生成（当前单张）
+        root.findViewById(R.id.ai_image_preview_regenerate_btn).setOnClickListener(v -> {
+            regenerateSingleAiImage(aiImagePreviewCurrentIndex, previewImg, dotsContainer);
+        });
+        // 插入文档（当前单张）
+        root.findViewById(R.id.ai_image_preview_apply_btn).setOnClickListener(v -> {
+            aiImageSelectedIndex = aiImagePreviewCurrentIndex;
+            applyAiImageResult();
+        });
+
+        // 左右滑动切换
+        final android.view.GestureDetector detector = new android.view.GestureDetector(this,
+                new android.view.GestureDetector.SimpleOnGestureListener() {
+                    @Override
+                    public boolean onFling(android.view.MotionEvent e1, android.view.MotionEvent e2,
+                                           float velocityX, float velocityY) {
+                        if (Math.abs(velocityX) < Math.abs(velocityY)) {
+                            return false;
+                        }
+                        int total = aiImageBase64List.size();
+                        if (total == 0) return false;
+                        int next = aiImagePreviewCurrentIndex;
+                        if (velocityX < -300) {
+                            next = Math.min(total - 1, aiImagePreviewCurrentIndex + 1);
+                        } else if (velocityX > 300) {
+                            next = Math.max(0, aiImagePreviewCurrentIndex - 1);
+                        }
+                        if (next != aiImagePreviewCurrentIndex) {
+                            aiImagePreviewCurrentIndex = next;
+                            aiImageSelectedIndex = next;
+                            renderPreviewImage(previewImg, next);
+                            renderPreviewDots(dotsContainer, next, total);
+                        }
+                        return true;
+                    }
+                });
+        if (previewImg != null) {
+            previewImg.setOnTouchListener((v, ev) -> {
+                detector.onTouchEvent(ev);
+                return true;
+            });
+        }
+
+        dialog.setOnDismissListener(d -> {
+            aiImagePreviewDialog = null;
+            Log.i(TAG, "ai_image_preview_dismissed index=" + index);
+        });
+        dialog.setView(root);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            // 窗口化：居中白色圆角卡片，非整屏覆盖
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            int margin = dpToPx(48);
+            int targetWidth = Math.min(dpToPx(670), dm.widthPixels - margin);
+            targetWidth = Math.max(targetWidth, dpToPx(280));
+            int targetHeight = Math.min(dpToPx(756), (int) (dm.heightPixels * 0.80f));
+            targetHeight = Math.max(targetHeight, dpToPx(360));
+            targetHeight = Math.min(targetHeight, dm.heightPixels - dpToPx(24));
+            dialog.getWindow().setLayout(targetWidth, targetHeight);
+        }
+        aiImagePreviewDialog = dialog;
+        Log.i(TAG, "ai_image_preview_show index=" + index);
+    }
+
+    /** 渲染预览大图：null 槽位显示生成中占位。 */
+    private void renderPreviewImage(ImageView previewImg, int index) {
+        if (previewImg == null) return;
+        if (index < 0 || index >= aiImageBase64List.size() || aiImageBase64List.get(index) == null) {
+            previewImg.setImageBitmap(createGeneratingPlaceholder());
+        } else {
+            previewImg.setImageBitmap(base64ToBitmap(aiImageBase64List.get(index)));
+        }
+    }
+
+    /** 渲染分页圆点：当前为蓝色横条，其余灰色小圆。 */
+    private void renderPreviewDots(LinearLayout container, int current, int total) {
+        if (container == null) return;
+        container.removeAllViews();
+        int dp4 = dpToPx(4);
+        int dp8 = dpToPx(8);
+        for (int i = 0; i < total; i++) {
+            android.graphics.drawable.GradientDrawable dot = new android.graphics.drawable.GradientDrawable();
+            if (i == current) {
+                dot.setColor(0xFF3399FF);
+                dot.setSize(dpToPx(18), dp4);
+                dot.setCornerRadius(dp4 / 2f);
+            } else {
+                dot.setColor(0xFFCCCCCC);
+                dot.setSize(dp8, dp8);
+                dot.setCornerRadius(dp8 / 2f);
+            }
+            android.view.View item = new android.view.View(this);
+            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(
+                    i == current ? dpToPx(18) : dp8,
+                    i == current ? dp4 : dp8);
+            if (i > 0) lp.setMarginStart(dp4);
+            item.setLayoutParams(lp);
+            item.setBackground(dot);
+            container.addView(item);
+        }
+    }
+
+    /** 重新生成当前单张图片（仅替换该槽位）。 */
+    private void regenerateSingleAiImage(int slot, ImageView previewImg, View dotsContainer) {
+        if (slot < 0 || slot >= aiImageBase64List.size()) {
+            toastTodo("无效的图片位置");
+            return;
+        }
+        String prompt = aiImagePromptEdit != null ? aiImagePromptEdit.getText().toString().trim() : "";
+        if (prompt.isEmpty()) {
+            toastTodo("引导词为空，无法重新生成");
+            return;
+        }
+        int ratioIdx = aiImageRatioSpinner != null ? aiImageRatioSpinner.getSelectedItemPosition() : 0;
+        if (ratioIdx < 0 || ratioIdx >= AI_IMAGE_SIZES.length) {
+            ratioIdx = 0;
+        }
+        String size = AI_IMAGE_SIZES[ratioIdx];
+
+        SharedPreferences modelPrefs = getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
+        String endpoint = modelPrefs.getString("AI_MODEL_IMAGE_url", "");
+        String apiKey = modelPrefs.getString("AI_MODEL_IMAGE_api_key", "");
+        String model = modelPrefs.getString("AI_MODEL_IMAGE_model_name", "");
+        endpoint = endpoint == null ? "" : endpoint.trim();
+        apiKey = apiKey == null ? "" : apiKey.trim();
+        model = model == null ? "" : model.trim();
+        endpoint = normalizeEndpoint(endpoint, "/images/generations");
+        if (endpoint.isEmpty()) {
+            toastTodo("请先在设置中配置图片生成模型的接口地址");
+            return;
+        }
+        if (apiKey.isEmpty()) {
+            toastTodo("请先在设置中配置图片生成模型的 API Key");
+            return;
+        }
+
+        // 该槽位置空，预览与 gallery 显示生成中占位
+        aiImageBase64List.set(slot, null);
+        renderPreviewImage(previewImg, slot);
+        renderAiImageGallery();
+        Log.i(TAG, "ai_image_regen_single_start slot=" + slot);
+
+        final ImageView finalPreviewImg = previewImg;
+        final View finalDots = dotsContainer;
+        final int finalSlot = slot;
+        requestAiImageOnce(endpoint, apiKey, model, prompt, size, 1,
+                new AiRequestManager.ImageGenCallback() {
+                    @Override
+                    public void onImages(java.util.List<String> base64List) {
+                        runOnUiThread(() -> {
+                            if (base64List != null && !base64List.isEmpty()
+                                    && finalSlot < aiImageBase64List.size()) {
+                                aiImageBase64List.set(finalSlot, base64List.get(0));
+                                // 若当前预览仍在该槽位，刷新大图
+                                if (aiImagePreviewCurrentIndex == finalSlot) {
+                                    renderPreviewImage(finalPreviewImg, finalSlot);
+                                }
+                                renderAiImageGallery();
+                                Log.i(TAG, "ai_image_regen_single_done slot=" + finalSlot);
+                            } else {
+                                toastTodo("重新生成返回为空");
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onError(String code, String message) {
+                        runOnUiThread(() -> {
+                            String safeMsg = message == null ? "" : (message.length() > 80 ? message.substring(0, 80) + "..." : message);
+                            toastTodo("重新生成失败：" + safeMsg);
+                            Log.w(TAG, "ai_image_regen_single_error slot=" + finalSlot + " code=" + code);
+                        });
+                    }
+                });
+    }
+
+    private void applyAiImageResult() {
+        if (aiImageSelectedIndex < 0 || aiImageSelectedIndex >= aiImageBase64List.size()) {
+            toastTodo("请先选择一张图片");
+            return;
+        }
+        String base64 = aiImageBase64List.get(aiImageSelectedIndex);
+        if (base64 == null) {
+            toastTodo("该图片生成中，请稍候");
+            return;
+        }
+        String fileName = "ai_image_" + System.currentTimeMillis() + ".png";
+        Log.i(TAG, "ai_image_apply index=" + aiImageSelectedIndex + " name=" + fileName);
+        // 先关闭预览弹窗，避免盖在主弹窗之上导致看不到插入效果
+        if (aiImagePreviewDialog != null && aiImagePreviewDialog.isShowing()) {
+            aiImagePreviewDialog.dismiss();
+            aiImagePreviewDialog = null;
+        }
+        if (aiImageDialog != null) {
+            aiImageDialog.dismiss();
+        }
+        insertImageBase64(base64, fileName);
+    }
+
+    private void cancelAiImageRequest() {
+        for (AiRequestSession s : aiImageSessions) {
+            if (s != null) {
+                s.cancel();
+            }
+        }
+        aiImageSessions.clear();
+        aiImageActiveRequestId = "";
+    }
+
     private String getTextOperateTitle(String mode) {
         if (AiChatCoordinator.MODE_EXPAND.equals(mode)) {
             return "文案扩写";
@@ -5733,18 +6948,19 @@ public class LOActivity extends AppCompatActivity {
             if (textOperatePolishStyleCard != null) {
                 textOperatePolishStyleCard.setOnClickListener(v -> showPolishStylePicker());
             }
-        } else if (AiChatCoordinator.MODE_REWRITE.equals(mode)) {
-            // rewrite 无参数输入，输入区保持空白
-            textOperateRequirementEdit = null;
-            textOperatePolishStyleLabel = null;
-            textOperatePolishStyleCard = null;
         } else {
             View reqInput = getLayoutInflater().inflate(R.layout.lolib_text_op_requirement, textOperateInputContainer, false);
             textOperateInputContainer.addView(reqInput);
             textOperateRequirementEdit = reqInput.findViewById(R.id.text_op_requirement_edit);
             if (textOperateRequirementEdit != null) {
-                String hint = AiChatCoordinator.MODE_CONDENSE.equals(mode)
-                        ? "请输入文案缩写要求" : "请输入文案扩写要求";
+                String hint;
+                if (AiChatCoordinator.MODE_CONDENSE.equals(mode)) {
+                    hint = "请输入文案缩写要求";
+                } else if (AiChatCoordinator.MODE_REWRITE.equals(mode)) {
+                    hint = "请输入文案重写要求";
+                } else {
+                    hint = "请输入文案扩写要求";
+                }
                 textOperateRequirementEdit.setHint(hint);
             }
         }
@@ -5782,13 +6998,12 @@ public class LOActivity extends AppCompatActivity {
         int targetWidth = Math.min(dpToPx(670), dm.widthPixels - margin);
         targetWidth = Math.max(targetWidth, dpToPx(280));
 
-        boolean compactInputStage = (AiChatCoordinator.MODE_POLISH.equals(textOperateMode)
-                || AiChatCoordinator.MODE_REWRITE.equals(textOperateMode))
+        boolean compactInputStage = AiChatCoordinator.MODE_POLISH.equals(textOperateMode)
                 && textOperateResultCard != null
                 && textOperateResultCard.getVisibility() != View.VISIBLE;
         int targetHeight;
         if (compactInputStage) {
-            // 润色/重写输入态仅需少量控件 + 按钮，使用紧凑高度避免大面积留白
+            // 润色输入态仅需少量控件 + 按钮，使用紧凑高度避免大面积留白
             targetHeight = dpToPx(340);
         } else {
             targetHeight = Math.min(dpToPx(756), (int) (dm.heightPixels * 0.80f));
@@ -5812,7 +7027,7 @@ public class LOActivity extends AppCompatActivity {
                 + " compactInput=" + compactInputStage);
     }
 
-    /** 润色/重写输入态：输入区垂直居中；扩写/缩写：输入区占满剩余空间 */
+    /** 润色输入态：输入区垂直居中；扩写/缩写/重写：输入区占满剩余空间 */
     private void applyTextOperateInputLayout() {
         if (textOperateInputContainer == null) {
             return;
@@ -5822,8 +7037,7 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) rawLp;
-        boolean compactInput = (AiChatCoordinator.MODE_POLISH.equals(textOperateMode)
-                || AiChatCoordinator.MODE_REWRITE.equals(textOperateMode))
+        boolean compactInput = AiChatCoordinator.MODE_POLISH.equals(textOperateMode)
                 && textOperateResultCard != null
                 && textOperateResultCard.getVisibility() != View.VISIBLE;
         if (compactInput) {

@@ -21,6 +21,9 @@ public class AiChatCoordinator {
     public static final String MODE_TYPESET = "typeset";
     public static final String MODE_OUTLINE = "outline";
     public static final String MODE_ARTICLE_GENERATE = "article_generate";
+    public static final String MODE_TEXT_EXTRACT = "text_extract";
+    public static final String MODE_FORMAT_BATCH = "format_batch";
+    public static final String MODE_IMAGE_GENERATE = "image_generate";
 
     // 润色风格
     public static final String POLISH_STYLE_QUICK = "quick";
@@ -463,11 +466,16 @@ public class AiChatCoordinator {
         return buildSimpleMessages(systemPrompt, userPrompt);
     }
 
-    public static JSONArray buildRewriteMessages(String selection) throws JSONException {
+    public static JSONArray buildRewriteMessages(String selection, String requirement) throws JSONException {
         String text = selection == null ? "" : selection.trim();
         String systemPrompt = "You are a versatile Chinese writer. Rewrite in a fresh way while preserving original meaning.";
-        String userPrompt = "请用不同的表达方式和句式重写以下内容，保持原意不变：\n\n---\n" + text + "\n---";
-        return buildSimpleMessages(systemPrompt, userPrompt);
+        StringBuilder userPrompt = new StringBuilder();
+        userPrompt.append("请用不同的表达方式和句式重写以下内容，保持原意不变：\n\n---\n").append(text).append("\n---");
+        String req = requirement == null ? "" : requirement.trim();
+        if (!req.isEmpty()) {
+            userPrompt.append("\n\n额外要求：").append(req);
+        }
+        return buildSimpleMessages(systemPrompt, userPrompt.toString());
     }
 
     private static String getTranslateLanguageLabel(String key) {
@@ -511,5 +519,31 @@ public class AiChatCoordinator {
 
     private String normalize(String text) {
         return text == null ? "" : text.trim();
+    }
+
+    /** 构造视觉模型 OCR 请求 messages（OpenAI vision content 数组格式）。 */
+    public static JSONArray buildTextExtractMessages(String base64Image) throws JSONException {
+        JSONArray messages = new JSONArray();
+        JSONObject sysMsg = new JSONObject();
+        sysMsg.put("role", "system");
+        sysMsg.put("content", "你是文字识别专家。请识别并提取图片中的所有文字，保持原始排版和段落结构，只返回提取的文字内容，不要添加解释。");
+        messages.put(sysMsg);
+
+        JSONObject userMsg = new JSONObject();
+        userMsg.put("role", "user");
+        JSONArray content = new JSONArray();
+        JSONObject textPart = new JSONObject();
+        textPart.put("type", "text");
+        textPart.put("text", "请识别这张图片中的所有文字并提取出来：");
+        content.put(textPart);
+        JSONObject imagePart = new JSONObject();
+        imagePart.put("type", "image_url");
+        JSONObject imageUrl = new JSONObject();
+        imageUrl.put("url", "data:image/png;base64," + (base64Image == null ? "" : base64Image));
+        imagePart.put("image_url", imageUrl);
+        content.put(imagePart);
+        userMsg.put("content", content);
+        messages.put(userMsg);
+        return messages;
     }
 }

@@ -363,7 +363,7 @@
             android:layout_marginTop="12dp"
             android:orientation="horizontal">
 
-            <!-- 文字萃取 -->
+            <!-- 文字提取 -->
             <LinearLayout
                 android:id="@+id/ai_op_text_extract"
                 android:layout_width="0dp"
@@ -381,21 +381,21 @@
                 <ImageView
                     android:layout_width="40dp"
                     android:layout_height="40dp"
-                    android:contentDescription="文字萃取"
+                    android:contentDescription="文字提取"
                     android:src="@drawable/lolib_ic_ai_text_extract" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="文字萃取"
+                    android:text="文字提取"
                     android:textColor="#101010"
                     android:textSize="14sp" />
             </LinearLayout>
 
-            <!-- AI修图 -->
+            <!-- AI排版 -->
             <LinearLayout
-                android:id="@+id/ai_op_image_retouch"
+                android:id="@+id/ai_op_typeset"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -411,14 +411,14 @@
                 <ImageView
                     android:layout_width="40dp"
                     android:layout_height="40dp"
-                    android:contentDescription="AI修图"
-                    android:src="@drawable/lolib_ic_ai_image_retouch" />
+                    android:contentDescription="AI排版"
+                    android:src="@drawable/lolib_ic_ai_typeset" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="AI修图"
+                    android:text="AI排版"
                     android:textColor="#101010"
                     android:textSize="14sp" />
             </LinearLayout>
@@ -459,9 +459,9 @@
             android:layout_marginTop="10dp"
             android:orientation="horizontal">
 
-            <!-- AI排版 -->
+            <!-- 格式批量处理 -->
             <LinearLayout
-                android:id="@+id/ai_op_typeset"
+                android:id="@+id/ai_op_format_batch"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -477,14 +477,14 @@
                 <ImageView
                     android:layout_width="40dp"
                     android:layout_height="40dp"
-                    android:contentDescription="AI排版"
-                    android:src="@drawable/lolib_ic_ai_typeset" />
+                    android:contentDescription="格式批量处理"
+                    android:src="@drawable/lolib_ic_ai_format_batch" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="AI排版"
+                    android:text="格式批量处理"
                     android:textColor="#101010"
                     android:textSize="14sp" />
             </LinearLayout>
