@@ -293,8 +293,8 @@
         <include
             android:id="@+id/selection_popup_panel"
             layout="@layout/lolib_selection_popup"
-            android:layout_width="602dp"
-            android:layout_height="365dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:visibility="gone"
             app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
             app:layout_constraintEnd_toEndOf="parent"

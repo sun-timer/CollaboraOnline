@@ -22,10 +22,10 @@ public class BottomToolbarController {
     private static final int[] PREVIEW_MODE_TOOLBAR_ITEM_IDS = new int[] {
             R.id.toolbar_item_function,
             R.id.toolbar_item_mobile_preview,
-            R.id.toolbar_item_ai_assistant,
-            R.id.toolbar_item_ai_feature
+            R.id.toolbar_item_ai_assistant
     };
     private static final int[] EDIT_MODE_EXTRA_TOOLBAR_ITEM_IDS = new int[] {
+            R.id.toolbar_item_ai_feature,
             R.id.toolbar_item_keyboard,
             R.id.toolbar_item_character,
             R.id.toolbar_item_paragraph,
@@ -42,7 +42,8 @@ public class BottomToolbarController {
             R.id.toolbar_item_insert_image
     };
     private static final int TOOLBAR_DEFAULT_HEIGHT_DP = 82;
-    private static final int TOOLBAR_COMPACT_HEIGHT_DP = 64;
+    private static final int TOOLBAR_COMPACT_HEIGHT_DP = 48;
+    private static final int TOOLBAR_IME_EXTRA_GAP_DP = 4;
     private static final int TOOLBAR_ITEM_COMPACT_WIDTH_DP = 74;
     private static final int QUICK_ACTION_ICON_SIZE_DP = 42;
     private static final int QUICK_ACTION_BUTTON_MIN_WIDTH_DP = 64;
@@ -125,6 +126,7 @@ public class BottomToolbarController {
     private boolean bottomToolbarCompactMode = false;
     private int bottomToolbarBaseHeightPx = -1;
     private int bottomToolbarImeInsetPx = 0;
+    private int navigationBarInsetPx = 0;
     private boolean isImeVisibleForToolbar = false;
     private boolean isEditModeActive = false;
     private QuickActionGroup activeQuickActionGroup = QuickActionGroup.NONE;
@@ -168,7 +170,7 @@ public class BottomToolbarController {
             host.openLocalImagePickerFromWeb();
         });
 
-        applyImeState(isImeVisibleForToolbar, bottomToolbarImeInsetPx);
+        applyImeState(isImeVisibleForToolbar, bottomToolbarImeInsetPx, navigationBarInsetPx);
         updateEditModeState(isEditModeActive, "toolbar_setup");
     }
 
@@ -176,7 +178,7 @@ public class BottomToolbarController {
         isEditModeActive = isEditMode;
         Runnable applyTask = () -> {
             applyBottomToolbarMode(isEditMode);
-            applyImeState(isImeVisibleForToolbar, bottomToolbarImeInsetPx);
+            applyImeState(isImeVisibleForToolbar, bottomToolbarImeInsetPx, navigationBarInsetPx);
             Log.i(TAG, "bottom_toolbar_mode edit=" + isEditMode + " reason=" + reason);
         };
         if (Looper.myLooper() == Looper.getMainLooper()) {
@@ -187,9 +189,18 @@ public class BottomToolbarController {
     }
 
     public void applyImeState(boolean imeVisible, int imeInsetBottom) {
+        applyImeState(imeVisible, imeInsetBottom, navigationBarInsetPx);
+    }
+
+    public void applyImeState(boolean imeVisible, int imeInsetBottom, int navigationBarInsetBottom) {
         isImeVisibleForToolbar = imeVisible;
         bottomToolbarImeInsetPx = Math.max(0, imeInsetBottom);
-        setBottomToolbarBottomMargin(imeVisible ? bottomToolbarImeInsetPx : 0);
+        navigationBarInsetPx = Math.max(0, navigationBarInsetBottom);
+        int bottomMargin = imeVisible
+                ? Math.max(bottomToolbarImeInsetPx, navigationBarInsetPx)
+                        + host.dpToPx(TOOLBAR_IME_EXTRA_GAP_DP)
+                : navigationBarInsetPx;
+        setBottomToolbarBottomMargin(bottomMargin);
         applyBottomToolbarCompactMode(imeVisible && isEditModeActive);
     }
 
@@ -440,7 +451,18 @@ public class BottomToolbarController {
                     : toolbarBaseItemWidths.getOrDefault(itemId, host.dpToPx(92));
             setToolbarItemWidth(itemId, targetWidth);
             setToolbarItemLabelVisibility(itemId, !compactMode);
+            setToolbarItemVerticalPadding(itemId, compactMode ? 0 : host.dpToPx(4));
         }
+    }
+
+    private void setToolbarItemVerticalPadding(int itemId, int paddingTopPx) {
+        View item = host.findViewById(itemId);
+        if (!(item instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) item;
+        int paddingH = group.getPaddingLeft();
+        group.setPadding(paddingH, paddingTopPx, paddingH, group.getPaddingBottom());
     }
 
     private void cacheToolbarBaseMetricsIfNeeded() {

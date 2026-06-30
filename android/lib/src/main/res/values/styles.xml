@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Selection Popup Button Style: icon over label, no border (matches Figma SVG) -->
+    <!-- Selection Popup Button Style: icon over label, compact 5-column row -->
     <style name="SelectionPopupButton">
-        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_width">56dp</item>
         <item name="android:layout_height">match_parent</item>
-        <item name="android:layout_weight">1</item>
         <item name="android:background">?attr/selectableItemBackground</item>
         <item name="android:clickable">true</item>
         <item name="android:focusable">true</item>
@@ -12,17 +11,22 @@
         <item name="android:orientation">vertical</item>
     </style>
 
+    <!-- Fixed-width button for partial rows (e.g. row 3 with 2 items) -->
+    <style name="SelectionPopupButtonCompact" parent="SelectionPopupButton">
+        <item name="android:layout_width">56dp</item>
+    </style>
+
     <style name="SelectionPopupButtonIcon">
-        <item name="android:layout_width">32dp</item>
-        <item name="android:layout_height">32dp</item>
+        <item name="android:layout_width">24dp</item>
+        <item name="android:layout_height">24dp</item>
         <item name="android:contentDescription">图标</item>
     </style>
 
     <style name="SelectionPopupButtonText">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:layout_marginTop">4dp</item>
         <item name="android:textColor">#333333</item>
-        <item name="android:textSize">12sp</item>
+        <item name="android:textSize">10sp</item>
     </style>
 </resources>

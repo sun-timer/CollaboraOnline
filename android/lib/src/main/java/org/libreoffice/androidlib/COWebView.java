@@ -45,6 +45,8 @@ public class COWebView extends WebView {
     private boolean magnifierShown = false;
     private boolean nativeSelectionDragActive = false;
     private long lastNativeSelectionDragAt = 0L;
+    /** When false, WebView is not treated as a text editor and IME won't auto-popup on tap. */
+    private boolean imeAllowedByUser = false;
     private static final float MAGNIFIER_MOVE_THRESHOLD_PX = 12f;
     private static final long NATIVE_SELECTION_DRAG_THROTTLE_MS = 60L;
 
@@ -108,13 +110,20 @@ public class COWebView extends WebView {
     }
 
     /**
-     * Always return true so the WebView keeps full editing capability
-     * (input[type=file], contentEditable, text selection, etc.).
-     * IME show/hide is controlled via InputMethodManager from LOActivity.
+     * Only report as text editor when user explicitly requested keyboard via
+     * the bottom-toolbar "呼出键盘" button. Prevents auto IME on document tap.
      */
     @Override
     public boolean onCheckIsTextEditor() {
-        return true;
+        return imeAllowedByUser;
+    }
+
+    public void setImeAllowedByUser(boolean allowed) {
+        imeAllowedByUser = allowed;
+    }
+
+    public boolean isImeAllowedByUser() {
+        return imeAllowedByUser;
     }
 
     @Override

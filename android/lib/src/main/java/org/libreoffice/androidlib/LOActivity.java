@@ -599,21 +599,22 @@ public class LOActivity extends AppCompatActivity {
                                     ? WindowInsets.Type.systemOverlays()
                                     : 0));
                     Insets navInsets = windowInsets.getInsets(WindowInsets.Type.navigationBars());
+                    Insets imeInsets = windowInsets.getInsets(WindowInsets.Type.ime());
                     boolean imeVisible = windowInsets.isVisible(WindowInsets.Type.ime());
-                    int imeInsetBottom = Math.max(0, insets.bottom - navInsets.bottom);
+                    int imeInsetBottom = imeVisible ? imeInsets.bottom : 0;
                     if (imeVisible && imeInsetBottom < dpToPx(IME_VISIBLE_THRESHOLD_DP)) {
                         imeVisible = false;
                         imeInsetBottom = 0;
                     }
-                    applyBottomToolbarImeState(imeVisible, imeInsetBottom);
+                    applyBottomToolbarImeState(imeVisible, imeInsetBottom, navInsets.bottom);
 
                     ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
                     mlp.leftMargin = insets.left;
                     mlp.topMargin = 0;
                     mlp.rightMargin = insets.right;
-                    // IME lift is handled by native bottom toolbar margin; do not
-                    // subtract keyboard height here or WebView collapses to 0.
-                    mlp.bottomMargin = navInsets.bottom;
+                    // Navigation bar inset is applied to the native bottom toolbar margin;
+                    // keep WebView flush against the toolbar to avoid a blank strip above it.
+                    mlp.bottomMargin = 0;
                     v.setLayoutParams(mlp);
 
                     return WindowInsets.CONSUMED;
@@ -1777,14 +1778,18 @@ public class LOActivity extends AppCompatActivity {
                 }
                 if (messageAndParam.length > 1 && messageAndParam[1] != null) {
                     if (messageAndParam[1].startsWith("show ")) {
-                        // show with coordinates: "show x y"
+                        // show with coordinates: "show x y" or "show x y bottomY"
                         try {
                             String[] parts = messageAndParam[1].split(" ");
                             if (parts.length >= 3) {
                                 final float anchorX = Float.parseFloat(parts[1]);
                                 final float anchorY = Float.parseFloat(parts[2]);
+                                final float anchorBottomY = parts.length >= 4
+                                        ? Float.parseFloat(parts[3])
+                                        : anchorY;
                                 getMainHandler().post(() -> {
-                                    ensureSelectionMenuController().showAtWindow(anchorX, anchorY);
+                                    ensureSelectionMenuController().showAtWindow(
+                                            anchorX, anchorY, anchorBottomY);
                                     getMainHandler().postDelayed(() ->
                                             recoverVisibleTilesAfterPreviewSelection("selection_menu_show"), 180);
                                 });
@@ -2547,6 +2552,11 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void onSelectionPopupShown() {
                     LOActivity.this.preReadSelectionForPopup();
+                }
+
+                @Override
+                public View getBrowserView() {
+                    return LOActivity.this.mWebView;
                 }
             });
         }
@@ -3314,10 +3324,13 @@ public class LOActivity extends AppCompatActivity {
         postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=0");
     }
 
-    private void applyBottomToolbarImeState(boolean imeVisible, int imeInsetBottom) {
+    private void applyBottomToolbarImeState(boolean imeVisible, int imeInsetBottom, int navigationBarInsetBottom) {
         isImeVisibleForToolbar = imeVisible;
         bottomToolbarImeInsetPx = Math.max(0, imeInsetBottom);
-        ensureBottomToolbarController().applyImeState(imeVisible, imeInsetBottom);
+        ensureBottomToolbarController().applyImeState(imeVisible, imeInsetBottom, navigationBarInsetBottom);
+        if (!imeVisible && mWebView != null) {
+            mWebView.setImeAllowedByUser(false);
+        }
     }
 
     private void showFunctionPanel() {
@@ -3988,6 +4001,7 @@ public class LOActivity extends AppCompatActivity {
         if (mWebView == null) {
             return;
         }
+        mWebView.setImeAllowedByUser(true);
         mWebView.requestFocus();
         mWebView.evaluateJavascript(
                 "(function(){if(window.app&&app.map){app.map.focus();}return true;})();",
@@ -4005,6 +4019,7 @@ public class LOActivity extends AppCompatActivity {
         if (mWebView == null) {
             return;
         }
+        mWebView.setImeAllowedByUser(false);
         InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
         if (imm != null) {
             imm.hideSoftInputFromWindow(mWebView.getWindowToken(), 0);

@@ -282,15 +282,53 @@ class AndroidSelectionMenu {
 			endRect.v4X,
 		);
 		const centerViewX = (leftViewX + rightViewX) / 2;
-		const canvasRect = app.sectionContainer.getCanvasBoundingClientRect();
-		const anchor = AndroidSelectionMenu.clampAnchorToCanvas(
-			Math.round(centerViewX) + Math.round(canvasRect.x * app.dpiScale),
-			Math.round(topViewY) + Math.round(canvasRect.y * app.dpiScale),
+		const bottomViewY = Math.max(
+			startRect.v3Y,
+			startRect.v4Y,
+			endRect.v3Y,
+			endRect.v4Y,
 		);
+		const canvasRect = app.sectionContainer.getCanvasBoundingClientRect();
+		const scale = app.dpiScale || 1;
+		const cssX = Math.round(centerViewX / scale) + canvasRect.x;
+		const cssY = Math.round(topViewY / scale) + canvasRect.y;
+		const cssBottomY = Math.round(bottomViewY / scale) + canvasRect.y;
+		const anchor = AndroidSelectionMenu.clampAnchorInCss(cssX, cssY, cssBottomY);
 
-		window.postMobileMessage('SELECTIONMENU show');
+		window.postMobileMessage(
+			'SELECTIONMENU show ' +
+				Math.round(anchor.x * scale) +
+				' ' +
+				Math.round(anchor.y * scale) +
+				' ' +
+				Math.round(anchor.bottomY * scale),
+		);
 		AndroidSelectionMenu.pendingLongPressSelection = false;
 		AndroidSelectionMenu.selectionStartTwips = null;
+	}
+
+	private static clampAnchorInCss(
+		x: number,
+		y: number,
+		bottomY: number,
+	): { x: number; y: number; bottomY: number } {
+		const canvas = document.getElementById('canvas-container');
+		if (!canvas) {
+			return { x, y, bottomY };
+		}
+		const rect = canvas.getBoundingClientRect();
+		const margin = 8;
+		const clampY = (value: number) =>
+			Math.round(
+				Math.max(rect.top + margin, Math.min(value, rect.bottom - margin)),
+			);
+		return {
+			x: Math.round(
+				Math.max(rect.left + margin, Math.min(x, rect.right - margin)),
+			),
+			y: clampY(y),
+			bottomY: clampY(bottomY),
+		};
 	}
 
 	private static clampAnchorToCanvas(x: number, y: number): { x: number; y: number } {
