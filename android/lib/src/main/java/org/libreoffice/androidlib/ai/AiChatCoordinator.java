@@ -22,6 +22,26 @@ public class AiChatCoordinator {
     public static final String MODE_OUTLINE = "outline";
     public static final String MODE_ARTICLE_GENERATE = "article_generate";
 
+    // 润色风格
+    public static final String POLISH_STYLE_QUICK = "quick";
+    public static final String POLISH_STYLE_FORMAL = "formal";
+    public static final String POLISH_STYLE_LIVELY = "lively";
+    public static final String POLISH_STYLE_PARTY_GOVT = "party_govt";
+    public static final String POLISH_STYLE_COLLOQUIAL = "colloquial";
+    public static final String POLISH_STYLE_ACADEMIC = "academic";
+    public static final String POLISH_STYLE_INTERNET = "internet";
+
+    // 翻译语言
+    public static final String TRANSLATE_LANG_AUTO = "auto";
+    public static final String TRANSLATE_LANG_ZH = "zh";
+    public static final String TRANSLATE_LANG_EN = "en";
+    public static final String TRANSLATE_LANG_JA = "ja";
+    public static final String TRANSLATE_LANG_KO = "ko";
+    public static final String TRANSLATE_LANG_FR = "fr";
+    public static final String TRANSLATE_LANG_DE = "de";
+    public static final String TRANSLATE_LANG_ES = "es";
+    public static final String TRANSLATE_LANG_RU = "ru";
+
     // 大纲类型（生成大纲功能）
     public static final String OUTLINE_TYPE_PAPER = "paper";     // 论文
     public static final String OUTLINE_TYPE_REPORT = "report";   // 工作报告
@@ -109,12 +129,7 @@ public class AiChatCoordinator {
         }
         switch (mode) {
             case MODE_CONTINUE:
-            case MODE_EXPAND:
-            case MODE_POLISH:
             case MODE_SUMMARIZE:
-            case MODE_CONDENSE:
-            case MODE_REWRITE:
-            case MODE_TRANSLATE:
                 return true;
             default:
                 return false;
@@ -356,6 +371,141 @@ public class AiChatCoordinator {
         userMsg.put("content", userPrompt);
         messages.put(userMsg);
 
+        return messages;
+    }
+
+    public static JSONArray buildExpandMessages(String selection, String requirement) throws JSONException {
+        String text = selection == null ? "" : selection.trim();
+        String systemPrompt = "你是中文文案扩写专家，请将用户提供的文本扩展得更详细丰富，增加细节、例证和论述。只返回扩写后的全文。";
+        StringBuilder userPrompt = new StringBuilder();
+        userPrompt.append("请将以下内容扩展得更详细丰富：\n\n---\n").append(text).append("\n---");
+        String req = requirement == null ? "" : requirement.trim();
+        if (!req.isEmpty()) {
+            userPrompt.append("\n\n额外要求：").append(req);
+        }
+        return buildSimpleMessages(systemPrompt, userPrompt.toString());
+    }
+
+    public static JSONArray buildCondenseMessages(String selection, String requirement) throws JSONException {
+        String text = selection == null ? "" : selection.trim();
+        String systemPrompt = "你是中文文案缩写专家，请压缩用户提供的文本，保留关键信息，去除冗余，缩减至原长度的一半左右。只返回缩写后的全文。";
+        StringBuilder userPrompt = new StringBuilder();
+        userPrompt.append("请压缩以下文本，保留关键信息：\n\n---\n").append(text).append("\n---");
+        String req = requirement == null ? "" : requirement.trim();
+        if (!req.isEmpty()) {
+            userPrompt.append("\n\n额外要求：").append(req);
+        }
+        return buildSimpleMessages(systemPrompt, userPrompt.toString());
+    }
+
+    public static JSONArray buildPolishMessages(String polishStyle, String selection) throws JSONException {
+        String text = selection == null ? "" : selection.trim();
+        if (polishStyle == null || polishStyle.isEmpty()) {
+            polishStyle = POLISH_STYLE_QUICK;
+        }
+        String systemPrompt;
+        String styleLabel;
+        switch (polishStyle) {
+            case POLISH_STYLE_FORMAL:
+                systemPrompt = "你是中文文案润色专家，请将用户提供的文案润色得更正式、更书面化，使用规范用语，避免口语表达。只返回润色后的全文。";
+                styleLabel = "更正式";
+                break;
+            case POLISH_STYLE_LIVELY:
+                systemPrompt = "你是中文文案润色专家，请将用户提供的文案润色得更活泼生动，语气轻松有活力，增强感染力。只返回润色后的全文。";
+                styleLabel = "更活泼";
+                break;
+            case POLISH_STYLE_PARTY_GOVT:
+                systemPrompt = "你是中文文案润色专家，请将用户提供的文案润色成党政公文风格，用语规范严谨，符合党政机关行文习惯。只返回润色后的全文。";
+                styleLabel = "党政风";
+                break;
+            case POLISH_STYLE_COLLOQUIAL:
+                systemPrompt = "你是中文文案润色专家，请将用户提供的文案润色得更口语化，贴近日常交流，自然亲切。只返回润色后的全文。";
+                styleLabel = "口语化";
+                break;
+            case POLISH_STYLE_ACADEMIC:
+                systemPrompt = "你是中文文案润色专家，请将用户提供的文案润色得更学术化，用词严谨准确，逻辑清晰，符合学术写作规范。只返回润色后的全文。";
+                styleLabel = "更学术";
+                break;
+            case POLISH_STYLE_INTERNET:
+                systemPrompt = "你是中文文案润色专家，请将用户提供的文案润色成网络话术风格，生动有趣，适当使用网络流行表达。只返回润色后的全文。";
+                styleLabel = "网络话术";
+                break;
+            case POLISH_STYLE_QUICK:
+            default:
+                systemPrompt = "你是中文文案润色专家，请对用户提供的文案进行快速润色，修正语病、提升流畅度，保持原意。只返回润色后的全文。";
+                styleLabel = "快速润色";
+                break;
+        }
+        String userPrompt = "请将以下文案润色成" + styleLabel + "风格：\n\n---\n" + text + "\n---";
+        return buildSimpleMessages(systemPrompt, userPrompt);
+    }
+
+    public static JSONArray buildTranslateMessages(String sourceLang, String targetLang, String text)
+            throws JSONException {
+        String content = text == null ? "" : text.trim();
+        if (sourceLang == null || sourceLang.isEmpty()) {
+            sourceLang = TRANSLATE_LANG_AUTO;
+        }
+        if (targetLang == null || targetLang.isEmpty()) {
+            targetLang = TRANSLATE_LANG_ZH;
+        }
+        String targetLabel = getTranslateLanguageLabel(targetLang);
+        String systemPrompt;
+        if (TRANSLATE_LANG_AUTO.equals(sourceLang)) {
+            systemPrompt = "你是专业翻译，请自动识别用户提供的文本语言，并将其翻译成"
+                    + targetLabel + "，自然流畅、准确传达原意。只返回译文。";
+        } else {
+            String sourceLabel = getTranslateLanguageLabel(sourceLang);
+            systemPrompt = "你是专业翻译，请将用户提供的" + sourceLabel + "文本翻译成"
+                    + targetLabel + "，自然流畅、准确传达原意。只返回译文。";
+        }
+        String userPrompt = "请将以下文本翻译成" + targetLabel + "：\n\n---\n" + content + "\n---";
+        return buildSimpleMessages(systemPrompt, userPrompt);
+    }
+
+    public static JSONArray buildRewriteMessages(String selection) throws JSONException {
+        String text = selection == null ? "" : selection.trim();
+        String systemPrompt = "You are a versatile Chinese writer. Rewrite in a fresh way while preserving original meaning.";
+        String userPrompt = "请用不同的表达方式和句式重写以下内容，保持原意不变：\n\n---\n" + text + "\n---";
+        return buildSimpleMessages(systemPrompt, userPrompt);
+    }
+
+    private static String getTranslateLanguageLabel(String key) {
+        switch (key) {
+            case TRANSLATE_LANG_ZH:
+                return "中文";
+            case TRANSLATE_LANG_EN:
+                return "英文";
+            case TRANSLATE_LANG_JA:
+                return "日文";
+            case TRANSLATE_LANG_KO:
+                return "韩文";
+            case TRANSLATE_LANG_FR:
+                return "法文";
+            case TRANSLATE_LANG_DE:
+                return "德文";
+            case TRANSLATE_LANG_ES:
+                return "西班牙文";
+            case TRANSLATE_LANG_RU:
+                return "俄文";
+            case TRANSLATE_LANG_AUTO:
+            default:
+                return "目标语言";
+        }
+    }
+
+    private static JSONArray buildSimpleMessages(String systemPrompt, String userPrompt)
+            throws JSONException {
+        JSONArray messages = new JSONArray();
+        JSONObject sysMsg = new JSONObject();
+        sysMsg.put("role", "system");
+        sysMsg.put("content", systemPrompt);
+        messages.put(sysMsg);
+
+        JSONObject userMsg = new JSONObject();
+        userMsg.put("role", "user");
+        userMsg.put("content", userPrompt);
+        messages.put(userMsg);
         return messages;
     }
 

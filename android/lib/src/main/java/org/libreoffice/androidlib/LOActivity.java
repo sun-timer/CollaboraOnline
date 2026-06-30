@@ -131,6 +131,8 @@ import org.libreoffice.androidlib.ai.AiRequestManager;
 import org.libreoffice.androidlib.ai.AiRequestSession;
 import org.libreoffice.androidlib.ai.ArticleTemplate;
 import org.libreoffice.androidlib.ai.ArticleTemplateRegistry;
+import org.libreoffice.androidlib.ai.PolishStyleRegistry;
+import org.libreoffice.androidlib.ai.TranslateLanguageRegistry;
 import org.libreoffice.androidlib.lok.LokClipboardData;
 import org.libreoffice.androidlib.lok.LokClipboardEntry;
 
@@ -323,6 +325,44 @@ public class LOActivity extends AppCompatActivity {
     private String[] pendingArticleValues;
     private String pendingArticleResult;
     private String articleActiveRequestId = "";
+    // 扩写/缩写/润色弹窗
+    private static final int TEXT_OP_STAGE_INPUT = 1;
+    private static final int TEXT_OP_STAGE_RESULT = 2;
+    private AlertDialog textOperateDialog;
+    private View textOperateDialogRoot;
+    private String textOperateMode;
+    private String textOperateSelection = "";
+    private TextView textOperateTitle;
+    private FrameLayout textOperateInputContainer;
+    private EditText textOperateRequirementEdit;
+    private TextView textOperatePolishStyleLabel;
+    private View textOperatePolishStyleCard;
+    private NestedScrollView textOperateResultCard;
+    private TextView textOperateResultText;
+    private View textOperateGenerateBtn;
+    private View textOperateCopyRow;
+    private View textOperateDoneRow;
+    private String textOperateActiveRequestId = "";
+    private String pendingTextOperateResult;
+    private String pendingPolishStyle = AiChatCoordinator.POLISH_STYLE_QUICK;
+    private String pendingTextOperateRequirement = "";
+    // 翻译弹窗
+    private static final int TRANSLATE_STAGE_INPUT = 1;
+    private static final int TRANSLATE_STAGE_RESULT = 2;
+    private AlertDialog translateDialog;
+    private View translateDialogRoot;
+    private TextView translateSourceLabel;
+    private TextView translateTargetLabel;
+    private EditText translateSourceEdit;
+    private NestedScrollView translateResultCard;
+    private TextView translateResultText;
+    private View translateGenerateBtn;
+    private View translateCopyRow;
+    private View translateDoneRow;
+    private String translateActiveRequestId = "";
+    private String pendingTranslateResult;
+    private String pendingTranslateSourceLang = AiChatCoordinator.TRANSLATE_LANG_AUTO;
+    private String pendingTranslateTargetLang = AiChatCoordinator.TRANSLATE_LANG_ZH;
     // AI续写浮层（弹窗式续写：生成中态/完成态，复用 aiStreamingViewByRequestId 流式接入）
     private View continueDialogOverlay;
     private View continueDialogPanel;
@@ -2167,6 +2207,40 @@ public class LOActivity extends AppCompatActivity {
                 messages = AiChatCoordinator.buildArticleMessages(template, values);
                 Log.i(TAG, "ai_article_mode requestId=" + requestId + " template=" + templateKey
                         + " vars=" + values.length);
+            } else if (AiChatCoordinator.MODE_EXPAND.equals(taskType)) {
+                JSONObject ctxObj = request.optJSONObject("context");
+                String selection = request.optString("selection", "");
+                String requirement = ctxObj != null ? ctxObj.optString("requirement", "") : "";
+                messages = AiChatCoordinator.buildExpandMessages(selection, requirement);
+                Log.i(TAG, "ai_expand_mode requestId=" + requestId + " selectionChars=" + selection.length());
+            } else if (AiChatCoordinator.MODE_CONDENSE.equals(taskType)) {
+                JSONObject ctxObj = request.optJSONObject("context");
+                String selection = request.optString("selection", "");
+                String requirement = ctxObj != null ? ctxObj.optString("requirement", "") : "";
+                messages = AiChatCoordinator.buildCondenseMessages(selection, requirement);
+                Log.i(TAG, "ai_condense_mode requestId=" + requestId + " selectionChars=" + selection.length());
+            } else if (AiChatCoordinator.MODE_POLISH.equals(taskType)) {
+                JSONObject ctxObj = request.optJSONObject("context");
+                String selection = request.optString("selection", "");
+                String polishStyle = ctxObj != null ? ctxObj.optString("polishStyle",
+                        AiChatCoordinator.POLISH_STYLE_QUICK) : AiChatCoordinator.POLISH_STYLE_QUICK;
+                messages = AiChatCoordinator.buildPolishMessages(polishStyle, selection);
+                Log.i(TAG, "ai_polish_mode requestId=" + requestId + " style=" + polishStyle
+                        + " selectionChars=" + selection.length());
+            } else if (AiChatCoordinator.MODE_TRANSLATE.equals(taskType)) {
+                JSONObject ctxObj = request.optJSONObject("context");
+                String text = request.optString("selection", "");
+                String sourceLang = ctxObj != null ? ctxObj.optString("sourceLang",
+                        AiChatCoordinator.TRANSLATE_LANG_AUTO) : AiChatCoordinator.TRANSLATE_LANG_AUTO;
+                String targetLang = ctxObj != null ? ctxObj.optString("targetLang",
+                        AiChatCoordinator.TRANSLATE_LANG_ZH) : AiChatCoordinator.TRANSLATE_LANG_ZH;
+                messages = AiChatCoordinator.buildTranslateMessages(sourceLang, targetLang, text);
+                Log.i(TAG, "ai_translate_mode requestId=" + requestId + " src=" + sourceLang
+                        + " tgt=" + targetLang + " textChars=" + text.length());
+            } else if (AiChatCoordinator.MODE_REWRITE.equals(taskType)) {
+                String selection = request.optString("selection", "");
+                messages = AiChatCoordinator.buildRewriteMessages(selection);
+                Log.i(TAG, "ai_rewrite_mode requestId=" + requestId + " selectionChars=" + selection.length());
             } else {
                 messages.put(new JSONObject().put("role", "user").put("content", buildAiUserPrompt(request)));
             }
@@ -2212,6 +2286,17 @@ public class LOActivity extends AppCompatActivity {
                             } else if (AiChatCoordinator.MODE_ARTICLE_GENERATE.equals(taskType)) {
                                 Log.i(TAG, "ai_article_done requestId=" + callbackRequestId + " chars=" + fullText.length());
                                 runOnUiThread(() -> showArticleGenerateResult(fullText));
+                            } else if (AiChatCoordinator.MODE_EXPAND.equals(taskType)
+                                    || AiChatCoordinator.MODE_CONDENSE.equals(taskType)
+                                    || AiChatCoordinator.MODE_POLISH.equals(taskType)
+                                    || AiChatCoordinator.MODE_REWRITE.equals(taskType)) {
+                                Log.i(TAG, "ai_text_op_done requestId=" + callbackRequestId
+                                        + " mode=" + taskType + " chars=" + fullText.length());
+                                runOnUiThread(() -> showTextOperateResult(fullText));
+                            } else if (AiChatCoordinator.MODE_TRANSLATE.equals(taskType)) {
+                                Log.i(TAG, "ai_translate_done requestId=" + callbackRequestId
+                                        + " chars=" + fullText.length());
+                                runOnUiThread(() -> showTranslateResult(fullText));
                             }
                             JSONObject donePayload = new JSONObject();
                             donePayload.put("requestId", callbackRequestId);
@@ -2247,6 +2332,19 @@ public class LOActivity extends AppCompatActivity {
                                     } else {
                                         switchArticleDialogStage(ARTICLE_STAGE_SELECT);
                                     }
+                                });
+                            } else if (AiChatCoordinator.MODE_EXPAND.equals(taskType)
+                                    || AiChatCoordinator.MODE_CONDENSE.equals(taskType)
+                                    || AiChatCoordinator.MODE_POLISH.equals(taskType)
+                                    || AiChatCoordinator.MODE_REWRITE.equals(taskType)) {
+                                runOnUiThread(() -> {
+                                    toastTodo("生成失败：" + message);
+                                    switchTextOperateStage(TEXT_OP_STAGE_INPUT);
+                                });
+                            } else if (AiChatCoordinator.MODE_TRANSLATE.equals(taskType)) {
+                                runOnUiThread(() -> {
+                                    toastTodo("翻译失败：" + message);
+                                    switchTranslateStage(TRANSLATE_STAGE_INPUT);
                                 });
                             }
                             dispatchAiError(callbackRequestId, code, message);
@@ -2835,18 +2933,21 @@ public class LOActivity extends AppCompatActivity {
      * 点「插入文档」：把续写结果写入文档（ensureEditModeThen 包裹，兼容预览模式触发）。
      */
     private void onContinueWriteInsert() {
-        String text = continueResultText;
-        if ((text == null || text.isEmpty()) && continueContentView != null) {
+        final String text;
+        if (continueResultText != null && !continueResultText.isEmpty()) {
+            text = continueResultText;
+        } else if (continueContentView != null) {
             text = continueContentView.getText().toString();
+        } else {
+            text = "";
         }
-        if (text == null || text.trim().isEmpty()) {
+        if (text.trim().isEmpty()) {
             Toast.makeText(this, "没有可插入的内容", Toast.LENGTH_SHORT).show();
             return;
         }
-        final byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
-        Log.i(TAG, "continue_write_insert chars=" + text.length());
+        Log.i(TAG, "continue_write_insert chars=" + text.length() + " format=html");
         dismissContinueWriteDialog();
-        ensureEditModeThen(() -> paste("text/plain;charset=utf-8", bytes));
+        ensureEditModeThen(() -> pasteAiTextAsHtml(text));
     }
 
     /**
@@ -2910,6 +3011,35 @@ public class LOActivity extends AppCompatActivity {
                 selectionMenuController.hide();
             }
             showArticleGenerateDialog();
+            return true;
+        }
+        // 扩写/缩写/润色/重写：弹窗流程
+        if (AiChatCoordinator.MODE_EXPAND.equals(taskType)
+                || AiChatCoordinator.MODE_CONDENSE.equals(taskType)
+                || AiChatCoordinator.MODE_POLISH.equals(taskType)
+                || AiChatCoordinator.MODE_REWRITE.equals(taskType)) {
+            if (selectionMenuController != null) {
+                selectionMenuController.hide();
+            }
+            String selection = aiOpPendingSelection == null ? "" : aiOpPendingSelection;
+            if (selection.trim().isEmpty()) {
+                Toast.makeText(this, "请先选择文本", Toast.LENGTH_SHORT).show();
+                return true;
+            }
+            showTextOperateDialog(taskType, selection);
+            return true;
+        }
+        // 翻译：弹窗流程
+        if (AiChatCoordinator.MODE_TRANSLATE.equals(taskType)) {
+            if (selectionMenuController != null) {
+                selectionMenuController.hide();
+            }
+            String selection = aiOpPendingSelection == null ? "" : aiOpPendingSelection;
+            if (selection.trim().isEmpty()) {
+                Toast.makeText(this, "请先选择文本", Toast.LENGTH_SHORT).show();
+                return true;
+            }
+            showTranslateDialog(selection);
             return true;
         }
         // 选区已在弹窗显示时预读缓存，优先使用
@@ -4567,6 +4697,15 @@ public class LOActivity extends AppCompatActivity {
                 if (aiOpPendingSelection == null || aiOpPendingSelection.isEmpty()) {
                     return;
                 }
+                // 弹窗流程：直接打开对话框，不走 operate-mode 加载条
+                if (AiChatCoordinator.MODE_EXPAND.equals(mode)
+                        || AiChatCoordinator.MODE_CONDENSE.equals(mode)
+                        || AiChatCoordinator.MODE_POLISH.equals(mode)
+                        || AiChatCoordinator.MODE_TRANSLATE.equals(mode)
+                        || AiChatCoordinator.MODE_REWRITE.equals(mode)) {
+                    runAiOperation(mode);
+                    return;
+                }
                 // Show loading bar
                 View loadingBar = panel.findViewById(R.id.ai_op_loading_bar);
                 if (loadingBar != null) {
@@ -5146,7 +5285,7 @@ public class LOActivity extends AppCompatActivity {
             toastTodo("大纲为空");
             return;
         }
-        final byte[] bytes = pendingOutlineResult.getBytes(StandardCharsets.UTF_8);
+        final String text = pendingOutlineResult;
         // 先跳到文末（同时取消任何选区），再粘贴——避免替换当前选中的内容（入口 A 可能仍有选区处于选中状态）
         runOnUiThread(() -> postUnoCommand(".uno:GoToEndOfDoc", "{}", false));
         new Thread(() -> {
@@ -5154,8 +5293,8 @@ public class LOActivity extends AppCompatActivity {
                 Thread.sleep(300);  // 等待 GoToEndOfDoc 生效
             } catch (InterruptedException ignored) {
             }
-            paste("text/plain;charset=utf-8", bytes);
-            Log.i(TAG, "ai_outline_inserted_at_end chars=" + bytes.length);
+            pasteAiTextAsHtml(text);
+            Log.i(TAG, "ai_outline_inserted_at_end chars=" + text.length() + " format=html");
             runOnUiThread(() -> {
                 toastTodo("大纲已插入到文末");
                 if (outlineDialog != null) {
@@ -5493,15 +5632,15 @@ public class LOActivity extends AppCompatActivity {
             toastTodo("文案为空");
             return;
         }
-        final byte[] bytes = pendingArticleResult.getBytes(StandardCharsets.UTF_8);
+        final String text = pendingArticleResult;
         runOnUiThread(() -> postUnoCommand(".uno:GoToEndOfDoc", "{}", false));
         new Thread(() -> {
             try {
                 Thread.sleep(300);
             } catch (InterruptedException ignored) {
             }
-            paste("text/plain;charset=utf-8", bytes);
-            Log.i(TAG, "ai_article_inserted_at_end chars=" + bytes.length);
+            pasteAiTextAsHtml(text);
+            Log.i(TAG, "ai_article_inserted_at_end chars=" + text.length() + " format=html");
             runOnUiThread(() -> {
                 toastTodo("文案已插入到文末");
                 if (articleDialog != null) {
@@ -5524,6 +5663,632 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+    // ==================== 扩写/缩写/润色弹窗相关方法 ====================
+
+    /** 把 Markdown 文本转 HTML 后粘贴，触发 Writer HTML Import Filter，标题/加粗/列表落地为文档样式。 */
+    private void pasteAiTextAsHtml(String markdown) {
+        if (markdown == null || markdown.isEmpty()) {
+            return;
+        }
+        String html = AiMarkdownRenderer.markdownToHtml(markdown);
+        byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
+        paste("text/html", bytes);
+    }
+
+    private String getTextOperateTitle(String mode) {
+        if (AiChatCoordinator.MODE_EXPAND.equals(mode)) {
+            return "文案扩写";
+        }
+        if (AiChatCoordinator.MODE_CONDENSE.equals(mode)) {
+            return "文案缩写";
+        }
+        if (AiChatCoordinator.MODE_POLISH.equals(mode)) {
+            return "文案润色";
+        }
+        if (AiChatCoordinator.MODE_REWRITE.equals(mode)) {
+            return "文案重写";
+        }
+        return "文案处理";
+    }
+
+    private void showTextOperateDialog(String mode, String selection) {
+        if (textOperateDialog != null && textOperateDialog.isShowing()) {
+            textOperateDialog.dismiss();
+        }
+        textOperateMode = mode;
+        textOperateSelection = selection != null ? selection : "";
+        pendingTextOperateResult = null;
+        pendingPolishStyle = AiChatCoordinator.POLISH_STYLE_QUICK;
+        pendingTextOperateRequirement = "";
+
+        final AlertDialog dialog = new AlertDialog.Builder(this).create();
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_text_operate, null);
+        textOperateDialogRoot = root;
+
+        textOperateTitle = root.findViewById(R.id.text_op_title);
+        textOperateInputContainer = root.findViewById(R.id.text_op_input_container);
+        textOperateResultCard = root.findViewById(R.id.text_op_result_card);
+        textOperateResultText = root.findViewById(R.id.text_op_result_text);
+        textOperateGenerateBtn = root.findViewById(R.id.text_op_generate_btn);
+        textOperateCopyRow = root.findViewById(R.id.text_op_copy_row);
+        textOperateDoneRow = root.findViewById(R.id.text_op_done_row);
+        textOperateRequirementEdit = null;
+        textOperatePolishStyleLabel = null;
+        textOperatePolishStyleCard = null;
+
+        if (textOperateTitle != null) {
+            textOperateTitle.setText(getTextOperateTitle(mode));
+        }
+
+        textOperateInputContainer.removeAllViews();
+        if (AiChatCoordinator.MODE_POLISH.equals(mode)) {
+            View polishInput = getLayoutInflater().inflate(R.layout.lolib_text_op_polish, textOperateInputContainer, false);
+            textOperateInputContainer.addView(polishInput);
+            textOperatePolishStyleCard = polishInput.findViewById(R.id.text_op_polish_style_card);
+            textOperatePolishStyleLabel = polishInput.findViewById(R.id.text_op_polish_style_label);
+            if (textOperatePolishStyleLabel != null) {
+                PolishStyleRegistry.PolishStyle style = PolishStyleRegistry.getDefault();
+                textOperatePolishStyleLabel.setText(style.label);
+            }
+            if (textOperatePolishStyleCard != null) {
+                textOperatePolishStyleCard.setOnClickListener(v -> showPolishStylePicker());
+            }
+        } else if (AiChatCoordinator.MODE_REWRITE.equals(mode)) {
+            // rewrite 无参数输入，输入区保持空白
+            textOperateRequirementEdit = null;
+            textOperatePolishStyleLabel = null;
+            textOperatePolishStyleCard = null;
+        } else {
+            View reqInput = getLayoutInflater().inflate(R.layout.lolib_text_op_requirement, textOperateInputContainer, false);
+            textOperateInputContainer.addView(reqInput);
+            textOperateRequirementEdit = reqInput.findViewById(R.id.text_op_requirement_edit);
+            if (textOperateRequirementEdit != null) {
+                String hint = AiChatCoordinator.MODE_CONDENSE.equals(mode)
+                        ? "请输入文案缩写要求" : "请输入文案扩写要求";
+                textOperateRequirementEdit.setHint(hint);
+            }
+        }
+
+        root.findViewById(R.id.text_op_close_btn).setOnClickListener(v -> dialog.dismiss());
+        textOperateGenerateBtn.setOnClickListener(v -> startTextOperateGeneration());
+        root.findViewById(R.id.text_op_regenerate_btn).setOnClickListener(v -> startTextOperateGeneration());
+        root.findViewById(R.id.text_op_apply_btn).setOnClickListener(v -> applyTextOperateResult());
+        textOperateCopyRow.setOnClickListener(v -> copyTextOperateResult());
+
+        dialog.setOnDismissListener(d -> {
+            Log.i(TAG, "text_op_dialog_dismissed mode=" + textOperateMode);
+            aiStreamingViewByRequestId.remove(textOperateActiveRequestId);
+            textOperateActiveRequestId = "";
+            textOperateDialog = null;
+            textOperateDialogRoot = null;
+        });
+        dialog.setView(root);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+        textOperateDialog = dialog;
+        switchTextOperateStage(TEXT_OP_STAGE_INPUT);
+        root.post(this::applyTextOperateDialogSize);
+        Log.i(TAG, "text_op_dialog_show mode=" + mode + " selectionChars=" + textOperateSelection.length());
+    }
+
+    private void applyTextOperateDialogSize() {
+        if (textOperateDialog == null || textOperateDialog.getWindow() == null) {
+            return;
+        }
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int margin = dpToPx(48);
+        int targetWidth = Math.min(dpToPx(670), dm.widthPixels - margin);
+        targetWidth = Math.max(targetWidth, dpToPx(280));
+
+        boolean compactInputStage = (AiChatCoordinator.MODE_POLISH.equals(textOperateMode)
+                || AiChatCoordinator.MODE_REWRITE.equals(textOperateMode))
+                && textOperateResultCard != null
+                && textOperateResultCard.getVisibility() != View.VISIBLE;
+        int targetHeight;
+        if (compactInputStage) {
+            // 润色/重写输入态仅需少量控件 + 按钮，使用紧凑高度避免大面积留白
+            targetHeight = dpToPx(340);
+        } else {
+            targetHeight = Math.min(dpToPx(756), (int) (dm.heightPixels * 0.80f));
+            targetHeight = Math.max(targetHeight, dpToPx(320));
+            targetHeight = Math.min(targetHeight, dm.heightPixels - dpToPx(24));
+        }
+
+        textOperateDialog.getWindow().setLayout(targetWidth, targetHeight);
+        if (textOperateDialogRoot != null) {
+            ViewGroup.LayoutParams lp = textOperateDialogRoot.getLayoutParams();
+            if (lp == null) {
+                lp = new ViewGroup.LayoutParams(targetWidth, targetHeight);
+            } else {
+                lp.width = targetWidth;
+                lp.height = targetHeight;
+            }
+            textOperateDialogRoot.setLayoutParams(lp);
+        }
+        applyTextOperateInputLayout();
+        Log.d(TAG, "text_op_dialog_size w=" + targetWidth + " h=" + targetHeight
+                + " compactInput=" + compactInputStage);
+    }
+
+    /** 润色/重写输入态：输入区垂直居中；扩写/缩写：输入区占满剩余空间 */
+    private void applyTextOperateInputLayout() {
+        if (textOperateInputContainer == null) {
+            return;
+        }
+        ViewGroup.LayoutParams rawLp = textOperateInputContainer.getLayoutParams();
+        if (!(rawLp instanceof LinearLayout.LayoutParams)) {
+            return;
+        }
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) rawLp;
+        boolean compactInput = (AiChatCoordinator.MODE_POLISH.equals(textOperateMode)
+                || AiChatCoordinator.MODE_REWRITE.equals(textOperateMode))
+                && textOperateResultCard != null
+                && textOperateResultCard.getVisibility() != View.VISIBLE;
+        if (compactInput) {
+            lp.height = 0;
+            lp.weight = 1f;
+            lp.topMargin = 0;
+            lp.bottomMargin = 0;
+        } else {
+            lp.height = 0;
+            lp.weight = 1f;
+            lp.topMargin = dpToPx(16);
+            lp.bottomMargin = 0;
+        }
+        textOperateInputContainer.setLayoutParams(lp);
+
+        if (textOperateInputContainer.getChildCount() > 0) {
+            View child = textOperateInputContainer.getChildAt(0);
+            FrameLayout.LayoutParams childLp = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    compactInput ? ViewGroup.LayoutParams.WRAP_CONTENT : ViewGroup.LayoutParams.MATCH_PARENT,
+                    compactInput ? Gravity.CENTER : (Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+            child.setLayoutParams(childLp);
+        }
+    }
+
+    private void scrollTextOperateResultToBottom() {
+        if (textOperateResultCard == null || textOperateResultCard.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        textOperateResultCard.post(() -> textOperateResultCard.fullScroll(View.FOCUS_DOWN));
+    }
+
+    private void showPolishStylePicker() {
+        if (textOperatePolishStyleLabel == null) {
+            return;
+        }
+        PopupMenu popup = new PopupMenu(this, textOperatePolishStyleLabel);
+        PolishStyleRegistry.PolishStyle[] styles = PolishStyleRegistry.getStyles();
+        for (int i = 0; i < styles.length; i++) {
+            popup.getMenu().add(0, i, i, styles[i].label);
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            int idx = item.getItemId();
+            if (idx >= 0 && idx < styles.length) {
+                pendingPolishStyle = styles[idx].key;
+                textOperatePolishStyleLabel.setText(styles[idx].label);
+                Log.i(TAG, "text_op_polish_style_selected style=" + pendingPolishStyle);
+                return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+    private void startTextOperateGeneration() {
+        if (textOperateMode == null || textOperateSelection == null || textOperateSelection.isEmpty()) {
+            toastTodo("请先选择文本");
+            return;
+        }
+        if (AiChatCoordinator.MODE_POLISH.equals(textOperateMode) && textOperateSelection.length() > 5000) {
+            Toast.makeText(this, "选中内容不可超过5000字符", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (AiChatCoordinator.MODE_POLISH.equals(textOperateMode)) {
+            pendingTextOperateRequirement = "";
+        } else if (textOperateRequirementEdit != null) {
+            pendingTextOperateRequirement = textOperateRequirementEdit.getText().toString().trim();
+        } else {
+            pendingTextOperateRequirement = "";
+        }
+        sendTextOperateRequest();
+    }
+
+    private void sendTextOperateRequest() {
+        toastTodo("正在生成...");
+        if (textOperateResultText != null) {
+            textOperateResultText.setText("正在生成...");
+        }
+        switchTextOperateStage(TEXT_OP_STAGE_RESULT);
+
+        try {
+            JSONObject request = new JSONObject();
+            String requestId = "textop-" + UUID.randomUUID().toString();
+            request.put("requestId", requestId);
+            request.put("taskType", textOperateMode);
+            request.put("selection", textOperateSelection);
+            request.put("source", "android-text-op");
+
+            JSONObject context = new JSONObject();
+            context.put("modelMode", "base");
+            if (AiChatCoordinator.MODE_POLISH.equals(textOperateMode)) {
+                context.put("polishStyle", pendingPolishStyle);
+            } else {
+                context.put("requirement", pendingTextOperateRequirement);
+            }
+            request.put("context", context);
+            request.put("history", new JSONArray());
+
+            aiActiveRequestId = requestId;
+            aiStreamingRequestId = requestId;
+            aiRequestModeById.put(requestId, textOperateMode);
+            aiTextByRequestId.put(requestId, new StringBuilder());
+            aiStreamingViewByRequestId.remove(textOperateActiveRequestId);
+            textOperateActiveRequestId = requestId;
+            if (textOperateResultText != null) {
+                aiStreamingViewByRequestId.put(requestId, textOperateResultText);
+            }
+
+            Log.i(TAG, "ai_text_op_start requestId=" + requestId + " mode=" + textOperateMode);
+            startAiRequestSession(request, -1);
+        } catch (JSONException e) {
+            Log.e(TAG, "ai_text_op_request_error", e);
+            toastTodo("启动生成失败");
+            switchTextOperateStage(TEXT_OP_STAGE_INPUT);
+        }
+    }
+
+    private void showTextOperateResult(String text) {
+        pendingTextOperateResult = text;
+        if (textOperateResultText != null) {
+            textOperateResultText.setText(text);
+        }
+        switchTextOperateStage(TEXT_OP_STAGE_RESULT);
+        scrollTextOperateResultToBottom();
+    }
+
+    private void switchTextOperateStage(int stage) {
+        boolean input = stage == TEXT_OP_STAGE_INPUT;
+        boolean result = stage == TEXT_OP_STAGE_RESULT;
+
+        if (textOperateInputContainer != null) {
+            textOperateInputContainer.setVisibility(input ? View.VISIBLE : View.GONE);
+        }
+        if (textOperateGenerateBtn != null) {
+            textOperateGenerateBtn.setVisibility(input ? View.VISIBLE : View.GONE);
+        }
+        if (textOperateResultCard != null) {
+            textOperateResultCard.setVisibility(result ? View.VISIBLE : View.GONE);
+        }
+        if (textOperateCopyRow != null) {
+            textOperateCopyRow.setVisibility(result ? View.VISIBLE : View.GONE);
+        }
+        if (textOperateDoneRow != null) {
+            textOperateDoneRow.setVisibility(result ? View.VISIBLE : View.GONE);
+        }
+        if (textOperateDialogRoot != null) {
+            textOperateDialogRoot.post(this::applyTextOperateDialogSize);
+        }
+    }
+
+    private void applyTextOperateResult() {
+        Log.i(TAG, "ai_text_op_apply mode=" + textOperateMode
+                + " chars=" + (pendingTextOperateResult != null ? pendingTextOperateResult.length() : 0));
+        if (pendingTextOperateResult == null || pendingTextOperateResult.isEmpty()) {
+            toastTodo("结果为空");
+            return;
+        }
+        final String text = pendingTextOperateResult;
+        ensureEditModeThen(() -> {
+            pasteAiTextAsHtml(text);
+            Log.i(TAG, "ai_text_op_inserted mode=" + textOperateMode
+                    + " chars=" + text.length() + " format=html");
+            toastTodo("已插入文档");
+            if (textOperateDialog != null) {
+                textOperateDialog.dismiss();
+            }
+        });
+        pendingTextOperateResult = null;
+    }
+
+    private void copyTextOperateResult() {
+        if (pendingTextOperateResult == null || pendingTextOperateResult.isEmpty()) {
+            toastTodo("暂无结果可复制");
+            return;
+        }
+        if (clipboardManager != null) {
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("text_op", pendingTextOperateResult));
+            toastTodo("已复制到剪贴板");
+            Log.i(TAG, "ai_text_op_copied chars=" + pendingTextOperateResult.length());
+        }
+    }
+
+    // ==================== 翻译弹窗相关方法 ====================
+
+    private void showTranslateDialog(String selection) {
+        if (translateDialog != null && translateDialog.isShowing()) {
+            translateDialog.dismiss();
+        }
+        pendingTranslateResult = null;
+        pendingTranslateSourceLang = AiChatCoordinator.TRANSLATE_LANG_AUTO;
+        pendingTranslateTargetLang = AiChatCoordinator.TRANSLATE_LANG_ZH;
+
+        final AlertDialog dialog = new AlertDialog.Builder(this).create();
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_translate, null);
+        translateDialogRoot = root;
+
+        translateSourceLabel = root.findViewById(R.id.translate_source_label);
+        translateTargetLabel = root.findViewById(R.id.translate_target_label);
+        translateSourceEdit = root.findViewById(R.id.translate_source_edit);
+        translateResultCard = root.findViewById(R.id.translate_result_card);
+        translateResultText = root.findViewById(R.id.translate_result_text);
+        translateGenerateBtn = root.findViewById(R.id.translate_generate_btn);
+        translateCopyRow = root.findViewById(R.id.translate_copy_row);
+        translateDoneRow = root.findViewById(R.id.translate_done_row);
+
+        if (translateSourceEdit != null) {
+            translateSourceEdit.setText(selection != null ? selection : "");
+        }
+        updateTranslateLanguageLabels();
+
+        root.findViewById(R.id.translate_close_btn).setOnClickListener(v -> dialog.dismiss());
+        root.findViewById(R.id.translate_source_card).setOnClickListener(v -> showTranslateSourcePicker());
+        root.findViewById(R.id.translate_target_card).setOnClickListener(v -> showTranslateTargetPicker());
+        root.findViewById(R.id.translate_swap_btn).setOnClickListener(v -> swapTranslateLanguages());
+        translateGenerateBtn.setOnClickListener(v -> startTranslateGeneration());
+        root.findViewById(R.id.translate_regenerate_btn).setOnClickListener(v -> startTranslateGeneration());
+        root.findViewById(R.id.translate_apply_btn).setOnClickListener(v -> applyTranslateResult());
+        translateCopyRow.setOnClickListener(v -> copyTranslateResult());
+
+        dialog.setOnDismissListener(d -> {
+            Log.i(TAG, "translate_dialog_dismissed");
+            aiStreamingViewByRequestId.remove(translateActiveRequestId);
+            translateActiveRequestId = "";
+            translateDialog = null;
+            translateDialogRoot = null;
+        });
+        dialog.setView(root);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+        translateDialog = dialog;
+        switchTranslateStage(TRANSLATE_STAGE_INPUT);
+        root.post(this::applyTranslateDialogSize);
+        Log.i(TAG, "translate_dialog_show selectionChars=" + (selection != null ? selection.length() : 0));
+    }
+
+    private void updateTranslateLanguageLabels() {
+        TranslateLanguageRegistry.TranslateLanguage source =
+                TranslateLanguageRegistry.findByKey(pendingTranslateSourceLang);
+        TranslateLanguageRegistry.TranslateLanguage target =
+                TranslateLanguageRegistry.findByKey(pendingTranslateTargetLang);
+        if (translateSourceLabel != null && source != null) {
+            translateSourceLabel.setText(source.label);
+        }
+        if (translateTargetLabel != null && target != null) {
+            translateTargetLabel.setText(target.label);
+        }
+    }
+
+    private void applyTranslateDialogSize() {
+        if (translateDialog == null || translateDialog.getWindow() == null) {
+            return;
+        }
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int margin = dpToPx(48);
+        int targetWidth = Math.min(dpToPx(670), dm.widthPixels - margin);
+        targetWidth = Math.max(targetWidth, dpToPx(280));
+
+        int targetHeight = Math.min(dpToPx(756), (int) (dm.heightPixels * 0.80f));
+        targetHeight = Math.max(targetHeight, dpToPx(320));
+        targetHeight = Math.min(targetHeight, dm.heightPixels - dpToPx(24));
+
+        translateDialog.getWindow().setLayout(targetWidth, targetHeight);
+        if (translateDialogRoot != null) {
+            ViewGroup.LayoutParams lp = translateDialogRoot.getLayoutParams();
+            if (lp == null) {
+                lp = new ViewGroup.LayoutParams(targetWidth, targetHeight);
+            } else {
+                lp.width = targetWidth;
+                lp.height = targetHeight;
+            }
+            translateDialogRoot.setLayoutParams(lp);
+        }
+        Log.d(TAG, "translate_dialog_size w=" + targetWidth + " h=" + targetHeight);
+    }
+
+    private void scrollTranslateResultToBottom() {
+        if (translateResultCard == null || translateResultCard.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        translateResultCard.post(() -> translateResultCard.fullScroll(View.FOCUS_DOWN));
+    }
+
+    private void showTranslateSourcePicker() {
+        if (translateSourceLabel == null) {
+            return;
+        }
+        PopupMenu popup = new PopupMenu(this, translateSourceLabel);
+        TranslateLanguageRegistry.TranslateLanguage[] langs = TranslateLanguageRegistry.getSourceLanguages();
+        for (int i = 0; i < langs.length; i++) {
+            popup.getMenu().add(0, i, i, langs[i].label);
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            int idx = item.getItemId();
+            if (idx >= 0 && idx < langs.length) {
+                pendingTranslateSourceLang = langs[idx].key;
+                if (pendingTranslateSourceLang.equals(pendingTranslateTargetLang)) {
+                    pendingTranslateTargetLang = AiChatCoordinator.TRANSLATE_LANG_EN;
+                }
+                updateTranslateLanguageLabels();
+                Log.i(TAG, "translate_source_selected lang=" + pendingTranslateSourceLang);
+                return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+    private void showTranslateTargetPicker() {
+        if (translateTargetLabel == null) {
+            return;
+        }
+        PopupMenu popup = new PopupMenu(this, translateTargetLabel);
+        java.util.List<TranslateLanguageRegistry.TranslateLanguage> langs =
+                TranslateLanguageRegistry.getTargetLanguages();
+        for (int i = 0; i < langs.size(); i++) {
+            popup.getMenu().add(0, i, i, langs.get(i).label);
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            int idx = item.getItemId();
+            if (idx >= 0 && idx < langs.size()) {
+                pendingTranslateTargetLang = langs.get(idx).key;
+                if (pendingTranslateTargetLang.equals(pendingTranslateSourceLang)) {
+                    pendingTranslateSourceLang = AiChatCoordinator.TRANSLATE_LANG_AUTO;
+                }
+                updateTranslateLanguageLabels();
+                Log.i(TAG, "translate_target_selected lang=" + pendingTranslateTargetLang);
+                return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+    private void swapTranslateLanguages() {
+        if (AiChatCoordinator.TRANSLATE_LANG_AUTO.equals(pendingTranslateSourceLang)) {
+            Toast.makeText(this, "自动识别源语言无法交换", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String tmp = pendingTranslateSourceLang;
+        pendingTranslateSourceLang = pendingTranslateTargetLang;
+        pendingTranslateTargetLang = tmp;
+        updateTranslateLanguageLabels();
+        Log.i(TAG, "translate_lang_swapped src=" + pendingTranslateSourceLang
+                + " tgt=" + pendingTranslateTargetLang);
+    }
+
+    private void startTranslateGeneration() {
+        if (translateSourceEdit == null) {
+            return;
+        }
+        String text = translateSourceEdit.getText().toString().trim();
+        if (text.isEmpty()) {
+            toastTodo("请输入原文");
+            return;
+        }
+        sendTranslateRequest(text);
+    }
+
+    private void sendTranslateRequest(String text) {
+        toastTodo("正在翻译...");
+        if (translateResultText != null) {
+            translateResultText.setText("正在翻译...");
+        }
+        switchTranslateStage(TRANSLATE_STAGE_RESULT);
+
+        try {
+            JSONObject request = new JSONObject();
+            String requestId = "translate-" + UUID.randomUUID().toString();
+            request.put("requestId", requestId);
+            request.put("taskType", AiChatCoordinator.MODE_TRANSLATE);
+            request.put("selection", text);
+            request.put("source", "android-translate");
+
+            JSONObject context = new JSONObject();
+            context.put("modelMode", "base");
+            context.put("sourceLang", pendingTranslateSourceLang);
+            context.put("targetLang", pendingTranslateTargetLang);
+            request.put("context", context);
+            request.put("history", new JSONArray());
+
+            aiActiveRequestId = requestId;
+            aiStreamingRequestId = requestId;
+            aiRequestModeById.put(requestId, AiChatCoordinator.MODE_TRANSLATE);
+            aiTextByRequestId.put(requestId, new StringBuilder());
+            aiStreamingViewByRequestId.remove(translateActiveRequestId);
+            translateActiveRequestId = requestId;
+            if (translateResultText != null) {
+                aiStreamingViewByRequestId.put(requestId, translateResultText);
+            }
+
+            Log.i(TAG, "ai_translate_start requestId=" + requestId
+                    + " src=" + pendingTranslateSourceLang + " tgt=" + pendingTranslateTargetLang);
+            startAiRequestSession(request, -1);
+        } catch (JSONException e) {
+            Log.e(TAG, "ai_translate_request_error", e);
+            toastTodo("启动翻译失败");
+            switchTranslateStage(TRANSLATE_STAGE_INPUT);
+        }
+    }
+
+    private void showTranslateResult(String text) {
+        pendingTranslateResult = text;
+        if (translateResultText != null) {
+            translateResultText.setText(text);
+        }
+        switchTranslateStage(TRANSLATE_STAGE_RESULT);
+        scrollTranslateResultToBottom();
+    }
+
+    private void switchTranslateStage(int stage) {
+        boolean input = stage == TRANSLATE_STAGE_INPUT;
+        boolean result = stage == TRANSLATE_STAGE_RESULT;
+
+        if (translateGenerateBtn != null) {
+            translateGenerateBtn.setVisibility(input ? View.VISIBLE : View.GONE);
+        }
+        if (translateResultCard != null) {
+            translateResultCard.setVisibility(result ? View.VISIBLE : View.GONE);
+        }
+        if (translateCopyRow != null) {
+            translateCopyRow.setVisibility(result ? View.VISIBLE : View.GONE);
+        }
+        if (translateDoneRow != null) {
+            translateDoneRow.setVisibility(result ? View.VISIBLE : View.GONE);
+        }
+        if (result && translateDialogRoot != null) {
+            translateDialogRoot.post(this::applyTranslateDialogSize);
+        }
+    }
+
+    private void applyTranslateResult() {
+        Log.i(TAG, "ai_translate_apply chars="
+                + (pendingTranslateResult != null ? pendingTranslateResult.length() : 0));
+        if (pendingTranslateResult == null || pendingTranslateResult.isEmpty()) {
+            toastTodo("译文为空");
+            return;
+        }
+        final String text = pendingTranslateResult;
+        ensureEditModeThen(() -> {
+            pasteAiTextAsHtml(text);
+            Log.i(TAG, "ai_translate_inserted chars=" + text.length() + " format=html");
+            toastTodo("已插入文档");
+            if (translateDialog != null) {
+                translateDialog.dismiss();
+            }
+        });
+        pendingTranslateResult = null;
+    }
+
+    private void copyTranslateResult() {
+        if (pendingTranslateResult == null || pendingTranslateResult.isEmpty()) {
+            toastTodo("暂无译文可复制");
+            return;
+        }
+        if (clipboardManager != null) {
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("translate", pendingTranslateResult));
+            toastTodo("已复制到剪贴板");
+            Log.i(TAG, "ai_translate_copied chars=" + pendingTranslateResult.length());
+        }
+    }
+
+    // ==================== 扩写/缩写/润色/翻译弹窗相关方法结束 ====================
+
     // ==================== 文案生成相关方法结束 ====================
 
     // ==================== 生成大纲相关方法结束 ====================
@@ -5536,6 +6301,18 @@ public class LOActivity extends AppCompatActivity {
         // continue_write 走弹窗式续写（浮层初始化成功时 divert；否则回退到下方 operate-mode 自动粘贴）
         if (AiChatCoordinator.MODE_CONTINUE.equals(mode) && continueDialogPanel != null) {
             openContinueWriteDialog(selection);
+            return;
+        }
+        // 扩写/缩写/润色/重写/翻译 走弹窗流程
+        if (AiChatCoordinator.MODE_EXPAND.equals(mode)
+                || AiChatCoordinator.MODE_CONDENSE.equals(mode)
+                || AiChatCoordinator.MODE_POLISH.equals(mode)
+                || AiChatCoordinator.MODE_REWRITE.equals(mode)) {
+            showTextOperateDialog(mode, selection);
+            return;
+        }
+        if (AiChatCoordinator.MODE_TRANSLATE.equals(mode)) {
+            showTranslateDialog(selection);
             return;
         }
         try {
@@ -6123,6 +6900,12 @@ public class LOActivity extends AppCompatActivity {
                     if (requestId.equals(articleActiveRequestId)) {
                         scrollArticleResultToBottom();
                     }
+                    if (requestId.equals(textOperateActiveRequestId)) {
+                        scrollTextOperateResultToBottom();
+                    }
+                    if (requestId.equals(translateActiveRequestId)) {
+                        scrollTranslateResultToBottom();
+                    }
                 }
             });
             setNativeAiPanelState(AI_STATE_STREAMING, "AI response streaming");
@@ -6171,6 +6954,12 @@ public class LOActivity extends AppCompatActivity {
                     }
                     if (requestId.equals(articleActiveRequestId)) {
                         scrollArticleResultToBottom();
+                    }
+                    if (requestId.equals(textOperateActiveRequestId)) {
+                        scrollTextOperateResultToBottom();
+                    }
+                    if (requestId.equals(translateActiveRequestId)) {
+                        scrollTranslateResultToBottom();
                     }
                 }
                 cleanupRequestUiState(requestId);

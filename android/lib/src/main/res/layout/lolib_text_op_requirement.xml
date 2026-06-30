@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<EditText xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/text_op_requirement_edit"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/lolib_bg_outline_edit"
+    android:gravity="top|start"
+    android:hint="请输入文案扩写要求"
+    android:inputType="textMultiLine|textCapSentences"
+    android:paddingStart="20dp"
+    android:paddingTop="16dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="16dp"
+    android:textColor="#333333"
+    android:textColorHint="#999999"
+    android:textSize="16sp" />

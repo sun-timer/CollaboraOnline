@@ -38,7 +38,7 @@ public final class AiMarkdownRenderer {
         return text.trim();
     }
 
-    private static String markdownToHtml(String markdown) {
+    public static String markdownToHtml(String markdown) {
         String src = escapeHtml(markdown).replace("\r\n", "\n");
 
         Matcher codeBlockMatcher = Pattern.compile("(?s)```\\s*\\n?(.*?)\\n?```").matcher(src);
