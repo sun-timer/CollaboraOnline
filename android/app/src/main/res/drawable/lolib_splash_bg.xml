@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- 冷启动欢迎界面背景：全屏填充显示欢迎图 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:gravity="fill">
+        <bitmap android:src="@drawable/lolib_img_welcome" />
+    </item>
+</layer-list>
+

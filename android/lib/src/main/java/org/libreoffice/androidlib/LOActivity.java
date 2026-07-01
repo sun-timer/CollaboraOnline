@@ -5864,7 +5864,7 @@ public class LOActivity extends AppCompatActivity {
         mWebView.evaluateJavascript(script, value -> {
             int state = parseSocketReadyState(value);
             if (state == 1) {
-                String message = "insertfile name=" + fileName + " type=image/png data=" + base64;
+                String message = "insertfile name=" + fileName + " type=graphic data=" + base64;
                 postMobileMessage(message);
                 nudgeSocketIfStalled("insert_ai_image");
                 Log.i(TAG, "ai_image_inserted name=" + fileName + " bytes=" + base64.length()
@@ -5894,7 +5894,7 @@ public class LOActivity extends AppCompatActivity {
         final String js = "(function(){try{"
                 + "if(window.app&&window.app.socket&&typeof window.app.socket.sendMessage==='function'){"
                 + "window.app.socket.sendMessage(\"insertfile name=" + fileName
-                + " type=image/png data=" + base64 + "\");return 'queued';}"
+                + " type=graphic data=" + base64 + "\");return 'queued';}"
                 + "return 'no_socket';}catch(e){return 'err';}})()";
         mWebView.evaluateJavascript(js, value -> {
             Log.i(TAG, "ai_image_insert_jsqueue name=" + fileName + " result=" + value);

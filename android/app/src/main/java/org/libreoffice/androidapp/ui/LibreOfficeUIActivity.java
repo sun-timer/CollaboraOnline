@@ -177,6 +177,8 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // 切回正式主题（Manifest 用 Splash 主题提供冷启动欢迎图窗口背景）
+        setTheme(R.style.LibreOfficeTheme);
         PreferenceManager.setDefaultValues(this, R.xml.documentprovider_preferences, false);
         readPreferences();
         int mode = prefs.getInt(NIGHT_MODE_KEY, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
