@@ -97,6 +97,13 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import androidx.core.content.FileProvider;
+
+import org.libreoffice.androidlib.typeset.DocxTemplateFiller;
+import org.libreoffice.androidlib.typeset.TemplateSectionMap;
 import java.util.List;
 import java.util.Iterator;
 import java.util.Locale;
@@ -289,10 +296,17 @@ public class LOActivity extends AppCompatActivity {
     private TextView aiOpSelectionHint;
     private String aiOpPendingSelection = "";
     // AI排版相关
+    private boolean typesetInProgress = false;  // 排版进行中，抑制选区弹窗
     private BottomSheetDialog typesetSelectSheet;
     private BottomSheetDialog typesetPreviewSheet;
     private String pendingTypesetType;  // "paper" | "gov" | "contract" | "general"
-    private String pendingTypesetHtml;  // AI 返回的排版结果
+    private String pendingTypesetHtml;  // AI 返回的排版结果（旧 HTML 路径，fallback）
+    // AI排版 V2 — docx 模板填充
+    private View typesetPreviewOverlay;
+    private View typesetPreviewCard;
+    private WebView typesetPreviewWebView;
+    private File pendingTypesetDocx;    // 填充后的 docx 临时文件
+    private Map<String, String> pendingTypesetSections;  // AI 返回的 sections
     // 生成大纲相关
     private AlertDialog outlineDialog;
     private View outlineDialogRoot;
@@ -760,6 +774,7 @@ public class LOActivity extends AppCompatActivity {
             setupBottomToolbar();
             setupSelectionMenu();
             setupContinueWriteDialog();
+            setupTypesetPreviewOverlay();
             mWebView.setOnDocumentLongPressListener(new COWebView.OnDocumentLongPressListener() {
                 @Override
                 public void onDocumentLongPress(float viewX, float viewY) {
@@ -1915,6 +1930,10 @@ public class LOActivity extends AppCompatActivity {
                 return false;
             }
             case "SELECTIONMENU": {
+                // 排版进行中（SelectAll 触发了 textselection），抑制选区弹窗
+                if (typesetInProgress) {
+                    return false;
+                }
                 if (messageAndParam.length > 1 && "hide".equals(messageAndParam[1])) {
                     getMainHandler().post(() -> ensureSelectionMenuController().hide());
                     return false;
@@ -2281,7 +2300,7 @@ public class LOActivity extends AppCompatActivity {
             } else if (AiChatCoordinator.MODE_TYPESET.equals(taskType)) {
                 String typesetType = request.optString("typesetType", "general");
                 String fullText = request.optString("selection", "");
-                messages = AiChatCoordinator.buildTypesetMessages(typesetType, fullText);
+                messages = AiChatCoordinator.buildTypesetMessagesV2(typesetType, fullText);
                 Log.i(TAG, "ai_typeset_mode requestId=" + requestId + " typesetType=" + typesetType
                         + " docChars=" + fullText.length());
             } else if (AiChatCoordinator.MODE_OUTLINE.equals(taskType)) {
@@ -2386,9 +2405,17 @@ public class LOActivity extends AppCompatActivity {
                             } else if (AiChatCoordinator.isOperateMode(taskType)) {
                                 onAiOperationDone(callbackRequestId, fullText);
                             } else if (AiChatCoordinator.MODE_TYPESET.equals(taskType)) {
-                                // typeset 模式：显示预览，不直接粘贴
-                                Log.i(TAG, "ai_typeset_done requestId=" + callbackRequestId + " htmlChars=" + fullText.length());
-                                runOnUiThread(() -> showTypesetPreviewSheet(fullText));
+                                // V2: try JSON parse → template fill → overlay; fallback to old HTML
+                                Log.i(TAG, "ai_typeset_done requestId=" + callbackRequestId + " chars=" + fullText.length());
+                                Map<String, String> sections = AiChatCoordinator.parseTypesetSections(fullText);
+                                if (sections != null && !sections.isEmpty()) {
+                                    Log.i(TAG, "ai_typeset_v2_parsed sections=" + sections.size());
+                                    pendingTypesetSections = sections;
+                                    runOnUiThread(() -> handleTypesetV2Result(sections));
+                                } else {
+                                    Log.i(TAG, "ai_typeset_fallback_to_v1 — JSON parse failed, using HTML flow");
+                                    runOnUiThread(() -> showTypesetPreviewSheet(fullText));
+                                }
                             } else if (AiChatCoordinator.MODE_OUTLINE.equals(taskType)) {
                                 // 生成大纲：在弹窗结果区展示，不自动粘贴
                                 Log.i(TAG, "ai_outline_done requestId=" + callbackRequestId + " chars=" + fullText.length());
@@ -5044,15 +5071,18 @@ public class LOActivity extends AppCompatActivity {
             typesetSelectSheet.dismiss();
         }
         pendingTypesetType = typesetType;
+        typesetInProgress = true;
 
-        // 显示 loading 提示
-        toastTodo("正在提取文档全文...");
+        // 立即弹出预览弹窗（加载态），避免用户等待无反馈
+        showTypesetLoadingOverlay();
 
         // 原生全文提取（SelectAll → JNI getTextSelection，弃用旧剪贴板链路）
         new Thread(() -> {
             String docText = extractFullTextNative("typeset-" + typesetType);
             if (docText == null || docText.isEmpty()) {
                 runOnUiThread(() -> {
+                    typesetInProgress = false;
+                    dismissTypesetPreviewOverlay();
                     toastTodo("文档全文提取失败，请稍后重试");
                     Log.w(TAG, "ai_typeset_doc_extract_failed");
                 });
@@ -5061,7 +5091,6 @@ public class LOActivity extends AppCompatActivity {
             Log.i(TAG, "ai_typeset_doc_extracted chars=" + docText.length());
 
             runOnUiThread(() -> {
-                toastTodo("正在排版...");
                 try {
                     JSONObject request = new JSONObject();
                     String requestId = "typeset-" + UUID.randomUUID().toString();
@@ -5084,6 +5113,8 @@ public class LOActivity extends AppCompatActivity {
                     startAiRequestSession(request, -1);
                 } catch (JSONException e) {
                     Log.e(TAG, "ai_typeset_request_error", e);
+                    typesetInProgress = false;
+                    dismissTypesetPreviewOverlay();
                     toastTodo("启动排版失败");
                 }
             });
@@ -5221,7 +5252,427 @@ public class LOActivity extends AppCompatActivity {
         pendingTypesetType = null;
     }
 
-    // ==================== AI排版相关方法结束 ====================
+    // ==================== AI排版 V2 — docx 模板填充方法 ====================
+
+    /**
+     * Handle V2 typeset result: fill docx template with AI sections, show preview overlay.
+     */
+    private void handleTypesetV2Result(Map<String, String> sections) {
+        if (sections == null || sections.isEmpty()) {
+            Log.e(TAG, "ai_typeset_v2_empty_sections");
+            toastTodo("排版结果为空");
+            return;
+        }
+        String type = pendingTypesetType != null ? pendingTypesetType : "general";
+        Log.i(TAG, "ai_typeset_v2_filling type=" + type + " sections=" + sections.size());
+
+        // Resolve template resource ID
+        int resId = getTypesetTemplateResId(type);
+
+        // Fill template docx on background thread
+        new Thread(() -> {
+            File filledDocx = DocxTemplateFiller.fillTemplate(resId, type, sections, LOActivity.this);
+            runOnUiThread(() -> {
+                if (filledDocx != null && filledDocx.exists()) {
+                    pendingTypesetDocx = filledDocx;
+                    pendingTypesetSections = sections;
+                    typesetInProgress = false;
+                    Log.i(TAG, "ai_typeset_v2_filled path=" + filledDocx.getAbsolutePath()
+                            + " size=" + filledDocx.length());
+                    // Overlay already visible from loading state — just update WebView content
+                    String previewHtml = buildPreviewHtml(type, sections);
+                    if (typesetPreviewWebView != null && previewHtml != null) {
+                        typesetPreviewWebView.loadDataWithBaseURL(null, previewHtml,
+                                "text/html", "UTF-8", null);
+                    }
+                } else {
+                    typesetInProgress = false;
+                    Log.e(TAG, "ai_typeset_v2_fill_failed — falling back to HTML paste");
+                    toastTodo("模板填充失败，使用HTML方式");
+                    // Fallback: if we have pendingTypesetHtml, use old flow
+                    if (pendingTypesetHtml != null && !pendingTypesetHtml.isEmpty()) {
+                        showTypesetPreviewSheet(pendingTypesetHtml);
+                    }
+                }
+            });
+        }, "cool-ai-typeset-fill").start();
+    }
+
+    private int getTypesetTemplateResId(String type) {
+        switch (type) {
+            case "paper":    return R.raw.typeset_template_paper;
+            case "gov":      return R.raw.typeset_template_gov;
+            case "contract": return R.raw.typeset_template_contract;
+            case "general":  return R.raw.typeset_template_general;
+            default:         return R.raw.typeset_template_general;
+        }
+    }
+
+    /**
+     * Show the typeset preview overlay immediately with a loading message.
+     * Called at the start of typeset so the user sees immediate feedback.
+     */
+    private void showTypesetLoadingOverlay() {
+        if (typesetPreviewOverlay == null) {
+            Log.w(TAG, "ai_typeset_v2_overlay_null — cannot show loading");
+            return;
+        }
+        // Load "正在排版" placeholder into WebView
+        if (typesetPreviewWebView != null) {
+            String loadingHtml = "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"UTF-8\">"
+                    + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\">"
+                    + "<style>body{font-family:sans-serif;display:flex;align-items:center;"
+                    + "justify-content:center;height:100vh;margin:0;color:#999;font-size:16px;}"
+                    + ".spinner{width:32px;height:32px;border:3px solid #e0e0e0;border-top:3px solid #2B7AFF;"
+                    + "border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px;}"
+                    + "@keyframes spin{to{transform:rotate(360deg)}}"
+                    + ".wrap{text-align:center;}</style></head><body>"
+                    + "<div class=\"wrap\"><div class=\"spinner\"></div>"
+                    + "<p>AI 正在排版，请稍候…</p></div></body></html>";
+            typesetPreviewWebView.loadDataWithBaseURL(null, loadingHtml, "text/html", "UTF-8", null);
+        }
+        typesetPreviewOverlay.post(() -> {
+            positionTypesetPreviewOverlay();
+            typesetPreviewOverlay.setVisibility(View.VISIBLE);
+        });
+        Log.i(TAG, "ai_typeset_v2_loading_shown");
+    }
+
+    /**
+     * Initialize the typeset preview overlay — find views, wire listeners.
+     */
+    private void setupTypesetPreviewOverlay() {
+        // The <include> tag id overrides the root view id of the included layout.
+        // So we find by the include id, which IS the overlay FrameLayout.
+        typesetPreviewOverlay = findViewById(R.id.typeset_preview_overlay_include);
+        if (typesetPreviewOverlay == null) {
+            Log.w(TAG, "ai_typeset_v2_overlay_not_found — layout include missing?");
+            return;
+        }
+
+        // Find children within the overlay
+        typesetPreviewCard = typesetPreviewOverlay.findViewById(R.id.typeset_preview_card);
+        typesetPreviewWebView = typesetPreviewOverlay.findViewById(R.id.typeset_preview_webview);
+
+        // Configure WebView
+        if (typesetPreviewWebView != null) {
+            WebSettings ws = typesetPreviewWebView.getSettings();
+            ws.setJavaScriptEnabled(false);
+            ws.setBuiltInZoomControls(true);
+            ws.setDisplayZoomControls(false);
+            ws.setLoadWithOverviewMode(true);
+            ws.setUseWideViewPort(false);
+        }
+
+        // Overlay background is NOT dismissible on click —
+        // accidental taps outside the card could close it before the user
+        // has reviewed or inserted the result. Use the close button instead.
+        typesetPreviewOverlay.setClickable(true);
+
+        // Prevent card click from propagating to overlay
+        if (typesetPreviewCard != null) {
+            typesetPreviewCard.setClickable(true);
+        }
+
+        // Close button
+        View closeBtn = typesetPreviewOverlay.findViewById(R.id.typeset_preview_close);
+        if (closeBtn != null) {
+            closeBtn.setOnClickListener(v -> dismissTypesetPreviewOverlay());
+        }
+
+        // Regenerate button
+        View regenBtn = typesetPreviewOverlay.findViewById(R.id.typeset_preview_regenerate);
+        if (regenBtn != null) {
+            regenBtn.setOnClickListener(v -> {
+                Log.i(TAG, "ai_typeset_v2_regenerate");
+                dismissTypesetPreviewOverlay();
+                String type = pendingTypesetType != null ? pendingTypesetType : "general";
+                startTypeset(type);
+            });
+        }
+
+        // Insert document button
+        View insertBtn = typesetPreviewOverlay.findViewById(R.id.typeset_preview_insert);
+        if (insertBtn != null) {
+            insertBtn.setOnClickListener(v -> {
+                Log.i(TAG, "ai_typeset_v2_insert_document");
+                if (pendingTypesetDocx != null && pendingTypesetDocx.exists()) {
+                    openTypesetDocument(pendingTypesetDocx);
+                } else {
+                    toastTodo("排版文档不存在，请重新生成");
+                }
+            });
+        }
+    }
+
+    /**
+     * Show the typeset preview overlay with the filled template content.
+     */
+    private void showTypesetPreviewOverlay(String typesetType, Map<String, String> sections,
+                                            File docxFile) {
+        if (typesetPreviewOverlay == null) {
+            Log.e(TAG, "ai_typeset_v2_overlay_null");
+            return;
+        }
+
+        // Build preview HTML and load into WebView
+        String previewHtml = buildPreviewHtml(typesetType, sections);
+        if (typesetPreviewWebView != null && previewHtml != null) {
+            typesetPreviewWebView.loadDataWithBaseURL(null, previewHtml,
+                    "text/html", "UTF-8", null);
+        }
+
+        // Position and show
+        typesetPreviewOverlay.post(() -> {
+            positionTypesetPreviewOverlay();
+            typesetPreviewOverlay.setVisibility(View.VISIBLE);
+        });
+
+        Log.i(TAG, "ai_typeset_v2_preview_shown type=" + typesetType
+                + " docxSize=" + docxFile.length());
+    }
+
+    /**
+     * Dismiss the typeset preview overlay.
+     */
+    private void dismissTypesetPreviewOverlay() {
+        typesetInProgress = false;
+        if (typesetPreviewOverlay != null) {
+            typesetPreviewOverlay.setVisibility(View.GONE);
+        }
+        // Clean up WebView content
+        if (typesetPreviewWebView != null) {
+            typesetPreviewWebView.loadUrl("about:blank");
+        }
+        Log.i(TAG, "ai_typeset_v2_preview_dismissed");
+    }
+
+    /**
+     * Size and center the preview card within the overlay.
+     */
+    private void positionTypesetPreviewOverlay() {
+        if (typesetPreviewCard == null || typesetPreviewOverlay == null) return;
+
+        int parentWidth = typesetPreviewOverlay.getWidth();
+        int parentHeight = typesetPreviewOverlay.getHeight();
+        if (parentWidth == 0 || parentHeight == 0) return;
+
+        int dp48 = (int) (48 * getResources().getDisplayMetrics().density);
+        int dp16 = (int) (16 * getResources().getDisplayMetrics().density);
+
+        int cardWidth = Math.min(parentWidth - dp48, (int) (670 * getResources().getDisplayMetrics().density));
+        int maxCardHeight = parentHeight - dp16 * 2;
+        int cardHeight = Math.min(maxCardHeight, (int) (1320 * getResources().getDisplayMetrics().density));
+        // Ensure minimum height
+        cardHeight = Math.max(cardHeight, (int) (400 * getResources().getDisplayMetrics().density));
+
+        ViewGroup.LayoutParams lp = typesetPreviewCard.getLayoutParams();
+        lp.width = cardWidth;
+        lp.height = cardHeight;
+        typesetPreviewCard.setLayoutParams(lp);
+    }
+
+    /**
+     * Build an HTML preview page from the AI-generated sections map.
+     * This is an approximation for preview only — the real formatting comes
+     * from the docx template when opened in LOActivity.
+     */
+    private String buildPreviewHtml(String typesetType, Map<String, String> sections) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"UTF-8\">");
+        sb.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\">");
+        sb.append("<style>");
+        sb.append("body{font-family:'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;");
+        sb.append("padding:0 16px;color:#333;line-height:1.8;font-size:15px;word-break:break-word;}");
+        sb.append("h2{text-align:center;font-size:20px;margin:16px 0;}");
+        sb.append("h3{font-size:17px;margin:12px 0;border-bottom:1px solid #eee;padding-bottom:6px;}");
+        sb.append("h4{font-size:15px;margin:8px 0;}");
+        sb.append("p{margin:6px 0;text-indent:0;}");
+        sb.append(".abstract{background:#f5f5f5;padding:12px;border-radius:8px;margin:8px 0;font-size:14px;}");
+        sb.append(".gov-header{text-align:center;color:#c00;font-size:22px;font-weight:bold;margin:12px 0;}");
+        sb.append(".gov-subheader{text-align:center;font-size:16px;font-weight:bold;margin:8px 0;}");
+        sb.append(".contract-label{font-weight:bold;color:#555;}");
+        sb.append(".signature{text-align:right;margin-top:24px;}");
+        sb.append("</style></head><body>");
+
+        String title = sections.getOrDefault("title", "");
+        if (!title.isEmpty()) {
+            sb.append("<h2>").append(escapeHtml(title)).append("</h2>");
+        }
+
+        switch (typesetType) {
+            case "paper":
+                appendPaperSections(sb, sections);
+                break;
+            case "gov":
+                appendGovSections(sb, sections);
+                break;
+            case "contract":
+                appendContractSections(sb, sections);
+                break;
+            case "general":
+            default:
+                appendGeneralSections(sb, sections);
+                break;
+        }
+
+        // Append any unhandled sections at the end
+        java.util.Set<String> handled = new java.util.HashSet<>();
+        // (sections are handled in the append methods above)
+        for (Map.Entry<String, String> e : sections.entrySet()) {
+            if (!handled.contains(e.getKey()) && !"title".equals(e.getKey())) {
+                sb.append("<p>").append(escapeHtml(e.getValue())).append("</p>");
+            }
+        }
+
+        sb.append("</body></html>");
+        return sb.toString();
+    }
+
+    private void appendPaperSections(StringBuilder sb, Map<String, String> s) {
+        String abs = s.get("abstract");
+        if (abs != null && !abs.isEmpty()) {
+            sb.append("<div class=\"abstract\"><strong>摘要：</strong>")
+                    .append(escapeHtml(abs)).append("</div>");
+        }
+        String kw = s.get("keywords");
+        if (kw != null && !kw.isEmpty()) {
+            sb.append("<p><strong>关键词：</strong>").append(escapeHtml(kw)).append("</p>");
+        }
+        appendSection(sb, s, "introduction", "引言");
+        appendSection(sb, s, "heading1", null);
+        appendSection(sb, s, "heading2", null);
+        appendSection(sb, s, "heading3", null);
+        appendSection(sb, s, "body", null);
+        appendSection(sb, s, "conclusion_body", "结语");
+        appendSection(sb, s, "ack_body", "致谢");
+    }
+
+    private void appendGovSections(StringBuilder sb, Map<String, String> s) {
+        String recipient = s.get("recipient");
+        if (recipient != null && !recipient.isEmpty()) {
+            sb.append("<p>").append(escapeHtml(recipient)).append("</p>");
+        }
+        appendSection(sb, s, "body", null);
+        String sigOrg = s.get("signature_org");
+        String sigDate = s.get("signature_date");
+        if ((sigOrg != null && !sigOrg.isEmpty()) || (sigDate != null && !sigDate.isEmpty())) {
+            sb.append("<div class=\"signature\">");
+            if (sigOrg != null) sb.append("<p>").append(escapeHtml(sigOrg)).append("</p>");
+            if (sigDate != null) sb.append("<p>").append(escapeHtml(sigDate)).append("</p>");
+            sb.append("</div>");
+        }
+        String notes = s.get("notes");
+        if (notes != null && !notes.isEmpty()) {
+            sb.append("<p style=\"font-size:13px;color:#888;\">").append(escapeHtml(notes)).append("</p>");
+        }
+    }
+
+    private void appendContractSections(StringBuilder sb, Map<String, String> s) {
+        String contractNum = s.get("contract_number");
+        if (contractNum != null && !contractNum.isEmpty()) {
+            sb.append("<p>").append(escapeHtml(contractNum)).append("</p>");
+        }
+        appendContractParty(sb, s, "party_a", "甲方");
+        appendContractParty(sb, s, "party_a_id", null);
+        appendContractParty(sb, s, "party_b", "乙方");
+        appendContractParty(sb, s, "party_b_id", null);
+        appendSection(sb, s, "preamble", null);
+        appendSection(sb, s, "clause_title", null);
+        appendSection(sb, s, "clause_subtitle", null);
+        appendSection(sb, s, "clause_body", null);
+    }
+
+    private void appendContractParty(StringBuilder sb, Map<String, String> s, String key, String label) {
+        String val = s.get(key);
+        if (val != null && !val.isEmpty()) {
+            sb.append("<p>").append(escapeHtml(val)).append("</p>");
+        }
+    }
+
+    private void appendGeneralSections(StringBuilder sb, Map<String, String> s) {
+        appendSection(sb, s, "heading1", null);
+        appendSection(sb, s, "heading2", null);
+        appendSection(sb, s, "heading3", null);
+        appendSection(sb, s, "body", null);
+    }
+
+    private void appendSection(StringBuilder sb, Map<String, String> s, String key, String fallbackLabel) {
+        String val = s.get(key);
+        if (val == null || val.isEmpty()) return;
+        // If value looks like a heading (short, single line), render as h3/h4
+        String trimmed = val.trim();
+        if (!trimmed.contains("\n") && trimmed.length() < 60) {
+            sb.append("<h4>").append(escapeHtml(trimmed)).append("</h4>");
+        } else {
+            // Split by double newline into paragraphs
+            String[] paras = trimmed.split("\n\n");
+            for (String para : paras) {
+                String p = para.trim();
+                if (!p.isEmpty()) {
+                    sb.append("<p>").append(escapeHtml(p)).append("</p>");
+                }
+            }
+        }
+    }
+
+    private static String escapeHtml(String text) {
+        if (text == null) return "";
+        return text.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
+    }
+
+    /**
+     * Open the filled docx file by switching the current LOActivity
+     * to the new document via the standard onNewIntent path.
+     *
+     * <p>The standard document-switch flow:
+     * startActivity → onNewIntent (singleTask) → save old doc → BYE → init() →
+     * initUI() → loadDocument() → createCOOLWSD.</p>
+     *
+     * <p>We do NOT send BYE ourselves — that would trigger the native BYE
+     * response → beforeMessageFromWebView("BYE") → finishWithProgress() →
+     * finishAndRemoveTask(), killing the Activity before onNewIntent runs.</p>
+     */
+    private void openTypesetDocument(File docxFile) {
+        if (docxFile == null || !docxFile.exists()) {
+            toastTodo("排版文档不存在");
+            return;
+        }
+        try {
+            Uri typesetUri = FileProvider.getUriForFile(
+                    this, getPackageName() + ".fileprovider", docxFile);
+
+            Log.i(TAG, "ai_typeset_v2_open_document uri=" + typesetUri.toString()
+                    + " path=" + docxFile.getAbsolutePath());
+
+            RecentDocumentsStore.prependRecent(
+                    getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE),
+                    typesetUri.toString());
+
+            // Dismiss the preview overlay before starting the switch
+            typesetInProgress = false;
+            if (typesetPreviewOverlay != null) {
+                typesetPreviewOverlay.setVisibility(View.GONE);
+            }
+            if (typesetPreviewWebView != null) {
+                typesetPreviewWebView.loadUrl("about:blank");
+            }
+
+            // startActivity triggers onNewIntent (singleTask), which handles
+            // save → BYE → init → loadDocument — the standard document switch.
+            // No finish() — the same LOActivity instance handles the switch.
+            startActivity(buildEditIntent(typesetUri));
+
+        } catch (Exception e) {
+            Log.e(TAG, "ai_typeset_v2_open_failed: " + e.getMessage(), e);
+            toastTodo("打开排版文档失败：" + e.getMessage());
+        }
+    }
+
+    // ==================== AI排版 V2 方法结束 ====================
 
     // ==================== 生成大纲相关方法 ====================
 

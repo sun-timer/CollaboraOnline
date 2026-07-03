@@ -7,6 +7,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.net.URI;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class AiChatCoordinator {
     public static final String MODE_DOC_QA = "doc_qa";
@@ -272,6 +274,212 @@ public class AiChatCoordinator {
         messages.put(userMsg);
 
         return messages;
+    }
+
+    // ============================================================
+    //  V2: JSON-structured typeset prompts (for docx template filling)
+    // ============================================================
+
+    /**
+     * Build typeset messages that ask the AI to return structured JSON
+     * mapping template section keys to content (instead of raw HTML).
+     */
+    public static JSONArray buildTypesetMessagesV2(String typesetType, String fullText) throws JSONException {
+        String text = fullText == null ? "" : fullText.trim();
+        String[] sectionKeys = org.libreoffice.androidlib.typeset.TemplateSectionMap.getSectionKeys(typesetType);
+        String sectionList = buildSectionList(sectionKeys);
+
+        String systemPrompt = buildTypesetV2SystemPrompt(typesetType, sectionKeys, sectionList);
+        String userPrompt = "请将以下原始文档内容按模板分区进行结构化拆分，返回 JSON。"
+                + "不要修改原文内容，仅将各部分填入对应分区。\n\n"
+                + "分区列表：" + sectionList + "\n\n"
+                + "原始文档内容：\n---\n" + text + "\n---\n\n"
+                + "请直接返回 JSON，不要包含任何 markdown 标记或解释文字。";
+
+        JSONArray messages = new JSONArray();
+        JSONObject sysMsg = new JSONObject();
+        sysMsg.put("role", "system");
+        sysMsg.put("content", systemPrompt);
+        messages.put(sysMsg);
+
+        JSONObject userMsg = new JSONObject();
+        userMsg.put("role", "user");
+        userMsg.put("content", userPrompt);
+        messages.put(userMsg);
+
+        return messages;
+    }
+
+    /**
+     * Build type-specific system prompt for V2 JSON output.
+     */
+    private static String buildTypesetV2SystemPrompt(String typesetType, String[] sectionKeys, String sectionList) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("你是专业的文档排版助手。请从用户提供的原始文档中提取内容，");
+        sb.append("将原文各部分填入模板对应的分区中，以 JSON 格式返回。\n");
+        sb.append("重要原则：保持原文内容不变，不要改写、扩写、缩写或润色原文。");
+        sb.append("仅进行结构化拆分——把原文各部分分配到对应的模板分区。\n\n");
+
+        switch (typesetType) {
+            case "paper":
+                sb.append("【论文模板分区】\n");
+                sb.append("- title: 论文标题\n");
+                sb.append("- abstract: 摘要正文（约200-300字，概括研究目的、方法、结果、结论）\n");
+                sb.append("- keywords: 关键词（3-8个，用顿号分隔）\n");
+                sb.append("- introduction: 引言/背景介绍\n");
+                sb.append("- heading1: 第一个一级章节标题\n");
+                sb.append("- heading2: 第一个二级小节标题\n");
+                sb.append("- heading3: 第一个三级小节标题\n");
+                sb.append("- body: 正文（可包含多个段落，段落间用双换行分隔）\n");
+                sb.append("- conclusion_body: 结语/结论内容\n");
+                sb.append("- ack_body: 致谢内容\n\n");
+                sb.append("要求：从原文中提取各分区内容，保留原文的学术风格和核心论点；正文应完整保留原文内容，不做删改；标题层级根据原文结构确定。");
+                break;
+
+            case "gov":
+                sb.append("【公文模板分区】\n");
+                sb.append("- recipient: 主送机关（含\"主送机关：\"前缀，如原文无则根据内容推断合理的主送机关）\n");
+                sb.append("- body: 正文（可包含多个段落，段落间用双换行分隔）\n");
+                sb.append("- signature_org: 发文机关署名（如原文无署名则填\"（请填写）\"）\n");
+                sb.append("- signature_date: 成文日期（格式：20××年×月×日，如原文无日期则填\"20××年×月×日\"）\n");
+                sb.append("- notes: 附注内容（含括号，如无附注则填\"（无）\"）\n\n");
+                sb.append("要求：从原文中提取各分区内容，保留公文的正式严谨风格和原文措辞，不做修改。");
+                sb.append("所有分区键值必须非空——即使原文无对应内容，也必须使用上述指定的回退值填充。");
+                break;
+
+            case "contract":
+                sb.append("【合同协议模板分区】\n");
+                sb.append("- title: 合同/协议标题\n");
+                sb.append("- contract_number: 合同编号（含\"合同编号：\"前缀）\n");
+                sb.append("- party_a: 甲方信息（含\"甲方：\"前缀，后跟名称、地址等）\n");
+                sb.append("- party_a_id: 甲方身份证号/统一社会信用代码（含\"身份证号码：\"或\"统一社会信用代码：\"前缀）\n");
+                sb.append("- party_b: 乙方信息（含\"乙方：\"前缀）\n");
+                sb.append("- party_b_id: 乙方身份证号/统一社会信用代码（含\"身份证号码：\"或\"统一社会信用代码：\"前缀）\n");
+                sb.append("- preamble: 鉴于条款/前言（说明合同背景和目的）\n");
+                sb.append("- clause_title: 主要条款标题（如\"第一条 项目内容\"）\n");
+                sb.append("- clause_subtitle: 次要条款标题（如\"1.1 具体范围\"）\n");
+                sb.append("- clause_body: 条款正文（可多段，双换行分隔）\n\n");
+                sb.append("要求：从原文中提取各分区内容，保留合同的法律严谨性和原文措辞，不做修改。");
+                break;
+
+            case "general":
+            default:
+                sb.append("【通用文档模板分区】\n");
+                sb.append("- title: 文档标题\n");
+                sb.append("- heading1: 一级标题\n");
+                sb.append("- heading2: 二级标题\n");
+                sb.append("- heading3: 三级标题\n");
+                sb.append("- body: 正文（可包含多个段落，段落间用双换行分隔）\n\n");
+                sb.append("要求：从原文中提取各分区内容，根据原文自动识别层级结构；保留原文风格和信息完整，不做修改。");
+                break;
+        }
+
+        sb.append("\n\n【输出格式】\n");
+        sb.append("请严格按以下 JSON 格式返回：\n");
+        sb.append("{\"sections\": {\n");
+        for (int i = 0; i < sectionKeys.length; i++) {
+            sb.append("  \"").append(sectionKeys[i]).append("\": \"...\"");
+            if (i < sectionKeys.length - 1) sb.append(",");
+            sb.append("\n");
+        }
+        sb.append("}}\n\n");
+        sb.append("重要：只返回 JSON 对象本身，不要用 ```json 或 ``` 包裹，不要添加任何解释文字。");
+        sb.append("每一个键的值都必须是非空字符串——禁止使用空字符串（\"\"）作为值。");
+        sb.append("如果原文中确实找不到某个分区对应的内容，请使用合理的占位文本（如\"（无）\"、\"（请填写）\"等），不要留空。");
+
+        return sb.toString();
+    }
+
+    private static String buildSectionList(String[] keys) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < keys.length; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(keys[i]);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Parse the AI's JSON response into a section key → content map.
+     * Handles markdown code fences, whitespace, and missing "sections" wrapper.
+     *
+     * @param jsonResponse the raw AI response text
+     * @return map of sectionKey → content, or null if parsing fails
+     */
+    public static Map<String, String> parseTypesetSections(String jsonResponse) {
+        if (jsonResponse == null || jsonResponse.trim().isEmpty()) return null;
+
+        String json = jsonResponse.trim();
+
+        // Strip markdown code fences
+        json = stripMarkdownFences(json);
+
+        // Try to parse as JSON
+        try {
+            JSONObject root = new JSONObject(json);
+
+            // Case 1: {"sections": {...}}
+            if (root.has("sections")) {
+                JSONObject sectionsObj = root.getJSONObject("sections");
+                LinkedHashMap<String, String> result = new LinkedHashMap<>();
+                for (java.util.Iterator<String> it = sectionsObj.keys(); it.hasNext(); ) {
+                    String key = it.next();
+                    String value = sectionsObj.optString(key, "");
+                    if (!value.isEmpty()) {
+                        result.put(key, value);
+                    }
+                }
+                if (!result.isEmpty()) return result;
+            }
+
+            // Case 2: flat object — treat all string values as sections
+            LinkedHashMap<String, String> result = new LinkedHashMap<>();
+            for (java.util.Iterator<String> it = root.keys(); it.hasNext(); ) {
+                String key = it.next();
+                Object val = root.opt(key);
+                if (val instanceof String && !((String) val).isEmpty()) {
+                    result.put(key, (String) val);
+                }
+            }
+            if (!result.isEmpty()) return result;
+
+        } catch (JSONException e) {
+            // Not valid JSON, return null for fallback
+        }
+
+        return null;
+    }
+
+    /**
+     * Strip markdown code fences (```json ... ``` or ``` ... ```) from AI response.
+     */
+    private static String stripMarkdownFences(String text) {
+        if (text == null) return null;
+        String t = text.trim();
+
+        // Remove opening fence
+        if (t.startsWith("```")) {
+            int firstNewline = t.indexOf('\n');
+            if (firstNewline > 0) {
+                t = t.substring(firstNewline + 1);
+            } else {
+                t = t.substring(3);
+            }
+        }
+
+        // Remove closing fence
+        if (t.endsWith("```")) {
+            t = t.substring(0, t.length() - 3).trim();
+        }
+
+        return t.trim();
+    }
+
+    /**
+     * Fallback: delegate to the old HTML-based typeset prompt.
+     */
+    public static JSONArray buildTypesetFallbackMessages(String typesetType, String fullText) throws JSONException {
+        return buildTypesetMessages(typesetType, fullText);
     }
 
     /**
