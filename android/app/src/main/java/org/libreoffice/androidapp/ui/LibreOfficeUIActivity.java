@@ -194,6 +194,11 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         // init UI and populate with contents from the provider
         createUI();
 
+        // Clear the splash window background so it doesn't flash when
+        // returning from LOActivity (e.g. pressing back or switching docs).
+        // The splash is already shown on cold start — no need to keep it.
+        getWindow().setBackgroundDrawable(null);
+
         fabOpenAnimation = AnimationUtils.loadAnimation(this, R.anim.fab_open);
         fabCloseAnimation = AnimationUtils.loadAnimation(this, R.anim.fab_close);
     }
