@@ -21,8 +21,11 @@ import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
 import android.content.res.Configuration;
 import android.database.Cursor;
+import android.app.Dialog;
 import android.graphics.Color;
 import android.graphics.Insets;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Icon;
 import android.hardware.usb.UsbManager;
 import android.net.Uri;
@@ -37,8 +40,6 @@ import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.util.Log;
-import android.view.ContextMenu;
-import android.view.ContextMenu.ContextMenuInfo;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -46,10 +47,9 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowInsets;
-import android.view.animation.Animation;
-import android.view.animation.AnimationUtils;
-import android.view.animation.OvershootInterpolator;
+import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
@@ -58,11 +58,11 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.PopupWindow;
 import android.widget.Toast;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.navigation.NavigationView;
-import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidapp.AboutDialogFragment;
 import org.libreoffice.androidapp.R;
@@ -90,11 +90,9 @@ import androidx.appcompat.widget.SwitchCompat;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
-import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -123,6 +121,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     public static final String EXPLORER_PREFS_KEY = "EXPLORER_PREFS";
     public static final String SORT_MODE_KEY = "SORT_MODE";
     public static final String RECENT_DOCUMENTS_KEY = "RECENT_DOCUMENTS_LIST";
+    private static final String RECENT_OPEN_TIME_PREFIX = "RECENT_OPEN_TIME_";
     private static final String ENABLE_SHOW_HIDDEN_FILES_KEY = "ENABLE_SHOW_HIDDEN_FILES";
 
     public static final String NEW_FILE_PATH_KEY = "NEW_FILE_PATH_KEY";
@@ -149,16 +148,11 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     //kept package-private to use these in recyclerView's adapter
     TextView noRecentItemsTextView;
 
-    private Animation fabOpenAnimation;
-    private Animation fabCloseAnimation;
     private boolean isFabMenuOpen = false;
     private FloatingActionButton editFAB;
-    private FloatingActionButton writerFAB;
-    private FloatingActionButton impressFAB;
-    private FloatingActionButton calcFAB;
-    private LinearLayout writerLayout;
-    private LinearLayout impressLayout;
-    private LinearLayout calcLayout;
+    private View newDocOverlay;
+    private View newDocScrim;
+    private View newDocCloseButton;
 
     /** Recent files list vs. grid switch. */
     private ImageView mRecentFilesListOrGrid;
@@ -198,9 +192,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         // returning from LOActivity (e.g. pressing back or switching docs).
         // The splash is already shown on cold start — no need to keep it.
         getWindow().setBackgroundDrawable(null);
-
-        fabOpenAnimation = AnimationUtils.loadAnimation(this, R.anim.fab_open);
-        fabCloseAnimation = AnimationUtils.loadAnimation(this, R.anim.fab_close);
     }
 
     private String[] getRecentDocuments() {
@@ -214,14 +205,8 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
     /** Update the recent files list. */
     public void updateRecentFiles() {
-        // update also the icon switching between list and grid
-        if (isViewModeList())
-            mRecentFilesListOrGrid.setImageResource(R.drawable.ic_view_module_black_24dp);
-        else
-            mRecentFilesListOrGrid.setImageResource(R.drawable.ic_list_black_24dp);
-
         String[] recentFileStrings = getRecentDocuments();
-        final ArrayList<Uri> recentUris = new ArrayList<Uri>();
+        final ArrayList<Uri> recentUris = new ArrayList<>();
         for (String recentFileString : recentFileStrings) {
             try {
                 recentUris.add(Uri.parse(recentFileString));
@@ -241,7 +226,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             });
         }
 
-        recentRecyclerView.setLayoutManager(isViewModeList() ? new LinearLayoutManager(this) : new GridLayoutManager(this, 2));
+        recentRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         recentRecyclerView.setAdapter(new RecentFilesAdapter(this, filteredUris));
         updateEmptyState(recentUris.size(), filteredUris.size());
     }
@@ -264,7 +249,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     private void updateEmptyState(int totalCount, int filteredCount) {
         boolean hasQuery = !TextUtils.isEmpty(currentSearchQuery);
         if (recentsHeaderRow != null) {
-            recentsHeaderRow.setVisibility(hasQuery ? View.GONE : View.VISIBLE);
+            recentsHeaderRow.setVisibility(hasQuery || totalCount == 0 ? View.GONE : View.VISIBLE);
         }
         if (emptyRecentState != null) {
             emptyRecentState.setVisibility(!hasQuery && totalCount == 0 ? View.VISIBLE : View.GONE);
@@ -315,7 +300,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         navigationDrawer = findViewById(R.id.navigation_drawer);
         View headerView = navigationDrawer.getHeaderView(0);
         setupAiDrawerHeader(headerView);
-        Button localInstallButton = headerView.findViewById(R.id.localInstallButton);
+        View localInstallButton = headerView.findViewById(R.id.localInstallButton);
         if (localInstallButton != null) {
             localInstallButton.setOnClickListener(v -> Toast.makeText(this, R.string.local_model_todo, Toast.LENGTH_SHORT).show());
         }
@@ -463,24 +448,39 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
     private void setupAiDrawerHeader(View headerView) {
         View profileEntry = headerView.findViewById(R.id.profileEntry);
-        View aiConfigCard = headerView.findViewById(R.id.aiConfigCard);
-        View aiConfigIcon = headerView.findViewById(R.id.aiConfigIcon);
 
         if (profileEntry != null) {
             profileEntry.setOnClickListener(v -> openAiProfileSettings());
-        }
-        if (aiConfigCard != null) {
-            aiConfigCard.setOnClickListener(v -> openAiProfileSettings());
-        }
-        if (aiConfigIcon != null) {
-            aiConfigIcon.setOnClickListener(v -> openAiProfileSettings());
         }
 
         bindModelConfigEntry(headerView, R.id.modelItemBase, R.id.modelBaseArrow, AiSettingsStore.MODEL_BASE);
         bindModelConfigEntry(headerView, R.id.modelItemThink, R.id.modelThinkArrow, AiSettingsStore.MODEL_THINK);
         bindModelConfigEntry(headerView, R.id.modelItemImage, R.id.modelImageArrow, AiSettingsStore.MODEL_IMAGE);
         bindModelConfigEntry(headerView, R.id.modelItemVision, R.id.modelVisionArrow, AiSettingsStore.MODEL_VISION);
+        setupAiConfigExpandToggle(headerView);
         refreshAiDrawerHeader();
+    }
+
+    private boolean aiConfigExpanded = true;
+
+    private void setupAiConfigExpandToggle(View headerView) {
+        ImageView toggle = headerView.findViewById(R.id.aiConfigExpandToggle);
+        View body = headerView.findViewById(R.id.aiConfigExpandableBody);
+        if (toggle == null || body == null) {
+            return;
+        }
+        updateAiConfigExpandedState(toggle, body, aiConfigExpanded);
+        toggle.setOnClickListener(v -> {
+            aiConfigExpanded = !aiConfigExpanded;
+            updateAiConfigExpandedState(toggle, body, aiConfigExpanded);
+        });
+    }
+
+    private void updateAiConfigExpandedState(ImageView toggle, View body, boolean expanded) {
+        body.setVisibility(expanded ? View.VISIBLE : View.GONE);
+        toggle.setImageResource(expanded
+                ? R.drawable.ic_ai_config_chevron_up
+                : R.drawable.ic_ai_config_chevron_down);
     }
 
     private void bindModelConfigEntry(View headerView, int rowId, int arrowId, int modelType) {
@@ -502,6 +502,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     private void openModelConfig(int modelType) {
         Intent intent = new Intent(this, AiModelConfigActivity.class);
         intent.putExtra(AiSettingsStore.EXTRA_MODEL_TYPE, modelType);
+        intent.putExtra(AiSettingsStore.EXTRA_FROM_DRAWER, true);
         startActivityForResult(intent, AI_MODEL_SETTINGS_REQUEST_CODE);
     }
 
@@ -638,23 +639,23 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
         // Icon to switch showing the recent files as list vs. as grid
         mRecentFilesListOrGrid = (ImageView) findViewById(R.id.recent_list_or_grid);
-        mRecentFilesListOrGrid.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                toggleViewMode();
-                updateRecentFiles();
-            }
-        });
+        if (mRecentFilesListOrGrid != null) {
+            mRecentFilesListOrGrid.setVisibility(View.GONE);
+        }
 
         updateRecentFiles();
-
-        // allow context menu for the various files - for Open and Share
-        registerForContextMenu(recentRecyclerView);
     }
 
     /** Initialize the FloatingActionButton. */
     private void setupFloatingActionButton() {
         editFAB = findViewById(R.id.editFAB);
+        newDocOverlay = findViewById(R.id.newDocOverlay);
+        newDocScrim = findViewById(R.id.newDocScrim);
+        newDocCloseButton = findViewById(R.id.newDocCloseButton);
+        View writerRow = findViewById(R.id.newDocMenuRowWriter);
+        View calcRow = findViewById(R.id.newDocMenuRowCalc);
+        View impressRow = findViewById(R.id.newDocMenuRowImpress);
+
         if (LOActivity.isChromeOS(this)) {
             int dp = (int) getResources().getDisplayMetrics().density;
             ConstraintLayout.LayoutParams layoutParams = (ConstraintLayout.LayoutParams) editFAB.getLayoutParams();
@@ -678,81 +679,58 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             });
         }
 
-        editFAB.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (isFabMenuOpen)
-                    collapseFabMenu();
-                else
-                    expandFabMenu();
+        editFAB.setOnClickListener(v -> {
+            if (isFabMenuOpen) {
+                collapseFabMenu();
+            } else {
+                expandFabMenu();
             }
         });
-        final OnClickListener clickListener = new OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                switch (view.getId()) {
-                    case R.id.newWriterFAB:
-                    case R.id.writerLayout:
-                        createNewFileInputDialog(getString(R.string.new_textdocument) + FileUtilities.DEFAULT_WRITER_EXTENSION, "application/vnd.oasis.opendocument.text", CREATE_DOCUMENT_REQUEST_CODE);
-                        break;
-                    case R.id.newCalcFAB:
-                    case R.id.calcLayout:
-                        createNewFileInputDialog(getString(R.string.new_spreadsheet) + FileUtilities.DEFAULT_SPREADSHEET_EXTENSION, "application/vnd.oasis.opendocument.spreadsheet", CREATE_SPREADSHEET_REQUEST_CODE);
-                        break;
-                    case R.id.newImpressFAB:
-                    case R.id.impressLayout:
-                        createNewFileInputDialog(getString(R.string.new_presentation) + FileUtilities.DEFAULT_IMPRESS_EXTENSION, "application/vnd.oasis.opendocument.presentation", CREATE_PRESENTATION_REQUEST_CODE);
-                        break;
-                }
-            }
-        };
 
-        writerFAB = findViewById(R.id.newWriterFAB);
-        writerFAB.setOnClickListener(clickListener);
+        if (newDocScrim != null) {
+            newDocScrim.setOnClickListener(v -> collapseFabMenu());
+        }
+        if (newDocCloseButton != null) {
+            newDocCloseButton.setOnClickListener(v -> collapseFabMenu());
+        }
 
-        calcFAB = findViewById(R.id.newCalcFAB);
-        calcFAB.setOnClickListener(clickListener);
-
-        impressFAB = findViewById(R.id.newImpressFAB);
-        impressFAB.setOnClickListener(clickListener);
-
-        writerLayout = findViewById(R.id.writerLayout);
-        writerLayout.setOnClickListener(clickListener);
-
-        impressLayout = findViewById(R.id.impressLayout);
-        impressLayout.setOnClickListener(clickListener);
-
-        calcLayout = findViewById(R.id.calcLayout);
-        calcLayout.setOnClickListener(clickListener);
+        if (writerRow != null) {
+            writerRow.setOnClickListener(v -> {
+                collapseFabMenu();
+                createNewFileInputDialog(getString(R.string.new_textdocument) + FileUtilities.DEFAULT_WRITER_EXTENSION, "application/vnd.oasis.opendocument.text", CREATE_DOCUMENT_REQUEST_CODE);
+            });
+        }
+        if (calcRow != null) {
+            calcRow.setOnClickListener(v -> {
+                collapseFabMenu();
+                createNewFileInputDialog(getString(R.string.new_spreadsheet) + FileUtilities.DEFAULT_SPREADSHEET_EXTENSION, "application/vnd.oasis.opendocument.spreadsheet", CREATE_SPREADSHEET_REQUEST_CODE);
+            });
+        }
+        if (impressRow != null) {
+            impressRow.setOnClickListener(v -> {
+                collapseFabMenu();
+                createNewFileInputDialog(getString(R.string.new_presentation) + FileUtilities.DEFAULT_IMPRESS_EXTENSION, "application/vnd.oasis.opendocument.presentation", CREATE_PRESENTATION_REQUEST_CODE);
+            });
+        }
     }
 
-    /** Expand the Floating action button. */
+    /** Expand the new-document menu overlay. */
     private void expandFabMenu() {
-        if (isFabMenuOpen)
+        if (isFabMenuOpen || newDocOverlay == null) {
             return;
-
-        ViewCompat.animate(editFAB).rotation(-45f).withLayer().setDuration(300).setInterpolator(new OvershootInterpolator(0f)).start();
-        impressLayout.startAnimation(fabOpenAnimation);
-        writerLayout.startAnimation(fabOpenAnimation);
-        calcLayout.startAnimation(fabOpenAnimation);
-        writerFAB.setClickable(true);
-        impressFAB.setClickable(true);
-        calcFAB.setClickable(true);
+        }
+        newDocOverlay.setVisibility(View.VISIBLE);
+        editFAB.hide();
         isFabMenuOpen = true;
     }
 
-    /** Collapse the Floating action button. */
+    /** Collapse the new-document menu overlay. */
     private void collapseFabMenu() {
-        if (!isFabMenuOpen)
+        if (!isFabMenuOpen || newDocOverlay == null) {
             return;
-
-        ViewCompat.animate(editFAB).rotation(0f).withLayer().setDuration(300).setInterpolator(new OvershootInterpolator(0f)).start();
-        writerLayout.startAnimation(fabCloseAnimation);
-        impressLayout.startAnimation(fabCloseAnimation);
-        calcLayout.startAnimation(fabCloseAnimation);
-        writerFAB.setClickable(false);
-        impressFAB.setClickable(false);
-        calcFAB.setClickable(false);
+        }
+        newDocOverlay.setVisibility(View.GONE);
+        editFAB.show();
         isFabMenuOpen = false;
     }
 
@@ -785,40 +763,148 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         }
     }
 
-    @Override
-    public void onCreateContextMenu(ContextMenu menu, View v,
-                                    ContextMenuInfo menuInfo) {
-        super.onCreateContextMenu(menu, v, menuInfo);
-        MenuInflater inflater = getMenuInflater();
-        inflater.inflate(R.menu.context_menu, menu);
+    public void showRecentFileActionsPopup(View anchor, Uri uri) {
+        currentlySelectedFile = uri;
+        View content = LayoutInflater.from(this).inflate(R.layout.popup_recent_file_actions, null, false);
+        PopupWindow popup = new PopupWindow(content,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                true);
+        popup.setElevation(dpToPx(8));
+        popup.setOutsideTouchable(true);
+
+        View renameRow = content.findViewById(R.id.actionRenameRow);
+        View shareRow = content.findViewById(R.id.actionShareRow);
+        View removeRow = content.findViewById(R.id.actionRemoveRow);
+
+        renameRow.setOnClickListener(v -> {
+            popup.dismiss();
+            showRenameDialog(uri);
+        });
+        shareRow.setOnClickListener(v -> {
+            popup.dismiss();
+            share(uri);
+        });
+        removeRow.setOnClickListener(v -> {
+            popup.dismiss();
+            removeFromList(uri);
+        });
+
+        int xOffset = -dpToPx(260);
+        popup.showAsDropDown(anchor, xOffset, dpToPx(4), GravityCompat.END);
     }
 
-    @Override
-    public boolean onContextItemSelected(MenuItem item) {
-        switch (item.getItemId()) {
-            case R.id.context_menu_open:
-                open(currentlySelectedFile);
-                return true;
-            case R.id.context_menu_share:
-                share(currentlySelectedFile);
-                return true;
-            case R.id.context_menu_remove_from_list:
-                removeFromList(currentlySelectedFile);
-                return true;
-            default:
-                return super.onContextItemSelected(item);
+    private void showRenameDialog(Uri uri) {
+        if (uri == null) {
+            return;
+        }
+        String currentName = RecentFilesAdapter.getUriFilename(this, uri);
+        if (currentName == null || currentName.isEmpty()) {
+            Toast.makeText(this, R.string.rename_failed, Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        final View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_edit_nickname, null, false);
+        final EditText input = dialogView.findViewById(R.id.nicknameInput);
+        input.setHint(R.string.new_file_name_hint);
+        input.setText(currentName);
+        input.setSelection(input.getText().length());
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.action_rename)
+                .setView(dialogView)
+                .setNegativeButton(R.string.action_cancel, null)
+                .setPositiveButton(R.string.action_save, (dialog, which) -> {
+                    String newName = input.getText() == null ? "" : input.getText().toString().trim();
+                    if (newName.isEmpty() || newName.equals(currentName)) {
+                        return;
+                    }
+                    renameRecentFile(uri, newName);
+                })
+                .show();
+    }
+
+    private void renameRecentFile(Uri uri, String newName) {
+        try {
+            Uri renamedUri = DocumentsContract.renameDocument(getContentResolver(), uri, newName);
+            if (renamedUri == null) {
+                Toast.makeText(this, R.string.rename_failed, Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            String oldKey = uri.toString();
+            String newKey = renamedUri.toString();
+            String[] recentFileStrings = getRecentDocuments();
+            StringBuilder joined = new StringBuilder();
+            for (String recentFileString : recentFileStrings) {
+                if (recentFileString.equals(oldKey)) {
+                    if (joined.length() > 0) {
+                        joined.append('\n');
+                    }
+                    joined.append(newKey);
+                } else if (!recentFileString.isEmpty()) {
+                    if (joined.length() > 0) {
+                        joined.append('\n');
+                    }
+                    joined.append(recentFileString);
+                }
+            }
+            long openTime = getRecentOpenTime(uri);
+            prefs.edit()
+                    .putString(RECENT_DOCUMENTS_KEY, joined.toString())
+                    .remove(recentOpenTimeKey(uri))
+                    .apply();
+            if (openTime > 0L) {
+                prefs.edit().putLong(recentOpenTimeKey(renamedUri), openTime).apply();
+            }
+            updateRecentFiles();
+        } catch (Exception e) {
+            Log.w(LOGTAG, "renameRecentFile failed", e);
+            Toast.makeText(this, R.string.rename_failed, Toast.LENGTH_SHORT).show();
         }
     }
 
-    public void openContextMenu(View view, Uri uri) {
-
-        this.currentlySelectedFile = uri;
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            view.showContextMenu(view.getPivotX(), view.getPivotY());
+    public long getRecentOpenTime(Uri uri) {
+        if (uri == null) {
+            return 0L;
         }
-        else
-            view.showContextMenu();
+        long stored = prefs.getLong(recentOpenTimeKey(uri), 0L);
+        if (stored > 0L) {
+            return stored;
+        }
+        return queryDocumentLastModified(uri);
+    }
+
+    private long queryDocumentLastModified(Uri uri) {
+        Cursor cursor = null;
+        try {
+            cursor = getContentResolver().query(
+                    uri,
+                    new String[]{DocumentsContract.Document.COLUMN_LAST_MODIFIED},
+                    null,
+                    null,
+                    null);
+            if (cursor != null && cursor.moveToFirst()) {
+                return cursor.getLong(0);
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+        return 0L;
+    }
+
+    private String recentOpenTimeKey(Uri uri) {
+        return RECENT_OPEN_TIME_PREFIX + uri.toString().hashCode();
+    }
+
+    private void touchRecentOpenTime(Uri uri) {
+        if (uri == null) {
+            return;
+        }
+        prefs.edit().putLong(recentOpenTimeKey(uri), System.currentTimeMillis()).apply();
     }
 
     public boolean isViewModeList() {
@@ -840,6 +926,11 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
     /** Build Intent to edit a Uri with optional auto-generate AI context. */
     public Intent getIntentToEdit(Uri uri, boolean autoOpenAi, String aiPrompt) {
+        return getIntentToEdit(uri, autoOpenAi, aiPrompt, false);
+    }
+
+    /** Build Intent to edit a Uri with optional auto-generate AI context and initial edit mode. */
+    public Intent getIntentToEdit(Uri uri, boolean autoOpenAi, String aiPrompt, boolean startInEditMode) {
         Intent i = new Intent(Intent.ACTION_EDIT, uri);
         i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
@@ -853,22 +944,27 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 i.putExtra(LOActivity.EXTRA_AUTO_OPEN_AI_PROMPT, aiPrompt);
             }
         }
+        i.putExtra(LOActivity.EXTRA_START_IN_EDIT_MODE, startInEditMode);
 
         return i;
     }
 
     /** Start editing of the given Uri. */
     public void open(final Uri uri) {
-        open(uri, false, "");
+        open(uri, false, "", false);
     }
 
     public void open(final Uri uri, boolean autoOpenAi, String aiPrompt) {
+        open(uri, autoOpenAi, aiPrompt, false);
+    }
+
+    public void open(final Uri uri, boolean autoOpenAi, String aiPrompt, boolean startInEditMode) {
         if (uri == null)
             return;
 
         addDocumentToRecents(uri);
 
-        Intent i = getIntentToEdit(uri, autoOpenAi, aiPrompt);
+        Intent i = getIntentToEdit(uri, autoOpenAi, aiPrompt, startInEditMode);
         startActivityForResult(i, LO_ACTIVITY_REQUEST_CODE);
     }
 
@@ -879,16 +975,17 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     }
 
     private void showCreateFileBottomSheet(final String defaultFileName, final String mimeType, final int requestCode) {
-        final BottomSheetDialog sheetDialog = new BottomSheetDialog(this);
-        final View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_create_file, null, false);
-        sheetDialog.setContentView(dialogView);
+        final Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(R.layout.dialog_create_file_shell);
 
-        TextView createTitle = dialogView.findViewById(R.id.createTitle);
-        EditText fileNameInput = dialogView.findViewById(R.id.fileName);
-        TextView overwriteWarning = dialogView.findViewById(R.id.overwriteWarning);
-        Button createButton = dialogView.findViewById(R.id.createButton);
-        ImageButton closeButton = dialogView.findViewById(R.id.closeButton);
-        SwitchCompat aiSwitch = dialogView.findViewById(R.id.aiSwitch);
+        View card = dialog.findViewById(R.id.createDialogCard);
+        TextView createTitle = dialog.findViewById(R.id.createTitle);
+        EditText fileNameInput = dialog.findViewById(R.id.fileName);
+        TextView overwriteWarning = dialog.findViewById(R.id.overwriteWarning);
+        TextView createButton = dialog.findViewById(R.id.createButton);
+        ImageButton closeButton = dialog.findViewById(R.id.closeButton);
+        SwitchCompat aiSwitch = dialog.findViewById(R.id.aiSwitch);
 
         final String extension = getExtensionForRequestCode(requestCode);
         final String baseName = trimFileExtension(defaultFileName);
@@ -896,12 +993,15 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
         createTitle.setText(style.titleResId);
         createButton.setText(style.buttonTextResId);
-        createButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor(style.buttonColorHex)));
+        applyCreateButtonColor(createButton, style.buttonColorHex);
         fileNameInput.setText(baseName);
         fileNameInput.setSelection(fileNameInput.getText().length());
         overwriteWarning.setVisibility(View.GONE);
 
-        closeButton.setOnClickListener(v -> sheetDialog.dismiss());
+        if (card != null) {
+            card.setOnClickListener(v -> { /* keep dialog open when tapping card */ });
+        }
+        closeButton.setOnClickListener(v -> dialog.dismiss());
         createButton.setOnClickListener(v -> {
             String name = fileNameInput.getText() == null ? "" : fileNameInput.getText().toString().trim();
             if (name.isEmpty()) {
@@ -918,11 +1018,47 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             }
 
             String finalFileName = ensureExtension(name, extension);
-            sheetDialog.dismiss();
+            dialog.dismiss();
             LOActivity.createNewFileInputDialog(this, finalFileName, mimeType, requestCode);
         });
 
-        sheetDialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setGravity(android.view.Gravity.CENTER);
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams params = window.getAttributes();
+            params.dimAmount = 0.3f;
+            window.setAttributes(params);
+            window.setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                            | WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+        }
+
+        dialog.setCanceledOnTouchOutside(true);
+
+        dialog.setOnShowListener(d -> {
+            View scroll = dialog.findViewById(R.id.createDialogScroll);
+            View inner = dialog.findViewById(R.id.createDialogInner);
+            if (scroll != null && inner != null) {
+                scroll.post(() -> inner.setMinimumHeight(scroll.getHeight()));
+            }
+            fileNameInput.requestFocus();
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) {
+                imm.showSoftInput(fileNameInput, InputMethodManager.SHOW_IMPLICIT);
+            }
+        });
+        dialog.show();
+    }
+
+    private void applyCreateButtonColor(TextView createButton, String buttonColorHex) {
+        if (createButton == null) {
+            return;
+        }
+        GradientDrawable background = (GradientDrawable) createButton.getBackground().mutate();
+        background.setColor(Color.parseColor(buttonColorHex));
     }
 
     private String getExtensionForRequestCode(int requestCode) {
@@ -965,20 +1101,20 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 return new CreateSheetStyle(
                         R.string.create_new_spreadsheet_title,
                         R.string.create_empty_spreadsheet,
-                        "#2E7D32"
+                        "#3B8040"
                 );
             case CREATE_PRESENTATION_REQUEST_CODE:
                 return new CreateSheetStyle(
                         R.string.create_new_presentation_title,
                         R.string.create_empty_presentation,
-                        "#E65100"
+                        "#EC5D1F"
                 );
             case CREATE_DOCUMENT_REQUEST_CODE:
             default:
                 return new CreateSheetStyle(
                         R.string.create_new_text_document_title,
                         R.string.create_empty_text_document,
-                        "#1976D2"
+                        "#1278D9"
                 );
         }
     }
@@ -1351,7 +1487,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 }
                 createNewFileAsync(uri, extension, () -> {
                     dismissAiGeneratingDialog();
-                    open(uri, autoOpenAi, autoAiPrompt);
+                    open(uri, autoOpenAi, autoAiPrompt, true);
                 });
                 pendingAutoOpenAiAfterCreate = false;
                 pendingAutoAiPrompt = "";
@@ -1360,6 +1496,11 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             case AI_PROFILE_SETTINGS_REQUEST_CODE:
             case AI_MODEL_SETTINGS_REQUEST_CODE: {
                 refreshAiDrawerHeader();
+                if (requestCode == AI_MODEL_SETTINGS_REQUEST_CODE
+                        && resultCode == AiSettingsStore.RESULT_BACK_TO_DRAWER
+                        && drawerLayout != null) {
+                    drawerLayout.post(() -> drawerLayout.openDrawer(GravityCompat.START));
+                }
                 break;
             }
         }
@@ -1420,6 +1561,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
         //put the new value in the first place
         recentsArrayList.add(0, newRecent);
+        touchRecentOpenTime(uri);
 
         final int RECENTS_SIZE = 30;
 

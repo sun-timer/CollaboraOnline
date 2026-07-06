@@ -223,8 +223,7 @@
                             android:layout_width="30dp"
                             android:layout_height="30dp"
                             android:contentDescription="@string/ai_params"
-                            android:src="@android:drawable/ic_menu_manage"
-                            android:tint="#FF6D00" />
+                            android:src="@drawable/ic_ai_params" />
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -262,9 +261,11 @@
                 android:layout_height="58dp"
                 android:layout_weight="1"
                 android:background="@drawable/bg_ai_btn_cancel"
+                android:elevation="2dp"
+                android:stateListAnimator="@null"
                 android:text="@string/action_cancel"
                 android:textAllCaps="false"
-                android:textColor="#202124"
+                android:textColor="#E6000000"
                 android:textSize="20sp" />
 
             <Button
@@ -274,6 +275,8 @@
                 android:layout_weight="1"
                 android:layout_marginStart="18dp"
                 android:background="@drawable/bg_local_install_btn"
+                android:elevation="4dp"
+                android:stateListAnimator="@null"
                 android:text="@string/action_save"
                 android:textAllCaps="false"
                 android:textColor="@android:color/white"

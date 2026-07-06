@@ -1,5 +1,6 @@
 package org.libreoffice.androidapp.ui;
 
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.View;
@@ -18,6 +19,7 @@ import java.util.Locale;
 
 public class AiModelConfigActivity extends AppCompatActivity {
     private int modelType = AiSettingsStore.MODEL_BASE;
+    private boolean fromDrawer = false;
     private SharedPreferences prefs;
 
     private EditText configNameInput;
@@ -49,6 +51,7 @@ public class AiModelConfigActivity extends AppCompatActivity {
         }
 
         modelType = getIntent().getIntExtra(AiSettingsStore.EXTRA_MODEL_TYPE, AiSettingsStore.MODEL_BASE);
+        fromDrawer = getIntent().getBooleanExtra(AiSettingsStore.EXTRA_FROM_DRAWER, false);
         prefs = AiSettingsStore.prefs(this);
 
         bindViews();
@@ -60,6 +63,15 @@ public class AiModelConfigActivity extends AppCompatActivity {
         if (scrim != null) {
             scrim.setOnClickListener(v -> finish());
         }
+    }
+
+    private void navigateBack() {
+        if (fromDrawer) {
+            Intent data = new Intent();
+            data.putExtra(AiSettingsStore.EXTRA_REOPEN_DRAWER, true);
+            setResult(AiSettingsStore.RESULT_BACK_TO_DRAWER, data);
+        }
+        finish();
     }
 
     private void bindViews() {
@@ -91,7 +103,12 @@ public class AiModelConfigActivity extends AppCompatActivity {
 
         title.setText(AiSettingsStore.modelTitleRes(modelType));
         icon.setImageResource(R.drawable.ic_model_base);
-        backButton.setOnClickListener(v -> finish());
+        backButton.setOnClickListener(v -> navigateBack());
+    }
+
+    @Override
+    public void onBackPressed() {
+        navigateBack();
     }
 
     private void loadValues() {
@@ -140,7 +157,7 @@ public class AiModelConfigActivity extends AppCompatActivity {
         View cancelButton = findViewById(R.id.modelConfigCancelButton);
         View saveButton = findViewById(R.id.modelConfigSaveButton);
 
-        cancelButton.setOnClickListener(v -> finish());
+        cancelButton.setOnClickListener(v -> navigateBack());
         saveButton.setOnClickListener(v -> saveAndClose());
     }
 

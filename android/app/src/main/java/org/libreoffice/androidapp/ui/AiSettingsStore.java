@@ -15,6 +15,9 @@ public final class AiSettingsStore {
     public static final int MODEL_VISION = 3;
 
     public static final String EXTRA_MODEL_TYPE = "extra_model_type";
+    public static final String EXTRA_FROM_DRAWER = "extra_from_drawer";
+    public static final String EXTRA_REOPEN_DRAWER = "extra_reopen_drawer";
+    public static final int RESULT_BACK_TO_DRAWER = 100;
 
     public static final String KEY_PROFILE_NAME = "AI_PROFILE_NAME";
     public static final String KEY_PROFILE_AVATAR_URI = "AI_PROFILE_AVATAR_URI";

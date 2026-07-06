@@ -54,7 +54,13 @@
     <string name="sort_newest">Newest first</string>
     <string name="file_icon_desc">File icon</string>
     <string name="file_actions_icon_desc">File actions</string>
-    <string name="title_recents">Recent files</string>
+    <string name="title_recents">Recently opened</string>
+    <string name="action_rename">Rename</string>
+    <string name="rename_failed">Unable to rename this file.</string>
+    <string name="action_share_home">Share</string>
+    <string name="new_doc_writer_label">New document (Word)</string>
+    <string name="new_doc_calc_label">New spreadsheet (Excel)</string>
+    <string name="new_doc_impress_label">New presentation (PPT)</string>
     <string name="title_browser">All files</string>
     <!-- Pref keys as resources ; Not currently used -->
     <string name="action_about">About</string>

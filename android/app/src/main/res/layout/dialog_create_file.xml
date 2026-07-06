@@ -1,45 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/createDialogCard"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@android:color/white"
+    android:background="@drawable/bg_create_file_dialog_card"
+    android:elevation="8dp"
     android:orientation="vertical"
-    android:paddingStart="16dp"
-    android:paddingTop="12dp"
-    android:paddingEnd="16dp"
-    android:paddingBottom="16dp">
+    android:paddingStart="20dp"
+    android:paddingTop="16dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="20dp">
 
-    <LinearLayout
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:layout_height="48dp">
 
         <TextView
             android:id="@+id/createTitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
             android:gravity="center"
-            android:text="@string/create_new_document_title"
+            android:text="@string/create_new_text_document_title"
             android:textColor="#202124"
-            android:textSize="28sp"
+            android:textSize="20sp"
             android:textStyle="bold" />
 
         <ImageButton
             android:id="@+id/closeButton"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="end|center_vertical"
             android:background="@android:color/transparent"
             android:contentDescription="@string/action_cancel"
-            android:src="@android:drawable/ic_menu_close_clear_cancel" />
-    </LinearLayout>
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_create_dialog_close" />
+    </FrameLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/bg_popup_menu_divider" />
 
     <TextView
         android:id="@+id/label"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
+        android:layout_marginTop="18dp"
         android:labelFor="@id/fileName"
         android:text="@string/new_file_title_label"
         android:textColor="#202124"
@@ -49,40 +58,42 @@
     <EditText
         android:id="@+id/fileName"
         android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginTop="8dp"
+        android:layout_height="52dp"
+        android:layout_marginTop="10dp"
         android:autofillHints=""
-        android:background="@android:drawable/edit_text"
+        android:background="@drawable/bg_create_file_input"
         android:hint="@string/new_file_name_hint"
+        android:imeOptions="actionDone"
         android:inputType="text"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
         android:singleLine="true"
         android:textColor="#202124"
+        android:textColorHint="#9AA0A6"
         android:textSize="16sp" />
 
     <LinearLayout
         android:id="@+id/aiToggleRow"
         android:layout_width="match_parent"
-        android:layout_height="48dp"
+        android:layout_height="52dp"
         android:layout_marginTop="14dp"
-        android:background="#F1F3F4"
+        android:background="@drawable/bg_create_file_ai_row"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="12dp"
-        android:paddingEnd="8dp">
+        android:paddingStart="14dp"
+        android:paddingEnd="10dp">
 
         <ImageView
             android:id="@+id/aiSparkleIcon"
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:layout_marginEnd="8dp"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
             android:contentDescription="@string/new_file_ai_toggle"
             android:src="@drawable/ic_ai_sparkle" />
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
             android:layout_weight="1"
             android:text="@string/new_file_ai_toggle"
             android:textColor="#202124"
@@ -91,19 +102,23 @@
         <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/aiSwitch"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            app:showText="false"
+            app:thumbTint="@color/create_file_switch_thumb"
+            app:trackTint="@color/create_file_switch_track" />
     </LinearLayout>
 
-    <Button
+    <TextView
         android:id="@+id/createButton"
         android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginTop="16dp"
-        android:backgroundTint="#1976D2"
-        android:text="@string/action_create"
-        android:textAllCaps="false"
+        android:layout_height="52dp"
+        android:layout_marginTop="18dp"
+        android:background="@drawable/bg_create_file_button"
+        android:gravity="center"
+        android:text="@string/create_empty_text_document"
         android:textColor="@android:color/white"
-        android:textSize="20sp" />
+        android:textSize="18sp"
+        android:textStyle="bold" />
 
     <TextView
         android:id="@+id/overwriteWarning"

@@ -15,7 +15,7 @@
     <string name="create_new_presentation_title">新建演示</string>
     <string name="new_file_title_label">标题</string>
     <string name="new_file_name_hint">请输入文件名</string>
-    <string name="new_file_ai_toggle">内容使用 AI 生成</string>
+    <string name="new_file_ai_toggle">内容使用AI生成</string>
     <string name="create_empty_text_document">创建空白文档</string>
     <string name="create_empty_spreadsheet">创建空白表格</string>
     <string name="create_empty_presentation">创建空白演示</string>
@@ -60,7 +60,7 @@
     <string name="filter_documents">文档</string>
     <string name="filter_everything">全部</string>
     <string name="share_via">共享方式</string>
-    <string name="remove_from_list">从列表中移除</string>
+    <string name="remove_from_list">从列表中删除</string>
     <string name="share">共享</string>
     <string name="open">打开</string>
     <string name="action_settings">设置</string>
@@ -102,7 +102,13 @@
     <string name="local_model_todo">本地模型安装功能暂未实现。</string>
     <string name="clear_cache_todo">清理缓存功能暂未实现。</string>
     <string name="title_browser">全部文件</string>
-    <string name="title_recents">最近的文件</string>
+    <string name="title_recents">最近打开</string>
+    <string name="action_rename">重命名</string>
+    <string name="rename_failed">无法重命名该文件。</string>
+    <string name="action_share_home">共享</string>
+    <string name="new_doc_writer_label">新建文稿 (Word)</string>
+    <string name="new_doc_calc_label">新建表格 (Excel)</string>
+    <string name="new_doc_impress_label">新建演示 (PPT)</string>
     <string name="file_actions_icon_desc">文件操作</string>
     <string name="file_icon_desc">文件图标</string>
     <string name="sort_newest">从新到旧</string>

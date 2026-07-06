@@ -23,16 +23,13 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
-import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 class RecentFilesAdapter extends RecyclerView.Adapter<RecentFilesAdapter.ViewHolder> {
 
-    private final long KB = 1024;
-    private final long MB = 1048576;
-
-    private LibreOfficeUIActivity mActivity;
+    private final LibreOfficeUIActivity mActivity;
     private ArrayList<RecentFile> recentFiles;
 
     RecentFilesAdapter(LibreOfficeUIActivity activity, List<Uri> recentUris) {
@@ -42,7 +39,8 @@ class RecentFilesAdapter extends RecyclerView.Adapter<RecentFilesAdapter.ViewHol
 
     @Override
     public ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
-        View item = LayoutInflater.from(parent.getContext()).inflate(mActivity.isViewModeList() ? R.layout.file_list_item : R.layout.file_explorer_grid_item, parent, false);
+        View item = LayoutInflater.from(parent.getContext())
+                .inflate(R.layout.item_home_recent_file, parent, false);
         return new ViewHolder(item);
     }
 
@@ -51,15 +49,16 @@ class RecentFilesAdapter extends RecyclerView.Adapter<RecentFilesAdapter.ViewHol
         this.recentFiles = new ArrayList<>();
         boolean invalidUriFound = false;
         String joined = "";
-        for (Uri u: recentUris) {
+        for (Uri u : recentUris) {
             String filename = getUriFilename(mActivity, u);
-            if (null != filename) {
+            if (filename != null) {
                 long length = getUriFileLength(mActivity, u);
-                recentFiles.add(new RecentFile(u, filename, length));
-                joined = joined.concat(u.toString()+"\n");
-            }
-            else
+                long openedAt = mActivity.getRecentOpenTime(u);
+                recentFiles.add(new RecentFile(u, filename, length, openedAt));
+                joined = joined.concat(u.toString() + "\n");
+            } else {
                 invalidUriFound = true;
+            }
         }
         if (invalidUriFound) {
             mActivity.getPrefs().edit().putString(mActivity.RECENT_DOCUMENTS_KEY, joined).apply();
@@ -72,17 +71,20 @@ class RecentFilesAdapter extends RecyclerView.Adapter<RecentFilesAdapter.ViewHol
         Cursor cursor = null;
         try {
             cursor = activity.getContentResolver().query(uri, null, null, null, null);
-            if (cursor != null && cursor.moveToFirst())
+            if (cursor != null && cursor.moveToFirst()) {
                 filename = cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME));
+            }
         } catch (Exception e) {
             return null;
         } finally {
-            if (cursor != null)
+            if (cursor != null) {
                 cursor.close();
+            }
         }
 
-        if (filename.isEmpty())
+        if (filename.isEmpty()) {
             return null;
+        }
 
         return filename;
     }
@@ -93,17 +95,15 @@ class RecentFilesAdapter extends RecyclerView.Adapter<RecentFilesAdapter.ViewHol
         Cursor cursor = null;
         try {
             cursor = activity.getContentResolver().query(uri, null, null, null, null);
-            if (cursor != null && cursor.moveToFirst())
+            if (cursor != null && cursor.moveToFirst()) {
                 length = cursor.getLong(cursor.getColumnIndexOrThrow(OpenableColumns.SIZE));
+            }
         } catch (Exception e) {
             return 0;
         } finally {
-            if (cursor != null)
+            if (cursor != null) {
                 cursor.close();
-        }
-
-        if (length == 0) {
-            // TODO maybe try to get File & return File.length()?
+            }
         }
 
         return length;
@@ -113,79 +113,42 @@ class RecentFilesAdapter extends RecyclerView.Adapter<RecentFilesAdapter.ViewHol
     public void onBindViewHolder(ViewHolder holder, int position) {
         final RecentFile file = recentFiles.get(position);
 
-        View.OnClickListener clickListener = new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                mActivity.open(file.uri);
-
-            }
-        };
+        View.OnClickListener clickListener = view -> mActivity.open(file.uri);
 
         holder.filenameView.setOnClickListener(clickListener);
-        holder.imageView.setOnClickListener(clickListener);
+        holder.itemView.setOnClickListener(clickListener);
 
-        holder.fileActionsImageView.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                mActivity.openContextMenu(view, file.uri);
-            }
-        });
+        holder.fileActionsImageView.setOnClickListener(view ->
+                mActivity.showRecentFileActionsPopup(view, file.uri));
 
-        String filename = file.filename;
-        long length = file.fileLength;
+        holder.filenameView.setText(file.filename);
+        bindFileTypeIcon(holder.imageView, file.filename);
+        holder.fileDateView.setText(formatOpenedAt(file.openedAt));
+    }
 
-        // TODO Date not available now
-        //Date date = null;
-
-        holder.filenameView.setText(filename);
-
-        int compoundDrawableInt = 0;
-
+    private void bindFileTypeIcon(ImageView iconView, String filename) {
+        int iconRes = R.drawable.ic_file_type_writer;
         switch (FileUtilities.getType(filename)) {
-            case FileUtilities.DOC:
-                compoundDrawableInt = R.drawable.writer;
-                break;
             case FileUtilities.CALC:
-                compoundDrawableInt = R.drawable.calc;
-                break;
-            case FileUtilities.DRAWING:
-                compoundDrawableInt = R.drawable.draw;
+                iconRes = R.drawable.ic_file_type_calc;
                 break;
             case FileUtilities.IMPRESS:
-                compoundDrawableInt = R.drawable.impress;
+                iconRes = R.drawable.ic_file_type_impress;
                 break;
-            case FileUtilities.PDF:
-                compoundDrawableInt = R.drawable.pdf;
+            case FileUtilities.DOC:
+            default:
+                iconRes = R.drawable.ic_file_type_writer;
                 break;
         }
+        iconView.setImageResource(iconRes);
+    }
 
-        if (compoundDrawableInt != 0)
-            holder.imageView.setImageDrawable(ContextCompat.getDrawable(mActivity, compoundDrawableInt));
-
-        // Date and Size field only exist when we are displaying items in a list.
-        if (mActivity.isViewModeList()) {
-            String size;
-            String unit = "B";
-            if (length < KB) {
-                size = Long.toString(length);
-            } else if (length < MB) {
-                size = Long.toString(length / KB);
-                unit = "KB";
-            } else {
-                size = Long.toString(length / MB);
-                unit = "MB";
-            }
-            holder.fileSizeView.setText(size);
-            holder.fileSizeUnitView.setText(unit);
-
-            /* TODO Date not available now
-            if (date != null) {
-                SimpleDateFormat df = new SimpleDateFormat("dd MMM yyyy hh:ss");
-                //TODO format date
-                holder.fileDateView.setText(df.format(date));
-            }
-            */
+    private String formatOpenedAt(long openedAt) {
+        if (openedAt <= 0L) {
+            return "";
         }
+        SimpleDateFormat df = new SimpleDateFormat("yyyy/M/d", Locale.getDefault());
+        return df.format(new Date(openedAt));
     }
 
     @Override
@@ -193,34 +156,34 @@ class RecentFilesAdapter extends RecyclerView.Adapter<RecentFilesAdapter.ViewHol
         return recentFiles.size();
     }
 
-    class ViewHolder extends RecyclerView.ViewHolder {
+    static class ViewHolder extends RecyclerView.ViewHolder {
 
-        TextView filenameView, fileSizeView, fileSizeUnitView/*, fileDateView*/;
-        ImageView imageView, fileActionsImageView;
+        TextView filenameView;
+        TextView fileDateView;
+        ImageView imageView;
+        ImageView fileActionsImageView;
 
         ViewHolder(View itemView) {
             super(itemView);
-            this.filenameView = itemView.findViewById(R.id.file_item_name);
-            this.imageView = itemView.findViewById(R.id.file_item_icon);
-            this.fileActionsImageView = itemView.findViewById(R.id.file_actions_button);
-            // Check if view mode is List, only then initialise Size and Date field
-            if (mActivity.isViewModeList()) {
-                fileSizeView = itemView.findViewById(R.id.file_item_size);
-                fileSizeUnitView = itemView.findViewById(R.id.file_item_size_unit);
-                //fileDateView = itemView.findViewById(R.id.file_item_date);
-            }
+            filenameView = itemView.findViewById(R.id.file_item_name);
+            fileDateView = itemView.findViewById(R.id.file_item_date);
+            imageView = itemView.findViewById(R.id.file_item_icon);
+            fileActionsImageView = itemView.findViewById(R.id.file_actions_button);
         }
     }
-    /** Cache the name & size so that we don't have ask later. */
-    private class RecentFile {
-        public Uri uri;
-        public String filename;
-        public long fileLength;
 
-        public RecentFile(Uri uri, String filename, long fileLength) {
+    /** Cache the name & size so that we don't have ask later. */
+    private static class RecentFile {
+        Uri uri;
+        String filename;
+        long fileLength;
+        long openedAt;
+
+        RecentFile(Uri uri, String filename, long fileLength, long openedAt) {
             this.uri = uri;
             this.filename = filename;
             this.fileLength = fileLength;
+            this.openedAt = openedAt;
         }
     }
 }
