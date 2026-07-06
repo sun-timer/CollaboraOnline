@@ -85,6 +85,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
 import java.io.OutputStreamWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
@@ -102,8 +103,19 @@ import java.util.Map;
 
 import androidx.core.content.FileProvider;
 
+import org.libreoffice.androidlib.typeset.DocxImageInserter;
 import org.libreoffice.androidlib.typeset.DocxTemplateFiller;
 import org.libreoffice.androidlib.typeset.TemplateSectionMap;
+import org.libreoffice.androidlib.typeset.TypesetImageEntry;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+
 import java.util.List;
 import java.util.Iterator;
 import java.util.Locale;
@@ -169,6 +181,7 @@ public class LOActivity extends AppCompatActivity {
     public static final String EXTRA_AUTO_OPEN_AI_PANEL = "org.libreoffice.androidlib.extra.AUTO_OPEN_AI_PANEL";
     public static final String EXTRA_AUTO_OPEN_AI_PROMPT = "org.libreoffice.androidlib.extra.AUTO_OPEN_AI_PROMPT";
     public static final String EXTRA_AUTO_GENERATE_AI_CONTENT = "org.libreoffice.androidlib.extra.AUTO_GENERATE_AI_CONTENT";
+    public static final String EXTRA_START_IN_EDIT_MODE = "org.libreoffice.androidlib.extra.START_IN_EDIT_MODE";
     private static final String CLIPBOARD_FILE_PATH = "LibreofficeClipboardFile.data";
     private static final String CLIPBOARD_COOL_SIGNATURE = "cool-clip-magic-4a22437e49a8-";
     private static final String AI_PREF_ENDPOINT = "AI_OPENAI_ENDPOINT";
@@ -194,6 +207,9 @@ public class LOActivity extends AppCompatActivity {
     public static final String NIGHT_MODE_KEY = "NIGHT_MODE";
 
     private File mTempFile = null;
+    private File mOriginalTypesetDocx = null;  // 原始 docx 备份（LOKit 转换后 mTempFile 不再是 docx 格式，排版用此文件提取图片）
+    private List<String> pendingTypesetParagraphs = null;  // 源文档逐段原文（含 [图N]）
+    private List<List<String>> pendingParaImageMarkers = null; // 每段对应的图片标记名列表
 
     private int providerId;
     private Activity mActivity;
@@ -307,6 +323,8 @@ public class LOActivity extends AppCompatActivity {
     private WebView typesetPreviewWebView;
     private File pendingTypesetDocx;    // 填充后的 docx 临时文件
     private Map<String, String> pendingTypesetSections;  // AI 返回的 sections
+    private Map<String, TypesetImageEntry> pendingTypesetImages;  // 源文档图片（排版后插入）
+    private boolean pendingTypesetParagraphMode = false;  // true=段落分类模式（LLM 只做分类不改写原文）
     // 生成大纲相关
     private AlertDialog outlineDialog;
     private View outlineDialogRoot;
@@ -448,6 +466,7 @@ public class LOActivity extends AppCompatActivity {
             java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     private float aiFabDragOffsetY = 0f;
     private boolean pendingAutoOpenAiPanel = false;
+    private boolean startInEditMode = false;
     private boolean pendingAutoGenerateAiContent = false;
     private String pendingAutoOpenAiPrompt = "";
     private String autoGenerateAcceptRequestId = "";
@@ -477,6 +496,9 @@ public class LOActivity extends AppCompatActivity {
     private static final int MODEL_TYPE_IMAGE = 2;
     private static final int MODEL_TYPE_VISION = 3;
     private static final String MODEL_CONFIG_EXTRA_KEY = "extra_model_type";
+    private static final String MODEL_CONFIG_FROM_DRAWER_KEY = "extra_from_drawer";
+    private static final int RESULT_BACK_TO_DRAWER = 100;
+    private static final int REQUEST_AI_MODEL_CONFIG = 750;
     private static final String KEY_PROFILE_NAME = "AI_PROFILE_NAME";
     private static final String KEY_PROFILE_AVATAR_URI = "AI_PROFILE_AVATAR_URI";
     private static final String KEY_MODEL_NAME_FIELD = "model_name";
@@ -604,6 +626,11 @@ public class LOActivity extends AppCompatActivity {
                     docDrawerLayout.closeDrawer(GravityCompat.START);
                     return;
                 }
+                DocumentTabsSheetController tabsController = documentTabsSheetController;
+                if (tabsController != null && tabsController.isVisible()) {
+                    tabsController.dismiss();
+                    return;
+                }
                 if (!documentLoaded) {
                     finishAndRemoveTask();
                     return;
@@ -726,6 +753,20 @@ public class LOActivity extends AppCompatActivity {
         // controls
         if (!canDocumentBeExported())
             isDocEditable = false;
+
+        // Save original file backup for typeset image extraction.
+        // LOKit converts the file to ODF format internally — unconditionally backup
+        // so extractFullTextWithImagesNative can read the original format.
+        if (mTempFile != null && mTempFile.exists()) {
+            try {
+                mOriginalTypesetDocx = File.createTempFile("LO_orig_docx_", ".docx", getCacheDir());
+                copyFileStream(mTempFile, mOriginalTypesetDocx);
+                Log.i(TAG, "original_docx_saved path=" + mOriginalTypesetDocx + " size=" + mTempFile.length());
+            } catch (Exception e) {
+                Log.w(TAG, "original_docx_save_failed", e);
+                mOriginalTypesetDocx = null;
+            }
+        }
         if (mTempFile != null) {
             mWebView = (COWebView) findViewById(R.id.browser);
 
@@ -772,6 +813,7 @@ public class LOActivity extends AppCompatActivity {
             setupAiFab();
             setupTopToolbar();
             setupBottomToolbar();
+            ensureDocumentTabsSheetController().bindOverlayViews();
             setupSelectionMenu();
             setupContinueWriteDialog();
             setupTypesetPreviewOverlay();
@@ -903,10 +945,12 @@ public class LOActivity extends AppCompatActivity {
             pendingAutoOpenAiPanel = false;
             pendingAutoGenerateAiContent = false;
             pendingAutoOpenAiPrompt = "";
+            startInEditMode = false;
             return;
         }
         pendingAutoGenerateAiContent = intent.getBooleanExtra(EXTRA_AUTO_GENERATE_AI_CONTENT, false);
         pendingAutoOpenAiPanel = intent.getBooleanExtra(EXTRA_AUTO_OPEN_AI_PANEL, false);
+        startInEditMode = intent.getBooleanExtra(EXTRA_START_IN_EDIT_MODE, false);
         if (pendingAutoGenerateAiContent) {
             pendingAutoOpenAiPanel = false;
         }
@@ -992,8 +1036,9 @@ public class LOActivity extends AppCompatActivity {
         Intent intent = new Intent();
         intent.setClassName(getPackageName(), "org.libreoffice.androidapp.ui.AiModelConfigActivity");
         intent.putExtra(MODEL_CONFIG_EXTRA_KEY, modelType);
+        intent.putExtra(MODEL_CONFIG_FROM_DRAWER_KEY, true);
         try {
-            startActivity(intent);
+            startActivityForResult(intent, REQUEST_AI_MODEL_CONFIG);
         } catch (Exception e) {
             Log.w(TAG, "Failed to open model settings activity", e);
         }
@@ -1353,6 +1398,13 @@ public class LOActivity extends AppCompatActivity {
         Log.i(TAG, "onActivityResult requestCode=" + requestCode + " resultCode=" + resultCode
                 + " aiSheetShowing=" + (aiOperationSheet != null && aiOperationSheet.isShowing()));
         super.onActivityResult(requestCode, resultCode, intent);
+        if (requestCode == REQUEST_AI_MODEL_CONFIG) {
+            refreshDocumentSettingsDrawer();
+            if (resultCode == RESULT_BACK_TO_DRAWER && docDrawerLayout != null) {
+                docDrawerLayout.post(() -> docDrawerLayout.openDrawer(GravityCompat.START));
+            }
+            return;
+        }
         if (requestCode == REQUEST_SELECT_IMAGE_FILE) {
             imagePickerInFlight = false;
         }
@@ -1532,6 +1584,18 @@ public class LOActivity extends AppCompatActivity {
         return null;
     }
 
+    /** Copy a file using stream I/O (safe for all API levels). */
+    private static void copyFileStream(File src, File dst) throws java.io.IOException {
+        try (java.io.InputStream in = new java.io.FileInputStream(src);
+             java.io.OutputStream out = new java.io.FileOutputStream(dst)) {
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = in.read(buf)) > 0) {
+                out.write(buf, 0, len);
+            }
+        }
+    }
+
     /** Show the Saving progress and finish the app. */
     private void finishWithProgress() {
         if (!documentLoaded) {
@@ -1608,11 +1672,19 @@ public class LOActivity extends AppCompatActivity {
             finalUrlToLoad += "&darkTheme=true";
         }
 
+        if (startInEditMode) {
+            finalUrlToLoad += "&android_start_edit=1";
+        }
+
         // load the page
         mWebView.loadUrl(finalUrlToLoad);
 
         documentLoaded = true;
+        if (startInEditMode) {
+            updateEditModeState(true, "intent_start_edit");
+        }
         ensureTopToolbarController().refreshDocumentTitle();
+        ensureTopToolbarController().refreshOpenDocumentCount();
         ensureTopToolbarController().resetUndoRedoState("document_loaded");
         Uri currentData = getIntent().getData();
         if (currentData != null) {
@@ -1950,6 +2022,7 @@ public class LOActivity extends AppCompatActivity {
                                         ? Float.parseFloat(parts[3])
                                         : anchorY;
                                 getMainHandler().post(() -> {
+                                    ensureSelectionMenuController().setGraphicMode(false);
                                     ensureSelectionMenuController().showAtWindow(
                                             anchorX, anchorY, anchorBottomY);
                                     getMainHandler().postDelayed(() ->
@@ -1962,10 +2035,35 @@ public class LOActivity extends AppCompatActivity {
                     } else if ("show".equals(messageAndParam[1])) {
                         // show without coordinates - fixed center position
                         getMainHandler().post(() -> {
+                            ensureSelectionMenuController().setGraphicMode(false);
                             ensureSelectionMenuController().showAtWindow(0, 0);
                             getMainHandler().postDelayed(() ->
                                     recoverVisibleTilesAfterPreviewSelection("selection_menu_show"), 180);
                         });
+                    }
+                    return false;
+                }
+                return false;
+            }
+            case "GRAPHICSELECTION": {
+                if (messageAndParam.length > 1 && "hide".equals(messageAndParam[1])) {
+                    getMainHandler().post(() -> ensureSelectionMenuController().hide());
+                    return false;
+                }
+                if (messageAndParam.length > 1 && messageAndParam[1] != null && messageAndParam[1].startsWith("show ")) {
+                    try {
+                        String[] parts = messageAndParam[1].split(" ");
+                        if (parts.length >= 3) {
+                            final float anchorX = Float.parseFloat(parts[1]);
+                            final float anchorY = Float.parseFloat(parts[2]);
+                            getMainHandler().post(() -> {
+                                SelectionMenuController smc = ensureSelectionMenuController();
+                                smc.setGraphicMode(true);
+                                smc.showAtWindow(anchorX, anchorY);
+                            });
+                        }
+                    } catch (NumberFormatException e) {
+                        Log.w(TAG, "graphic_selection_bad_anchor", e);
                     }
                     return false;
                 }
@@ -2299,10 +2397,20 @@ public class LOActivity extends AppCompatActivity {
                         + " selectionChars=" + selection.length());
             } else if (AiChatCoordinator.MODE_TYPESET.equals(taskType)) {
                 String typesetType = request.optString("typesetType", "general");
-                String fullText = request.optString("selection", "");
-                messages = AiChatCoordinator.buildTypesetMessagesV2(typesetType, fullText);
-                Log.i(TAG, "ai_typeset_mode requestId=" + requestId + " typesetType=" + typesetType
-                        + " docChars=" + fullText.length());
+                // 段落分类模式：LLM 只做段落分类，不改写原文
+                if (pendingTypesetParagraphMode
+                        && pendingTypesetParagraphs != null && !pendingTypesetParagraphs.isEmpty()) {
+                    messages = AiChatCoordinator.buildTypesetParagraphMessages(
+                            typesetType, pendingTypesetParagraphs, pendingParaImageMarkers);
+                    Log.i(TAG, "ai_typeset_paragraph_mode requestId=" + requestId
+                            + " typesetType=" + typesetType
+                            + " paragraphs=" + pendingTypesetParagraphs.size());
+                } else {
+                    String fullText = request.optString("selection", "");
+                    messages = AiChatCoordinator.buildTypesetMessagesV2(typesetType, fullText);
+                    Log.i(TAG, "ai_typeset_mode requestId=" + requestId + " typesetType=" + typesetType
+                            + " docChars=" + fullText.length());
+                }
             } else if (AiChatCoordinator.MODE_OUTLINE.equals(taskType)) {
                 String outlineType = request.optString("outlineType", AiChatCoordinator.OUTLINE_TYPE_GENERAL);
                 JSONObject ctxObj = request.optJSONObject("context");
@@ -2405,13 +2513,22 @@ public class LOActivity extends AppCompatActivity {
                             } else if (AiChatCoordinator.isOperateMode(taskType)) {
                                 onAiOperationDone(callbackRequestId, fullText);
                             } else if (AiChatCoordinator.MODE_TYPESET.equals(taskType)) {
-                                // V2: try JSON parse → template fill → overlay; fallback to old HTML
                                 Log.i(TAG, "ai_typeset_done requestId=" + callbackRequestId + " chars=" + fullText.length());
-                                Map<String, String> sections = AiChatCoordinator.parseTypesetSections(fullText);
-                                if (sections != null && !sections.isEmpty()) {
-                                    Log.i(TAG, "ai_typeset_v2_parsed sections=" + sections.size());
-                                    pendingTypesetSections = sections;
-                                    runOnUiThread(() -> handleTypesetV2Result(sections));
+                                Map<String, String> sections = null;
+                                // 段落分类模式：LLM 只分类不改写 → build sections from original paragraphs
+                                if (pendingTypesetParagraphMode) {
+                                    Log.i(TAG, "ai_typeset_para_mode_done requestId=" + callbackRequestId);
+                                    sections = buildTypesetSectionsFromParagraphs(fullText);
+                                }
+                                // 标准 V2 JSON 解析
+                                if (sections == null || sections.isEmpty()) {
+                                    sections = AiChatCoordinator.parseTypesetSections(fullText);
+                                }
+                                final Map<String, String> finalSections = sections;
+                                if (finalSections != null && !finalSections.isEmpty()) {
+                                    Log.i(TAG, "ai_typeset_v2_parsed sections=" + finalSections.size());
+                                    pendingTypesetSections = finalSections;
+                                    runOnUiThread(() -> handleTypesetV2Result(finalSections));
                                 } else {
                                     Log.i(TAG, "ai_typeset_fallback_to_v1 — JSON parse failed, using HTML flow");
                                     runOnUiThread(() -> showTypesetPreviewSheet(fullText));
@@ -3291,6 +3408,11 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public void switchToEditMode() {
+                    LOActivity.this.switchToEditMode();
+                }
+
+                @Override
                 public void requestCloseDocument() {
                     LOActivity.this.requestCloseDocument();
                 }
@@ -3318,6 +3440,11 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public String getDocumentTitle() {
                     return LOActivity.this.getDocumentDisplayTitle();
+                }
+
+                @Override
+                public int getOpenDocumentCount() {
+                    return LOActivity.this.getOpenDocumentCount();
                 }
             });
         }
@@ -3365,6 +3492,11 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public View findViewById(int id) {
+                    return LOActivity.this.findViewById(id);
+                }
+
+                @Override
                 public SharedPreferences getExplorerPrefs() {
                     return getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
                 }
@@ -3386,7 +3518,13 @@ public class LOActivity extends AppCompatActivity {
                 public void openDocumentUri(Uri uri) {
                     LOActivity.this.openDocumentUri(uri);
                 }
+
+                @Override
+                public void onOpenDocumentListChanged() {
+                    ensureTopToolbarController().refreshOpenDocumentCount();
+                }
             });
+            documentTabsSheetController.bindOverlayViews();
         }
         return documentTabsSheetController;
     }
@@ -3396,16 +3534,56 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void shareCurrentDocument() {
-        Uri sourceUri = getIntent().getData();
+        final Uri sourceUri = getIntent().getData();
         if (sourceUri == null) {
             Toast.makeText(this, "无法分享当前文档", Toast.LENGTH_SHORT).show();
             return;
         }
-        DocumentShareHelper.shareDocument(this, sourceUri, mTempFile);
+        // Export to docx on background thread so we share a standard format
+        new Thread(() -> {
+            try {
+                String baseName = getFileName(false);
+                if (baseName == null || baseName.trim().isEmpty()) baseName = "document";
+                else baseName = baseName.replaceAll("[\\\\/:*?\"<>|]+", "_");
+                File shareFile = new File(getCacheDir(), baseName + ".docx");
+                // Avoid overwriting if a previous export exists at the same path
+                if (shareFile.exists()) shareFile.delete();
+                saveAs(Uri.fromFile(shareFile).toString(), "docx", null);
+                if (shareFile.exists() && shareFile.length() > 0) {
+                    Uri shareUri = FileProvider.getUriForFile(LOActivity.this,
+                            getPackageName() + ".fileprovider", shareFile);
+                    runOnUiThread(() -> shareFileViaIntent(shareUri));
+                    return;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "share_export_docx_failed", e);
+            }
+            // Fallback: share original temp file via existing helper
+            runOnUiThread(() -> DocumentShareHelper.shareDocument(this, sourceUri, mTempFile));
+        }, "cool-share-export").start();
+    }
+
+    private void shareFileViaIntent(Uri shareUri) {
+        String mimeType = getContentResolver().getType(shareUri);
+        if (mimeType == null) {
+            mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        }
+        Intent shareIntent = new Intent(Intent.ACTION_SEND);
+        shareIntent.setType(mimeType);
+        shareIntent.putExtra(Intent.EXTRA_STREAM, shareUri);
+        shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(Intent.createChooser(shareIntent, "分享文档"));
     }
 
     private void showDocumentTabsSheet() {
+        ensureTopToolbarController().refreshOpenDocumentCount();
         ensureDocumentTabsSheetController().show();
+    }
+
+    int getOpenDocumentCount() {
+        int count = RecentDocumentsStore.getRecentUris(
+                getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE)).size();
+        return Math.max(1, count);
     }
 
     private void runFindBridge(String js) {
@@ -3487,6 +3665,11 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void switchToViewingMode() {
                     LOActivity.this.switchToViewingMode();
+                }
+
+                @Override
+                public void switchToEditMode() {
+                    LOActivity.this.switchToEditMode();
                 }
 
                 @Override
@@ -4301,6 +4484,24 @@ public class LOActivity extends AppCompatActivity {
         getMainHandler().postDelayed(mobilePreviewAckTimeoutRunnable, MOBILE_PREVIEW_ACK_TIMEOUT_MS);
     }
 
+    private void switchToEditMode() {
+        if (!isDocEditable) {
+            Toast.makeText(this, "当前文档为只读，无法编辑", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (mIsEditModeActive) {
+            return;
+        }
+        cancelPreviewModeSwitchAck("manual_edit_switch");
+        if (mWebView != null) {
+            mWebView.evaluateJavascript(
+                    "(function(){try{if(window.app&&app.map&&typeof app.map._switchToEditMode==='function')"
+                            + "{app.map._switchToEditMode();}}catch(e){}"
+                            + "return true;})();",
+                    null);
+        }
+    }
+
     private void completePreviewModeSwitchAck(String reason) {
         if (!awaitingPreviewModeJsAck) {
             return;
@@ -5022,6 +5223,470 @@ public class LOActivity extends AppCompatActivity {
     }
 
     /**
+     * 从源文档的 mTempFile（docx）提取全文文本 + 图片标记 + 图片数据。
+     * 图片在文本中标记为 [图1]、[图2]…，以在排版后保持原图位置。
+     * 需要后台线程调用（涉及解压/解析，非 UI 线程）。
+     *
+     * @return 带 [图N] 标记的全文（失败/null 回退到 extractFullTextNative）
+     */
+    @Nullable
+    private String extractFullTextWithImagesNative() {
+        if (mTempFile == null || !mTempFile.exists()) {
+            Log.i(TAG, "extract_image_text_skipped no mTempFile");
+            return null;
+        }
+        try {
+            // Use original docx backup if available (LOKit may have converted mTempFile to ODF)
+            File docxFile = (mOriginalTypesetDocx != null && mOriginalTypesetDocx.exists())
+                    ? mOriginalTypesetDocx : mTempFile;
+            // 1. Open and parse the docx
+            java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(
+                    new java.io.FileInputStream(docxFile));
+            Map<String, byte[]> rawEntries = new HashMap<>();
+            Map<String, Document> xmlEntries = new HashMap<>();
+
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            DocumentBuilder builder = factory.newDocumentBuilder();
+
+            byte[] buffer = new byte[8192];
+            java.util.zip.ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.isDirectory()) continue;
+                String name = entry.getName();
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                int len;
+                while ((len = zis.read(buffer)) > 0) baos.write(buffer, 0, len);
+                byte[] data = baos.toByteArray();
+                if (name.endsWith(".xml") || name.endsWith(".rels")) {
+                    try {
+                        xmlEntries.put(name, builder.parse(new ByteArrayInputStream(data)));
+                    } catch (Exception e) {
+                        rawEntries.put(name, data);
+                    }
+                } else {
+                    rawEntries.put(name, data);
+                }
+            }
+            zis.close();
+
+            Document docXml = xmlEntries.get("word/document.xml");
+            Document relsDoc = xmlEntries.get("word/_rels/document.xml.rels");
+            if (docXml == null || relsDoc == null) {
+                Log.i(TAG, "extract_image_text_try_odf");
+                return extractFromOdf(rawEntries, xmlEntries);
+            }
+
+            // 2. Build rId → media path mapping from rels
+            Map<String, String> relMap = new HashMap<>();
+            NodeList relChildren = relsDoc.getDocumentElement().getChildNodes();
+            for (int i = 0; i < relChildren.getLength(); i++) {
+                Node n = relChildren.item(i);
+                if (n.getNodeType() == Node.ELEMENT_NODE) {
+                    Element e = (Element) n;
+                    String id = e.getAttribute("Id");
+                    String type = e.getAttribute("Type");
+                    String target = e.getAttribute("Target");
+                    if (id != null && target != null
+                            && type != null && type.contains("image")) {
+                        relMap.put(id, target);
+                    }
+                }
+            }
+
+            if (relMap.isEmpty()) {
+                Log.i(TAG, "extract_image_text_no_images_in_docx");
+                return null; // No images → return null to use old path
+            }
+
+            // 3. Walk paragraphs, build marked text + image map
+            Element body = docXml.getDocumentElement();
+            NodeList bodies = docXml.getElementsByTagNameNS(
+                    "http://schemas.openxmlformats.org/wordprocessingml/2006/main", "body");
+            if (bodies.getLength() == 0) {
+                Log.w(TAG, "extract_image_text_no_body");
+                return null;
+            }
+            Element bodyEl = (Element) bodies.item(0);
+
+            StringBuilder markedText = new StringBuilder();
+            Map<String, TypesetImageEntry> imageMap = new LinkedHashMap<>();
+            int imgCounter = 0;
+            // Save per-paragraph data for paragraph-level classification
+            java.util.List<String> paraTexts = new java.util.ArrayList<>();
+            java.util.List<java.util.List<String>> paraMarkersList = new java.util.ArrayList<>();
+
+            NodeList pList = bodyEl.getChildNodes();
+            for (int i = 0; i < pList.getLength(); i++) {
+                Node node = pList.item(i);
+                if (node.getNodeType() != Node.ELEMENT_NODE) continue;
+                Element pElem = (Element) node;
+                String localName = pElem.getLocalName();
+                if (localName == null || !localName.equals("p")) continue;
+
+                // Collect text runs, check for drawings
+                StringBuilder paraText = new StringBuilder();
+                java.util.List<String> paraImages = new java.util.ArrayList<>();
+                java.util.List<long[]> paraSizes = new java.util.ArrayList<>();
+
+                NodeList runs = pElem.getChildNodes();
+                for (int j = 0; j < runs.getLength(); j++) {
+                    Node rNode = runs.item(j);
+                    if (rNode.getNodeType() != Node.ELEMENT_NODE) continue;
+                    Element rElem = (Element) rNode;
+                    String rLocal = rElem.getLocalName();
+                    if (rLocal == null) continue;
+
+                    if ("r".equals(rLocal)) {
+                        // Collect text from <w:t>
+                        NodeList tList = rElem.getElementsByTagNameNS(
+                                "http://schemas.openxmlformats.org/wordprocessingml/2006/main", "t");
+                        for (int t = 0; t < tList.getLength(); t++) {
+                            Node tNode = tList.item(t);
+                            if (tNode.getTextContent() != null) {
+                                paraText.append(tNode.getTextContent());
+                            }
+                        }
+                    } else if ("drawing".equals(rLocal)) {
+                        // Check for image drawing
+                        String imgRId = findImageRId(rElem);
+                        if (imgRId != null && relMap.containsKey(imgRId)) {
+                            imgCounter++;
+                            String marker = "图" + imgCounter;
+                            long[] size = findImageSize(rElem);
+
+                            // Get image data from raw entries
+                            String mediaPath = relMap.get(imgRId);
+                            byte[] imgData = rawEntries.get(mediaPath);
+                            if (imgData == null) {
+                                // Try with "word/" prefix if target is relative
+                                String fullPath = mediaPath.startsWith("word/") ? mediaPath : "word/" + mediaPath;
+                                imgData = rawEntries.get(fullPath);
+                                // Also try without "word/" prefix
+                                if (imgData == null && mediaPath.startsWith("word/media/")) {
+                                    imgData = rawEntries.get(mediaPath);
+                                }
+                            }
+
+                            if (imgData != null) {
+                                String ext = getExtension(mediaPath);
+                                String mime = getMimeFromExtension(ext);
+                                imageMap.put(marker, new TypesetImageEntry(
+                                        marker, imgData, mime, ext, size[0], size[1]));
+                                paraImages.add(marker);
+                                paraSizes.add(size);
+                            } else {
+                                Log.w(TAG, "extract_image_data_missing rId=" + imgRId + " path=" + mediaPath);
+                            }
+                        } else {
+                            // Non-image drawing (shape etc.) — keep text as-is
+                            NodeList tList = rElem.getElementsByTagNameNS(
+                                    "http://schemas.openxmlformats.org/wordprocessingml/2006/main", "t");
+                            for (int t = 0; t < tList.getLength(); t++) {
+                                Node tNode = tList.item(t);
+                                if (tNode.getTextContent() != null) {
+                                    paraText.append(tNode.getTextContent());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Append paragraph: text then image markers
+                String para = paraText.toString().trim();
+                if (para.isEmpty() && paraImages.isEmpty()) continue;
+
+                // Save per-paragraph data for paragraph-level classification
+                paraTexts.add(para);
+                paraMarkersList.add(new java.util.ArrayList<>(paraImages));
+
+                if (!para.isEmpty()) {
+                    markedText.append(para);
+                }
+                for (String marker : paraImages) {
+                    if (markedText.length() > 0
+                            && markedText.charAt(markedText.length() - 1) != '\n') {
+                        // Small separator between trailing text and marker
+                    }
+                    markedText.append("[").append(marker).append("]");
+                }
+                markedText.append("\n\n");
+            }
+
+            if (imageMap.isEmpty()) {
+                Log.i(TAG, "extract_image_text_no_images_found_fallback");
+                return null;
+            }
+
+            // Store image map and paragraph data as fields
+            pendingTypesetImages = imageMap;
+            pendingTypesetParagraphs = paraTexts.isEmpty() ? null : paraTexts;
+            pendingParaImageMarkers = paraMarkersList.isEmpty() ? null : paraMarkersList;
+            String result = markedText.toString().trim();
+            Log.i(TAG, "extract_image_text_done markers=" + imageMap.size()
+                    + " textChars=" + result.length()
+                    + " paragraphs=" + (paraTexts != null ? paraTexts.size() : 0));
+            return result;
+
+        } catch (Exception e) {
+            Log.w(TAG, "extract_image_text_failed", e);
+            return null;
+        }
+    }
+
+    // ---- Helpers for extractFullTextWithImagesNative ----
+
+    /**
+     * Find the r:embed attribute value inside a &lt;w:drawing&gt; element.
+     * Looks for {@code <a:blip r:embed="rIdX">}.
+     */
+    private static String findImageRId(Element drawingElem) {
+        NodeList blips = drawingElem.getElementsByTagNameNS(
+                "http://schemas.openxmlformats.org/drawingml/2006/main", "blip");
+        for (int i = 0; i < blips.getLength(); i++) {
+            Element blip = (Element) blips.item(i);
+            String embed = blip.getAttributeNS(
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed");
+            if (embed != null && !embed.isEmpty()) return embed;
+            // Fallback: try non-namespace qualified
+            String rEmbed = blip.getAttribute("r:embed");
+            if (rEmbed != null && !rEmbed.isEmpty()) return rEmbed;
+        }
+        return null;
+    }
+
+    /**
+     * Find image size from &lt;wp:extent&gt; inside a &lt;w:drawing&gt;.
+     * Returns {@code [cx, cy]} in EMU, or {@code [0, 0]} if not found.
+     */
+    private static long[] findImageSize(Element drawingElem) {
+        NodeList extents = drawingElem.getElementsByTagNameNS(
+                "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing", "extent");
+        for (int i = 0; i < extents.getLength(); i++) {
+            Element ext = (Element) extents.item(i);
+            try {
+                long cx = Long.parseLong(ext.getAttribute("cx"));
+                long cy = Long.parseLong(ext.getAttribute("cy"));
+                return new long[]{cx, cy};
+            } catch (NumberFormatException ignored) {}
+        }
+        return new long[]{0, 0};
+    }
+
+    private static String getExtension(String mediaPath) {
+        if (mediaPath == null) return "png";
+        int dot = mediaPath.lastIndexOf('.');
+        if (dot < 0) return "png";
+        String ext = mediaPath.substring(dot + 1).toLowerCase();
+        if (ext.isEmpty()) return "png";
+        return ext;
+    }
+
+    private static String getMimeFromExtension(String ext) {
+        switch (ext) {
+            case "png":  return "image/png";
+            case "jpg":
+            case "jpeg": return "image/jpeg";
+            case "gif":  return "image/gif";
+            case "bmp":  return "image/bmp";
+            case "svg":  return "image/svg+xml";
+            case "webp": return "image/webp";
+            case "wmf":  return "image/x-wmf";
+            case "emf":  return "image/x-emf";
+            default:     return "image/png";
+        }
+    }
+
+    // ==================== ODF extraction for typeset ====================
+
+    /**
+     * Extract text + images from an ODF format document (ZIP containing content.xml + Pictures/).
+     * Called when docx format detection fails (word/document.xml not found).
+     *
+     * ODF structure:
+     *   <text:p> - paragraph with text content
+     *   <draw:frame svg:width="13.776cm" svg:height="13.751cm">
+     *     <draw:image xlink:href="Pictures/10000000.jpg"/>
+     *   </draw:frame>
+     *
+     * @param rawEntries  all non-XML ZIP entries (contains Pictures/ files)
+     * @param xmlEntries  parsed XML ZIP entries (contains content.xml)
+     * @return marked text with [图N] placeholders, or null on failure
+     */
+    @Nullable
+    private String extractFromOdf(Map<String, byte[]> rawEntries, Map<String, Document> xmlEntries) {
+        // 1. Collect Pictures/ images
+        Map<String, byte[]> pictures = new HashMap<>();
+        for (Map.Entry<String, byte[]> e : rawEntries.entrySet()) {
+            String key = e.getKey();
+            if (key.startsWith("Pictures/") || key.toLowerCase(Locale.ROOT).startsWith("pictures/")) {
+                pictures.put(key, e.getValue());
+            }
+        }
+
+        // 2. Parse content.xml
+        Document contentXml = xmlEntries.get("content.xml");
+        if (contentXml == null) {
+            Log.i(TAG, "extract_image_text_no_content_xml");
+            return null;
+        }
+
+        // 3. Walk paragraphs — try namespace-aware then fallback
+        final String TEXT_NS = "urn:oasis:names:tc:opendocument:xmlns:text:1.0";
+        final String DRAW_NS = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0";
+        final String XLINK_NS = "http://www.w3.org/1999/xlink";
+        final String SVG_NS = "urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0";
+
+        NodeList pList = contentXml.getElementsByTagNameNS(TEXT_NS, "p");
+        // Fallback to non-namespace tag name (some parsers strip ns)
+        if (pList.getLength() == 0) {
+            pList = contentXml.getElementsByTagName("text:p");
+            if (pList.getLength() == 0) {
+                Log.i(TAG, "extract_image_text_no_odf_paragraphs");
+                return null;
+            }
+        }
+
+        StringBuilder markedText = new StringBuilder();
+        Map<String, TypesetImageEntry> imageMap = new LinkedHashMap<>();
+        java.util.List<String> paraTexts = new java.util.ArrayList<>();
+        java.util.List<java.util.List<String>> paraMarkersList = new java.util.ArrayList<>();
+        int imgCounter = 0;
+
+        for (int i = 0; i < pList.getLength(); i++) {
+            Element pElem = (Element) pList.item(i);
+            StringBuilder paraText = new StringBuilder();
+            java.util.List<String> paraImages = new java.util.ArrayList<>();
+
+            NodeList children = pElem.getChildNodes();
+            for (int j = 0; j < children.getLength(); j++) {
+                Node child = children.item(j);
+                if (child.getNodeType() == Node.TEXT_NODE) {
+                    String txt = child.getTextContent();
+                    if (txt != null) paraText.append(txt);
+                } else if (child.getNodeType() == Node.ELEMENT_NODE) {
+                    Element childEl = (Element) child;
+                    String ns = childEl.getNamespaceURI();
+                    String localName = childEl.getLocalName();
+
+                    if (TEXT_NS.equals(ns) && "span".equals(localName)) {
+                        if (childEl.getTextContent() != null)
+                            paraText.append(childEl.getTextContent());
+                    } else if (DRAW_NS.equals(ns) && "frame".equals(localName)) {
+                        // Extract image dimensions from draw:frame
+                        long[] size = parseOdfFrameSize(childEl, SVG_NS);
+                        // Find draw:image inside
+                        NodeList images = childEl.getElementsByTagNameNS(DRAW_NS, "image");
+                        if (images.getLength() == 0)
+                            images = childEl.getElementsByTagName("draw:image");
+                        for (int k = 0; k < images.getLength(); k++) {
+                            Element imgEl = (Element) images.item(k);
+                            String href = imgEl.getAttributeNS(XLINK_NS, "href");
+                            if (href == null) href = imgEl.getAttribute("xlink:href");
+                            if (href == null || href.isEmpty()) continue;
+
+                            byte[] imgData = findPictureData(pictures, href);
+                            if (imgData != null) {
+                                imgCounter++;
+                                String marker = "图" + imgCounter;
+                                String ext = getExtension(href);
+                                String mime = getMimeFromExtension(ext);
+                                imageMap.put(marker,
+                                        new TypesetImageEntry(marker, imgData, mime, ext, size[0], size[1]));
+                                paraImages.add(marker);
+                            } else {
+                                Log.w(TAG, "extract_odf_image_not_found href=" + href);
+                            }
+                        }
+                    }
+                }
+            }
+
+            String para = paraText.toString().trim();
+            if (para.isEmpty() && paraImages.isEmpty()) continue;
+
+            paraTexts.add(para);
+            paraMarkersList.add(new java.util.ArrayList<>(paraImages));
+
+            if (!para.isEmpty()) {
+                markedText.append(para);
+            }
+            for (String marker : paraImages) {
+                markedText.append("[").append(marker).append("]");
+            }
+            markedText.append("\n\n");
+        }
+
+        if (paraTexts.isEmpty()) {
+            Log.i(TAG, "extract_image_text_odf_empty");
+            return null;
+        }
+
+        pendingTypesetImages = imageMap.isEmpty() ? null : imageMap;
+        pendingTypesetParagraphs = paraTexts;
+        pendingParaImageMarkers = paraMarkersList;
+
+        String result = markedText.toString().trim();
+        Log.i(TAG, "extract_image_text_done markers=" + imageMap.size()
+                + " textChars=" + result.length()
+                + " paragraphs=" + paraTexts.size());
+        return result;
+    }
+
+    /** Parse ODF dimension string like "13.776cm" to EMU. Returns 0 on failure. */
+    private static long parseOdfDimension(String dim) {
+        if (dim == null || dim.isEmpty()) return 0;
+        dim = dim.trim().toLowerCase(Locale.ROOT);
+        try {
+            if (dim.endsWith("cm")) {
+                return (long) (Double.parseDouble(dim.substring(0, dim.length() - 2)) * 360000L);
+            } else if (dim.endsWith("in")) {
+                return (long) (Double.parseDouble(dim.substring(0, dim.length() - 2)) * 914400L);
+            } else if (dim.endsWith("mm")) {
+                return (long) (Double.parseDouble(dim.substring(0, dim.length() - 2)) * 36000L);
+            } else if (dim.endsWith("pt")) {
+                return (long) (Double.parseDouble(dim.substring(0, dim.length() - 2)) * 12700L);
+            } else if (dim.endsWith("px")) {
+                return (long) (Double.parseDouble(dim.substring(0, dim.length() - 2)) * 9144L);
+            } else {
+                return (long) Double.parseDouble(dim);
+            }
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** Get [cx, cy] in EMU from draw:frame svg:width / svg:height attributes. */
+    private static long[] parseOdfFrameSize(Element frameEl, String svgNs) {
+        long cx = 0, cy = 0;
+        String w = frameEl.getAttributeNS(svgNs, "width");
+        String h = frameEl.getAttributeNS(svgNs, "height");
+        if (w == null) w = frameEl.getAttribute("svg:width");
+        if (h == null) h = frameEl.getAttribute("svg:height");
+        if (w != null && !w.isEmpty()) cx = parseOdfDimension(w);
+        if (h != null && !h.isEmpty()) cy = parseOdfDimension(h);
+        return new long[]{cx, cy};
+    }
+
+    /** Look up image data by href, handling case variations and path prefix differences. */
+    @Nullable
+    private static byte[] findPictureData(Map<String, byte[]> pictures, String href) {
+        if (href == null) return null;
+        byte[] data = pictures.get(href);
+        if (data != null) return data;
+        // Normalise and retry
+        String normalised = href.replace('\\', '/');
+        String lowerHref = normalised.toLowerCase(Locale.ROOT);
+        for (Map.Entry<String, byte[]> e : pictures.entrySet()) {
+            String keyLower = e.getKey().toLowerCase(Locale.ROOT);
+            if (keyLower.equals(lowerHref) || keyLower.endsWith(lowerHref)) {
+                return e.getValue();
+            }
+        }
+        return null;
+    }
+
+    /**
      * 诊断：paste 一段测试 HTML，实测 Writer HTML Import Filter 保留哪些属性（color / hr /
      * font size / align / table / CSS）。从 Chrome 远程调试控制台触发（须编辑模式）：
      *   window.postMobileMessage("DEBUG_HTML_PROBE")
@@ -5076,9 +5741,24 @@ public class LOActivity extends AppCompatActivity {
         // 立即弹出预览弹窗（加载态），避免用户等待无反馈
         showTypesetLoadingOverlay();
 
-        // 原生全文提取（SelectAll → JNI getTextSelection，弃用旧剪贴板链路）
+        // 全文提取：优先从 docx 提取（含图片标记），退化到 JNI 纯文本
         new Thread(() -> {
-            String docText = extractFullTextNative("typeset-" + typesetType);
+            pendingTypesetImages = null;
+            pendingTypesetParagraphs = null;
+            pendingParaImageMarkers = null;
+            pendingTypesetParagraphMode = false;
+            String extracted = extractFullTextWithImagesNative();
+            if (extracted == null || extracted.isEmpty()) {
+                extracted = extractFullTextNative("typeset-" + typesetType);
+            }
+            // 段落分类模式：extractFullTextWithImagesNative 成功且含多段内容时使用
+            final boolean hasParagraphs = (pendingTypesetParagraphs != null
+                    && pendingTypesetParagraphs.size() > 1);
+            pendingTypesetParagraphMode = hasParagraphs;
+            if (hasParagraphs) {
+                Log.i(TAG, "ai_typeset_paragraph_mode paragraphs=" + pendingTypesetParagraphs.size());
+            }
+            final String docText = extracted;
             if (docText == null || docText.isEmpty()) {
                 runOnUiThread(() -> {
                     typesetInProgress = false;
@@ -5255,6 +5935,62 @@ public class LOActivity extends AppCompatActivity {
     // ==================== AI排版 V2 — docx 模板填充方法 ====================
 
     /**
+     * Build sections map from paragraph classification response.
+     * Groups original paragraphs by their assigned section key.
+     */
+    @Nullable
+    private Map<String, String> buildTypesetSectionsFromParagraphs(String jsonResponse) {
+        if (jsonResponse == null || jsonResponse.isEmpty()) return null;
+        java.util.List<AiChatCoordinator.ParaSection> paraSections =
+                AiChatCoordinator.parseTypesetParagraphResult(jsonResponse);
+        if (paraSections == null || paraSections.isEmpty()) {
+            Log.w(TAG, "typeset_paragraph_parse_failed");
+            return null;
+        }
+        if (pendingTypesetParagraphs == null || pendingTypesetParagraphs.isEmpty()) {
+            Log.w(TAG, "typeset_paragraph_no_para_data");
+            return null;
+        }
+
+        // Group paragraph indices by section key
+        java.util.Map<String, java.util.List<Integer>> sectionToParas = new java.util.LinkedHashMap<>();
+        for (AiChatCoordinator.ParaSection ps : paraSections) {
+            if (ps.paraIndex < 0 || ps.paraIndex >= pendingTypesetParagraphs.size()) continue;
+            sectionToParas.computeIfAbsent(ps.section, k -> new java.util.ArrayList<>())
+                    .add(ps.paraIndex);
+        }
+
+        // Build section content from original paragraph text (with [图N] markers)
+        java.util.Map<String, String> sections = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, java.util.List<Integer>> entry : sectionToParas.entrySet()) {
+            StringBuilder content = new StringBuilder();
+            for (int pi : entry.getValue()) {
+                String paraText = pendingTypesetParagraphs.get(pi);
+                // Prepend image markers to paragraph text
+                java.util.List<String> markers = (pendingParaImageMarkers != null
+                        && pi < pendingParaImageMarkers.size())
+                        ? pendingParaImageMarkers.get(pi) : new java.util.ArrayList<>();
+                StringBuilder fullPara = new StringBuilder();
+                for (String m : markers) {
+                    fullPara.append("[").append(m).append("]");
+                }
+                fullPara.append(paraText);
+                String trimmed = fullPara.toString().trim();
+                if (trimmed.isEmpty()) continue;
+                if (content.length() > 0) content.append("\n\n");
+                content.append(trimmed);
+            }
+            String sectionContent = content.toString().trim();
+            if (!sectionContent.isEmpty()) {
+                sections.put(entry.getKey(), sectionContent);
+            }
+        }
+
+        Log.i(TAG, "typeset_paragraph_sections_built sections=" + sections.size());
+        return sections.isEmpty() ? null : sections;
+    }
+
+    /**
      * Handle V2 typeset result: fill docx template with AI sections, show preview overlay.
      */
     private void handleTypesetV2Result(Map<String, String> sections) {
@@ -5272,6 +6008,11 @@ public class LOActivity extends AppCompatActivity {
         // Fill template docx on background thread
         new Thread(() -> {
             File filledDocx = DocxTemplateFiller.fillTemplate(resId, type, sections, LOActivity.this);
+            // Post-process: insert source images if any
+            if (filledDocx != null && pendingTypesetImages != null
+                    && !pendingTypesetImages.isEmpty()) {
+                DocxImageInserter.insertImages(filledDocx, pendingTypesetImages);
+            }
             runOnUiThread(() -> {
                 if (filledDocx != null && filledDocx.exists()) {
                     pendingTypesetDocx = filledDocx;
@@ -5437,6 +6178,10 @@ public class LOActivity extends AppCompatActivity {
      */
     private void dismissTypesetPreviewOverlay() {
         typesetInProgress = false;
+        pendingTypesetImages = null;
+        pendingTypesetParagraphs = null;
+        pendingParaImageMarkers = null;
+        pendingTypesetParagraphMode = false;
         if (typesetPreviewOverlay != null) {
             typesetPreviewOverlay.setVisibility(View.GONE);
         }

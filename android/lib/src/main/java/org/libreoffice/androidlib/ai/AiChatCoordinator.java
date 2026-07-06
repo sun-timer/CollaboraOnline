@@ -1,6 +1,7 @@
 package org.libreoffice.androidlib.ai;
 
 import android.content.Context;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -11,6 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class AiChatCoordinator {
+    private static final String TAG = "AiChatCoordinator";
+
     public static final String MODE_DOC_QA = "doc_qa";
     public static final String MODE_CHAT = "chat";
     public static final String MODE_CONTINUE = "continue_write";
@@ -292,6 +295,7 @@ public class AiChatCoordinator {
         String systemPrompt = buildTypesetV2SystemPrompt(typesetType, sectionKeys, sectionList);
         String userPrompt = "请将以下原始文档内容按模板分区进行结构化拆分，返回 JSON。"
                 + "不要修改原文内容，仅将各部分填入对应分区。\n\n"
+                + "注意：原文中的图片已标记为[图1]、[图2]等占位符，请保留这些标记在原文对应的位置，不要删除或改写。\n\n"
                 + "分区列表：" + sectionList + "\n\n"
                 + "原始文档内容：\n---\n" + text + "\n---\n\n"
                 + "请直接返回 JSON，不要包含任何 markdown 标记或解释文字。";
@@ -480,6 +484,107 @@ public class AiChatCoordinator {
      */
     public static JSONArray buildTypesetFallbackMessages(String typesetType, String fullText) throws JSONException {
         return buildTypesetMessages(typesetType, fullText);
+    }
+
+    // ============================================================
+    //  Paragraph-level classification (preserves original text verbatim)
+    // ============================================================
+
+    /** One paragraph → section mapping from AI classification. */
+    public static class ParaSection {
+        public final int paraIndex;
+        public final String section;
+        public ParaSection(int paraIndex, String section) {
+            this.paraIndex = paraIndex;
+            this.section = section;
+        }
+    }
+
+    /**
+     * Build messages that ask the AI to classify each paragraph into a template section.
+     * The AI only assigns section labels — it does NOT rewrite the text.
+     */
+    public static JSONArray buildTypesetParagraphMessages(
+            String typesetType, java.util.List<String> paragraphs,
+            java.util.List<java.util.List<String>> paraImageMarkers) throws JSONException {
+        String[] sectionKeys = org.libreoffice.androidlib.typeset.TemplateSectionMap.getSectionKeys(typesetType);
+        String sectionList = buildSectionList(sectionKeys);
+
+        StringBuilder userText = new StringBuilder();
+        userText.append("请为每个段落判断它属于模板中的哪个分区。\n\n");
+        userText.append("可用分区：").append(sectionList).append("\n\n");
+        userText.append("段落内容（按编号）：\n");
+        userText.append("---\n");
+
+        for (int i = 0; i < paragraphs.size(); i++) {
+            String para = paragraphs.get(i);
+            StringBuilder line = new StringBuilder();
+            line.append(i).append(": ");
+            // Prepend image markers if any
+            if (paraImageMarkers != null && i < paraImageMarkers.size()) {
+                for (String m : paraImageMarkers.get(i)) {
+                    line.append("[").append(m).append("]");
+                }
+            }
+            line.append(para);
+            userText.append(line).append("\n---\n");
+        }
+
+        userText.append("\n请直接返回 JSON 数组，不要使用 ```json 或 markdown 标记，格式：\n");
+        userText.append("[{\"paraIndex\": 0, \"section\": \"title\"}, {\"paraIndex\": 1, \"section\": \"body\"}, ...]\n");
+        userText.append("每个段落必须分配一个分区。如果某个段落不匹配任何可用分区，使用最接近的分区。");
+
+        String systemPrompt = "你是文档段落分类助手。你的任务是将文档的每个段落分配到模板的对应分区中。\n"
+                + "只返回 JSON 数组，格式：[{\"paraIndex\":0,\"section\":\"title\"},{\"paraIndex\":1,\"section\":\"body\"},...]\n"
+                + "不要改写原文，不要增减内容，只做分类。返回纯 JSON 字符串，不要用 markdown 包裹。";
+
+        JSONArray messages = new JSONArray();
+        JSONObject sysMsg = new JSONObject();
+        sysMsg.put("role", "system");
+        sysMsg.put("content", systemPrompt);
+        messages.put(sysMsg);
+
+        JSONObject userMsg = new JSONObject();
+        userMsg.put("role", "user");
+        userMsg.put("content", userText.toString());
+        messages.put(userMsg);
+
+        return messages;
+    }
+
+    /**
+     * Parse the AI's paragraph classification response into ParaSection list.
+     * Expected format: [{"paraIndex":0,"section":"title"}, ...]
+     */
+    public static java.util.List<ParaSection> parseTypesetParagraphResult(String jsonResponse) {
+        if (jsonResponse == null || jsonResponse.trim().isEmpty()) return null;
+
+        String json = jsonResponse.trim();
+        // Strip markdown code fences
+        if (json.startsWith("```")) {
+            int nl = json.indexOf('\n');
+            if (nl > 0) json = json.substring(nl + 1);
+            else json = json.substring(3);
+            json = json.trim();
+            if (json.endsWith("```")) json = json.substring(0, json.length() - 3).trim();
+        }
+
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray(json);
+            java.util.List<ParaSection> result = new java.util.ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject item = arr.getJSONObject(i);
+                int paraIndex = item.getInt("paraIndex");
+                String section = item.optString("section", "");
+                if (!section.isEmpty()) {
+                    result.add(new ParaSection(paraIndex, section));
+                }
+            }
+            return result.isEmpty() ? null : result;
+        } catch (org.json.JSONException e) {
+            Log.w(TAG, "parseTypesetParagraphResult_failed", e);
+            return null;
+        }
     }
 
     /**

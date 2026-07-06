@@ -109,6 +109,14 @@ public class DocxTemplateFiller {
             if (!outputDir.exists()) outputDir.mkdirs();
             File outputFile = new File(outputDir, safeName);
 
+            // Avoid overwriting existing files: append (1), (2), ...
+            int suffix = 1;
+            while (outputFile.exists()) {
+                String baseName = safeName.replaceAll("\\.docx$", "");
+                outputFile = new File(outputDir, baseName + "(" + suffix + ").docx");
+                suffix++;
+            }
+
             writeDocx(rawEntries, xmlEntries, outputFile);
 
             Log.i(TAG, "Template filled successfully: " + outputFile.getAbsolutePath());
