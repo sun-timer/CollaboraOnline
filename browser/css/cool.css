@@ -432,37 +432,37 @@ body {
 	justify-content: center;
 	align-items: center;
 	position: absolute;
-	width: 56px;
-	height: 56px;
+	width: 100px;
+	height: 100px;
 	right: 16px;
-	top: 50%;
-	bottom: auto;
-	background-color: var(--color-primary);
+	top: auto;
+	bottom: 100px;
+	background-color: transparent;
 	border-radius: 50%;
-	box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+	box-shadow: 0 11px 40.1px rgba(18, 120, 217, 0.26);
 	z-index: 1001;
-	transform: translateY(-50%) scale(1);
-	transition: transform 0.5s;
+	transform: scale(1);
+	transition: transform 0.2s ease;
 	display: none;
 }
 
 #mobile-edit-button.impress.portrait {
-	top: 50%;
-	bottom: auto;
+	top: auto;
+	bottom: 100px;
 }
 
 #mobile-edit-button-image {
-	width: var(--btn-size);
-	height: var(--btn-size);
-	background: url('images/baseline-edit-24px.svg') no-repeat center !important;
-	transform: rotate(0deg);
-	transition: transform 0.5s;
+	width: 100px;
+	height: 100px;
+	background: url('images/mobile-edit-fab.svg') no-repeat center / contain !important;
+	transform: none;
+	transition: transform 0.2s ease;
 }
 #mobile-edit-button:active {
-	transform: translateY(-50%) scale(1.2);
+	transform: scale(1.06);
 }
 #mobile-edit-button:active > #mobile-edit-button-image {
-	transform: rotate(45deg);
+	transform: none;
 }
 
 .cool-font {

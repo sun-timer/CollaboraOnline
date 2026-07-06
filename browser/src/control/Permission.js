@@ -48,8 +48,15 @@ window.L.Map.include({
 					that._switchToEditMode();
 				});
 
+				var androidStartEdit = window.ThisIsTheAndroidApp &&
+					window.coolParams &&
+					window.coolParams.get('android_start_edit') === '1';
 				// temporarily, before the user touches the floating action button
-				this._enterReadOnlyMode('readonly');
+				if (androidStartEdit) {
+					this._switchToEditMode();
+				} else {
+					this._enterReadOnlyMode('readonly');
+				}
 			}
 			else if (this.options.canTryLock) {
 				// This is a success response to an attempt to lock using mobile-edit-button

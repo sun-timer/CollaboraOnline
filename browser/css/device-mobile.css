@@ -222,6 +222,12 @@ body.android-native-bottom-toolbar #toolbar-down {
 	display: none !important;
 }
 
+body.android-native-bottom-toolbar #mobile-edit-button {
+	top: auto;
+	bottom: 100px;
+	transform: scale(1);
+}
+
 body.android-native-top-toolbar #toolbar-wrapper,
 body.android-native-top-toolbar #toolbar-up {
 	display: none !important;
