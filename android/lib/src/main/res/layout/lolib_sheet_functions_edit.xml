@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#F6F6F7"
+    android:background="#FFFFFF"
     android:orientation="vertical"
     android:paddingStart="16dp"
     android:paddingTop="12dp"
@@ -10,6 +10,7 @@
     android:paddingBottom="18dp">
 
     <LinearLayout
+        android:id="@+id/function_edit_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
@@ -35,21 +36,43 @@
             android:src="@android:drawable/ic_menu_close_clear_cancel" />
     </LinearLayout>
 
-    <HorizontalScrollView
+    <!-- Tab bar area: HorizontalScrollView for tabs + indicator + border -->
+    <FrameLayout
+        android:id="@+id/function_edit_tab_area"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
-        android:fillViewport="true"
-        android:scrollbars="none">
+        android:layout_marginTop="14dp">
 
-        <LinearLayout
-            android:id="@+id/function_edit_tab_bar"
-            android:layout_width="wrap_content"
-            android:layout_height="52dp"
-            android:background="#E4E4E6"
-            android:orientation="horizontal"
-            android:padding="4dp" />
-    </HorizontalScrollView>
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fillViewport="false"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/function_edit_tab_bar"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+
+        <!-- Blue indicator line (positioned programmatically) -->
+        <View
+            android:id="@+id/function_edit_tab_indicator"
+            android:layout_width="24dp"
+            android:layout_height="3dp"
+            android:layout_gravity="bottom|start"
+            android:layout_marginBottom="1dp"
+            android:background="#1278D9"
+            android:visibility="invisible" />
+
+        <!-- Bottom border -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_gravity="bottom"
+            android:background="#A2A9B2" />
+    </FrameLayout>
 
     <androidx.core.widget.NestedScrollView
         android:id="@+id/function_edit_content_container"
@@ -57,5 +80,13 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
         android:fillViewport="true" />
+
+    <include
+        android:id="@+id/function_font_picker_panel"
+        layout="@layout/lolib_sheet_font_picker"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:visibility="gone" />
 
 </LinearLayout>

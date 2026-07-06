@@ -36,6 +36,20 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/selection_op_delete"
+            style="@style/SelectionPopupButton"
+            android:visibility="gone">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_selection_delete" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="删除" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/selection_op_cut"
             style="@style/SelectionPopupButton">
 

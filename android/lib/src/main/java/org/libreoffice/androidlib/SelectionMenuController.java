@@ -53,6 +53,7 @@ public class SelectionMenuController {
     private View overlayView;
     private View menuView;
     private boolean visible = false;
+    private boolean graphicMode = false;
     private float pendingAnchorX;
     private float pendingAnchorY;
     private float pendingAnchorBottomY;
@@ -71,6 +72,7 @@ public class SelectionMenuController {
         overlayView.setOnClickListener(v -> hide());
 
         host.findViewById(R.id.selection_op_copy).setOnClickListener(v -> onCopy());
+        host.findViewById(R.id.selection_op_delete).setOnClickListener(v -> onDelete());
         host.findViewById(R.id.selection_op_paste).setOnClickListener(v -> onPaste());
         host.findViewById(R.id.selection_op_cut).setOnClickListener(v -> onCut());
         host.findViewById(R.id.selection_op_select_all).setOnClickListener(v -> onSelectAll());
@@ -121,10 +123,17 @@ public class SelectionMenuController {
         menuView.setVisibility(View.GONE);
         overlayView.setVisibility(View.GONE);
         visible = false;
+        graphicMode = false;
     }
 
     public boolean isVisible() {
         return visible;
+    }
+
+    /** Switch to graphic/image selection mode showing Delete/Copy/Cut. */
+    public void setGraphicMode(boolean graphic) {
+        graphicMode = graphic;
+        updateEditActionVisibility();
     }
 
     private void positionPopupNearAnchor() {
@@ -225,6 +234,15 @@ public class SelectionMenuController {
         host.ensureEditModeThen(() -> host.executeUnoCommand(".uno:Cut"));
     }
 
+    private void onDelete() {
+        hide();
+        if (!host.isDocEditable()) {
+            toastReadOnlyDocument();
+            return;
+        }
+        host.ensureEditModeThen(() -> host.executeUnoCommand(".uno:Delete"));
+    }
+
     private void onAiOperation(String taskType) {
         hide();
         if (host.onAiOperation(taskType)) {
@@ -238,25 +256,45 @@ public class SelectionMenuController {
 
     private void updateEditActionVisibility() {
         boolean showEditActions = host.isEditModeActive();
-        View paste = host.findViewById(R.id.selection_op_paste);
-        View cut = host.findViewById(R.id.selection_op_cut);
-        View translate = host.findViewById(R.id.selection_op_translate);
-        if (paste != null) {
-            paste.setVisibility(showEditActions ? View.VISIBLE : View.GONE);
-        }
-        if (cut != null) {
-            cut.setVisibility(showEditActions ? View.VISIBLE : View.GONE);
-        }
-        if (translate != null) {
-            translate.setVisibility(showEditActions ? View.VISIBLE : View.GONE);
-        }
-        for (int sectionId : SELECTION_AI_SECTION_IDS) {
-            View section = host.findViewById(sectionId);
-            if (section != null) {
-                section.setVisibility(showEditActions ? View.VISIBLE : View.GONE);
+
+        if (graphicMode) {
+            // Graphic mode: only show delete, copy, cut
+            setViewVisibility(R.id.selection_op_delete, View.VISIBLE);
+            setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
+            setViewVisibility(R.id.selection_op_cut, showEditActions ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_paste, View.GONE);
+            setViewVisibility(R.id.selection_op_select_all, View.GONE);
+            setViewVisibility(R.id.selection_op_translate, View.GONE);
+            for (int sectionId : SELECTION_AI_SECTION_IDS) {
+                setViewVisibility(sectionId, View.GONE);
             }
+            updatePopupWidthForGraphic();
+        } else {
+            setViewVisibility(R.id.selection_op_delete, View.GONE);
+            setViewVisibility(R.id.selection_op_paste, showEditActions ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_cut, showEditActions ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_translate, showEditActions ? View.VISIBLE : View.GONE);
+            for (int sectionId : SELECTION_AI_SECTION_IDS) {
+                setViewVisibility(sectionId, showEditActions ? View.VISIBLE : View.GONE);
+            }
+            updatePopupWidth(showEditActions);
         }
-        updatePopupWidth(showEditActions);
+    }
+
+    private void setViewVisibility(int viewId, int visibility) {
+        View v = host.findViewById(viewId);
+        if (v != null) {
+            v.setVisibility(visibility);
+        }
+    }
+
+    private void updatePopupWidthForGraphic() {
+        if (menuView == null) return;
+        ViewGroup.LayoutParams lp = menuView.getLayoutParams();
+        if (lp != null) {
+            lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+            menuView.setLayoutParams(lp);
+        }
     }
 
     private void updatePopupWidth(boolean showEditActions) {

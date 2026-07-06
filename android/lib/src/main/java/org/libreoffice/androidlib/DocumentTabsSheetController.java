@@ -7,16 +7,14 @@ import android.net.Uri;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.text.TextUtils;
-import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import com.google.android.material.bottomsheet.BottomSheetBehavior;
-import com.google.android.material.bottomsheet.BottomSheetDialog;
-
 import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -27,6 +25,8 @@ public class DocumentTabsSheetController {
     public interface Host {
         android.content.Context getContext();
 
+        View findViewById(int id);
+
         SharedPreferences getExplorerPrefs();
 
         String getCurrentDocumentUri();
@@ -34,10 +34,13 @@ public class DocumentTabsSheetController {
         void startActivityForResult(Intent intent, int requestCode);
 
         void openDocumentUri(Uri uri);
+
+        void onOpenDocumentListChanged();
     }
 
     private final Host host;
-    private BottomSheetDialog dialog;
+    private View overlayView;
+    private View scrimView;
     private boolean showingOpened = true;
     private LinearLayout listContainer;
     private TextView openedTabView;
@@ -47,56 +50,84 @@ public class DocumentTabsSheetController {
         this.host = host;
     }
 
+    public void bindOverlayViews() {
+        overlayView = host.findViewById(R.id.document_tabs_overlay);
+        scrimView = host.findViewById(R.id.document_tabs_scrim);
+        View panel = host.findViewById(R.id.document_tabs_panel_include);
+        if (panel != null) {
+            bindPanel(panel);
+        }
+        if (scrimView != null) {
+            scrimView.setOnClickListener(v -> dismiss());
+        }
+    }
+
     public void show() {
-        dismiss();
-        View panel = LayoutInflater.from(host.getContext()).inflate(R.layout.lolib_sheet_document_tabs, null);
-        bindPanel(panel);
-        dialog = new BottomSheetDialog(host.getContext());
-        dialog.setContentView(panel);
-        dialog.setOnDismissListener(d -> dialog = null);
-        dialog.show();
-        expandSheet(dialog);
+        if (overlayView == null) {
+            bindOverlayViews();
+        }
+        if (overlayView == null) {
+            return;
+        }
+        showingOpened = true;
+        if (openedTabView != null && closedTabView != null) {
+            styleTab(openedTabView, true);
+            styleTab(closedTabView, false);
+        }
+        refreshList();
+        overlayView.setVisibility(View.VISIBLE);
     }
 
     public void dismiss() {
-        if (dialog != null) {
-            dialog.dismiss();
-            dialog = null;
+        if (overlayView != null) {
+            overlayView.setVisibility(View.GONE);
         }
+        host.onOpenDocumentListChanged();
+    }
+
+    public boolean isVisible() {
+        return overlayView != null && overlayView.getVisibility() == View.VISIBLE;
     }
 
     private void bindPanel(View panel) {
         openedTabView = panel.findViewById(R.id.tabs_tab_opened);
         closedTabView = panel.findViewById(R.id.tabs_tab_closed);
         listContainer = panel.findViewById(R.id.tabs_list_container);
-        TextView openDocument = panel.findViewById(R.id.tabs_open_document);
+        View openDocument = panel.findViewById(R.id.tabs_open_document);
         ImageButton close = panel.findViewById(R.id.tabs_sheet_close);
 
         Runnable refresh = this::refreshList;
-        openedTabView.setOnClickListener(v -> {
-            showingOpened = true;
-            styleTab(openedTabView, true);
-            styleTab(closedTabView, false);
-            refresh.run();
-        });
-        closedTabView.setOnClickListener(v -> {
-            showingOpened = false;
-            styleTab(openedTabView, false);
-            styleTab(closedTabView, true);
-            refresh.run();
-        });
-        close.setOnClickListener(v -> dismiss());
-        openDocument.setOnClickListener(v -> {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("*/*");
-            host.startActivityForResult(intent, REQUEST_OPEN_DOCUMENT);
-            dismiss();
-        });
+        if (openedTabView != null) {
+            openedTabView.setOnClickListener(v -> {
+                showingOpened = true;
+                styleTab(openedTabView, true);
+                styleTab(closedTabView, false);
+                refresh.run();
+            });
+        }
+        if (closedTabView != null) {
+            closedTabView.setOnClickListener(v -> {
+                showingOpened = false;
+                styleTab(openedTabView, false);
+                styleTab(closedTabView, true);
+                refresh.run();
+            });
+        }
+        if (close != null) {
+            close.setOnClickListener(v -> dismiss());
+        }
+        if (openDocument != null) {
+            openDocument.setOnClickListener(v -> {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                host.startActivityForResult(intent, REQUEST_OPEN_DOCUMENT);
+                dismiss();
+            });
+        }
 
         styleTab(openedTabView, true);
         styleTab(closedTabView, false);
-        refresh.run();
     }
 
     private void refreshList() {
@@ -118,6 +149,7 @@ public class DocumentTabsSheetController {
         if (openedTabView != null) {
             openedTabView.setText("已打开 (" + Math.max(openedCount, 1) + ")");
         }
+        host.onOpenDocumentListChanged();
 
         if (uris.isEmpty()) {
             TextView empty = new TextView(host.getContext());
@@ -128,7 +160,7 @@ public class DocumentTabsSheetController {
             return;
         }
 
-        LayoutInflater inflater = LayoutInflater.from(host.getContext());
+        android.view.LayoutInflater inflater = android.view.LayoutInflater.from(host.getContext());
         for (String uriString : uris) {
             View row = inflater.inflate(R.layout.lolib_item_document_tab, container, false);
             bindRow(row, uriString, currentUri, showingOpened);
@@ -137,7 +169,7 @@ public class DocumentTabsSheetController {
     }
 
     private void bindRow(View row, String uriString, String currentUri, boolean openedTab) {
-        TextView badge = row.findViewById(R.id.tab_item_badge);
+        ImageView icon = row.findViewById(R.id.tab_item_icon);
         TextView title = row.findViewById(R.id.tab_item_title);
         TextView subtitle = row.findViewById(R.id.tab_item_subtitle);
         TextView current = row.findViewById(R.id.tab_item_current);
@@ -150,7 +182,9 @@ public class DocumentTabsSheetController {
         }
         title.setText(displayName);
         subtitle.setText(formatSubtitle(uri));
-        badge.setText(fileBadge(displayName));
+        if (icon != null) {
+            icon.setImageResource(fileTypeIconRes(displayName));
+        }
 
         boolean isCurrent = uriString.equals(currentUri);
         current.setVisibility(isCurrent ? View.VISIBLE : View.GONE);
@@ -174,6 +208,20 @@ public class DocumentTabsSheetController {
             RecentDocumentsStore.moveToRecentlyClosed(host.getExplorerPrefs(), uriString);
             refreshList();
         });
+    }
+
+    private static int fileTypeIconRes(String name) {
+        if (TextUtils.isEmpty(name)) {
+            return R.drawable.lolib_ic_file_type_writer;
+        }
+        String lower = name.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".ods") || lower.endsWith(".xls") || lower.endsWith(".xlsx") || lower.endsWith(".csv")) {
+            return R.drawable.lolib_ic_file_type_calc;
+        }
+        if (lower.endsWith(".odp") || lower.endsWith(".ppt") || lower.endsWith(".pptx")) {
+            return R.drawable.lolib_ic_file_type_impress;
+        }
+        return R.drawable.lolib_ic_file_type_writer;
     }
 
     private String queryDisplayName(Uri uri) {
@@ -216,35 +264,23 @@ public class DocumentTabsSheetController {
         if (updated <= 0L) {
             return "今天";
         }
+        Calendar today = Calendar.getInstance();
+        Calendar fileDay = Calendar.getInstance();
+        fileDay.setTimeInMillis(updated);
+        if (today.get(Calendar.YEAR) == fileDay.get(Calendar.YEAR)
+                && today.get(Calendar.DAY_OF_YEAR) == fileDay.get(Calendar.DAY_OF_YEAR)) {
+            return "今天 " + new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(updated));
+        }
         return new SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(new Date(updated));
-    }
-
-    private static String fileBadge(String name) {
-        if (TextUtils.isEmpty(name)) {
-            return "W";
-        }
-        int dot = name.lastIndexOf('.');
-        if (dot > 0 && dot < name.length() - 1) {
-            String ext = name.substring(dot + 1);
-            if (!ext.isEmpty()) {
-                return String.valueOf(Character.toUpperCase(ext.charAt(0)));
-            }
-        }
-        return "W";
     }
 
     private static void styleTab(TextView tab, boolean active) {
         if (tab == null) {
             return;
         }
-        tab.setBackgroundColor(active ? 0xFFFFFFFF : 0xFFE4E4E6);
+        tab.setBackgroundResource(active
+                ? R.drawable.lolib_bg_document_tabs_tab_active
+                : android.R.color.transparent);
         tab.setTextColor(active ? 0xFF202124 : 0xFF80868B);
-    }
-
-    private static void expandSheet(BottomSheetDialog dialog) {
-        View sheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
-        if (sheet != null) {
-            BottomSheetBehavior.from(sheet).setState(BottomSheetBehavior.STATE_EXPANDED);
-        }
     }
 }

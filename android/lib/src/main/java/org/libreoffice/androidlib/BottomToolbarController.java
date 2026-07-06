@@ -104,6 +104,8 @@ public class BottomToolbarController {
 
         void switchToViewingMode();
 
+        void switchToEditMode();
+
         void showNativeAiPanel();
 
         void showNativeAiOperationSheet();
@@ -119,6 +121,7 @@ public class BottomToolbarController {
 
     private final Host host;
     private LinearLayout bottomToolbarView;
+    private LinearLayout bottomToolbarItemsRow;
     private View quickActionOverlayView;
     private LinearLayout quickActionPanelView;
     private LinearLayout quickActionActionsRow;
@@ -137,6 +140,7 @@ public class BottomToolbarController {
 
     public void setup() {
         bottomToolbarView = asLinearLayout(host.findViewById(R.id.doc_bottom_toolbar));
+        bottomToolbarItemsRow = asLinearLayout(host.findViewById(R.id.doc_bottom_toolbar_items_row));
         quickActionOverlayView = host.findViewById(R.id.toolbar_quick_overlay);
         quickActionPanelView = asLinearLayout(host.findViewById(R.id.toolbar_quick_panel));
         quickActionActionsRow = asLinearLayout(host.findViewById(R.id.toolbar_quick_actions));
@@ -149,7 +153,9 @@ public class BottomToolbarController {
         });
         bindToolbarClick(R.id.toolbar_item_mobile_preview, v -> {
             hideQuickActionPanel();
-            host.switchToViewingMode();
+            if (isEditModeActive) {
+                host.switchToViewingMode();
+            }
         });
         bindToolbarClick(R.id.toolbar_item_ai_assistant, v -> {
             hideQuickActionPanel();
@@ -235,9 +241,38 @@ public class BottomToolbarController {
     private void applyBottomToolbarMode(boolean isEditMode) {
         setBottomToolbarItemsVisible(PREVIEW_MODE_TOOLBAR_ITEM_IDS, true);
         setBottomToolbarItemsVisible(EDIT_MODE_EXTRA_TOOLBAR_ITEM_IDS, isEditMode);
+        applyBottomToolbarItemsAlignment(isEditMode);
+        updateMobilePreviewToolbarItem(isEditMode);
         if (!isEditMode) {
             hideQuickActionPanel();
         }
+    }
+
+    private void updateMobilePreviewToolbarItem(boolean isEditMode) {
+        View iconView = host.findViewById(R.id.toolbar_item_mobile_preview_icon);
+        View labelView = host.findViewById(R.id.toolbar_item_mobile_preview_label);
+        if (iconView instanceof ImageView) {
+            ((ImageView) iconView).setImageResource(R.drawable.lolib_ic_toolbar_mobile_preview);
+        }
+        if (labelView instanceof TextView) {
+            ((TextView) labelView).setText("手机预览");
+            ((TextView) labelView).setTextColor(0xFF202124);
+        }
+    }
+
+    private void applyBottomToolbarItemsAlignment(boolean isEditMode) {
+        if (bottomToolbarItemsRow == null) {
+            return;
+        }
+        ViewGroup.LayoutParams params = bottomToolbarItemsRow.getLayoutParams();
+        if (params == null) {
+            return;
+        }
+        params.width = isEditMode ? ViewGroup.LayoutParams.WRAP_CONTENT : ViewGroup.LayoutParams.MATCH_PARENT;
+        bottomToolbarItemsRow.setLayoutParams(params);
+        bottomToolbarItemsRow.setGravity(isEditMode
+                ? android.view.Gravity.CENTER_VERTICAL
+                : android.view.Gravity.CENTER);
     }
 
     private void setBottomToolbarItemsVisible(int[] itemIds, boolean visible) {

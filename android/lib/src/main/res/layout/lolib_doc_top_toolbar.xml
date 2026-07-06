@@ -61,32 +61,50 @@
             android:scaleType="fitCenter"
             android:src="@drawable/lolib_ic_top_share" />
 
-        <ImageButton
-            android:id="@+id/top_btn_recent_preview"
+        <FrameLayout
+            android:id="@+id/top_btn_open_docs_preview"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="最近打开"
-            android:padding="12dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/lolib_ic_top_recent" />
+            android:clickable="true"
+            android:contentDescription="已打开文档"
+            android:focusable="true"
+            android:padding="8dp">
+
+            <ImageView
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="center"
+                android:contentDescription="已打开文档"
+                android:scaleType="fitCenter"
+                android:src="@drawable/lolib_ic_top_open_docs_frame" />
+
+            <TextView
+                android:id="@+id/top_open_docs_count_preview"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="7dp"
+                android:textColor="#101010"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+        </FrameLayout>
     </LinearLayout>
 
     <!-- Edit mode -->
-    <LinearLayout
+    <FrameLayout
         android:id="@+id/top_toolbar_edit"
         android:layout_width="match_parent"
         android:layout_height="56dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="12dp"
-        android:paddingEnd="8dp"
+        android:paddingStart="8dp"
+        android:paddingEnd="4dp"
         android:visibility="gone">
 
         <TextView
             android:id="@+id/top_btn_done"
             android:layout_width="wrap_content"
             android:layout_height="40dp"
+            android:layout_gravity="start|center_vertical"
             android:background="@drawable/lolib_bg_top_done_button"
             android:clickable="true"
             android:focusable="true"
@@ -99,59 +117,89 @@
             android:textSize="16sp"
             android:textStyle="bold" />
 
-        <View
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <ImageButton
-            android:id="@+id/top_btn_undo"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="撤销"
-            android:padding="12dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/lolib_ic_top_undo" />
+            <ImageButton
+                android:id="@+id/top_btn_undo"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="撤销"
+                android:padding="12dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/lolib_ic_top_undo" />
 
-        <ImageButton
-            android:id="@+id/top_btn_redo"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="恢复"
-            android:padding="12dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/lolib_ic_top_redo" />
+            <ImageButton
+                android:id="@+id/top_btn_redo"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="恢复"
+                android:padding="12dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/lolib_ic_top_redo" />
+        </LinearLayout>
 
-        <ImageButton
-            android:id="@+id/top_btn_search_edit"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="搜索"
-            android:padding="12dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/lolib_ic_top_search" />
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end|center_vertical"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <ImageButton
-            android:id="@+id/top_btn_recent_edit"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="最近打开"
-            android:padding="12dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/lolib_ic_top_recent" />
+            <ImageButton
+                android:id="@+id/top_btn_search_edit"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="搜索"
+                android:padding="12dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/lolib_ic_top_search" />
 
-        <ImageButton
-            android:id="@+id/top_btn_close_edit"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="关闭编辑"
-            android:padding="12dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/lolib_ic_top_close_edit" />
-    </LinearLayout>
+            <FrameLayout
+                android:id="@+id/top_btn_open_docs_edit"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:contentDescription="已打开文档"
+                android:focusable="true"
+                android:padding="8dp">
+
+                <ImageView
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="已打开文档"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/lolib_ic_top_open_docs_frame" />
+
+                <TextView
+                    android:id="@+id/top_open_docs_count_edit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:layout_marginTop="7dp"
+                    android:textColor="#101010"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </FrameLayout>
+
+            <ImageButton
+                android:id="@+id/top_btn_close_edit"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="关闭编辑"
+                android:padding="12dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/lolib_ic_top_close_edit" />
+        </LinearLayout>
+    </FrameLayout>
 </LinearLayout>

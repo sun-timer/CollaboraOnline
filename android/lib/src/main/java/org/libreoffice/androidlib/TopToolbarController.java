@@ -18,6 +18,8 @@ public class TopToolbarController {
 
         void switchToViewingMode();
 
+        void switchToEditMode();
+
         void requestCloseDocument();
 
         void executeUnoCommand(String command);
@@ -29,13 +31,17 @@ public class TopToolbarController {
         void showDocumentTabsSheet();
 
         String getDocumentTitle();
+
+        int getOpenDocumentCount();
     }
 
     private final Host host;
     private LinearLayout topToolbarView;
     private LinearLayout previewToolbarView;
-    private LinearLayout editToolbarView;
+    private View editToolbarView;
     private TextView previewTitleView;
+    private TextView previewOpenDocsCountView;
+    private TextView editOpenDocsCountView;
     private View undoButton;
     private View redoButton;
     private boolean isEditModeActive = false;
@@ -52,8 +58,10 @@ public class TopToolbarController {
             topToolbarView.setVisibility(View.VISIBLE);
         }
         previewToolbarView = asLinearLayout(host.findViewById(R.id.top_toolbar_preview));
-        editToolbarView = asLinearLayout(host.findViewById(R.id.top_toolbar_edit));
+        editToolbarView = host.findViewById(R.id.top_toolbar_edit);
         previewTitleView = asTextView(host.findViewById(R.id.top_title_preview));
+        previewOpenDocsCountView = asTextView(host.findViewById(R.id.top_open_docs_count_preview));
+        editOpenDocsCountView = asTextView(host.findViewById(R.id.top_open_docs_count_edit));
         undoButton = host.findViewById(R.id.top_btn_undo);
         redoButton = host.findViewById(R.id.top_btn_redo);
 
@@ -66,13 +74,27 @@ public class TopToolbarController {
 
         bindClick(R.id.top_btn_search_preview, v -> host.showFindReplaceSheet());
         bindClick(R.id.top_btn_share_preview, v -> host.shareCurrentDocument());
-        bindClick(R.id.top_btn_recent_preview, v -> host.showDocumentTabsSheet());
+        bindClick(R.id.top_btn_open_docs_preview, v -> host.showDocumentTabsSheet());
         bindClick(R.id.top_btn_search_edit, v -> host.showFindReplaceSheet());
-        bindClick(R.id.top_btn_recent_edit, v -> host.showDocumentTabsSheet());
+        bindClick(R.id.top_btn_open_docs_edit, v -> host.showDocumentTabsSheet());
 
         refreshDocumentTitle();
+        refreshOpenDocumentCount();
         resetUndoRedoState("toolbar_setup");
         updateEditModeState(isEditModeActive, "toolbar_setup");
+    }
+
+    public void refreshOpenDocumentCount() {
+        Runnable applyTask = () -> {
+            String countText = String.valueOf(Math.max(1, host.getOpenDocumentCount()));
+            if (previewOpenDocsCountView != null) {
+                previewOpenDocsCountView.setText(countText);
+            }
+            if (editOpenDocsCountView != null) {
+                editOpenDocsCountView.setText(countText);
+            }
+        };
+        runOnUi(applyTask);
     }
 
     public void recordUndoableNativeEdit(String reason) {
@@ -116,6 +138,7 @@ public class TopToolbarController {
             if (editToolbarView != null) {
                 editToolbarView.setVisibility(isEditMode ? View.VISIBLE : View.GONE);
             }
+            refreshOpenDocumentCount();
             Log.i(TAG, "top_toolbar_mode edit=" + isEditMode + " reason=" + reason);
         };
         if (Looper.myLooper() == Looper.getMainLooper()) {
