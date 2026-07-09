@@ -29,6 +29,11 @@ public class AiChatCoordinator {
     public static final String MODE_TEXT_EXTRACT = "text_extract";
     public static final String MODE_FORMAT_BATCH = "format_batch";
     public static final String MODE_IMAGE_GENERATE = "image_generate";
+    public static final String MODE_CALC_FORMULA = "calc_formula";
+    public static final String MODE_CALC_COND_FORMAT = "calc_cond_format";
+    public static final String MODE_CALC_NEW_TABLE = "calc_new_table";
+    public static final String MODE_CALC_DATA_PROCESS = "calc_data_process";
+    public static final String MODE_CALC_CHART = "calc_chart";
 
     // 润色风格
     public static final String POLISH_STYLE_QUICK = "quick";
@@ -835,6 +840,245 @@ public class AiChatCoordinator {
     }
 
     /** 构造视觉模型 OCR 请求 messages（OpenAI vision content 数组格式）。 */
+    /**
+     * 构建 Calc AI 公式生成 messages
+     * @param userInput 用户自然语言描述的公式需求
+     * @param cellAddress 当前选中的单元格地址（如 "A1"），可为空
+     */
+    public static JSONArray buildCalcFormulaMessages(String userInput, String cellAddress) throws JSONException {
+        String input = userInput == null ? "" : userInput.trim();
+        String addr = cellAddress == null ? "" : cellAddress.trim();
+
+        StringBuilder sysPrompt = new StringBuilder();
+        sysPrompt.append("你是 Excel/Calc 公式生成助手。根据用户用自然语言描述的公式需求，生成对应的电子表格函数公式。\n");
+        sysPrompt.append("要求：\n");
+        sysPrompt.append("1. 只返回公式本身（如 =AVERAGE(A1:A10)），不要包含任何解释或额外内容\n");
+        sysPrompt.append("2. 公式必须以 = 开头\n");
+        sysPrompt.append("3. 注意单元格引用语法，非中文函数的 region 使用英文函数名\n");
+        sysPrompt.append("4. 如果用户指定了筛选条件（如「大于 10」），请确保公式语法正确\n");
+        if (!addr.isEmpty()) {
+            sysPrompt.append("\n当前选中单元格：").append(addr).append("，注意相对引用。");
+        }
+        sysPrompt.append("\n\n示例：\n");
+        sysPrompt.append("用户：计算 A1 到 A10 的平均值\n");
+        sysPrompt.append("公式：=AVERAGE(A1:A10)\n");
+        sysPrompt.append("用户：计算 B 列的和\n");
+        sysPrompt.append("公式：=SUM(B:B)");
+
+        JSONArray messages = new JSONArray();
+        JSONObject sysMsg = new JSONObject();
+        sysMsg.put("role", "system");
+        sysMsg.put("content", sysPrompt.toString());
+        messages.put(sysMsg);
+
+        JSONObject userMsg = new JSONObject();
+        userMsg.put("role", "user");
+        userMsg.put("content", input);
+        messages.put(userMsg);
+
+        return messages;
+    }
+
+    /**
+     * 构建 Calc AI 条件格式 messages
+     * @param userInput 用户自然语言描述的条件格式需求
+     * @param cellRange 当前选中的单元格范围（如 "A1:A10"），可为空
+     */
+    public static JSONArray buildCondFormatMessages(String userInput, String cellRange) throws JSONException {
+        String input = userInput == null ? "" : userInput.trim();
+        String range = cellRange == null ? "" : cellRange.trim();
+
+        StringBuilder sysPrompt = new StringBuilder();
+        sysPrompt.append("你是 Excel/Calc 条件格式规则生成助手。根据用户的自然语言描述，生成对应的条件格式规则。\n");
+        sysPrompt.append("要求：\n");
+        sysPrompt.append("1. 第一行输出'规则：'开头的中文规则描述\n");
+        sysPrompt.append("2. 第二行输出'公式：'开头的条件公式（以 = 开头）\n");
+        sysPrompt.append("3. 第三行输出'格式：'开头的格式说明（背景色等）\n");
+        sysPrompt.append("4. 如果用户没有指定范围，使用选中范围\n");
+        if (!range.isEmpty()) {
+            sysPrompt.append("\n当前选中范围：").append(range);
+        }
+        sysPrompt.append("\n\n示例：\n");
+        sysPrompt.append("用户：高亮大于100的单元格为红色\n");
+        sysPrompt.append("规则：当单元格值大于 100 时，显示红色背景\n");
+        sysPrompt.append("公式：=A1>100\n");
+        sysPrompt.append("格式：红色背景\n\n");
+        sysPrompt.append("用户：标记重复值\n");
+        sysPrompt.append("规则：当单元格值重复时，显示黄色背景\n");
+        sysPrompt.append("公式：=COUNTIF($A$1:$A$10,A1)>1\n");
+        sysPrompt.append("格式：黄色背景");
+
+        JSONArray messages = new JSONArray();
+        JSONObject sysMsg = new JSONObject();
+        sysMsg.put("role", "system");
+        sysMsg.put("content", sysPrompt.toString());
+        messages.put(sysMsg);
+
+        JSONObject userMsg = new JSONObject();
+        userMsg.put("role", "user");
+        userMsg.put("content", input);
+        messages.put(userMsg);
+
+        return messages;
+    }
+
+    public static JSONArray buildNewCalcTableMessages(String userInput) throws JSONException {
+        String input = (userInput == null ? "" : userInput.trim());
+        if (input.isEmpty()) {
+            input = "生成一份示例数据表";
+        }
+
+        StringBuilder sysPrompt = new StringBuilder();
+        sysPrompt.append("你是电子表格数据生成助手。根据用户的自然语言描述，生成对应的表格数据。\n");
+        sysPrompt.append("要求：\n");
+        sysPrompt.append("1. 只返回纯 JSON，不要包含 Markdown 包裹、代码块标记、解释或任何额外文字\n");
+        sysPrompt.append("2. JSON 格式严格如下：\n");
+        sysPrompt.append("{\n");
+        sysPrompt.append("  \"columns\": [\"列名1\", \"列名2\", \"列名3\", ...],\n");
+        sysPrompt.append("  \"data\": [\n");
+        sysPrompt.append("    [\"值1\", \"值2\", \"值3\"],\n");
+        sysPrompt.append("    [\"值1\", \"值2\", \"值3\"],\n");
+        sysPrompt.append("    ...\n");
+        sysPrompt.append("  ]\n");
+        sysPrompt.append("}\n");
+        sysPrompt.append("3. 列名为中文，清晰表达每列含义\n");
+        sysPrompt.append("4. 数据至少包含 8 行，数据内容要真实合理、有变化\n");
+        sysPrompt.append("5. 数字类数据不要加引号（使用 number 类型），文本类数据加引号\n");
+        sysPrompt.append("6. 所有字符串值使用双引号\n");
+        sysPrompt.append("\n示例：\n");
+        sysPrompt.append("用户：帮我生成 2024 年各季度销售数据表\n");
+        sysPrompt.append("输出：\n");
+        sysPrompt.append("{\n");
+        sysPrompt.append("  \"columns\": [\"季度\", \"销售额\", \"同比增长\", \"备注\"],\n");
+        sysPrompt.append("  \"data\": [\n");
+        sysPrompt.append("    [\"Q1\", 1200000, \"10%\", \"春节促销\"],\n");
+        sysPrompt.append("    [\"Q2\", 1500000, \"25%\", \"618 大促\"],\n");
+        sysPrompt.append("    [\"Q3\", 1800000, \"20%\", \"双十一预热\"],\n");
+        sysPrompt.append("    [\"Q4\", 2500000, \"39%\", \"年终冲刺\"]\n");
+        sysPrompt.append("  ]\n");
+        sysPrompt.append("}\n");
+
+        JSONArray messages = new JSONArray();
+        JSONObject sysMsg = new JSONObject();
+        sysMsg.put("role", "system");
+        sysMsg.put("content", sysPrompt.toString());
+        messages.put(sysMsg);
+
+        JSONObject userMsg = new JSONObject();
+        userMsg.put("role", "user");
+        userMsg.put("content", input);
+        messages.put(userMsg);
+
+        return messages;
+    }
+
+    /**
+     * 构建 AI 数据处理 messages。
+     * @param userInput 用户自然语言描述的数据处理需求
+     * @param cellRange 选中单元格范围（如 "A1:C20"）
+     * @param cellDataSample 选中区域的单元格数据（前 N 行或全部），用于 AI 分析
+     */
+    public static JSONArray buildDataProcessMessages(String userInput, String cellRange, String cellDataSample) throws JSONException {
+        String input = userInput == null ? "" : userInput.trim();
+        String range = cellRange == null ? "" : cellRange.trim();
+        String data = cellDataSample == null ? "" : cellDataSample.trim();
+
+        StringBuilder sysPrompt = new StringBuilder();
+        sysPrompt.append("你是电子表格数据处理专家。根据用户的自然语言描述，分析已选中的数据并生成操作指令。\n");
+        sysPrompt.append("返回严格的 JSON 格式，不要包含 Markdown 包裹、代码块标记或其他任何文字。\n\n");
+        sysPrompt.append("JSON 输出格式：\n");
+        sysPrompt.append("{\n");
+        sysPrompt.append("  \"description\": \"简短的操作说明（50字以内）\",\n");
+        sysPrompt.append("  \"operations\": [\n");
+        sysPrompt.append("    {\n");
+        sysPrompt.append("      \"type\": \"uno\" 或 \"set_value\" 或 \"add_column\",\n");
+        sysPrompt.append("      \"command\": \"UNO 命令名，仅 type=uno 时需要\",\n");
+        sysPrompt.append("      \"range\": \"单元格区域，如 A1:A100\",\n");
+        sysPrompt.append("      \"header\": \"新列表头，仅 type=add_column 时需要\",\n");
+        sysPrompt.append("      \"values\": [\"公式或值数组，每行一个\", \"...\"],\n");
+        sysPrompt.append("      \"valueFormula\": \"带 {row} 占位的公式模板，type=set_value 时使用\"\n");
+        sysPrompt.append("    }\n");
+        sysPrompt.append("  ]\n");
+        sysPrompt.append("}\n\n");
+        sysPrompt.append("操作类型说明：\n");
+        sysPrompt.append("- uno: 执行 UNO 命令（格式化、删除行列、排序、筛选等）。支持的命令示例：.uno:NumberFormatDecDecimals, .uno:NumberFormatIncDecimals, .uno:NumberFormatPercent, .uno:DeleteRows, .uno:DeleteColumns, .uno:RemoveDuplicate, .uno:SortAscending, .uno:SortDescending, .uno:DataFilterAutoFilter, .uno:ResetAttributes, .uno:SetOptimalColumnWidth, .uno:NumberFormatThousands\n");
+        sysPrompt.append("- set_value: 写入公式或值到指定区域。valueFormula 中的 {row} 会在执行时替换为实际行号。如果不需公式，直接写静态值。\n");
+        sysPrompt.append("- add_column: 在选中区域右侧追加新列。values 数组长度应与数据行数一致。为 null/空数组时只加空列。header 为空时不写表头。\n\n");
+        sysPrompt.append("约束：\n");
+        sysPrompt.append("1. range 必须基于用户选中区域：").append(range).append("\n");
+        sysPrompt.append("2. add_column 的 position 仅支持 \"last\"（右侧）\n");
+        sysPrompt.append("3. description 控制在 50 字以内\n");
+        sysPrompt.append("4. 如果用户需求无法用以上三种操作类型实现，则返回 {\"description\": \"无法执行的操作\", \"operations\": []}\n");
+
+        JSONArray messages = new JSONArray();
+        JSONObject sysMsg = new JSONObject();
+        sysMsg.put("role", "system");
+        sysMsg.put("content", sysPrompt.toString());
+        messages.put(sysMsg);
+
+        StringBuilder userPrompt = new StringBuilder();
+        userPrompt.append("用户选中区域：").append(range).append("\n\n");
+        userPrompt.append("选中的数据：\n");
+        userPrompt.append(data.isEmpty() ? "（无数据或空区域）" : data);
+        userPrompt.append("\n\n用户需求：").append(input);
+
+        JSONObject userMsg = new JSONObject();
+        userMsg.put("role", "user");
+        userMsg.put("content", userPrompt.toString());
+        messages.put(userMsg);
+
+        return messages;
+    }
+
+    /**
+     * AI图表生成 prompt
+     */
+    public static JSONArray buildChartMessages(String userInput, String cellRange, String cellDataSample) throws JSONException {
+        JSONArray messages = new JSONArray();
+
+        JSONObject systemMsg = new JSONObject();
+        systemMsg.put("role", "system");
+        String prompt = "你是一个Calc电子表格图表专家。你的任务是根据用户指令和选中的单元格数据，生成图表。\n\n"
+            + "用户提供了选中的单元格范围：" + cellRange + "\n"
+            + "单元格数据样本：\n" + cellDataSample + "\n\n"
+            + "请分析用户指令，按以下 JSON 格式返回：\n\n"
+            + "如果用户指令不需要数据预处理（直接基于选中区域创建图表）：\n"
+            + "```json\n"
+            + "{\n"
+            + "  \"preprocess\": [],\n"
+            + "  \"chart\": {\n"
+            + "    \"dataRange\": \"$Sheet1.$A$1:$B$10\",\n"
+            + "    \"chartType\": \"pie|bar|column|line\",\n"
+            + "    \"title\": \"图表标题\"\n"
+            + "  }\n"
+            + "}\n"
+            + "```\n\n"
+            + "如果需要数据预处理（如计算平均值、求和等）：\n"
+            + "```json\n"
+            + "{\n"
+            + "  \"preprocess\": [\n"
+            + "    {\"type\": \"formula\", \"address\": \"$Sheet1.$C$1\", \"value\": \"=AVERAGE($Sheet1.$A$1:$A$10)\"}\n"
+            + "  ],\n"
+            + "  \"chart\": {\n"
+            + "    \"dataRange\": \"$Sheet1.$A$1:$C$11\",\n"
+            + "    \"chartType\": \"pie\",\n"
+            + "    \"title\": \"图表标题\"\n"
+            + "  }\n"
+            + "}\n"
+            + "```\n\n"
+            + "chartType 只支持: pie(饼图), bar(条形图/横向), column(柱状图/纵向), line(折线图)\n"
+            + "请严格用 JSON 格式回复，不要添加额外的解释文本。";
+        systemMsg.put("content", prompt);
+        messages.put(systemMsg);
+
+        JSONObject userMsg = new JSONObject();
+        userMsg.put("role", "user");
+        userMsg.put("content", userInput);
+        messages.put(userMsg);
+
+        return messages;
+    }
+
     public static JSONArray buildTextExtractMessages(String base64Image) throws JSONException {
         JSONArray messages = new JSONArray();
         JSONObject sysMsg = new JSONObject();
