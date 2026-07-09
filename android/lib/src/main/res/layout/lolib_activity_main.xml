@@ -327,6 +327,165 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
+        <!-- Calc AI公式生成浮层遮罩（点击关闭） -->
+        <View
+            android:id="@+id/calc_formula_overlay"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="#80000000"
+            android:clickable="true"
+            android:elevation="45dp"
+            android:focusable="true"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
+
+        <!-- Calc AI公式生成浮层 panel（尺寸/位置由 LOActivity.positionCalcFormulaDialogCenter() 运行时设置） -->
+        <include
+            android:id="@+id/calc_formula_dialog_panel"
+            layout="@layout/lolib_calc_formula_dialog"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- Calc AI条件格式浮层遮罩（点击关闭） -->
+        <View
+            android:id="@+id/cond_format_overlay"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="#80000000"
+            android:clickable="true"
+            android:elevation="45dp"
+            android:focusable="true"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
+
+        <!-- Calc AI条件格式浮层 panel -->
+        <include
+            android:id="@+id/cond_format_dialog_panel"
+            layout="@layout/lolib_calc_condformat_dialog"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- Calc AI数据处理浮层遮罩（点击关闭） -->
+        <View
+            android:id="@+id/dp_overlay"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="#80000000"
+            android:clickable="true"
+            android:elevation="45dp"
+            android:focusable="true"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
+
+        <!-- Calc AI数据处理浮层 panel -->
+        <include
+            android:id="@+id/dp_dialog_panel"
+            layout="@layout/lolib_calc_dataprocess_dialog"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- AI图表生成 overlay -->
+        <View
+            android:id="@+id/chart_overlay"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="#80000000"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@id/doc_main_content"
+            app:layout_constraintEnd_toEndOf="@id/doc_main_content"
+            app:layout_constraintStart_toStartOf="@id/doc_main_content"
+            app:layout_constraintTop_toTopOf="@id/doc_main_content" />
+
+        <!-- AI图表生成弹窗 -->
+        <include
+            android:id="@+id/chart_dialog_panel"
+            layout="@layout/lolib_calc_chart_dialog"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@id/doc_main_content"
+            app:layout_constraintEnd_toEndOf="@id/doc_main_content"
+            app:layout_constraintStart_toStartOf="@id/doc_main_content"
+            app:layout_constraintTop_toTopOf="@id/doc_main_content" />
+
+        <!-- Calc 新建表格 AI 生成进度浮层遮罩 -->
+        <View
+            android:id="@+id/calc_new_table_overlay"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="#80000000"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- Calc 新建表格 AI 生成进度浮层 panel -->
+        <LinearLayout
+            android:id="@+id/calc_new_table_panel"
+            android:layout_width="280dp"
+            android:layout_height="wrap_content"
+            android:background="@drawable/lolib_bg_dialog_outline"
+            android:elevation="50dp"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="24dp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ProgressBar
+                android:id="@+id/calc_new_table_spinner"
+                style="?android:attr/progressBarStyleLarge"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:indeterminateTint="#8A5CFF"
+                android:indeterminateTintMode="src_in" />
+
+            <TextView
+                android:id="@+id/calc_new_table_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:gravity="center"
+                android:text="正在生成表格数据..."
+                android:textColor="#202124"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/calc_new_table_detail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:text=""
+                android:textColor="#5F6368"
+                android:textSize="13sp" />
+        </LinearLayout>
+
         <!-- AI排版结果预览 overlay（含遮罩+卡片，尺寸/位置由 LOActivity.positionTypesetPreviewOverlay() 设置） -->
         <include
             android:id="@+id/typeset_preview_overlay_include"
