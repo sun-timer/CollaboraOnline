@@ -20,39 +20,41 @@
         <!-- ============== Header ============== -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/lolib_bg_ai_panel_header"
+            android:layout_height="62dp"
+            android:layout_marginStart="-16dp"
+            android:layout_marginTop="-14dp"
+            android:layout_marginEnd="-16dp"
+            android:background="#FFFFFF"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingStart="20dp"
-            android:paddingTop="14dp"
-            android:paddingEnd="12dp"
-            android:paddingBottom="14dp">
+            android:paddingEnd="8dp">
 
             <ImageView
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
                 android:contentDescription="AI"
-                android:src="@drawable/lolib_ic_ai_panel_logo" />
+                android:src="@drawable/lolib_ic_ai_ops_sparkle" />
 
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
+                android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:text="AI 功能"
-                android:textColor="#15171A"
+                android:text="AI功能"
+                android:textColor="#101010"
                 android:textSize="20sp"
                 android:textStyle="bold" />
 
             <ImageButton
                 android:id="@+id/ai_op_close"
-                android:layout_width="42dp"
-                android:layout_height="42dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="关闭"
-                android:padding="8dp"
-                android:src="@android:drawable/ic_menu_close_clear_cancel" />
+                android:padding="12dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/lolib_ic_dialog_close" />
         </LinearLayout>
 
         <!-- ============== Selection hint ============== -->
@@ -68,8 +70,155 @@
             android:textColor="#5F6368"
             android:textSize="14sp" />
 
+        <!-- ============== Section: Calc AI（仅在 Calc 文档显示） ============== -->
+        <TextView
+            android:id="@+id/ai_op_calc_section_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="Calc AI"
+            android:textColor="#101010"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/ai_op_calc_section_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <!-- AI公式 -->
+            <LinearLayout
+                android:id="@+id/ai_op_calc_formula"
+                android:layout_width="0dp"
+                android:layout_height="160dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/lolib_bg_ai_function_card"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:contentDescription="AI公式"
+                    android:src="@drawable/lolib_ic_ai_continue_write" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="AI公式"
+                    android:textColor="#101010"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <!-- AI条件格式 -->
+            <LinearLayout
+                android:id="@+id/ai_op_calc_cond_format"
+                android:layout_width="0dp"
+                android:layout_height="160dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/lolib_bg_ai_function_card"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:contentDescription="AI条件格式"
+                    android:src="@drawable/lolib_ic_ai_typeset" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="AI条件格式"
+                    android:textColor="#101010"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <!-- AI数据处理 -->
+            <LinearLayout
+                android:id="@+id/ai_op_calc_data_process"
+                android:layout_width="0dp"
+                android:layout_height="160dp"
+                android:layout_weight="1"
+                android:background="@drawable/lolib_bg_ai_function_card"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:contentDescription="AI数据处理"
+                    android:src="@drawable/lolib_ic_ai_text_extract" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="AI数据处理"
+                    android:textColor="#101010"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- AI图表（第二行） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:id="@+id/ai_op_calc_chart"
+                android:layout_width="0dp"
+                android:layout_height="160dp"
+                android:layout_weight="1"
+                android:background="@drawable/lolib_bg_ai_function_card"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:contentDescription="AI图表"
+                    android:src="@drawable/lolib_ic_ai_image_generate" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="AI图表"
+                    android:textColor="#101010"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </LinearLayout>
+
         <!-- ============== Section: 文案生成 (3 按钮) ============== -->
         <TextView
+            android:id="@+id/ai_op_writer_section_1_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
@@ -79,6 +228,7 @@
             android:textStyle="bold" />
 
         <LinearLayout
+            android:id="@+id/ai_op_writer_section_1_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
@@ -88,7 +238,7 @@
             <LinearLayout
                 android:id="@+id/ai_op_continue_write"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="160dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="10dp"
                 android:background="@drawable/lolib_bg_ai_function_card"
@@ -96,12 +246,12 @@
                 android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="22dp"
-                android:paddingBottom="22dp">
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:contentDescription="AI续写"
                     android:src="@drawable/lolib_ic_ai_continue_write" />
 
@@ -118,7 +268,7 @@
             <LinearLayout
                 android:id="@+id/ai_op_outline"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="160dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="10dp"
                 android:background="@drawable/lolib_bg_ai_function_card"
@@ -126,12 +276,12 @@
                 android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="22dp"
-                android:paddingBottom="22dp">
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:contentDescription="生成大纲"
                     android:src="@drawable/lolib_ic_ai_outline" />
 
@@ -148,19 +298,19 @@
             <LinearLayout
                 android:id="@+id/ai_op_article_generate"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="160dp"
                 android:layout_weight="1"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="22dp"
-                android:paddingBottom="22dp">
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:contentDescription="文案生成"
                     android:src="@drawable/lolib_ic_ai_article_generate" />
 
@@ -176,6 +326,7 @@
 
         <!-- ============== Section: 文案处理 (5 按钮) ============== -->
         <TextView
+            android:id="@+id/ai_op_writer_section_2_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
@@ -185,6 +336,7 @@
             android:textStyle="bold" />
 
         <LinearLayout
+            android:id="@+id/ai_op_writer_section_2_row1"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
@@ -194,7 +346,7 @@
             <LinearLayout
                 android:id="@+id/ai_op_polish"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="160dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="10dp"
                 android:background="@drawable/lolib_bg_ai_function_card"
@@ -202,12 +354,12 @@
                 android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="22dp"
-                android:paddingBottom="22dp">
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:contentDescription="文案润色"
                     android:src="@drawable/lolib_ic_ai_polish" />
 
@@ -224,7 +376,7 @@
             <LinearLayout
                 android:id="@+id/ai_op_expand"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="160dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="10dp"
                 android:background="@drawable/lolib_bg_ai_function_card"
@@ -232,12 +384,12 @@
                 android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="22dp"
-                android:paddingBottom="22dp">
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:contentDescription="文案扩写"
                     android:src="@drawable/lolib_ic_ai_expand" />
 
@@ -254,19 +406,19 @@
             <LinearLayout
                 android:id="@+id/ai_op_condense"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="160dp"
                 android:layout_weight="1"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="22dp"
-                android:paddingBottom="22dp">
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:contentDescription="文案缩写"
                     android:src="@drawable/lolib_ic_ai_condense" />
 
@@ -281,6 +433,7 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/ai_op_writer_section_2_row2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
@@ -290,7 +443,7 @@
             <LinearLayout
                 android:id="@+id/ai_op_rewrite"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="160dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="10dp"
                 android:background="@drawable/lolib_bg_ai_function_card"
@@ -298,12 +451,12 @@
                 android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="22dp"
-                android:paddingBottom="22dp">
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:contentDescription="文案重写"
                     android:src="@drawable/lolib_ic_ai_rewrite" />
 
@@ -320,7 +473,7 @@
             <LinearLayout
                 android:id="@+id/ai_op_translate"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="160dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="10dp"
                 android:background="@drawable/lolib_bg_ai_function_card"
@@ -328,12 +481,12 @@
                 android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="22dp"
-                android:paddingBottom="22dp">
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:contentDescription="文案翻译"
                     android:src="@drawable/lolib_ic_ai_translate" />
 
@@ -349,6 +502,7 @@
 
         <!-- ============== Section: 其他 ============== -->
         <TextView
+            android:id="@+id/ai_op_other_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
@@ -358,6 +512,7 @@
             android:textStyle="bold" />
 
         <LinearLayout
+            android:id="@+id/ai_op_other_row1"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
@@ -367,7 +522,7 @@
             <LinearLayout
                 android:id="@+id/ai_op_text_extract"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="160dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="10dp"
                 android:background="@drawable/lolib_bg_ai_function_card"
@@ -375,12 +530,12 @@
                 android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="22dp"
-                android:paddingBottom="22dp">
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:contentDescription="文字提取"
                     android:src="@drawable/lolib_ic_ai_text_extract" />
 
@@ -397,7 +552,7 @@
             <LinearLayout
                 android:id="@+id/ai_op_typeset"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="160dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="10dp"
                 android:background="@drawable/lolib_bg_ai_function_card"
@@ -405,12 +560,12 @@
                 android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="22dp"
-                android:paddingBottom="22dp">
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:contentDescription="AI排版"
                     android:src="@drawable/lolib_ic_ai_typeset" />
 
@@ -427,19 +582,19 @@
             <LinearLayout
                 android:id="@+id/ai_op_image_generate"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="160dp"
                 android:layout_weight="1"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="22dp"
-                android:paddingBottom="22dp">
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:contentDescription="AI图片"
                     android:src="@drawable/lolib_ic_ai_image_generate" />
 
@@ -454,6 +609,7 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/ai_op_other_row2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
@@ -463,7 +619,7 @@
             <LinearLayout
                 android:id="@+id/ai_op_format_batch"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="160dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="10dp"
                 android:background="@drawable/lolib_bg_ai_function_card"
@@ -471,12 +627,12 @@
                 android:focusable="true"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingTop="22dp"
-                android:paddingBottom="22dp">
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:contentDescription="格式批量处理"
                     android:src="@drawable/lolib_ic_ai_format_batch" />
 
@@ -491,7 +647,7 @@
 
             <Space
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="160dp"
                 android:layout_weight="2" />
         </LinearLayout>
 
