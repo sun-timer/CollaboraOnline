@@ -1646,6 +1646,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		var cellfillMarkerSection = app.sectionContainer.getSectionWithName(app.CSections.CellFillMarker.name);
 
 		var oldCursorAddress = app.calc.cellAddress.clone();
+		console.log('calc_cell_tap: _onCellCursorMsg textMsg=' + textMsg + ' oldAddr=(' + oldCursorAddress.x + ',' + oldCursorAddress.y + ')');
 
 		if (textMsg.match('EMPTY')) {
 			app.calc.cellCursorVisible = false;
@@ -1676,6 +1677,8 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 
 		var sameAddress = oldCursorAddress.equals(app.calc.cellAddress.toArray());
 
+		console.log('calc_cell_tap: _onCellCursorMsg result sameAddr=' + sameAddress + ' newAddr=(' + app.calc.cellAddress.x + ',' + app.calc.cellAddress.y + ')');
+		try { window.postMobileMessage('CALC_CELL_TAP cursorAddr col=' + app.calc.cellAddress.x + ' row=' + app.calc.cellAddress.y + ' topLeft=(' + topLeftTwips.x + ',' + topLeftTwips.y + ')'); } catch(e) { /* diagnostic */ }
 		var isFollowingOwnCursor = parseInt(app.getFollowedViewId()) === parseInt(this._viewId);
 		var notJump = sameAddress || !isFollowingOwnCursor;
 		var scrollToCursor = this._sheetSwitch.tryRestore(notJump, this._selectedPart);

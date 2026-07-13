@@ -112,6 +112,15 @@ class MouseControl extends CanvasSectionObject {
 		e.stopPropagation();
 		e.stopImmediatePropagation();
 
+		// Android Calc: do not request core context menu on long-press.
+		if (
+			(window as any).ThisIsTheAndroidApp &&
+			app.map._docLayer &&
+			app.map._docLayer._docType === 'spreadsheet'
+		) {
+			return;
+		}
+
 		const buttons = app.LOButtons.right;
 		const modifier = MouseControl.readModifier(e);
 
@@ -420,6 +429,22 @@ class MouseControl extends CanvasSectionObject {
 		} else return false;
 	}
 
+	/**
+	 * Android native Calc tap: send left click to core without closepopups /
+	 * editorgotfocus (Android native shell has no web mobileTopBar).
+	 */
+	public dispatchNativeCalcCellTap(point: cool.SimplePoint): { x: number; y: number } {
+		// Bypass refreshPosition + postCoreMouseEvent — they add viewedRectangle
+		// scroll offset which is already accounted for in the section position
+		// (myTopLeft). In edit mode, viewedRectangle.pX1 becomes non-zero due to
+		// _syncTilePanePos, causing double-counted scroll and wrong cell selection.
+		const buttons = app.LOButtons.left;
+		app.map._docLayer._postMouseEvent('buttondown', point.x, point.y, 1, buttons, 0);
+		app.map._docLayer._postMouseEvent('buttonup', point.x, point.y, 1, buttons, 0);
+		app.map.focus(this.getMobileKeyboardVisibility());
+		return { x: point.x, y: point.y };
+	}
+
 	private sendClick(clickInfo: any, count: number) {
 		this.postCoreMouseEvent(
 			'buttondown',
@@ -444,7 +469,15 @@ class MouseControl extends CanvasSectionObject {
 		this.refreshPosition(point);
 		this.clickCount++;
 
-		if (!(<any>window).mode.isDesktop()) app.map.fire('closemobilewizard');
+		if (!(<any>window).mode.isDesktop()) {
+			const isCalcEdit =
+				app.map.isEditMode() &&
+				app.map._docLayer &&
+				app.map._docLayer._docType === 'spreadsheet';
+			if (!isCalcEdit) {
+				app.map.fire('closemobilewizard');
+			}
+		}
 
 		// Right click is not supported. And click event doesn't have "buttons" property set. Safe to set it here to default.
 		let buttons = app.LOButtons.left;

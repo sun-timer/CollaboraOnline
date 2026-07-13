@@ -473,6 +473,40 @@ class CanvasSectionContainer {
 		return this.canvas.getBoundingClientRect();
 	}
 
+	/**
+	 * Android native Calc tap at WebView client coordinates.
+	 * Uses canvas.getBoundingClientRect() + MouseControl.refreshPosition (same as preview).
+	 */
+	public dispatchCalcTapAtClient(
+		clientX: number,
+		clientY: number,
+	): { x: number; y: number } | null {
+		const mouseSection = this.getSectionWithName(
+			app.CSections.MouseControl.name,
+		) as MouseControl;
+		if (!mouseSection) {
+			return null;
+		}
+
+		const syntheticClick = new MouseEvent('click', {
+			bubbles: true,
+			cancelable: true,
+			view: window,
+			// Android MotionEvent.getX() returns physical pixels.
+			// Divide by dpiScale to get CSS pixels, matching browser
+			// click event behavior. convertPositionToCanvasLocale
+			// then correctly multiplies by dpiScale for core pixels.
+			clientX: clientX / app.dpiScale,
+			clientY: clientY / app.dpiScale,
+			button: 0,
+			buttons: 0,
+		});
+		const canvasPos = this.convertPositionToCanvasLocale(syntheticClick);
+		const sectionPos = this.convertPositionToSectionLocale(mouseSection, canvasPos);
+		const point = cool.SimplePoint.fromCorePixels(sectionPos);
+		return mouseSection.dispatchNativeCalcCellTap(point);
+	}
+
 	public getWidth(): number {
 		return this.width;
 	}
