@@ -263,6 +263,57 @@
                             android:textColor="#202124"
                             android:textSize="14sp" />
                     </LinearLayout>
+
+                    <!-- Calc 编辑模式专属：填充单元格 / 合并单元格 -->
+                    <LinearLayout
+                        android:id="@+id/toolbar_item_fill_cell"
+                        android:layout_width="108dp"
+                        android:layout_height="match_parent"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/lolib_ic_toolbar_fill_cell"
+                            android:contentDescription="填充单元格" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="填充单元格"
+                            android:textColor="#202124"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/toolbar_item_merge_cell"
+                        android:layout_width="108dp"
+                        android:layout_height="match_parent"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/lolib_ic_toolbar_merge_cell"
+                            android:contentDescription="合并单元格" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="合并单元格"
+                            android:textColor="#202124"
+                            android:textSize="14sp" />
+                    </LinearLayout>
                 </LinearLayout>
             </HorizontalScrollView>
         </LinearLayout>
@@ -297,10 +348,24 @@
             layout="@layout/lolib_selection_popup"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:elevation="6dp"
             android:visibility="gone"
             app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent" />
+
+        <!-- Calc 对象（图表/图片/形状）选中底部操作栏 -->
+        <include
+            android:id="@+id/calc_object_bar_panel"
+            layout="@layout/lolib_calc_object_bar"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="1.0" />
 
         <!-- AI续写浮层遮罩（点击关闭） -->
         <View
@@ -426,6 +491,30 @@
             app:layout_constraintStart_toStartOf="@id/doc_main_content"
             app:layout_constraintTop_toTopOf="@id/doc_main_content" />
 
+        <!-- AI生成PPT overlay -->
+        <View
+            android:id="@+id/impress_outline_overlay"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="#80000000"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@id/doc_main_content"
+            app:layout_constraintEnd_toEndOf="@id/doc_main_content"
+            app:layout_constraintStart_toStartOf="@id/doc_main_content"
+            app:layout_constraintTop_toTopOf="@id/doc_main_content" />
+
+        <!-- AI生成PPT弹窗 -->
+        <include
+            android:id="@+id/impress_outline_panel"
+            layout="@layout/lolib_dialog_impress_outline"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@id/doc_main_content"
+            app:layout_constraintEnd_toEndOf="@id/doc_main_content"
+            app:layout_constraintStart_toStartOf="@id/doc_main_content"
+            app:layout_constraintTop_toTopOf="@id/doc_main_content" />
+
         <!-- Calc 新建表格 AI 生成进度浮层遮罩 -->
         <View
             android:id="@+id/calc_new_table_overlay"
@@ -492,6 +581,7 @@
             layout="@layout/lolib_dialog_typeset_preview"
             android:layout_width="0dp"
             android:layout_height="0dp"
+            android:elevation="48dp"
             android:visibility="gone"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"

@@ -19,8 +19,8 @@
 
         <ImageButton
             android:id="@+id/ai_image_preview_back_btn"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:layout_gravity="top|start"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="返回"
@@ -38,13 +38,14 @@
 
         <ImageButton
             android:id="@+id/ai_image_preview_close_btn"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:layout_gravity="top|end"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="关闭"
-            android:padding="8dp"
-            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/lolib_ic_dialog_close"
             android:tint="#1F1F1F" />
     </FrameLayout>
 

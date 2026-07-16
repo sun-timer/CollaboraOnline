@@ -48,12 +48,13 @@
 
             <ImageButton
                 android:id="@+id/typeset_select_close"
-                android:layout_width="42dp"
-                android:layout_height="42dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="关闭"
-                android:padding="8dp"
-                android:src="@android:drawable/ic_menu_close_clear_cancel" />
+                android:padding="12dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/lolib_ic_dialog_close" />
         </LinearLayout>
 
         <!-- ============== 提示文字 ============== -->

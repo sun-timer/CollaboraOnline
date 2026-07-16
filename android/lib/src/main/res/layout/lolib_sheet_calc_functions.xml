@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/calc_function_sheet_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF"
+    android:orientation="vertical">
+
+    <!-- Tab bar + toolbar actions -->
+    <LinearLayout
+        android:id="@+id/calc_function_tab_header"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="4dp">
+
+        <HorizontalScrollView
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:fillViewport="false"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/calc_function_tab_bar"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+
+        <ImageButton
+            android:id="@+id/calc_function_btn_ai"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="AI功能"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/lolib_ic_ai_ops_sparkle" />
+
+        <ImageButton
+            android:id="@+id/calc_function_btn_keyboard"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="键盘"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/lolib_ic_toolbar_keyboard" />
+
+        <ImageButton
+            android:id="@+id/calc_function_btn_collapse"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="收起"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/lolib_ic_arrow_down" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/calc_function_tab_indicator_area"
+        android:layout_width="match_parent"
+        android:layout_height="4dp">
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_gravity="bottom"
+            android:background="#E3E3E3" />
+
+        <View
+            android:id="@+id/calc_function_tab_indicator"
+            android:layout_width="24dp"
+            android:layout_height="3dp"
+            android:layout_gravity="bottom|start"
+            android:background="@drawable/lolib_bg_calc_tab_indicator"
+            android:visibility="invisible" />
+    </FrameLayout>
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/calc_function_content_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:fillViewport="false"
+        android:overScrollMode="ifContentScrolls"
+        android:paddingStart="16dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="16dp"
+        android:scrollbars="vertical" />
+
+    <include
+        android:id="@+id/calc_function_font_picker_panel"
+        layout="@layout/lolib_sheet_font_picker"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:visibility="gone" />
+
+</LinearLayout>

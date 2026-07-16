@@ -37,7 +37,7 @@
             android:clickable="true"
             android:contentDescription="关闭"
             android:focusable="true"
-            android:src="@android:drawable/ic_menu_close_clear_cancel" />
+            android:src="@drawable/lolib_ic_dialog_close" />
     </FrameLayout>
 
     <!-- ========== 内容卡片(可滚动) ========== -->

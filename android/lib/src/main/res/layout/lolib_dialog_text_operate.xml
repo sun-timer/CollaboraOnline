@@ -26,13 +26,14 @@
 
         <ImageButton
             android:id="@+id/text_op_close_btn"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:layout_gravity="top|end"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="关闭"
-            android:padding="8dp"
-            android:src="@android:drawable/ic_menu_close_clear_cancel" />
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/lolib_ic_dialog_close" />
     </FrameLayout>
 
     <FrameLayout
@@ -143,17 +144,9 @@
             android:focusable="true"
             android:gravity="center"
             android:orientation="horizontal">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:contentDescription="重新生成"
-                android:src="@drawable/lolib_ic_btn_regenerate" />
-
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
                 android:text="重新生成"
                 android:textColor="#333333"
                 android:textSize="18sp" />
@@ -170,17 +163,9 @@
             android:focusable="true"
             android:gravity="center"
             android:orientation="horizontal">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:contentDescription="插入文档"
-                android:src="@drawable/lolib_ic_btn_insert" />
-
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
                 android:text="插入文档"
                 android:textColor="#FFFFFF"
                 android:textSize="18sp"

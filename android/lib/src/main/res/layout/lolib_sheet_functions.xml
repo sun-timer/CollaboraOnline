@@ -9,17 +9,16 @@
     android:paddingEnd="16dp"
     android:paddingBottom="18dp">
 
-    <LinearLayout
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:minHeight="48dp">
 
         <TextView
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center_horizontal"
+            android:layout_gravity="center"
+            android:gravity="center"
             android:text="功能"
             android:textColor="#15171A"
             android:textSize="22sp"
@@ -29,11 +28,13 @@
             android:id="@+id/function_sheet_close"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="#E7E7E7"
+            android:layout_gravity="top|end"
+            android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="关闭"
-            android:padding="10dp"
-            android:src="@android:drawable/ic_menu_close_clear_cancel" />
-    </LinearLayout>
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/lolib_ic_dialog_close" />
+    </FrameLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -135,7 +136,7 @@
             android:background="#E3E3E3" />
 
         <LinearLayout
-            android:id="@+id/function_action_print"
+            android:id="@+id/function_action_export_pdf"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:gravity="center_vertical"
@@ -146,14 +147,14 @@
             <ImageView
                 android:layout_width="28dp"
                 android:layout_height="28dp"
-                android:contentDescription="打印"
-                android:src="@drawable/lolib_ic_function_print" />
+                android:contentDescription="导出PDF"
+                android:src="@drawable/lolib_ic_function_export_pdf" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="14dp"
-                android:text="打印"
+                android:text="导出PDF"
                 android:textColor="#202124"
                 android:textSize="18sp" />
         </LinearLayout>

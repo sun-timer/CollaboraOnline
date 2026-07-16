@@ -26,13 +26,14 @@
 
         <ImageButton
             android:id="@+id/text_extract_close_btn"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:layout_gravity="top|end"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="关闭"
-            android:padding="8dp"
-            android:src="@android:drawable/ic_menu_close_clear_cancel" />
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/lolib_ic_dialog_close" />
     </FrameLayout>
 
     <!-- INPUT 阶段：相册导入 / 拍照识别 -->

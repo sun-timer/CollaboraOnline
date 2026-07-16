@@ -21,6 +21,8 @@ import androidx.appcompat.widget.SwitchCompat;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
+import org.libreoffice.androidlib.ai.AiDialogHelper;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -209,6 +211,7 @@ public class FunctionPanelController {
 
         dialog = new BottomSheetDialog(host.getContext());
         dialog.setContentView(panel);
+        AiDialogHelper.applyCloseOnlyDismiss(dialog);
         dialog.setOnDismissListener(d -> dialog = null);
         dialog.show();
         expandSheet();

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Calc 嵌入式对象（图表/图片/形状）选中底部操作栏 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/calc_object_bar_root"
+    android:layout_width="wrap_content"
+    android:layout_height="48dp"
+    android:background="@drawable/lolib_bg_selection_popup"
+    android:elevation="30dp"
+    android:gravity="center"
+    android:orientation="horizontal"
+    android:paddingStart="6dp"
+    android:paddingEnd="6dp">
+
+    <LinearLayout
+        android:id="@+id/calc_object_op_delete"
+        style="@style/SelectionPopupButton"
+        android:layout_marginEnd="2dp">
+
+        <ImageView
+            style="@style/SelectionPopupButtonIcon"
+            android:src="@drawable/lolib_ic_selection_delete" />
+
+        <TextView
+            style="@style/SelectionPopupButtonText"
+            android:text="删除" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/calc_object_op_copy"
+        style="@style/SelectionPopupButton"
+        android:layout_marginEnd="2dp">
+
+        <ImageView
+            style="@style/SelectionPopupButtonIcon"
+            android:src="@drawable/lolib_ic_selection_copy" />
+
+        <TextView
+            style="@style/SelectionPopupButtonText"
+            android:text="复制" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/calc_object_op_cut"
+        style="@style/SelectionPopupButton">
+
+        <ImageView
+            style="@style/SelectionPopupButtonIcon"
+            android:src="@drawable/lolib_ic_selection_cut" />
+
+        <TextView
+            style="@style/SelectionPopupButtonText"
+            android:text="剪切" />
+    </LinearLayout>
+
+</LinearLayout>

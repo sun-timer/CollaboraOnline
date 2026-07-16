@@ -9,18 +9,17 @@
     android:paddingEnd="16dp"
     android:paddingBottom="18dp">
 
-    <LinearLayout
+    <FrameLayout
         android:id="@+id/function_edit_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:minHeight="48dp">
 
         <TextView
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center_horizontal"
+            android:layout_gravity="center"
+            android:gravity="center"
             android:text="功能"
             android:textColor="#15171A"
             android:textSize="22sp"
@@ -30,11 +29,13 @@
             android:id="@+id/function_edit_sheet_close"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="#E7E7E7"
+            android:layout_gravity="top|end"
+            android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="关闭"
-            android:padding="10dp"
-            android:src="@android:drawable/ic_menu_close_clear_cancel" />
-    </LinearLayout>
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/lolib_ic_dialog_close" />
+    </FrameLayout>
 
     <!-- Tab bar area: HorizontalScrollView for tabs + indicator + border -->
     <FrameLayout

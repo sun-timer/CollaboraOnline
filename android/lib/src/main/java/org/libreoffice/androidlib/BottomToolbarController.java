@@ -24,12 +24,18 @@ public class BottomToolbarController {
             R.id.toolbar_item_mobile_preview,
             R.id.toolbar_item_ai_assistant
     };
-    private static final int[] EDIT_MODE_EXTRA_TOOLBAR_ITEM_IDS = new int[] {
+    private static final int[] EDIT_MODE_COMMON_TOOLBAR_ITEM_IDS = new int[] {
             R.id.toolbar_item_ai_feature,
             R.id.toolbar_item_keyboard,
-            R.id.toolbar_item_character,
+            R.id.toolbar_item_character
+    };
+    private static final int[] EDIT_MODE_WRITER_ONLY_TOOLBAR_ITEM_IDS = new int[] {
             R.id.toolbar_item_paragraph,
             R.id.toolbar_item_insert_image
+    };
+    private static final int[] EDIT_MODE_CALC_ONLY_TOOLBAR_ITEM_IDS = new int[] {
+            R.id.toolbar_item_fill_cell,
+            R.id.toolbar_item_merge_cell
     };
     private static final int[] ALL_TOOLBAR_ITEM_IDS = new int[] {
             R.id.toolbar_item_function,
@@ -39,7 +45,9 @@ public class BottomToolbarController {
             R.id.toolbar_item_keyboard,
             R.id.toolbar_item_character,
             R.id.toolbar_item_paragraph,
-            R.id.toolbar_item_insert_image
+            R.id.toolbar_item_insert_image,
+            R.id.toolbar_item_fill_cell,
+            R.id.toolbar_item_merge_cell
     };
     private static final int TOOLBAR_DEFAULT_HEIGHT_DP = 82;
     private static final int TOOLBAR_COMPACT_HEIGHT_DP = 48;
@@ -73,6 +81,7 @@ public class BottomToolbarController {
             new ColorOption("灰色", 0xD9D9D9),
             new ColorOption("白色", 0xFFFFFF)
     };
+    private static final ColorOption[] CELL_FILL_COLOR_OPTIONS = HIGHLIGHT_COLOR_OPTIONS;
 
     private static final QuickActionItem[] CHARACTER_QUICK_ACTION_ITEMS = new QuickActionItem[] {
             new QuickActionItem(R.drawable.lolib_ic_quick_bold, "粗体", ".uno:Bold"),
@@ -132,6 +141,7 @@ public class BottomToolbarController {
     private int navigationBarInsetPx = 0;
     private boolean isImeVisibleForToolbar = false;
     private boolean isEditModeActive = false;
+    private boolean isCalcDocument = false;
     private QuickActionGroup activeQuickActionGroup = QuickActionGroup.NONE;
 
     public BottomToolbarController(Host host) {
@@ -175,9 +185,34 @@ public class BottomToolbarController {
             hideQuickActionPanel();
             host.openLocalImagePickerFromWeb();
         });
+        bindToolbarClick(R.id.toolbar_item_fill_cell, v -> {
+            hideQuickActionPanel();
+            showColorPicker("选择单元格填充颜色", ".uno:BackgroundColor",
+                    "BackgroundColor.Color", CELL_FILL_COLOR_OPTIONS);
+        });
+        bindToolbarClick(R.id.toolbar_item_merge_cell, v -> {
+            hideQuickActionPanel();
+            host.executeUnoCommand(".uno:ToggleMergeCells");
+        });
 
         applyImeState(isImeVisibleForToolbar, bottomToolbarImeInsetPx, navigationBarInsetPx);
         updateEditModeState(isEditModeActive, "toolbar_setup");
+    }
+
+    public void updateDocumentType(boolean isCalc) {
+        isCalcDocument = isCalc;
+        Runnable applyTask = () -> {
+            applyBottomToolbarMode(isEditModeActive);
+            if (isCalcDocument) {
+                hideQuickActionPanel();
+            }
+            Log.i(TAG, "bottom_toolbar_doc_type isCalc=" + isCalcDocument);
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            applyTask.run();
+        } else {
+            host.runOnUiThread(applyTask);
+        }
     }
 
     public void updateEditModeState(boolean isEditMode, String reason) {
@@ -240,7 +275,9 @@ public class BottomToolbarController {
 
     private void applyBottomToolbarMode(boolean isEditMode) {
         setBottomToolbarItemsVisible(PREVIEW_MODE_TOOLBAR_ITEM_IDS, true);
-        setBottomToolbarItemsVisible(EDIT_MODE_EXTRA_TOOLBAR_ITEM_IDS, isEditMode);
+        setBottomToolbarItemsVisible(EDIT_MODE_COMMON_TOOLBAR_ITEM_IDS, isEditMode);
+        setBottomToolbarItemsVisible(EDIT_MODE_WRITER_ONLY_TOOLBAR_ITEM_IDS, isEditMode && !isCalcDocument);
+        setBottomToolbarItemsVisible(EDIT_MODE_CALC_ONLY_TOOLBAR_ITEM_IDS, isEditMode && isCalcDocument);
         applyBottomToolbarItemsAlignment(isEditMode);
         updateMobilePreviewToolbarItem(isEditMode);
         if (!isEditMode) {

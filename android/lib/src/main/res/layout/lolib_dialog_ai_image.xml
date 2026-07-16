@@ -26,13 +26,14 @@
 
         <ImageButton
             android:id="@+id/ai_image_close_btn"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:layout_gravity="top|end"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="关闭"
-            android:padding="8dp"
-            android:src="@android:drawable/ic_menu_close_clear_cancel" />
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/lolib_ic_dialog_close" />
     </FrameLayout>
 
     <!-- INPUT 阶段 -->
@@ -61,11 +62,115 @@
             android:textColorHint="#999999"
             android:textSize="16sp" />
 
-        <Spinner
-            android:id="@+id/ai_image_ratio_spinner"
-            android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:layout_marginTop="12dp" />
+        <LinearLayout
+            android:id="@+id/ai_image_ratio_card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/lolib_bg_outline_edit"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:minHeight="48dp"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="10dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="图片比例"
+                android:textColor="#666666"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/ai_image_ratio_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="1:1"
+                android:textColor="#1DA8FF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="选择比例"
+                android:src="@drawable/lolib_ic_arrow_down" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- RESULT 阶段：gallery -->
+    <LinearLayout
+        android:id="@+id/ai_image_gallery_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <ImageView
+                android:id="@+id/ai_image_main"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/lolib_bg_outline_edit"
+                android:contentDescription="生成图片预览"
+                android:scaleType="centerCrop" />
+
+            <ProgressBar
+                android:id="@+id/ai_image_loading"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="center"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/ai_image_thumb_1"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/lolib_bg_outline_edit"
+                android:contentDescription="缩略图1"
+                android:scaleType="centerCrop" />
+
+            <ImageView
+                android:id="@+id/ai_image_thumb_2"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/lolib_bg_outline_edit"
+                android:contentDescription="缩略图2"
+                android:scaleType="centerCrop" />
+
+            <ImageView
+                android:id="@+id/ai_image_thumb_3"
+                android:layout_width="0dp"
+                android:layout_height="72dp"
+                android:layout_weight="1"
+                android:background="@drawable/lolib_bg_outline_edit"
+                android:contentDescription="缩略图3"
+                android:scaleType="centerCrop" />
+        </LinearLayout>
     </LinearLayout>
 
     <LinearLayout
@@ -79,138 +184,39 @@
         android:gravity="center"
         android:orientation="horizontal">
 
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:contentDescription="开始生成"
-            android:src="@drawable/lolib_ic_btn_generate" />
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
             android:text="开始生成"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:textColor="#333333"
+            android:textSize="18sp" />
     </LinearLayout>
-
-    <!-- RESULT 阶段：gallery -->
-    <LinearLayout
-        android:id="@+id/ai_image_gallery_container"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="16dp"
-        android:layout_weight="1"
-        android:orientation="horizontal"
-        android:visibility="gone">
-
-        <FrameLayout
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="2"
-            android:layout_marginEnd="10dp">
-
-            <ImageView
-                android:id="@+id/ai_image_main"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:adjustViewBounds="true"
-                android:scaleType="centerCrop"
-                android:background="@drawable/lolib_bg_outline_edit" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="top|start"
-                android:layout_margin="8dp"
-                android:background="#80000000"
-                android:paddingStart="6dp"
-                android:paddingTop="2dp"
-                android:paddingEnd="6dp"
-                android:paddingBottom="2dp"
-                android:text="AI 生成"
-                android:textColor="#FFFFFF"
-                android:textSize="11sp" />
-        </FrameLayout>
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <ImageView
-                android:id="@+id/ai_image_thumb_1"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:layout_marginBottom="8dp"
-                android:adjustViewBounds="true"
-                android:scaleType="centerCrop"
-                android:background="@drawable/lolib_bg_outline_edit" />
-
-            <ImageView
-                android:id="@+id/ai_image_thumb_2"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:layout_marginBottom="8dp"
-                android:adjustViewBounds="true"
-                android:scaleType="centerCrop"
-                android:background="@drawable/lolib_bg_outline_edit" />
-
-            <ImageView
-                android:id="@+id/ai_image_thumb_3"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:adjustViewBounds="true"
-                android:scaleType="centerCrop"
-                android:background="@drawable/lolib_bg_outline_edit" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <ProgressBar
-        android:id="@+id/ai_image_loading"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:layout_marginTop="16dp"
-        android:visibility="gone" />
 
     <LinearLayout
         android:id="@+id/ai_image_done_row"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="56dp"
         android:layout_marginTop="16dp"
+        android:gravity="center"
         android:orientation="horizontal"
         android:visibility="gone">
 
         <LinearLayout
             android:id="@+id/ai_image_regenerate_btn"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:background="@drawable/lolib_bg_outline_secondary_button"
+            android:layout_height="match_parent"
+            android:background="@drawable/lolib_bg_gradient_button_outline"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
             android:orientation="horizontal">
 
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:contentDescription="重新生成"
-                android:src="@drawable/lolib_ic_btn_regenerate" />
-
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
                 android:text="重新生成"
                 android:textColor="#333333"
                 android:textSize="18sp" />
         </LinearLayout>
     </LinearLayout>
-
 </LinearLayout>
