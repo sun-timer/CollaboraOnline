@@ -40,8 +40,18 @@ public class AiPanelController {
         float targetRatio = isLandscape ? 0.52f : 0.62f;
         int targetHeight = (int) (screenHeight * targetRatio);
         if (layoutParams != null) {
+            layoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT;
             layoutParams.height = targetHeight;
+            if (layoutParams instanceof ViewGroup.MarginLayoutParams) {
+                ViewGroup.MarginLayoutParams marginParams = (ViewGroup.MarginLayoutParams) layoutParams;
+                marginParams.leftMargin = 0;
+                marginParams.rightMargin = 0;
+            }
             bottomSheet.setLayoutParams(layoutParams);
+        }
+        bottomSheet.setBackgroundResource(android.R.color.transparent);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         }
         behavior.setFitToContents(true);
         behavior.setSkipCollapsed(true);

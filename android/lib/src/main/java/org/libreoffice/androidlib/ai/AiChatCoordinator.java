@@ -33,7 +33,9 @@ public class AiChatCoordinator {
     public static final String MODE_CALC_COND_FORMAT = "calc_cond_format";
     public static final String MODE_CALC_NEW_TABLE = "calc_new_table";
     public static final String MODE_CALC_DATA_PROCESS = "calc_data_process";
+    public static final String MODE_CALC_DATA_ANALYSIS = "calc_data_analysis";
     public static final String MODE_CALC_CHART = "calc_chart";
+    public static final String MODE_IMPRESS_OUTLINE = "impress_outline";
 
     // 润色风格
     public static final String POLISH_STYLE_QUICK = "quick";
@@ -454,6 +456,8 @@ public class AiChatCoordinator {
 
         } catch (JSONException e) {
             // Not valid JSON, return null for fallback
+            Log.w(TAG, "parseTypesetSections_json_failed at: "
+                    + (json.length() > 120 ? json.substring(0, 120) + "..." : json));
         }
 
         return null;
@@ -884,29 +888,63 @@ public class AiChatCoordinator {
      * @param userInput 用户自然语言描述的条件格式需求
      * @param cellRange 当前选中的单元格范围（如 "A1:A10"），可为空
      */
-    public static JSONArray buildCondFormatMessages(String userInput, String cellRange) throws JSONException {
+    public static JSONArray buildCondFormatMessages(String userInput, String cellRange, String cellData) throws JSONException {
         String input = userInput == null ? "" : userInput.trim();
         String range = cellRange == null ? "" : cellRange.trim();
+        String data = cellData == null ? "" : cellData.trim();
 
         StringBuilder sysPrompt = new StringBuilder();
-        sysPrompt.append("你是 Excel/Calc 条件格式规则生成助手。根据用户的自然语言描述，生成对应的条件格式规则。\n");
-        sysPrompt.append("要求：\n");
-        sysPrompt.append("1. 第一行输出'规则：'开头的中文规则描述\n");
-        sysPrompt.append("2. 第二行输出'公式：'开头的条件公式（以 = 开头）\n");
-        sysPrompt.append("3. 第三行输出'格式：'开头的格式说明（背景色等）\n");
-        sysPrompt.append("4. 如果用户没有指定范围，使用选中范围\n");
-        if (!range.isEmpty()) {
-            sysPrompt.append("\n当前选中范围：").append(range);
-        }
-        sysPrompt.append("\n\n示例：\n");
-        sysPrompt.append("用户：高亮大于100的单元格为红色\n");
-        sysPrompt.append("规则：当单元格值大于 100 时，显示红色背景\n");
-        sysPrompt.append("公式：=A1>100\n");
-        sysPrompt.append("格式：红色背景\n\n");
-        sysPrompt.append("用户：标记重复值\n");
-        sysPrompt.append("规则：当单元格值重复时，显示黄色背景\n");
-        sysPrompt.append("公式：=COUNTIF($A$1:$A$10,A1)>1\n");
-        sysPrompt.append("格式：黄色背景");
+        sysPrompt.append("你是 Excel/Calc 条件格式智能分析助手。\n");
+        sysPrompt.append("用户提供了一段选中的表格数据和一个条件格式需求。\n");
+        sysPrompt.append("请分析数据并决定最合适的条件格式类型，以 JSON 格式输出。\n\n");
+        sysPrompt.append("选中范围：").append(range).append("\n");
+        sysPrompt.append("选中数据：\n");
+        sysPrompt.append(data.isEmpty() ? "（无数据或空区域）" : data).append("\n\n");
+        sysPrompt.append("用户需求：").append(input).append("\n\n");
+        sysPrompt.append("JSON 输出格式（不要多余文字，不要代码块标记）：\n");
+        sysPrompt.append("{\n");
+        sysPrompt.append("  \"conditionType\": \"greater|less|equal|between|top_n|bottom_n|above_average|below_average|duplicate|unique|contains_text|formula\",\n");
+        sysPrompt.append("  \"value\": \"条件值\",\n");
+        sysPrompt.append("  \"value2\": \"第二个值（between 时使用）\",\n");
+        sysPrompt.append("  \"range\": \"应用范围，如 A1:C100\",\n");
+        sysPrompt.append("  \"format\": {\n");
+        sysPrompt.append("    \"backgroundColor\": \"#RRGGBB\",\n");
+        sysPrompt.append("    \"fontColor\": \"#RRGGBB\",\n");
+        sysPrompt.append("    \"fontBold\": true,\n");
+        sysPrompt.append("    \"fontItalic\": false,\n");
+        sysPrompt.append("    \"border\": {\n");
+        sysPrompt.append("      \"color\": \"#RRGGBB\",\n");
+        sysPrompt.append("      \"style\": \"thin|medium|thick|none\"\n");
+        sysPrompt.append("    }\n");
+        sysPrompt.append("  },\n");
+        sysPrompt.append("  \"style\": \"Bad|Good|Neutral（仅当 format 无法确定时兜底）\",\n");
+        sysPrompt.append("  \"description\": \"中文说明（15字以内）\"\n");
+        sysPrompt.append("}\n\n");
+        sysPrompt.append("格式要求：\n");
+        sysPrompt.append("- 必须优先输出 format 对象，颜色一律用 6 位十六进制（如 #FFCCCC）\n");
+        sysPrompt.append("- 根据用户语义选择背景色和字体色；用户给出具体色值时原样使用\n");
+        sysPrompt.append("- 常见语义映射：标红/异常/警告 → 背景 #FFCCCC 字体 #CC0000；标绿/达标 → 背景 #CCFFCC 字体 #006600；标黄/提醒 → 背景 #FFFFCC 字体 #996600\n");
+        sysPrompt.append("- 淡蓝底示例：背景 #E8F4FD 字体 #1A4A7A；紫色高亮：背景 #F3E8FF 字体 #6B21A8\n");
+        sysPrompt.append("- 用户要求加粗/斜体时设置 fontBold/fontItalic 为 true；未提及则省略该字段\n");
+        sysPrompt.append("- 用户要求红框/边框/框线时设置 border.color 和 border.style（默认 thin）；不需要边框时省略 border 或 style=none\n");
+        sysPrompt.append("- format 中可省略未提及的属性；至少提供 backgroundColor、fontColor、fontBold、fontItalic、border 之一\n\n");
+        sysPrompt.append("条件类型说明：\n");
+        sysPrompt.append("- greater: 大于某值（value=数字）\n");
+        sysPrompt.append("- less: 小于某值\n");
+        sysPrompt.append("- equal: 等于某值\n");
+        sysPrompt.append("- between: 介于两值之间（value, value2）\n");
+        sysPrompt.append("- top_n: 前 N 名（value=N）\n");
+        sysPrompt.append("- bottom_n: 后 N 名\n");
+        sysPrompt.append("- above_average: 高于平均值（不需要 value）\n");
+        sysPrompt.append("- below_average: 低于平均值\n");
+        sysPrompt.append("- duplicate: 重复值\n");
+        sysPrompt.append("- unique: 唯一值\n");
+        sysPrompt.append("- contains_text: 包含文本（value=匹配文本）\n");
+        sysPrompt.append("- formula: 自定义布尔公式（value 必须以 = 开头，结果 TRUE/FALSE；用于「最高价对应行」「MATCH/INDEX」等跨行逻辑）\n");
+        sysPrompt.append("  公式示例（高亮 A 列中价格最高者，价格在 D 列，数据行 A2:D13）：\n");
+        sysPrompt.append("  conditionType=formula, value==A2=INDEX($A$2:$A$13,MATCH(MAX($D$2:$D$13),$D$2:$D$13,0)), range=A2:A13\n");
+        sysPrompt.append("  注意：公式中当前行引用用相对地址（如 A2），数据区用绝对地址（$A$2:$A$13）；range 必须是公式要格式化的列\n\n");
+        sysPrompt.append("请基于实际数据分析判断最合适的条件格式类型，确保 range 是实际的数据范围。");
 
         JSONArray messages = new JSONArray();
         JSONObject sysMsg = new JSONObject();
@@ -988,27 +1026,39 @@ public class AiChatCoordinator {
         sysPrompt.append("返回严格的 JSON 格式，不要包含 Markdown 包裹、代码块标记或其他任何文字。\n\n");
         sysPrompt.append("JSON 输出格式：\n");
         sysPrompt.append("{\n");
-        sysPrompt.append("  \"description\": \"简短的操作说明（50字以内）\",\n");
-        sysPrompt.append("  \"operations\": [\n");
-        sysPrompt.append("    {\n");
-        sysPrompt.append("      \"type\": \"uno\" 或 \"set_value\" 或 \"add_column\",\n");
-        sysPrompt.append("      \"command\": \"UNO 命令名，仅 type=uno 时需要\",\n");
-        sysPrompt.append("      \"range\": \"单元格区域，如 A1:A100\",\n");
-        sysPrompt.append("      \"header\": \"新列表头，仅 type=add_column 时需要\",\n");
-        sysPrompt.append("      \"values\": [\"公式或值数组，每行一个\", \"...\"],\n");
-        sysPrompt.append("      \"valueFormula\": \"带 {row} 占位的公式模板，type=set_value 时使用\"\n");
-        sysPrompt.append("    }\n");
+        sysPrompt.append("  \"description\": \"简短的操作说明（30字以内）\",\n");
+        sysPrompt.append("  \"actions\": [\n");
+        sysPrompt.append("    {\"type\": \"...\", \"range\": \"A1:C100\", \"value\": \"...\", \"ascending\": true, ...},\n");
+        sysPrompt.append("    ...\n");
         sysPrompt.append("  ]\n");
         sysPrompt.append("}\n\n");
-        sysPrompt.append("操作类型说明：\n");
-        sysPrompt.append("- uno: 执行 UNO 命令（格式化、删除行列、排序、筛选等）。支持的命令示例：.uno:NumberFormatDecDecimals, .uno:NumberFormatIncDecimals, .uno:NumberFormatPercent, .uno:DeleteRows, .uno:DeleteColumns, .uno:RemoveDuplicate, .uno:SortAscending, .uno:SortDescending, .uno:DataFilterAutoFilter, .uno:ResetAttributes, .uno:SetOptimalColumnWidth, .uno:NumberFormatThousands\n");
-        sysPrompt.append("- set_value: 写入公式或值到指定区域。valueFormula 中的 {row} 会在执行时替换为实际行号。如果不需公式，直接写静态值。\n");
-        sysPrompt.append("- add_column: 在选中区域右侧追加新列。values 数组长度应与数据行数一致。为 null/空数组时只加空列。header 为空时不写表头。\n\n");
-        sysPrompt.append("约束：\n");
+        sysPrompt.append("支持的 action type：\n");
+        sysPrompt.append("=== 简单模式（直接写值/公式）===\n");
+        sysPrompt.append("- set_formula: 写入公式。params.value = 公式文本（如 =AVERAGE(A1:A10)）\n");
+        sysPrompt.append("- set_value: 写入静态值。params.value = 值文本\n\n");
+        sysPrompt.append("=== 表格操作模式（需要多步执行）===\n");
+        sysPrompt.append("- sort: 排序。params.keyColumn = 列字母, params.ascending = true/false, params.hasHeader = true（默认第一行为标题行，不参与排序）\n");
+        sysPrompt.append("- filter: 自动筛选\n");
+        sysPrompt.append("- clear_formatting: 清除所有直接格式\n");
+        sysPrompt.append("- delete_rows: 删除行\n");
+        sysPrompt.append("- delete_columns: 删除列\n");
+        sysPrompt.append("- insert_rows: 插入行。params.position = \"before\"/\"after\"\n");
+        sysPrompt.append("- insert_columns: 插入列。params.position = \"before\"/\"after\"\n");
+        sysPrompt.append("- format_number: 数字格式。params.style = \"percent\"/\"currency\"/\"date\"/\"decimal\", params.decimals = 小数位数（可选，decimal style 时生效）\n");
+        sysPrompt.append("- set_column_width: 自适应列宽\n");
+        sysPrompt.append("- merge_cells: 合并单元格\n");
+        sysPrompt.append("- bold: 加粗\n");
+        sysPrompt.append("- calculate: 重新计算\n");
+        sysPrompt.append("\n约束：\n");
         sysPrompt.append("1. range 必须基于用户选中区域：").append(range).append("\n");
-        sysPrompt.append("2. add_column 的 position 仅支持 \"last\"（右侧）\n");
-        sysPrompt.append("3. description 控制在 50 字以内\n");
-        sysPrompt.append("4. 如果用户需求无法用以上三种操作类型实现，则返回 {\"description\": \"无法执行的操作\", \"operations\": []}\n");
+        sysPrompt.append("2. 如果用户需求不需要分步、只要写一个公式或值，使用 set_formula/set_value，动作数量为1\n");
+        sysPrompt.append("3. description 控制在 30 字以内\n");
+        sysPrompt.append("4. 如果用户需求无法用以上操作类型实现，则返回 {\"description\": \"无法执行的操作\", \"actions\": []}\n");
+        sysPrompt.append("5. 当用户需求是\"追加\"\"添加行\"\"在下方增加一行\"\"统计\"\"汇总\"\"求平均/和/最大值/最小值\"等**在已有数据区域末尾添加内容**的操作：\n");
+        sysPrompt.append("   **优先使用 set_formula / set_value 直接写入已有数据下方的空白行**，range 写目标单元格（如 A9），不要先 insert_rows 再写入。\n");
+        sysPrompt.append("   仅当用户明确要求\"在行5和行6之间插入一行\"这类**中间插入**时才使用 insert_rows。\n");
+        sysPrompt.append("   insert_rows 本身是可行的，只是对于\"数据末尾追加\"场景没有必要先插入空行。\n");
+        sysPrompt.append("6. range 的格式必须是 \"列字母+行号\"（如 A9、B10、C2:C9），不能只有行号（如 9:9 是错误的）。\n");
 
         JSONArray messages = new JSONArray();
         JSONObject sysMsg = new JSONObject();
@@ -1021,6 +1071,46 @@ public class AiChatCoordinator {
         userPrompt.append("选中的数据：\n");
         userPrompt.append(data.isEmpty() ? "（无数据或空区域）" : data);
         userPrompt.append("\n\n用户需求：").append(input);
+
+        JSONObject userMsg = new JSONObject();
+        userMsg.put("role", "user");
+        userMsg.put("content", userPrompt.toString());
+        messages.put(userMsg);
+
+        return messages;
+    }
+
+    /**
+     * 构建 AI 数据分析 messages。分析数据趋势、统计信息，不修改数据。
+     */
+    public static JSONArray buildDataAnalysisMessages(String userInput, String cellRange, String cellDataSample) throws JSONException {
+        String input = userInput == null ? "" : userInput.trim();
+        String data = cellDataSample == null ? "" : cellDataSample.trim();
+
+        StringBuilder sysPrompt = new StringBuilder();
+        sysPrompt.append("你是电子表格数据分析助手。根据用户提供的表格数据和问题，进行数据分析。\n");
+        sysPrompt.append("数据只作为分析参考，不要输出 JSON，直接用中文给出分析结论。\n");
+        sysPrompt.append("分析内容包括（根据数据情况选择性提供）：\n");
+        sysPrompt.append("- 数据概览：总行数、列数、关键字段\n");
+        sysPrompt.append("- 统计摘要：合计、平均值、最大值、最小值（针对数值列）\n");
+        sysPrompt.append("- 数据分布：是否有异常值、空值、重复\n");
+        sysPrompt.append("- 业务洞察：基于数据内容的发现和建议\n");
+        sysPrompt.append("- 回答用户的具体问题\n\n");
+        sysPrompt.append("格式要求：\n");
+        sysPrompt.append("- 用中文，简明扼要\n");
+        sysPrompt.append("- 重要数据用数字突出\n");
+        sysPrompt.append("- 不加 Markdown 代码块\n");
+
+        JSONArray messages = new JSONArray();
+        JSONObject sysMsg = new JSONObject();
+        sysMsg.put("role", "system");
+        sysMsg.put("content", sysPrompt.toString());
+        messages.put(sysMsg);
+
+        StringBuilder userPrompt = new StringBuilder();
+        userPrompt.append("选中数据（范围：").append(cellRange).append("）：\n");
+        userPrompt.append(data.isEmpty() ? "（无数据）" : data);
+        userPrompt.append("\n\n用户问题：").append(input);
 
         JSONObject userMsg = new JSONObject();
         userMsg.put("role", "user");
@@ -1074,6 +1164,63 @@ public class AiChatCoordinator {
         JSONObject userMsg = new JSONObject();
         userMsg.put("role", "user");
         userMsg.put("content", userInput);
+        messages.put(userMsg);
+
+        return messages;
+    }
+
+    /**
+     * 构建 Impress PPT 大纲生成请求消息
+     */
+    public static JSONArray buildImpressOutlineMessages(
+            String inputType, String userInput, int pageRange,
+            String audience, String style) throws JSONException {
+
+        String inputLabel;
+        if ("quick".equals(inputType)) {
+            inputLabel = "主题";
+        } else if ("document".equals(inputType)) {
+            inputLabel = "文档内容";
+        } else {
+            inputLabel = "大纲";
+        }
+
+        String systemPrompt = "你是一个专业PPT大纲生成助手。根据用户提供的" + inputLabel
+                + "、页数范围、听众类型和风格，生成结构化JSON大纲。\n\n"
+                + "输出格式要求（严格JSON，不要额外文字）：\n"
+                + "{\n"
+                + "  \"slides\": [\n"
+                + "    {\"page\": 1, \"type\": \"cover\", \"title\": \"标题\", \"content\": \"副标题/附加信息\"},\n"
+                + "    {\"page\": 2, \"type\": \"toc\", \"title\": \"目录\", \"content\": \"1. XX\\n2. XX\\n3. XX\"},\n"
+                + "    {\"page\": 3, \"type\": \"section\", \"title\": \"章节标题\", \"content\": \"• 要点1\\n• 要点2\"},\n"
+                + "    {\"page\": \"N\", \"type\": \"end\", \"title\": \"谢谢\", \"content\": \"结束语\"}\n"
+                + "  ]\n"
+                + "}\n\n"
+                + "type枚举：cover(封面)、toc(目录)、section(章节)、end(结尾)\n"
+                + "title: 每页标题（简洁有力）\n"
+                + "content: 内容要点（Markdown格式，用•开头的列表）\n"
+                + "页数不超过" + pageRange + "页\n"
+                + "风格：" + style + "\n"
+                + "听众：" + audience;
+
+        String userMessage;
+        if ("quick".equals(inputType)) {
+            userMessage = "请为主题生成PPT大纲：\n" + userInput;
+        } else if ("document".equals(inputType)) {
+            userMessage = "请根据以下文档内容生成PPT大纲：\n" + userInput;
+        } else {
+            userMessage = "请根据以下大纲整理为PPT结构：\n" + userInput;
+        }
+
+        JSONArray messages = new JSONArray();
+        JSONObject systemMsg = new JSONObject();
+        systemMsg.put("role", "system");
+        systemMsg.put("content", systemPrompt);
+        messages.put(systemMsg);
+
+        JSONObject userMsg = new JSONObject();
+        userMsg.put("role", "user");
+        userMsg.put("content", userMessage);
         messages.put(userMsg);
 
         return messages;

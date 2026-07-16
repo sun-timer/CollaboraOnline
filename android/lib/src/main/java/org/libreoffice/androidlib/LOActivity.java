@@ -66,15 +66,16 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ArrayAdapter;
-import android.widget.Spinner;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.PopupMenu;
 import android.widget.ScrollView;
+import android.widget.Space;
 import android.widget.RatingBar;
 import android.widget.TextView;
+import android.widget.Spinner;
 import android.widget.Toast;
 
 import java.io.ByteArrayOutputStream;
@@ -92,6 +93,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
@@ -101,6 +103,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 import androidx.core.content.FileProvider;
 
@@ -122,6 +125,7 @@ import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.function.Consumer;
@@ -154,6 +158,7 @@ import org.libreoffice.androidlib.ai.AiMarkdownRenderer;
 import org.libreoffice.androidlib.ai.AiPanelController;
 import org.libreoffice.androidlib.ai.AiRequestManager;
 import org.libreoffice.androidlib.ai.AiRequestSession;
+import org.libreoffice.androidlib.ai.CondFormatApplier;
 import org.libreoffice.androidlib.ai.ArticleTemplate;
 import org.libreoffice.androidlib.ai.ArticleTemplateRegistry;
 import org.libreoffice.androidlib.ai.FormatBatchProcessor;
@@ -248,6 +253,7 @@ public class LOActivity extends AppCompatActivity {
      * button.
      */
     private boolean mMobileWizardVisible = false;
+    private NativeJSDialogController nativeJSDialogController;
     private boolean mIsEditModeActive = false;
     private static final long MOBILE_PREVIEW_ACK_TIMEOUT_MS = 2200L;
     private static final long SELECTION_SYNC_THROTTLE_MS = 450L;
@@ -436,7 +442,9 @@ public class LOActivity extends AppCompatActivity {
     private View aiImageDialogRoot;
     private View aiImageInputContainer;
     private EditText aiImagePromptEdit;
-    private Spinner aiImageRatioSpinner;
+    private TextView aiImageRatioLabel;
+    private View aiImageRatioCard;
+    private int aiImageSelectedRatioIndex = 0;
     private View aiImageGenerateBtn;
     private View aiImageGalleryContainer;
     private ImageView aiImageMainView;
@@ -484,6 +492,7 @@ public class LOActivity extends AppCompatActivity {
             java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     // Calc AI公式生成浮层（弹窗式公式生成：输入态/生成中态/完成态，复用 aiStreamingViewByRequestId 流式接入）
     private boolean mIsCalcDocument = false;
+    private boolean mIsImpressDocument = false;
     private View calcFormulaOverlay;
     private View calcFormulaPanel;
     private EditText calcFormulaInput;
@@ -522,6 +531,17 @@ public class LOActivity extends AppCompatActivity {
     private String condFormatCellRange = "";
     private String condFormatActiveRequestId = "";
     private String condFormatResultText = "";
+    private CondFormatApplier.CondFormatPlan condFormatPlan = null;
+    private volatile boolean condFormatApplying = false;
+    private CondFormatApplier.ApplyResultCallback condFormatApplyCallback = null;
+    private final Runnable condFormatApplyTimeoutRunnable = () -> {
+        CondFormatApplier.ApplyResultCallback cb = condFormatApplyCallback;
+        if (cb == null) return;
+        condFormatApplyCallback = null;
+        condFormatApplying = false;
+        Log.w(TAG, "cond_format_apply_timeout");
+        runOnUiThread(() -> cb.onResult(false));
+    };
     private final java.util.Set<String> condFormatRequestIds =
             java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 
@@ -537,6 +557,7 @@ public class LOActivity extends AppCompatActivity {
     private View dpStopBtn;
     private TextView dpGeneratingStatus;
     private View dpCompletedGroup;
+    private TextView dpTitle;
     private View dpRegenerateBtn;
     private View dpExecuteBtn;
     private TextView dpExecutingStatus;
@@ -547,6 +568,7 @@ public class LOActivity extends AppCompatActivity {
     private final java.util.Set<String> dpRequestIds =
             java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     private org.json.JSONArray dpPendingOperations = null;
+    private boolean dpIsAnalysisMode = false;
 
     // Calc AI图表生成弹窗（四态：输入态/生成中态/完成态/执行中态）
     private View chartOverlay;
@@ -562,10 +584,43 @@ public class LOActivity extends AppCompatActivity {
     private String chartActiveRequestId = "";
     private String chartResultJson = "";
     private String chartSelectedRange = "";
+    // Calc 通用：在 AI 功能面板弹出时缓存选区范围（避免 dismiss 后读取为空）
+    private String calcSelectedRange = "";
     private static final int CHART_STATE_INPUT = 0;
     private static final int CHART_STATE_GENERATING = 1;
     private static final int CHART_STATE_COMPLETED = 2;
     private static final int CHART_STATE_EXECUTING = 3;
+
+    // ========== Impress PPT 大纲生成弹窗 ==========
+    private View impressOutlineOverlay;
+    private View impressOutlinePanel;
+    private LinearLayout impressOutlineInputGroup;
+    private EditText impressOutlineQuickInput;
+    private LinearLayout impressOutlineDocGroup;
+    private Button impressOutlineDocSelectBtn;
+    private TextView impressOutlineDocFileName;
+    private EditText impressOutlinePasteInput;
+    private TextView impressOutlineTabQuick, impressOutlineTabDoc, impressOutlineTabPaste;
+    private Spinner impressOutlinePageSpinner, impressOutlineAudienceSpinner, impressOutlineStyleSpinner;
+    private TextView impressOutlineGenerateBtn;
+    private TextView impressOutlineLoadingText;
+    private LinearLayout impressOutlineCompletedGroup;
+    private LinearLayout impressOutlineCardContainer;
+    private TextView impressOutlineRegenerateBtn;
+    private TextView impressOutlineTemplateBtn;
+    private LinearLayout impressOutlineErrorGroup;
+    private TextView impressOutlineErrorText;
+    private TextView impressOutlineErrorRetryBtn;
+
+    private String impressOutlineActiveRequestId = "";
+    private String impressOutlineInputType = "quick";
+    private String impressOutlineDocFileContent = "";
+
+    private static final int IMPRESS_OUTLINE_STATE_INPUT = 0;
+    private static final int IMPRESS_OUTLINE_STATE_GENERATING = 1;
+    private static final int IMPRESS_OUTLINE_STATE_COMPLETED = 2;
+    private static final int IMPRESS_OUTLINE_STATE_ERROR = 3;
+    private static final int REQUEST_CODE_IMPRESS_PICK_DOC = 9002;
 
     // Calc 新建表格 AI 生成
     private View calcNewTableOverlay;
@@ -598,10 +653,12 @@ public class LOActivity extends AppCompatActivity {
     private BottomToolbarController bottomToolbarController;
     private FunctionPanelController functionPanelController;
     private CalcFunctionPanelController calcFunctionPanelController;
+    private ImpressFunctionPanelController impressFunctionPanelController;
     private TopToolbarController topToolbarController;
     private FindReplaceSheetController findReplaceSheetController;
     private DocumentTabsSheetController documentTabsSheetController;
     private SelectionMenuController selectionMenuController;
+    private CalcObjectBarController calcObjectBarController;
     private Runnable pendingAfterEditMode;
     private boolean documentModified = false;
     private boolean closeAfterSaveRequested = false;
@@ -936,6 +993,8 @@ public class LOActivity extends AppCompatActivity {
             setupCondFormatDialog();
             setupDataProcessDialog();
             setupChartDialog();
+            setupImpressOutlineDialog();
+            setupCalcObjectBar();
             setupTypesetPreviewOverlay();
             mWebView.setOnDocumentLongPressListener(new COWebView.OnDocumentLongPressListener() {
                 @Override
@@ -1041,6 +1100,12 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
 
+        // Capture original doc references BEFORE setIntent/init overwrite them,
+        // so we can save the current document state back to its source URI.
+        final Uri originalDataUri = getIntent().getData();
+        final File originalTempFile = mTempFile;
+        final boolean wasEditable = isDocEditable;
+
         if (documentLoaded) {
             postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1");
         }
@@ -1052,8 +1117,14 @@ public class LOActivity extends AppCompatActivity {
             public void run() {
                 documentLoaded = false;
                 cancelAllAiRequests();
+
+                // Save original doc back to its content:// URI BEFORE BYE and
+                // setIntent — after those, mTempFile and getIntent().getData()
+                // point to the new document and the original is unreachable.
+                saveOriginalDocBeforeSwitch(originalTempFile, originalDataUri, wasEditable);
+
                 postMobileMessageNative("BYE");
-                // copyTempBackToIntent();
+
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
@@ -1462,6 +1533,37 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Save the current document state back to its content:// source URI
+     * before switching to a new document. Uses pre-captured references so
+     * the write is correct even after mTempFile and getIntent().getData()
+     * are overwritten by the new document's initUI().
+     */
+    private void saveOriginalDocBeforeSwitch(File tempFile, Uri originalUri, boolean editable) {
+        if (!editable || tempFile == null || !tempFile.exists()
+                || originalUri == null
+                || !ContentResolver.SCHEME_CONTENT.equals(originalUri.getScheme()))
+            return;
+
+        try {
+            ContentResolver cr = getContentResolver();
+            try (InputStream in = new FileInputStream(tempFile);
+                 OutputStream out = cr.openOutputStream(originalUri, "wt")) {
+                if (in.available() <= 0) return;
+                byte[] buf = new byte[1024];
+                int len;
+                long total = 0;
+                while ((len = in.read(buf)) != -1) {
+                    out.write(buf, 0, len);
+                    total += len;
+                }
+                Log.i(TAG, "save_original_before_switch bytes=" + total + " uri=" + originalUri);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "save_original_before_switch_failed", e);
+        }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -1676,6 +1778,11 @@ public class LOActivity extends AppCompatActivity {
                     return;
                 }
                 break;
+            case REQUEST_CODE_IMPRESS_PICK_DOC:
+                if (intent != null && intent.getData() != null) {
+                    handleImpressOutlineDocPicked(intent.getData());
+                }
+                return;
         }
         Toast.makeText(this, "Unknown request", Toast.LENGTH_LONG).show();
     }
@@ -1990,9 +2097,53 @@ public class LOActivity extends AppCompatActivity {
             });
         } else if (messageStartsWith(message, "error:")) {
             runOnUiThread(() -> mProgressDialog.dismiss());
+        } else if (messageStartsWith(message, "unocommandresult:")) {
+            handleCondFormatUnoCommandResult(message);
         }
     }
 
+    private void handleCondFormatUnoCommandResult(byte[] message) {
+        if (condFormatApplyCallback == null) return;
+        try {
+            String text = new String(message, StandardCharsets.UTF_8);
+            int brace = text.indexOf('{');
+            if (brace < 0) return;
+            JSONObject obj = new JSONObject(text.substring(brace));
+            String commandName = obj.optString("commandName", "");
+            // LOK 回传的 commandName 含 URL 查询串（如 ?FormatRule:short=2&...），不能用精确匹配
+            if (commandName.isEmpty()
+                    || !commandName.startsWith(".uno:ApplyConditionalFormat")) {
+                Log.d(TAG, "cond_format_uno_result_ignored commandName=" + commandName);
+                return;
+            }
+
+            boolean success = obj.optBoolean("success", false);
+            JSONObject result = obj.optJSONObject("result");
+            String resultType = result != null ? result.optString("type", "") : "";
+            if (result != null && "boolean".equals(resultType)) {
+                success = result.optBoolean("value", success);
+            }
+            String payloadLog = text.length() > 500 ? text.substring(0, 500) + "..." : text;
+            Log.i(TAG, "cond_format_uno_result success=" + success
+                    + " resultType=" + resultType + " payload=" + payloadLog);
+            if (!success) {
+                Log.w(TAG, "cond_format_uno_result FAILED — 查找同秒内 cond_format_core_fail / cond_format_core_diag 日志定位 Core 原因");
+            }
+
+            CondFormatApplier.ApplyResultCallback cb = condFormatApplyCallback;
+            condFormatApplyCallback = null;
+            getMainHandler().removeCallbacks(condFormatApplyTimeoutRunnable);
+            boolean finalSuccess = success;
+            runOnUiThread(() -> {
+                if (finalSuccess) {
+                    forceVisibleTileRedrawFromAndroid("cond_format_apply");
+                }
+                cb.onResult(finalSuccess);
+            });
+        } catch (JSONException e) {
+            Log.w(TAG, "cond_format_uno_result_parse_failed", e);
+        }
+    }
     private void scheduleMobileSocketDrain() {
         if (mWebView == null || mMobileSocket == null || !documentLoaded) {
             return;
@@ -2094,9 +2245,21 @@ public class LOActivity extends AppCompatActivity {
                 });
                 return false;
             }
+            case "JSDIALOG": {
+                if (messageAndParam.length > 1) {
+                    getMainHandler().post(() -> ensureNativeJSDialogController()
+                            .handlePayload(messageAndParam[1]));
+                }
+                return false;
+            }
             case "MOBILEWIZARD": {
                 switch (messageAndParam[1]) {
                     case "show":
+                        if (ensureNativeJSDialogController().isActive()) {
+                            closeMobileWizardFromAndroid("native_jsdialog_active");
+                            Log.i(TAG, "mobile_wizard_suppressed_native_jsdialog");
+                            return false;
+                        }
                         mMobileWizardVisible = true;
                         if (mIsEditModeActive && !mIsCalcDocument) {
                             lastBlockedMobileWizardAt = android.os.SystemClock.uptimeMillis();
@@ -2216,7 +2379,13 @@ public class LOActivity extends AppCompatActivity {
             }
             case "GRAPHICSELECTION": {
                 if (messageAndParam.length > 1 && "hide".equals(messageAndParam[1])) {
-                    getMainHandler().post(() -> ensureSelectionMenuController().hide());
+                    getMainHandler().post(() -> {
+                        if (mIsCalcDocument) {
+                            hideCalcObjectBar();
+                        } else {
+                            ensureSelectionMenuController().hide();
+                        }
+                    });
                     return false;
                 }
                 if (messageAndParam.length > 1 && messageAndParam[1] != null && messageAndParam[1].startsWith("show ")) {
@@ -2226,9 +2395,13 @@ public class LOActivity extends AppCompatActivity {
                             final float anchorX = Float.parseFloat(parts[1]);
                             final float anchorY = Float.parseFloat(parts[2]);
                             getMainHandler().post(() -> {
-                                SelectionMenuController smc = ensureSelectionMenuController();
-                                smc.setGraphicMode(true);
-                                smc.showAtWindow(anchorX, anchorY);
+                                if (mIsCalcDocument) {
+                                    showCalcObjectBar();
+                                } else {
+                                    SelectionMenuController smc = ensureSelectionMenuController();
+                                    smc.setGraphicMode(true);
+                                    smc.showAtWindow(anchorX, anchorY);
+                                }
                             });
                         }
                     } catch (NumberFormatException e) {
@@ -2312,6 +2485,28 @@ public class LOActivity extends AppCompatActivity {
                 || command.startsWith(".uno:FormatPaintbrush")
                 || command.startsWith(".uno:InsertAnnotation")
                 || command.startsWith(".uno:Paste");
+    }
+
+    void closeMobileWizardFromNative(String reason) {
+        closeMobileWizardFromAndroid(reason);
+    }
+
+    NativeJSDialogController ensureNativeJSDialogController() {
+        if (nativeJSDialogController == null) {
+            nativeJSDialogController = new NativeJSDialogController(this);
+        }
+        return nativeJSDialogController;
+    }
+
+    void evaluateJavascript(String script, android.webkit.ValueCallback<String> callback) {
+        if (mWebView == null) {
+            return;
+        }
+        getMainHandler().post(() -> {
+            if (mWebView != null) {
+                mWebView.evaluateJavascript(script, callback);
+            }
+        });
     }
 
     private void closeMobileWizardFromAndroid(String reason) {
@@ -2656,9 +2851,11 @@ public class LOActivity extends AppCompatActivity {
             } else if (AiChatCoordinator.MODE_CALC_COND_FORMAT.equals(taskType)) {
                 String userInput = request.optString("selection", "");
                 String cellRange = request.optString("cellRange", "");
-                messages = AiChatCoordinator.buildCondFormatMessages(userInput, cellRange);
+                String cellData = request.optString("cellData", "");
+                messages = AiChatCoordinator.buildCondFormatMessages(userInput, cellRange, cellData);
                 Log.i(TAG, "ai_calc_cond_format_mode requestId=" + requestId
-                        + " input=" + userInput + " range=" + cellRange);
+                        + " input=" + userInput + " range=" + cellRange
+                        + " dataChars=" + cellData.length());
             } else if (AiChatCoordinator.MODE_CALC_NEW_TABLE.equals(taskType)) {
                 String userInput = request.optString("selection", "");
                 messages = AiChatCoordinator.buildNewCalcTableMessages(userInput);
@@ -2671,6 +2868,13 @@ public class LOActivity extends AppCompatActivity {
                 messages = AiChatCoordinator.buildDataProcessMessages(userInput, cellRange, cellData);
                 Log.i(TAG, "ai_calc_data_process_mode requestId=" + requestId
                         + " input=" + userInput + " range=" + cellRange);
+            } else if (AiChatCoordinator.MODE_CALC_DATA_ANALYSIS.equals(taskType)) {
+                String userInput = request.optString("selection", "");
+                String cellRange = request.optString("cellRange", "");
+                String cellData = request.optString("cellData", "");
+                messages = AiChatCoordinator.buildDataAnalysisMessages(userInput, cellRange, cellData);
+                Log.i(TAG, "ai_calc_data_analysis_mode requestId=" + requestId
+                        + " input=" + userInput + " range=" + cellRange);
             } else if (AiChatCoordinator.MODE_CALC_CHART.equals(taskType)) {
                 String userInput = request.optString("selection", "");
                 String cellRange = request.optString("cellRange", "");
@@ -2678,6 +2882,15 @@ public class LOActivity extends AppCompatActivity {
                 messages = AiChatCoordinator.buildChartMessages(userInput, cellRange, cellData);
                 Log.i(TAG, "ai_calc_chart_mode requestId=" + requestId
                         + " input=" + userInput + " range=" + cellRange);
+            } else if (AiChatCoordinator.MODE_IMPRESS_OUTLINE.equals(taskType)) {
+                String inputType = request.optString("inputType", "quick");
+                String userInput = request.optString("userInput", "");
+                int pageRange = request.optInt("pageRange", 10);
+                String audience = request.optString("audience", "大众");
+                String style = request.optString("style", "通用");
+                messages = AiChatCoordinator.buildImpressOutlineMessages(inputType, userInput, pageRange, audience, style);
+                Log.i(TAG, "ai_impress_outline_start requestId=" + requestId
+                        + " inputType=" + inputType + " pageRange=" + pageRange);
             } else {
                 messages.put(new JSONObject().put("role", "user").put("content", buildAiUserPrompt(request)));
             }
@@ -2714,20 +2927,24 @@ public class LOActivity extends AppCompatActivity {
                                 onCalcFormulaDone(callbackRequestId, fullText);
                             } else if (calcFormulaRequestIds.contains(callbackRequestId)) {
                                 Log.i(TAG, "calc_formula_done_suppressed requestId=" + callbackRequestId);
-                            } else if (condFormatRequestIds.contains(callbackRequestId)) {
-                                Log.i(TAG, "cond_format_done_suppressed requestId=" + callbackRequestId);
                             } else if (callbackRequestId.equals(condFormatActiveRequestId)) {
                                 onCondFormatDone(callbackRequestId, fullText);
+                            } else if (condFormatRequestIds.contains(callbackRequestId)) {
+                                Log.i(TAG, "cond_format_done_suppressed requestId=" + callbackRequestId);
                             } else if (callbackRequestId.equals(dpActiveRequestId)) {
                                 onDataProcessDone(callbackRequestId, fullText);
                             } else if (dpRequestIds.contains(callbackRequestId)) {
                                 Log.i(TAG, "calc_data_process_done_suppressed requestId=" + callbackRequestId);
                             } else if (callbackRequestId.equals(chartActiveRequestId)) {
                                 onChartDone(callbackRequestId, fullText);
+                            } else if (callbackRequestId.equals(impressOutlineActiveRequestId)) {
+                                onImpressOutlineDone(callbackRequestId, fullText);
                             } else if (AiChatCoordinator.isOperateMode(taskType)) {
                                 onAiOperationDone(callbackRequestId, fullText);
                             } else if (AiChatCoordinator.MODE_TYPESET.equals(taskType)) {
-                                Log.i(TAG, "ai_typeset_done requestId=" + callbackRequestId + " chars=" + fullText.length());
+                                String responsePrefix = fullText.length() > 200 ? fullText.substring(0, 200) : fullText;
+                                Log.i(TAG, "ai_typeset_done requestId=" + callbackRequestId + " chars=" + fullText.length()
+                                        + " prefix=" + responsePrefix);
                                 Map<String, String> sections = null;
                                 // 段落分类模式：LLM 只分类不改写 → build sections from original paragraphs
                                 if (pendingTypesetParagraphMode) {
@@ -2740,11 +2957,15 @@ public class LOActivity extends AppCompatActivity {
                                 }
                                 final Map<String, String> finalSections = sections;
                                 if (finalSections != null && !finalSections.isEmpty()) {
-                                    Log.i(TAG, "ai_typeset_v2_parsed sections=" + finalSections.size());
+                                    Log.i(TAG, "ai_typeset_v2_parsed sections=" + finalSections.size()
+                                            + " keys=" + finalSections.keySet());
                                     pendingTypesetSections = finalSections;
                                     runOnUiThread(() -> handleTypesetV2Result(finalSections));
                                 } else {
-                                    Log.i(TAG, "ai_typeset_fallback_to_v1 — JSON parse failed, using HTML flow");
+                                    Log.i(TAG, "ai_typeset_fallback_to_v1 — JSON parse failed, showing raw"
+                                            + " prefix=" + responsePrefix);
+                                    // Save for handleTypesetV2Result fallback
+                                    pendingTypesetHtml = fullText;
                                     runOnUiThread(() -> showTypesetPreviewSheet(fullText));
                                 }
                             } else if (AiChatCoordinator.MODE_OUTLINE.equals(taskType)) {
@@ -3096,11 +3317,14 @@ public class LOActivity extends AppCompatActivity {
             "(function(){try{return (window.app&&app.map&&app.map.getDocType)?app.map.getDocType():'';}catch(e){return '';}})();",
             value -> {
                 mIsCalcDocument = "\"spreadsheet\"".equals(value);
-                Log.i(TAG, "doc_type_detected isCalc=" + mIsCalcDocument + " raw=" + value);
+                mIsImpressDocument = "\"presentation\"".equals(value);
+                Log.i(TAG, "doc_type_detected isCalc=" + mIsCalcDocument
+                        + " isImpress=" + mIsImpressDocument + " raw=" + value);
+                ensureBottomToolbarController().updateDocumentType(mIsCalcDocument);
             });
     }
 
-    private int dpToPx(int dp) {
+    int dpToPx(int dp) {
         return Math.round(dp * getResources().getDisplayMetrics().density);
     }
 
@@ -3561,23 +3785,37 @@ public class LOActivity extends AppCompatActivity {
      * 打开公式生成浮层。先从 JS 读取当前选中单元格地址，再以输入态展示。
      */
     private void openCalcFormulaDialog() {
-        // Read cell address from JS before opening
-        if (mWebView != null) {
-            mWebView.evaluateJavascript(
-                "JSON.stringify({address: (app.calc && app.calc.cellAddress) || ''})",
-                value -> {
-                    try {
-                        org.json.JSONObject addrJson = new org.json.JSONObject(value);
-                        calcFormulaCellAddress = addrJson.optString("address", "");
-                    } catch (org.json.JSONException e) {
-                        calcFormulaCellAddress = "";
-                    }
-                    runOnUiThread(() -> openCalcFormulaDialogWithAddress(calcFormulaCellAddress));
-                });
+        if (calcSelectedRange != null && !calcSelectedRange.isEmpty()) {
+            String[] parts = calcSelectedRange.split(":");
+            openCalcFormulaDialogWithAddress(parts[0]);
+            Log.i(TAG, "formula_open addr=" + calcFormulaCellAddress + " source=cached");
+        } else if (mWebView != null) {
+            openCalcFormulaDialogWithAddressNow();
         } else {
-            calcFormulaCellAddress = "";
-            runOnUiThread(() -> openCalcFormulaDialogWithAddress(""));
+            openCalcFormulaDialogWithAddress("");
         }
+    }
+
+    private void openCalcFormulaDialogWithAddressNow() {
+        if (mWebView == null) { openCalcFormulaDialogWithAddress(""); return; }
+        mWebView.evaluateJavascript(
+            "(function(){var cl=function(c){var s='';while(c>=0){s=String.fromCharCode(65+(c%26))+s;c=Math.floor(c/26)-1;}return s;};var a=app.calc&&app.calc.cellAddress;if(!a)return'';return cl(a.x)+(a.y+1);})()",
+            new android.webkit.ValueCallback<String>() {
+                @Override
+                public void onReceiveValue(String value) {
+                    String addr = "";
+                    if (value != null && !value.equals("null") && value.length() > 2) {
+                        try {
+                            Object p = new org.json.JSONTokener(value).nextValue();
+                            addr = (p instanceof String) ? (String) p : "";
+                        } catch (org.json.JSONException e) { /* fallback */ }
+                    }
+                    calcFormulaCellAddress = addr;
+                    final String r = addr;
+                    runOnUiThread(() -> openCalcFormulaDialogWithAddress(r));
+                    Log.i(TAG, "formula_open addr=" + r + " source=direct");
+                }
+            });
     }
 
     private void openCalcFormulaDialogWithAddress(String cellAddress) {
@@ -3918,25 +4156,25 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void openCondFormatDialog() {
-        if (mWebView == null) {
+        // 打开时实时读取选区，避免 preRead 缓存的 A1:A3 与真实选区 A1:E14 不一致
+        if (mWebView != null) {
+            openCondFormatDialogWithRangeNow();
+        } else if (calcSelectedRange != null && !calcSelectedRange.isEmpty()) {
+            openCondFormatDialogWithRange(calcSelectedRange);
+            Log.i(TAG, "cond_format_open range=" + condFormatCellRange + " source=cached_fallback");
+        } else {
             openCondFormatDialogWithRange("");
-            return;
+            Log.w(TAG, "cond_format_open range= source=nowebview");
         }
-        // Use cell address as range reference (same pattern as calc_formula)
-        mWebView.evaluateJavascript(
-            "JSON.stringify({range: (app.calc && app.calc.cellAddress) || ''})",
-            value -> {
-                String range = "";
-                if (value != null && !value.equals("null") && value.length() > 2) {
-                    try {
-                        JSONObject json = new JSONObject(value);
-                        range = json.optString("range", "");
-                    } catch (JSONException e) {
-                        Log.w(TAG, "cond_format_parse_range_fail value=" + value);
-                    }
-                }
-                openCondFormatDialogWithRange(range);
-            });
+    }
+
+    private void openCondFormatDialogWithRangeNow() {
+        if (mWebView == null) { openCondFormatDialogWithRange(""); return; }
+        readCalcSelectionRangeAsync(range -> runOnUiThread(() -> {
+            calcSelectedRange = range;
+            openCondFormatDialogWithRange(range);
+            Log.i(TAG, "cond_format_open range=" + range + " source=direct");
+        }));
     }
 
     private void openCondFormatDialogWithRange(String range) {
@@ -4005,12 +4243,50 @@ public class LOActivity extends AppCompatActivity {
 
     private void startCondFormatRequest(String userInput) {
         try {
+            // Read selected cell data via native JNI getTextSelection (sub-thread safe)
+            String cellData = "";
+            try {
+                cellData = getTextSelection("text/plain;charset=utf-8");
+            } catch (Exception e) {
+                Log.w(TAG, "cond_format_getTextSelection_failed", e);
+            }
+            if (cellData == null) cellData = "";
+            // 大表采样：前 50 行 + 后 5 行（便于 AI 识别表头/样例与尾部汇总行）
+            String dataSample = cellData;
+            final int headLineLimit = 50;
+            final int tailLineLimit = 5;
+            int lineCount = cellData.isEmpty() ? 0 : cellData.split("\n", -1).length;
+            if (lineCount > headLineLimit) {
+                String[] lines = cellData.split("\n", -1);
+                StringBuilder sb = new StringBuilder();
+                sb.append("（选中区域共 ").append(lineCount).append(" 行，以下展示前 ")
+                        .append(headLineLimit).append(" 行与最后 ").append(tailLineLimit).append(" 行）\n");
+                for (int i = 0; i < headLineLimit && i < lines.length; i++) {
+                    sb.append(lines[i]).append("\n");
+                }
+                int tailStart = Math.max(0, lines.length - tailLineLimit);
+                if (tailStart > headLineLimit) {
+                    sb.append("……（中间省略 ").append(tailStart - headLineLimit).append(" 行）……\n");
+                    for (int i = tailStart; i < lines.length; i++) {
+                        sb.append(lines[i]).append("\n");
+                    }
+                } else if (lines.length > headLineLimit) {
+                    for (int i = headLineLimit; i < lines.length; i++) {
+                        sb.append(lines[i]).append("\n");
+                    }
+                }
+                dataSample = sb.toString();
+            }
+            Log.i(TAG, "cond_format_data_read chars=" + cellData.length() + " rows=" + lineCount
+                    + (lineCount > headLineLimit ? " sampled=head" + headLineLimit + "+tail" + tailLineLimit : ""));
+
             JSONObject request = new JSONObject();
             String requestId = java.util.UUID.randomUUID().toString();
             request.put("requestId", requestId);
             request.put("taskType", AiChatCoordinator.MODE_CALC_COND_FORMAT);
             request.put("selection", userInput);
             request.put("cellRange", condFormatCellRange);
+            request.put("cellData", dataSample);
             request.put("modelMode", "base");
             request.put("history", new JSONArray());
             JSONObject ctxObj = new JSONObject();
@@ -4038,7 +4314,46 @@ public class LOActivity extends AppCompatActivity {
 
     private void onCondFormatDone(String requestId, String fullText) {
         runOnUiThread(() -> {
-            condFormatResultText = fullText != null ? fullText : "";
+            String text = fullText != null ? fullText : "";
+            condFormatResultText = text;
+
+            // 尝试 JSON 解析（新流程：AI 输出结构化 JSON）
+            condFormatPlan = null;
+            CondFormatApplier.CondFormatPlan plan = CondFormatApplier.parseFromJson(text);
+            if (plan != null && plan.isValid()) {
+                condFormatPlan = plan;
+                String displayText = "✅ " + plan.description;
+                if (!plan.range.isEmpty()) {
+                    displayText += "\n范围: " + plan.range;
+                }
+                String formatSummary = CondFormatApplier.buildFormatSummary(plan.formatJson);
+                if (!formatSummary.isEmpty()) {
+                    displayText += "\n样式: " + formatSummary;
+                } else if (plan.style != null && !plan.style.isEmpty()) {
+                    displayText += "\n样式: " + plan.style;
+                }
+                condFormatContentText.setText(displayText);
+                // AI 返回的 range 通常比 _cellSelectionArea 更准确，更新弹窗显示
+                String aiRange = plan.range;
+                if (aiRange != null && !aiRange.isEmpty()
+                        && condFormatRangeHint != null
+                        && !aiRange.equals(condFormatCellRange)) {
+                    condFormatCellRange = aiRange;
+                    condFormatRangeHint.setText("选中范围: " + condFormatCellRange);
+                    Log.i(TAG, "cond_format_range_ai_updated range=" + condFormatCellRange);
+                }
+                Log.i(TAG, "cond_format_json_parsed type=" + plan.conditionType
+                        + " value=" + plan.value + " range=" + plan.range
+                        + " format=" + (plan.formatJson != null ? plan.formatJson : plan.style));
+            } else {
+                // 回退：直接显示 AI 回复文本
+                condFormatContentText.setText(text);
+                condFormatPlan = null;
+                // 输出 AI 原始响应前 200 字符，便于调试 JSON 解析失败
+                String rawPreview = text.length() > 200 ? text.substring(0, 200) + "..." : text;
+                Log.i(TAG, "cond_format_fallback_text chars=" + text.length()
+                        + " preview=" + rawPreview);
+            }
             setCondFormatDialogState(COND_FORMAT_STATE_COMPLETED);
             Log.i(TAG, "cond_format_done requestId=" + requestId + " chars=" + condFormatResultText.length());
         });
@@ -4054,6 +4369,7 @@ public class LOActivity extends AppCompatActivity {
             partial = condFormatContentText != null ? condFormatContentText.getText().toString() : "";
         }
         condFormatResultText = partial;
+        condFormatPlan = null;
         aiStreamingViewByRequestId.remove(rid);
         condFormatActiveRequestId = "";
         setCondFormatDialogState(COND_FORMAT_STATE_COMPLETED);
@@ -4067,6 +4383,7 @@ public class LOActivity extends AppCompatActivity {
             aiStreamingViewByRequestId.remove(rid);
             condFormatActiveRequestId = "";
         }
+        condFormatPlan = null;
         setCondFormatDialogState(COND_FORMAT_STATE_INPUT);
         if (condFormatUserInputDisplay != null) {
             condFormatUserInputDisplay.setVisibility(View.GONE);
@@ -4091,134 +4408,124 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void onCondFormatApply() {
-        // 1. 获取 AI 生成的规则文本
+        if (condFormatApplying) {
+            Log.w(TAG, "cond_format_apply_skip_already_applying");
+            return;
+        }
+        condFormatApplying = true;
+        CondFormatApplier.Host host = new CondFormatApplier.Host() {
+            @Override
+            public void postMobileUnoCommand(String cmd, String args) {
+                Log.i(TAG, "cond_format_post_mobile_uno cmd=" + cmd + " args=" + args);
+                if (args == null || args.isEmpty() || "{}".equals(args.trim())) {
+                    postMobileMessage("uno " + cmd);
+                } else {
+                    postMobileMessage("uno " + cmd + " " + args);
+                }
+                nudgeSocketIfStalled("cond_format_apply");
+            }
+            @Override
+            public void registerApplyResultCallback(CondFormatApplier.ApplyResultCallback callback) {
+                condFormatApplyCallback = callback;
+                getMainHandler().removeCallbacks(condFormatApplyTimeoutRunnable);
+                if (callback != null) {
+                    getMainHandler().postDelayed(condFormatApplyTimeoutRunnable, 5000);
+                }
+            }
+            @Override
+            public void postUnoCommand(String cmd, String args, boolean notify) {
+                Log.i(TAG, "cond_format_post_uno cmd=" + cmd + " notify=" + notify);
+                LOActivity.this.postUnoCommand(cmd, args, notify);
+            }
+            @Override
+            public void evaluateJavascript(String script) {
+                if (mWebView != null) mWebView.evaluateJavascript(script, null);
+            }
+            @Override
+            public void evaluateJavascript(String script, android.webkit.ValueCallback<String> callback) {
+                if (mWebView != null) mWebView.evaluateJavascript(script, callback);
+            }
+            @Override
+            public void runOnUiThread(Runnable r) {
+                LOActivity.this.runOnUiThread(r);
+            }
+        };
+        CondFormatApplier applier = new CondFormatApplier(host);
+
+        // 优先使用 JSON plan（新流程）
+        if (condFormatPlan != null && condFormatPlan.isValid()) {
+            CondFormatApplier.CondFormatPlan plan = condFormatPlan;
+            condFormatPlan = null;
+            Log.i(TAG, "cond_format_apply_path=json plan=" + plan.conditionType
+                    + " value=" + plan.value + " range=" + plan.range
+                    + " format=" + (plan.formatJson != null ? plan.formatJson : plan.style));
+            // 如果 plan 里没 range，用光标位置作为 fallback
+            if ((plan.range == null || plan.range.isEmpty())
+                    && condFormatCellRange != null && !condFormatCellRange.isEmpty()) {
+                plan = new CondFormatApplier.CondFormatPlan(
+                    plan.conditionType, plan.value, plan.value2,
+                    condFormatCellRange, plan.style, plan.formatJson, plan.description);
+            }
+            if (plan.range == null || plan.range.isEmpty()) {
+                toastTodo("无法获取单元格范围，请先选择数据区域");
+                condFormatApplying = false;
+                return;
+            }
+            String validationError = CondFormatApplier.validatePlan(plan);
+            if (validationError != null) {
+                toastTodo(validationError);
+                condFormatApplying = false;
+                return;
+            }
+            // formula 类型走 Core Direct 模式（布尔公式，按行求值）
+            if ("formula".equals(plan.conditionType)) {
+                String formula = CondFormatApplier.normalizeFormula(plan.value);
+                plan = new CondFormatApplier.CondFormatPlan(
+                        "formula", formula, "",
+                        plan.range, plan.style, plan.formatJson, plan.description);
+                Log.i(TAG, "cond_format_formula_direct formula=" + formula + " range=" + plan.range);
+            }
+
+            String applyRange = plan.range;
+            Log.i(TAG, "cond_format_apply_json type=" + plan.conditionType
+                    + " value=" + plan.value + " range=" + applyRange
+                    + " fmtRule=" + CondFormatApplier.getFormatRule(plan.conditionType)
+                    + " style=" + plan.style);
+            try {
+                applier.applyDirect(plan, success -> runOnUiThread(() -> {
+                    if (success) {
+                        toastTodo("条件格式已应用");
+                        Log.i(TAG, "cond_format_apply_success");
+                    } else {
+                        toastTodo("条件格式应用失败，请检查范围或样式");
+                        Log.w(TAG, "cond_format_apply_failed");
+                    }
+                    dismissCondFormatDialog();
+                    condFormatApplying = false;
+                }));
+                Log.i(TAG, "cond_format_apply_direct_dispatched");
+            } catch (Exception e) {
+                Log.e(TAG, "cond_format_apply_exception", e);
+                toastTodo("应用条件格式时出错: " + e.getMessage());
+                condFormatApplying = false;
+            }
+            return;
+        }
+
+        // JSON 解析失败时不走 legacy 弹窗注入（规则不可靠，易误应用）
+        Log.w(TAG, "cond_format_apply_path=blocked fallback_reason=plan_null_or_invalid");
         String text = condFormatResultText;
         if (text == null || text.isEmpty()) {
             text = condFormatContentText != null ? condFormatContentText.getText().toString() : "";
         }
         if (text.isEmpty()) {
             toastTodo("没有可应用的规则");
-            return;
+        } else if (text.contains("conditionType")) {
+            toastTodo("规则解析失败，请点击重新生成");
+        } else {
+            toastTodo("无法识别规则格式，请重新描述需求");
         }
-
-        // 2. 解析规则 → 确定 FormatRule 和 value 和 style
-        //    从 AI 输出格式解析：
-        //      规则：...
-        //      公式：=A1>100
-        //      格式：红色背景
-        int formatRule = 1; // 默认 Greater Than
-        String value = "";
-        String style = "Bad"; // 默认红色
-
-        // 从"公式："行提取 condition 和 value
-        String[] lines = text.split("\n");
-        for (String line : lines) {
-            String trimmed = line.trim();
-            if (trimmed.startsWith("公式：") || trimmed.startsWith("公式:")) {
-                String formula = trimmed.substring(trimmed.indexOf('：') > 0 ? trimmed.indexOf('：') + 1 :
-                        (trimmed.indexOf(':') > 0 ? trimmed.indexOf(':') + 1 : 0)).trim();
-                // Determine FormatRule from formula operator
-                if (formula.contains(">")) {
-                    formatRule = 1; // Greater Than
-                    int idx = formula.indexOf('>');
-                    if (idx + 1 < formula.length()) value = formula.substring(idx + 1).trim();
-                } else if (formula.contains("<")) {
-                    formatRule = 2; // Less Than
-                    int idx = formula.indexOf('<');
-                    if (idx + 1 < formula.length()) value = formula.substring(idx + 1).trim();
-                } else if (formula.contains("=")) {
-                    formatRule = 3; // Equal To
-                    int idx = formula.indexOf('=') + 1;
-                    // Skip the leading = of the formula itself
-                    String afterEq = formula.substring(idx).trim();
-                    if (!afterEq.isEmpty()) value = afterEq;
-                } else if (formula.contains("COUNTIF") && (formula.contains(">"))) {
-                    formatRule = 1;
-                }
-            } else if (trimmed.startsWith("格式：") || trimmed.startsWith("格式:")) {
-                String formatDesc = trimmed.substring(trimmed.indexOf('：') > 0 ? trimmed.indexOf('：') + 1 :
-                        (trimmed.indexOf(':') > 0 ? trimmed.indexOf(':') + 1 : 0)).trim().toLowerCase();
-                if (formatDesc.contains("红") || formatDesc.contains("错误") || formatDesc.contains("警告")) {
-                    style = "Bad";
-                } else if (formatDesc.contains("绿") || formatDesc.contains("成功")) {
-                    style = "Good";
-                } else if (formatDesc.contains("黄") || formatDesc.contains("中性")) {
-                    style = "Neutral";
-                }
-            }
-        }
-
-        // 3. 对于重复值/唯一值场景的特殊判断
-        if (text.contains("重复") || text.contains("duplicate")) {
-            formatRule = 6; // Duplicate Values
-            value = "";
-        } else if (text.contains("唯一") || text.contains("不重复") || text.contains("unique")) {
-            formatRule = 7; // Unique Values
-            value = "";
-        } else if (text.contains("包含") || text.contains("contain")) {
-            formatRule = 4; // Text Contains
-        }
-
-        final int finalFormatRule = formatRule;
-        final String finalValue = value;
-        final String finalStyle = style;
-
-        // 4. 通过 postUnoCommand 打开 quick dialog
-        String cmd = ".uno:ConditionalFormatEasy?FormatRule:short=" + finalFormatRule;
-        postUnoCommand(cmd, "{}", false);
-
-        // 5. 通过 evaluateJavascript 注入值 + 选样式 + 点 OK
-        runOnUiThread(() -> {
-            try { Thread.sleep(500); } catch (InterruptedException ignored) {}
-            mWebView.evaluateJavascript(buildCondFormatInjectScript(finalValue, finalStyle, condFormatCellRange), null);
-        });
-
-        // 6. 关闭弹窗并提示
-        dismissCondFormatDialog();
-        toastTodo("条件格式已应用");
-        Log.i(TAG, "cond_format_apply formatRule=" + finalFormatRule
-                + " value=" + finalValue + " style=" + finalStyle + " range=" + condFormatCellRange);
-    }
-
-    /**
-     * 构建 JS 注入脚本：通过 dialogevent 自动填充条件格式 quick dialog 并点 OK
-     */
-    private String buildCondFormatInjectScript(String value, String style, String range) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("(function(){\n");
-        sb.append("var checkExist = setInterval(function(){\n");
-        sb.append("var wId = window.mobileDialogId;\n");
-        sb.append("if(wId === undefined || wId === null || wId === -1){\n");
-        sb.append("try{var dlg=document.querySelector('.jsdialog');if(dlg){wId=parseInt(dlg.id)||-1;}}catch(e){}\n");
-        sb.append("}\n");
-        sb.append("if(wId !== undefined && wId !== null && wId !== -1){\n");
-        sb.append("clearInterval(checkExist);\n");
-        // 注入值
-        if (value != null && !value.isEmpty()) {
-            sb.append("try{app.socket.sendMessage('dialogevent '+wId+' {\\\"id\\\":\\\"entryNumber\\\",\\\"cmd\\\":\\\"modify\\\",\\\"data\\\":\\\"").append(escapeJsString(value)).append("\\\",\\\"type\\\":\\\"entry\\\"}');}catch(e){}\n");
-        }
-        // 选择样式
-        if (style != null && !style.isEmpty()) {
-            sb.append("try{app.socket.sendMessage('dialogevent '+wId+' {\\\"id\\\":\\\"themeCombo\\\",\\\"cmd\\\":\\\"select\\\",\\\"data\\\":\\\"").append(escapeJsString(style)).append("\\\",\\\"type\\\":\\\"list\\\"}');}catch(e){}\n");
-        }
-        // 点击 OK
-        sb.append("setTimeout(function(){\n");
-        sb.append("try{app.socket.sendMessage('dialogevent '+wId+' {\\\"id\\\":\\\"ok\\\",\\\"cmd\\\":\\\"click\\\",\\\"data\\\":\\\"0\\\",\\\"type\\\":\\\"pushbutton\\\"}');}catch(e){}\n");
-        sb.append("},300);\n");
-        sb.append("}\n");
-        sb.append("},200);\n");
-        sb.append("setTimeout(function(){clearInterval(checkExist);},10000);\n");
-        sb.append("})();");
-        return sb.toString();
-    }
-
-    private String escapeJsString(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("'", "\\'")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
+        condFormatApplying = false;
     }
 
     private void dismissCondFormatDialog() {
@@ -4227,6 +4534,8 @@ public class LOActivity extends AppCompatActivity {
             aiStreamingViewByRequestId.remove(condFormatActiveRequestId);
             condFormatActiveRequestId = "";
         }
+        condFormatPlan = null;
+        condFormatApplying = false;
         if (condFormatOverlay != null) {
             condFormatOverlay.setVisibility(View.GONE);
         }
@@ -4257,6 +4566,7 @@ public class LOActivity extends AppCompatActivity {
         dpExecuteBtn = dpPanel.findViewById(R.id.dp_execute_button);
         dpExecutingStatus = dpPanel.findViewById(R.id.dp_executing_status);
         dpRangeHint = dpPanel.findViewById(R.id.dp_range_hint);
+        dpTitle = dpPanel.findViewById(R.id.dp_title);
 
         dpOverlay.setOnClickListener(v -> dismissDataProcessDialog());
         View closeBtn = dpPanel.findViewById(R.id.dp_close_button);
@@ -4280,6 +4590,12 @@ public class LOActivity extends AppCompatActivity {
         if (dpGeneratingStatus != null)
             dpGeneratingStatus.setVisibility(generating ? View.VISIBLE : View.GONE);
         if (dpCompletedGroup != null) dpCompletedGroup.setVisibility(completed ? View.VISIBLE : View.GONE);
+        // 分析模式或无操作时隐藏"执行操作"按钮
+        if (dpExecuteBtn != null) {
+            boolean hasOps = dpPendingOperations != null && dpPendingOperations.length() > 0;
+            boolean showExecute = completed && !dpIsAnalysisMode && hasOps;
+            dpExecuteBtn.setVisibility(showExecute ? View.VISIBLE : View.GONE);
+        }
         if (dpExecutingStatus != null) {
             dpExecutingStatus.setVisibility(executing ? View.VISIBLE : View.GONE);
             if (executing) dpExecutingStatus.setText("正在执行操作...");
@@ -4318,21 +4634,22 @@ public class LOActivity extends AppCompatActivity {
 
     private void openDataProcessDialog() {
         if (mWebView != null) {
-            mWebView.evaluateJavascript(
-                "JSON.stringify({range: (function(){ var a = app.calc && app.calc.cellAddress; if (!a) return ''; var cl = function(c){ var s = ''; while (c >= 0) { s = String.fromCharCode(65 + (c % 26)) + s; c = Math.floor(c / 26) - 1; } return s; }; return cl(a.x) + (a.y + 1); })()})",
-                value -> {
-                    try {
-                        org.json.JSONObject rangeJson = new org.json.JSONObject(value);
-                        dpCellRange = rangeJson.optString("range", "");
-                    } catch (org.json.JSONException e) {
-                        dpCellRange = "";
-                    }
-                    runOnUiThread(() -> openDataProcessDialogWithRange(dpCellRange));
-                });
+            openDataProcessDialogWithRangeNow();
+        } else if (calcSelectedRange != null && !calcSelectedRange.isEmpty()) {
+            openDataProcessDialogWithRange(calcSelectedRange);
+            Log.i(TAG, "dp_open range=" + dpCellRange + " source=cached_fallback");
         } else {
-            dpCellRange = "";
-            runOnUiThread(() -> openDataProcessDialogWithRange(""));
+            openDataProcessDialogWithRange("");
         }
+    }
+
+    private void openDataProcessDialogWithRangeNow() {
+        if (mWebView == null) { openDataProcessDialogWithRange(""); return; }
+        readCalcSelectionRangeAsync(range -> runOnUiThread(() -> {
+            calcSelectedRange = range;
+            openDataProcessDialogWithRange(range);
+            Log.i(TAG, "dp_open range=" + range + " source=direct");
+        }));
     }
 
     private void openDataProcessDialogWithRange(String cellRange) {
@@ -4357,6 +4674,10 @@ public class LOActivity extends AppCompatActivity {
         if (input.isEmpty()) {
             Toast.makeText(this, "请输入数据处理需求", Toast.LENGTH_SHORT).show();
             return;
+        }
+        // 如果 range 为空，提示用户但继续（让 AI 根据光标位置推断）
+        if (dpCellRange == null || dpCellRange.isEmpty()) {
+            Log.w(TAG, "calc_data_process_no_range input=" + input + " — 允许继续，但 AI 可能推断错误");
         }
         android.view.inputmethod.InputMethodManager imm =
                 (android.view.inputmethod.InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -4394,10 +4715,13 @@ public class LOActivity extends AppCompatActivity {
                 dataSample = sb.toString();
             }
 
+            String mode = dpIsAnalysisMode ? AiChatCoordinator.MODE_CALC_DATA_ANALYSIS
+                    : AiChatCoordinator.MODE_CALC_DATA_PROCESS;
+
             org.json.JSONObject request = new org.json.JSONObject();
-            String requestId = "dp-" + java.util.UUID.randomUUID().toString();
+            String requestId = (dpIsAnalysisMode ? "da-" : "dp-") + java.util.UUID.randomUUID().toString();
             request.put("requestId", requestId);
-            request.put("taskType", AiChatCoordinator.MODE_CALC_DATA_PROCESS);
+            request.put("taskType", mode);
             request.put("selection", userInput);
             request.put("cellRange", dpCellRange == null ? "" : dpCellRange);
             request.put("cellData", dataSample == null ? "" : dataSample);
@@ -4407,14 +4731,17 @@ public class LOActivity extends AppCompatActivity {
             dpActiveRequestId = requestId;
             aiActiveRequestId = requestId;
             aiStreamingRequestId = requestId;
-            aiRequestModeById.put(requestId, AiChatCoordinator.MODE_CALC_DATA_PROCESS);
+            aiRequestModeById.put(requestId, mode);
             aiTextByRequestId.put(requestId, new StringBuilder());
-            // 不注册 dpContentText 到 aiStreamingViewByRequestId：
-            // AI 返回的是 JSON，streaming 时渲染原始 JSON 会很难看；
-            // onDataProcessDone 解析 JSON 后直接设置格式化操作列表。
+            // 分析模式：注册 dpContentText 到 aiStreamingViewByRequestId 以显示流式文本
+            // 处理模式：不注册，因为返回 JSON 等待 onDataProcessDone 解析
+            if (dpIsAnalysisMode && dpContentText != null) {
+                aiStreamingViewByRequestId.put(requestId, dpContentText);
+            }
             dpRequestIds.add(requestId);
 
-            Log.i(TAG, "calc_data_process_request requestId=" + requestId
+            String logTag = dpIsAnalysisMode ? "calc_data_analysis_request" : "calc_data_process_request";
+            Log.i(TAG, logTag + " requestId=" + requestId
                     + " input=" + userInput + " range=" + dpCellRange);
             startAiRequestSession(request, -1);
         } catch (org.json.JSONException e) {
@@ -4427,6 +4754,17 @@ public class LOActivity extends AppCompatActivity {
         final String text = fullText == null ? "" : fullText;
         runOnUiThread(() -> {
             dpResultText = text;
+
+            // 数据分析模式：直接显示文本，不解析 JSON
+            if (dpIsAnalysisMode) {
+                dpContentText.setText(text);
+                dpPendingOperations = null;
+                setDataProcessDialogState(DP_STATE_COMPLETED);
+                Log.i(TAG, "calc_data_analysis_done requestId=" + requestId + " chars=" + text.length());
+                return;
+            }
+
+            // 数据处理模式：解析 JSON 操作列表
             String json = text.trim();
             if (json.startsWith("```")) {
                 int start = json.indexOf('\n');
@@ -4437,7 +4775,9 @@ public class LOActivity extends AppCompatActivity {
             }
             try {
                 org.json.JSONObject result = new org.json.JSONObject(json);
-                org.json.JSONArray ops = result.optJSONArray("operations");
+                Log.i(TAG, "calc_data_process_ai_raw requestId=" + requestId + " json=" + json);
+                // System prompt in buildDataProcessMessages() tells AI to use "actions" field
+                org.json.JSONArray ops = result.optJSONArray("actions");
                 if (ops != null && ops.length() > 0) {
                     dpPendingOperations = ops;
                     String desc = result.optString("description", "");
@@ -4476,7 +4816,20 @@ public class LOActivity extends AppCompatActivity {
         switch (type) {
             case "uno": return "格式化";
             case "set_value": return "写值";
+            case "set_formula": return "写公式";
             case "add_column": return "追加列";
+            case "sort": return "排序";
+            case "filter": return "筛选";
+            case "clear_formatting": return "清除格式";
+            case "delete_rows": return "删除行";
+            case "delete_columns": return "删除列";
+            case "insert_rows": return "插入行";
+            case "insert_columns": return "插入列";
+            case "format_number": return "数字格式";
+            case "set_column_width": return "列宽";
+            case "merge_cells": return "合并";
+            case "bold": return "加粗";
+            case "calculate": return "重算";
             default: return type;
         }
     }
@@ -4517,11 +4870,24 @@ public class LOActivity extends AppCompatActivity {
             dpActiveRequestId = "";
         }
         dpPendingOperations = null;
+        dpIsAnalysisMode = false;
         if (dpOverlay != null) dpOverlay.setVisibility(View.GONE);
         if (dpPanel != null) dpPanel.setVisibility(View.GONE);
         Log.i(TAG, "calc_data_process_dialog_dismiss");
     }
 
+    // ==================== Calc AI数据分析（复用数据处理弹窗） ====================
+
+    private void openDataAnalysisDialog() {
+        // 复用数据处理弹窗，但设置为分析模式
+        dpIsAnalysisMode = true;
+        if (dpTitle != null) dpTitle.setText("AI数据分析");
+        if (dpInput != null) dpInput.setHint("分析这批数据的趋势...");
+        openDataProcessDialog();
+    }
+
+    // startDataProcessRequest 内部会用 dpIsAnalysisMode 判断，
+    // 分析模式下 AI 返回纯文本而非 JSON 操作列表。
     // ========================================================================
     // Calc AI Chart Generation Dialog
     // ========================================================================
@@ -4581,22 +4947,35 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void openChartDialog() {
-        if (mWebView != null) {
-            mWebView.evaluateJavascript(
-                "JSON.stringify({range: (function(){ var a = app.calc && app.calc.cellAddress; if (!a) return ''; var cl = function(c){ var s = ''; while (c >= 0) { s = String.fromCharCode(65 + (c % 26)) + s; c = Math.floor(c / 26) - 1; } return s; }; return cl(a.x) + (a.y + 1); })()})",
-                value -> {
-                    try {
-                        org.json.JSONObject rangeJson = new org.json.JSONObject(value);
-                        chartSelectedRange = rangeJson.optString("range", "");
-                    } catch (org.json.JSONException e) {
-                        chartSelectedRange = "";
-                    }
-                    runOnUiThread(() -> openChartDialogWithRange(chartSelectedRange));
-                });
+        if (calcSelectedRange != null && !calcSelectedRange.isEmpty()) {
+            openChartDialogWithRange(calcSelectedRange);
+            Log.i(TAG, "chart_open range=" + chartSelectedRange + " source=cached");
+        } else if (mWebView != null) {
+            openChartDialogWithRangeNow();
         } else {
-            chartSelectedRange = "";
-            runOnUiThread(() -> openChartDialogWithRange(""));
+            openChartDialogWithRange("");
         }
+    }
+
+    private void openChartDialogWithRangeNow() {
+        if (mWebView == null) { openChartDialogWithRange(""); return; }
+        mWebView.evaluateJavascript(
+            "(function(){try{var d=app.map._docLayer;if(!d)return'';var s=d._cellSelectionArea,g=d.sheetGeometry;if(g&&s){var cx=g._columns,ry=g._rows;if(cx&&ry&&typeof cx.getIndexFromPos==='function'){var ci=cx.getIndexFromPos(s.pX1,'tiletwips'),ri=ry.getIndexFromPos(s.pY1,'tiletwips'),cj=cx.getIndexFromPos(s.pX2,'tiletwips'),rj=ry.getIndexFromPos(s.pY2,'tiletwips');function cl(c){var s='';while(c>=0){s=String.fromCharCode(65+(c%26))+s;c=Math.floor(c/26)-1;}return s;}return cl(ci)+(ri+1)+':'+cl(cj)+(rj+1);}}var a=app.calc&&app.calc.cellAddress;if(!a)return'';function cl(c){var s='';while(c>=0){s=String.fromCharCode(65+(c%26))+s;c=Math.floor(c/26)-1;}return s;}return cl(a.x)+(a.y+1);}catch(e){return'';}})()",
+            new android.webkit.ValueCallback<String>() {
+                @Override
+                public void onReceiveValue(String value) {
+                    String range = "";
+                    if (value != null && !value.equals("null") && value.length() > 2) {
+                        try { Object p = new org.json.JSONTokener(value).nextValue();
+                            if (p instanceof String) range = (String) p;
+                        } catch (org.json.JSONException e) {}
+                    }
+                    calcSelectedRange = range;
+                    final String r = range;
+                    runOnUiThread(() -> openChartDialogWithRange(r));
+                    Log.i(TAG, "chart_open range=" + r + " source=direct");
+                }
+            });
     }
 
     private void openChartDialogWithRange(String cellRange) {
@@ -4686,7 +5065,7 @@ public class LOActivity extends AppCompatActivity {
             chartResultJson = chartResultJson.replaceAll("(?s)^```(?:json)?\\s*", "").replaceAll("\\s*```$", "");
         }
 
-        final String displayText;
+        String displayText;
         // Try to parse and display nicely
         try {
             org.json.JSONObject result = new org.json.JSONObject(chartResultJson);
@@ -4725,8 +5104,9 @@ public class LOActivity extends AppCompatActivity {
             displayText = chartResultJson;
         }
 
+        final String finalDisplayText = displayText;
         runOnUiThread(() -> {
-            chartResultText.setText(displayText);
+            chartResultText.setText(finalDisplayText);
             setChartDialogState(CHART_STATE_COMPLETED);
         });
     }
@@ -4768,8 +5148,11 @@ public class LOActivity extends AppCompatActivity {
                         });
 
                         if ("formula".equals(type) && !address.isEmpty() && !value.isEmpty()) {
-                            // Set formula via GoToCell + paste
-                            postUnoCommand(".uno:GoToCell", "{\"ToPoint\":\"" + address.split("\\.")[1] + "\"}", false);
+                            // Set formula via GoToCell + paste（typed JSON 格式，参考 gtv-signal-handlers.cxx）
+                            String cellRef = address.split("\\.")[1];
+                            postUnoCommand(".uno:GoToCell",
+                                "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + cellRef + "\"}}",
+                                false);
                             Thread.sleep(100);
                             paste("text/plain;charset=utf-8", value.getBytes("UTF-8"));
                             Thread.sleep(100);
@@ -4835,6 +5218,371 @@ public class LOActivity extends AppCompatActivity {
         Log.i(TAG, "calc_chart_dialog_dismiss");
     }
 
+    // ========================================================================
+    // Impress PPT Outline Generation Dialog
+    // ========================================================================
+
+    private void setupImpressOutlineDialog() {
+        impressOutlineOverlay = findViewById(R.id.impress_outline_overlay);
+        impressOutlinePanel = findViewById(R.id.impress_outline_panel);
+
+        impressOutlineInputGroup = impressOutlinePanel.findViewById(R.id.impress_outline_input_group);
+        impressOutlineQuickInput = impressOutlinePanel.findViewById(R.id.impress_outline_quick_input);
+        impressOutlineDocGroup = impressOutlinePanel.findViewById(R.id.impress_outline_doc_group);
+        impressOutlineDocSelectBtn = impressOutlinePanel.findViewById(R.id.impress_outline_doc_select_btn);
+        impressOutlineDocFileName = impressOutlinePanel.findViewById(R.id.impress_outline_doc_file_name);
+        impressOutlinePasteInput = impressOutlinePanel.findViewById(R.id.impress_outline_paste_input);
+
+        impressOutlineTabQuick = impressOutlinePanel.findViewById(R.id.impress_outline_tab_quick);
+        impressOutlineTabDoc = impressOutlinePanel.findViewById(R.id.impress_outline_tab_doc);
+        impressOutlineTabPaste = impressOutlinePanel.findViewById(R.id.impress_outline_tab_paste);
+
+        impressOutlinePageSpinner = impressOutlinePanel.findViewById(R.id.impress_outline_page_spinner);
+        impressOutlineAudienceSpinner = impressOutlinePanel.findViewById(R.id.impress_outline_audience_spinner);
+        impressOutlineStyleSpinner = impressOutlinePanel.findViewById(R.id.impress_outline_style_spinner);
+
+        impressOutlineGenerateBtn = impressOutlinePanel.findViewById(R.id.impress_outline_generate_btn);
+        impressOutlineLoadingText = impressOutlinePanel.findViewById(R.id.impress_outline_loading_text);
+        impressOutlineCompletedGroup = impressOutlinePanel.findViewById(R.id.impress_outline_completed_group);
+        impressOutlineCardContainer = impressOutlinePanel.findViewById(R.id.impress_outline_card_container);
+        impressOutlineRegenerateBtn = impressOutlinePanel.findViewById(R.id.impress_outline_regenerate_btn);
+        impressOutlineTemplateBtn = impressOutlinePanel.findViewById(R.id.impress_outline_template_btn);
+        impressOutlineErrorGroup = impressOutlinePanel.findViewById(R.id.impress_outline_error_group);
+        impressOutlineErrorText = impressOutlinePanel.findViewById(R.id.impress_outline_error_text);
+        impressOutlineErrorRetryBtn = impressOutlinePanel.findViewById(R.id.impress_outline_error_retry_btn);
+
+        View closeBtn = impressOutlinePanel.findViewById(R.id.impress_outline_close_button);
+        closeBtn.setOnClickListener(v -> dismissImpressOutlineDialog());
+
+        impressOutlineTabQuick.setOnClickListener(v -> switchImpressOutlineInputType("quick"));
+        impressOutlineTabDoc.setOnClickListener(v -> switchImpressOutlineInputType("document"));
+        impressOutlineTabPaste.setOnClickListener(v -> switchImpressOutlineInputType("outline"));
+
+        impressOutlineDocSelectBtn.setOnClickListener(v -> pickImpressOutlineDocument());
+
+        impressOutlineGenerateBtn.setOnClickListener(v -> onImpressOutlineGenerate());
+        impressOutlineRegenerateBtn.setOnClickListener(v -> onImpressOutlineGenerate());
+        impressOutlineErrorRetryBtn.setOnClickListener(v -> onImpressOutlineGenerate());
+        impressOutlineTemplateBtn.setOnClickListener(v ->
+                Toast.makeText(this, "选择模板功能即将推出", Toast.LENGTH_SHORT).show());
+
+        ArrayAdapter<CharSequence> pageAdapter = ArrayAdapter.createFromResource(this,
+                R.array.impress_outline_page_options, android.R.layout.simple_spinner_item);
+        pageAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        impressOutlinePageSpinner.setAdapter(pageAdapter);
+
+        ArrayAdapter<CharSequence> audienceAdapter = ArrayAdapter.createFromResource(this,
+                R.array.impress_outline_audience_options, android.R.layout.simple_spinner_item);
+        audienceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        impressOutlineAudienceSpinner.setAdapter(audienceAdapter);
+
+        ArrayAdapter<CharSequence> styleAdapter = ArrayAdapter.createFromResource(this,
+                R.array.impress_outline_style_options, android.R.layout.simple_spinner_item);
+        styleAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        impressOutlineStyleSpinner.setAdapter(styleAdapter);
+    }
+
+    private void setImpressOutlineDialogState(int state) {
+        impressOutlineInputGroup.setVisibility(state == IMPRESS_OUTLINE_STATE_INPUT ? View.VISIBLE : View.GONE);
+        impressOutlineLoadingText.setVisibility(state == IMPRESS_OUTLINE_STATE_GENERATING ? View.VISIBLE : View.GONE);
+        impressOutlineCompletedGroup.setVisibility(state == IMPRESS_OUTLINE_STATE_COMPLETED ? View.VISIBLE : View.GONE);
+        impressOutlineErrorGroup.setVisibility(state == IMPRESS_OUTLINE_STATE_ERROR ? View.VISIBLE : View.GONE);
+    }
+
+    private void positionImpressOutlineDialogCenter() {
+        if (impressOutlinePanel == null) return;
+        View parent = (View) impressOutlinePanel.getParent();
+        if (!(parent instanceof ConstraintLayout)) return;
+        int parentWidth = parent.getWidth();
+        int parentHeight = parent.getHeight();
+        if (parentWidth <= 0 || parentHeight <= 0) return;
+        int targetWidth = parentWidth - dpToPx(48);
+        int targetHeight = Math.max(dpToPx(400), (int) (parentHeight * 0.8));
+
+        ConstraintLayout.LayoutParams lp =
+                (ConstraintLayout.LayoutParams) impressOutlinePanel.getLayoutParams();
+        lp.width = targetWidth;
+        lp.height = targetHeight;
+        lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.endToEnd = ConstraintLayout.LayoutParams.UNSET;
+        lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET;
+        lp.horizontalBias = 0f;
+        lp.verticalBias = 0f;
+        lp.leftMargin = Math.max(0, (parentWidth - targetWidth) / 2);
+        lp.topMargin = Math.max(0, (parentHeight - targetHeight) / 2);
+        impressOutlinePanel.setLayoutParams(lp);
+    }
+
+    private void switchImpressOutlineInputType(String type) {
+        impressOutlineInputType = type;
+        impressOutlineTabQuick.setBackground(null);
+        impressOutlineTabDoc.setBackground(null);
+        impressOutlineTabPaste.setBackground(null);
+        impressOutlineTabQuick.setTextColor(0xFF666666);
+        impressOutlineTabDoc.setTextColor(0xFF666666);
+        impressOutlineTabPaste.setTextColor(0xFF666666);
+
+        impressOutlineQuickInput.setVisibility(View.GONE);
+        impressOutlineDocGroup.setVisibility(View.GONE);
+        impressOutlinePasteInput.setVisibility(View.GONE);
+
+        switch (type) {
+            case "quick":
+                impressOutlineTabQuick.setBackgroundResource(R.drawable.lolib_bg_continue_pill_primary);
+                impressOutlineTabQuick.setTextColor(0xFFFFFFFF);
+                impressOutlineQuickInput.setVisibility(View.VISIBLE);
+                break;
+            case "document":
+                impressOutlineTabDoc.setBackgroundResource(R.drawable.lolib_bg_continue_pill_primary);
+                impressOutlineTabDoc.setTextColor(0xFFFFFFFF);
+                impressOutlineDocGroup.setVisibility(View.VISIBLE);
+                break;
+            case "outline":
+                impressOutlineTabPaste.setBackgroundResource(R.drawable.lolib_bg_continue_pill_primary);
+                impressOutlineTabPaste.setTextColor(0xFFFFFFFF);
+                impressOutlinePasteInput.setVisibility(View.VISIBLE);
+                break;
+        }
+    }
+
+    private void openImpressOutlineDialog() {
+        impressOutlineInputType = "quick";
+        impressOutlineDocFileContent = "";
+        impressOutlineDocFileName.setVisibility(View.GONE);
+        switchImpressOutlineInputType("quick");
+        setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_INPUT);
+        impressOutlineOverlay.setVisibility(View.VISIBLE);
+        impressOutlinePanel.setVisibility(View.VISIBLE);
+        impressOutlinePanel.post(this::positionImpressOutlineDialogCenter);
+        Log.i(TAG, "impress_outline_open");
+    }
+
+    private void dismissImpressOutlineDialog() {
+        if (!impressOutlineActiveRequestId.isEmpty()) {
+            cancelAiRequest(impressOutlineActiveRequestId);
+            aiStreamingViewByRequestId.remove(impressOutlineActiveRequestId);
+            impressOutlineActiveRequestId = "";
+        }
+        if (impressOutlineOverlay != null) impressOutlineOverlay.setVisibility(View.GONE);
+        if (impressOutlinePanel != null) impressOutlinePanel.setVisibility(View.GONE);
+        Log.i(TAG, "impress_outline_dismiss");
+    }
+
+    private void onImpressOutlineGenerate() {
+        String userInput = "";
+        if ("quick".equals(impressOutlineInputType)) {
+            userInput = impressOutlineQuickInput.getText().toString().trim();
+        } else if ("document".equals(impressOutlineInputType)) {
+            userInput = impressOutlineDocFileContent;
+        } else {
+            userInput = impressOutlinePasteInput.getText().toString().trim();
+        }
+
+        if (userInput.isEmpty()) {
+            Toast.makeText(this,
+                    "document".equals(impressOutlineInputType) ? "请先选择文件" : "请输入内容",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        hideKeyboard();
+        setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_GENERATING);
+        startImpressOutlineRequest(userInput);
+    }
+
+    private void startImpressOutlineRequest(String userInput) {
+        String requestId = "impress-outline-" + java.util.UUID.randomUUID().toString();
+        impressOutlineActiveRequestId = requestId;
+
+        String pageItem = (String) impressOutlinePageSpinner.getSelectedItem();
+        int pageRange = 10;
+        if (pageItem != null) {
+            if (pageItem.startsWith("11")) pageRange = 20;
+            else if (pageItem.startsWith("21")) pageRange = 30;
+        }
+        String audience = impressOutlineAudienceSpinner.getSelectedItem() != null
+                ? (String) impressOutlineAudienceSpinner.getSelectedItem() : "大众";
+        String style = impressOutlineStyleSpinner.getSelectedItem() != null
+                ? (String) impressOutlineStyleSpinner.getSelectedItem() : "通用";
+
+        try {
+            JSONObject request = new JSONObject();
+            request.put("requestId", requestId);
+            request.put("taskType", AiChatCoordinator.MODE_IMPRESS_OUTLINE);
+            request.put("inputType", impressOutlineInputType);
+            request.put("userInput", userInput);
+            request.put("pageRange", pageRange);
+            request.put("audience", audience);
+            request.put("style", style);
+            startAiRequestSession(request, -1);
+        } catch (JSONException e) {
+            setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_INPUT);
+            Toast.makeText(this, "请求构建失败", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    public void onImpressOutlineDone(String requestId, String text) {
+        if (!requestId.equals(impressOutlineActiveRequestId)) return;
+        if (text == null || text.isEmpty()) {
+            runOnUiThread(() -> {
+                impressOutlineErrorText.setText("AI 返回为空，请重试");
+                setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_ERROR);
+            });
+            return;
+        }
+        runOnUiThread(() -> parseAndShowImpressOutline(text));
+    }
+
+    private void parseAndShowImpressOutline(String jsonText) {
+        String cleanJson = jsonText;
+        if (cleanJson.startsWith("```")) {
+            cleanJson = cleanJson.replaceAll("(?s)^```(?:json)?\\s*", "").replaceAll("\\s*```$", "");
+        }
+        try {
+            JSONObject result = new JSONObject(cleanJson);
+            JSONArray slides = result.optJSONArray("slides");
+            if (slides == null || slides.length() == 0) {
+                throw new JSONException("slides array is empty");
+            }
+
+            impressOutlineCardContainer.removeAllViews();
+            for (int i = 0; i < slides.length(); i++) {
+                JSONObject slide = slides.getJSONObject(i);
+                View card = getLayoutInflater().inflate(
+                        R.layout.lolib_item_impress_outline_card, impressOutlineCardContainer, false);
+
+                TextView pageLabel = card.findViewById(R.id.impress_outline_card_page_label);
+                EditText titleInput = card.findViewById(R.id.impress_outline_card_title);
+                EditText contentInput = card.findViewById(R.id.impress_outline_card_content);
+
+                String type = slide.optString("type", "section");
+                String typeLabel;
+                switch (type) {
+                    case "cover": typeLabel = "封面"; break;
+                    case "toc":   typeLabel = "目录"; break;
+                    case "end":   typeLabel = "结尾"; break;
+                    default:      typeLabel = "章节";
+                }
+                pageLabel.setText("P" + slide.optInt("page", i + 1) + "  " + typeLabel);
+                titleInput.setText(slide.optString("title", ""));
+                contentInput.setText(slide.optString("content", ""));
+
+                if (i < slides.length() - 1) {
+                    View divider = new View(this);
+                    divider.setLayoutParams(new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT, 1));
+                    divider.setBackgroundColor(0xFFF0F0F0);
+                    ((LinearLayout) card).addView(divider);
+                }
+
+                impressOutlineCardContainer.addView(card);
+            }
+            setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
+        } catch (JSONException e) {
+            impressOutlineErrorText.setText("大纲解析失败，AI返回原始文本：\n\n" + cleanJson);
+            setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_ERROR);
+        }
+    }
+
+    private void pickImpressOutlineDocument() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        String[] mimeTypes = {"text/plain", "application/pdf"};
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+        startActivityForResult(intent, REQUEST_CODE_IMPRESS_PICK_DOC);
+    }
+
+    private void handleImpressOutlineDocPicked(Uri uri) {
+        String mimeType = getContentResolver().getType(uri);
+        String fileName = uri.getLastPathSegment();
+        if (fileName != null && fileName.contains("/")) {
+            fileName = fileName.substring(fileName.lastIndexOf("/") + 1);
+        }
+        impressOutlineDocFileName.setText(fileName != null ? fileName : "未知文件");
+        impressOutlineDocFileName.setVisibility(View.VISIBLE);
+
+        try {
+            if ("text/plain".equals(mimeType)) {
+                try (InputStream is = getContentResolver().openInputStream(uri);
+                     BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    int totalChars = 0;
+                    while ((line = reader.readLine()) != null && totalChars < 150000) {
+                        sb.append(line).append("\n");
+                        totalChars += line.length() + 1;
+                    }
+                    impressOutlineDocFileContent = sb.toString();
+                    Toast.makeText(this, "文本已加载（" + sb.length() + "字符）", Toast.LENGTH_SHORT).show();
+                }
+            } else if ("application/pdf".equals(mimeType)) {
+                extractPdfText(uri);
+            } else {
+                Toast.makeText(this, "不支持的文件类型，请使用TXT或PDF", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "impress_outline_doc_read_error", e);
+            Toast.makeText(this, "文件读取失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void extractPdfText(Uri uri) {
+        // TODO: PDF text extraction - requires a PDF parsing library
+        Toast.makeText(this, "PDF文本提取暂不支持，请先转为TXT格式", Toast.LENGTH_LONG).show();
+    }
+
+    // ==================== Calc 对象（图表/图片/形状）选中底部操作栏 ====================
+
+    private void setupCalcObjectBar() {
+        if (calcObjectBarController == null) {
+            calcObjectBarController = new CalcObjectBarController(new CalcObjectBarController.Host() {
+                @Override
+                public boolean isDocEditable() {
+                    return LOActivity.this.isDocEditable;
+                }
+
+                @Override
+                public boolean isEditModeActive() {
+                    return LOActivity.this.mIsEditModeActive;
+                }
+
+                @Override
+                public void ensureEditModeThen(Runnable action) {
+                    LOActivity.this.ensureEditModeThen(action);
+                }
+
+                @Override
+                public void executeUnoCommand(String command) {
+                    LOActivity.this.executeUnoCommand(command);
+                }
+
+                @Override
+                public void hideQuickActionPanel() {
+                    LOActivity.this.hideQuickActionPanel();
+                }
+
+                @Override
+                public View findViewById(int id) {
+                    return LOActivity.this.findViewById(id);
+                }
+            });
+        }
+        calcObjectBarController.setup();
+    }
+
+    private void showCalcObjectBar() {
+        if (calcObjectBarController != null) {
+            calcObjectBarController.show();
+        }
+    }
+
+    private void hideCalcObjectBar() {
+        if (calcObjectBarController != null) {
+            calcObjectBarController.hide();
+        }
+    }
+
     private void onDataProcessExecute() {
         final org.json.JSONArray ops = dpPendingOperations;
         if (ops == null || ops.length() == 0) {
@@ -4843,7 +5591,14 @@ public class LOActivity extends AppCompatActivity {
         }
         setDataProcessDialogState(DP_STATE_EXECUTING);
         final String requestId = dpActiveRequestId;
-        Log.i(TAG, "calc_data_process_execute_start id=" + requestId + " ops=" + ops.length());
+        try {
+            String firstOp = ops.length() > 0 ? ops.getJSONObject(0).optString("type", "") : "none";
+            String firstRange = ops.length() > 0 ? ops.getJSONObject(0).optString("range", "") : "";
+            Log.i(TAG, "calc_data_process_execute_start id=" + requestId + " ops=" + ops.length()
+                    + " first=" + firstOp + " range=" + firstRange);
+        } catch (Exception e) {
+            Log.i(TAG, "calc_data_process_execute_start id=" + requestId + " ops=" + ops.length());
+        }
 
         new Thread(() -> {
             try {
@@ -4855,10 +5610,14 @@ public class LOActivity extends AppCompatActivity {
                     final String command = op.optString("command", "");
                     final String range = op.optString("range", "");
                     final String header = op.optString("header", "");
-                    final String valueFormula = op.optString("valueFormula", "");
+                    String valueData = op.optString("value", "");
+                    if (valueData.isEmpty()) valueData = op.optString("valueFormula", "");
+                    final String valueFormula = valueData;
                     final org.json.JSONArray values = op.optJSONArray("values");
 
-                    Log.i(TAG, "calc_data_process_execute step=" + step + "/" + total + " type=" + type);
+                    Log.i(TAG, "calc_data_process_execute step=" + step + "/" + total + " type=" + type
+                            + " range=" + range + " value=" + valueFormula + " header=" + header
+                            + " raw=" + op.toString().replaceAll("\\s+", " "));
 
                     runOnUiThread(() -> {
                         if (dpExecutingStatus != null) {
@@ -4875,25 +5634,9 @@ public class LOActivity extends AppCompatActivity {
                             }
                             break;
 
-                        case "set_value":
-                            if (!range.isEmpty() && !valueFormula.isEmpty()) {
-                                String[] parts = range.split(":");
-                                if (parts.length == 2) {
-                                    String startRef = parts[0];
-                                    String endRef = parts[1];
-                                    int startRow = extractRowNumber(startRef);
-                                    int endRow = extractRowNumber(endRef);
-                                    String colLetter = extractColLetter(startRef);
-                                    for (int r = startRow; r <= endRow; r++) {
-                                        String cellRef = colLetter + r;
-                                        String val = valueFormula.replace("{row}", String.valueOf(r));
-                                        postUnoCommand(".uno:GoToCell", "{\"ToPoint\":\"" + cellRef + "\"}", false);
-                                        Thread.sleep(50);
-                                        paste("text/plain;charset=utf-8", val.getBytes("UTF-8"));
-                                        Thread.sleep(50);
-                                    }
-                                }
-                            }
+                        case "set_value": // fall through — same GoToCell + confirm + paste pattern
+                        case "set_formula":
+                            writeCellValue(range, valueFormula);
                             break;
 
                         case "add_column":
@@ -4906,27 +5649,119 @@ public class LOActivity extends AppCompatActivity {
                                 String colLetter = extractColLetter(startRef);
                                 String newCol = nextColumnLetter(colLetter);
                                 String headerCell = newCol + startRow;
-                                postUnoCommand(".uno:GoToCell", "{\"ToPoint\":\"" + headerCell + "\"}", false);
-                                Thread.sleep(50);
-                                paste("text/plain;charset=utf-8", header.getBytes("UTF-8"));
-                                Thread.sleep(50);
+                                writeCellValue(headerCell, header);
                             }
                             if (values != null && values.length() > 0 && !range.isEmpty()) {
-                                String[] rangeParts = range.split(":");
-                                String startRef = rangeParts[0];
-                                String colLetter = extractColLetter(startRef);
-                                String newCol = nextColumnLetter(colLetter);
-                                int startRow = extractRowNumber(startRef);
+                                String newCol = nextColumnLetter(extractColLetter(range.split(":")[0]));
+                                int baseRow = extractRowNumber(range.split(":")[0]);
                                 for (int r = 0; r < values.length(); r++) {
-                                    String cellRef = newCol + (startRow + r + 1);
-                                    String val = values.optString(r, "");
-                                    if (val == null || val.isEmpty()) continue;
-                                    postUnoCommand(".uno:GoToCell", "{\"ToPoint\":\"" + cellRef + "\"}", false);
-                                    Thread.sleep(50);
-                                    paste("text/plain;charset=utf-8", val.getBytes("UTF-8"));
-                                    Thread.sleep(50);
+                                    String v = values.optString(r, "");
+                                    if (v == null || v.isEmpty()) continue;
+                                    writeCellValue(newCol + (baseRow + r + 1), v);
                                 }
                             }
+                            break;
+
+                        case "sort": {
+                            String keyColumn = op.optString("keyColumn", "");
+                            boolean ascending = op.optBoolean("ascending", true);
+                            boolean hasHeader = op.optBoolean("hasHeader", true);
+                            if (!keyColumn.isEmpty()) {
+                                String sortCell = keyColumn + "1";
+                                long tSort0 = System.currentTimeMillis();
+                                waitForReconnectIfNeeded("sort_pre", 3000);
+                                postUnoCommand(".uno:GoToCell",
+                                    "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + sortCell + "\"}}",
+                                    false);
+                                long tSort1 = System.currentTimeMillis();
+                                waitForReconnectIfNeeded("sort_post", 3000);
+                                String sortParams = hasHeader ? "{\"HasHeader\":true}" : "{}";
+                                postUnoCommand(ascending ? ".uno:SortAscending" : ".uno:SortDescending", sortParams, false);
+                                Log.i(TAG, "calc_data_process_sort cell=" + sortCell
+                                        + " goto=" + (tSort1 - tSort0) + "ms");
+                                Thread.sleep(200);
+                            }
+                            break;
+                        }
+
+                        case "filter":
+                            postUnoCommand(".uno:DataFilterAutoFilter", "{}", false);
+                            Thread.sleep(200);
+                            break;
+
+                        case "clear_formatting":
+                            if (!range.isEmpty()) {
+                                String[] parts = range.split(":");
+                                confirmAndExecCellOp(parts[0], ".uno:ResetAttributes", "{}", "clear_formatting");
+                            }
+                            break;
+
+                        case "delete_rows":
+                            if (!range.isEmpty()) {
+                                confirmAndExecCellOp(range, ".uno:DeleteRows", "{}", "delete_rows");
+                            }
+                            break;
+
+                        case "delete_columns":
+                            if (!range.isEmpty()) {
+                                confirmAndExecCellOp(range, ".uno:DeleteColumns", "{}", "delete_columns");
+                            }
+                            break;
+
+                        case "insert_rows":
+                            if (!range.isEmpty()) {
+                                confirmAndExecCellOp(range, ".uno:InsertRowsBefore", "{}", "insert_rows");
+                            }
+                            break;
+
+                        case "insert_columns":
+                            if (!range.isEmpty()) {
+                                confirmAndExecCellOp(range, ".uno:InsertColumnsAfter", "{}", "insert_columns");
+                            }
+                            break;
+
+                        case "format_number": {
+                            String fmtStyle = op.optString("style", "decimal");
+                            int decimals = op.optInt("decimals", -1);
+                            if (!range.isEmpty()) {
+                                String fmtCmd;
+                                switch (fmtStyle) {
+                                    case "percent": fmtCmd = ".uno:NumberFormatPercent"; break;
+                                    case "currency": fmtCmd = ".uno:NumberFormatCurrency"; break;
+                                    case "date": fmtCmd = ".uno:NumberFormatDate"; break;
+                                    default:
+                                        fmtCmd = decimals > 0
+                                            ? ".uno:NumberFormatDecimal?Decimals:short=" + decimals
+                                            : ".uno:NumberFormatDecimal";
+                                        break;
+                                }
+                                confirmAndExecCellOp(range, fmtCmd, "{}", "format_number");
+                            }
+                            break;
+                        }
+
+                        case "set_column_width":
+                            postUnoCommand(".uno:SetOptimalColumnWidth", "{}", false);
+                            Thread.sleep(200);
+                            break;
+
+                        case "merge_cells":
+                            postUnoCommand(".uno:ToggleMergeCells", "{}", false);
+                            Thread.sleep(200);
+                            break;
+
+                        case "bold":
+                            postUnoCommand(".uno:Bold", "{}", false);
+                            Thread.sleep(200);
+                            break;
+
+                        case "calculate":
+                            postUnoCommand(".uno:Calculate", "{}", false);
+                            Thread.sleep(200);
+                            break;
+
+                        default:
+                            Log.w(TAG, "calc_data_process_unknown_type type=" + type);
                             break;
                     }
                 }
@@ -4936,6 +5771,7 @@ public class LOActivity extends AppCompatActivity {
                         dpExecutingStatus.setText("数据处理完成 ✓");
                     }
                     Log.i(TAG, "calc_data_process_execute_done id=" + requestId);
+                    forceRefreshTilesAfterDpExec();
                     getMainHandler().postDelayed(() -> {
                         dismissDataProcessDialog();
                         Toast.makeText(LOActivity.this, "数据处理完成", Toast.LENGTH_SHORT).show();
@@ -4996,6 +5832,139 @@ public class LOActivity extends AppCompatActivity {
         return "A" + new String(chars);
     }
 
+        /**
+     * 检查 JS 侧 socket 是否处于重连状态（_reconnecting || _interactionBlockedForReconnect）。
+     * 如果是，轮询等待直到重连完成（_reconnecting 变 false 且 readyState=OPEN）。
+     * 在 dp-executor 后台线程中调用。
+     *
+     * @param tag 日志标签
+     * @param timeoutMs 最大等待时间
+     * @return true 表示 socket 就绪可写，false 表示超时
+     */
+    private boolean waitForReconnectIfNeeded(String tag, int timeoutMs) {
+        if (mWebView == null) return false;
+        final int maxAttempts = Math.max(1, timeoutMs / 150);
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
+            final CountDownLatch latch = new CountDownLatch(1);
+            final boolean[] isStable = {false};
+            runOnUiThread(() -> {
+                if (mWebView == null) { latch.countDown(); return; }
+                mWebView.evaluateJavascript(
+                    "(function(){try{"
+                    + "var s=window.socket;"
+                    + "if(!s)return 'no_socket';"
+                    + "if(s.isTemporarilyReconnecting&&s.isTemporarilyReconnecting()){"
+                    + "return 'reconnecting';"
+                    + "}"
+                    + "if(s.readyState===1)return 'open';"
+                    + "return 'state:'+s.readyState;"
+                    + "}catch(e){return 'err';}})()",
+                    value -> {
+                        isStable[0] = (value != null && value.contains("open"));
+                        latch.countDown();
+                    });
+            });
+            try {
+                latch.await(150, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+            if (isStable[0]) {
+                if (attempt > 0) {
+                    Log.i(TAG, "calc_data_process_reconnect_done tag=" + tag + " attempt=" + attempt);
+                }
+                return true;
+            }
+            try { Thread.sleep(150); } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        Log.w(TAG, "calc_data_process_reconnect_timeout tag=" + tag + " attempts=" + maxAttempts);
+        return false;
+    }
+
+    /** 简化的 tile 刷新：只触发 resize 重绘，不做光标跳转 */
+    private void forceRefreshTilesAfterDpExec() {
+        if (mWebView == null) return;
+        runOnUiThread(() -> {
+            mWebView.evaluateJavascript(
+                "(function(){try{"
+                + "if(window.app&&app.events)app.events.fire('resize');"
+                + "return 'ok';"
+                + "}catch(e){return 'err';}})()",
+                value -> Log.i(TAG, "calc_data_process_tile_refresh result=" + value));
+        });
+    }
+
+    /**
+     * 安全的单元格写入：检测重连 → GoToCell → 确认无重连 → paste。
+     * paste() 通过 native JNI 直接写入 core 内部光标位置，不依赖 JS 侧 cellAddress。
+     * 关键防护：每次 GoToCell 后检查 socket 是否因该操作触发了重连（如 close: idle），
+     * 如果重连了则等它完成，避免 paste 写到被重置后的错误位置。
+     */
+    private void writeCellValue(String range, String valueFormula) throws Exception {
+        if (range == null || range.isEmpty() || valueFormula == null || valueFormula.isEmpty()) {
+            return;
+        }
+        String[] parts = range.split(":");
+        String startRef = parts[0];
+        String endRef = parts.length > 1 ? parts[1] : startRef;
+        int startRow = extractRowNumber(startRef);
+        int endRow = extractRowNumber(endRef);
+        String colLetter = extractColLetter(startRef);
+        if (colLetter.isEmpty()) {
+            Log.w(TAG, "calc_data_process_writeCellValue_invalid_range range=" + range);
+            return;
+        }
+        for (int r = startRow; r <= endRow; r++) {
+            String cellRef = colLetter + r;
+            String val = valueFormula.replace("{row}", String.valueOf(r));
+            long t0 = System.currentTimeMillis();
+            waitForReconnectIfNeeded(cellRef, 3000);
+            long t1 = System.currentTimeMillis();
+            // typed JSON 格式（参考 gtv-signal-handlers.cxx），确保 ToPoint 被正确解析
+            postUnoCommand(".uno:GoToCell",
+                "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + cellRef + "\"}}",
+                false);
+            Thread.sleep(50);
+            long t2 = System.currentTimeMillis();
+            waitForReconnectIfNeeded(cellRef + "_post", 3000);
+            paste("text/plain;charset=utf-8", val.getBytes("UTF-8"));
+            long t3 = System.currentTimeMillis();
+            Log.i(TAG, "calc_data_process_write_cell cell=" + cellRef
+                    + " wait1=" + (t1 - t0) + "ms goto=" + (t2 - t1) + "ms paste=" + (t3 - t2) + "ms");
+        }
+    }
+
+    /**
+     * GoToCell + 结构性 UNO 命令（insert/delete rows/columns 等），带重连检测。
+     */
+    private void confirmAndExecCellOp(String range, String unoCmd, String unoArgs, String logTag) throws Exception {
+        String colLetter = extractColLetter(range);
+        if (colLetter == null || colLetter.isEmpty()) {
+            Log.w(TAG, "calc_data_process_" + logTag + "_invalid_range range=" + range);
+            return;
+        }
+        String cellRef = range.split(":")[0];
+        long t0 = System.currentTimeMillis();
+        waitForReconnectIfNeeded(cellRef, 3000);
+        long t1 = System.currentTimeMillis();
+        // typed JSON 格式（参考 gtv-signal-handlers.cxx），确保 ToPoint 被正确解析
+        postUnoCommand(".uno:GoToCell",
+            "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + cellRef + "\"}}",
+            false);
+        Thread.sleep(50);
+        long t2 = System.currentTimeMillis();
+        waitForReconnectIfNeeded(cellRef + "_post", 3000);
+        postUnoCommand(unoCmd, unoArgs, false);
+        long t3 = System.currentTimeMillis();
+        Log.i(TAG, "calc_data_process_cell_op tag=" + logTag + " cell=" + cellRef
+                + " wait1=" + (t1 - t0) + "ms goto=" + (t2 - t1) + "ms exec=" + (t3 - t2) + "ms");
+        Thread.sleep(100);
+    }
+
     /**
      * 选中弹窗显示后预读当前选区，填充 aiOpPendingSelection，
      * 使 AI 按钮点击时能立即拿到选中文本（编辑模式 JNI getTextSelection 主路径）。
@@ -5005,6 +5974,154 @@ public class LOActivity extends AppCompatActivity {
             aiOpPendingSelection = selection == null ? "" : selection;
             Log.i(TAG, "selection_popup_preread chars=" + aiOpPendingSelection.length());
         });
+    }
+
+    private static final String JS_CALC_RANGE_FROM_LAYER =
+            "(function(){try{var d=app.map._docLayer;if(!d)return'';var s=d._cellSelectionArea,g=d.sheetGeometry;"
+            + "var ca=app.calc&&app.calc.cellAddress;var r='';"
+            + "if(g&&s){var cx=g._columns,ry=g._rows;"
+            + "if(cx&&ry&&typeof cx.getIndexFromPos==='function'){"
+            + "var ci=cx.getIndexFromPos(s.pX1,'tiletwips'),ri=ry.getIndexFromPos(s.pY1,'tiletwips'),"
+            + "cj=cx.getIndexFromPos(s.pX2,'tiletwips'),rj=ry.getIndexFromPos(s.pY2,'tiletwips');"
+            + "function cl(c){var s='';while(c>=0){s=String.fromCharCode(65+(c%26))+s;c=Math.floor(c/26)-1;}return s;}"
+            + "r=cl(ci)+(ri+1)+':'+cl(cj)+(rj+1);}}"
+            + "if(!r&&ca){function cl(c){var s='';while(c>=0){s=String.fromCharCode(65+(c%26))+s;c=Math.floor(c/26)-1;}return s;}"
+            + "r=cl(ca.x)+(ca.y+1);}return r;}catch(e){return'';}})()";
+
+    private static final String JS_CALC_HYPERLINK_CONTEXT =
+            "(function(){try{var d=app.map._docLayer;if(!d)return'';"
+            + "var part=d._selectedPart||0,sheet=(d._partNames&&d._partNames[part])?d._partNames[part]:'',"
+            + "sheets=d._partNames?d._partNames.slice():[],range='';"
+            + "var s=d._cellSelectionArea,g=d.sheetGeometry,ca=app.calc&&app.calc.cellAddress;"
+            + "if(g&&s){var cx=g._columns,ry=g._rows;"
+            + "if(cx&&ry&&typeof cx.getIndexFromPos==='function'){"
+            + "var ci=cx.getIndexFromPos(s.pX1,'tiletwips'),ri=ry.getIndexFromPos(s.pY1,'tiletwips'),"
+            + "cj=cx.getIndexFromPos(s.pX2,'tiletwips'),rj=ry.getIndexFromPos(s.pY2,'tiletwips');"
+            + "function cl(c){var t='';while(c>=0){t=String.fromCharCode(65+(c%26))+t;c=Math.floor(c/26)-1;}return t;}"
+            + "range=cl(ci)+(ri+1)+':'+cl(cj)+(rj+1);}}"
+            + "if(!range&&ca){function cl(c){var t='';while(c>=0){t=String.fromCharCode(65+(c%26))+t;c=Math.floor(c/26)-1;}return t;}"
+            + "range=cl(ca.x)+(ca.y+1);}"
+            + "return JSON.stringify({range:range,sheet:sheet,sheets:sheets});"
+            + "}catch(e){return JSON.stringify({range:'',sheet:'',sheets:[]});}})()";
+
+    private static String parseJsStringResult(String value) {
+        if (value == null || value.equals("null") || value.length() <= 2) return "";
+        try {
+            Object p = new org.json.JSONTokener(value).nextValue();
+            return (p instanceof String) ? (String) p : "";
+        } catch (org.json.JSONException e) {
+            return "";
+        }
+    }
+
+    private static int countCalcSelectionColumns(String selText) {
+        if (selText == null || selText.isEmpty()) return 0;
+        String firstLine = selText.split("\n", 2)[0];
+        if (!firstLine.contains("\t")) return 1;
+        return firstLine.split("\t", -1).length;
+    }
+
+    private static int columnLettersToIndex(String letters) {
+        int col = 0;
+        for (int i = 0; i < letters.length(); i++) {
+            col = col * 26 + (Character.toUpperCase(letters.charAt(i)) - 'A' + 1);
+        }
+        return col - 1;
+    }
+
+    private static String columnIndexToLetters(int index) {
+        StringBuilder sb = new StringBuilder();
+        int c = index;
+        while (c >= 0) {
+            sb.insert(0, (char) ('A' + (c % 26)));
+            c = c / 26 - 1;
+        }
+        return sb.toString();
+    }
+
+    /**
+     * _cellSelectionArea 在 Calc 上常只反映部分选区（如 A1:A3），
+     * 而 getTextSelection 含完整数据行数/列数；用后者扩展范围。
+     */
+    private static String refineCalcRangeFromSelectionText(String jsRange, String selText) {
+        if (selText == null || selText.isEmpty()) return jsRange == null ? "" : jsRange;
+        int selLines = selText.split("\n", -1).length;
+        int selCols = countCalcSelectionColumns(selText);
+        if (selLines <= 0) return jsRange == null ? "" : jsRange;
+
+        String range = (jsRange == null) ? "" : jsRange.trim();
+        String startRef;
+        String endRef;
+        if (range.isEmpty()) {
+            return "";
+        }
+        if (range.contains(":")) {
+            String[] parts = range.split(":", 2);
+            startRef = parts[0];
+            endRef = parts[1];
+        } else {
+            startRef = range;
+            endRef = range;
+        }
+
+        java.util.regex.Matcher startM = java.util.regex.Pattern
+                .compile("([A-Za-z]+)(\\d+)").matcher(startRef);
+        java.util.regex.Matcher endM = java.util.regex.Pattern
+                .compile("([A-Za-z]+)(\\d+)").matcher(endRef);
+        if (!startM.matches() || !endM.matches()) return range;
+
+        int startCol = columnLettersToIndex(startM.group(1));
+        int startRow = Integer.parseInt(startM.group(2)) - 1;
+        int endCol = columnLettersToIndex(endM.group(1));
+        int endRow = Integer.parseInt(endM.group(2)) - 1;
+
+        int jsRows = endRow - startRow + 1;
+        int jsCols = endCol - startCol + 1;
+        if (selLines > jsRows) {
+            endRow = startRow + selLines - 1;
+        }
+        if (selCols > jsCols) {
+            endCol = startCol + selCols - 1;
+        }
+
+        String refined = columnIndexToLetters(startCol) + (startRow + 1);
+        if (endCol != startCol || endRow != startRow) {
+            refined += ":" + columnIndexToLetters(endCol) + (endRow + 1);
+        }
+        if (!refined.equals(range)) {
+            Log.i(TAG, "calc_range_refined from=" + range + " to=" + refined
+                    + " selLines=" + selLines + " selCols=" + selCols);
+        }
+        return refined;
+    }
+
+    private interface CalcRangeCallback {
+        void onRange(String range);
+    }
+
+    private void readCalcSelectionRangeAsync(CalcRangeCallback callback) {
+        if (mWebView == null || callback == null) {
+            if (callback != null) callback.onRange("");
+            return;
+        }
+        String selText = "";
+        try {
+            selText = getTextSelection("text/plain;charset=utf-8");
+        } catch (Exception ignored) {}
+        if (selText == null) selText = "";
+        final String selTextFinal = selText;
+        final int selLines = selText.isEmpty() ? 0 : selText.split("\n", -1).length;
+        mWebView.evaluateJavascript(JS_CALC_RANGE_FROM_LAYER, value -> {
+            String jsRange = parseJsStringResult(value);
+            String refined = refineCalcRangeFromSelectionText(jsRange, selTextFinal);
+            Log.i(TAG, "calc_range_read js=" + jsRange + " refined=" + refined + " selLines=" + selLines);
+            callback.onRange(refined);
+        });
+    }
+
+    /*package*/ void preReadCalcSelectionForSheet() {
+        if (mWebView == null || !mIsCalcDocument) { calcSelectedRange = ""; return; }
+        readCalcSelectionRangeAsync(range -> calcSelectedRange = range);
     }
 
     /*package*/ boolean startAiOperationFromSelection(String taskType) {
@@ -5377,6 +6494,7 @@ public class LOActivity extends AppCompatActivity {
 
     private void setupBottomToolbar() {
         ensureBottomToolbarController().setup();
+        ensureBottomToolbarController().updateDocumentType(mIsCalcDocument);
     }
 
     private BottomToolbarController ensureBottomToolbarController() {
@@ -5461,11 +6579,16 @@ public class LOActivity extends AppCompatActivity {
             mWebView.setConsumeWebViewLongClick(true);
         }
         ensureBottomToolbarController().updateEditModeState(isEditMode, reason);
+        ensureBottomToolbarController().updateDocumentType(mIsCalcDocument);
         ensureTopToolbarController().updateEditModeState(isEditMode, reason);
+        if (isEditMode) {
+            detectDocumentType();
+        }
     }
 
     private void hideQuickActionPanel() {
         ensureBottomToolbarController().hideQuickActionPanel();
+        hideCalcObjectBar();
     }
 
     private void requestCloseDocument() {
@@ -5476,6 +6599,9 @@ public class LOActivity extends AppCompatActivity {
             }
             if (functionPanelController != null) {
                 functionPanelController.dismiss();
+            }
+            if (impressFunctionPanelController != null) {
+                impressFunctionPanelController.dismiss();
             }
             if (!documentLoaded || !documentModified) {
                 closeAfterSaveRequested = false;
@@ -5620,10 +6746,18 @@ public class LOActivity extends AppCompatActivity {
                 calcFunctionPanelController.dismiss();
                 calcFunctionPanelController = null;
             }
+            dismissImpressFunctionPanel();
             ensureCalcFunctionPanelController().show();
             return;
         }
+        if (mIsEditModeActive && mIsImpressDocument) {
+            dismissCalcFunctionPanel();
+            dismissWriterFunctionPanel();
+            ensureImpressFunctionPanelController().show();
+            return;
+        }
         if (mIsEditModeActive && !mIsCalcDocument) {
+            dismissImpressFunctionPanel();
             ensureFunctionPanelController().show();
             return;
         }
@@ -5715,7 +6849,30 @@ public class LOActivity extends AppCompatActivity {
         if (calcFunctionPanelController != null) {
             calcFunctionPanelController.dismiss();
         }
+        if (impressFunctionPanelController != null) {
+            impressFunctionPanelController.dismiss();
+        }
         action.run();
+    }
+
+    private void dismissCalcFunctionPanel() {
+        if (calcFunctionPanelController != null) {
+            calcFunctionPanelController.dismiss();
+            calcFunctionPanelController = null;
+        }
+    }
+
+    private void dismissWriterFunctionPanel() {
+        if (functionPanelController != null) {
+            functionPanelController.dismiss();
+        }
+    }
+
+    private void dismissImpressFunctionPanel() {
+        if (impressFunctionPanelController != null) {
+            impressFunctionPanelController.dismiss();
+            impressFunctionPanelController = null;
+        }
     }
 
     private CalcFunctionPanelController ensureCalcFunctionPanelController() {
@@ -5799,6 +6956,27 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void focusDocumentAndShowIme() {
                     LOActivity.this.focusDocumentAndShowIme();
+                }
+
+                @Override
+                public void runAfterFunctionPanelDismiss(Runnable action) {
+                    LOActivity.this.runAfterFunctionPanelDismiss(action);
+                }
+
+                @Override
+                public void insertChartWithType(String unoChartType) {
+                    LOActivity.this.insertChartWithType(unoChartType);
+                }
+
+                @Override
+                public void insertHyperlink(String displayText, String url) {
+                    LOActivity.this.insertHyperlink(displayText, url);
+                }
+
+                @Override
+                public void fetchCalcHyperlinkContext(
+                        CalcHyperlinkPickerController.HyperlinkContextCallback callback) {
+                    LOActivity.this.fetchCalcHyperlinkContext(callback);
                 }
             });
         }
@@ -5895,6 +7073,74 @@ public class LOActivity extends AppCompatActivity {
             });
         }
         return functionPanelController;
+    }
+
+    private ImpressFunctionPanelController ensureImpressFunctionPanelController() {
+        if (impressFunctionPanelController == null) {
+            impressFunctionPanelController = new ImpressFunctionPanelController(
+                    new ImpressFunctionPanelController.Host() {
+                @Override
+                public Context getContext() {
+                    return LOActivity.this;
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return LOActivity.this.dpToPx(dp);
+                }
+
+                @Override
+                public void executeUnoCommand(String command) {
+                    LOActivity.this.executeUnoCommand(command);
+                }
+
+                @Override
+                public void toastTodo(String text) {
+                    LOActivity.this.toastTodo(text);
+                }
+
+                @Override
+                public void applyFont(String fontName) {
+                    LOActivity.this.applyFontFromPanel(fontName);
+                }
+
+                @Override
+                public void applyFontSize(String fontSizePt) {
+                    LOActivity.this.applyFontSizeFromPanel(fontSizePt);
+                }
+
+                @Override
+                public void fetchFontList(FunctionPanelController.StringListCallback callback) {
+                    LOActivity.this.fetchFontListAsync(callback);
+                }
+
+                @Override
+                public void fetchCurrentFormatting(FunctionPanelController.FormattingCallback callback) {
+                    LOActivity.this.fetchCurrentFormattingAsync(callback);
+                }
+
+                @Override
+                public void showAiOperationSheet() {
+                    LOActivity.this.showNativeAiOperationSheet();
+                }
+
+                @Override
+                public void focusDocumentAndShowIme() {
+                    LOActivity.this.focusDocumentAndShowIme();
+                }
+
+                @Override
+                public void openLocalImagePickerFromWeb() {
+                    LOActivity.this.openLocalImagePickerFromWeb();
+                }
+
+                @Override
+                public void runAfterFunctionPanelDismiss(Runnable action) {
+                    LOActivity.this.runAfterFunctionPanelDismiss(action);
+                }
+            });
+        }
+        return impressFunctionPanelController;
     }
 
     private void showSaveAsFormatDialog() {
@@ -6145,6 +7391,80 @@ public class LOActivity extends AppCompatActivity {
                 + "}catch(e){if(window.console&&console.warn){console.warn('function_insert_comment_failed',e);}}"
                 + "return 'fail';})();", value -> Log.i(TAG, "function_insert_comment_result=" + value));
         nudgeSocketIfStalled("function_insert_comment");
+    }
+
+    void insertChartWithType(String unoChartType) {
+        if (unoChartType == null || unoChartType.isEmpty()) {
+            return;
+        }
+        Log.i(TAG, "function_insert_chart type=" + unoChartType);
+        requestWebViewFocusForPanelAction("insert_chart");
+        String escaped = unoChartType.replace("\\", "\\\\").replace("'", "\\'");
+        runWebJs("(function(){try{"
+                + "if(window.app&&app.dispatcher&&typeof app.dispatcher.dispatch==='function'){"
+                + "app.dispatcher.dispatch('chart_insert',{unoChartType:'" + escaped + "'});"
+                + "return 'ok';}"
+                + "}catch(e){if(window.console&&console.warn){console.warn('function_insert_chart_failed',e);}}"
+                + "return 'fail';})();",
+                value -> Log.i(TAG, "function_insert_chart_result=" + value));
+        nudgeSocketIfStalled("insert_chart");
+        forceVisibleTileRedrawFromAndroid("insert_chart");
+    }
+
+    void insertHyperlink(String displayText, String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return;
+        }
+        String text = displayText != null ? displayText.trim() : "";
+        if (text.isEmpty()) {
+            text = url.trim();
+        }
+        String safeText = text.replace("\\", "\\\\").replace("\"", "\\\"");
+        String safeUrl = url.trim().replace("\\", "\\\\").replace("\"", "\\\"");
+        Log.i(TAG, "function_insert_hyperlink text=" + text + " url=" + url.trim());
+        requestWebViewFocusForPanelAction("insert_hyperlink");
+        postUnoCommand(".uno:SetHyperlink",
+                "{\"Hyperlink.Text\":{\"type\":\"string\",\"value\":\"" + safeText + "\"},"
+                        + "\"Hyperlink.URL\":{\"type\":\"string\",\"value\":\"" + safeUrl + "\"}}",
+                false);
+        nudgeSocketIfStalled("insert_hyperlink");
+        forceVisibleTileRedrawFromAndroid("insert_hyperlink");
+    }
+
+    void fetchCalcHyperlinkContext(CalcHyperlinkPickerController.HyperlinkContextCallback callback) {
+        if (callback == null) {
+            return;
+        }
+        if (mWebView == null || !mIsCalcDocument) {
+            runOnUiThread(() -> callback.onContext("", "", new String[0]));
+            return;
+        }
+        readCalcSelectionRangeAsync(range -> mWebView.evaluateJavascript(
+                JS_CALC_HYPERLINK_CONTEXT,
+                value -> runOnUiThread(() -> {
+                    String cellRange = range != null ? range : "";
+                    String activeSheet = "";
+                    String[] sheets = new String[0];
+                    try {
+                        org.json.JSONObject obj = new org.json.JSONObject(parseJsStringResult(value));
+                        if (cellRange.isEmpty()) {
+                            cellRange = obj.optString("range", "");
+                        }
+                        activeSheet = obj.optString("sheet", "");
+                        org.json.JSONArray arr = obj.optJSONArray("sheets");
+                        if (arr != null && arr.length() > 0) {
+                            sheets = new String[arr.length()];
+                            for (int i = 0; i < arr.length(); i++) {
+                                sheets[i] = arr.optString(i, "");
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.w(TAG, "fetch_calc_hyperlink_context_parse_failed", e);
+                    }
+                    Log.i(TAG, "fetch_calc_hyperlink_context range=" + cellRange
+                            + " sheet=" + activeSheet + " sheets=" + sheets.length);
+                    callback.onContext(cellRange, activeSheet, sheets);
+                })));
     }
 
     void fetchStyleListAsync(FunctionPanelController.StringListCallback callback) {
@@ -6474,6 +7794,13 @@ public class LOActivity extends AppCompatActivity {
         if (imm != null) {
             imm.showSoftInput(mWebView, InputMethodManager.SHOW_IMPLICIT);
         }
+    }
+
+    void runAfterFunctionPanelDismiss(Runnable action) {
+        if (action == null) {
+            return;
+        }
+        getMainHandler().postDelayed(action, 200L);
     }
 
     private void focusDocumentAndShowIme() {
@@ -6864,18 +8191,16 @@ public class LOActivity extends AppCompatActivity {
         }
         View panel = getLayoutInflater().inflate(R.layout.lolib_sheet_ai_operations, null);
         aiOperationSheetPanel = panel;
-        View closeButton = panel.findViewById(R.id.ai_op_close);
+        View closeButton = panel.findViewById(R.id.ai_sheet_header_close);
         aiOpSelectionHint = panel.findViewById(R.id.ai_op_selection_hint);
         View cancelButton = panel.findViewById(R.id.ai_op_cancel);
 
         // ============= 根据文档类型切换按钮可见性 =============
         // Calc 文档：隐藏 Writer 按钮，显示 Calc 按钮
         // Writer 文档：隐藏 Calc 按钮，显示 Writer 按钮
-        View calcSectionTitle = panel.findViewById(R.id.ai_op_calc_section_title);
-        View calcSectionRow = panel.findViewById(R.id.ai_op_calc_section_row);
+        View calcBlock = panel.findViewById(R.id.ai_op_calc_block);
         if (mIsCalcDocument) {
-            if (calcSectionTitle != null) calcSectionTitle.setVisibility(View.VISIBLE);
-            if (calcSectionRow != null) calcSectionRow.setVisibility(View.VISIBLE);
+            if (calcBlock != null) calcBlock.setVisibility(View.VISIBLE);
             // Hide Writer sections
             View writerSection1 = panel.findViewById(R.id.ai_op_writer_section_1_title);
             View writerSection1Row = panel.findViewById(R.id.ai_op_writer_section_1_row);
@@ -6906,9 +8231,45 @@ public class LOActivity extends AppCompatActivity {
             View selHint = panel.findViewById(R.id.ai_op_selection_hint);
             if (selHint != null) selHint.setVisibility(View.GONE);
         } else {
-            if (calcSectionTitle != null) calcSectionTitle.setVisibility(View.GONE);
-            if (calcSectionRow != null) calcSectionRow.setVisibility(View.GONE);
+            if (calcBlock != null) calcBlock.setVisibility(View.GONE);
         }
+
+        // Impress 文档：显示 Impress 区块，隐藏 Writer
+        View impressBlock = panel.findViewById(R.id.ai_op_impress_block);
+        if (mIsImpressDocument) {
+            if (impressBlock != null) impressBlock.setVisibility(View.VISIBLE);
+            View writerSection1 = panel.findViewById(R.id.ai_op_writer_section_1_title);
+            View writerSection1Row = panel.findViewById(R.id.ai_op_writer_section_1_row);
+            if (writerSection1 != null) writerSection1.setVisibility(View.GONE);
+            if (writerSection1Row != null) writerSection1Row.setVisibility(View.GONE);
+            View[] writerSections = {
+                panel.findViewById(R.id.ai_op_writer_section_2_title),
+                panel.findViewById(R.id.ai_op_writer_section_2_row1),
+                panel.findViewById(R.id.ai_op_writer_section_2_row2)
+            };
+            for (View v : writerSections) {
+                if (v != null) v.setVisibility(View.GONE);
+            }
+            View[] otherSections = {
+                panel.findViewById(R.id.ai_op_other_title),
+                panel.findViewById(R.id.ai_op_other_row1),
+                panel.findViewById(R.id.ai_op_other_row2)
+            };
+            for (View v : otherSections) {
+                if (v != null) v.setVisibility(View.GONE);
+            }
+            View loadingBar = panel.findViewById(R.id.ai_op_loading_bar);
+            if (loadingBar != null) loadingBar.setVisibility(View.GONE);
+            View selHint = panel.findViewById(R.id.ai_op_selection_hint);
+            if (selHint != null) selHint.setVisibility(View.GONE);
+        } else {
+            if (impressBlock != null) impressBlock.setVisibility(View.GONE);
+        }
+
+        Log.i(TAG, "ai_op_sheet_doc_type isCalc=" + mIsCalcDocument
+                + " calcBlockVisible=" + (calcBlock != null && calcBlock.getVisibility() == View.VISIBLE));
+
+        normalizeAiFunctionSheetLayout(panel);
 
         // Bind Calc AI formula button
         View calcFormulaBtn = panel.findViewById(R.id.ai_op_calc_formula);
@@ -6942,7 +8303,22 @@ public class LOActivity extends AppCompatActivity {
                 if (aiOperationSheet != null) {
                     aiOperationSheet.dismiss();
                 }
+                dpIsAnalysisMode = false;
+                if (dpTitle != null) dpTitle.setText("AI数据处理");
+                if (dpInput != null) dpInput.setHint("重复数据全部清除");
                 openDataProcessDialog();
+            });
+        }
+
+        // Bind Calc AI data analysis button
+        View calcDataAnalysisBtn = panel.findViewById(R.id.ai_op_calc_data_analysis);
+        if (calcDataAnalysisBtn != null) {
+            calcDataAnalysisBtn.setOnClickListener(v -> {
+                Log.i(TAG, "ai_op_calc_data_analysis_clicked");
+                if (aiOperationSheet != null) {
+                    aiOperationSheet.dismiss();
+                }
+                openDataAnalysisDialog();
             });
         }
 
@@ -6955,6 +8331,18 @@ public class LOActivity extends AppCompatActivity {
                     aiOperationSheet.dismiss();
                 }
                 openChartDialog();
+            });
+        }
+
+        // Bind Impress AI PPT button
+        View impressPptBtn = panel.findViewById(R.id.ai_op_impress_ppt);
+        if (impressPptBtn != null) {
+            impressPptBtn.setOnClickListener(v -> {
+                Log.i(TAG, "ai_op_impress_ppt_clicked");
+                if (aiOperationSheet != null) {
+                    aiOperationSheet.dismiss();
+                }
+                openImpressOutlineDialog();
             });
         }
 
@@ -7064,7 +8452,13 @@ public class LOActivity extends AppCompatActivity {
             aiOpPendingSelection = "";
         });
         aiOperationSheet.setOnCancelListener(dialog -> Log.i(TAG, "ai_op_sheet_canceled"));
-        aiOperationSheet.setOnShowListener(dialog -> Log.i(TAG, "ai_op_sheet_onshow"));
+        aiOperationSheet.setOnShowListener(dialog -> {
+            Log.i(TAG, "ai_op_sheet_onshow");
+            // 预读 Calc 选区范围（延迟 200ms 确保焦点回到 calc）
+            if (mIsCalcDocument) {
+                getMainHandler().postDelayed(() -> preReadCalcSelectionForSheet(), 200);
+            }
+        });
 
         // Apply same configuration as AI panel
         int screenHeight = getResources().getDisplayMetrics().heightPixels;
@@ -7104,6 +8498,124 @@ public class LOActivity extends AppCompatActivity {
                 }
             });
         });
+    }
+
+    private static final int AI_FUNCTION_GRID_COLUMNS = 3;
+    private static final int AI_FUNCTION_ICON_DP = 48;
+    private static final int AI_FUNCTION_CARD_HEIGHT_DP = 160;
+    private static final int AI_FUNCTION_CARD_GAP_DP = 10;
+
+    /** 统一 AI 功能面板网格：每行固定 3 列等宽，图标固定 48dp 不随列数拉伸。 */
+    private void normalizeAiFunctionSheetLayout(View panel) {
+        if (panel == null) {
+            return;
+        }
+        int[] rowIds = {
+                R.id.ai_op_calc_section_row,
+                R.id.ai_op_calc_section_row2,
+                R.id.ai_op_writer_section_1_row,
+                R.id.ai_op_writer_section_2_row1,
+                R.id.ai_op_writer_section_2_row2,
+                R.id.ai_op_other_row1,
+                R.id.ai_op_other_row2,
+        };
+        for (int rowId : rowIds) {
+            normalizeAiFunctionGridRow(panel.findViewById(rowId), AI_FUNCTION_GRID_COLUMNS);
+        }
+    }
+
+    private void normalizeAiFunctionGridRow(View rowView, int columnCount) {
+        if (!(rowView instanceof LinearLayout)) {
+            return;
+        }
+        LinearLayout row = (LinearLayout) rowView;
+        if (row.getOrientation() != LinearLayout.HORIZONTAL || row.getVisibility() != View.VISIBLE) {
+            return;
+        }
+
+        int visibleCards = 0;
+        java.util.List<View> spaces = new java.util.ArrayList<>();
+        for (int i = 0; i < row.getChildCount(); i++) {
+            View child = row.getChildAt(i);
+            if (child instanceof Space) {
+                spaces.add(child);
+                continue;
+            }
+            if (child.getVisibility() != View.VISIBLE) {
+                continue;
+            }
+            visibleCards++;
+            enforceAiFunctionCardIconSize(child);
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) child.getLayoutParams();
+            lp.width = 0;
+            lp.height = dpToPx(AI_FUNCTION_CARD_HEIGHT_DP);
+            lp.weight = 1f;
+            child.setLayoutParams(lp);
+        }
+
+        for (View space : spaces) {
+            row.removeView(space);
+        }
+        int neededSpaces = Math.max(0, columnCount - visibleCards);
+        for (int i = 0; i < neededSpaces; i++) {
+            Space space = new Space(this);
+            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                    0, dpToPx(AI_FUNCTION_CARD_HEIGHT_DP), 1f);
+            space.setLayoutParams(slp);
+            row.addView(space);
+        }
+
+        for (int i = 0; i < row.getChildCount(); i++) {
+            View child = row.getChildAt(i);
+            if (child instanceof Space) {
+                continue;
+            }
+            if (child.getVisibility() != View.VISIBLE) {
+                continue;
+            }
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) child.getLayoutParams();
+            boolean hasVisibleSiblingAfter = false;
+            for (int j = i + 1; j < row.getChildCount(); j++) {
+                View next = row.getChildAt(j);
+                if (next instanceof Space) {
+                    continue;
+                }
+                if (next.getVisibility() == View.VISIBLE) {
+                    hasVisibleSiblingAfter = true;
+                    break;
+                }
+            }
+            lp.setMarginEnd(hasVisibleSiblingAfter ? dpToPx(AI_FUNCTION_CARD_GAP_DP) : 0);
+            child.setLayoutParams(lp);
+        }
+    }
+
+    private void enforceAiFunctionCardIconSize(View card) {
+        if (!(card instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) card;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child instanceof ImageView) {
+                ImageView icon = (ImageView) child;
+                icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                int iconPx = dpToPx(AI_FUNCTION_ICON_DP);
+                ViewGroup.LayoutParams raw = icon.getLayoutParams();
+                if (raw instanceof LinearLayout.LayoutParams) {
+                    LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) raw;
+                    lp.width = iconPx;
+                    lp.height = iconPx;
+                    lp.weight = 0f;
+                    icon.setLayoutParams(lp);
+                } else {
+                    raw.width = iconPx;
+                    raw.height = iconPx;
+                    icon.setLayoutParams(raw);
+                }
+                return;
+            }
+        }
     }
 
     private void bindAiOpButton(View panel, int viewId, String mode) {
@@ -7259,9 +8771,18 @@ public class LOActivity extends AppCompatActivity {
             return null;
         }
         try {
-            // Use original docx backup if available (LOKit may have converted mTempFile to ODF)
-            File docxFile = (mOriginalTypesetDocx != null && mOriginalTypesetDocx.exists())
-                    ? mOriginalTypesetDocx : mTempFile;
+            // Prefer current mTempFile (has latest user edits including inserted images).
+            // Fall back to mOriginalTypesetDocx (original format backup) if mTempFile
+            // is unavailable, e.g. if LOKit hasn't saved yet.
+            File docxFile = (mTempFile != null && mTempFile.exists())
+                    ? mTempFile
+                    : (mOriginalTypesetDocx != null && mOriginalTypesetDocx.exists())
+                        ? mOriginalTypesetDocx
+                        : null;
+            if (docxFile == null) {
+                Log.i(TAG, "extract_image_text_no_source_file");
+                return null;
+            }
             // 1. Open and parse the docx
             java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(
                     new java.io.FileInputStream(docxFile));
@@ -7437,8 +8958,14 @@ public class LOActivity extends AppCompatActivity {
             }
 
             if (imageMap.isEmpty()) {
-                Log.i(TAG, "extract_image_text_no_images_found_fallback");
-                return null;
+                if (markedText.length() == 0) {
+                    Log.i(TAG, "extract_image_text_no_content");
+                    return null;
+                }
+                Log.i(TAG, "extract_image_text_text_only paragraphs="
+                        + (paraTexts != null ? paraTexts.size() : 0));
+                // No images found in body w:drawing elements (may be in headers/
+                // footers/VML etc.) — proceed with text-only paragraph data.
             }
 
             // Store image map and paragraph data as fields
@@ -7766,6 +9293,12 @@ public class LOActivity extends AppCompatActivity {
 
         // 全文提取：优先从 docx 提取（含图片标记），退化到 JNI 纯文本
         new Thread(() -> {
+            // Force LOKit to flush current in-memory state (including images user
+            // inserted via open_local_image_picker) to mTempFile on disk, so
+            // extractFullTextWithImagesNative reads the latest document state.
+            runOnUiThread(() -> postUnoCommand(".uno:Save", "{}", false));
+            try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
+
             pendingTypesetImages = null;
             pendingTypesetParagraphs = null;
             pendingParaImageMarkers = null;
@@ -7867,15 +9400,18 @@ public class LOActivity extends AppCompatActivity {
         String cleaned = sanitizeTypesetHtml(htmlContent);
         Log.i(TAG, "ai_typeset_preview_show htmlChars=" + (cleaned != null ? cleaned.length() : 0)
                 + " rawChars=" + (htmlContent != null ? htmlContent.length() : 0));
-        if (!isLikelyHtml(cleaned)) {
-            Log.w(TAG, "ai_typeset_preview_not_html — AI 未返回有效 HTML，放弃预览");
-            Toast.makeText(this, "AI 未返回有效的排版 HTML，请重试", Toast.LENGTH_LONG).show();
-            return;
-        }
         if (isFinishing()) {
             return;
         }
         pendingTypesetHtml = cleaned;
+
+        // If content is not HTML, wrap in <pre> so user can still see the result
+        String displayContent = cleaned;
+        if (!isLikelyHtml(cleaned)) {
+            Log.w(TAG, "ai_typeset_preview_not_html — wrapping in <pre>");
+            displayContent = "<pre style=\"white-space:pre-wrap;word-break:break-all;font-size:13px;\">"
+                    + escapeHtml(cleaned) + "</pre>";
+        }
 
         typesetPreviewSheet = new BottomSheetDialog(this);
         View sheetView = getLayoutInflater().inflate(R.layout.lolib_sheet_typeset_preview, null);
@@ -7903,7 +9439,7 @@ public class LOActivity extends AppCompatActivity {
                     "table { border-collapse: collapse; width: 100%; margin: 1em 0; } " +
                     "td, th { border: 1px solid #ccc; padding: 8px; } " +
                     "ul, ol { margin: 0.5em 0; padding-left: 2em; } " +
-                    "</style></head><body>" + (htmlContent != null ? htmlContent : "") + "</body></html>";
+                    "</style></head><body>" + (displayContent != null ? displayContent : "") + "</body></html>";
             webView.loadDataWithBaseURL(null, wrappedHtml, "text/html", "UTF-8", null);
         }
 
@@ -8030,7 +9566,8 @@ public class LOActivity extends AppCompatActivity {
 
         // Fill template docx on background thread
         new Thread(() -> {
-            File filledDocx = DocxTemplateFiller.fillTemplate(resId, type, sections, LOActivity.this);
+            String srcName = getFileName(false);
+            File filledDocx = DocxTemplateFiller.fillTemplate(resId, type, sections, LOActivity.this, srcName);
             // Post-process: insert source images if any
             if (filledDocx != null && pendingTypesetImages != null
                     && !pendingTypesetImages.isEmpty()) {
@@ -8231,8 +9768,9 @@ public class LOActivity extends AppCompatActivity {
         int cardWidth = Math.min(parentWidth - dp48, (int) (670 * getResources().getDisplayMetrics().density));
         int maxCardHeight = parentHeight - dp16 * 2;
         int cardHeight = Math.min(maxCardHeight, (int) (1320 * getResources().getDisplayMetrics().density));
-        // Ensure minimum height
+        // Ensure minimum height, but never exceed the container
         cardHeight = Math.max(cardHeight, (int) (400 * getResources().getDisplayMetrics().density));
+        cardHeight = Math.min(cardHeight, maxCardHeight);
 
         ViewGroup.LayoutParams lp = typesetPreviewCard.getLayoutParams();
         lp.width = cardWidth;
@@ -8268,27 +9806,28 @@ public class LOActivity extends AppCompatActivity {
             sb.append("<h2>").append(escapeHtml(title)).append("</h2>");
         }
 
+        java.util.Set<String> rendered = new java.util.HashSet<>();
+        if (!title.isEmpty()) rendered.add("title");
+
         switch (typesetType) {
             case "paper":
-                appendPaperSections(sb, sections);
+                appendPaperSections(sb, sections, rendered);
                 break;
             case "gov":
-                appendGovSections(sb, sections);
+                appendGovSections(sb, sections, rendered);
                 break;
             case "contract":
-                appendContractSections(sb, sections);
+                appendContractSections(sb, sections, rendered);
                 break;
             case "general":
             default:
-                appendGeneralSections(sb, sections);
+                appendGeneralSections(sb, sections, rendered);
                 break;
         }
 
-        // Append any unhandled sections at the end
-        java.util.Set<String> handled = new java.util.HashSet<>();
-        // (sections are handled in the append methods above)
+        // Append any AI-generated extra sections not in the template map
         for (Map.Entry<String, String> e : sections.entrySet()) {
-            if (!handled.contains(e.getKey()) && !"title".equals(e.getKey())) {
+            if (!rendered.contains(e.getKey())) {
                 sb.append("<p>").append(escapeHtml(e.getValue())).append("</p>");
             }
         }
@@ -8297,31 +9836,34 @@ public class LOActivity extends AppCompatActivity {
         return sb.toString();
     }
 
-    private void appendPaperSections(StringBuilder sb, Map<String, String> s) {
+    private void appendPaperSections(StringBuilder sb, Map<String, String> s, Set<String> rendered) {
         String abs = s.get("abstract");
         if (abs != null && !abs.isEmpty()) {
             sb.append("<div class=\"abstract\"><strong>摘要：</strong>")
                     .append(escapeHtml(abs)).append("</div>");
+            rendered.add("abstract");
         }
         String kw = s.get("keywords");
         if (kw != null && !kw.isEmpty()) {
             sb.append("<p><strong>关键词：</strong>").append(escapeHtml(kw)).append("</p>");
+            rendered.add("keywords");
         }
-        appendSection(sb, s, "introduction", "引言");
-        appendSection(sb, s, "heading1", null);
-        appendSection(sb, s, "heading2", null);
-        appendSection(sb, s, "heading3", null);
-        appendSection(sb, s, "body", null);
-        appendSection(sb, s, "conclusion_body", "结语");
-        appendSection(sb, s, "ack_body", "致谢");
+        appendSection(sb, s, "introduction", "引言", rendered);
+        appendSection(sb, s, "heading1", null, rendered);
+        appendSection(sb, s, "heading2", null, rendered);
+        appendSection(sb, s, "heading3", null, rendered);
+        appendSection(sb, s, "body", null, rendered);
+        appendSection(sb, s, "conclusion_body", "结语", rendered);
+        appendSection(sb, s, "ack_body", "致谢", rendered);
     }
 
-    private void appendGovSections(StringBuilder sb, Map<String, String> s) {
+    private void appendGovSections(StringBuilder sb, Map<String, String> s, Set<String> rendered) {
         String recipient = s.get("recipient");
         if (recipient != null && !recipient.isEmpty()) {
             sb.append("<p>").append(escapeHtml(recipient)).append("</p>");
+            rendered.add("recipient");
         }
-        appendSection(sb, s, "body", null);
+        appendSection(sb, s, "body", null, rendered);
         String sigOrg = s.get("signature_org");
         String sigDate = s.get("signature_date");
         if ((sigOrg != null && !sigOrg.isEmpty()) || (sigDate != null && !sigDate.isEmpty())) {
@@ -8330,44 +9872,50 @@ public class LOActivity extends AppCompatActivity {
             if (sigDate != null) sb.append("<p>").append(escapeHtml(sigDate)).append("</p>");
             sb.append("</div>");
         }
+        if (sigOrg != null && !sigOrg.isEmpty()) rendered.add("signature_org");
+        if (sigDate != null && !sigDate.isEmpty()) rendered.add("signature_date");
         String notes = s.get("notes");
         if (notes != null && !notes.isEmpty()) {
             sb.append("<p style=\"font-size:13px;color:#888;\">").append(escapeHtml(notes)).append("</p>");
+            rendered.add("notes");
         }
     }
 
-    private void appendContractSections(StringBuilder sb, Map<String, String> s) {
+    private void appendContractSections(StringBuilder sb, Map<String, String> s, Set<String> rendered) {
         String contractNum = s.get("contract_number");
         if (contractNum != null && !contractNum.isEmpty()) {
             sb.append("<p>").append(escapeHtml(contractNum)).append("</p>");
+            rendered.add("contract_number");
         }
-        appendContractParty(sb, s, "party_a", "甲方");
-        appendContractParty(sb, s, "party_a_id", null);
-        appendContractParty(sb, s, "party_b", "乙方");
-        appendContractParty(sb, s, "party_b_id", null);
-        appendSection(sb, s, "preamble", null);
-        appendSection(sb, s, "clause_title", null);
-        appendSection(sb, s, "clause_subtitle", null);
-        appendSection(sb, s, "clause_body", null);
+        appendContractParty(sb, s, "party_a", "甲方", rendered);
+        appendContractParty(sb, s, "party_a_id", null, rendered);
+        appendContractParty(sb, s, "party_b", "乙方", rendered);
+        appendContractParty(sb, s, "party_b_id", null, rendered);
+        appendSection(sb, s, "preamble", null, rendered);
+        appendSection(sb, s, "clause_title", null, rendered);
+        appendSection(sb, s, "clause_subtitle", null, rendered);
+        appendSection(sb, s, "clause_body", null, rendered);
     }
 
-    private void appendContractParty(StringBuilder sb, Map<String, String> s, String key, String label) {
+    private void appendContractParty(StringBuilder sb, Map<String, String> s, String key, String label, Set<String> rendered) {
         String val = s.get(key);
         if (val != null && !val.isEmpty()) {
             sb.append("<p>").append(escapeHtml(val)).append("</p>");
         }
+        rendered.add(key);
     }
 
-    private void appendGeneralSections(StringBuilder sb, Map<String, String> s) {
-        appendSection(sb, s, "heading1", null);
-        appendSection(sb, s, "heading2", null);
-        appendSection(sb, s, "heading3", null);
-        appendSection(sb, s, "body", null);
+    private void appendGeneralSections(StringBuilder sb, Map<String, String> s, Set<String> rendered) {
+        appendSection(sb, s, "heading1", null, rendered);
+        appendSection(sb, s, "heading2", null, rendered);
+        appendSection(sb, s, "heading3", null, rendered);
+        appendSection(sb, s, "body", null, rendered);
     }
 
-    private void appendSection(StringBuilder sb, Map<String, String> s, String key, String fallbackLabel) {
+    private void appendSection(StringBuilder sb, Map<String, String> s, String key, String fallbackLabel, Set<String> rendered) {
         String val = s.get(key);
         if (val == null || val.isEmpty()) return;
+        rendered.add(key);
         // If value looks like a heading (short, single line), render as h3/h4
         String trimmed = val.trim();
         if (!trimmed.contains("\n") && trimmed.length() < 60) {
@@ -9598,7 +11146,8 @@ public class LOActivity extends AppCompatActivity {
 
         aiImageInputContainer = root.findViewById(R.id.ai_image_input_container);
         aiImagePromptEdit = root.findViewById(R.id.ai_image_prompt_edit);
-        aiImageRatioSpinner = root.findViewById(R.id.ai_image_ratio_spinner);
+        aiImageRatioLabel = root.findViewById(R.id.ai_image_ratio_label);
+        aiImageRatioCard = root.findViewById(R.id.ai_image_ratio_card);
         aiImageGenerateBtn = root.findViewById(R.id.ai_image_generate_btn);
         aiImageGalleryContainer = root.findViewById(R.id.ai_image_gallery_container);
         aiImageMainView = root.findViewById(R.id.ai_image_main);
@@ -9608,11 +11157,12 @@ public class LOActivity extends AppCompatActivity {
         aiImageLoading = root.findViewById(R.id.ai_image_loading);
         aiImageDoneRow = root.findViewById(R.id.ai_image_done_row);
 
-        if (aiImageRatioSpinner != null) {
-            ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
-                    android.R.layout.simple_spinner_item, AI_IMAGE_RATIOS);
-            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-            aiImageRatioSpinner.setAdapter(adapter);
+        aiImageSelectedRatioIndex = 0;
+        if (aiImageRatioLabel != null) {
+            aiImageRatioLabel.setText(AI_IMAGE_RATIOS[0]);
+        }
+        if (aiImageRatioCard != null) {
+            aiImageRatioCard.setOnClickListener(v -> showAiImageRatioPicker());
         }
 
         root.findViewById(R.id.ai_image_close_btn).setOnClickListener(v -> dialog.dismiss());
@@ -9695,13 +11245,35 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+    private void showAiImageRatioPicker() {
+        View anchor = aiImageRatioCard != null ? aiImageRatioCard : aiImageRatioLabel;
+        if (anchor == null) {
+            return;
+        }
+        PopupMenu popup = new PopupMenu(this, anchor);
+        for (int i = 0; i < AI_IMAGE_RATIOS.length; i++) {
+            popup.getMenu().add(0, i, i, AI_IMAGE_RATIOS[i]);
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            int idx = item.getItemId();
+            if (idx >= 0 && idx < AI_IMAGE_RATIOS.length) {
+                aiImageSelectedRatioIndex = idx;
+                if (aiImageRatioLabel != null) {
+                    aiImageRatioLabel.setText(AI_IMAGE_RATIOS[idx]);
+                }
+            }
+            return true;
+        });
+        popup.show();
+    }
+
     private void startAiImageGeneration() {
         String prompt = aiImagePromptEdit != null ? aiImagePromptEdit.getText().toString().trim() : "";
         if (prompt.isEmpty()) {
             toastTodo("请输入图片的引导词");
             return;
         }
-        int ratioIdx = aiImageRatioSpinner != null ? aiImageRatioSpinner.getSelectedItemPosition() : 0;
+        int ratioIdx = aiImageSelectedRatioIndex;
         if (ratioIdx < 0 || ratioIdx >= AI_IMAGE_SIZES.length) {
             ratioIdx = 0;
         }
@@ -9999,7 +11571,7 @@ public class LOActivity extends AppCompatActivity {
             toastTodo("引导词为空，无法重新生成");
             return;
         }
-        int ratioIdx = aiImageRatioSpinner != null ? aiImageRatioSpinner.getSelectedItemPosition() : 0;
+        int ratioIdx = aiImageSelectedRatioIndex;
         if (ratioIdx < 0 || ratioIdx >= AI_IMAGE_SIZES.length) {
             ratioIdx = 0;
         }
@@ -10737,9 +12309,19 @@ public class LOActivity extends AppCompatActivity {
             openDataProcessDialog();
             return;
         }
+        // calc_data_analysis 走数据分析弹窗（复用数据处理弹窗）
+        if (AiChatCoordinator.MODE_CALC_DATA_ANALYSIS.equals(mode) && dpPanel != null) {
+            openDataAnalysisDialog();
+            return;
+        }
         // calc_chart 走图表生成弹窗
         if (AiChatCoordinator.MODE_CALC_CHART.equals(mode) && chartPanel != null) {
             openChartDialog();
+            return;
+        }
+        // impress_outline 走 PPT 大纲弹窗
+        if (AiChatCoordinator.MODE_IMPRESS_OUTLINE.equals(mode) && impressOutlinePanel != null) {
+            openImpressOutlineDialog();
             return;
         }
         // 扩写/缩写/润色/重写/翻译 走弹窗流程

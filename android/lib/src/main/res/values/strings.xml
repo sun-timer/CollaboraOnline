@@ -25,4 +25,26 @@
     <string name="use_odf">Use ODF Format</string>
     <string name="ask_for_convert_odf">Confirm File Format</string>
     <string name="convert_odf_message">This document may contain formatting or content that cannot be saved in the currently selected file format \"Text\".</string>
+
+    <!-- Impress AI 生成PPT大纲 -->
+    <string-array name="impress_outline_page_options">
+        <item>1-10 页</item>
+        <item>11-20 页</item>
+        <item>21-30 页</item>
+    </string-array>
+    <string-array name="impress_outline_audience_options">
+        <item>大众</item>
+        <item>投资者</item>
+        <item>学生</item>
+        <item>教师</item>
+        <item>领导</item>
+    </string-array>
+    <string-array name="impress_outline_style_options">
+        <item>通用</item>
+        <item>行业调研</item>
+        <item>市场推广</item>
+        <item>工作汇报</item>
+        <item>学术报告</item>
+        <item>教学课件</item>
+    </string-array>
 </resources>
