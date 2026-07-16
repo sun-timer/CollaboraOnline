@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Figma 750 画布：124px 高、padding 30/24px → 按 2x 换算为 dp -->
+    <dimen name="ai_sheet_header_height">62dp</dimen>
+    <dimen name="ai_sheet_header_padding_v">15dp</dimen>
+    <dimen name="ai_sheet_header_padding_h">12dp</dimen>
+    <dimen name="ai_sheet_header_icon_size">32dp</dimen>
+</resources>
