@@ -142,6 +142,7 @@ interface ActionData {
 interface JSDialogJSON extends WidgetJSON {
 	id: string; // unique windowId
 	jsontype: string; // specifies target component, on root level only
+	dialogid?: string; // dialog type id (e.g. SpellingDialog); optional on non-dialog payloads
 	action?: string; // optional name of an action
 	control?: WidgetJSON;
 	data?: ActionData;

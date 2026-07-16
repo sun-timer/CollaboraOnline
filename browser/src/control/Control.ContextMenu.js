@@ -82,6 +82,13 @@ window.L.Control.ContextMenu = window.L.Control.extend({
 			return;
 		}
 
+		// Android Calc: suppress the default mobile context menu (Cut/Copy/Paste/…)
+		// until we ship a native selection popup aligned with Writer.
+		if (window.ThisIsTheAndroidApp && map.getDocType() === 'spreadsheet') {
+			map.fire('closemobilewizard');
+			return;
+		}
+
 		if (this.hasContextMenu) {
 			this._onClosePopup();
 		}

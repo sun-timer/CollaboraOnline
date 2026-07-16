@@ -86,16 +86,33 @@ class TextSelectionSection extends CanvasSectionObject {
 				polygon[0].vY + deflectionY,
 			);
 
-			for (let i = 1; i < polygon.length; i++) {
+			for (let j = 1; j < polygon.length; j++) {
 				this.context.lineTo(
-					polygon[i].vX + deflectionX,
-					polygon[i].vY + deflectionY,
+					polygon[j].vX + deflectionX,
+					polygon[j].vY + deflectionY,
 				);
 			}
 
 			this.context.closePath();
-			this.context.stroke();
-			this.context.fill();
+
+			if (app.map._docLayer._docType === 'spreadsheet') {
+				this.context.fillStyle = this.color;
+				this.context.globalAlpha = 0.25;
+				this.context.fill();
+
+				this.context.globalAlpha = 1.0;
+				this.context.strokeStyle = this.color;
+				this.context.lineJoin = 'miter';
+				this.context.lineCap = 'butt';
+				this.context.lineWidth = Math.max(2, 2 * app.dpiScale);
+				this.context.stroke();
+			} else {
+				this.context.globalAlpha = 0.25;
+				this.context.strokeStyle = this.color;
+				this.context.fillStyle = this.color;
+				this.context.stroke();
+				this.context.fill();
+			}
 		}
 
 		this.context.globalAlpha = 1.0;

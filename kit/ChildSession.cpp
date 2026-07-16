@@ -2368,6 +2368,7 @@ bool ChildSession::unoCommand(const StringVector& tokens)
                           tokens.equals(1, ".uno:Copy") ||
                           tokens.equals(1, ".uno:CopySlide") ||
                           tokens.equals(1, ".uno:OpenHyperlink") ||
+                          tokens.startsWith(1, ".uno:ApplyConditionalFormat") ||
                           tokens.startsWith(1, "vnd.sun.star.script:"));
 
     const std::string saveArgs = tokens.substrFromToken(2);

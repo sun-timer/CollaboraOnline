@@ -278,6 +278,14 @@ window.L.TextInput = window.L.Layer.extend({
 			return;
 		}
 
+		if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {
+			if (acceptInput === true) {
+				window.postMobileMessage('IMEALLOW on');
+			} else if (acceptInput === false) {
+				window.postMobileMessage('IMEALLOW off');
+			}
+		}
+
 		// Trick to avoid showing the software keyboard: Set the textarea
 		// read-only before focus() and reset it again after the blur()
 		if (!window.ThisIsTheiOSApp && navigator.platform !== 'iPhone' && !window.mode.isChromebook()) {
@@ -323,6 +331,9 @@ window.L.TextInput = window.L.Layer.extend({
 	},
 
 	blur: function() {
+		if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {
+			window.postMobileMessage('IMEALLOW off');
+		}
 		this._setAcceptInput(false);
 		if (!window.ThisIsTheiOSApp && navigator.platform !== 'iPhone' && !window.mode.isChromebook())
 			this._textArea.blur();

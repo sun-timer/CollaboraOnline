@@ -1,0 +1,69 @@
+/*
+ * Android Calc edit-mode cell tap bridge.
+ * WebView often skips synthetic click when the hidden contenteditable holds IME focus;
+ * LOActivity / COWebView detect a short tap natively and call dispatchTapAt().
+ */
+
+class AndroidCalcTap {
+	private static lastTapAt = 0;
+	private static readonly dedupeMs = 120;
+
+	private static report(message: string): void {
+		if (typeof window.postMobileMessage === 'function') {
+			window.postMobileMessage('CALC_CELL_TAP ' + message);
+		}
+	}
+
+	static dispatchTapAt(viewX: number, viewY: number): void {
+		try {
+			if (!window.ThisIsTheAndroidApp || !app.map || !app.map.isEditMode()) {
+				AndroidCalcTap.report('skipped=not_edit_mode');
+				return;
+			}
+			if (!app.map._docLayer || app.map._docLayer._docType !== 'spreadsheet') {
+				AndroidCalcTap.report('skipped=not_calc');
+				return;
+			}
+			if (!app.sectionContainer) {
+				AndroidCalcTap.report('failed=no_container');
+				return;
+			}
+
+			const now = Date.now();
+			if (now - AndroidCalcTap.lastTapAt < AndroidCalcTap.dedupeMs) {
+				return;
+			}
+			AndroidCalcTap.lastTapAt = now;
+
+			try {
+				if (app.map._textInput && typeof app.map._textInput.blur === 'function') {
+					app.map._textInput.blur();
+				}
+			} catch (_e) {
+				// Best-effort: commit in-cell edit before switching cells.
+			}
+
+			const twips = app.sectionContainer.dispatchCalcTapAtClient(viewX, viewY);
+			if (!twips) {
+				AndroidCalcTap.report('failed=no_pos');
+				return;
+			}
+
+			AndroidCalcTap.report(
+				'client=' +
+					Math.round(viewX) +
+					',' +
+					Math.round(viewY) +
+					' twips=' +
+					twips.x +
+					',' +
+					twips.y,
+			);
+		} catch (e: any) {
+			const msg = e && e.message ? e.message : String(e);
+			AndroidCalcTap.report('failed=' + msg);
+		}
+	}
+}
+
+(window as any).AndroidCalcTap = AndroidCalcTap;

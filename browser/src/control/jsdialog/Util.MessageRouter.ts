@@ -30,6 +30,13 @@ class JSDialogMessageRouter {
 	public processMessage(msgData: JSDialogJSON, callbackFn: JSDialogCallback) {
 		// update existing component
 		if (msgData.action) {
+			if (
+				window.AndroidNativeDialogRouter &&
+				window.AndroidNativeDialogRouter.tryIntercept(msgData)
+			) {
+				return;
+			}
+
 			var fireJSDialogEvent = function () {
 				switch (msgData.action) {
 					case 'update':
@@ -65,6 +72,14 @@ class JSDialogMessageRouter {
 
 		// re/create component
 		if (window.mode.isMobile()) {
+			// Android native dialog replacement (see AndroidNativeDialogRouter.ts)
+			if (
+				window.AndroidNativeDialogRouter &&
+				window.AndroidNativeDialogRouter.tryIntercept(msgData)
+			) {
+				return;
+			}
+
 			// allow to use desktop's JSDialog component to show dropdowns
 			if (
 				msgData.type === 'dropdown' ||
