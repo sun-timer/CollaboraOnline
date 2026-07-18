@@ -107,6 +107,8 @@ import java.util.Set;
 
 import androidx.core.content.FileProvider;
 
+import org.libreoffice.androidlib.template.PptxTemplateFiller;
+import org.libreoffice.androidlib.template.TemplateIndex;
 import org.libreoffice.androidlib.typeset.DocxImageInserter;
 import org.libreoffice.androidlib.typeset.DocxTemplateFiller;
 import org.libreoffice.androidlib.typeset.TemplateSectionMap;
@@ -238,6 +240,10 @@ public class LOActivity extends AppCompatActivity {
     private boolean isDocEditable = false;
     private boolean isDocDebuggable = BuildConfig.DEBUG;
     private boolean documentLoaded = false;
+    /** onNewIntent 换文档期间忽略 JS 侧 BYE，避免 finishWithProgress 闪回首页开屏。 */
+    private volatile boolean documentSwitchInProgress = false;
+    /** onDestroy 开始后拒绝 WebView / native 再回调 Java。 */
+    private volatile boolean documentBridgeEnabled = true;
 
     private ClipboardManager clipboardManager;
     private ClipData clipData;
@@ -611,6 +617,13 @@ public class LOActivity extends AppCompatActivity {
     private LinearLayout impressOutlineErrorGroup;
     private TextView impressOutlineErrorText;
     private TextView impressOutlineErrorRetryBtn;
+    private LinearLayout impressOutlineGeneratingPptGroup;
+    private TextView impressOutlineGeneratingPptText;
+    private TextView impressOutlineGeneratingPptDetail;
+    private ProgressBar impressOutlineGeneratingPptProgress;
+    private TextView impressOutlineTitle;
+    private LinearLayout impressOutlineTemplateGroup;
+    private TextView impressOutlineTemplateBackBtn;
 
     private String impressOutlineActiveRequestId = "";
     private String impressOutlineInputType = "quick";
@@ -621,6 +634,27 @@ public class LOActivity extends AppCompatActivity {
     private static final int IMPRESS_OUTLINE_STATE_COMPLETED = 2;
     private static final int IMPRESS_OUTLINE_STATE_ERROR = 3;
     private static final int REQUEST_CODE_IMPRESS_PICK_DOC = 9002;
+
+    // ========== Impress PPT 模板选择 + 生成 ==========
+    private LinearLayout impressTemplateGridContainer;
+    private String selectedTemplateId = "";
+    private org.libreoffice.androidlib.template.TemplateIndex templateIndex;
+
+    // PPT generation state
+    private static final int IMPRESS_OUTLINE_STATE_TEMPLATE_SELECT = 5;
+    private static final int IMPRESS_OUTLINE_STATE_GENERATING_PPT = 4;
+    /** 单批失败后额外重试次数（首次 + 2 次重试 = 共 3 次尝试） */
+    private static final int PPT_GENERATE_BATCH_MAX_RETRIES = 2;
+    private int generateTotalBatches;
+    private int generateCurrentBatch;
+    private int generateBatchAttempt;
+    private int generateFailedBatchCount;
+    private String generateActiveRequestId = "";
+    private org.json.JSONArray impressOutlineSlidesJson; // saved from outline result
+    private final Map<Integer, JSONObject> generateAccumulatedByOutlineIndex = new HashMap<>();
+    private File pendingGeneratedPptxFile;
+    private android.app.AlertDialog impressGenerationSuccessDialog;
+    private android.app.AlertDialog impressGenerationErrorDialog;
 
     // Calc 新建表格 AI 生成
     private View calcNewTableOverlay;
@@ -658,6 +692,8 @@ public class LOActivity extends AppCompatActivity {
     private FindReplaceSheetController findReplaceSheetController;
     private DocumentTabsSheetController documentTabsSheetController;
     private SelectionMenuController selectionMenuController;
+    private CalcHyperlinkCellPopupController calcHyperlinkCellPopupController;
+    private android.app.AlertDialog externalLinkConfirmDialog;
     private CalcObjectBarController calcObjectBarController;
     private Runnable pendingAfterEditMode;
     private boolean documentModified = false;
@@ -828,6 +864,7 @@ public class LOActivity extends AppCompatActivity {
 
     /** Initialize the app - copy the assets and create the UI. */
     private void init() {
+        documentBridgeEnabled = true;
         if (sPrefs.getString(ASSETS_EXTRACTED_GIT_COMMIT, "").equals(BuildConfig.GIT_COMMIT)) {
             // all is fine, we have already copied the assets
             initUI();
@@ -1111,11 +1148,11 @@ public class LOActivity extends AppCompatActivity {
         }
 
         final Intent finalIntent = intent;
+        documentSwitchInProgress = true;
         mProgressDialog.indeterminate(R.string.exiting);
         getMainHandler().post(new Runnable() {
             @Override
             public void run() {
-                documentLoaded = false;
                 cancelAllAiRequests();
 
                 // Save original doc back to its content:// URI BEFORE BYE and
@@ -1123,16 +1160,35 @@ public class LOActivity extends AppCompatActivity {
                 // point to the new document and the original is unreachable.
                 saveOriginalDocBeforeSwitch(originalTempFile, originalDataUri, wasEditable);
 
-                postMobileMessageNative("BYE");
-
-                runOnUiThread(new Runnable() {
+                final Runnable afterBye = new Runnable() {
                     @Override
                     public void run() {
                         mProgressDialog.dismiss();
                         setIntent(finalIntent);
+                        documentLoaded = false;
                         init();
+                        documentSwitchInProgress = false;
+                        Log.i(TAG, "doc_switch_done pid=" + android.os.Process.myPid());
                     }
-                });
+                };
+
+                Log.i(TAG, "doc_switch_bye_start pid=" + android.os.Process.myPid());
+                final Handler handler = nativeHandler;
+                if (handler != null) {
+                    handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            final long byeStart = System.currentTimeMillis();
+                            postMobileMessageNative("BYE");
+                            Log.i(TAG, "doc_switch_bye_done ms=" + (System.currentTimeMillis() - byeStart)
+                                    + " pid=" + android.os.Process.myPid());
+                            runOnUiThread(afterBye);
+                        }
+                    });
+                } else {
+                    postMobileMessageNative("BYE");
+                    afterBye.run();
+                }
             }
         });
         super.onNewIntent(intent);
@@ -1597,37 +1653,103 @@ public class LOActivity extends AppCompatActivity {
         super.onUserLeaveHint();
     }
 
-    @Override
-    protected void onDestroy() {
-        Log.i(TAG, "onDestroy.. documentLoaded=" + documentLoaded + " isFinishing=" + isFinishing()
-                + " aiSheetShowing=" + (aiOperationSheet != null && aiOperationSheet.isShowing()));
-        if (!documentLoaded) {
-            resetAiSessionState(true);
-            super.onDestroy();
+    private void destroyWebViewNow() {
+        if (mWebView == null) {
             return;
         }
-        resetAiSessionState(true);
-        nativeLooper.quit();
-
-        // Remove the webview from the hierarchy & destroy
         final ViewGroup viewGroup = (ViewGroup) mWebView.getParent();
-        if (viewGroup != null)
+        if (viewGroup != null) {
             viewGroup.removeView(mWebView);
+        }
         mWebView.destroy();
         mWebView = null;
         mMobileSocket = null;
         mobileSocketDrainScheduled.set(false);
+    }
 
-        // Most probably the native part has already got a 'BYE' from
-        // finishWithProgress(), but it is actually better to send it twice
-        // than never, so let's call it from here too anyway
+    @Override
+    protected void onDestroy() {
+        documentBridgeEnabled = false;
+        if (mMainHandler != null) {
+            mMainHandler.removeCallbacksAndMessages(null);
+        }
+        Log.i(TAG, "onDestroy.. documentLoaded=" + documentLoaded + " isFinishing=" + isFinishing()
+                + " aiSheetShowing=" + (aiOperationSheet != null && aiOperationSheet.isShowing())
+                + " pid=" + android.os.Process.myPid()
+                + " callingActivity=" + (getCallingActivity() != null ? getCallingActivity().getClassName() : "null"));
+        resetAiSessionState(true);
+
+        final boolean needsBye = documentLoaded || isFinishing();
         documentLoaded = false;
-        postMobileMessageNative("BYE");
-
         mProgressDialog.dismiss();
 
+        if (needsBye) {
+            // BYE must finish while WebView is still alive; await on nativeHandler, then tear down.
+            runNativeByeBlocking("home_exit");
+        }
+        // Stop native→Java first; then tear down WebView (Chromium may still callback during destroy).
+        clearNativeActivityCallbacks();
+        destroyWebViewNow();
+        quitNativeMsgLooperSafely();
+
         super.onDestroy();
-        Log.i(TAG, "onDestroy() - we know we are leaving the document");
+        Log.i(TAG, "onDestroy done pid=" + android.os.Process.myPid());
+    }
+
+    private void quitNativeMsgLooperSafely() {
+        final Handler handler = nativeHandler;
+        final Looper looper = nativeLooper;
+        if (handler != null && looper != null) {
+            handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    looper.quitSafely();
+                }
+            });
+        }
+    }
+
+    /**
+     * Run BYE on nativeHandler while WebView remains alive. Blocks the calling thread until BYE
+     * completes (typically ~2–3s). Safe to call from main thread during onDestroy after finish().
+     */
+    private void runNativeByeBlocking(String logPrefix) {
+        setExpectCoolwsdRun(false);
+        if ("home_exit".equals(logPrefix)) {
+            Log.i(TAG, "home_exit_expect_coolwsd_idle pid=" + android.os.Process.myPid());
+        }
+        final Handler handler = nativeHandler;
+        if (handler != null) {
+            final CountDownLatch latch = new CountDownLatch(1);
+            handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    final long byeStart = System.currentTimeMillis();
+                    Log.i(TAG, logPrefix + "_bye_start pid=" + android.os.Process.myPid());
+                    try {
+                        postMobileMessageNative("BYE");
+                    } finally {
+                        Log.i(TAG, logPrefix + "_bye_done ms=" + (System.currentTimeMillis() - byeStart)
+                                + " pid=" + android.os.Process.myPid());
+                        latch.countDown();
+                    }
+                }
+            });
+            try {
+                if (!latch.await(30, java.util.concurrent.TimeUnit.SECONDS)) {
+                    Log.w(TAG, logPrefix + "_bye_timeout pid=" + android.os.Process.myPid());
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                Log.w(TAG, logPrefix + "_bye_interrupted pid=" + android.os.Process.myPid());
+            }
+        } else {
+            final long byeStart = System.currentTimeMillis();
+            Log.i(TAG, logPrefix + "_bye_start no_native_handler pid=" + android.os.Process.myPid());
+            postMobileMessageNative("BYE");
+            Log.i(TAG, logPrefix + "_bye_done ms=" + (System.currentTimeMillis() - byeStart)
+                    + " pid=" + android.os.Process.myPid());
+        }
     }
 
     @Override
@@ -1846,23 +1968,23 @@ public class LOActivity extends AppCompatActivity {
         }
         mProgressDialog.indeterminate(R.string.exiting);
 
-        // The 'BYE' takes a considerable amount of time, we need to post it
-        // so that it starts after the saving progress is actually shown
+        // Queue BYE on nativeHandler while WebView is still alive, then finish() immediately
+        // so home resumes without blocking main thread on BYE (~2–3s).
         getMainHandler().post(new Runnable() {
             @Override
             public void run() {
-                documentLoaded = false;
+                Log.i(TAG, "home_exit_start callingActivity="
+                        + (getCallingActivity() != null ? getCallingActivity().getClassName() : "null")
+                        + " isTaskRoot=" + isTaskRoot()
+                        + " pid=" + android.os.Process.myPid());
                 cancelAllAiRequests();
-                postMobileMessageNative("BYE");
-                // copyTempBackToIntent();
-
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        mProgressDialog.dismiss();
-                    }
-                });
-                finishAndRemoveTask();
+                if (getCallingActivity() != null) {
+                    setResult(RESULT_OK);
+                    finish();
+                    Log.i(TAG, "home_exit_finish_done pid=" + android.os.Process.myPid());
+                } else {
+                    finishAndRemoveTask();
+                }
             }
         });
     }
@@ -1884,6 +2006,7 @@ public class LOActivity extends AppCompatActivity {
         AssetManager assetManager = getResources().getAssets();
         String uiMode = (isLargeScreen() && !isChromeOS()) ? "notebookbar" : "classic";
         String userName = getPrefs().getString(USER_NAME_KEY, "Guest User");
+        setExpectCoolwsdRun(true);
         createCOOLWSD(dataDir, cacheDir, apkFile, assetManager, urlToLoad, uiMode, userName);
 
         // trigger the load of the document
@@ -1976,13 +2099,22 @@ public class LOActivity extends AppCompatActivity {
      * Initialize the COOLWSD to load 'loadFileURL'.
      */
     public native void createCOOLWSD(String dataDir, String cacheDir, String apkFile, AssetManager assetManager,
-            String loadFileURL, String uiMode, String userName);
+                                     String loadFileURL, String uiMode, String userName);
+
+    /** false = 回首页时 COOLWSD 线程 idle；true = 即将打开/切换文档。 */
+    public native void setExpectCoolwsdRun(boolean expect);
+
+    /** WebView 销毁后切断 native→Java 回调，防止 BYE 收尾时 use-after-destroy。 */
+    private native void clearNativeActivityCallbacks();
 
     /**
      * Passing messages from JS (instead of the websocket communication).
      */
     @JavascriptInterface
     public void postMobileMessage(String message) {
+        if (!documentBridgeEnabled || isFinishing()) {
+            return;
+        }
         Log.d(TAG, "postMobileMessage: " + message);
 
         String[] messageAndParameterArray = message.split(" ", 2); // the command and the rest (that can potentially
@@ -2041,6 +2173,9 @@ public class LOActivity extends AppCompatActivity {
      * the fake websocket
      */
     void rawCallFakeWebsocketOnMessage(final byte[] message) {
+        if (!documentBridgeEnabled || isFinishing()) {
+            return;
+        }
         try {
             if (mMobileSocket == null) {
                 return;
@@ -2112,7 +2247,8 @@ public class LOActivity extends AppCompatActivity {
             String commandName = obj.optString("commandName", "");
             // LOK 回传的 commandName 含 URL 查询串（如 ?FormatRule:short=2&...），不能用精确匹配
             if (commandName.isEmpty()
-                    || !commandName.startsWith(".uno:ApplyConditionalFormat")) {
+                    || (!commandName.startsWith(".uno:ApplyConditionalFormat")
+                        && !commandName.startsWith(".uno:ClearConditionalFormat"))) {
                 Log.d(TAG, "cond_format_uno_result_ignored commandName=" + commandName);
                 return;
             }
@@ -2189,6 +2325,10 @@ public class LOActivity extends AppCompatActivity {
     private boolean beforeMessageFromWebView(String[] messageAndParam) {
         switch (messageAndParam[0]) {
             case "BYE":
+                if (documentSwitchInProgress) {
+                    Log.i(TAG, "bye_ignored reason=document_switch_in_progress");
+                    return false;
+                }
                 finishWithProgress();
                 return false;
             case "PRINT":
@@ -2275,10 +2415,30 @@ public class LOActivity extends AppCompatActivity {
                 }
                 return false;
             }
+            case "OPENLINK": {
+                if (messageAndParam.length > 1) {
+                    final String url = messageAndParam[1];
+                    getMainHandler().post(() -> showExternalLinkConfirm(url));
+                }
+                return false;
+            }
+            case "HYPERLINK_POPUP": {
+                if (messageAndParam.length > 1 && "hide".equals(messageAndParam[1])) {
+                    getMainHandler().post(() -> ensureCalcHyperlinkCellPopupController().hide());
+                    return false;
+                }
+                if (messageAndParam.length > 1 && messageAndParam[1].startsWith("show ")) {
+                    final String json = messageAndParam[1].substring("show ".length());
+                    getMainHandler().post(() -> handleHyperlinkCellPopupShow(json));
+                    return false;
+                }
+                return false;
+            }
             case "HYPERLINK": {
-                Intent intent = new Intent(Intent.ACTION_VIEW);
-                intent.setData(Uri.parse(messageAndParam[1]));
-                startActivity(intent);
+                if (messageAndParam.length > 1) {
+                    final String url = messageAndParam[1];
+                    getMainHandler().post(() -> openExternalUrl(url));
+                }
                 return false;
             }
             case "IMEALLOW": {
@@ -2891,6 +3051,20 @@ public class LOActivity extends AppCompatActivity {
                 messages = AiChatCoordinator.buildImpressOutlineMessages(inputType, userInput, pageRange, audience, style);
                 Log.i(TAG, "ai_impress_outline_start requestId=" + requestId
                         + " inputType=" + inputType + " pageRange=" + pageRange);
+            } else if (AiChatCoordinator.MODE_IMPRESS_GENERATE.equals(taskType)) {
+                String templateId = request.optString("templateId", "");
+                int batchIndex = request.optInt("batchIndex", 0);
+                int totalBatches = request.optInt("totalBatches", 1);
+                JSONArray batchSlides = request.optJSONArray("batchSlides");
+                JSONArray outlineSlides = request.optJSONArray("outlineSlides");
+                if (batchSlides == null) batchSlides = new JSONArray();
+                if (outlineSlides == null) outlineSlides = batchSlides;
+                messages = AiChatCoordinator.buildImpressGenerateMessages(
+                        batchSlides, outlineSlides, templateId, batchIndex, totalBatches);
+                Log.i(TAG, "ai_impress_generate_start requestId=" + requestId
+                        + " templateId=" + templateId
+                        + " batch=" + (batchIndex + 1) + "/" + totalBatches
+                        + " slides=" + batchSlides.length());
             } else {
                 messages.put(new JSONObject().put("role", "user").put("content", buildAiUserPrompt(request)));
             }
@@ -2939,6 +3113,8 @@ public class LOActivity extends AppCompatActivity {
                                 onChartDone(callbackRequestId, fullText);
                             } else if (callbackRequestId.equals(impressOutlineActiveRequestId)) {
                                 onImpressOutlineDone(callbackRequestId, fullText);
+                            } else if (callbackRequestId.equals(generateActiveRequestId)) {
+                                runOnUiThread(() -> onImpressGenerateDone(callbackRequestId, fullText));
                             } else if (AiChatCoordinator.isOperateMode(taskType)) {
                                 onAiOperationDone(callbackRequestId, fullText);
                             } else if (AiChatCoordinator.MODE_TYPESET.equals(taskType)) {
@@ -3055,6 +3231,13 @@ public class LOActivity extends AppCompatActivity {
                                 runOnUiThread(() -> {
                                     toastTodo("识别失败：" + message);
                                     switchTextExtractStage(TEXT_EXTRACT_STAGE_INPUT);
+                                });
+                            } else if (callbackRequestId.equals(generateActiveRequestId)) {
+                                runOnUiThread(() -> handlePptGenerateBatchFailure("network_error:" + code));
+                            } else if (AiChatCoordinator.MODE_IMPRESS_OUTLINE.equals(taskType)) {
+                                runOnUiThread(() -> {
+                                    impressOutlineErrorText.setText("大纲生成失败：" + safeMsg);
+                                    setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_ERROR);
                                 });
                             }
                             dispatchAiError(callbackRequestId, code, message);
@@ -3463,6 +3646,163 @@ public class LOActivity extends AppCompatActivity {
             });
         }
         selectionMenuController.setup();
+        setupCalcHyperlinkCellPopup();
+    }
+
+    private void setupCalcHyperlinkCellPopup() {
+        calcHyperlinkCellPopupController = new CalcHyperlinkCellPopupController(
+                new CalcHyperlinkCellPopupController.Host() {
+                    @Override
+                    public android.content.Context getContext() {
+                        return LOActivity.this;
+                    }
+
+                    @Override
+                    public View findViewById(int id) {
+                        return LOActivity.this.findViewById(id);
+                    }
+
+                    @Override
+                    public View getBrowserView() {
+                        return mWebView;
+                    }
+
+                    @Override
+                    public float dpToPx(float dp) {
+                        return LOActivity.this.dpToPx(Math.round(dp));
+                    }
+
+                    @Override
+                    public void executeUnoCommand(String command) {
+                        LOActivity.this.executeUnoCommand(command);
+                    }
+
+                    @Override
+                    public void showExternalLinkConfirm(String url) {
+                        LOActivity.this.showExternalLinkConfirm(url);
+                    }
+                });
+        calcHyperlinkCellPopupController.setup();
+    }
+
+    private CalcHyperlinkCellPopupController ensureCalcHyperlinkCellPopupController() {
+        if (calcHyperlinkCellPopupController == null) {
+            setupCalcHyperlinkCellPopup();
+        }
+        return calcHyperlinkCellPopupController;
+    }
+
+    private void handleHyperlinkCellPopupShow(String json) {
+        try {
+            org.json.JSONObject obj = new org.json.JSONObject(json);
+            String url = obj.optString("url", "");
+            String text = obj.optString("text", url);
+            float anchorX = (float) obj.optDouble("anchorX", 0);
+            float anchorY = (float) obj.optDouble("anchorY", 0);
+            ensureCalcHyperlinkCellPopupController().show(url, text, anchorX, anchorY);
+        } catch (org.json.JSONException e) {
+            Log.w(TAG, "hyperlink_popup_parse_failed", e);
+        }
+    }
+
+    void showExternalLinkConfirm(String url) {
+        if (url == null || url.isEmpty()) {
+            return;
+        }
+        if (externalLinkConfirmDialog != null && externalLinkConfirmDialog.isShowing()) {
+            externalLinkConfirmDialog.dismiss();
+        }
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_native_confirm, null, false);
+        TextView titleView = root.findViewById(R.id.ai_dialog_header_title);
+        TextView messageView = root.findViewById(R.id.native_confirm_message);
+        LinearLayout buttonRow = root.findViewById(R.id.native_confirm_button_row);
+        if (titleView != null) {
+            titleView.setText("外部链接");
+        }
+        if (messageView != null) {
+            messageView.setText("您正要离开文档。接下来的页面将在浏览器中打开：\n" + url);
+        }
+        View closeBtn = root.findViewById(R.id.ai_dialog_header_close);
+        if (closeBtn != null) {
+            closeBtn.setOnClickListener(v -> {
+                if (externalLinkConfirmDialog != null) {
+                    externalLinkConfirmDialog.dismiss();
+                }
+            });
+        }
+        if (buttonRow != null) {
+            buttonRow.removeAllViews();
+            TextView cancelBtn = buildExternalLinkDialogButton("取消", false);
+            TextView openBtn = buildExternalLinkDialogButton("打开链接", true);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dpToPx(52), 1f);
+            cancelBtn.setLayoutParams(lp);
+            LinearLayout.LayoutParams openLp = new LinearLayout.LayoutParams(0, dpToPx(52), 1f);
+            openLp.setMarginStart(dpToPx(12));
+            openBtn.setLayoutParams(openLp);
+            cancelBtn.setOnClickListener(v -> {
+                if (externalLinkConfirmDialog != null) {
+                    externalLinkConfirmDialog.dismiss();
+                }
+            });
+            final String targetUrl = url;
+            openBtn.setOnClickListener(v -> {
+                if (externalLinkConfirmDialog != null) {
+                    externalLinkConfirmDialog.dismiss();
+                }
+                openExternalUrl(targetUrl);
+            });
+            buttonRow.addView(cancelBtn);
+            buttonRow.addView(openBtn);
+        }
+        externalLinkConfirmDialog = new android.app.AlertDialog.Builder(this).create();
+        externalLinkConfirmDialog.setView(root);
+        org.libreoffice.androidlib.ai.AiDialogHelper.applyCloseOnlyDismiss(externalLinkConfirmDialog);
+        org.libreoffice.androidlib.ai.AiDialogHelper.applyTransparentWindow(externalLinkConfirmDialog);
+        externalLinkConfirmDialog.show();
+        Log.i(TAG, "external_link_confirm url=" + url);
+    }
+
+    private TextView buildExternalLinkDialogButton(String label, boolean primary) {
+        return buildThemedDialogButton(label, primary, false);
+    }
+
+    private TextView buildImpressDialogButton(String label, boolean primary) {
+        return buildThemedDialogButton(label, primary, true);
+    }
+
+    private TextView buildThemedDialogButton(String label, boolean primary, boolean impressTheme) {
+        TextView button = new TextView(this);
+        button.setText(label);
+        button.setGravity(android.view.Gravity.CENTER);
+        button.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16);
+        button.setTypeface(null, primary ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        button.setTextColor(primary ? android.graphics.Color.WHITE : android.graphics.Color.parseColor("#333333"));
+        if (primary) {
+            button.setBackgroundResource(impressTheme
+                    ? R.drawable.lolib_bg_impress_primary_button
+                    : R.drawable.lolib_bg_calc_primary_button);
+        } else {
+            button.setBackgroundResource(R.drawable.lolib_bg_hyperlink_segment_track);
+        }
+        button.setClickable(true);
+        button.setFocusable(true);
+        int hPad = dpToPx(12);
+        button.setPadding(hPad, dpToPx(14), hPad, dpToPx(14));
+        return button;
+    }
+
+    private void openExternalUrl(String url) {
+        if (url == null || url.isEmpty()) {
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            startActivity(intent);
+            Log.i(TAG, "external_link_open url=" + url);
+        } catch (Exception e) {
+            Log.w(TAG, "external_link_open_failed url=" + url, e);
+            Toast.makeText(this, "无法打开链接", Toast.LENGTH_SHORT).show();
+        }
     }
 
     // ==================== AI续写浮层（弹窗式续写）====================
@@ -4477,6 +4817,30 @@ public class LOActivity extends AppCompatActivity {
                 condFormatApplying = false;
                 return;
             }
+            // 清除条件格式 / 恢复默认样式（同步 JNI 路径，不依赖 unocommandresult 回调）
+            if ("clear".equals(plan.conditionType)) {
+                final String clearRange = plan.range;
+                Log.i(TAG, "cond_format_apply_clear range=" + clearRange);
+                new Thread(() -> {
+                    try {
+                        clearFormatInRange(clearRange);
+                        runOnUiThread(() -> {
+                            toastTodo("已清除格式");
+                            Log.i(TAG, "cond_format_clear_success range=" + clearRange);
+                            forceVisibleTileRedrawFromAndroid("cond_format_clear");
+                            dismissCondFormatDialog();
+                            condFormatApplying = false;
+                        });
+                    } catch (Exception e) {
+                        Log.e(TAG, "cond_format_clear_exception", e);
+                        runOnUiThread(() -> {
+                            toastTodo("清除格式时出错: " + e.getMessage());
+                            condFormatApplying = false;
+                        });
+                    }
+                }, "cond-format-clear").start();
+                return;
+            }
             // formula 类型走 Core Direct 模式（布尔公式，按行求值）
             if ("formula".equals(plan.conditionType)) {
                 String formula = CondFormatApplier.normalizeFormula(plan.value);
@@ -5170,28 +5534,16 @@ public class LOActivity extends AppCompatActivity {
                 org.json.JSONObject chart = result.optJSONObject("chart");
                 String dataRange = chart != null ? chart.optString("dataRange", "") : "";
                 String chartType = chart != null ? chart.optString("chartType", "column") : "column";
+                String templateService = CalcChartTypeMapper.needsCustomTemplate(chartType)
+                        ? CalcChartTypeMapper.toTemplateService(chartType) : "";
+                int curveStyle = CalcChartTypeMapper.toCurveStyle(chartType);
+                String insertArgs = CalcChartTypeMapper.buildInsertChartJson(dataRange, templateService, curveStyle);
 
-                // Send InsertObjectChart with range
-                String rangeParam = dataRange.isEmpty() ? "" : dataRange;
-                postUnoCommand(".uno:InsertObjectChart",
-                    "{\"RangeList\":{\"type\":\"string\",\"value\":\"" + rangeParam + "\"},\"InNewTable\":{\"type\":\"boolean\",\"value\":false}}",
-                    false);
-
-                Thread.sleep(500);
-
-                // Try to switch chart type if not default (column)
-                if (!"column".equals(chartType)) {
-                    String unoChartType = chartType;
-                    // Map our names to LO chart type names
-                    // column->col, bar->bar, pie->pie, line->line
-                    postUnoCommand(".uno:DiagramType",
-                        "{\"DiagramType\":{\"type\":\"string\",\"value\":\"" + unoChartType + "\"}}",
-                        false);
-                    Thread.sleep(200);
-                }
+                postUnoCommand(".uno:InsertObjectChart", insertArgs, false);
 
                 runOnUiThread(() -> {
-                    Log.i(TAG, "calc_chart_insert_done id=" + requestId);
+                    Log.i(TAG, "calc_chart_insert_done id=" + requestId
+                            + " type=" + chartType + " template=" + templateService);
                     dismissChartDialog();
                     Toast.makeText(LOActivity.this, "图表已生成", Toast.LENGTH_SHORT).show();
                 });
@@ -5250,6 +5602,17 @@ public class LOActivity extends AppCompatActivity {
         impressOutlineErrorGroup = impressOutlinePanel.findViewById(R.id.impress_outline_error_group);
         impressOutlineErrorText = impressOutlinePanel.findViewById(R.id.impress_outline_error_text);
         impressOutlineErrorRetryBtn = impressOutlinePanel.findViewById(R.id.impress_outline_error_retry_btn);
+        impressOutlineGeneratingPptGroup = impressOutlinePanel.findViewById(R.id.impress_outline_generating_ppt_group);
+        impressOutlineGeneratingPptText = impressOutlinePanel.findViewById(R.id.impress_outline_generating_ppt_text);
+        impressOutlineGeneratingPptDetail = impressOutlinePanel.findViewById(R.id.impress_outline_generating_ppt_detail);
+        impressOutlineGeneratingPptProgress = impressOutlinePanel.findViewById(R.id.impress_outline_generating_ppt_progress);
+        impressOutlineTitle = impressOutlinePanel.findViewById(R.id.impress_outline_title);
+        impressOutlineTemplateGroup = impressOutlinePanel.findViewById(R.id.impress_outline_template_group);
+        impressOutlineTemplateBackBtn = impressOutlinePanel.findViewById(R.id.impress_outline_template_back_btn);
+        View templateGrid = impressOutlinePanel.findViewById(R.id.template_grid_container);
+        if (templateGrid instanceof LinearLayout) {
+            impressTemplateGridContainer = (LinearLayout) templateGrid;
+        }
 
         View closeBtn = impressOutlinePanel.findViewById(R.id.impress_outline_close_button);
         closeBtn.setOnClickListener(v -> dismissImpressOutlineDialog());
@@ -5263,8 +5626,12 @@ public class LOActivity extends AppCompatActivity {
         impressOutlineGenerateBtn.setOnClickListener(v -> onImpressOutlineGenerate());
         impressOutlineRegenerateBtn.setOnClickListener(v -> onImpressOutlineGenerate());
         impressOutlineErrorRetryBtn.setOnClickListener(v -> onImpressOutlineGenerate());
-        impressOutlineTemplateBtn.setOnClickListener(v ->
-                Toast.makeText(this, "选择模板功能即将推出", Toast.LENGTH_SHORT).show());
+        impressOutlineTemplateBtn.setOnClickListener(v -> openImpressTemplateSelectSheet());
+        if (impressOutlineTemplateBackBtn != null) {
+            impressOutlineTemplateBackBtn.setOnClickListener(v -> setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED));
+        }
+
+        loadImpressTemplateIndex();
 
         ArrayAdapter<CharSequence> pageAdapter = ArrayAdapter.createFromResource(this,
                 R.array.impress_outline_page_options, android.R.layout.simple_spinner_item);
@@ -5287,6 +5654,21 @@ public class LOActivity extends AppCompatActivity {
         impressOutlineLoadingText.setVisibility(state == IMPRESS_OUTLINE_STATE_GENERATING ? View.VISIBLE : View.GONE);
         impressOutlineCompletedGroup.setVisibility(state == IMPRESS_OUTLINE_STATE_COMPLETED ? View.VISIBLE : View.GONE);
         impressOutlineErrorGroup.setVisibility(state == IMPRESS_OUTLINE_STATE_ERROR ? View.VISIBLE : View.GONE);
+        impressOutlineGeneratingPptGroup.setVisibility(
+                state == IMPRESS_OUTLINE_STATE_GENERATING_PPT ? View.VISIBLE : View.GONE);
+        if (impressOutlineTemplateGroup != null) {
+            impressOutlineTemplateGroup.setVisibility(
+                    state == IMPRESS_OUTLINE_STATE_TEMPLATE_SELECT ? View.VISIBLE : View.GONE);
+        }
+        if (impressOutlineTitle != null) {
+            if (state == IMPRESS_OUTLINE_STATE_TEMPLATE_SELECT) {
+                impressOutlineTitle.setText(R.string.impress_template_select_title);
+            } else if (state == IMPRESS_OUTLINE_STATE_GENERATING_PPT) {
+                impressOutlineTitle.setText(R.string.impress_generating_ppt);
+            } else {
+                impressOutlineTitle.setText("AI生成PPT");
+            }
+        }
     }
 
     private void positionImpressOutlineDialogCenter() {
@@ -5364,6 +5746,13 @@ public class LOActivity extends AppCompatActivity {
             aiStreamingViewByRequestId.remove(impressOutlineActiveRequestId);
             impressOutlineActiveRequestId = "";
         }
+        if (!generateActiveRequestId.isEmpty()) {
+            cancelAiRequest(generateActiveRequestId);
+            aiStreamingViewByRequestId.remove(generateActiveRequestId);
+            generateActiveRequestId = "";
+        }
+        generateAccumulatedByOutlineIndex.clear();
+        pendingGeneratedPptxFile = null;
         if (impressOutlineOverlay != null) impressOutlineOverlay.setVisibility(View.GONE);
         if (impressOutlinePanel != null) impressOutlinePanel.setVisibility(View.GONE);
         Log.i(TAG, "impress_outline_dismiss");
@@ -5445,6 +5834,9 @@ public class LOActivity extends AppCompatActivity {
                 throw new JSONException("slides array is empty");
             }
 
+            // Save slides JSON for template generation
+            impressOutlineSlidesJson = slides;
+
             impressOutlineCardContainer.removeAllViews();
             for (int i = 0; i < slides.length(); i++) {
                 JSONObject slide = slides.getJSONObject(i);
@@ -5460,6 +5852,7 @@ public class LOActivity extends AppCompatActivity {
                 switch (type) {
                     case "cover": typeLabel = "封面"; break;
                     case "toc":   typeLabel = "目录"; break;
+                    case "section_divider": typeLabel = "章节页"; break;
                     case "end":   typeLabel = "结尾"; break;
                     default:      typeLabel = "章节";
                 }
@@ -5530,6 +5923,682 @@ public class LOActivity extends AppCompatActivity {
     private void extractPdfText(Uri uri) {
         // TODO: PDF text extraction - requires a PDF parsing library
         Toast.makeText(this, "PDF文本提取暂不支持，请先转为TXT格式", Toast.LENGTH_LONG).show();
+    }
+
+    // ========================================================================
+    // Impress PPT Template Selection + Generation
+    // ========================================================================
+
+    private void loadImpressTemplateIndex() {
+        try {
+            templateIndex = TemplateIndex.load(this);
+            Log.i(TAG, "template_index_loaded count="
+                    + (templateIndex != null ? templateIndex.getAllTemplates().size() : 0));
+        } catch (Exception e) {
+            Log.e(TAG, "template_index_load_failed", e);
+            templateIndex = null;
+        }
+    }
+
+    private void openImpressTemplateSelectSheet() {
+        if (templateIndex == null) {
+            loadImpressTemplateIndex();
+        }
+        if (templateIndex == null) {
+            Toast.makeText(this, "模板加载失败", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        List<org.libreoffice.androidlib.template.TemplateIndex.Template> templates
+                = templateIndex.getAllTemplates();
+        if (templates == null || templates.isEmpty()) {
+            Toast.makeText(this, "暂无可用模板", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (impressTemplateGridContainer == null) {
+            Toast.makeText(this, "模板面板未就绪", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        impressTemplateGridContainer.removeAllViews();
+        selectedTemplateId = "";
+
+        for (int i = 0; i < templates.size(); i += 2) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+
+            addTemplateCard(row, templates.get(i));
+            if (i + 1 < templates.size()) {
+                addTemplateCard(row, templates.get(i + 1));
+            }
+            impressTemplateGridContainer.addView(row);
+        }
+
+        setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_TEMPLATE_SELECT);
+        Log.i(TAG, "impress_template_select_open templates=" + templates.size());
+    }
+
+    private void addTemplateCard(LinearLayout row,
+                                 org.libreoffice.androidlib.template.TemplateIndex.Template template) {
+        View card = getLayoutInflater().inflate(
+                R.layout.lolib_item_impress_template_card, row, false);
+        if (card == null) return;
+
+        ImageView coverImage = card.findViewById(R.id.template_cover_image);
+        TextView nameText = card.findViewById(R.id.template_name);
+
+        nameText.setText(template.name);
+
+        // Load cover image from assets
+        String coverPath = "templates/impress/" + template.coverImage;
+        try {
+            InputStream is = getAssets().open(coverPath);
+            android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeStream(is);
+            is.close();
+            if (bmp != null) {
+                coverImage.setImageBitmap(bmp);
+            }
+        } catch (IOException e) {
+            Log.w(TAG, "template_cover_load_failed path=" + coverPath, e);
+        }
+
+        // Card selection highlight
+        card.setOnClickListener(v -> {
+            // Deselect all cards
+            deselectAllTemplateCards();
+            // Select this card
+            card.setBackgroundResource(R.drawable.lolib_bg_gradient_button_outline);
+            selectedTemplateId = template.id;
+            Log.i(TAG, "template_selected id=" + template.id + " name=" + template.name);
+            // Auto-proceed after selection
+            onTemplateSelected();
+        });
+
+        row.addView(card);
+    }
+
+    private void deselectAllTemplateCards() {
+        if (impressTemplateGridContainer == null) return;
+        for (int r = 0; r < impressTemplateGridContainer.getChildCount(); r++) {
+            View row = impressTemplateGridContainer.getChildAt(r);
+            if (row instanceof LinearLayout) {
+                for (int c = 0; c < ((LinearLayout) row).getChildCount(); c++) {
+                    View card = ((LinearLayout) row).getChildAt(c);
+                    card.setBackgroundResource(R.drawable.lolib_bg_typeset_card);
+                }
+            }
+        }
+    }
+
+    private void onTemplateSelected() {
+        if (selectedTemplateId.isEmpty()) return;
+
+        if (impressOutlineSlidesJson == null || impressOutlineSlidesJson.length() == 0) {
+            impressOutlineSlidesJson = collectOutlineCardsJson();
+        }
+
+        if (impressOutlineSlidesJson == null || impressOutlineSlidesJson.length() == 0) {
+            Toast.makeText(this, "没有可生成的大纲", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        startPptGeneration();
+    }
+
+    private JSONArray collectOutlineCardsJson() {
+        JSONArray slides = new JSONArray();
+        LinearLayout container = impressOutlineCardContainer;
+        if (container == null) return slides;
+
+        try {
+            for (int i = 0; i < container.getChildCount(); i++) {
+                View card = container.getChildAt(i);
+                if (card == null) continue;
+
+                TextView pageLabel = card.findViewById(R.id.impress_outline_card_page_label);
+                EditText titleInput = card.findViewById(R.id.impress_outline_card_title);
+                EditText contentInput = card.findViewById(R.id.impress_outline_card_content);
+
+                if (titleInput == null) continue;
+
+                JSONObject slide = new JSONObject();
+                slide.put("page", i + 1);
+                slide.put("title", titleInput.getText() != null ? titleInput.getText().toString() : "");
+                slide.put("content", contentInput != null && contentInput.getText() != null
+                        ? contentInput.getText().toString() : "");
+
+                // Determine type from page label
+                String label = pageLabel != null && pageLabel.getText() != null
+                        ? pageLabel.getText().toString() : "";
+                if (label.contains("封面")) slide.put("type", "cover");
+                else if (label.contains("目录")) slide.put("type", "toc");
+                else if (label.contains("章节页")) slide.put("type", "section_divider");
+                else if (label.contains("结尾")) slide.put("type", "end");
+                else slide.put("type", "section");
+
+                slides.put(slide);
+            }
+        } catch (JSONException e) {
+            Log.e(TAG, "collect_outline_cards_json_error", e);
+        }
+        return slides;
+    }
+
+    private void startPptGeneration() {
+        if (impressOutlineSlidesJson == null || impressOutlineSlidesJson.length() == 0) {
+            Toast.makeText(this, "没有可生成的大纲", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Calculate batches:
+        //   batch 0: cover (slide 0)
+        //   batch 1: toc (slide 1, if present)
+        //   batch 2..N-2: each section (section slides)
+        //   batch N-1: end (last slide)
+        int slideCount = impressOutlineSlidesJson.length();
+        generateTotalBatches = slideCount;
+        generateCurrentBatch = 0;
+        generateBatchAttempt = 0;
+        generateFailedBatchCount = 0;
+        generateAccumulatedByOutlineIndex.clear();
+        pendingGeneratedPptxFile = null;
+
+        setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_GENERATING_PPT);
+        updatePptGenerationProgress(0, generateTotalBatches, "");
+
+        Log.i(TAG, "ppt_generation_start slides=" + slideCount
+                + " batches=" + generateTotalBatches
+                + " template=" + selectedTemplateId);
+
+        startPptGenerationBatch(0);
+    }
+
+    private void updatePptGenerationProgress(int batchIndex, int totalBatches, String slideTitle) {
+        if (impressOutlineGeneratingPptText != null) {
+            String title = slideTitle != null ? slideTitle.trim() : "";
+            if (!title.isEmpty()) {
+                impressOutlineGeneratingPptText.setText(
+                        getString(R.string.impress_generate_progress_title,
+                                batchIndex + 1, totalBatches, title));
+            } else {
+                impressOutlineGeneratingPptText.setText(
+                        getString(R.string.impress_generate_progress, batchIndex + 1, totalBatches));
+            }
+        }
+        if (impressOutlineGeneratingPptProgress != null && totalBatches > 0) {
+            impressOutlineGeneratingPptProgress.setIndeterminate(false);
+            int progress = Math.min(100, (batchIndex * 100) / totalBatches);
+            impressOutlineGeneratingPptProgress.setProgress(progress);
+        }
+    }
+
+    private void startPptGenerationBatch(int batchIndex) {
+        if (batchIndex >= generateTotalBatches) {
+            onPptGenerationComplete();
+            return;
+        }
+
+        String requestId = "impress-generate-" + java.util.UUID.randomUUID().toString();
+        generateActiveRequestId = requestId;
+        generateCurrentBatch = batchIndex;
+
+        String slideTitle = "";
+        try {
+            JSONObject slide = impressOutlineSlidesJson.getJSONObject(batchIndex);
+            slideTitle = slide.optString("title", "");
+            updatePptGenerationProgress(batchIndex, generateTotalBatches, slideTitle);
+            if (impressOutlineGeneratingPptDetail != null) {
+                impressOutlineGeneratingPptDetail.setText(R.string.impress_generating_ppt_detail);
+            }
+
+            String slideType = slide.optString("type", "section");
+            if ("section_divider".equals(slideType)) {
+                accumulateSectionDividerFromOutline(batchIndex);
+                Log.i(TAG, "ppt_generation_batch_skip_ai type=section_divider batch="
+                        + (batchIndex + 1) + "/" + generateTotalBatches);
+                advanceToNextBatch();
+                return;
+            }
+
+            JSONArray batchSlides = new JSONArray();
+            batchSlides.put(slide);
+
+            JSONObject request = new JSONObject();
+            request.put("requestId", requestId);
+            request.put("taskType", AiChatCoordinator.MODE_IMPRESS_GENERATE);
+            request.put("templateId", selectedTemplateId);
+            request.put("batchIndex", batchIndex);
+            request.put("totalBatches", generateTotalBatches);
+            request.put("batchSlides", batchSlides);
+
+            // Also include full outline slides for AI context
+            request.put("outlineSlides", impressOutlineSlidesJson);
+
+            startAiRequestSession(request, -1);
+            Log.i(TAG, "ppt_generation_batch_start requestId=" + requestId
+                    + " batch=" + (batchIndex + 1) + "/" + generateTotalBatches
+                    + " slide=" + slide.optString("type", "") + " " + slide.optString("title", ""));
+        } catch (JSONException e) {
+            Log.e(TAG, "ppt_generation_batch_error", e);
+            Toast.makeText(this, "批次请求构建失败", Toast.LENGTH_SHORT).show();
+            onPptGenerationComplete();
+        }
+    }
+
+    public void onImpressGenerateDone(String requestId, String text) {
+        if (!requestId.equals(generateActiveRequestId)) return;
+
+        if (text == null || text.isEmpty()) {
+            StringBuilder cached = aiTextByRequestId.get(requestId);
+            if (cached != null && cached.length() > 0) {
+                text = cached.toString();
+                Log.i(TAG, "ppt_generate_recovered_from_cache requestId=" + requestId
+                        + " chars=" + text.length());
+            }
+        }
+
+        if (text == null || text.isEmpty()) {
+            Log.w(TAG, "ppt_generate_done_empty requestId=" + requestId
+                    + " batch=" + (generateCurrentBatch + 1) + "/" + generateTotalBatches);
+            runOnUiThread(() -> handlePptGenerateBatchFailure("empty_response"));
+            return;
+        }
+
+        Log.i(TAG, "ppt_generate_done requestId=" + requestId
+                + " batch=" + (generateCurrentBatch + 1) + "/" + generateTotalBatches
+                + " responseChars=" + text.length());
+
+        try {
+            String cleanJson = text.trim();
+            if (cleanJson.startsWith("```")) {
+                cleanJson = cleanJson.replaceAll("(?s)^```(?:json)?\\s*", "")
+                        .replaceAll("\\s*```$", "");
+            }
+            cleanJson = sanitizeImpressGenerateJson(cleanJson);
+            JSONObject aiResult = new JSONObject(cleanJson);
+            JSONArray aiSlides = aiResult.optJSONArray("slides");
+
+            if (aiSlides == null || aiSlides.length() == 0) {
+                Log.w(TAG, "ppt_generate_no_slides_in_response batch=" + (generateCurrentBatch + 1));
+                runOnUiThread(() -> handlePptGenerateBatchFailure("no_slides"));
+                return;
+            }
+
+            if (aiSlides.length() > 1) {
+                Log.w(TAG, "ppt_generate_multi_slides_truncated count=" + aiSlides.length()
+                        + " batch=" + (generateCurrentBatch + 1));
+            }
+
+            accumulateGeneratedSlide(aiSlides.getJSONObject(0));
+            runOnUiThread(this::advanceToNextBatch);
+        } catch (JSONException e) {
+            Log.e(TAG, "ppt_generate_parse_error reason=" + e.getMessage()
+                    + " batch=" + (generateCurrentBatch + 1) + "/" + generateTotalBatches);
+            runOnUiThread(() -> handlePptGenerateBatchFailure("parse_error"));
+        }
+    }
+
+    /**
+     * 单批 AI 失败时不中断整体生成：用大纲原始内容兜底，继续下一批。
+     */
+    private void handlePptGenerateBatchFailure(String reason) {
+        if (generateCurrentBatch < 0 || generateCurrentBatch >= generateTotalBatches) {
+            advanceToNextBatch();
+            return;
+        }
+        try {
+            accumulateOutlineSlideFallback(generateCurrentBatch);
+            Log.w(TAG, "ppt_generate_batch_fallback reason=" + reason
+                    + " batch=" + (generateCurrentBatch + 1) + "/" + generateTotalBatches);
+        } catch (JSONException e) {
+            Log.e(TAG, "ppt_generate_fallback_error batch=" + (generateCurrentBatch + 1), e);
+        }
+        // 保持生成中状态，不要退回大纲完成页
+        setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_GENERATING_PPT);
+        advanceToNextBatch();
+    }
+
+    private void accumulateOutlineSlideFallback(int batchIndex) throws JSONException {
+        if (impressOutlineSlidesJson == null || batchIndex >= impressOutlineSlidesJson.length()) {
+            throw new JSONException("outline slide missing at index " + batchIndex);
+        }
+        JSONObject outlineSlide = impressOutlineSlidesJson.getJSONObject(batchIndex);
+        if ("section_divider".equals(outlineSlide.optString("type", ""))) {
+            accumulateSectionDividerFromOutline(batchIndex);
+            return;
+        }
+        JSONObject fallback = new JSONObject();
+        fallback.put("page", batchIndex + 1);
+        fallback.put("type", outlineSlide.optString("type", "section"));
+        fallback.put("title", outlineSlide.optString("title", ""));
+        fallback.put("subtitle", "");
+
+        String content = outlineSlide.optString("content", "");
+        fallback.put("content", content);
+
+        JSONArray points = new JSONArray();
+        JSONArray detailed = new JSONArray();
+        if (!content.isEmpty()) {
+            String[] lines = content.split("\n");
+            for (String line : lines) {
+                String trimmed = line.trim();
+                if (trimmed.isEmpty()) continue;
+                points.put(trimmed);
+                detailed.put("");
+            }
+        }
+        fallback.put("content_points", points);
+        fallback.put("detailed_content", detailed);
+
+        accumulateGeneratedSlide(fallback);
+        Log.i(TAG, "ppt_slide_outline_fallback index=" + (batchIndex + 1)
+                + " title=" + outlineSlide.optString("title", ""));
+    }
+
+    /**
+     * 修复 AI 常见非法 JSON，如 {@code "subtitle":,}。
+     */
+    private static String sanitizeImpressGenerateJson(String json) {
+        if (json == null || json.isEmpty()) return json;
+        return json.replaceAll("\"\\s*:\\s*,", "\":\"\",")
+                .replaceAll("\"\\s*:\\s*\\}", "\":\"\"}")
+                .replaceAll("\"\\s*:\\s*\n\\s*,", "\":\"\",");
+    }
+
+    private void accumulateSectionDividerFromOutline(int batchIndex) throws JSONException {
+        if (impressOutlineSlidesJson == null || batchIndex >= impressOutlineSlidesJson.length()) {
+            throw new JSONException("outline slide missing at index " + batchIndex);
+        }
+        JSONObject outlineSlide = impressOutlineSlidesJson.getJSONObject(batchIndex);
+        JSONObject divider = new JSONObject();
+        divider.put("page", batchIndex + 1);
+        divider.put("type", "section_divider");
+        divider.put("title", outlineSlide.optString("title", ""));
+        divider.put("content", outlineSlide.optString("content", ""));
+        generateAccumulatedByOutlineIndex.put(batchIndex, divider);
+        Log.i(TAG, "ppt_slide_divider_accumulated index=" + (batchIndex + 1)
+                + " title=" + outlineSlide.optString("title", ""));
+    }
+
+    private void accumulateGeneratedSlide(JSONObject slide) throws JSONException {
+        generateAccumulatedByOutlineIndex.put(generateCurrentBatch, slide);
+        Log.i(TAG, "ppt_slide_accumulated index=" + (generateCurrentBatch + 1)
+                + " type=" + slide.optString("type", "section")
+                + " title=" + slide.optString("title", ""));
+    }
+
+    private void fillAndOpenGeneratedPpt() {
+        if (templateIndex == null || selectedTemplateId.isEmpty()) {
+            Log.e(TAG, "ppt_template_fill_error reason=no_template");
+            runOnUiThread(() -> {
+                Toast.makeText(this, "未选择模板", Toast.LENGTH_SHORT).show();
+                setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
+            });
+            return;
+        }
+        if (generateAccumulatedByOutlineIndex.isEmpty()) {
+            Log.e(TAG, "ppt_template_fill_error reason=no_slide_content");
+            runOnUiThread(() -> {
+                Toast.makeText(this, "没有可写入的幻灯片内容", Toast.LENGTH_SHORT).show();
+                setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
+            });
+            return;
+        }
+
+        org.libreoffice.androidlib.template.TemplateIndex.Template tmpl =
+                templateIndex.findById(selectedTemplateId);
+        if (tmpl == null) {
+            Log.e(TAG, "ppt_template_fill_error reason=template_not_found id=" + selectedTemplateId);
+            runOnUiThread(() -> {
+                Toast.makeText(this, "模板不存在", Toast.LENGTH_SHORT).show();
+                setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
+            });
+            return;
+        }
+
+        runOnUiThread(() -> {
+            if (impressOutlineGeneratingPptDetail != null) {
+                impressOutlineGeneratingPptDetail.setText(R.string.impress_ppt_filling);
+            }
+            if (impressOutlineGeneratingPptProgress != null) {
+                impressOutlineGeneratingPptProgress.setProgress(100);
+            }
+        });
+
+        final String assetPath = "templates/impress/" + tmpl.file;
+        final String coverTitle = extractImpressCoverTitle();
+        new Thread(() -> {
+            try {
+                org.libreoffice.androidlib.template.TemplateSlideCatalog catalog =
+                        org.libreoffice.androidlib.template.TemplateSlideCatalog.load(
+                                LOActivity.this, assetPath);
+                java.util.List<org.libreoffice.androidlib.template.ImpressSlidePlanner.PlannedSlide> plan =
+                        org.libreoffice.androidlib.template.ImpressSlidePlanner.build(
+                                catalog, templateIndex, selectedTemplateId,
+                                impressOutlineSlidesJson, generateAccumulatedByOutlineIndex);
+                if (plan.isEmpty()) {
+                    throw new IOException("slide plan is empty");
+                }
+                File outputFile = buildImpressOutputFile(coverTitle, tmpl.name);
+                org.libreoffice.androidlib.template.PptxTemplateFiller.fillAndAssemble(
+                        LOActivity.this, assetPath, plan, outputFile,
+                        catalog.getOriginalSlideCount());
+                Log.i(TAG, "ppt_template_filled path=" + outputFile.getAbsolutePath()
+                        + " slides=" + plan.size());
+                runOnUiThread(() -> showImpressGenerationSuccessDialog(outputFile));
+            } catch (Exception e) {
+                Log.e(TAG, "ppt_template_fill_error reason=" + e.getMessage(), e);
+                runOnUiThread(() -> showImpressGenerationErrorDialog(e));
+            }
+        }, "cool-ai-ppt-fill").start();
+    }
+
+    private String extractImpressCoverTitle() {
+        try {
+            if (impressOutlineSlidesJson != null && impressOutlineSlidesJson.length() > 0) {
+                JSONObject first = impressOutlineSlidesJson.getJSONObject(0);
+                String title = first.optString("title", "");
+                if (!title.isEmpty()) return title;
+            }
+            JSONObject generated = generateAccumulatedByOutlineIndex.get(0);
+            if (generated != null) {
+                return generated.optString("title", "AI生成PPT");
+            }
+        } catch (JSONException ignored) {
+        }
+        return "AI生成PPT";
+    }
+
+    private File buildImpressOutputFile(String coverTitle, String templateName) throws IOException {
+        String safeTitle = sanitizeImpressFileName(coverTitle);
+        if (safeTitle.isEmpty()) safeTitle = "AI生成PPT";
+        String safeTemplate = sanitizeImpressFileName(templateName);
+        if (safeTemplate.isEmpty()) safeTemplate = "模板";
+        String baseName = safeTitle + "_" + safeTemplate;
+        File dir = getCacheDir();
+        File candidate = new File(dir, baseName + ".pptx");
+        int suffix = 2;
+        while (candidate.exists()) {
+            candidate = new File(dir, baseName + "_" + suffix + ".pptx");
+            suffix++;
+        }
+        return candidate;
+    }
+
+    private static String sanitizeImpressFileName(String name) {
+        if (name == null) return "";
+        String cleaned = name.trim()
+                .replace("：", "-")
+                .replace("？", "")
+                .replace("?", "")
+                .replace(":", "-")
+                .replaceAll("[\\\\/:*?\"<>|]", "")
+                .replaceAll("\\s+", " ");
+        if (cleaned.length() > 40) {
+            cleaned = cleaned.substring(0, 40);
+        }
+        return cleaned;
+    }
+
+    private void showImpressGenerationSuccessDialog(File pptxFile) {
+        if (pptxFile == null || !pptxFile.exists()) {
+            Toast.makeText(this, "生成的 PPT 文件不存在", Toast.LENGTH_SHORT).show();
+            setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
+            return;
+        }
+        pendingGeneratedPptxFile = pptxFile;
+
+        if (impressGenerationSuccessDialog != null && impressGenerationSuccessDialog.isShowing()) {
+            impressGenerationSuccessDialog.dismiss();
+        }
+
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_native_confirm, null, false);
+        TextView titleView = root.findViewById(R.id.ai_dialog_header_title);
+        TextView messageView = root.findViewById(R.id.native_confirm_message);
+        LinearLayout buttonRow = root.findViewById(R.id.native_confirm_button_row);
+        if (titleView != null) {
+            titleView.setText(R.string.impress_ppt_success_title);
+        }
+        if (messageView != null) {
+            messageView.setText(getString(R.string.impress_ppt_success_message, pptxFile.getName()));
+        }
+        View closeBtn = root.findViewById(R.id.ai_dialog_header_close);
+        if (closeBtn != null) {
+            closeBtn.setOnClickListener(v -> dismissImpressGenerationSuccessDialog(false));
+        }
+        if (buttonRow != null) {
+            buttonRow.removeAllViews();
+            TextView stayBtn = buildImpressDialogButton(getString(R.string.impress_ppt_stay), false);
+            TextView openBtn = buildImpressDialogButton(getString(R.string.impress_ppt_open), true);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dpToPx(52), 1f);
+            stayBtn.setLayoutParams(lp);
+            LinearLayout.LayoutParams openLp = new LinearLayout.LayoutParams(0, dpToPx(52), 1f);
+            openLp.setMarginStart(dpToPx(12));
+            openBtn.setLayoutParams(openLp);
+            stayBtn.setOnClickListener(v -> dismissImpressGenerationSuccessDialog(false));
+            openBtn.setOnClickListener(v -> {
+                dismissImpressGenerationSuccessDialog(true);
+                openImpressGeneratedDocument(pendingGeneratedPptxFile);
+            });
+            buttonRow.addView(stayBtn);
+            buttonRow.addView(openBtn);
+        }
+
+        impressGenerationSuccessDialog = new android.app.AlertDialog.Builder(this).create();
+        impressGenerationSuccessDialog.setView(root);
+        org.libreoffice.androidlib.ai.AiDialogHelper.applyCloseOnlyDismiss(impressGenerationSuccessDialog);
+        org.libreoffice.androidlib.ai.AiDialogHelper.applyTransparentWindow(impressGenerationSuccessDialog);
+        impressGenerationSuccessDialog.show();
+        setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
+        Log.i(TAG, "ppt_generation_success_dialog shown file=" + pptxFile.getName());
+    }
+
+    private void showImpressGenerationErrorDialog(Exception error) {
+        String reason = (error != null && error.getMessage() != null && !error.getMessage().isEmpty())
+                ? error.getMessage() : "unknown";
+        if (impressGenerationErrorDialog != null && impressGenerationErrorDialog.isShowing()) {
+            impressGenerationErrorDialog.dismiss();
+        }
+
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_native_confirm, null, false);
+        TextView titleView = root.findViewById(R.id.ai_dialog_header_title);
+        TextView messageView = root.findViewById(R.id.native_confirm_message);
+        LinearLayout buttonRow = root.findViewById(R.id.native_confirm_button_row);
+        if (titleView != null) {
+            titleView.setText(R.string.impress_ppt_error_title);
+        }
+        if (messageView != null) {
+            messageView.setText(getString(R.string.impress_ppt_error_message, reason));
+        }
+        View closeBtn = root.findViewById(R.id.ai_dialog_header_close);
+        if (closeBtn != null) {
+            closeBtn.setOnClickListener(v -> dismissImpressGenerationErrorDialog());
+        }
+        if (buttonRow != null) {
+            buttonRow.removeAllViews();
+            TextView okBtn = buildImpressDialogButton(getString(R.string.impress_ppt_error_ok), true);
+            okBtn.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(52)));
+            okBtn.setOnClickListener(v -> dismissImpressGenerationErrorDialog());
+            buttonRow.addView(okBtn);
+        }
+
+        impressGenerationErrorDialog = new android.app.AlertDialog.Builder(this).create();
+        impressGenerationErrorDialog.setView(root);
+        org.libreoffice.androidlib.ai.AiDialogHelper.applyCloseOnlyDismiss(impressGenerationErrorDialog);
+        org.libreoffice.androidlib.ai.AiDialogHelper.applyTransparentWindow(impressGenerationErrorDialog);
+        impressGenerationErrorDialog.show();
+        setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
+        Log.i(TAG, "ppt_generation_error_dialog shown reason=" + reason);
+    }
+
+    private void dismissImpressGenerationErrorDialog() {
+        if (impressGenerationErrorDialog != null && impressGenerationErrorDialog.isShowing()) {
+            impressGenerationErrorDialog.dismiss();
+        }
+        impressGenerationErrorDialog = null;
+    }
+
+    private void dismissImpressGenerationSuccessDialog(boolean openingDocument) {
+        if (impressGenerationSuccessDialog != null && impressGenerationSuccessDialog.isShowing()) {
+            impressGenerationSuccessDialog.dismiss();
+        }
+        impressGenerationSuccessDialog = null;
+        if (!openingDocument) {
+            dismissImpressOutlineDialog();
+        }
+    }
+
+    private void openImpressGeneratedDocument(File pptxFile) {
+        if (pptxFile == null || !pptxFile.exists()) {
+            Log.e(TAG, "ppt_reload_failed reason=file_missing");
+            Toast.makeText(this, "生成的 PPT 文件不存在", Toast.LENGTH_SHORT).show();
+            setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
+            return;
+        }
+        try {
+            Uri pptxUri = FileProvider.getUriForFile(
+                    this, getPackageName() + ".fileprovider", pptxFile);
+            Log.i(TAG, "ppt_open_document uri=" + pptxUri + " path=" + pptxFile.getAbsolutePath());
+
+            dismissImpressOutlineDialog();
+            Toast.makeText(this, R.string.impress_ppt_generated, Toast.LENGTH_SHORT).show();
+
+            RecentDocumentsStore.prependRecent(
+                    getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE),
+                    pptxUri.toString());
+            startActivity(buildEditIntent(pptxUri));
+        } catch (Exception e) {
+            Log.e(TAG, "ppt_reload_failed reason=" + e.getMessage(), e);
+            Toast.makeText(this, "打开 PPT 失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+            setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
+        }
+    }
+
+    private void advanceToNextBatch() {
+        generateBatchAttempt = 0;
+        int nextBatch = generateCurrentBatch + 1;
+        if (nextBatch < generateTotalBatches) {
+            startPptGenerationBatch(nextBatch);
+        } else {
+            onPptGenerationComplete();
+        }
+    }
+
+    private void onPptGenerationComplete() {
+        generateActiveRequestId = "";
+        Log.i(TAG, "ppt_generation_complete accumulated="
+                + generateAccumulatedByOutlineIndex.size()
+                + " failedBatches=" + generateFailedBatchCount);
+        if (generateFailedBatchCount > 0) {
+            Toast.makeText(this,
+                    getString(R.string.impress_generate_partial_done, generateFailedBatchCount),
+                    Toast.LENGTH_LONG).show();
+        }
+        fillAndOpenGeneratedPpt();
     }
 
     // ==================== Calc 对象（图表/图片/形状）选中底部操作栏 ====================
@@ -5642,17 +6711,30 @@ public class LOActivity extends AppCompatActivity {
                         case "add_column":
                             postUnoCommand(".uno:InsertColumnsAfter", "{}", false);
                             Thread.sleep(200);
+                            String addColBase = range.isEmpty() ? "A" : extractColLetter(range.split(":")[0]);
+                            String newColLetter = nextColumnLetter(addColBase);
+                            if (!range.isEmpty() && range.contains(":")) {
+                                String endCol = extractColLetter(range.split(":")[1]);
+                                newColLetter = nextColumnLetter(endCol);
+                            }
+                            stripInheritedFormatFromColumn(newColLetter);
                             if (!header.isEmpty() && !range.isEmpty()) {
                                 String[] rangeParts = range.split(":");
                                 String startRef = rangeParts[0];
                                 int startRow = extractRowNumber(startRef);
                                 String colLetter = extractColLetter(startRef);
                                 String newCol = nextColumnLetter(colLetter);
+                                if (range.contains(":")) {
+                                    newCol = nextColumnLetter(extractColLetter(range.split(":")[1]));
+                                }
                                 String headerCell = newCol + startRow;
                                 writeCellValue(headerCell, header);
                             }
                             if (values != null && values.length() > 0 && !range.isEmpty()) {
                                 String newCol = nextColumnLetter(extractColLetter(range.split(":")[0]));
+                                if (range.contains(":")) {
+                                    newCol = nextColumnLetter(extractColLetter(range.split(":")[1]));
+                                }
                                 int baseRow = extractRowNumber(range.split(":")[0]);
                                 for (int r = 0; r < values.length(); r++) {
                                     String v = values.optString(r, "");
@@ -5698,25 +6780,25 @@ public class LOActivity extends AppCompatActivity {
 
                         case "delete_rows":
                             if (!range.isEmpty()) {
-                                confirmAndExecCellOp(range, ".uno:DeleteRows", "{}", "delete_rows");
+                                confirmAndExecRowOp(range, ".uno:DeleteRows", "{}", "delete_rows");
                             }
                             break;
 
                         case "delete_columns":
                             if (!range.isEmpty()) {
-                                confirmAndExecCellOp(range, ".uno:DeleteColumns", "{}", "delete_columns");
+                                confirmAndExecColumnOp(range, ".uno:DeleteColumns", "{}", "delete_columns");
                             }
                             break;
 
                         case "insert_rows":
                             if (!range.isEmpty()) {
-                                confirmAndExecCellOp(range, ".uno:InsertRowsBefore", "{}", "insert_rows");
+                                confirmAndExecRowOp(range, ".uno:InsertRowsBefore", "{}", "insert_rows");
                             }
                             break;
 
                         case "insert_columns":
                             if (!range.isEmpty()) {
-                                confirmAndExecCellOp(range, ".uno:InsertColumnsAfter", "{}", "insert_columns");
+                                confirmAndExecColumnOp(range, ".uno:InsertColumnsAfter", "{}", "insert_columns");
                             }
                             break;
 
@@ -5905,7 +6987,11 @@ public class LOActivity extends AppCompatActivity {
      * 如果重连了则等它完成，避免 paste 写到被重置后的错误位置。
      */
     private void writeCellValue(String range, String valueFormula) throws Exception {
-        if (range == null || range.isEmpty() || valueFormula == null || valueFormula.isEmpty()) {
+        if (range == null || range.isEmpty() || valueFormula == null) {
+            return;
+        }
+        if (valueFormula.isEmpty()) {
+            clearCellContentsInRange(range);
             return;
         }
         String[] parts = range.split(":");
@@ -5928,7 +7014,6 @@ public class LOActivity extends AppCompatActivity {
             postUnoCommand(".uno:GoToCell",
                 "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + cellRef + "\"}}",
                 false);
-            Thread.sleep(50);
             long t2 = System.currentTimeMillis();
             waitForReconnectIfNeeded(cellRef + "_post", 3000);
             paste("text/plain;charset=utf-8", val.getBytes("UTF-8"));
@@ -5938,8 +7023,127 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+    /** 选中单列或多列（0-based Col index，与 Web Control.Header.ts 一致）。 */
+    private void selectCalcColumn(int colIndex, int modifier) throws Exception {
+        waitForReconnectIfNeeded("select_col_" + colIndex, 3000);
+        postUnoCommand(".uno:SelectColumn ",
+                "{\"Col\":{\"type\":\"unsigned short\",\"value\":" + colIndex + "},"
+                        + "\"Modifier\":{\"type\":\"unsigned short\",\"value\":" + modifier + "}}",
+                false);
+        Log.i(TAG, "calc_data_process_select_column index=" + colIndex
+                + " col=" + columnIndexToLetters(colIndex) + " modifier=" + modifier);
+    }
+
+    /** 从 range 解析列字母并选中（支持 A:A、A1、A1:C100）。 */
+    private void selectCalcColumnsInRange(String range) throws Exception {
+        String[] parts = range.split(":", 2);
+        String startCol = extractColLetter(parts[0]);
+        String endCol = parts.length > 1 ? extractColLetter(parts[1]) : startCol;
+        int colStart = columnLettersToIndex(startCol);
+        int colEnd = columnLettersToIndex(endCol);
+        if (colStart > colEnd) {
+            int tmp = colStart;
+            colStart = colEnd;
+            colEnd = tmp;
+        }
+        selectCalcColumn(colStart, 0);
+        if (colEnd > colStart) {
+            selectCalcColumn(colEnd, 1);
+        }
+    }
+
+    /** 选中单行或多行（0-based Row index，与 Web Control.Header.ts 一致）。 */
+    private void selectCalcRow(int rowIndex, int modifier) throws Exception {
+        waitForReconnectIfNeeded("select_row_" + rowIndex, 3000);
+        postUnoCommand(".uno:SelectRow ",
+                "{\"Row\":{\"type\":\"long\",\"value\":" + rowIndex + "},"
+                        + "\"Modifier\":{\"type\":\"unsigned short\",\"value\":" + modifier + "}}",
+                false);
+        Log.i(TAG, "calc_data_process_select_row index=" + rowIndex
+                + " row=" + (rowIndex + 1) + " modifier=" + modifier);
+    }
+
+    private static int parseRowFromRangePart(String part) {
+        if (part == null || part.isEmpty()) return 0;
+        StringBuilder digits = new StringBuilder();
+        for (int i = 0; i < part.length(); i++) {
+            char c = part.charAt(i);
+            if (Character.isDigit(c)) digits.append(c);
+        }
+        if (digits.length() == 0) return 0;
+        try {
+            return Integer.parseInt(digits.toString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** 从 range 解析行号并选中（支持 5:5、3:7、A5、A5:A10）。 */
+    private void selectCalcRowsInRange(String range) throws Exception {
+        String[] parts = range.split(":", 2);
+        int rowStart = parseRowFromRangePart(parts[0]);
+        int rowEnd = parts.length > 1 ? parseRowFromRangePart(parts[1]) : rowStart;
+        if (rowStart <= 0 || rowEnd <= 0) {
+            Log.w(TAG, "calc_data_process_select_row_invalid range=" + range);
+            return;
+        }
+        if (rowStart > rowEnd) {
+            int tmp = rowStart;
+            rowStart = rowEnd;
+            rowEnd = tmp;
+        }
+        selectCalcRow(rowStart - 1, 0);
+        if (rowEnd > rowStart) {
+            selectCalcRow(rowEnd - 1, 1);
+        }
+    }
+
     /**
-     * GoToCell + 结构性 UNO 命令（insert/delete rows/columns 等），带重连检测。
+     * SelectColumn + 列级 UNO（delete/insert columns）。
+     * DeleteColumns 作用于 Core 当前列选区，必须先 SelectColumn。
+     */
+    private void confirmAndExecColumnOp(String range, String unoCmd, String unoArgs, String logTag) throws Exception {
+        String[] parts = range.split(":", 2);
+        String startCol = extractColLetter(parts[0]);
+        String endCol = parts.length > 1 ? extractColLetter(parts[1]) : startCol;
+        Log.i(TAG, "calc_data_process_exec_pre type=" + logTag + " aiRange=" + range
+                + " cols=" + startCol + ":" + endCol + " dpCellRange=" + dpCellRange);
+        long t0 = System.currentTimeMillis();
+        selectCalcColumnsInRange(range);
+        long t1 = System.currentTimeMillis();
+        waitForReconnectIfNeeded(logTag + "_post", 3000);
+        postUnoCommand(unoCmd, unoArgs, false);
+        long t2 = System.currentTimeMillis();
+        Log.i(TAG, "calc_data_process_" + logTag + " cols=" + startCol + ":" + endCol
+                + " select=" + (t1 - t0) + "ms exec=" + (t2 - t1) + "ms");
+        if (".uno:InsertColumnsAfter".equals(unoCmd)) {
+            stripInheritedFormatFromColumn(nextColumnLetter(endCol));
+        } else if (".uno:InsertColumnsBefore".equals(unoCmd)) {
+            stripInheritedFormatFromColumn(startCol);
+        }
+    }
+
+    /**
+     * SelectRow + 行级 UNO（delete/insert rows）。
+     */
+    private void confirmAndExecRowOp(String range, String unoCmd, String unoArgs, String logTag) throws Exception {
+        String[] parts = range.split(":", 2);
+        int rowStart = parseRowFromRangePart(parts[0]);
+        int rowEnd = parts.length > 1 ? parseRowFromRangePart(parts[1]) : rowStart;
+        Log.i(TAG, "calc_data_process_exec_pre type=" + logTag + " aiRange=" + range
+                + " rows=" + rowStart + ":" + rowEnd + " dpCellRange=" + dpCellRange);
+        long t0 = System.currentTimeMillis();
+        selectCalcRowsInRange(range);
+        long t1 = System.currentTimeMillis();
+        waitForReconnectIfNeeded(logTag + "_post", 3000);
+        postUnoCommand(unoCmd, unoArgs, false);
+        long t2 = System.currentTimeMillis();
+        Log.i(TAG, "calc_data_process_" + logTag + " rows=" + rowStart + ":" + rowEnd
+                + " select=" + (t1 - t0) + "ms exec=" + (t2 - t1) + "ms");
+    }
+
+    /**
+     * GoToCell + 结构性 UNO 命令（format/clear 等），带重连检测。
      */
     private void confirmAndExecCellOp(String range, String unoCmd, String unoArgs, String logTag) throws Exception {
         String colLetter = extractColLetter(range);
@@ -5955,14 +7159,56 @@ public class LOActivity extends AppCompatActivity {
         postUnoCommand(".uno:GoToCell",
             "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + cellRef + "\"}}",
             false);
-        Thread.sleep(50);
         long t2 = System.currentTimeMillis();
         waitForReconnectIfNeeded(cellRef + "_post", 3000);
         postUnoCommand(unoCmd, unoArgs, false);
         long t3 = System.currentTimeMillis();
         Log.i(TAG, "calc_data_process_cell_op tag=" + logTag + " cell=" + cellRef
                 + " wait1=" + (t1 - t0) + "ms goto=" + (t2 - t1) + "ms exec=" + (t3 - t2) + "ms");
-        Thread.sleep(100);
+    }
+
+    /** 选中 range 对应区域（单列用 SelectColumn，否则 GoToCell 到起始格）。 */
+    private void selectRangeFromCellRange(String range) throws Exception {
+        String[] parts = range.split(":", 2);
+        String startCol = extractColLetter(parts[0]);
+        String endCol = parts.length > 1 ? extractColLetter(parts[1]) : startCol;
+        if (startCol.equals(endCol)) {
+            selectCalcColumnsInRange(startCol + ":" + endCol);
+        } else {
+            waitForReconnectIfNeeded("select_range_goto", 3000);
+            postUnoCommand(".uno:GoToCell",
+                    "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + parts[0] + "\"}}",
+                    false);
+        }
+    }
+
+    /** 清空单元格内容（range 参数 UNO，不依赖当前选区）。 */
+    private void clearCellContentsInRange(String range) throws Exception {
+        Log.i(TAG, "calc_data_process_clear_contents range=" + range + " dpCellRange=" + dpCellRange
+                + " method=ClearContentsInRange");
+        String args = "{\"Range\":{\"type\":\"string\",\"value\":\"" + range + "\"}}";
+        postUnoCommand(".uno:ClearContentsInRange", args, false);
+    }
+
+    /** 清除条件格式规则（range 参数 UNO，不依赖选区；不调用 ResetAttributes）。 */
+    private void clearFormatInRange(String range) throws Exception {
+        Log.i(TAG, "cond_format_clear_range_start range=" + range + " method=ClearConditionalFormat_only");
+        String args = "{\"Range\":{\"type\":\"string\",\"value\":\"" + range + "\"}}";
+        postUnoCommand(".uno:ClearConditionalFormat", args, false);
+        Log.i(TAG, "cond_format_clear_range_done range=" + range);
+    }
+
+    /** 插入列后 Calc 会复制相邻列条件格式，对新列按 range 清除继承的 CF 规则。 */
+    private void stripInheritedFormatFromColumn(String colLetter) {
+        if (colLetter == null || colLetter.isEmpty()) return;
+        try {
+            String range = colLetter + "1:" + colLetter + "1048576";
+            postUnoCommand(".uno:ClearConditionalFormat",
+                    "{\"Range\":{\"type\":\"string\",\"value\":\"" + range + "\"}}", false);
+            Log.i(TAG, "calc_data_process_strip_cf col=" + colLetter + " range=" + range);
+        } catch (Exception e) {
+            Log.w(TAG, "calc_data_process_strip_cf_failed col=" + colLetter, e);
+        }
     }
 
     /**
@@ -6003,6 +7249,14 @@ public class LOActivity extends AppCompatActivity {
             + "range=cl(ca.x)+(ca.y+1);}"
             + "return JSON.stringify({range:range,sheet:sheet,sheets:sheets});"
             + "}catch(e){return JSON.stringify({range:'',sheet:'',sheets:[]});}})()";
+
+    /** 原生插入超链接后：关闭 URL 浮层、抑制自动弹出、关闭 mobile wizard。 */
+    private static final String JS_AFTER_NATIVE_HYPERLINK_INSERT =
+            "(function(){try{"
+            + "if(window.URLPopUpSection&&URLPopUpSection.closeURLPopUp){URLPopUpSection.closeURLPopUp();}"
+            + "if(window.app&&app.map){app.map._suppressHyperlinkPopupUntil=Date.now()+3000;}"
+            + "if(window.app&&app.map&&typeof app.map.fire==='function'){app.map.fire('closemobilewizard');}"
+            + "}catch(e){}})()";
 
     private static String parseJsStringResult(String value) {
         if (value == null || value.equals("null") || value.length() <= 2) return "";
@@ -7397,18 +8651,24 @@ public class LOActivity extends AppCompatActivity {
         if (unoChartType == null || unoChartType.isEmpty()) {
             return;
         }
-        Log.i(TAG, "function_insert_chart type=" + unoChartType);
+        final String templateService = CalcChartTypeMapper.needsCustomTemplate(unoChartType)
+                ? CalcChartTypeMapper.toTemplateService(unoChartType) : "";
+        final int curveStyle = CalcChartTypeMapper.toCurveStyle(unoChartType);
+        final String insertArgs = CalcChartTypeMapper.buildInsertChartJson("", templateService, curveStyle);
+        Log.i(TAG, "function_insert_chart type=" + unoChartType
+                + " template=" + templateService + " curveStyle=" + curveStyle);
         requestWebViewFocusForPanelAction("insert_chart");
-        String escaped = unoChartType.replace("\\", "\\\\").replace("'", "\\'");
-        runWebJs("(function(){try{"
-                + "if(window.app&&app.dispatcher&&typeof app.dispatcher.dispatch==='function'){"
-                + "app.dispatcher.dispatch('chart_insert',{unoChartType:'" + escaped + "'});"
-                + "return 'ok';}"
-                + "}catch(e){if(window.console&&console.warn){console.warn('function_insert_chart_failed',e);}}"
-                + "return 'fail';})();",
-                value -> Log.i(TAG, "function_insert_chart_result=" + value));
-        nudgeSocketIfStalled("insert_chart");
-        forceVisibleTileRedrawFromAndroid("insert_chart");
+        new Thread(() -> {
+            try {
+                postUnoCommand(".uno:InsertObjectChart", insertArgs, false);
+                runOnUiThread(() -> {
+                    nudgeSocketIfStalled("insert_chart");
+                    forceVisibleTileRedrawFromAndroid("insert_chart");
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "function_insert_chart_error type=" + unoChartType, e);
+            }
+        }, "insert-chart-" + unoChartType).start();
     }
 
     void insertHyperlink(String displayText, String url) {
@@ -7419,16 +8679,43 @@ public class LOActivity extends AppCompatActivity {
         if (text.isEmpty()) {
             text = url.trim();
         }
-        String safeText = text.replace("\\", "\\\\").replace("\"", "\\\"");
-        String safeUrl = url.trim().replace("\\", "\\\\").replace("\"", "\\\"");
-        Log.i(TAG, "function_insert_hyperlink text=" + text + " url=" + url.trim());
-        requestWebViewFocusForPanelAction("insert_hyperlink");
-        postUnoCommand(".uno:SetHyperlink",
-                "{\"Hyperlink.Text\":{\"type\":\"string\",\"value\":\"" + safeText + "\"},"
-                        + "\"Hyperlink.URL\":{\"type\":\"string\",\"value\":\"" + safeUrl + "\"}}",
-                false);
-        nudgeSocketIfStalled("insert_hyperlink");
-        forceVisibleTileRedrawFromAndroid("insert_hyperlink");
+        final String label = text;
+        final String targetUrl = url.trim();
+        Log.i(TAG, "function_insert_hyperlink text=" + label + " url=" + targetUrl);
+        Runnable apply = () -> {
+            requestWebViewFocusForPanelAction("insert_hyperlink");
+            try {
+                JSONObject textArg = new JSONObject();
+                textArg.put("type", "string");
+                textArg.put("value", label);
+                JSONObject urlArg = new JSONObject();
+                urlArg.put("type", "string");
+                urlArg.put("value", targetUrl);
+                JSONObject root = new JSONObject();
+                root.put("Hyperlink.Text", textArg);
+                root.put("Hyperlink.URL", urlArg);
+                if (!label.equals(targetUrl)) {
+                    JSONObject replacementArg = new JSONObject();
+                    replacementArg.put("type", "string");
+                    replacementArg.put("value", label);
+                    root.put("Hyperlink.ReplacementText", replacementArg);
+                }
+                postUnoCommand(".uno:SetHyperlink", root.toString(), false);
+            } catch (Exception e) {
+                Log.e(TAG, "function_insert_hyperlink_json_failed", e);
+                return;
+            }
+            if (mWebView != null) {
+                mWebView.evaluateJavascript(JS_AFTER_NATIVE_HYPERLINK_INSERT, null);
+            }
+            nudgeSocketIfStalled("insert_hyperlink");
+            forceVisibleTileRedrawFromAndroid("insert_hyperlink");
+        };
+        if (mIsCalcDocument) {
+            ensureEditModeThen(apply);
+        } else {
+            apply.run();
+        }
     }
 
     void fetchCalcHyperlinkContext(CalcHyperlinkPickerController.HyperlinkContextCallback callback) {
@@ -7650,6 +8937,9 @@ public class LOActivity extends AppCompatActivity {
 
     private void switchToViewingMode() {
         ensureSelectionMenuController().hide();
+        if (calcHyperlinkCellPopupController != null) {
+            calcHyperlinkCellPopupController.hide();
+        }
         pendingAfterEditMode = null;
         lastPreviewModeSwitchMs = android.os.SystemClock.uptimeMillis();
         updateEditModeState(false, "manual_preview_switch");
@@ -13105,12 +14395,22 @@ public class LOActivity extends AppCompatActivity {
 
     private boolean isStaleAiUiEvent(String requestId, String type) {
         boolean stale = requestId == null || requestId.isEmpty() || !requestId.equals(aiActiveRequestId);
-        if (stale) {
-            // allow post-done late state events without noisy stale logs
-            if (!"ai.state".equals(type) || (aiActiveRequestId != null && !aiActiveRequestId.isEmpty())) {
-                Log.i(TAG, "ai_stream_drop_stale_request requestId=" + requestId + " active=" + aiActiveRequestId
-                        + " type=" + type);
+        if (!stale) {
+            return false;
+        }
+        // Impress 大纲/生成走独立弹窗，不占用 aiActiveRequestId；迟到的 stream/done 属正常情况
+        if (requestId.startsWith("impress-outline-") || requestId.startsWith("impress-generate-")) {
+            if ("ai.stream".equals(type) || "ai.done".equals(type)) {
+                return stale;
             }
+        }
+        if ("ai.stream".equals(type)) {
+            return stale;
+        }
+        // allow post-done late state events without noisy stale logs
+        if (!"ai.state".equals(type) || (aiActiveRequestId != null && !aiActiveRequestId.isEmpty())) {
+            Log.i(TAG, "ai_stream_drop_stale_request requestId=" + requestId + " active=" + aiActiveRequestId
+                    + " type=" + type);
         }
         return stale;
     }

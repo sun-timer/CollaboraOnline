@@ -36,6 +36,7 @@ public class AiChatCoordinator {
     public static final String MODE_CALC_DATA_ANALYSIS = "calc_data_analysis";
     public static final String MODE_CALC_CHART = "calc_chart";
     public static final String MODE_IMPRESS_OUTLINE = "impress_outline";
+    public static final String MODE_IMPRESS_GENERATE = "impress_generate";
 
     // 润色风格
     public static final String POLISH_STYLE_QUICK = "quick";
@@ -903,7 +904,7 @@ public class AiChatCoordinator {
         sysPrompt.append("用户需求：").append(input).append("\n\n");
         sysPrompt.append("JSON 输出格式（不要多余文字，不要代码块标记）：\n");
         sysPrompt.append("{\n");
-        sysPrompt.append("  \"conditionType\": \"greater|less|equal|between|top_n|bottom_n|above_average|below_average|duplicate|unique|contains_text|formula\",\n");
+        sysPrompt.append("  \"conditionType\": \"greater|less|equal|between|top_n|bottom_n|above_average|below_average|duplicate|unique|contains_text|formula|clear\",\n");
         sysPrompt.append("  \"value\": \"条件值\",\n");
         sysPrompt.append("  \"value2\": \"第二个值（between 时使用）\",\n");
         sysPrompt.append("  \"range\": \"应用范围，如 A1:C100\",\n");
@@ -944,6 +945,8 @@ public class AiChatCoordinator {
         sysPrompt.append("  公式示例（高亮 A 列中价格最高者，价格在 D 列，数据行 A2:D13）：\n");
         sysPrompt.append("  conditionType=formula, value==A2=INDEX($A$2:$A$13,MATCH(MAX($D$2:$D$13),$D$2:$D$13,0)), range=A2:A13\n");
         sysPrompt.append("  注意：公式中当前行引用用相对地址（如 A2），数据区用绝对地址（$A$2:$A$13）；range 必须是公式要格式化的列\n\n");
+        sysPrompt.append("- clear: **清除/取消/恢复默认**条件格式与直接格式（用户说「取消格式」「恢复正常颜色」「去掉条件格式」时使用）。\n");
+        sysPrompt.append("  此时 conditionType 必须为 \"clear\"，range 为要清除的范围（如 F1:F15 或 F:F），不要输出 format/style/value。\n\n");
         sysPrompt.append("请基于实际数据分析判断最合适的条件格式类型，确保 range 是实际的数据范围。");
 
         JSONArray messages = new JSONArray();
@@ -1058,7 +1061,13 @@ public class AiChatCoordinator {
         sysPrompt.append("   **优先使用 set_formula / set_value 直接写入已有数据下方的空白行**，range 写目标单元格（如 A9），不要先 insert_rows 再写入。\n");
         sysPrompt.append("   仅当用户明确要求\"在行5和行6之间插入一行\"这类**中间插入**时才使用 insert_rows。\n");
         sysPrompt.append("   insert_rows 本身是可行的，只是对于\"数据末尾追加\"场景没有必要先插入空行。\n");
-        sysPrompt.append("6. range 的格式必须是 \"列字母+行号\"（如 A9、B10、C2:C9），不能只有行号（如 9:9 是错误的）。\n");
+        sysPrompt.append("6. set_value/set_formula 的 range 必须是 \"列字母+行号\"（如 A9、B10、C2:C9）。\n");
+        sysPrompt.append("7. delete_columns / insert_columns 的 range 只表示**要操作的列**，格式 \"A:A\" 或 \"B:D\"，与用户是否全选无关；\n");
+        sysPrompt.append("   用户说「删除 A 列」必须返回 range=\"A:A\"，禁止返回整表范围（如 A1:AMJ1048576）。\n");
+        sysPrompt.append("8. delete_rows / insert_rows 的 range 只表示**要操作的行**，格式 \"5:5\" 或 \"3:7\"（行号），与全选无关。\n");
+        sysPrompt.append("9. 「删除/清空列的数据/内容」用 set_value，range 写目标列单元格范围（如 F1:F15），value 留空 \"\"；\n");
+        sysPrompt.append("   「删除整列（列本身消失）」才用 delete_columns，range 写 \"F:F\"。\n");
+        sysPrompt.append("10. insert_columns / add_column 后写入的新列不要附带条件格式；若需纯数据列，写入后追加 clear_formatting 到新列 range。\n");
 
         JSONArray messages = new JSONArray();
         JSONObject sysMsg = new JSONObject();
@@ -1192,11 +1201,13 @@ public class AiChatCoordinator {
                 + "  \"slides\": [\n"
                 + "    {\"page\": 1, \"type\": \"cover\", \"title\": \"标题\", \"content\": \"副标题/附加信息\"},\n"
                 + "    {\"page\": 2, \"type\": \"toc\", \"title\": \"目录\", \"content\": \"1. XX\\n2. XX\\n3. XX\"},\n"
-                + "    {\"page\": 3, \"type\": \"section\", \"title\": \"章节标题\", \"content\": \"• 要点1\\n• 要点2\"},\n"
+                + "    {\"page\": 3, \"type\": \"section_divider\", \"title\": \"第一章标题\", \"content\": \"本章概述（1-2句）\"},\n"
+                + "    {\"page\": 4, \"type\": \"section\", \"title\": \"章节标题\", \"content\": \"• 要点1\\n• 要点2\"},\n"
                 + "    {\"page\": \"N\", \"type\": \"end\", \"title\": \"谢谢\", \"content\": \"结束语\"}\n"
                 + "  ]\n"
                 + "}\n\n"
-                + "type枚举：cover(封面)、toc(目录)、section(章节)、end(结尾)\n"
+                + "type枚举：cover(封面)、toc(目录)、section_divider(章节分割页)、section(章节正文)、end(结尾)\n"
+                + "每章结构：先一条 section_divider（title=章名，content=本章概述），再一条或多条 section（正文页）\n"
                 + "title: 每页标题（简洁有力）\n"
                 + "content: 内容要点（Markdown格式，用•开头的列表）\n"
                 + "页数不超过" + pageRange + "页\n"
@@ -1221,6 +1232,75 @@ public class AiChatCoordinator {
         JSONObject userMsg = new JSONObject();
         userMsg.put("role", "user");
         userMsg.put("content", userMessage);
+        messages.put(userMsg);
+
+        return messages;
+    }
+
+    /**
+     * Build messages for PPT content generation (one batch).
+     *
+     * @param batchSlides   Slides for the current batch only (typically length 1).
+     * @param outlineSlides Full outline for cross-page context.
+     * @param templateId    Selected template ID.
+     * @param batchIndex    Current batch index (0-based).
+     * @param totalBatches  Total batch count.
+     * @return messages array for the AI request.
+     */
+    public static JSONArray buildImpressGenerateMessages(
+            JSONArray batchSlides,
+            JSONArray outlineSlides,
+            String templateId,
+            int batchIndex,
+            int totalBatches
+    ) throws JSONException {
+        String systemPrompt = "你是专业PPT内容生成助手。根据用户大纲，生成当前批次的详细内容。\n\n"
+                + "输出格式（严格JSON，不要额外文字，不要代码块）：\n"
+                + "{\n"
+                + "  \"slides\": [\n"
+                + "    {\n"
+                + "      \"page\": 1,\n"
+                + "      \"type\": \"cover|toc|section_divider|section|end\",\n"
+                + "      \"title\": \"页面标题\",\n"
+                + "      \"subtitle\": \"副标题字符串\",\n"
+                + "      \"content_points\": [\"要点1\", \"要点2\"],\n"
+                + "      \"detailed_content\": [\"详细内容1\", \"详细内容2\"]\n"
+                + "    }\n"
+                + "  ]\n"
+                + "}\n\n"
+                + "要求：\n"
+                + "1. slides 数组长度必须恰好为 1，只输出本批次那一页\n"
+                + "2. subtitle 必须是字符串；无副标题时写 \"subtitle\": \"\"，禁止 \"subtitle\":, 或省略值\n"
+                + "3. content_points 数量必须与模板该页要点槽位一致（2/3/4 等），优先 3 或 4 个\n"
+                + "4. detailed_content 与 content_points 一一对应，每个要点展开1-3句详细说明\n"
+                + "5. 内容要丰富、专业、有深度，不要笼统空泛\n"
+                + "6. cover页只输出title+subtitle，content_points 和 detailed_content 用 []\n"
+                + "7. toc页的content_points列出目录项，detailed_content 用 []\n"
+                + "8. end页的content_points为致谢信息，subtitle 可为联系方式\n"
+                + "9. section页必须输出 section_title 与 title 相同\n"
+                + "10. 每个要点以换行符\\n分隔（在 JSON 字符串中用 \\n 表示）";
+
+        StringBuilder userPrompt = new StringBuilder();
+        userPrompt.append("当前批次 ").append(batchIndex + 1).append("/").append(totalBatches).append("\n");
+        userPrompt.append("模板：").append(templateId).append("\n\n");
+        userPrompt.append("完整大纲（仅供参考，不要为其他页生成内容）：\n");
+        if (outlineSlides != null) {
+            userPrompt.append(outlineSlides.toString(2));
+        }
+        userPrompt.append("\n\n本批次必须生成的页（只输出这一页）：\n");
+        if (batchSlides != null) {
+            userPrompt.append(batchSlides.toString(2));
+        }
+
+        JSONArray messages = new JSONArray();
+        JSONObject systemMsg = new JSONObject();
+        systemMsg.put("role", "system");
+        systemMsg.put("content", systemPrompt);
+        messages.put(systemMsg);
+
+        JSONObject userMsg = new JSONObject();
+        userMsg.put("role", "user");
+        userMsg.put("content", userPrompt.toString());
         messages.put(userMsg);
 
         return messages;

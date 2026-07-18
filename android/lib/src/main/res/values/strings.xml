@@ -47,4 +47,25 @@
         <item>学术报告</item>
         <item>教学课件</item>
     </string-array>
+
+    <!-- Impress template selection -->
+    <string name="impress_template_select_title">选择PPT模板</string>
+    <string name="impress_template_select_hint">选择模板风格，AI将按模板生成</string>
+    <string name="impress_generating_ppt">正在生成 PPT...</string>
+    <string name="impress_generating_ppt_detail">AI 正在撰写内容</string>
+    <string name="impress_generate_progress">正在生成第 %1$d/%2$d 页</string>
+    <string name="impress_generate_progress_title">正在生成第 %1$d/%2$d 页 · %3$s</string>
+    <string name="impress_generate_retry">第 %1$d 页生成失败，正在重试（%2$d/%3$d）…</string>
+    <string name="impress_generate_batch_failed">第 %1$d 页 AI 生成失败（已重试 %2$d 次），已使用大纲内容继续</string>
+    <string name="impress_generate_batch_fatal">第 %1$d 页无法生成：%2$s</string>
+    <string name="impress_generate_partial_done">PPT 已生成，其中 %1$d 页使用了大纲兜底内容</string>
+    <string name="impress_ppt_generated">PPT 已生成</string>
+    <string name="impress_ppt_filling">正在填充模板并写入文档...</string>
+    <string name="impress_ppt_success_title">PPT 已生成</string>
+    <string name="impress_ppt_success_message">已保存为「%1$s」。\n是否打开新文档？留在当前文档可继续查看原大纲。</string>
+    <string name="impress_ppt_open">打开新 PPT</string>
+    <string name="impress_ppt_stay">留在当前文档</string>
+    <string name="impress_ppt_error_title">PPT 生成失败</string>
+    <string name="impress_ppt_error_message">模板填充失败，请重试。\n\n原因：%1$s</string>
+    <string name="impress_ppt_error_ok">知道了</string>
 </resources>
