@@ -43,6 +43,10 @@ window.L.Control.AlertDialog = window.L.Control.extend({
 			// Handled by transparently retrying.
 			return;
 		} else if (e.cmd == 'openlink') {
+			if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {
+				window.postMobileMessage('OPENLINK ' + e.url);
+				return;
+			}
 			var url = e.url;
 			var messageText = window.errorMessages.leaving;
 

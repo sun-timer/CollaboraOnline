@@ -455,7 +455,7 @@ class MobileAppInitializer extends InitializerBase {
 
 		// eslint-disable-next-line
 		window.open = function (url, windowName, windowFeatures) {
-		  window.postMobileMessage('HYPERLINK ' + url); /* don't call the 'normal' window.open on mobile at all */
+		  window.postMobileMessage('OPENLINK ' + url);
 		};
 
 		const element = document.getElementById("initial-variables");

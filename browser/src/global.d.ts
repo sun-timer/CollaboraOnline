@@ -351,6 +351,10 @@ interface Window {
 		canPersist: boolean;
 	};
 	KeyboardShortcuts: KeyboardShortcuts;
+	AndroidNativeDialogRouter: {
+		tryIntercept(msgData: any): boolean;
+		unregister(windowId: number): void;
+	};
 
 	allowUpdateNotification: boolean;
 	autoShowWelcome: boolean;

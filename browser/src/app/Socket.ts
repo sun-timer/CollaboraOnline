@@ -985,7 +985,7 @@ class Socket {
 	}
 
 	private _onSocketClose(event: CloseEvent): void {
-		window.app.console.debug('_onSocketClose:');
+		window.app.console.debug('_onSocketClose: code=' + event.code + ' reason=' + event.reason + ' wasClean=' + event.wasClean);
 		if (!this._map._docLoadedOnce && this.ReconnectCount === 0) {
 			let errorType: string = '';
 			let errorMsg: string;

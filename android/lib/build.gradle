@@ -339,12 +339,16 @@ preBuild.dependsOn 'createRCfiles',
 
 tasks.register('generateCoolDebugAssets') {
     doLast {
-        providers.exec {
-            commandLine 'make', '-C', "${rootProject.layout.buildDirectory.get()}/../../browser", 'clean'
-        }.result.get()
-        providers.exec {
-            commandLine 'make', '-C', "${rootProject.layout.buildDirectory.get()}/../../browser", "DIST_FOLDER=${project.layout.projectDirectory}/src/debug/assets/dist", 'BUNDLE=DEBUG'
-        }.result.get()
+        def browserDir = "${rootProject.layout.buildDirectory.get()}/../../browser"
+        def distFolder = "${project.layout.projectDirectory}/src/debug/assets/dist"
+        exec {
+            workingDir file(browserDir)
+            commandLine 'make', 'clean'
+        }
+        exec {
+            workingDir file(browserDir)
+            commandLine 'make', "DIST_FOLDER=${distFolder}", 'BUNDLE=DEBUG', 'NODE=/home/hqit/.nvm/versions/node/v18.18.0/bin/node'
+        }
     }
 }
 
@@ -354,7 +358,7 @@ tasks.register('generateCoolReleaseAssets') {
             commandLine 'make', '-C', "${rootProject.layout.buildDirectory.get()}/../../browser", 'clean'
         }.result.get()
         providers.exec {
-            commandLine 'make', '-C', "${rootProject.layout.buildDirectory.get()}/../../browser", "DIST_FOLDER=${project.layout.projectDirectory}/src/release/assets/dist", 'BUNDLE=RELEASE'
+            commandLine 'make', '-C', "${rootProject.layout.buildDirectory.get()}/../../browser", "DIST_FOLDER=${project.layout.projectDirectory}/src/release/assets/dist", 'BUNDLE=RELEASE', 'NODE=/home/hqit/.nvm/versions/node/v18.18.0/bin/node'
         }.result.get()
     }
 }

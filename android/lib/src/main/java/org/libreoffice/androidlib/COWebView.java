@@ -33,6 +33,10 @@ public class COWebView extends WebView {
         void onDocumentSelectionDragCancel();
     }
 
+    public interface OnDocumentTapListener {
+        void onDocumentTap(float viewX, float viewY);
+    }
+
     private Context mContext;
     private boolean documentGestureGuardEnabled = false;
     private boolean consumeWebViewLongClick = false;
@@ -45,10 +49,19 @@ public class COWebView extends WebView {
     private boolean magnifierShown = false;
     private boolean nativeSelectionDragActive = false;
     private long lastNativeSelectionDragAt = 0L;
-    /** When false, WebView is not treated as a text editor and IME won't auto-popup on tap. */
+    /** When false, WebView is not treated as a text editor and IME won't auto-popup on tap.
+     *  LOActivity toggles this only transiently so Calc canvas taps still select cells. */
     private boolean imeAllowedByUser = false;
+    private boolean imeAllowedBeforeDocumentTouch = false;
+    private Runnable touchEndImeRestoreCallback = null;
+    private OnDocumentTapListener documentTapListener;
+    private float documentTapDownX = 0f;
+    private float documentTapDownY = 0f;
+    private long documentTapDownAt = 0L;
     private static final float MAGNIFIER_MOVE_THRESHOLD_PX = 12f;
     private static final long NATIVE_SELECTION_DRAG_THROTTLE_MS = 60L;
+    private static final long DOCUMENT_TAP_MAX_DURATION_MS = 450L;
+    private static final float DOCUMENT_TAP_SLOP_PX = 24f;
 
     public COWebView(Context context) {
         super(context);
@@ -101,6 +114,10 @@ public class COWebView extends WebView {
         documentLongPressListener = listener;
     }
 
+    public void setOnDocumentTapListener(OnDocumentTapListener listener) {
+        documentTapListener = listener;
+    }
+
     /**
      * When true (preview mode), consume WebView long-click so the browser does not
      * emit a right-click (buttons=4) and route long-press to the native bridge.
@@ -120,10 +137,18 @@ public class COWebView extends WebView {
 
     public void setImeAllowedByUser(boolean allowed) {
         imeAllowedByUser = allowed;
+        if (!allowed) {
+            imeAllowedBeforeDocumentTouch = false;
+        }
     }
 
     public boolean isImeAllowedByUser() {
         return imeAllowedByUser;
+    }
+
+    /** Called after a document touch ends to restore IME editor mode if keyboard stays open. */
+    public void setTouchEndImeRestoreCallback(Runnable callback) {
+        touchEndImeRestoreCallback = callback;
     }
 
     @Override
@@ -179,6 +204,28 @@ public class COWebView extends WebView {
         updateDocumentMagnifier(event);
         boolean handledNativeSelection = updateNativeSelectionDrag(event);
 
+        final int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            documentTapDownX = event.getX();
+            documentTapDownY = event.getY();
+            documentTapDownAt = event.getEventTime();
+            // Drop View-level editor mode for this gesture so canvas taps can switch cells
+            // even when the soft keyboard is open. IME text commits still flow via the
+            // focused contenteditable inside the WebView.
+            if (imeAllowedByUser) {
+                imeAllowedBeforeDocumentTouch = true;
+                imeAllowedByUser = false;
+            } else {
+                imeAllowedBeforeDocumentTouch = false;
+            }
+        } else if ((action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)
+                && imeAllowedBeforeDocumentTouch) {
+            imeAllowedBeforeDocumentTouch = false;
+            if (touchEndImeRestoreCallback != null) {
+                touchEndImeRestoreCallback.run();
+            }
+        }
+
         if (consumeWebViewLongClick && handledNativeSelection) {
             if (documentGestureGuardEnabled &&
                     (event.getActionMasked() == MotionEvent.ACTION_MOVE ||
@@ -189,6 +236,19 @@ public class COWebView extends WebView {
         }
 
         boolean handled = super.onTouchEvent(event);
+
+        if (action == MotionEvent.ACTION_UP && documentTapListener != null && !nativeSelectionDragActive) {
+            long duration = event.getEventTime() - documentTapDownAt;
+            float dx = event.getX() - documentTapDownX;
+            float dy = event.getY() - documentTapDownY;
+            if (duration <= DOCUMENT_TAP_MAX_DURATION_MS
+                    && (dx * dx + dy * dy) <= (DOCUMENT_TAP_SLOP_PX * DOCUMENT_TAP_SLOP_PX)) {
+                final float tapX = event.getX();
+                final float tapY = event.getY();
+                post(() -> documentTapListener.onDocumentTap(tapX, tapY));
+            }
+        }
+
         if (!documentGestureGuardEnabled) {
             return handled;
         }

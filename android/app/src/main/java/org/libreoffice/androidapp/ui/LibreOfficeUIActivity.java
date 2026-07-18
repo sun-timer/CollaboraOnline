@@ -157,6 +157,20 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     /** Recent files list vs. grid switch. */
     private ImageView mRecentFilesListOrGrid;
 
+    /** 首页 UI 是否已在 onCreate 中初始化（避免 onResume 全量 setContentView）。 */
+    private boolean homeUiInitialized = false;
+
+    /** 诊断：区分冷启动 onCreate vs 从文档返回 onResume（开屏根因排查）。 */
+    private void logHomeLifecycle(String phase, Bundle savedInstanceState) {
+        Log.i(LOGTAG, "home_lifecycle " + phase
+                + " savedInstanceState=" + (savedInstanceState != null)
+                + " pid=" + android.os.Process.myPid()
+                + " taskId=" + getTaskId()
+                + " isTaskRoot=" + isTaskRoot()
+                + " homeUiInitialized=" + homeUiInitialized
+                + " hash=" + System.identityHashCode(this));
+    }
+
     /** Request code to evaluate that we are returning from the LOActivity. */
     private static final int LO_ACTIVITY_REQUEST_CODE = 42;
     private static final int OPEN_FILE_REQUEST_CODE = 43;
@@ -167,16 +181,22 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     private static final int AI_MODEL_SETTINGS_REQUEST_CODE = 48;
     private boolean pendingAutoOpenAiAfterCreate = false;
     private String pendingAutoAiPrompt = "";
+    private String pendingAutoUserDescription = "";
     private AlertDialog aiGeneratingDialog;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        // 切回正式主题（Manifest 用 Splash 主题提供冷启动欢迎图窗口背景）
+        logHomeLifecycle("onCreate_enter", savedInstanceState);
+        // Manifest 为 Splash 主题（首帧欢迎图）；此处切回正式主题后手动恢复 welcome 背景直至 createUI 完成
         setTheme(R.style.LibreOfficeTheme);
         PreferenceManager.setDefaultValues(this, R.xml.documentprovider_preferences, false);
         readPreferences();
         int mode = prefs.getInt(NIGHT_MODE_KEY, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
         AppCompatDelegate.setDefaultNightMode(mode);
+        // 仅冷启动显示欢迎图；进程被杀后 savedInstanceState!=null 时不铺 splash，避免退出回首页闪屏
+        if (savedInstanceState == null) {
+            getWindow().setBackgroundDrawable(getDrawable(R.drawable.lolib_splash_bg));
+        }
         super.onCreate(savedInstanceState);
 
         // initialize document provider factory
@@ -187,11 +207,11 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
         // init UI and populate with contents from the provider
         createUI();
+        homeUiInitialized = true;
 
-        // Clear the splash window background so it doesn't flash when
-        // returning from LOActivity (e.g. pressing back or switching docs).
-        // The splash is already shown on cold start — no need to keep it.
+        // createUI 完成后清除 window 欢迎图，避免挡住首页内容；onResume/onStart 再次确保清除
         getWindow().setBackgroundDrawable(null);
+        logHomeLifecycle("onCreate_done", savedInstanceState);
     }
 
     private String[] getRecentDocuments() {
@@ -959,12 +979,26 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     }
 
     public void open(final Uri uri, boolean autoOpenAi, String aiPrompt, boolean startInEditMode) {
+        open(uri, autoOpenAi, aiPrompt, startInEditMode, "");
+    }
+
+    public void open(final Uri uri, boolean autoOpenAi, String aiPrompt, boolean startInEditMode, String userDescription) {
+        open(uri, autoOpenAi, aiPrompt, startInEditMode, userDescription, -1);
+    }
+
+    public void open(final Uri uri, boolean autoOpenAi, String aiPrompt, boolean startInEditMode, String userDescription, int requestCode) {
         if (uri == null)
             return;
 
         addDocumentToRecents(uri);
 
         Intent i = getIntentToEdit(uri, autoOpenAi, aiPrompt, startInEditMode);
+        if (!TextUtils.isEmpty(userDescription)) {
+            i.putExtra(LOActivity.EXTRA_AUTO_USER_DESCRIPTION, userDescription);
+        }
+        if (requestCode == CREATE_SPREADSHEET_REQUEST_CODE) {
+            i.putExtra(LOActivity.EXTRA_AUTO_IS_CALC_NEW_TABLE, true);
+        }
         startActivityForResult(i, LO_ACTIVITY_REQUEST_CODE);
     }
 
@@ -986,6 +1020,16 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         TextView createButton = dialog.findViewById(R.id.createButton);
         ImageButton closeButton = dialog.findViewById(R.id.closeButton);
         SwitchCompat aiSwitch = dialog.findViewById(R.id.aiSwitch);
+        final EditText aiPromptInput = dialog.findViewById(R.id.aiPromptInput);
+
+        aiSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            aiPromptInput.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+            if (isChecked && requestCode == CREATE_SPREADSHEET_REQUEST_CODE) {
+                aiPromptInput.setHint("描述你想生成的表格内容，例如：2024年各季度销售数据表");
+            } else if (isChecked) {
+                aiPromptInput.setHint("描述你想生成的文档内容...");
+            }
+        });
 
         final String extension = getExtensionForRequestCode(requestCode);
         final String baseName = trimFileExtension(defaultFileName);
@@ -1010,10 +1054,17 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             }
 
             if (aiSwitch.isChecked()) {
+                String userDescription = aiPromptInput.getText() == null ? "" : aiPromptInput.getText().toString().trim();
+                if (requestCode == CREATE_SPREADSHEET_REQUEST_CODE && userDescription.isEmpty()) {
+                    aiPromptInput.setError("请描述你想生成的表格内容");
+                    return;
+                }
                 pendingAutoOpenAiAfterCreate = true;
-                pendingAutoAiPrompt = buildAutoAiPromptForRequestCode(requestCode, name);
+                pendingAutoUserDescription = userDescription;
+                pendingAutoAiPrompt = buildAutoAiPromptForRequestCode(requestCode, name, pendingAutoUserDescription);
             } else {
                 pendingAutoOpenAiAfterCreate = false;
+                pendingAutoUserDescription = "";
                 pendingAutoAiPrompt = "";
             }
 
@@ -1131,18 +1182,28 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         }
     }
 
-    private String buildAutoAiPromptForRequestCode(int requestCode, String title) {
-        String titleHint = (title != null && !title.isEmpty())
-                ? "主题：《" + title + "》。请围绕该主题，"
+    private String buildAutoAiPromptForRequestCode(int requestCode, String title, String userDescription) {
+        boolean hasTitle = title != null && !title.isEmpty();
+        boolean hasDesc = userDescription != null && !userDescription.isEmpty();
+        StringBuilder sb = new StringBuilder();
+        if (hasTitle) {
+            sb.append("主题：《").append(title).append("》");
+        }
+        if (hasDesc) {
+            if (hasTitle) sb.append("，");
+            sb.append("用户要求：").append(userDescription);
+        }
+        String prefix = (hasTitle || hasDesc)
+                ? sb.append("。请围绕以上要求，").toString()
                 : "请";
         switch (requestCode) {
             case CREATE_SPREADSHEET_REQUEST_CODE:
-                return titleHint + "先给出一个清晰的数据表结构大纲（列名和用途），再输出可直接粘贴到电子表格的完整示例内容，至少包含10行数据。";
+                return prefix + "先给出一个清晰的数据表结构大纲（列名和用途），再输出可直接粘贴到电子表格的完整示例内容，至少包含10行数据。";
             case CREATE_PRESENTATION_REQUEST_CODE:
-                return titleHint + "先生成一份6页演示的大纲（每页标题+要点），再输出可直接用于演示文稿的完整正文内容。";
+                return prefix + "先生成一份6页演示的大纲（每页标题+要点），再输出可直接用于演示文稿的完整正文内容。";
             case CREATE_DOCUMENT_REQUEST_CODE:
             default:
-                return titleHint + "先生成文档大纲（章节标题），再基于大纲输出完整正文，风格专业、结构清晰。";
+                return prefix + "直接输出完整的纯文本正文，风格专业、结构清晰。不要使用 Markdown 格式（不要使用 #、*、- 等标记符号）。";
         }
     }
 
@@ -1411,8 +1472,8 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
         outState.putBoolean(ENABLE_SHOW_HIDDEN_FILES_KEY, showHiddenFiles);
 
-        //prefs.edit().putInt(EXPLORER_VIEW_TYPE, viewType).commit();
-        Log.d(LOGTAG, "savedInstanceState");
+        Log.i(LOGTAG, "home_lifecycle onSaveInstanceState pid=" + android.os.Process.myPid()
+                + " homeUiInitialized=" + homeUiInitialized);
     }
 
     @Override
@@ -1446,8 +1507,10 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         super.onActivityResult(requestCode, resultCode, data);
         switch (requestCode) {
             case LO_ACTIVITY_REQUEST_CODE: {
-                // TODO probably kill this, we don't need to do anything here any more
-                Log.d(LOGTAG, "LOActivity has finished.");
+                Log.i(LOGTAG, "home_return_from_doc resultCode=" + resultCode
+                        + " pid=" + android.os.Process.myPid()
+                        + " homeUiInitialized=" + homeUiInitialized);
+                updateRecentFiles();
                 break;
             }
             case OPEN_FILE_REQUEST_CODE: {
@@ -1470,6 +1533,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 if (resultCode != RESULT_OK || data == null) {
                     pendingAutoOpenAiAfterCreate = false;
                     pendingAutoAiPrompt = "";
+                    pendingAutoUserDescription = "";
                     dismissAiGeneratingDialog();
                     return;
                 }
@@ -1480,6 +1544,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 String extension = (requestCode == CREATE_DOCUMENT_REQUEST_CODE) ? "odt" : ((requestCode == CREATE_SPREADSHEET_REQUEST_CODE) ? "ods" : "odp");
                 final boolean autoOpenAi = pendingAutoOpenAiAfterCreate;
                 final String autoAiPrompt = pendingAutoAiPrompt;
+                final String autoUserDescription = pendingAutoUserDescription;
                 if (autoOpenAi) {
                     showAiGeneratingDialog();
                 } else {
@@ -1487,10 +1552,11 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 }
                 createNewFileAsync(uri, extension, () -> {
                     dismissAiGeneratingDialog();
-                    open(uri, autoOpenAi, autoAiPrompt, true);
+                    open(uri, autoOpenAi, autoAiPrompt, true, autoUserDescription, requestCode);
                 });
                 pendingAutoOpenAiAfterCreate = false;
                 pendingAutoAiPrompt = "";
+                pendingAutoUserDescription = "";
                 break;
             }
             case AI_PROFILE_SETTINGS_REQUEST_CODE:
@@ -1509,21 +1575,37 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     @Override
     protected void onPause() {
         super.onPause();
-        Log.d(LOGTAG, "onPause");
+        logHomeLifecycle("onPause", null);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        Log.d(LOGTAG, "onResume");
+        logHomeLifecycle("onResume_enter", null);
+        getWindow().setBackgroundDrawable(null);
+        final long resumeStart = System.currentTimeMillis();
+        Log.d(LOGTAG, "onResume homeUiInitialized=" + homeUiInitialized);
         Log.d(LOGTAG, "sortMode=" + sortMode + " filterMode=" + filterMode);
-        createUI();
-        refreshAiDrawerHeader();
+        if (homeUiInitialized) {
+            Log.i(LOGTAG, "home_resume incremental=true");
+            updateRecentFiles();
+            refreshAiDrawerHeader();
+            updateSearchUiMode();
+        } else {
+            Log.i(LOGTAG, "home_resume full_createUI");
+            createUI();
+            homeUiInitialized = true;
+            refreshAiDrawerHeader();
+        }
+        Log.i(LOGTAG, "home_resume done ms=" + (System.currentTimeMillis() - resumeStart));
+        logHomeLifecycle("onResume_done", null);
     }
 
     @Override
     protected void onStart() {
         super.onStart();
+        logHomeLifecycle("onStart", null);
+        getWindow().setBackgroundDrawable(null);
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             Log.i(LOGTAG, "no permission to read external storage - asking for permission");
             ActivityCompat.requestPermissions(this,
@@ -1536,13 +1618,13 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     @Override
     protected void onStop() {
         super.onStop();
-        Log.d(LOGTAG, "onStop");
+        logHomeLifecycle("onStop", null);
     }
 
     @Override
     protected void onDestroy() {
+        logHomeLifecycle("onDestroy", null);
         super.onDestroy();
-        Log.d(LOGTAG, "onDestroy");
     }
 
     private int dpToPx(int dp) {

@@ -1766,9 +1766,9 @@ window.L.Control.NotebookbarCalc = window.L.Control.NotebookbarWriter.extend({
 				'children' : [
 					{
 						'id': 'insert-insert-object-chart',
-						'type': 'bigtoolitem',
+						'type': 'bigcustomtoolitem',
 						'text': _UNO('.uno:InsertObjectChart'),
-						'command': '.uno:InsertObjectChart',
+						'command': 'chart_type_picker',
 						'accessibility': { focusBack: true,	combination: 'IC', de: null }
 					},
 					{

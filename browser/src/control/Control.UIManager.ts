@@ -51,6 +51,7 @@ class UIManager extends window.L.Control {
 	// Hidden Notebookbar tabs.
 	hiddenTabs: { [key: string]: boolean } = {};
 	permissionViewMode?: PermissionViewMode;
+	chartTypePicker: any = null;
 
 	/**
 	 * Called when the UIManager control is added to the map.
@@ -81,6 +82,8 @@ class UIManager extends window.L.Control {
 			// provide entries in the history we can catch to close the app
 			history.pushState({context: 'app-started'}, 'app-started');
 			history.pushState({context: 'app-started'}, 'app-started');
+
+			map.on('charttypepicker', this.onShowChartTypePicker, this);
 		}
 
 		map.on('blockUI', this.blockUI, this);
@@ -304,6 +307,29 @@ class UIManager extends window.L.Control {
 
 		this.map.fire('themechanged');
 	}
+
+	onShowChartTypePicker(): void {
+		// Open the chart type picker dialog
+		if (!this.chartTypePicker)
+			this.chartTypePicker = window.L.control.chartTypePicker({
+				onSelectCallback: (chartType: any) => {
+					// On chart type selection, insert chart with the selected type
+					if (chartType) {
+						this.hideChartTypePicker();
+						app.dispatcher.dispatch('chart_insert', chartType);
+					}
+				}
+			});
+		this.addControl(this.chartTypePicker);
+		this.chartTypePicker.show();
+	}
+
+	hideChartTypePicker(): void {
+		if (this.chartTypePicker) {
+			this.chartTypePicker.hide();
+		}
+	}
+
 
 	/**
 	 * Initializes dark mode based on user settings.

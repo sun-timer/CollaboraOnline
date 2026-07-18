@@ -13,6 +13,7 @@
 #include <chrono>
 #include <thread>
 #include <vector>
+#include <condition_variable>
 
 #include <FakeSocket.hpp>
 #include <Kit.hpp>
@@ -23,6 +24,8 @@
 #include <Util.hpp>
 
 #include <osl/detail/android-bootstrap.h>
+
+#include <unistd.h>
 
 const int SHOW_JS_MAXLEN = 70;
 
@@ -36,10 +39,14 @@ static int closeNotificationPipeForForwardingThread[2] = {-1, -1};
 static JavaVM* javaVM = nullptr;
 static bool lokInitialized = false;
 static std::mutex coolwsdRunningMutex;
+static std::mutex coolwsdRestartMutex;
+static std::condition_variable coolwsdRestartCv;
+static bool g_expectCoolwsdRun = false;
 
 // Remember the reference to the LOActivity
 jclass g_loActivityClz = nullptr;
 jobject g_loActivityObj = nullptr;
+static bool g_javaCallbacksEnabled = false;
 
 extern "C" JNIEXPORT jint JNICALL
 JNI_OnLoad(JavaVM* vm, void*) {
@@ -98,6 +105,9 @@ public:
 
 static void send2JS(const JNIThreadContext &jctx, const std::vector<char>& buffer)
 {
+    if (!g_javaCallbacksEnabled || g_loActivityObj == nullptr || g_loActivityClz == nullptr) {
+        return;
+    }
     LOG_DBG("Send to JS: " << COOLProtocol::getAbbreviatedMessage(buffer.data(), buffer.size()));
 
     JNIEnv *env = jctx.getEnv();
@@ -116,6 +126,9 @@ static void send2JS(const JNIThreadContext &jctx, const std::vector<char>& buffe
 
 void postDirectMessage(std::string message)
 {
+    if (!g_javaCallbacksEnabled || g_loActivityObj == nullptr || g_loActivityClz == nullptr) {
+        return;
+    }
     JNIThreadContext ctx;
     JNIEnv *env = ctx.getEnv();
 
@@ -128,17 +141,47 @@ void postDirectMessage(std::string message)
         env->ExceptionDescribe();
 }
 
-/// Close the document.
+/// Close the document session (disconnect client). Matches iOS/gtk/wasm: only close
+/// the notification pipe; do NOT block on lokit_main_mutex / coolwsdRunningMutex —
+/// that deadlocks or kills the process on Impress exit (log stops at closeDocument_start).
 void closeDocument()
 {
-    // Close one end of the socket pair, that will wake up the forwarding thread that was constructed in HULLO
-    fakeSocketClose(closeNotificationPipeForForwardingThread[0]);
-    LOG_DBG("Waiting for Lokit to finish...");
-    std::unique_lock<std::mutex> lokitLock(COOLWSD::lokit_main_mutex);
-    LOG_DBG("Lokit has finished.");
-    LOG_DBG("Waiting for COOLWSD to finish...");
-    std::unique_lock<std::mutex> coolwsdLock(coolwsdRunningMutex);
-    LOG_DBG("COOLWSD has finished.");
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity", "closeDocument_start pid=%d", getpid());
+    if (closeNotificationPipeForForwardingThread[0] >= 0)
+    {
+        fakeSocketClose(closeNotificationPipeForForwardingThread[0]);
+        closeNotificationPipeForForwardingThread[0] = -1;
+    }
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity", "closeDocument_done pid=%d", getpid());
+}
+
+/// Control whether the background COOLWSD thread should start a new run.
+/// When false after exit-to-home, the thread idles instead of immediately
+/// respawning COOLWSD (avoids memory spike / process kill during home restore).
+extern "C" JNIEXPORT void JNICALL
+Java_org_libreoffice_androidlib_LOActivity_setExpectCoolwsdRun(JNIEnv*, jobject, jboolean expect)
+{
+    {
+        std::lock_guard<std::mutex> lock(coolwsdRestartMutex);
+        g_expectCoolwsdRun = (expect == JNI_TRUE);
+    }
+    if (expect)
+        coolwsdRestartCv.notify_one();
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity", "expect_coolwsd_run=%s",
+                        (expect == JNI_TRUE) ? "true" : "false");
+    LOG_DBG("setExpectCoolwsdRun: " << (expect ? "true" : "false"));
+}
+
+/// Drop JNI callbacks to LOActivity after WebView is destroyed (avoid use-after-destroy crashes).
+extern "C" JNIEXPORT void JNICALL
+Java_org_libreoffice_androidlib_LOActivity_clearNativeActivityCallbacks(JNIEnv* env, jobject)
+{
+    g_javaCallbacksEnabled = false;
+    if (g_loActivityObj != nullptr) {
+        env->DeleteGlobalRef(g_loActivityObj);
+        g_loActivityObj = nullptr;
+    }
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity", "native_activity_callbacks_cleared pid=%d", getpid());
 }
 
 /// Handle a message from JavaScript.
@@ -254,10 +297,16 @@ Java_org_libreoffice_androidlib_LOActivity_createCOOLWSD(JNIEnv *env, jobject in
     jclass clz = env->GetObjectClass(instance);
     g_loActivityClz = (jclass) env->NewGlobalRef(clz);
     g_loActivityObj = env->NewGlobalRef(instance);
+    g_javaCallbacksEnabled = true;
 
     // already initialized?
     if (lokInitialized)
     {
+        {
+            std::lock_guard<std::mutex> lock(coolwsdRestartMutex);
+            g_expectCoolwsdRun = true;
+        }
+        coolwsdRestartCv.notify_one();
         // close the previous document so that we can wait for the new HULLO
         closeDocument();
         return;
@@ -267,6 +316,10 @@ Java_org_libreoffice_androidlib_LOActivity_createCOOLWSD(JNIEnv *env, jobject in
     static const std::string userNameString = std::string(env->GetStringUTFChars(userName, nullptr));
     user_name = userNameString.c_str();
     lokInitialized = true;
+    {
+        std::lock_guard<std::mutex> lock(coolwsdRestartMutex);
+        g_expectCoolwsdRun = true;
+    }
     libreofficekit_initialize(env, dataDir, cacheDir, apkFile, assetManager);
 
     Util::setThreadName("main");
@@ -284,6 +337,10 @@ Java_org_libreoffice_androidlib_LOActivity_createCOOLWSD(JNIEnv *env, jobject in
                     Util::setThreadName("app");
                     while (true)
                     {
+                        {
+                            std::unique_lock<std::mutex> restartLock(coolwsdRestartMutex);
+                            coolwsdRestartCv.wait(restartLock, [] { return g_expectCoolwsdRun; });
+                        }
                         LOG_DBG("Creating COOLWSD");
                         {
                             std::unique_lock<std::mutex> lock(coolwsdRunningMutex);
@@ -293,7 +350,6 @@ Java_org_libreoffice_androidlib_LOActivity_createCOOLWSD(JNIEnv *env, jobject in
                             coolwsd->run(1, argv);
                         }
                         LOG_DBG("One run of COOLWSD completed");
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     }
                 }).detach();
 }

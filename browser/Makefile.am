@@ -184,6 +184,7 @@ COOL_CSS_LST =\
 	$(srcdir)/css/helpdialog.css \
 	$(srcdir)/css/btns.css \
 	$(srcdir)/css/notebookbar.css \
+	$(srcdir)/src/chart/ChartTypePicker.scss \
 	$(srcdir)/css/jssidebar.css \
 	$(srcdir)/css/forced-colors.css \
 	$(srcdir)/css/override-smartmenus.css \
@@ -261,6 +262,7 @@ COOL_JS_LST =\
 	src/app/TextSelectionMiddleware.ts \
 	src/app/AndroidFindReplaceBridge.ts \
 	src/app/AndroidSelectionMenu.ts \
+	src/app/AndroidCalcTap.ts \
 	src/app/CellSelectionMarkerMiddleware.ts \
 	src/app/TableMiddleware.ts \
 	src/app/ImpressSelectionMiddleware.ts \
@@ -452,6 +454,7 @@ COOL_JS_LST =\
 	src/control/jsdialog/Util.KeyboardRadioGroupNavigation.ts \
 	src/control/jsdialog/Util.FocusCycle.js \
 	src/control/jsdialog/Util.FormulaBarSelectionHandle.ts \
+	src/control/jsdialog/AndroidNativeDialogRouter.ts \
 	src/control/jsdialog/Util.MessageRouter.ts \
 	src/control/jsdialog/Util.ModalHelper.js \
 	src/control/jsdialog/Util.OnDemandRenderer.ts \
@@ -510,6 +513,9 @@ COOL_JS_LST =\
 	src/control/Control.PresentationBar.js \
 	src/control/Control.TopToolbar.js \
 	src/control/Control.SaveState.ts \
+	src/chart/ChartTypes.ts \
+	src/chart/ChartInsert.ts \
+	src/chart/ChartTypePicker.ts \
 	src/control/Control.NotebookbarBase.ts \
 	src/control/Control.UIManager.ts \
 	src/control/Control.DocumentNameInput.js \
@@ -748,7 +754,7 @@ endef
 
 define global_file
 	$(if $(IS_SEPARATE),
-		@cp $< $@,
+		@cp -f $< $@,
 		@echo "Uglify global.js file..."
 		@$(NODE) node_modules/uglify-js/bin/uglifyjs $< --output $@)
 endef
@@ -780,19 +786,19 @@ endif
 if ENABLE_WASM
 $(DIST_FOLDER)/emscripten-module.js: ../wasm/emscripten-module.js
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 $(DIST_FOLDER)/emscripten-zetajs-example.js: $(abs_top_srcdir)/wasm/emscripten-zetajs-example.js
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 $(DIST_FOLDER)/online%: ../wasm/online%
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 $(DIST_FOLDER)/soffice%: ../wasm/soffice%
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 WASM_FILES= \
 	$(DIST_FOLDER)/emscripten-module.js \
@@ -816,11 +822,11 @@ if ENABLE_WASM_ZETAJS
 
 $(DIST_FOLDER)/smoketest.js: $(WITH_WASM_ZETAJS)/test/smoketest.js
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 $(DIST_FOLDER)/zeta.js: $(WITH_WASM_ZETAJS)/source/zeta.js
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 WASM_FILES += $(DIST_FOLDER)/zeta.js
 
@@ -967,23 +973,23 @@ $(DIST_FOLDER)/device-%.css: $(srcdir)/css/device-%.css
 $(DIST_FOLDER)/plugins/%.js: $(srcdir)/plugins/%.js
 	@mkdir -p $(dir $@)
 	@if test -z '$(ENABLE_BROWSERSYNC)'; then \
-		`cp $< $@`; \
+		`cp -f $< $@`; \
 	else \
 		`ln -sf $(abs_srcdir)/$< $@`; \
 	fi
 
 $(DIST_FOLDER)/images/%: $(CUSTOM_ICONS_DIRECTORY)/%
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 $(DIST_FOLDER)/images/%: $(srcdir)/images/%
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 $(DIST_FOLDER)/%.html: $(srcdir)/html/%.html
 	@mkdir -p $(dir $@)
 	@if test -z '$(ENABLE_BROWSERSYNC)'; then \
-		`cp $< $@`; \
+		`cp -f $< $@`; \
 	else \
 		`ln -sf $(abs_srcdir)/$< $@`; \
 	fi
@@ -992,7 +998,7 @@ if ENABLE_WELCOME_MESSAGE
 $(DIST_FOLDER)/welcome/%: $(srcdir)/welcome/%
 	@mkdir -p $(dir $@)
 	@if test -z '$(ENABLE_BROWSERSYNC)'; then \
-		`cp $< $@`; \
+		`cp -f $< $@`; \
 	else \
 		`ln -sf $(abs_srcdir)/$< $@`; \
 	fi
@@ -1013,7 +1019,7 @@ $(COOL_TS_JS_DST): tscompile.done
 $(DIST_FOLDER)/src/%.js: $(srcdir)/src/%.js
 	@mkdir -p $(dir $@)
 	@if test -z '$(ENABLE_BROWSERSYNC)'; then \
-		`cp $< $@`; \
+		`cp -f $< $@`; \
 	else \
 		`echo $< $@`; \
 		`ln -sf $(abs_srcdir)/$< $@`; \
@@ -1022,34 +1028,34 @@ $(DIST_FOLDER)/src/%.js: $(srcdir)/src/%.js
 $(DIST_FOLDER)/%.js: $(srcdir)/js/%.js
 	@mkdir -p $(dir $@)
 	@if test -z '$(ENABLE_BROWSERSYNC)'; then \
-		`cp $< $@`; \
+		`cp -f $< $@`; \
 	else \
 		`ln -sf $(abs_srcdir)/$< $@`; \
 	fi
 
 $(DIST_FOLDER)/node_modules/%.js: $(builddir)/node_modules/%.js
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 $(DIST_FOLDER)/$(JQUERY_LIGHTNESS_IMAGE_PATH)/%.png: $(JQUERY_LIGHTNESS_IMAGE_PATH)/%.png
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 $(DIST_FOLDER)/images/%.png: $(JQUERY_LIGHTNESS_IMAGE_PATH)/%.png
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 $(DIST_FOLDER)/$(JQUERY_MINIFIED_IMAGE_PATH)/%.png: $(JQUERY_MINIFIED_IMAGE_PATH)/%.png
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 $(DIST_FOLDER)/images/%.png: $(JQUERY_MINIFIED_IMAGE_PATH)/%.png
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 $(DIST_FOLDER)/l10n/%: $(srcdir)/l10n/%
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 $(DIST_FOLDER)/l10n/help-%.json: $(srcdir)/po/help-%.po
 	@$(srcdir)/util/po2json.py --quiet $< -o $@
@@ -1059,7 +1065,7 @@ $(DIST_FOLDER)/l10n/ui-%.json: $(srcdir)/po/ui-%.po
 
 $(DIST_FOLDER)/admin/%: $(srcdir)/admin/%
 	@mkdir -p $(dir $@)
-	@cp $< $@
+	@cp -f $< $@
 
 $(DIST_FOLDER)/wasm:
 	@mkdir -p $(dir $@)

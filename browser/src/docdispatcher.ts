@@ -152,6 +152,25 @@ class Dispatcher {
 			app.map.uiManager.enterReadonlyOrClose();
 		};
 
+		this.actionsMap['chart_type_picker'] = function () {
+			if (window.mode.isMobile()) {
+				app.map.uiManager.onShowChartTypePicker();
+				return;
+			}
+			// Desktop: fall through to insert chart directly
+			app.map.sendUnoCommand('.uno:InsertObjectChart');
+		};
+		this.actionsMap['chart_insert'] = function (chartType: any) {
+			const unoType = chartType && chartType.unoChartType ? chartType.unoChartType : 'column';
+			if ((window as any).ChartInsert && typeof (window as any).ChartInsert.insertChartWithType === 'function') {
+				(window as any).ChartInsert.insertChartWithType(unoType);
+			} else {
+				app.map.sendUnoCommand('.uno:InsertObjectChart', {
+					RangeList: { type: 'string', value: '' },
+					InNewTable: { type: 'boolean', value: false },
+				});
+			}
+		};
 		this.actionsMap['toggledarktheme'] = function () {
 			app.map.uiManager.toggleDarkMode();
 		};

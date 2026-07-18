@@ -24,7 +24,7 @@ class URLPopUpSection extends HTMLObjectSection {
 	static horizontalPadding = 6;
 	static popupVerticalMargin = 20;
 
-	constructor(url: string, documentPosition: cool.SimplePoint, linkPosition?: cool.SimplePoint, linkIsClientSide = false) {
+	constructor(url: string, documentPosition: cool.SimplePoint, linkPosition?: cool.SimplePoint, linkIsClientSide = false, displayLabel?: string) {
         super(URLPopUpSection.sectionName, null, null, documentPosition, URLPopUpSection.cssClass);
 
 		const objectDiv = this.getHTMLObject();
@@ -32,9 +32,10 @@ class URLPopUpSection extends HTMLObjectSection {
 		document.getElementById('document-container').appendChild(objectDiv);
 
 		this.sectionProperties.url = url;
+		this.sectionProperties.displayLabel = displayLabel || url;
 		this.sectionProperties.linkIsClientSide = linkIsClientSide;
 
-		this.createUIElements(url);
+		this.createUIElements(url, this.sectionProperties.displayLabel);
 		this.setUpCallbacks(linkPosition);
 
 		document.getElementById('hyperlink-pop-up').title = url;
@@ -77,12 +78,12 @@ class URLPopUpSection extends HTMLObjectSection {
 		return this.getHTMLObject().getBoundingClientRect();
 	}
 
-	createUIElements(url: string) {
+	createUIElements(url: string, displayLabel: string) {
 		const parent = this.getHTMLObject();
 		window.L.DomUtil.createWithId('div', this.containerId, parent);
 
         const link = window.L.DomUtil.createWithId('a', this.linkId, parent);
-		link.innerText = url;
+		link.innerText = displayLabel;
 		const copyLinkText = _('Copy link location');
 		const copyBtn = window.L.DomUtil.createWithId('div', this.copyButtonId, parent);
 		window.L.DomUtil.addClass(copyBtn, 'hyperlink-popup-btn');
@@ -170,6 +171,13 @@ class URLPopUpSection extends HTMLObjectSection {
 				app.map.sendUnoCommand('.uno:EditHyperlink', params);
 		};
 
+		if (window.ThisIsTheAndroidApp) {
+			const editBtn = document.getElementById(this.editButtonId);
+			if (editBtn) {
+				editBtn.style.display = 'none';
+			}
+		}
+
 		document.getElementById(this.removeButtonId).onclick = () => {
 			if (!this.sectionProperties.linkIsClientSide) // For now link in client side works only on readonly mode
 				app.map.sendUnoCommand('.uno:RemoveHyperlink', params);
@@ -218,11 +226,11 @@ class URLPopUpSection extends HTMLObjectSection {
 		section.containerObject.requestReDraw();
 	}
 
-	public static showURLPopUP(url: string, documentPosition: cool.SimplePoint, linkPosition?: cool.SimplePoint, linkIsClientSide?: boolean) {
+	public static showURLPopUP(url: string, documentPosition: cool.SimplePoint, linkPosition?: cool.SimplePoint, linkIsClientSide?: boolean, displayLabel?: string) {
 		if (URLPopUpSection.isOpen())
 			URLPopUpSection.closeURLPopUp();
 
-		const section = new URLPopUpSection(url, documentPosition, linkPosition, linkIsClientSide);
+		const section = new URLPopUpSection(url, documentPosition, linkPosition, linkIsClientSide, displayLabel);
 		app.sectionContainer.addSection(section);
 		this.resetPosition(section);
     }

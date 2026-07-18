@@ -50,6 +50,19 @@ class CellSelectionHandle extends CanvasSectionObject {
 	}
 
 	public onDraw() {
+		const radius = this.sectionProperties.circleRadius;
+		if (app.map._docLayer._docType === 'spreadsheet') {
+			const handleSize = Math.max(6, Math.round(6 * app.dpiScale));
+			this.context.fillStyle = 'rgb(16, 104, 2)';
+			this.context.fillRect(
+				radius - handleSize / 2,
+				radius - handleSize / 2,
+				handleSize,
+				handleSize,
+			);
+			return;
+		}
+
 		this.context.strokeStyle = (<any>window).prefs.getBoolean('darkTheme') ? 'white' : 'black';
 		this.context.lineWidth = 2;
 

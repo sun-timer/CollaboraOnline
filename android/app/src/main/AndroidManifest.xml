@@ -28,11 +28,12 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:screenOrientation="sensorLandscape"/>
 
-        <!-- Document Browser Activity -->
+        <!-- 首页：Splash 主题提供冷启动欢迎图（windowBackground）；onCreate 内切回正式主题 -->
         <activity
             android:name=".ui.LibreOfficeUIActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/LibreOfficeTheme.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

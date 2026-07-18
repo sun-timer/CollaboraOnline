@@ -1781,10 +1781,42 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		this._map.hyperlinkUnderCursor = obj.hyperlink;
 		if (URLPopUpSection.isOpen() && !(obj.hyperlink && obj.hyperlink.link))
 			URLPopUpSection.closeURLPopUp();
+		if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function'
+			&& !(obj.hyperlink && obj.hyperlink.link)) {
+			window.postMobileMessage('HYPERLINK_POPUP hide');
+		}
 
 		if (obj.hyperlink && obj.hyperlink.link &&
-			( !URLPopUpSection.isOpen() || updateCursor || isHyperlinkChanged))
-			URLPopUpSection.showURLPopUP(obj.hyperlink.link, new cool.SimplePoint(app.file.textCursor.rectangle.x1, app.file.textCursor.rectangle.y1));
+			( !URLPopUpSection.isOpen() || updateCursor || isHyperlinkChanged)) {
+			if (app.map._suppressHyperlinkPopupUntil && Date.now() < app.map._suppressHyperlinkPopupUntil) {
+				// Native Android hyperlink insert just finished — skip auto popup.
+			} else if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {
+				var displayLabel = obj.hyperlink.text;
+				if (!displayLabel || displayLabel === obj.hyperlink.link) {
+					displayLabel = undefined;
+				}
+				var viewedRect = app.activeDocument.activeLayout.viewedRectangle;
+				var anchorX = (app.file.textCursor.rectangle.x1 - viewedRect.pX1) / app.dpiScale;
+				var anchorY = (app.file.textCursor.rectangle.y1 - viewedRect.pY1) / app.dpiScale;
+				window.postMobileMessage('HYPERLINK_POPUP show ' + JSON.stringify({
+					url: obj.hyperlink.link,
+					text: displayLabel || obj.hyperlink.link,
+					anchorX: anchorX,
+					anchorY: anchorY
+				}));
+			} else {
+				var displayLabel = obj.hyperlink.text;
+				if (!displayLabel || displayLabel === obj.hyperlink.link) {
+					displayLabel = undefined;
+				}
+				URLPopUpSection.showURLPopUP(
+					obj.hyperlink.link,
+					new cool.SimplePoint(app.file.textCursor.rectangle.x1, app.file.textCursor.rectangle.y1),
+					undefined,
+					undefined,
+					displayLabel);
+			}
+		}
 
 		// If modifier view is different than the current view
 		// we'll keep the caret position at the same point relative to screen.

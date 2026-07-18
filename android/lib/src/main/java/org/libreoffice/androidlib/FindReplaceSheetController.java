@@ -15,6 +15,8 @@ import androidx.appcompat.widget.SwitchCompat;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
+import org.libreoffice.androidlib.ai.AiDialogHelper;
+
 public class FindReplaceSheetController {
     public interface Host {
         android.content.Context getContext();
@@ -47,6 +49,7 @@ public class FindReplaceSheetController {
         bindMainPanel(panel);
         mainDialog = new BottomSheetDialog(host.getContext());
         mainDialog.setContentView(panel);
+        AiDialogHelper.applyCloseOnlyDismiss(mainDialog);
         mainDialog.setOnDismissListener(dialog -> mainDialog = null);
         mainDialog.show();
         expandSheet(mainDialog);
@@ -178,6 +181,7 @@ public class FindReplaceSheetController {
 
         settingsDialog = new BottomSheetDialog(host.getContext());
         settingsDialog.setContentView(panel);
+        AiDialogHelper.applyCloseOnlyDismiss(settingsDialog);
         settingsDialog.setOnDismissListener(dialog -> settingsDialog = null);
         settingsDialog.show();
         expandSheet(settingsDialog);
