@@ -99,6 +99,26 @@
         android:textSize="15sp"
         android:visibility="gone" />
 
+    <!-- ========== 生成中态：停止按钮 ========== -->
+    <FrameLayout
+        android:id="@+id/chart_stop_button"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/lolib_bg_continue_stop_button"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_gravity="center"
+            android:contentDescription="停止生成"
+            android:src="@drawable/lolib_ic_continue_stop" />
+    </FrameLayout>
+
     <!-- ========== 完成态：AI建议文本（完成态可见） ========== -->
     <LinearLayout
         android:id="@+id/chart_completed_group"

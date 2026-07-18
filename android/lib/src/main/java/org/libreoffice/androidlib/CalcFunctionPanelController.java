@@ -24,6 +24,7 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.ai.AiDialogHelper;
+import org.libreoffice.androidlib.calc.CalcFontColorPickerController;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -63,36 +64,6 @@ public class CalcFunctionPanelController {
     private static final int NUMFMT_CELL_VPAD_DP = 12;
     private static final int GRID_GAP_DP = 5;
     private static final int CARD_INNER_PADDING_DP = 8;
-
-    private static final int COLOR_SWATCH_SIZE_DP = 40;
-    private static final int COLOR_SWATCH_GAP_DP = 10;
-    private static final int COLOR_SWATCH_COLS = 6;
-
-    private static final class ColorSwatch {
-        final String label;
-        final int rgb;
-
-        ColorSwatch(String label, int rgb) {
-            this.label = label;
-            this.rgb = rgb;
-        }
-    }
-
-    /** 12 常用色：2 行 × 6 列，顺序与产品稿一致。 */
-    private static final ColorSwatch[] COMMON_COLOR_SWATCHES = new ColorSwatch[] {
-            new ColorSwatch("暗红", 0xD20000),
-            new ColorSwatch("琥珀", 0xFFBD00),
-            new ColorSwatch("草绿", 0x7ED330),
-            new ColorSwatch("天蓝", 0x00B3F7),
-            new ColorSwatch("紫色", 0x792BA6),
-            new ColorSwatch("白色", 0xFFFFFF),
-            new ColorSwatch("红色", 0xFF0000),
-            new ColorSwatch("黄色", 0xFFFF00),
-            new ColorSwatch("绿色", 0x00B242),
-            new ColorSwatch("蓝色", 0x0073C7),
-            new ColorSwatch("深蓝", 0x002164),
-            new ColorSwatch("黑色", 0x000000),
-    };
 
     private enum ColorPickerKind {
         FONT(".uno:Color", "Color.Color"),
@@ -292,6 +263,15 @@ public class CalcFunctionPanelController {
     private boolean chartPickerVisible;
     private boolean hyperlinkPickerVisible;
     private CalcHyperlinkPickerController hyperlinkPicker;
+    private boolean colorPickerVisible;
+    private CalcFontColorPickerController colorPicker;
+    private ColorPickerKind activeColorPickerKind;
+    private String activeColorPickerId;
+    private ImageView activeColorPreviewDot;
+    private int activeColorPreviewFallback;
+    private ImageView fontColorPreviewDot;
+    private ImageView bgColorPreviewDot;
+    private ImageView borderColorPreviewDot;
     private int submenuReturnTabIndex = 0;
     private int selectedTabIndex = 0;
     private final List<TextView> tabViews = new ArrayList<>();
@@ -367,6 +347,7 @@ public class CalcFunctionPanelController {
         dismissSubmenuPage();
         dismissChartPickerPage();
         dismissHyperlinkPickerPage();
+        dismissColorPickerPage();
         if (dialog != null) {
             dialog.dismiss();
             dialog = null;
@@ -408,6 +389,10 @@ public class CalcFunctionPanelController {
         }
         if (hyperlinkPickerVisible) {
             hyperlinkPickerVisible = false;
+            setTabChromeVisible(true);
+        }
+        if (colorPickerVisible) {
+            colorPickerVisible = false;
             setTabChromeVisible(true);
         }
         dismissFontPicker();
@@ -622,6 +607,7 @@ public class CalcFunctionPanelController {
         right.setLayoutParams(rightLp);
         ImageView colorDot = new ImageView(host.getContext());
         colorDot.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        fontColorPreviewDot = colorDot;
         updateColorPreviewDot(colorDot, pickerColorRgb.get("font_color"),
                 R.drawable.lolib_ic_calc_color_font_preview);
         LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(host.dpToPx(20), host.dpToPx(20));
@@ -633,8 +619,9 @@ public class CalcFunctionPanelController {
         right.addView(colorDot, dotLp);
         right.addView(colorLabel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         right.addView(createChevron());
-        right.setOnClickListener(v -> showCalcColorPicker(
-                "字体颜色", ColorPickerKind.FONT, "font_color", colorLabel, colorDot));
+        right.setOnClickListener(v -> showColorPickerPage(
+                ColorPickerKind.FONT, "font_color", fontColorPreviewDot,
+                R.drawable.lolib_ic_calc_color_font_preview, "字体颜色"));
 
         row.addView(left);
         row.addView(right);
@@ -999,6 +986,11 @@ public class CalcFunctionPanelController {
         LinearLayout card = createCardRow();
         ImageView colorDot = new ImageView(host.getContext());
         colorDot.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        if ("bg_color".equals(id)) {
+            bgColorPreviewDot = colorDot;
+        } else if ("border_color".equals(id)) {
+            borderColorPreviewDot = colorDot;
+        }
         updateColorPreviewDot(colorDot, pickerColorRgb.get(id), fallbackIconRes);
         LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(host.dpToPx(20), host.dpToPx(20));
         dotLp.setMarginEnd(host.dpToPx(8));
@@ -1011,7 +1003,7 @@ public class CalcFunctionPanelController {
         card.addView(createChevron());
         card.setOnClickListener(v -> {
             ColorPickerKind kind = "bg_color".equals(id) ? ColorPickerKind.BACKGROUND : ColorPickerKind.BORDER;
-            showCalcColorPicker(title, kind, id, label, colorDot);
+            showColorPickerPage(kind, id, colorDot, fallbackIconRes, title);
         });
         return card;
     }
@@ -1402,6 +1394,66 @@ public class CalcFunctionPanelController {
         Log.i(TAG, "hyperlink_picker_show");
     }
 
+    private void dismissColorPickerPage() {
+        if (!colorPickerVisible) {
+            return;
+        }
+        colorPickerVisible = false;
+        setTabChromeVisible(true);
+        int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
+                ? submenuReturnTabIndex : selectedTabIndex;
+        selectedTabIndex = returnIndex;
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(returnIndex));
+        }
+    }
+
+    private void showColorPickerPage(ColorPickerKind kind, String pickerId, ImageView previewDot,
+            int fallbackIconRes, String title) {
+        dismissFontPicker();
+        colorPickerVisible = true;
+        activeColorPickerKind = kind;
+        activeColorPickerId = pickerId;
+        activeColorPreviewDot = previewDot;
+        activeColorPreviewFallback = fallbackIconRes;
+        submenuReturnTabIndex = selectedTabIndex;
+        setTabChromeVisible(false);
+
+        if (colorPicker == null) {
+            colorPicker = new CalcFontColorPickerController(new CalcFontColorPickerController.Host() {
+                @Override
+                public android.content.Context getContext() {
+                    return host.getContext();
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return host.dpToPx(dp);
+                }
+
+                @Override
+                public void onColorSelected(int rgb) {
+                    applyCalcColorSelection(activeColorPickerKind, rgb);
+                    pickerColorRgb.put(activeColorPickerId, rgb);
+                    updateColorPreviewDot(activeColorPreviewDot, rgb, activeColorPreviewFallback);
+                    Log.i(TAG, "calc_color_picked kind=" + activeColorPickerKind.name()
+                            + " id=" + activeColorPickerId
+                            + " rgb=#" + Integer.toHexString(rgb).toUpperCase());
+                    dismissColorPickerPage();
+                }
+
+                @Override
+                public void onBack() {
+                    dismissColorPickerPage();
+                }
+            });
+        }
+
+        contentContainer.removeAllViews();
+        contentContainer.addView(colorPicker.buildRootView(title));
+        Log.i(TAG, "color_picker_show kind=" + kind.name() + " id=" + pickerId);
+    }
+
     private View createSingleGridCell(PanelItem item) {
         return createLabeledGrid(
                 new String[] { item.label },
@@ -1444,15 +1496,18 @@ public class CalcFunctionPanelController {
             return;
         }
         if ("bg_color".equals(item.id)) {
-            showCalcColorPicker("背景颜色", ColorPickerKind.BACKGROUND, "bg_color", valueView, null);
+            showColorPickerPage(ColorPickerKind.BACKGROUND, "bg_color", bgColorPreviewDot,
+                    R.drawable.lolib_ic_calc_color_bg_preview, "背景颜色");
             return;
         }
         if ("border_color".equals(item.id)) {
-            showCalcColorPicker("边框颜色", ColorPickerKind.BORDER, "border_color", valueView, null);
+            showColorPickerPage(ColorPickerKind.BORDER, "border_color", borderColorPreviewDot,
+                    R.drawable.lolib_ic_calc_color_border_preview, "边框颜色");
             return;
         }
         if ("font_color".equals(item.id)) {
-            showCalcColorPicker("字体颜色", ColorPickerKind.FONT, "font_color", valueView, null);
+            showColorPickerPage(ColorPickerKind.FONT, "font_color", fontColorPreviewDot,
+                    R.drawable.lolib_ic_calc_color_font_preview, "字体颜色");
             return;
         }
         if ("paper_orientation".equals(item.id)) {
@@ -1479,107 +1534,6 @@ public class CalcFunctionPanelController {
                 })
                 .setNegativeButton("取消", null)
                 .show();
-    }
-
-    private void showCalcColorPicker(String title, ColorPickerKind kind, String pickerId,
-            TextView labelView, ImageView previewDot) {
-        LinearLayout root = new LinearLayout(host.getContext());
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(host.dpToPx(16), host.dpToPx(8), host.dpToPx(16), host.dpToPx(12));
-
-        TextView section = new TextView(host.getContext());
-        section.setText("标准色");
-        section.setTextColor(COLOR_SECTION);
-        section.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        root.addView(section);
-
-        LinearLayout gridCard = new LinearLayout(host.getContext());
-        gridCard.setOrientation(LinearLayout.VERTICAL);
-        gridCard.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
-        int cardPad = host.dpToPx(12);
-        gridCard.setPadding(cardPad, cardPad, cardPad, cardPad);
-        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cardLp.topMargin = host.dpToPx(8);
-        root.addView(gridCard, cardLp);
-
-        Integer currentRgb = pickerColorRgb.get(pickerId);
-        final AlertDialog[] dialogRef = new AlertDialog[1];
-        int swatchSize = host.dpToPx(COLOR_SWATCH_SIZE_DP);
-        int gap = host.dpToPx(COLOR_SWATCH_GAP_DP);
-        LinearLayout row = null;
-        for (int i = 0; i < COMMON_COLOR_SWATCHES.length; i++) {
-            if (i % COLOR_SWATCH_COLS == 0) {
-                row = new LinearLayout(host.getContext());
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                row.setGravity(Gravity.CENTER_VERTICAL);
-                if (i > 0) {
-                    LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                    rowLp.topMargin = gap;
-                    row.setLayoutParams(rowLp);
-                }
-                gridCard.addView(row);
-            }
-            ColorSwatch swatch = COMMON_COLOR_SWATCHES[i];
-            boolean selected = currentRgb != null && currentRgb == swatch.rgb;
-            FrameLayout chip = createColorSwatchChip(swatch, selected, swatchSize);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(swatchSize, swatchSize);
-            if (i % COLOR_SWATCH_COLS < COLOR_SWATCH_COLS - 1) {
-                lp.setMarginEnd(gap);
-            }
-            chip.setLayoutParams(lp);
-            chip.setOnClickListener(v -> {
-                applyCalcColorSelection(kind, swatch.rgb);
-                pickerColorRgb.put(pickerId, swatch.rgb);
-                pickerValues.put(pickerId, swatch.label);
-                if (labelView != null) {
-                    labelView.setText(title);
-                }
-                if (previewDot != null) {
-                    int fallback = ColorPickerKind.FONT == kind
-                            ? R.drawable.lolib_ic_calc_color_font_preview
-                            : (ColorPickerKind.BACKGROUND == kind
-                            ? R.drawable.lolib_ic_calc_color_bg_preview
-                            : R.drawable.lolib_ic_calc_color_border_preview);
-                    updateColorPreviewDot(previewDot, swatch.rgb, fallback);
-                }
-                if (dialogRef[0] != null) {
-                    dialogRef[0].dismiss();
-                }
-                Log.i(TAG, "calc_color_picked kind=" + kind.name() + " id=" + pickerId
-                        + " rgb=#" + Integer.toHexString(swatch.rgb).toUpperCase());
-            });
-            if (row != null) {
-                row.addView(chip);
-            }
-        }
-
-        AlertDialog dialog = new AlertDialog.Builder(host.getContext())
-                .setTitle(title)
-                .setView(root)
-                .setNegativeButton("取消", null)
-                .create();
-        dialogRef[0] = dialog;
-        dialog.show();
-    }
-
-    private FrameLayout createColorSwatchChip(ColorSwatch swatch, boolean selected, int size) {
-        FrameLayout wrap = new FrameLayout(host.getContext());
-        View circle = new View(host.getContext());
-        circle.setBackground(createCircleSwatchDrawable(swatch.rgb));
-        wrap.addView(circle, new FrameLayout.LayoutParams(size, size));
-        if (selected) {
-            TextView check = new TextView(host.getContext());
-            check.setText("✓");
-            check.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-            check.setTypeface(Typeface.DEFAULT_BOLD);
-            check.setTextColor(isLightSwatch(swatch.rgb) ? Color.BLACK : Color.WHITE);
-            check.setGravity(Gravity.CENTER);
-            wrap.addView(check, new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        }
-        return wrap;
     }
 
     private void applyCalcColorSelection(ColorPickerKind kind, int rgb) {
@@ -1618,13 +1572,6 @@ public class CalcFunctionPanelController {
             drawable.setStroke(host.dpToPx(1), Color.parseColor("#D0D0D0"));
         }
         return drawable;
-    }
-
-    private boolean isLightSwatch(int rgb) {
-        int r = (rgb >> 16) & 0xFF;
-        int g = (rgb >> 8) & 0xFF;
-        int b = rgb & 0xFF;
-        return (0.299 * r + 0.587 * g + 0.114 * b) > 186;
     }
 
     private String buildColorUnoCommand(String unoCommand, String propertyName, int rgb) {

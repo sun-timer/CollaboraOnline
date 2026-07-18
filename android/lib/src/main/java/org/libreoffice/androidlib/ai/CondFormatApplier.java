@@ -429,6 +429,12 @@ public class CondFormatApplier {
         if (plan == null || !plan.isValid()) {
             return "无效的条件格式计划";
         }
+        if ("clear".equals(plan.conditionType)) {
+            if (plan.range == null || plan.range.trim().isEmpty()) {
+                return "清除格式的应用范围不能为空";
+            }
+            return null;
+        }
         if (getFormatRule(plan.conditionType) < 0) {
             return "不支持的条件类型: " + plan.conditionType;
         }
@@ -479,6 +485,25 @@ public class CondFormatApplier {
                 + " format=" + (plan.formatJson != null ? plan.formatJson : plan.style));
         Log.i(TAG, "applyDirect_args args=" + args);
 
+        if (callback != null) {
+            host.registerApplyResultCallback(callback);
+        }
+        host.postMobileUnoCommand(cmd, args);
+    }
+
+    /**
+     * 清除指定范围内的条件格式（.uno:ClearConditionalFormat，需 lo-core 支持）+ 直接格式。
+     */
+    public void clearDirect(String range, ApplyResultCallback callback) {
+        if (range == null || range.trim().isEmpty()) {
+            Log.e(TAG, "clearDirect_empty_range");
+            if (callback != null) callback.onResult(false);
+            return;
+        }
+        String cmd = ".uno:ClearConditionalFormat";
+        String args = "{\"Range\":{\"type\":\"string\",\"value\":\""
+                + escapeJsonString(range.trim()) + "\"}}";
+        Log.i(TAG, "clearDirect range=" + range + " args=" + args);
         if (callback != null) {
             host.registerApplyResultCallback(callback);
         }

@@ -1,0 +1,107 @@
+/*
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * Chart type picker styling
+ */
+
+.chart-type-picker {
+  max-width: 100%;
+  margin: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  .chart-category-title {
+    font-size: 16px;
+    color: #3c3e42;
+    margin: 16px 16px 8px 16px;
+    padding: 0;
+    font-weight: 500;
+  }
+
+  .chart-type-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 12px;
+    padding: 0 16px 16px 16px;
+    box-sizing: border-box;
+  }
+
+  .chart-type-card {
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    border-radius: 8px;
+    padding: 8px;
+    box-sizing: border-box;
+    background: #f8f8f8;
+    border: 1px solid #e0e0e0;
+    transition: background-color 0.2s, border-color 0.2s;
+    text-align: center;
+
+    &:hover {
+      background: #e8e8e8;
+      border-color: #6a6a6a;
+    }
+
+    &.selected {
+      border-color: #4551BD;
+      background: #e8eaf6;
+    }
+
+    .chart-icon-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      height: 80px;
+      margin-bottom: 8px;
+      box-sizing: border-box;
+
+      .chart-type-icon {
+        max-width: 100%;
+        max-height: 100%;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+      }
+    }
+
+    .chart-type-label {
+      font-size: 12px;
+      color: #3c3e42;
+      margin-top: 4px;
+      box-sizing: border-box;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+}
+
+/* Media query for mobile */
+@media (max-width: 767px) {
+  .chart-type-picker {
+    .chart-type-grid {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 0 8px 8px 8px;
+    }
+
+    .chart-category-title {
+      font-size: 14px;
+      margin: 12px 8px 8px 8px;
+    }
+
+    .chart-type-card {
+      padding: 4px;
+
+      .chart-icon-container {
+        height: 60px;
+      }
+
+      .chart-type-label {
+        font-size: 10px;
+      }
+    }
+  }
+}
