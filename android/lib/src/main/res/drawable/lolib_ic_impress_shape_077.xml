@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Impress shape icon — scripts/generate-impress-shape-assets.js -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:pathData="M7.21204 29.9021L29.9026 7.21156C30.9346 6.17949 32.608 6.17947 33.6401 7.21156L56.3306 29.9021C57.3627 30.9341 57.3627 32.6076 56.3306 33.6396L33.6401 56.3302C32.608 57.3622 30.9346 57.3622 29.9026 56.3302L7.21204 33.6396C6.17998 32.6076 6.17996 30.9341 7.21204 29.9021Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#333333"
+        android:strokeWidth="2.66667" />
+    <path
+        android:pathData="M20.3667 31.1148L31.1148 20.3667C31.6037 19.8778 32.3963 19.8778 32.8852 20.3667L43.6334 31.1148C44.1222 31.6037 44.1222 32.3963 43.6334 32.8852L32.8852 43.6334C32.3963 44.1222 31.6037 44.1222 31.1148 43.6334L20.3667 32.8852C19.8778 32.3963 19.8778 31.6037 20.3667 31.1148Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#333333"
+        android:strokeWidth="2.66667" />
+    <path
+        android:pathData="M31.7056 7.10938V20.3945"
+        android:fillColor="#00000000"
+        android:strokeColor="#333333"
+        android:strokeWidth="2.66667" />
+    <path
+        android:pathData="M32.1216 44.4062V56.793"
+        android:fillColor="#00000000"
+        android:strokeColor="#333333"
+        android:strokeWidth="2.66667" />
+    <path
+        android:pathData="M43.9839 31.8398H56.8561"
+        android:fillColor="#00000000"
+        android:strokeColor="#333333"
+        android:strokeWidth="2.66667" />
+    <path
+        android:pathData="M20 31.9375H6.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#333333"
+        android:strokeWidth="2.66667" />
+</vector>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Impress shape icon — scripts/generate-impress-shape-assets.js -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:pathData="M56.7433 29.527C56.7433 39.0839 50.0544 47.2346 40.6601 50.3941C37.9648 51.3005 35.0465 51.7961 31.9998 51.7961C22.1024 51.7961 9.7307 56.7448 9.7307 56.7448L12.5324 50.6933C13.9252 47.6847 13.0364 44.187 11.1203 41.4815C8.6739 38.0278 7.25635 33.9263 7.25635 29.527C7.25635 17.228 18.3345 7.25781 31.9998 7.25781C45.6652 7.25781 56.7433 17.228 56.7433 29.527Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#333333"
+        android:strokeWidth="2.66667" />
+</vector>
