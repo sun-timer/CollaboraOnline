@@ -25,6 +25,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
+import androidx.annotation.Nullable;
+
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.OutputKeys;
@@ -70,15 +72,18 @@ public class DocxTemplateFiller {
     /**
      * Fill a docx template with AI-generated section content.
      *
-     * @param resId       Android resource ID (e.g. R.raw.typeset_template_paper)
-     * @param typesetType one of "paper", "gov", "contract", "general"
-     * @param sections    map of sectionKey → AI-generated text content (plain text)
-     * @param context     Android context for resource access
+     * @param resId         Android resource ID (e.g. R.raw.typeset_template_paper)
+     * @param typesetType   one of "paper", "gov", "contract", "general"
+     * @param sections      map of sectionKey → AI-generated text content (plain text)
+     * @param context       Android context for resource access
+     * @param sourceDocName optional source document name (without extension);
+     *                      used for output filename when title section is missing
      * @return File pointing to filled .docx in getExternalFilesDir("Documents"),
      *         or null on failure
      */
     public static File fillTemplate(int resId, String typesetType,
-                                     Map<String, String> sections, Context context) {
+                                     Map<String, String> sections, Context context,
+                                     @Nullable String sourceDocName) {
         LinkedHashMap<String, String> sectionMap = TemplateSectionMap.getSectionMap(typesetType);
         if (sectionMap == null) {
             Log.e(TAG, "Unknown typeset type: " + typesetType);
@@ -101,8 +106,10 @@ public class DocxTemplateFiller {
             fillDocumentXml(docXml, sectionMap, sections);
 
             // Step 3: Re-zip to output file
-            String title = sections.getOrDefault("title", "typeset_output");
-            String safeName = sanitizeFilename(title);
+            String title = sections.getOrDefault("title", "");
+            String base = !title.isEmpty() ? title
+                    : (sourceDocName != null && !sourceDocName.isEmpty() ? sourceDocName : "typeset_output");
+            String safeName = sanitizeFilename(base);
             if (!safeName.endsWith(".docx")) safeName += ".docx";
 
             File outputDir = new File(context.getExternalFilesDir("Documents"), "typeset");
