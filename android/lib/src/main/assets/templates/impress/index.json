@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "id": "business",
+      "name": "商务风",
+      "description": "专业商务风格，适合正式汇报",
+      "coverImage": "business/cover.jpg",
+      "file": "business/template.pptx",
+      "slideCount": 14,
+      "maxPoints": 6,
+      "variants": [3, 4, 6]
+    },
+    {
+      "id": "minimalist",
+      "name": "简约风",
+      "description": "极简设计，突出内容本身",
+      "coverImage": "minimalist/cover.jpg",
+      "file": "minimalist/template.pptx",
+      "slideCount": 20,
+      "maxPoints": 6,
+      "variants": [2, 3, 4, 6]
+    },
+    {
+      "id": "dark",
+      "name": "暗黑风",
+      "description": "深色背景，适合科技产品展示",
+      "coverImage": "dark/cover.jpg",
+      "file": "dark/template.pptx",
+      "slideCount": 19,
+      "maxPoints": 8,
+      "variants": [2, 3, 4, 7, 8]
+    },
+    {
+      "id": "fresh",
+      "name": "清新风",
+      "description": "清新自然风格，适合轻松主题",
+      "coverImage": "fresh/cover.jpg",
+      "file": "fresh/template.pptx",
+      "slideCount": 13,
+      "maxPoints": 6,
+      "variants": [4, 6]
+    },
+    {
+      "id": "tech",
+      "name": "科技风",
+      "description": "科技感设计，适合技术分享",
+      "coverImage": "tech/cover.jpg",
+      "file": "tech/template.pptx",
+      "slideCount": 24,
+      "maxPoints": 6,
+      "variants": [2, 3, 4, 6]
+    },
+    {
+      "id": "flat",
+      "name": "扁平风",
+      "description": "扁平化设计，简洁大方",
+      "coverImage": "flat/cover.jpg",
+      "file": "flat/template.pptx",
+      "slideCount": 13,
+      "maxPoints": 4,
+      "variants": [2, 3, 4]
+    },
+    {
+      "id": "retro",
+      "name": "复古风",
+      "description": "复古风格，适合文化类内容",
+      "coverImage": "retro/cover.jpg",
+      "file": "retro/template.pptx",
+      "slideCount": 16,
+      "maxPoints": 6,
+      "variants": [2, 3, 6]
+    }
+  ]
+}

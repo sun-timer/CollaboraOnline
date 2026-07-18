@@ -1,0 +1,390 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="328dp"
+    android:layout_height="560dp"
+    android:background="@drawable/lolib_bg_dialog_outline"
+    android:elevation="50dp"
+    android:orientation="vertical"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:paddingStart="20dp"
+    android:paddingTop="20dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="24dp">
+
+    <!-- 标题栏 -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="48dp">
+
+        <TextView
+            android:id="@+id/impress_outline_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:text="AI生成PPT"
+            android:textColor="#101010"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/impress_outline_close_button"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="top|end"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="关闭"
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/lolib_ic_dialog_close" />
+    </FrameLayout>
+
+    <!-- ============ 状态 0: 输入态 ============ -->
+    <LinearLayout
+        android:id="@+id/impress_outline_input_group"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:visibility="visible">
+
+        <!-- 输入方式 Tab 切换 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:orientation="horizontal"
+            android:background="@drawable/lolib_bg_continue_pill_secondary">
+
+            <TextView
+                android:id="@+id/impress_outline_tab_quick"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="快速生成"
+                android:textSize="14sp"
+                android:textColor="#FFFFFF"
+                android:background="@drawable/lolib_bg_continue_pill_primary" />
+
+            <TextView
+                android:id="@+id/impress_outline_tab_doc"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="文档生成"
+                android:textSize="14sp"
+                android:textColor="#666666" />
+
+            <TextView
+                android:id="@+id/impress_outline_tab_paste"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="粘贴大纲"
+                android:textSize="14sp"
+                android:textColor="#666666" />
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/impress_outline_quick_input"
+            android:layout_width="match_parent"
+            android:layout_height="100dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/lolib_bg_outline_edit"
+            android:gravity="start|top"
+            android:hint="请输入PPT主题，如：公司年度总结"
+            android:inputType="textMultiLine"
+            android:padding="12dp"
+            android:textColor="#101010"
+            android:textColorHint="#9AA0A6"
+            android:textSize="14sp"
+            android:visibility="visible" />
+
+        <LinearLayout
+            android:id="@+id/impress_outline_doc_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <Button
+                android:id="@+id/impress_outline_doc_select_btn"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:background="@drawable/lolib_bg_gradient_button_outline"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:text="选择文件"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/impress_outline_doc_file_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textSize="12sp"
+                android:textColor="#5F6368"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/impress_outline_paste_input"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/lolib_bg_outline_edit"
+            android:gravity="start|top"
+            android:hint="粘贴已有大纲文本..."
+            android:inputType="textMultiLine"
+            android:padding="12dp"
+            android:textColor="#101010"
+            android:textColorHint="#9AA0A6"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="页数"
+            android:textColor="#333333"
+            android:textSize="13sp" />
+        <Spinner
+            android:id="@+id/impress_outline_page_spinner"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/lolib_bg_outline_edit" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="听众"
+            android:textColor="#333333"
+            android:textSize="13sp" />
+        <Spinner
+            android:id="@+id/impress_outline_audience_spinner"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/lolib_bg_outline_edit" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="风格"
+            android:textColor="#333333"
+            android:textSize="13sp" />
+        <Spinner
+            android:id="@+id/impress_outline_style_spinner"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/lolib_bg_outline_edit" />
+
+        <TextView
+            android:id="@+id/impress_outline_generate_btn"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/lolib_bg_gradient_button_outline"
+            android:gravity="center"
+            android:text="✨ 生成大纲"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- ============ 状态 1: 生成大纲中 ============ -->
+    <TextView
+        android:id="@+id/impress_outline_loading_text"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="正在生成大纲..."
+        android:textColor="#5F6368"
+        android:textSize="15sp"
+        android:visibility="gone" />
+
+    <!-- ============ 状态 2: 完成态（大纲卡片列表） ============ -->
+    <LinearLayout
+        android:id="@+id/impress_outline_completed_group"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <LinearLayout
+                android:id="@+id/impress_outline_card_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp" />
+        </androidx.core.widget.NestedScrollView>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingTop="8dp">
+
+            <TextView
+                android:id="@+id/impress_outline_regenerate_btn"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/lolib_bg_continue_pill_secondary"
+                android:gravity="center"
+                android:text="重新生成"
+                android:textColor="#333333"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/impress_outline_template_btn"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/lolib_bg_gradient_button_outline"
+                android:gravity="center"
+                android:text="选择模板"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ============ 状态 5: 模板选择（同弹窗内切换） ============ -->
+    <LinearLayout
+        android:id="@+id/impress_outline_template_group"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="@string/impress_template_select_hint"
+            android:textColor="#5F6368"
+            android:textSize="14sp" />
+
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="12dp">
+
+            <LinearLayout
+                android:id="@+id/template_grid_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </androidx.core.widget.NestedScrollView>
+
+        <TextView
+            android:id="@+id/impress_outline_template_back_btn"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/lolib_bg_continue_pill_secondary"
+            android:gravity="center"
+            android:text="返回大纲"
+            android:textColor="#333333"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- ============ 状态 3: 错误态 ============ -->
+    <LinearLayout
+        android:id="@+id/impress_outline_error_group"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/impress_outline_error_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FF4444"
+            android:textSize="14sp"
+            android:gravity="center" />
+
+        <TextView
+            android:id="@+id/impress_outline_error_retry_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/lolib_bg_gradient_button_outline"
+            android:gravity="center"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:text="重新生成"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- ============ 状态 4: 生成 PPT 中 ============ -->
+    <LinearLayout
+        android:id="@+id/impress_outline_generating_ppt_group"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingTop="24dp"
+        android:paddingBottom="24dp"
+        android:visibility="gone">
+
+        <ProgressBar
+            android:id="@+id/impress_outline_generating_ppt_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="8dp"
+            android:max="100"
+            android:progress="0" />
+
+        <TextView
+            android:id="@+id/impress_outline_generating_ppt_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:gravity="center"
+            android:text="@string/impress_generating_ppt"
+            android:textColor="#101010"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/impress_outline_generating_ppt_detail"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="@string/impress_generating_ppt_detail"
+            android:textColor="#5F6368"
+            android:textSize="14sp" />
+    </LinearLayout>
+</LinearLayout>
