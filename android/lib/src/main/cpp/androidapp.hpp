@@ -9,6 +9,12 @@ extern int coolwsd_server_socket_fd;
 
 extern const char* user_name;
 
+/** Called from COOLWSD when the public accept socket is listening (Android reuse HULLO). */
+void androidNotifyCoolwsdServerListening();
+
+/** Called from COOLWSD when the accept socket is torn down (avoid stale serverFd on reuse). */
+void androidNotifyCoolwsdServerStopped();
+
 /** Equivalent of postMobileMessage(), but called directly from the native code. */
 void postDirectMessage(std::string message);
 

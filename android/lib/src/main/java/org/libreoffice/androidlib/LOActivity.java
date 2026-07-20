@@ -109,6 +109,7 @@ import androidx.core.content.FileProvider;
 
 import org.libreoffice.androidlib.template.PptxTemplateFiller;
 import org.libreoffice.androidlib.template.TemplateIndex;
+import org.libreoffice.androidlib.impress.ImpressTransitionApplier;
 import org.libreoffice.androidlib.typeset.DocxImageInserter;
 import org.libreoffice.androidlib.typeset.DocxTemplateFiller;
 import org.libreoffice.androidlib.typeset.TemplateSectionMap;
@@ -244,6 +245,10 @@ public class LOActivity extends AppCompatActivity {
     private volatile boolean documentSwitchInProgress = false;
     /** onDestroy 开始后拒绝 WebView / native 再回调 Java。 */
     private volatile boolean documentBridgeEnabled = true;
+    /** finishWithProgress 回首页时置 true；用于忽略 JS 二次 BYE、防 finishWithProgress 重入；回首页 defer BYE。 */
+    private volatile boolean exitingToHome = false;
+    /** finishWithProgress 已在 finish() 前同步跑完 BYE + wait idle；onDestroy 勿重复 BYE。 */
+    private volatile boolean homeExitByeCompleted = false;
 
     private ClipboardManager clipboardManager;
     private ClipData clipData;
@@ -815,6 +820,8 @@ public class LOActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        ExitDiagHelper.installOnce();
+        ExitDiagHelper.logPreviousProcessDeaths(this);
         this.savedInstanceState = savedInstanceState;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         sPrefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
@@ -841,7 +848,7 @@ public class LOActivity extends AppCompatActivity {
                     return;
                 }
                 if (!documentLoaded) {
-                    finishAndRemoveTask();
+                    finish();
                     return;
                 }
 
@@ -1436,6 +1443,7 @@ public class LOActivity extends AppCompatActivity {
                     loadDocument();
                 } else {
                     Toast.makeText(this, getString(R.string.storage_permission_required), Toast.LENGTH_SHORT).show();
+                    ExitDiagHelper.logProbe("permission_denied_storage", "action=finishAndRemoveTask");
                     finishAndRemoveTask();
                     break;
                 }
@@ -1636,7 +1644,14 @@ public class LOActivity extends AppCompatActivity {
         // onPause 里的 save 消息会让 core 退出编辑态，导致"跳回主页"现象。
         // 修复：彻底移除这里的 save，文档保存由其他机制（auto-save / 用户手动保存）负责。
         Log.i(TAG, "onPause.. documentLoaded=" + documentLoaded
+                + " isFinishing=" + isFinishing()
+                + " exitingToHome=" + exitingToHome
                 + " aiSheetShowing=" + (aiOperationSheet != null && aiOperationSheet.isShowing()));
+        if (isFinishing() || exitingToHome) {
+            ExitDiagHelper.logProbe("lo_onPause_exiting",
+                    "callingActivity=" + (getCallingActivity() != null ? getCallingActivity().getClassName() : "null")
+                            + " isTaskRoot=" + isTaskRoot());
+        }
         super.onPause();
     }
 
@@ -1653,18 +1668,49 @@ public class LOActivity extends AppCompatActivity {
         super.onUserLeaveHint();
     }
 
-    private void destroyWebViewNow() {
+    private void destroyWebViewSafely(boolean deferDestroy) {
         if (mWebView == null) {
             return;
+        }
+        try {
+            mWebView.stopLoading();
+            mWebView.loadUrl("about:blank");
+        } catch (Throwable t) {
+            Log.w(TAG, "exit_diag_webview_stop_fail pid=" + android.os.Process.myPid(), t);
         }
         final ViewGroup viewGroup = (ViewGroup) mWebView.getParent();
         if (viewGroup != null) {
             viewGroup.removeView(mWebView);
         }
-        mWebView.destroy();
-        mWebView = null;
         mMobileSocket = null;
         mobileSocketDrainScheduled.set(false);
+        final COWebView detached = mWebView;
+        mWebView = null;
+        if (deferDestroy) {
+            Log.i(TAG, "exit_diag_webview_destroy_deferred_scheduled pid=" + android.os.Process.myPid());
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        detached.destroy();
+                        ExitDiagHelper.logPhase("webview_destroy_deferred_done");
+                    } catch (Throwable t) {
+                        Log.e(TAG, "exit_diag_webview_destroy_deferred_fail pid="
+                                + android.os.Process.myPid(), t);
+                    }
+                }
+            }, 800);
+        } else {
+            try {
+                detached.destroy();
+            } catch (Throwable t) {
+                Log.e(TAG, "exit_diag_webview_destroy_fail pid=" + android.os.Process.myPid(), t);
+            }
+        }
+    }
+
+    private void destroyWebViewNow() {
+        destroyWebViewSafely(false);
     }
 
     @Override
@@ -1683,17 +1729,27 @@ public class LOActivity extends AppCompatActivity {
         documentLoaded = false;
         mProgressDialog.dismiss();
 
-        if (needsBye) {
-            // BYE must finish while WebView is still alive; await on nativeHandler, then tear down.
+        if (needsBye && !homeExitByeCompleted) {
+            if (exitingToHome) {
+                setExpectCoolwsdRun(false);
+            }
+            // closeDocument 本身 ms=0；延迟 BYE 由 grace period + 禁止 finishAndRemoveTask 拦截。
             runNativeByeBlocking("home_exit");
         }
+        homeExitByeCompleted = false;
+        exitingToHome = false;
+        ExitDiagHelper.logPhase("after_bye_before_clear_callbacks");
         // Stop native→Java first; then tear down WebView (Chromium may still callback during destroy).
         clearNativeActivityCallbacks();
-        destroyWebViewNow();
+        ExitDiagHelper.logPhase("after_clear_callbacks_before_webview_destroy");
+        destroyWebViewSafely(isFinishing());
+        ExitDiagHelper.logPhase("after_webview_destroy_before_looper_quit");
         quitNativeMsgLooperSafely();
 
         super.onDestroy();
         Log.i(TAG, "onDestroy done pid=" + android.os.Process.myPid());
+        ExitDiagHelper.schedulePostDestroyWatchdog(
+                mIsImpressDocument ? "impress" : (mIsCalcDocument ? "calc" : "writer"));
     }
 
     private void quitNativeMsgLooperSafely() {
@@ -1960,41 +2016,78 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    public void finish() {
+        ExitDiagHelper.logTaskFinishProbe(this, "finish", false);
+        super.finish();
+    }
+
+    @Override
+    public void finishAndRemoveTask() {
+        ExitDiagHelper.logTaskFinishProbe(this, "finishAndRemoveTask", true);
+        super.finishAndRemoveTask();
+    }
+
     /** Show the Saving progress and finish the app. */
     private void finishWithProgress() {
+        ExitDiagHelper.logProbe("finishWithProgress_enter",
+                "documentLoaded=" + documentLoaded
+                        + " isFinishing=" + isFinishing()
+                        + " exitingToHome=" + exitingToHome
+                        + " callingActivity=" + (getCallingActivity() != null ? getCallingActivity().getClassName() : "null")
+                        + " isTaskRoot=" + isTaskRoot());
+        if (isFinishing() || exitingToHome) {
+            Log.i(TAG, "home_exit_skip_duplicate reason=already_finishing_or_exiting_to_home pid="
+                    + android.os.Process.myPid());
+            return;
+        }
         if (!documentLoaded) {
-            finishAndRemoveTask();
+            ExitDiagHelper.logProbe("finishWithProgress_not_loaded", "action=finish_only");
+            finish();
             return;
         }
         mProgressDialog.indeterminate(R.string.exiting);
 
-        // Queue BYE on nativeHandler while WebView is still alive, then finish() immediately
-        // so home resumes without blocking main thread on BYE (~2–3s).
+        // 同步：先 BYE + 等 COOLWSD run 结束，再 finish() 回首页（避免二次开文档与上一轮 teardown 竞态）。
         getMainHandler().post(new Runnable() {
             @Override
             public void run() {
+                if (isFinishing() || exitingToHome) {
+                    Log.i(TAG, "home_exit_skip_duplicate reason=posted_after_finishing pid="
+                            + android.os.Process.myPid());
+                    return;
+                }
                 Log.i(TAG, "home_exit_start callingActivity="
                         + (getCallingActivity() != null ? getCallingActivity().getClassName() : "null")
                         + " isTaskRoot=" + isTaskRoot()
                         + " pid=" + android.os.Process.myPid());
                 cancelAllAiRequests();
+                exitingToHome = true;
+                ExitDiagHelper.markDocExitToHome();
+                setExpectCoolwsdRun(false);
+                runNativeByeBlocking("home_exit");
+                final boolean app2jsIdle = waitForApp2jsIdle(8000);
+                homeExitByeCompleted = true;
+                Log.i(TAG, "home_exit_app2js_idle=" + app2jsIdle + " pid=" + android.os.Process.myPid());
                 if (getCallingActivity() != null) {
                     setResult(RESULT_OK);
-                    finish();
-                    Log.i(TAG, "home_exit_finish_done pid=" + android.os.Process.myPid());
-                } else {
-                    finishAndRemoveTask();
+                } else if (!isTaskRoot()) {
+                    setResult(RESULT_OK);
                 }
+                finish();
+                Log.i(TAG, "home_exit_finish_done pid=" + android.os.Process.myPid());
             }
         });
     }
 
     private void loadDocument() {
         mProgressDialog.determinate(R.string.loading);
+        exitingToHome = false;
         aiBridgeInjected = false;
         documentStateBridgeInjected = false;
         documentModified = false;
         closeAfterSaveRequested = false;
+        documentSwitchInProgress = true;
 
         // setup the COOLWSD
         ApplicationInfo applicationInfo = getApplicationInfo();
@@ -2006,7 +2099,7 @@ public class LOActivity extends AppCompatActivity {
         AssetManager assetManager = getResources().getAssets();
         String uiMode = (isLargeScreen() && !isChromeOS()) ? "notebookbar" : "classic";
         String userName = getPrefs().getString(USER_NAME_KEY, "Guest User");
-        setExpectCoolwsdRun(true);
+        // expect_coolwsd_run 由 createCOOLWSD 在「上一轮 run 已 idle」后再置 true；此处提前置 true 会在 reuse 时与旧 session teardown 竞态杀进程。
         createCOOLWSD(dataDir, cacheDir, apkFile, assetManager, urlToLoad, uiMode, userName);
 
         // trigger the load of the document
@@ -2045,6 +2138,7 @@ public class LOActivity extends AppCompatActivity {
         mWebView.loadUrl(finalUrlToLoad);
 
         documentLoaded = true;
+        documentSwitchInProgress = false;
         if (startInEditMode) {
             updateEditModeState(true, "intent_start_edit");
             manualEditModeSwitchPending = true;
@@ -2104,6 +2198,12 @@ public class LOActivity extends AppCompatActivity {
     /** false = 回首页时 COOLWSD 线程 idle；true = 即将打开/切换文档。 */
     public native void setExpectCoolwsdRun(boolean expect);
 
+    /** 等待 app2js 转发线程在 BYE 后退出（iOS 模型下 COOLWSD 常驻，不等待 run 返回）。 */
+    public native boolean waitForApp2jsIdle(int timeoutMs);
+
+    /** @deprecated 兼容旧 native；内部转发 waitForApp2jsIdle */
+    public native boolean waitForCoolwsdRunIdle(int timeoutMs);
+
     /** WebView 销毁后切断 native→Java 回调，防止 BYE 收尾时 use-after-destroy。 */
     private native void clearNativeActivityCallbacks();
 
@@ -2112,7 +2212,21 @@ public class LOActivity extends AppCompatActivity {
      */
     @JavascriptInterface
     public void postMobileMessage(String message) {
+        final boolean isBye = message != null && (message.equals("BYE") || message.startsWith("BYE "));
+        if (isBye) {
+            ExitDiagHelper.logByeProbe("postMobileMessage_enter", message,
+                    documentBridgeEnabled, isFinishing(), exitingToHome, documentLoaded,
+                    documentSwitchInProgress,
+                    getCallingActivity() != null, isTaskRoot(), "pending");
+        }
         if (!documentBridgeEnabled || isFinishing()) {
+            if (isBye) {
+                ExitDiagHelper.logByeProbe("postMobileMessage_blocked", message,
+                        documentBridgeEnabled, isFinishing(), exitingToHome, documentLoaded,
+                        documentSwitchInProgress,
+                        getCallingActivity() != null, isTaskRoot(),
+                        !documentBridgeEnabled ? "bridge_disabled" : "is_finishing");
+            }
             return;
         }
         Log.d(TAG, "postMobileMessage: " + message);
@@ -2326,9 +2440,42 @@ public class LOActivity extends AppCompatActivity {
         switch (messageAndParam[0]) {
             case "BYE":
                 if (documentSwitchInProgress) {
-                    Log.i(TAG, "bye_ignored reason=document_switch_in_progress");
+                    ExitDiagHelper.logByeProbe("beforeMessageFromWebView", messageAndParam[0],
+                            documentBridgeEnabled, isFinishing(), exitingToHome, documentLoaded,
+                            documentSwitchInProgress,
+                            getCallingActivity() != null, isTaskRoot(),
+                            "ignored_document_switch");
                     return false;
                 }
+                if (!documentLoaded) {
+                    ExitDiagHelper.logByeProbe("beforeMessageFromWebView", messageAndParam[0],
+                            documentBridgeEnabled, isFinishing(), exitingToHome, documentLoaded,
+                            documentSwitchInProgress,
+                            getCallingActivity() != null, isTaskRoot(),
+                            "ignored_document_not_loaded");
+                    return false;
+                }
+                if (isFinishing() || exitingToHome) {
+                    ExitDiagHelper.logByeProbe("beforeMessageFromWebView", messageAndParam[0],
+                            documentBridgeEnabled, isFinishing(), exitingToHome, documentLoaded,
+                            documentSwitchInProgress,
+                            getCallingActivity() != null, isTaskRoot(),
+                            "ignored_activity_finishing");
+                    return false;
+                }
+                if (ExitDiagHelper.isWithinDocExitGracePeriod(8000)) {
+                    ExitDiagHelper.logByeProbe("beforeMessageFromWebView", messageAndParam[0],
+                            documentBridgeEnabled, isFinishing(), exitingToHome, documentLoaded,
+                            documentSwitchInProgress,
+                            getCallingActivity() != null, isTaskRoot(),
+                            "ignored_recent_home_exit");
+                    return false;
+                }
+                ExitDiagHelper.logByeProbe("beforeMessageFromWebView", messageAndParam[0],
+                        documentBridgeEnabled, isFinishing(), exitingToHome, documentLoaded,
+                        documentSwitchInProgress,
+                        getCallingActivity() != null, isTaskRoot(),
+                        "call_finishWithProgress");
                 finishWithProgress();
                 return false;
             case "PRINT":
@@ -8392,6 +8539,11 @@ public class LOActivity extends AppCompatActivity {
                 public void runAfterFunctionPanelDismiss(Runnable action) {
                     LOActivity.this.runAfterFunctionPanelDismiss(action);
                 }
+
+                @Override
+                public void applySlideTransition(int iconViewIndex, boolean applyToAll) {
+                    LOActivity.this.applySlideTransitionFromPanel(iconViewIndex, applyToAll);
+                }
             });
         }
         return impressFunctionPanelController;
@@ -9091,6 +9243,20 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         getMainHandler().postDelayed(action, 200L);
+    }
+
+    void applySlideTransitionFromPanel(int iconViewIndex, boolean applyToAll) {
+        ImpressTransitionApplier.apply(new ImpressTransitionApplier.Host() {
+            @Override
+            public void postUnoCommand(String cmd, String args, boolean notify) {
+                LOActivity.this.postUnoCommand(cmd, args, notify);
+            }
+
+            @Override
+            public void evaluateJavascript(String script, android.webkit.ValueCallback<String> callback) {
+                LOActivity.this.evaluateJavascript(script, callback);
+            }
+        }, iconViewIndex, applyToAll);
     }
 
     private void focusDocumentAndShowIme() {

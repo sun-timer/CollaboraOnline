@@ -111,6 +111,10 @@
 using Poco::Util::LayeredConfiguration;
 using Poco::Util::Option;
 
+#if defined(__ANDROID__)
+extern "C" void androidLogCoolwsdDiag(const char* phase, const char* detail);
+#endif
+
 /// Port for external clients to connect to
 int ClientPortNumber = 0;
 
@@ -960,17 +964,30 @@ std::shared_ptr<ChildProcess> getNewChild_Blocks(const std::shared_ptr<SocketPol
     assert(mobileAppDocId > 0 && "Unexpected to have no mobileAppDocId in the iOS build");
 #endif
 
+#if defined(__ANDROID__)
+    // Previous document's kit sets TerminationFlag on 'exit'. Must reset before spawning the next
+    // lokit_main or kitPoll() returns -1 immediately and the second document hangs on "loading".
+    SigUtil::resetTerminationFlags();
+    androidLogCoolwsdDiag("getNewChild_spawn", Util::encodeId(mobileAppDocId, 3).c_str());
+#endif
+
     std::thread([&]
                 {
 #ifndef IOS
                     std::lock_guard<std::mutex> lock(COOLWSD::lokit_main_mutex);
                     Util::setThreadName("lokit_main");
+#if defined(__ANDROID__)
+                    androidLogCoolwsdDiag("lokit_main_enter", Util::encodeId(mobileAppDocId, 3).c_str());
+#endif
 #else
                     Util::setThreadName("lokit_main_" + Util::encodeId(mobileAppDocId, 3));
 #endif
                     // Ugly to have that static global PrisonerServerSocketFD, Otoh we know
                     // there is just one COOLWSD object. (Even in real Online.)
                     lokit_main(PrisonerServerSocketFD, COOLWSD::UserInterface, mobileAppDocId);
+#if defined(__ANDROID__)
+                    androidLogCoolwsdDiag("lokit_main_exit", Util::encodeId(mobileAppDocId, 3).c_str());
+#endif
                 }).detach();
 #endif // MOBILEAPP
 
@@ -3357,6 +3374,10 @@ void COOLWSDServer::start(std::shared_ptr<ServerSocket>&& serverSocket)
 {
 #if MOBILEAPP
     coolwsd_server_socket_fd = serverSocket->getFD();
+#if defined(__ANDROID__)
+    extern void androidNotifyCoolwsdServerListening();
+    androidNotifyCoolwsdServerListening();
+#endif
 #endif
 
     _acceptPoll.startThread();
@@ -4162,7 +4183,16 @@ void COOLWSD::innerMain()
     if constexpr (Util::isMobileApp())
     {
         LOG_INF("Process [coolwsd] finished with exit status: " << EXIT_OK);
+#if defined(__ANDROID__)
+        // Android: COOLWSD runs inside the app process (androidapp.cpp thread loop).
+        // forcedExit → std::_Exit(0) kills the whole JVM (~2.3s after BYE, EXIT_SELF in logcat).
+        // iOS avoids this because the shutdown block above is wrapped in #ifndef IOS.
+        extern void androidNotifyCoolwsdServerStopped();
+        androidNotifyCoolwsdServerStopped();
+        LOG_INF("Android: COOLWSD run finished, returning to app thread (no forcedExit)");
+#else
         Util::forcedExit(EXIT_OK);
+#endif
     }
 
 #endif // !IOS

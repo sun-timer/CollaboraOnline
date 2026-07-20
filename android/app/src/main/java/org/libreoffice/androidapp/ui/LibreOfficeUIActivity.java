@@ -69,6 +69,7 @@ import org.libreoffice.androidapp.R;
 import org.libreoffice.androidapp.SettingsActivity;
 import org.libreoffice.androidapp.SettingsListenerModel;
 import org.libreoffice.androidlib.LOActivity;
+import org.libreoffice.androidlib.ExitDiagHelper;
 
 import java.io.File;
 import java.io.FileFilter;
@@ -186,6 +187,8 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        ExitDiagHelper.installOnce();
+        ExitDiagHelper.logPreviousProcessDeaths(this);
         logHomeLifecycle("onCreate_enter", savedInstanceState);
         // Manifest 为 Splash 主题（首帧欢迎图）；此处切回正式主题后手动恢复 welcome 背景直至 createUI 完成
         setTheme(R.style.LibreOfficeTheme);
@@ -1511,6 +1514,10 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                         + " pid=" + android.os.Process.myPid()
                         + " homeUiInitialized=" + homeUiInitialized);
                 updateRecentFiles();
+                if (resultCode == RESULT_OK) {
+                    ExitDiagHelper.markDocExitToHome();
+                    ExitDiagHelper.schedulePostHomeReturnWatchdog();
+                }
                 break;
             }
             case OPEN_FILE_REQUEST_CODE: {
@@ -1576,6 +1583,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     protected void onPause() {
         super.onPause();
         logHomeLifecycle("onPause", null);
+        ExitDiagHelper.logHomeLifecycleAfterDocExit("onPause");
     }
 
     @Override
@@ -1619,12 +1627,33 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     protected void onStop() {
         super.onStop();
         logHomeLifecycle("onStop", null);
+        ExitDiagHelper.logHomeLifecycleAfterDocExit("onStop");
+    }
+
+    @Override
+    public void finish() {
+        ExitDiagHelper.logTaskFinishProbe(this, "finish", false);
+        super.finish();
+    }
+
+    @Override
+    public void finishAndRemoveTask() {
+        ExitDiagHelper.logTaskFinishProbe(this, "finishAndRemoveTask", true);
+        super.finishAndRemoveTask();
     }
 
     @Override
     protected void onDestroy() {
         logHomeLifecycle("onDestroy", null);
+        ExitDiagHelper.logHomeLifecycleAfterDocExit("onDestroy");
+        ExitDiagHelper.logPhase("home_onDestroy");
         super.onDestroy();
+    }
+
+    @Override
+    public void onTrimMemory(int level) {
+        Log.i(LOGTAG, "exit_diag_home_trim_memory level=" + level + " pid=" + android.os.Process.myPid());
+        super.onTrimMemory(level);
     }
 
     private int dpToPx(int dp) {

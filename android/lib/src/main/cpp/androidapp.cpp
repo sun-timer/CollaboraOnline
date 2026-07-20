@@ -10,7 +10,10 @@
 #include <jni.h>
 #include <android/log.h>
 
+#include <cerrno>
+#include <atomic>
 #include <chrono>
+#include <mutex>
 #include <thread>
 #include <vector>
 #include <condition_variable>
@@ -34,14 +37,22 @@ int coolwsd_server_socket_fd = -1;
 const char* user_name;
 
 static std::string fileURL;
-static int fakeClientFd;
+static int fakeClientFd = -1;
 static int closeNotificationPipeForForwardingThread[2] = {-1, -1};
 static JavaVM* javaVM = nullptr;
 static bool lokInitialized = false;
-static std::mutex coolwsdRunningMutex;
-static std::mutex coolwsdRestartMutex;
-static std::condition_variable coolwsdRestartCv;
-static bool g_expectCoolwsdRun = false;
+static std::atomic<bool> g_coolwsdThreadRunning{false};
+static std::mutex g_coolwsdStartMutex;
+static std::atomic<bool> g_coolwsdReuseAwaitingHullO{false};
+static std::atomic<int> g_coolwsdSessionGeneration{0};
+static std::atomic<unsigned> g_mobileAppDocIdCounter{1};
+static unsigned g_currentMobileAppDocId = 0;
+static std::atomic<int> g_hulloConnectedSession{-1};
+static std::atomic<bool> g_app2jsRunning{false};
+static std::mutex g_serverListenMutex;
+static std::condition_variable g_serverListenCv;
+static std::mutex g_app2jsMutex;
+static std::condition_variable g_app2jsCv;
 
 // Remember the reference to the LOActivity
 jclass g_loActivityClz = nullptr;
@@ -105,6 +116,24 @@ public:
 
 static void send2JS(const JNIThreadContext &jctx, const std::vector<char>& buffer)
 {
+    if (!buffer.empty())
+    {
+        const size_t probeLen = buffer.size() < 96 ? buffer.size() : 96;
+        const std::string probe(buffer.data(), probeLen);
+        if (probe.find("BYE") != std::string::npos || probe.find("close") != std::string::npos)
+        {
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "exit_probe_send2JS msg=%.96s callbacks=%d pid=%d",
+                                probe.c_str(), g_javaCallbacksEnabled ? 1 : 0, getpid());
+        }
+        if (probe.rfind("progress:", 0) == 0 || probe.rfind("error:", 0) == 0)
+        {
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "wsd2js session=%d appDocId=%u msg=%.96s pid=%d",
+                                g_coolwsdSessionGeneration.load(), g_currentMobileAppDocId,
+                                probe.c_str(), getpid());
+        }
+    }
     if (!g_javaCallbacksEnabled || g_loActivityObj == nullptr || g_loActivityClz == nullptr) {
         return;
     }
@@ -126,7 +155,21 @@ static void send2JS(const JNIThreadContext &jctx, const std::vector<char>& buffe
 
 void postDirectMessage(std::string message)
 {
+    const bool isBye = (message.rfind("BYE", 0) == 0);
+    if (isBye || message.rfind("close", 0) == 0)
+    {
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "exit_probe_postDirectMessage msg=%.96s callbacks=%d hasObj=%d pid=%d",
+                            message.c_str(), g_javaCallbacksEnabled ? 1 : 0,
+                            g_loActivityObj != nullptr ? 1 : 0, getpid());
+    }
     if (!g_javaCallbacksEnabled || g_loActivityObj == nullptr || g_loActivityClz == nullptr) {
+        if (isBye)
+        {
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "exit_probe_postDirectMessage_blocked reason=callbacks_disabled pid=%d",
+                                getpid());
+        }
         return;
     }
     JNIThreadContext ctx;
@@ -155,21 +198,125 @@ void closeDocument()
     __android_log_print(ANDROID_LOG_INFO, "LOActivity", "closeDocument_done pid=%d", getpid());
 }
 
-/// Control whether the background COOLWSD thread should start a new run.
-/// When false after exit-to-home, the thread idles instead of immediately
-/// respawning COOLWSD (avoids memory spike / process kill during home restore).
+static void runCoolwsdThread()
+{
+    char* argv[2];
+    argv[0] = strdup("mobile");
+    argv[1] = nullptr;
+    Util::setThreadName("app");
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity", "coolwsd_thread_start pid=%d", getpid());
+    std::unique_ptr<COOLWSD> coolwsd = std::make_unique<COOLWSD>();
+    coolwsd->run(1, argv);
+    coolwsd_server_socket_fd = -1;
+    {
+        std::lock_guard<std::mutex> lock(g_serverListenMutex);
+        g_serverListenCv.notify_all();
+    }
+    g_coolwsdThreadRunning.store(false);
+    __android_log_print(ANDROID_LOG_ERROR, "LOActivity",
+                        "coolwsd_run_unexpected_return pid=%d", getpid());
+}
+
+static void ensureCoolwsdThreadRunning()
+{
+    if (g_coolwsdThreadRunning.load())
+        return;
+    std::lock_guard<std::mutex> lock(g_coolwsdStartMutex);
+    if (g_coolwsdThreadRunning.load())
+        return;
+    g_coolwsdThreadRunning.store(true);
+    std::thread(runCoolwsdThread).detach();
+}
+
+static bool waitForServerListening(int timeoutMs)
+{
+    std::unique_lock<std::mutex> lock(g_serverListenMutex);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while ((coolwsd_server_socket_fd < 0 || !g_coolwsdThreadRunning.load())
+           && std::chrono::steady_clock::now() < deadline)
+        g_serverListenCv.wait_until(lock, deadline);
+    return coolwsd_server_socket_fd >= 0 && g_coolwsdThreadRunning.load();
+}
+
+/// fakeSocketConnect blocks until accept; run on a helper thread with a timeout.
+static int fakeSocketConnectWithTimeout(int clientFd, int serverFd, int timeoutMs)
+{
+    std::atomic<int> result{-2};
+    std::thread connectThread([clientFd, serverFd, &result] {
+        result.store(fakeSocketConnect(clientFd, serverFd));
+    });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (result.load() == -2 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    if (result.load() == -2)
+    {
+        connectThread.detach();
+        return -2;
+    }
+    connectThread.join();
+    return result.load();
+}
+
+static bool waitForApp2jsIdleImpl(int timeoutMs)
+{
+    std::unique_lock<std::mutex> lock(g_app2jsMutex);
+    return g_app2jsCv.wait_for(lock, std::chrono::milliseconds(timeoutMs),
+                               [] { return !g_app2jsRunning.load(); });
+}
+
+static void markApp2jsStopped()
+{
+    g_app2jsRunning = false;
+    g_app2jsCv.notify_all();
+}
+
+extern "C" void androidLogCoolwsdDiag(const char* phase, const char* detail)
+{
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "coolwsd_diag phase=%s detail=%s pid=%d", phase, detail, getpid());
+}
+
+/// Legacy JNI hook; COOLWSD no longer restarts per document (iOS model).
 extern "C" JNIEXPORT void JNICALL
 Java_org_libreoffice_androidlib_LOActivity_setExpectCoolwsdRun(JNIEnv*, jobject, jboolean expect)
 {
-    {
-        std::lock_guard<std::mutex> lock(coolwsdRestartMutex);
-        g_expectCoolwsdRun = (expect == JNI_TRUE);
-    }
-    if (expect)
-        coolwsdRestartCv.notify_one();
-    __android_log_print(ANDROID_LOG_INFO, "LOActivity", "expect_coolwsd_run=%s",
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity", "expect_coolwsd_run=%s (no-op ios_model)",
                         (expect == JNI_TRUE) ? "true" : "false");
-    LOG_DBG("setExpectCoolwsdRun: " << (expect ? "true" : "false"));
+}
+
+/// Wait until app2js forwarding thread has exited after BYE.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_org_libreoffice_androidlib_LOActivity_waitForApp2jsIdle(JNIEnv*, jobject, jint timeoutMs)
+{
+    const int ms = timeoutMs > 0 ? timeoutMs : 8000;
+    const bool ok = waitForApp2jsIdleImpl(ms);
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity", "wait_app2js_idle=%s pid=%d",
+                        ok ? "true" : "false", getpid());
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+/// Kept for binary compat; maps to waitForApp2jsIdle under iOS model.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_org_libreoffice_androidlib_LOActivity_waitForCoolwsdRunIdle(JNIEnv* env, jobject obj,
+                                                                 jint timeoutMs)
+{
+    return Java_org_libreoffice_androidlib_LOActivity_waitForApp2jsIdle(env, obj, timeoutMs);
+}
+
+void androidNotifyCoolwsdServerListening()
+{
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "coolwsd_server_listening fd=%d session=%d pid=%d",
+                        coolwsd_server_socket_fd, g_coolwsdSessionGeneration.load(), getpid());
+    g_serverListenCv.notify_all();
+}
+
+void androidNotifyCoolwsdServerStopped()
+{
+    coolwsd_server_socket_fd = -1;
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "coolwsd_server_stopped pid=%d", getpid());
+    g_serverListenCv.notify_all();
 }
 
 /// Drop JNI callbacks to LOActivity after WebView is destroyed (avoid use-after-destroy crashes).
@@ -194,25 +341,72 @@ Java_org_libreoffice_androidlib_LOActivity_postMobileMessageNative(JNIEnv *env, 
     {
         LOG_DBG("From JS: cool: " << string_value);
 
-        // we need a copy, because we can get a new one while we are still
-        // taking down the old one
-        const int currentFakeClientFd = fakeClientFd;
-
         if (strcmp(string_value, "HULLO") == 0)
         {
-            // Now we know that the JS has started completely
+            const int session = g_coolwsdSessionGeneration.load();
+            const bool isReuse = lokInitialized && g_coolwsdReuseAwaitingHullO.exchange(false);
+            if (isReuse)
+            {
+                __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                    "hullo_reuse_start clientFd=%d session=%d serverFd=%d pid=%d",
+                                    fakeClientFd, session, coolwsd_server_socket_fd, getpid());
+            }
 
-            // Contact the permanently (during app lifetime) listening COOLWSD server
-            // "public" socket
-            assert(coolwsd_server_socket_fd != -1);
+            if (g_hulloConnectedSession.load() == session)
+            {
+                __android_log_print(ANDROID_LOG_WARN, "LOActivity",
+                                    "hullo_ignore_duplicate session=%d pid=%d", session, getpid());
+                env->ReleaseStringUTFChars(message, string_value);
+                return;
+            }
 
-            int rc = fakeSocketConnect(currentFakeClientFd, coolwsd_server_socket_fd);
-            assert(rc != -1);
+            if (!waitForServerListening(8000))
+            {
+                __android_log_print(ANDROID_LOG_WARN, "LOActivity",
+                                    "hullo_wait_server_timeout session=%d clientFd=%d pid=%d",
+                                    session, fakeClientFd, getpid());
+                env->ReleaseStringUTFChars(message, string_value);
+                return;
+            }
 
-            // Create a socket pair to notify the below thread when the document has been closed
+            const int currentFakeClientFd = fakeClientFd;
+            if (currentFakeClientFd < 0)
+            {
+                __android_log_print(ANDROID_LOG_WARN, "LOActivity",
+                                    "hullo_invalid_client_fd session=%d pid=%d", session, getpid());
+                env->ReleaseStringUTFChars(message, string_value);
+                return;
+            }
+
+            const int rc = fakeSocketConnectWithTimeout(currentFakeClientFd, coolwsd_server_socket_fd, 8000);
+            if (rc == -2)
+            {
+                __android_log_print(ANDROID_LOG_WARN, "LOActivity",
+                                    "hullo_connect_timeout clientFd=%d serverFd=%d session=%d pid=%d",
+                                    currentFakeClientFd, coolwsd_server_socket_fd, session, getpid());
+                env->ReleaseStringUTFChars(message, string_value);
+                return;
+            }
+            if (rc == -1)
+            {
+                __android_log_print(ANDROID_LOG_ERROR, "LOActivity",
+                                    "hullo_connect_fail clientFd=%d serverFd=%d errno=%d session=%d pid=%d",
+                                    currentFakeClientFd, coolwsd_server_socket_fd, errno, session,
+                                    getpid());
+                env->ReleaseStringUTFChars(message, string_value);
+                return;
+            }
+
+            g_hulloConnectedSession.store(session);
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "hullo_connect_ok clientFd=%d serverFd=%d session=%d pid=%d",
+                                currentFakeClientFd, coolwsd_server_socket_fd, session, getpid());
+
+            closeNotificationPipeForForwardingThread[0] = -1;
+            closeNotificationPipeForForwardingThread[1] = -1;
             fakeSocketPipe2(closeNotificationPipeForForwardingThread);
 
-            // Start another thread to read responses and forward them to the JavaScript
+            g_app2jsRunning = true;
             std::thread([currentFakeClientFd]
                         {
                             Util::setThreadName("app2js");
@@ -224,47 +418,55 @@ Java_org_libreoffice_androidlib_LOActivity_postMobileMessageNative(JNIEnv *env, 
                                pollfd[0].events = POLLIN;
                                pollfd[1].fd = closeNotificationPipeForForwardingThread[1];
                                pollfd[1].events = POLLIN;
-                               if (fakeSocketPoll(pollfd, 2, -1) > 0)
+                               const int pollResult = fakeSocketPoll(pollfd, 2, -1);
+                               if (pollResult > 0)
                                {
                                    if (pollfd[1].revents == POLLIN)
                                    {
-                                       LOG_DBG("app2js: closing the sockets");
-                                       // The code below handling the "BYE" fake Websocket
-                                       // message has closed the other end of the
-                                       // closeNotificationPipeForForwardingThread. Let's close
-                                       // the other end too just for cleanliness, even if a
-                                       // FakeSocket as such is not a system resource so nothing
-                                       // is saved by closing it.
+                                       __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                                           "exit_diag_app2js reason=bye_pipe fd=%d pid=%d",
+                                                           currentFakeClientFd, getpid());
                                        fakeSocketClose(closeNotificationPipeForForwardingThread[1]);
-
-                                       // Close our end of the fake socket connection to the
-                                       // ClientSession thread, so that it terminates
+                                       closeNotificationPipeForForwardingThread[1] = -1;
                                        fakeSocketClose(currentFakeClientFd);
-
+                                       __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                                           "exit_diag_app2js thread_exit pid=%d", getpid());
+                                       markApp2jsStopped();
                                        return;
                                    }
                                    if (pollfd[0].revents == POLLIN)
                                    {
                                        int n = fakeSocketAvailableDataLength(currentFakeClientFd);
                                        if (n == 0)
+                                       {
+                                           __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                                               "exit_diag_app2js reason=client_eof fd=%d pid=%d",
+                                                               currentFakeClientFd, getpid());
+                                           markApp2jsStopped();
                                            return;
+                                       }
                                        std::vector<char> buf(n);
                                        n = fakeSocketRead(currentFakeClientFd, buf.data(), n);
                                        send2JS(ctx, buf);
                                    }
                                }
                                else
-                                   break;
+                               {
+                                   __android_log_print(ANDROID_LOG_WARN, "LOActivity",
+                                                       "exit_diag_app2js reason=poll_error result=%d fd=%d pid=%d",
+                                                       pollResult, currentFakeClientFd, getpid());
+                                   markApp2jsStopped();
+                                   return;
+                               }
                            }
-                           assert(false);
                         }).detach();
 
-            // First we simply send it the URL. This corresponds to the GET request with Upgrade to
-            // WebSocket.
             LOG_DBG("Actually sending to Online:" << fileURL);
-
-            // Send the document URL to COOLWSD to setup the docBroker URL
-            fakeSocketWriteQueue(currentFakeClientFd, fileURL.c_str(), fileURL.size());
+            const std::string hullOMessage = fileURL + " " + std::to_string(g_currentMobileAppDocId);
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "hullo_send_url session=%d appDocId=%u bytes=%zu pid=%d",
+                                session, g_currentMobileAppDocId, hullOMessage.size(), getpid());
+            fakeSocketWriteQueue(currentFakeClientFd, hullOMessage.c_str(), hullOMessage.size());
         }
         else if (strcmp(string_value, "BYE") == 0)
         {
@@ -275,7 +477,7 @@ Java_org_libreoffice_androidlib_LOActivity_postMobileMessageNative(JNIEnv *env, 
         else
         {
             // Send the message to COOLWSD
-            fakeSocketWriteQueue(currentFakeClientFd, string_value, strlen(string_value));
+            fakeSocketWriteQueue(fakeClientFd, string_value, strlen(string_value));
         }
     }
     else
@@ -302,13 +504,22 @@ Java_org_libreoffice_androidlib_LOActivity_createCOOLWSD(JNIEnv *env, jobject in
     // already initialized?
     if (lokInitialized)
     {
-        {
-            std::lock_guard<std::mutex> lock(coolwsdRestartMutex);
-            g_expectCoolwsdRun = true;
-        }
-        coolwsdRestartCv.notify_one();
-        // close the previous document so that we can wait for the new HULLO
+        g_javaCallbacksEnabled = false;
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "createCOOLWSD_reuse close_previous_doc pid=%d", getpid());
         closeDocument();
+        waitForApp2jsIdleImpl(8000);
+        ensureCoolwsdThreadRunning();
+        g_currentMobileAppDocId = g_mobileAppDocIdCounter++;
+        fakeClientFd = fakeSocketSocket();
+        g_coolwsdSessionGeneration++;
+        g_hulloConnectedSession.store(-1);
+        g_coolwsdReuseAwaitingHullO = true;
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "createCOOLWSD_reuse await_hullo session=%d appDocId=%u clientFd=%d serverFd=%d pid=%d",
+                            g_coolwsdSessionGeneration.load(), g_currentMobileAppDocId, fakeClientFd,
+                            coolwsd_server_socket_fd, getpid());
+        g_javaCallbacksEnabled = true;
         return;
     }
     const std::string userInterfaceMode = std::string(env->GetStringUTFChars(uiMode, nullptr));
@@ -316,10 +527,6 @@ Java_org_libreoffice_androidlib_LOActivity_createCOOLWSD(JNIEnv *env, jobject in
     static const std::string userNameString = std::string(env->GetStringUTFChars(userName, nullptr));
     user_name = userNameString.c_str();
     lokInitialized = true;
-    {
-        std::lock_guard<std::mutex> lock(coolwsdRestartMutex);
-        g_expectCoolwsdRun = true;
-    }
     libreofficekit_initialize(env, dataDir, cacheDir, apkFile, assetManager);
 
     Util::setThreadName("main");
@@ -329,29 +536,15 @@ Java_org_libreoffice_androidlib_LOActivity_createCOOLWSD(JNIEnv *env, jobject in
                                      LOG_DBG(line);
                                  });
 
-    std::thread([]
-                {
-                    char *argv[2];
-                    argv[0] = strdup("mobile");
-                    argv[1] = nullptr;
-                    Util::setThreadName("app");
-                    while (true)
-                    {
-                        {
-                            std::unique_lock<std::mutex> restartLock(coolwsdRestartMutex);
-                            coolwsdRestartCv.wait(restartLock, [] { return g_expectCoolwsdRun; });
-                        }
-                        LOG_DBG("Creating COOLWSD");
-                        {
-                            std::unique_lock<std::mutex> lock(coolwsdRunningMutex);
-                            fakeClientFd = fakeSocketSocket();
-                            LOG_DBG("createCOOLWSD created fakeClientFd: " << fakeClientFd);
-                            std::unique_ptr<COOLWSD> coolwsd = std::make_unique<COOLWSD>();
-                            coolwsd->run(1, argv);
-                        }
-                        LOG_DBG("One run of COOLWSD completed");
-                    }
-                }).detach();
+    fakeClientFd = fakeSocketSocket();
+    g_currentMobileAppDocId = g_mobileAppDocIdCounter++;
+    g_coolwsdSessionGeneration++;
+    g_hulloConnectedSession.store(-1);
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "createCOOLWSD_first session=%d appDocId=%u clientFd=%d pid=%d",
+                        g_coolwsdSessionGeneration.load(), g_currentMobileAppDocId, fakeClientFd,
+                        getpid());
+    ensureCoolwsdThreadRunning();
 }
 
 extern "C"

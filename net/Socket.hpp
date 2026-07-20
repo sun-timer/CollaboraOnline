@@ -1201,7 +1201,13 @@ public:
 
     bool continuePolling() override
     {
+#if defined(__ANDROID__)
+        // Kit exit sets TerminationFlag for lokit_main runLoop; accept_poll must stay alive
+        // for the next document HULLO (persistent COOLWSD in-process model).
+        return SocketPoll::continuePolling() && !SigUtil::getShutdownRequestFlag();
+#else
         return SocketPoll::continuePolling() && !SigUtil::getTerminationFlag();
+#endif
     }
 };
 

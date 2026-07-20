@@ -861,19 +861,10 @@ void ClientRequestDispatcher::handleIncomingMessage(SocketDisposition& dispositi
 #else // !MOBILEAPP
     Poco::Net::HTTPRequest request;
 
-#ifdef IOS
-    // The URL of the document is sent over the FakeSocket by the code in
-    // -[DocumentViewController userContentController:didReceiveScriptMessage:] when it gets the
-    // HULLO message from the JavaScript in global.js.
-
-    // The "app document id", the numeric id of the document, from the appDocIdCounter in CODocument.mm.
+    // Mobile (iOS + Android): URL + space + appDocId over FakeSocket on HULLO.
     char* space = strchr(socket->getInBuffer().data(), ' ');
     assert(space != nullptr);
 
-    // The socket buffer is not nul-terminated so we can't just call strtoull() on the number at
-    // its end, it might be followed in memory by more digits. Is there really no better way to
-    // parse the number at the end of the buffer than to copy the bytes into a nul-terminated
-    // buffer?
     const size_t appDocIdLen =
         (socket->getInBuffer().data() + socket->getInBuffer().size()) - (space + 1);
     char* appDocIdBuffer = (char*)malloc(appDocIdLen + 1);
@@ -885,12 +876,6 @@ void ClientRequestDispatcher::handleIncomingMessage(SocketDisposition& dispositi
     handleClientWsUpgrade(
         request, std::string(socket->getInBuffer().data(), space - socket->getInBuffer().data()),
         disposition, socket, appDocId);
-#else // IOS
-    handleClientWsUpgrade(
-        request,
-        RequestDetails(std::string(socket->getInBuffer().data(), socket->getInBuffer().size())),
-        disposition, socket);
-#endif // !IOS
     socket->getInBuffer().clear();
 #endif // MOBILEAPP
 }

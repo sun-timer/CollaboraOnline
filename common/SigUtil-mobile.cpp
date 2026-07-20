@@ -40,7 +40,13 @@ namespace SigUtil
 
     bool getShutdownRequestFlag()
     {
+#if defined(__ANDROID__)
+        // Kit exit calls setTerminationFlag() (RunState::Terminate). The persistent COOLWSD
+        // thread must keep running; only explicit requestShutdown() should stop it.
+        return RunStateFlag == RunState::ShutDown;
+#else
         return RunStateFlag >= RunState::ShutDown;
+#endif
     }
 
     bool getTerminationFlag()
