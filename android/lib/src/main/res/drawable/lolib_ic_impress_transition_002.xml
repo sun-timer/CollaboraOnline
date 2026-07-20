@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Impress transition — scripts/generate-impress-transition-assets.js -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:pathData="M9.60005 11.1992H54.4001C57.1201 11.1992 59.2001 13.2792 59.2001 15.9992V47.9992C59.2001 50.7192 57.1201 52.7992 54.4001 52.7992H9.60005C6.88005 52.7992 4.80005 50.7192 4.80005 47.9992V15.9992C4.80005 13.2792 6.88005 11.1992 9.60005 11.1992Z"
+        android:fillColor="#1278D9"
+        android:fillAlpha="0.300" />
+    <path
+        android:pathData="M9.60005 11.1992H54.4001C57.1201 11.1992 59.2001 13.2792 59.2001 15.9992V31.1992L30.4001 52.7992H9.60005C6.88005 52.7992 4.80005 50.7192 4.80005 47.9992V15.9992C4.80005 13.2792 6.88005 11.1992 9.60005 11.1992Z"
+        android:fillColor="#1278D9"
+        android:fillAlpha="0.300" />
+    <path
+        android:pathData="M9.60005 11.1992H54.4001C57.1201 11.1992 59.2001 13.2792 59.2001 15.9992V17.4392L11.2 52.7992H9.60005C6.88005 52.7992 4.80005 50.7192 4.80005 47.9992V15.9992C4.80005 13.2792 6.88005 11.1992 9.60005 11.1992Z"
+        android:fillColor="#1278D9" />
+</vector>

@@ -26,6 +26,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 import org.libreoffice.androidlib.ai.AiDialogHelper;
 import org.libreoffice.androidlib.impress.ImpressShapePickerController;
 import org.libreoffice.androidlib.impress.ImpressSolidColorPickerController;
+import org.libreoffice.androidlib.impress.ImpressTransitionCatalog;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -33,7 +34,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Impress edit-mode function panel: 常用 / 文件 / 插入 / 布局 / 审阅.
+ * Impress edit-mode function panel: 常用 / 文件 / 插入 / 切换 / 布局 / 审阅.
  * Header matches Calc (tabs + AI / keyboard / collapse). Common tab follows Figma.
  */
 public class ImpressFunctionPanelController {
@@ -57,6 +58,11 @@ public class ImpressFunctionPanelController {
     private static final int COLOR_SWATCH_SIZE_DP = 40;
     private static final int COLOR_SWATCH_GAP_DP = 10;
     private static final int COLOR_SWATCH_COLS = 6;
+    private static final int TRANSITION_GRID_COLS = 6;
+    private static final int TRANSITION_ICON_SIZE_DP = 40;
+    private static final int TRANSITION_CELL_MIN_H_DP = 72;
+    private static final int TRANSITION_CELL_VPAD_DP = 6;
+    private static final int DEFAULT_SELECTED_TRANSITION_INDEX = 8;
 
     private static final class ColorSwatch {
         final String label;
@@ -108,6 +114,9 @@ public class ImpressFunctionPanelController {
 
         /** 功能面板关闭后再执行（避免 UNO 与 dismiss 竞态）。 */
         void runAfterFunctionPanelDismiss(Runnable action);
+
+        /** 应用幻灯片切换动画（iconViewIndex = transitions_icons 行号）。 */
+        void applySlideTransition(int iconViewIndex, boolean applyToAll);
     }
 
     private enum ItemType {
@@ -216,6 +225,8 @@ public class ImpressFunctionPanelController {
     private int submenuReturnTabIndex = -1;
     private TextView slideMasterValueView;
     private Integer selectedMasterSolidRgb;
+    private int selectedTransitionIndex = DEFAULT_SELECTED_TRANSITION_INDEX;
+    private LinearLayout transitionGridRoot;
 
     public ImpressFunctionPanelController(Host host) {
         this.host = host;
@@ -351,6 +362,11 @@ public class ImpressFunctionPanelController {
 
     private void renderTabContent(PanelTab tab) {
         contentContainer.removeAllViews();
+        transitionGridRoot = null;
+        if ("transition".equals(tab.id)) {
+            contentContainer.addView(buildTransitionTabContent());
+            return;
+        }
         if (!tab.items.isEmpty() && tab.items.get(0).type == ItemType.STUB) {
             TextView stub = new TextView(host.getContext());
             stub.setText("功能开发中");
@@ -1073,6 +1089,7 @@ public class ImpressFunctionPanelController {
         result.add(new PanelTab("common", "常用", common));
         result.add(new PanelTab("file", "文件", stubItems()));
         result.add(new PanelTab("insert", "插入", buildInsertItems()));
+        result.add(new PanelTab("transition", "切换", stubItems()));
         result.add(new PanelTab("layout_tab", "布局", stubItems()));
         result.add(new PanelTab("review", "审阅", stubItems()));
         return result;
@@ -1176,6 +1193,145 @@ public class ImpressFunctionPanelController {
         }
         shapePickerController.show();
         Log.i(TAG, "insert_shape_picker_open");
+    }
+
+    private View buildTransitionTabContent() {
+        LinearLayout root = new LinearLayout(host.getContext());
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(createApplyToAllRow());
+        root.addView(createTransitionGrid());
+        return root;
+    }
+
+    private View createApplyToAllRow() {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(host.dpToPx(56));
+        row.setPadding(host.dpToPx(16), host.dpToPx(12), host.dpToPx(16), host.dpToPx(8));
+
+        ImageView icon = new ImageView(host.getContext());
+        icon.setImageResource(R.drawable.lolib_ic_impress_apply_transition_all);
+        icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        row.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(32), host.dpToPx(32)));
+
+        TextView label = new TextView(host.getContext());
+        label.setText("应用到全部幻灯片");
+        label.setTextColor(COLOR_TITLE);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        labelLp.setMarginStart(host.dpToPx(12));
+        row.addView(label, labelLp);
+
+        row.setOnClickListener(v -> onApplyTransitionToAll());
+        return row;
+    }
+
+    private View createTransitionGrid() {
+        transitionGridRoot = new LinearLayout(host.getContext());
+        transitionGridRoot.setOrientation(LinearLayout.VERTICAL);
+        int gap = host.dpToPx(GRID_GAP_DP);
+        int sidePad = host.dpToPx(12);
+        transitionGridRoot.setPadding(sidePad, 0, sidePad, host.dpToPx(12));
+
+        ImpressTransitionCatalog.Entry[] entries = ImpressTransitionCatalog.ENTRIES;
+        for (int rowStart = 0; rowStart < entries.length; rowStart += TRANSITION_GRID_COLS) {
+            LinearLayout row = new LinearLayout(host.getContext());
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            int rowEnd = Math.min(rowStart + TRANSITION_GRID_COLS, entries.length);
+            for (int i = rowStart; i < rowEnd; i++) {
+                ImpressTransitionCatalog.Entry entry = entries[i];
+                row.addView(createTransitionCell(entry, i < rowEnd - 1, gap));
+            }
+            if (rowStart > 0) {
+                LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                rowLp.topMargin = gap;
+                row.setLayoutParams(rowLp);
+            }
+            transitionGridRoot.addView(row);
+        }
+        return transitionGridRoot;
+    }
+
+    private View createTransitionCell(ImpressTransitionCatalog.Entry entry, boolean addEndGap, int gap) {
+        LinearLayout cell = new LinearLayout(host.getContext());
+        cell.setOrientation(LinearLayout.VERTICAL);
+        cell.setGravity(Gravity.CENTER_HORIZONTAL);
+        boolean selected = entry.index == selectedTransitionIndex;
+        cell.setBackgroundResource(selected
+                ? R.drawable.lolib_bg_impress_transition_cell_selected
+                : R.drawable.lolib_bg_impress_transition_cell);
+        int vPad = host.dpToPx(TRANSITION_CELL_VPAD_DP);
+        cell.setPadding(host.dpToPx(4), vPad, host.dpToPx(4), vPad);
+        cell.setMinimumHeight(host.dpToPx(TRANSITION_CELL_MIN_H_DP));
+
+        ImageView icon = new ImageView(host.getContext());
+        icon.setImageResource(entry.iconResId);
+        icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        cell.addView(icon, new LinearLayout.LayoutParams(
+                host.dpToPx(TRANSITION_ICON_SIZE_DP), host.dpToPx(TRANSITION_ICON_SIZE_DP)));
+
+        TextView caption = new TextView(host.getContext());
+        caption.setText(entry.label);
+        caption.setGravity(Gravity.CENTER);
+        caption.setTextColor(COLOR_TITLE);
+        caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        caption.setMaxLines(1);
+        caption.setPadding(0, host.dpToPx(4), 0, 0);
+        cell.addView(caption);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        if (addEndGap) {
+            lp.setMarginEnd(gap);
+        }
+        cell.setLayoutParams(lp);
+        cell.setTag(entry.index);
+        cell.setOnClickListener(v -> onTransitionCellClick(entry));
+        return cell;
+    }
+
+    private void onTransitionCellClick(ImpressTransitionCatalog.Entry entry) {
+        selectedTransitionIndex = entry.index;
+        refreshTransitionSelection();
+        host.applySlideTransition(entry.iconViewIndex, false);
+        Log.i(TAG, "transition_selected index=" + entry.index
+                + " label=" + entry.label + " iconViewIndex=" + entry.iconViewIndex);
+    }
+
+    private void onApplyTransitionToAll() {
+        ImpressTransitionCatalog.Entry entry = ImpressTransitionCatalog.byIndex(selectedTransitionIndex);
+        if (entry == null) {
+            host.toastTodo("请先选择切换效果");
+            return;
+        }
+        host.applySlideTransition(entry.iconViewIndex, true);
+        Log.i(TAG, "transition_apply_all index=" + entry.index + " label=" + entry.label);
+    }
+
+    private void refreshTransitionSelection() {
+        if (transitionGridRoot == null) {
+            return;
+        }
+        for (int r = 0; r < transitionGridRoot.getChildCount(); r++) {
+            View rowView = transitionGridRoot.getChildAt(r);
+            if (!(rowView instanceof LinearLayout)) {
+                continue;
+            }
+            LinearLayout row = (LinearLayout) rowView;
+            for (int c = 0; c < row.getChildCount(); c++) {
+                View cell = row.getChildAt(c);
+                Object tag = cell.getTag();
+                boolean selected = tag instanceof Integer && ((Integer) tag) == selectedTransitionIndex;
+                cell.setBackgroundResource(selected
+                        ? R.drawable.lolib_bg_impress_transition_cell_selected
+                        : R.drawable.lolib_bg_impress_transition_cell);
+            }
+        }
     }
 
     private static final int[] CHAR_TOOL_ICONS_ROW1 = {
