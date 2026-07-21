@@ -35,12 +35,16 @@
 
 #include <unistd.h>
 #include <sysexits.h>
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
 #include <sys/resource.h>
 #include <sys/wait.h>
 
 #include <sys/types.h>
 
 #include <cassert>
+#include <atomic>
 #include <clocale>
 #include <condition_variable>
 #include <cstdint>
@@ -924,6 +928,35 @@ static std::shared_ptr<PrisonPoll> PrisonerPoll;
 #if MOBILEAPP
 #ifndef IOS
 std::mutex COOLWSD::lokit_main_mutex;
+
+#if defined(__ANDROID__)
+static std::atomic<int> gAndroidLokitMainActive{0};
+static std::mutex gAndroidLokitMainIdleMutex;
+static std::condition_variable gAndroidLokitMainIdleCv;
+
+struct AndroidLokitMainActiveGuard
+{
+    AndroidLokitMainActiveGuard() { gAndroidLokitMainActive.fetch_add(1); }
+    ~AndroidLokitMainActiveGuard()
+    {
+        gAndroidLokitMainActive.fetch_sub(1);
+        gAndroidLokitMainIdleCv.notify_all();
+    }
+};
+
+extern "C" bool androidWaitForLokitMainIdle(int timeoutMs)
+{
+    std::unique_lock<std::mutex> lock(gAndroidLokitMainIdleMutex);
+    const int ms = timeoutMs > 0 ? timeoutMs : 8000;
+    const bool ok = gAndroidLokitMainIdleCv.wait_for(
+        lock, std::chrono::milliseconds(ms),
+        [] { return gAndroidLokitMainActive.load() == 0; });
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "wait_lokit_main_idle=%s active=%d pid=%d", ok ? "true" : "false",
+                        gAndroidLokitMainActive.load(), getpid());
+    return ok;
+}
+#endif
 #endif
 #endif
 
@@ -971,22 +1004,28 @@ std::shared_ptr<ChildProcess> getNewChild_Blocks(const std::shared_ptr<SocketPol
     androidLogCoolwsdDiag("getNewChild_spawn", Util::encodeId(mobileAppDocId, 3).c_str());
 #endif
 
-    std::thread([&]
+    // Capture mobileAppDocId by value; [&] would leave a dangling reference
+    // after getNewChild_Blocks returns when COOLWSD stays alive (Android).
+    const unsigned docId = mobileAppDocId; // copy for lambda
+    std::thread([docId]
                 {
 #ifndef IOS
                     std::lock_guard<std::mutex> lock(COOLWSD::lokit_main_mutex);
                     Util::setThreadName("lokit_main");
 #if defined(__ANDROID__)
-                    androidLogCoolwsdDiag("lokit_main_enter", Util::encodeId(mobileAppDocId, 3).c_str());
+                    AndroidLokitMainActiveGuard lokitMainGuard;
+                    androidLogCoolwsdDiag("lokit_main_enter", Util::encodeId(docId, 3).c_str());
 #endif
 #else
-                    Util::setThreadName("lokit_main_" + Util::encodeId(mobileAppDocId, 3));
+                    Util::setThreadName("lokit_main_" + Util::encodeId(docId, 3));
 #endif
                     // Ugly to have that static global PrisonerServerSocketFD, Otoh we know
                     // there is just one COOLWSD object. (Even in real Online.)
-                    lokit_main(PrisonerServerSocketFD, COOLWSD::UserInterface, mobileAppDocId);
+                    lokit_main(PrisonerServerSocketFD, COOLWSD::UserInterface, docId);
 #if defined(__ANDROID__)
-                    androidLogCoolwsdDiag("lokit_main_exit", Util::encodeId(mobileAppDocId, 3).c_str());
+                    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                        "diag_lokit_thread phase=thread_exit docId=%s pid=%d",
+                                        Util::encodeId(docId, 3).c_str(), getpid());
 #endif
                 }).detach();
 #endif // MOBILEAPP
