@@ -5,4 +5,11 @@
     <dimen name="ai_sheet_header_padding_v">15dp</dimen>
     <dimen name="ai_sheet_header_padding_h">12dp</dimen>
     <dimen name="ai_sheet_header_icon_size">32dp</dimen>
+
+    <!-- AI 功能网格：Figma 图标 64×64，卡片高约 112dp（64+间距+文案） -->
+    <dimen name="ai_function_icon_size">64dp</dimen>
+    <dimen name="ai_function_card_height">112dp</dimen>
+    <dimen name="ai_function_card_gap">8dp</dimen>
+    <dimen name="ai_function_grid_padding">12dp</dimen>
+    <dimen name="ai_function_row_gap">8dp</dimen>
 </resources>

@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- AI排版结果预览弹窗 overlay，挂在 doc_main_content。
-     设计参考 SVG: 670×1320, 白底 24dp 圆角。
-     尺寸由 LOActivity.positionTypesetPreviewOverlay() 运行时覆写。 -->
+     尺寸由 LOActivity.positionTypesetPreviewOverlay() 运行时覆写（670×748 规范）。 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/typeset_preview_overlay"
     android:layout_width="match_parent"
@@ -14,8 +13,8 @@
     <!-- 白色卡片 -->
     <LinearLayout
         android:id="@+id/typeset_preview_card"
-        android:layout_width="328dp"
-        android:layout_height="660dp"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
         android:layout_gravity="center"
         android:background="@drawable/lolib_bg_dialog_outline"
         android:elevation="40dp"
