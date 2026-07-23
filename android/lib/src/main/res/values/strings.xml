@@ -28,9 +28,10 @@
 
     <!-- Impress AI 生成PPT大纲 -->
     <string-array name="impress_outline_page_options">
-        <item>1-10 页</item>
-        <item>11-20 页</item>
-        <item>21-30 页</item>
+        <item>1-10页</item>
+        <item>11-20页</item>
+        <item>21-30页</item>
+        <item>30+页</item>
     </string-array>
     <string-array name="impress_outline_audience_options">
         <item>大众</item>
@@ -48,8 +49,43 @@
         <item>教学课件</item>
     </string-array>
 
+    <!-- Impress AI 生成PPT UI -->
+    <string name="impress_ppt_dialog_title">生成PPT</string>
+    <string name="impress_ppt_mode_quick">快速生成</string>
+    <string name="impress_ppt_input_hint">请输入PPT主题和要求</string>
+    <string name="impress_ppt_paste_hint">粘贴已有大纲文本...</string>
+    <string name="impress_ppt_select_file">选择文件</string>
+    <string name="impress_ppt_start_generate">开始生成</string>
+    <string name="impress_ppt_generating_outline">正在生成大纲...</string>
+    <string name="impress_ppt_copy">复制</string>
+    <string name="impress_ppt_regenerate">重新生成</string>
+    <string name="impress_ppt_select_template">选择模板</string>
+    <string name="impress_ppt_generate_action">生成PPT</string>
+    <string name="impress_ppt_outline_title">生成大纲</string>
+    <string name="impress_ppt_slide_title_hint">页面标题</string>
+    <string name="impress_ppt_slide_content_hint">页面内容</string>
+    <string-array name="impress_outline_type_options">
+        <item>封面</item>
+        <item>目录</item>
+        <item>章节</item>
+        <item>内容</item>
+        <item>结尾</item>
+    </string-array>
+    <string-array name="impress_template_style_filter_options">
+        <item>全部</item>
+        <item>简约</item>
+        <item>商务</item>
+        <item>科技</item>
+        <item>清新</item>
+        <item>暗黑</item>
+        <item>扁平</item>
+        <item>复古</item>
+    </string-array>
+
     <!-- Impress template selection -->
-    <string name="impress_template_select_title">选择PPT模板</string>
+    <string name="impress_template_select_title">选择模板</string>
+    <string name="impress_template_recommended_label">推荐模板</string>
+    <string name="impress_template_filter_all">全部</string>
     <string name="impress_template_select_hint">选择模板风格，AI将按模板生成</string>
     <string name="impress_generating_ppt">正在生成 PPT...</string>
     <string name="impress_generating_ppt_detail">AI 正在撰写内容</string>
@@ -68,4 +104,8 @@
     <string name="impress_ppt_error_title">PPT 生成失败</string>
     <string name="impress_ppt_error_message">模板填充失败，请重试。\n\n原因：%1$s</string>
     <string name="impress_ppt_error_ok">知道了</string>
+
+    <!-- Local LLM -->
+    <string name="ai_local_inference">Local inference</string>
+    <string name="ai_local_inference_running">Running local AI inference…</string>
 </resources>

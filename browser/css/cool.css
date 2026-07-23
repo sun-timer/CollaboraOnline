@@ -432,14 +432,14 @@ body {
 	justify-content: center;
 	align-items: center;
 	position: absolute;
-	width: 72px;
-	height: 72px;
+	width: 56px;
+	height: 56px;
 	right: 16px;
 	top: auto;
 	bottom: 100px;
 	background-color: transparent;
 	border-radius: 50%;
-	box-shadow: 0 8px 28px rgba(18, 120, 217, 0.26);
+	box-shadow: 0 6px 20px rgba(18, 120, 217, 0.24);
 	z-index: 1001;
 	transform: scale(1);
 	transition: transform 0.2s ease;
@@ -452,11 +452,27 @@ body {
 }
 
 #mobile-edit-button-image {
-	width: 72px;
-	height: 72px;
+	width: 56px;
+	height: 56px;
 	background: url('images/mobile-edit-fab.svg') no-repeat center / contain !important;
 	transform: none;
 	transition: transform 0.2s ease;
+}
+
+[data-docType='spreadsheet'] #mobile-edit-button {
+	box-shadow: 0 8px 28px rgba(59, 128, 64, 0.26);
+}
+
+[data-docType='spreadsheet'] #mobile-edit-button-image {
+	background: url('images/mobile-edit-fab-calc.svg') no-repeat center / contain !important;
+}
+
+[data-docType='presentation'] #mobile-edit-button {
+	box-shadow: 0 8px 28px rgba(236, 93, 31, 0.26);
+}
+
+[data-docType='presentation'] #mobile-edit-button-image {
+	background: url('images/mobile-edit-fab-impress.svg') no-repeat center / contain !important;
 }
 #mobile-edit-button:active {
 	transform: scale(1.06);
