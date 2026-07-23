@@ -91,6 +91,10 @@ public class FunctionPanelController {
         void fetchFontList(StringListCallback callback);
 
         void fetchCurrentFormatting(FormattingCallback callback);
+
+        void showAiOperationSheet();
+
+        void focusDocumentAndShowIme();
     }
 
     private enum ItemType {
@@ -160,7 +164,7 @@ public class FunctionPanelController {
     private BottomSheetDialog dialog;
     private LinearLayout tabBar;
     private NestedScrollView contentContainer;
-    private View functionHeader;
+    private View tabHeader;
     private View functionTabArea;
     private View fontPickerPanel;
     private View sheetContentRoot;
@@ -195,15 +199,29 @@ public class FunctionPanelController {
         }
         View panel = LayoutInflater.from(host.getContext()).inflate(R.layout.lolib_sheet_functions_edit, null, false);
         sheetContentRoot = panel;
-        functionHeader = panel.findViewById(R.id.function_edit_header);
+        tabHeader = panel.findViewById(R.id.function_edit_tab_header);
         functionTabArea = panel.findViewById(R.id.function_edit_tab_area);
         fontPickerPanel = panel.findViewById(R.id.function_font_picker_panel);
         tabBar = panel.findViewById(R.id.function_edit_tab_bar);
         contentContainer = panel.findViewById(R.id.function_edit_content_container);
         tabIndicator = panel.findViewById(R.id.function_edit_tab_indicator);
-        ImageButton closeButton = panel.findViewById(R.id.function_edit_sheet_close);
-        if (closeButton != null) {
-            closeButton.setOnClickListener(v -> dismiss());
+        ImageButton aiBtn = panel.findViewById(R.id.function_edit_btn_ai);
+        ImageButton keyboardBtn = panel.findViewById(R.id.function_edit_btn_keyboard);
+        ImageButton collapseBtn = panel.findViewById(R.id.function_edit_btn_collapse);
+        if (aiBtn != null) {
+            aiBtn.setOnClickListener(v -> {
+                dismiss();
+                host.showAiOperationSheet();
+            });
+        }
+        if (keyboardBtn != null) {
+            keyboardBtn.setOnClickListener(v -> {
+                dismiss();
+                host.focusDocumentAndShowIme();
+            });
+        }
+        if (collapseBtn != null) {
+            collapseBtn.setOnClickListener(v -> dismiss());
         }
         buildTabBar();
         selectTab(0);
@@ -810,8 +828,8 @@ public class FunctionPanelController {
         }
         populateFontPickerList(list, valueView);
 
-        if (functionHeader != null) {
-            functionHeader.setVisibility(View.GONE);
+        if (tabHeader != null) {
+            tabHeader.setVisibility(View.GONE);
         }
         if (functionTabArea != null) {
             functionTabArea.setVisibility(View.GONE);
@@ -874,8 +892,8 @@ public class FunctionPanelController {
             return;
         }
         fontPickerVisible = false;
-        if (functionHeader != null) {
-            functionHeader.setVisibility(View.VISIBLE);
+        if (tabHeader != null) {
+            tabHeader.setVisibility(View.VISIBLE);
         }
         if (functionTabArea != null) {
             functionTabArea.setVisibility(View.VISIBLE);
