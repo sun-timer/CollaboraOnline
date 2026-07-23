@@ -25,6 +25,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.ai.AiDialogHelper;
 import org.libreoffice.androidlib.impress.ImpressShapePickerController;
+import org.libreoffice.androidlib.impress.ImpressSlideLayoutCatalog;
 import org.libreoffice.androidlib.impress.ImpressSolidColorPickerController;
 import org.libreoffice.androidlib.impress.ImpressTransitionCatalog;
 
@@ -63,6 +64,16 @@ public class ImpressFunctionPanelController {
     private static final int TRANSITION_CELL_MIN_H_DP = 72;
     private static final int TRANSITION_CELL_VPAD_DP = 6;
     private static final int DEFAULT_SELECTED_TRANSITION_INDEX = 8;
+    private static final int INSERT_GRID_COLS = 3;
+    private static final int INSERT_GRID_GAP_DP = 12;
+    private static final int INSERT_ICON_SIZE_DP = 32;
+    private static final int INSERT_CELL_MIN_H_DP = 88;
+    private static final int CHART_TYPE_MAX_COLUMNS = 3;
+    private static final int LAYOUT_GRID_COLS = 3;
+    private static final int LAYOUT_THUMB_W_DP = 100;
+    private static final int LAYOUT_THUMB_H_DP = 56;
+    private static final int LAYOUT_CELL_VPAD_DP = 8;
+    private static final int LAYOUT_CELL_MIN_H_DP = 96;
 
     private static final class ColorSwatch {
         final String label;
@@ -117,6 +128,34 @@ public class ImpressFunctionPanelController {
 
         /** 应用幻灯片切换动画（iconViewIndex = transitions_icons 行号）。 */
         void applySlideTransition(int iconViewIndex, boolean applyToAll);
+
+        /** 插入指定类型的图表（与 Calc 功能面板图表类型页一致）。 */
+        void insertChartWithType(String unoChartType);
+
+        /** 插入超链接（与 Calc 功能面板超链接页一致）。 */
+        void insertHyperlink(String displayText, String url);
+
+        /** 预读幻灯片列表，供超链接文档 Tab 默认值。 */
+        void fetchImpressHyperlinkContext(
+                ImpressHyperlinkPickerController.HyperlinkContextCallback callback);
+
+        void saveDocument();
+
+        void saveDocumentAs();
+
+        void exportDocumentAsPdf();
+
+        void initiatePrint();
+
+        String getCommentAuthorName();
+
+        void insertCommentWithText(String text);
+
+        void fetchReviewComments(ImpressReviewCommentController.ReviewCommentsCallback callback);
+
+        void editCommentWithText(String id, String author, String text);
+
+        void deleteCommentWithId(String id);
     }
 
     private enum ItemType {
@@ -219,14 +258,25 @@ public class ImpressFunctionPanelController {
     private final Map<String, Integer> pickerColorRgb = new HashMap<>();
     private String[] cachedFontOptions = FALLBACK_FONT_OPTIONS;
     private String[] cachedFontValues = FALLBACK_FONT_VALUES;
-    private ImpressShapePickerController shapePickerController;
     private ImpressSolidColorPickerController solidColorPickerController;
     private boolean solidColorPickerVisible;
+    private boolean chartPickerVisible;
+    private boolean hyperlinkPickerVisible;
+    private boolean tablePickerVisible;
+    private ImpressHyperlinkPickerController hyperlinkPicker;
+    private ImpressInsertTablePickerController tablePicker;
+    private ImpressCommentPickerController commentPicker;
+    private boolean commentPickerVisible;
+    private ImpressReviewCommentController reviewCommentPicker;
+    private boolean reviewCommentPickerVisible;
     private int submenuReturnTabIndex = -1;
     private TextView slideMasterValueView;
     private Integer selectedMasterSolidRgb;
     private int selectedTransitionIndex = DEFAULT_SELECTED_TRANSITION_INDEX;
     private LinearLayout transitionGridRoot;
+    private int selectedLayoutIndex = -1;
+    private LinearLayout layoutGridRoot;
+    private ImpressShapePickerController shapePickerController;
 
     public ImpressFunctionPanelController(Host host) {
         this.host = host;
@@ -288,9 +338,11 @@ public class ImpressFunctionPanelController {
     public void dismiss() {
         dismissFontPicker();
         dismissSolidColorPickerPage();
-        if (shapePickerController != null) {
-            shapePickerController.dismiss();
-        }
+        chartPickerVisible = false;
+        hyperlinkPickerVisible = false;
+        tablePickerVisible = false;
+        commentPickerVisible = false;
+        reviewCommentPickerVisible = false;
         if (dialog != null) {
             dialog.dismiss();
             dialog = null;
@@ -318,11 +370,24 @@ public class ImpressFunctionPanelController {
             tabBar.addView(tabView);
             tabViews.add(tabView);
         }
+        StringBuilder tabTitles = new StringBuilder();
+        for (int i = 0; i < tabs.size(); i++) {
+            if (i > 0) {
+                tabTitles.append('|');
+            }
+            tabTitles.append(tabs.get(i).title);
+        }
+        Log.i(TAG, "buildTabBar count=" + tabs.size() + " tabs=" + tabTitles);
     }
 
     private void selectTab(int index) {
         dismissFontPicker();
         dismissSolidColorPickerPage();
+        dismissChartPickerPage();
+        dismissHyperlinkPickerPage();
+        dismissTablePickerPage();
+        dismissCommentPickerPage();
+        dismissReviewCommentPickerPage();
         selectedTabIndex = index;
         for (int i = 0; i < tabViews.size(); i++) {
             TextView tabView = tabViews.get(i);
@@ -363,8 +428,17 @@ public class ImpressFunctionPanelController {
     private void renderTabContent(PanelTab tab) {
         contentContainer.removeAllViews();
         transitionGridRoot = null;
+        layoutGridRoot = null;
         if ("transition".equals(tab.id)) {
             contentContainer.addView(buildTransitionTabContent());
+            return;
+        }
+        if ("layout_tab".equals(tab.id)) {
+            contentContainer.addView(buildLayoutTabContent());
+            return;
+        }
+        if ("insert".equals(tab.id)) {
+            contentContainer.addView(createInsertGrid());
             return;
         }
         if (!tab.items.isEmpty() && tab.items.get(0).type == ItemType.STUB) {
@@ -407,6 +481,9 @@ public class ImpressFunctionPanelController {
                     break;
                 case ACTION:
                     root.addView(createActionRow(item));
+                    if (tab.items.indexOf(item) < tab.items.size() - 1) {
+                        root.addView(createDivider());
+                    }
                     break;
                 default:
                     break;
@@ -1087,12 +1164,35 @@ public class ImpressFunctionPanelController {
                 PARA_LABELS, PARA_COMMANDS, PARA_ICONS, 3));
 
         result.add(new PanelTab("common", "常用", common));
-        result.add(new PanelTab("file", "文件", stubItems()));
+        result.add(new PanelTab("file", "文件", buildFileItems()));
         result.add(new PanelTab("insert", "插入", buildInsertItems()));
         result.add(new PanelTab("transition", "切换", stubItems()));
         result.add(new PanelTab("layout_tab", "布局", stubItems()));
-        result.add(new PanelTab("review", "审阅", stubItems()));
+        result.add(new PanelTab("review", "审阅", buildReviewItems()));
         return result;
+    }
+
+    private List<PanelItem> buildReviewItems() {
+        List<PanelItem> review = new ArrayList<>();
+        review.add(new PanelItem(ItemType.ACTION, "spell_check", "拼写检查",
+                R.drawable.lolib_ic_impress_spell_check, ".uno:SpellDialog"));
+        review.add(new PanelItem(ItemType.ACTION, "review_comment", "批注",
+                R.drawable.lolib_ic_impress_review_comment, ""));
+        Log.i(TAG, "buildTabs review_items=" + review.size() + " layout=list+icons");
+        return review;
+    }
+
+    private List<PanelItem> buildFileItems() {
+        List<PanelItem> file = new ArrayList<>();
+        file.add(new PanelItem(ItemType.ACTION, "save", "保存",
+                R.drawable.lolib_ic_calc_file_save, host::saveDocument));
+        file.add(new PanelItem(ItemType.ACTION, "save_as", "另存为",
+                R.drawable.lolib_ic_impress_file_save_as, host::saveDocumentAs));
+        file.add(new PanelItem(ItemType.ACTION, "export", "导出为",
+                R.drawable.lolib_ic_calc_file_export, host::exportDocumentAsPdf));
+        file.add(new PanelItem(ItemType.ACTION, "print", "打印",
+                R.drawable.lolib_ic_calc_file_print, host::initiatePrint));
+        return file;
     }
 
     private List<PanelItem> stubItems() {
@@ -1102,21 +1202,597 @@ public class ImpressFunctionPanelController {
     }
 
     private List<PanelItem> buildInsertItems() {
-        List<PanelItem> insert = new ArrayList<>();
-        insert.add(new PanelItem(ItemType.ACTION, "insert_local_image", "本地图像",
-                R.drawable.lolib_ic_calc_insert_local_image, (Runnable) host::openLocalImagePickerFromWeb));
-        insert.add(new PanelItem(ItemType.ACTION, "insert_chart", "图表",
-                R.drawable.lolib_ic_calc_insert_chart, ".uno:InsertObjectChart"));
-        insert.add(new PanelItem(ItemType.ACTION, "insert_table", "表格",
-                R.drawable.lolib_ic_insert_table, ".uno:InsertTable?Columns=2&Rows=2"));
-        insert.add(new PanelItem(ItemType.ACTION, "insert_shape", "形状",
-                R.drawable.lolib_ic_insert_shape, ""));
-        insert.add(new PanelItem(ItemType.ACTION, "insert_comment", "批注",
-                R.drawable.lolib_ic_calc_insert_comment, ".uno:InsertAnnotation"));
-        insert.add(new PanelItem(ItemType.ACTION, "insert_hyperlink", "超链接",
-                R.drawable.lolib_ic_calc_insert_hyperlink, ".uno:HyperlinkDialog"));
-        Log.i(TAG, "buildTabs insert_items=" + insert.size());
-        return insert;
+        // Rendered via createInsertGrid(); keep stub list for tab metadata.
+        return new ArrayList<>();
+    }
+
+    private static final class InsertGridItem {
+        final String id;
+        final String label;
+        final int iconResId;
+        final String unoCommand;
+        final Runnable hostAction;
+
+        InsertGridItem(String id, String label, int iconResId, String unoCommand) {
+            this(id, label, iconResId, unoCommand, null);
+        }
+
+        InsertGridItem(String id, String label, int iconResId, Runnable hostAction) {
+            this(id, label, iconResId, "", hostAction);
+        }
+
+        InsertGridItem(String id, String label, int iconResId, String unoCommand, Runnable hostAction) {
+            this.id = id;
+            this.label = label;
+            this.iconResId = iconResId;
+            this.unoCommand = unoCommand;
+            this.hostAction = hostAction;
+        }
+    }
+
+    private View createInsertGrid() {
+        InsertGridItem[] items = new InsertGridItem[] {
+                new InsertGridItem("insert_local_image", "本地图像",
+                        R.drawable.lolib_ic_impress_insert_local_image,
+                        (Runnable) host::openLocalImagePickerFromWeb),
+                new InsertGridItem("insert_chart", "图表",
+                        R.drawable.lolib_ic_impress_insert_chart, ""),
+                new InsertGridItem("insert_comment", "批注",
+                        R.drawable.lolib_ic_impress_insert_comment, ""),
+                new InsertGridItem("insert_table", "表格",
+                        R.drawable.lolib_ic_impress_insert_table, ""),
+                new InsertGridItem("insert_hyperlink", "超链接",
+                        R.drawable.lolib_ic_impress_insert_hyperlink, ""),
+                new InsertGridItem("insert_shape", "形状",
+                        R.drawable.lolib_ic_impress_insert_shape, ""),
+                new InsertGridItem("insert_textbox", "文本框",
+                        R.drawable.lolib_ic_impress_insert_textbox, ".uno:DrawText"),
+                new InsertGridItem("insert_more_fields", "更多字段",
+                        R.drawable.lolib_ic_impress_insert_more_fields, ""),
+        };
+
+        LinearLayout grid = new LinearLayout(host.getContext());
+        grid.setOrientation(LinearLayout.VERTICAL);
+        int gap = host.dpToPx(INSERT_GRID_GAP_DP);
+        int cols = INSERT_GRID_COLS;
+        for (int rowStart = 0; rowStart < items.length; rowStart += cols) {
+            LinearLayout row = new LinearLayout(host.getContext());
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            int rowEnd = Math.min(rowStart + cols, items.length);
+            for (int i = rowStart; i < rowEnd; i++) {
+                InsertGridItem item = items[i];
+                LinearLayout cell = new LinearLayout(host.getContext());
+                cell.setOrientation(LinearLayout.VERTICAL);
+                cell.setGravity(Gravity.CENTER);
+                cell.setBackgroundResource(R.drawable.lolib_bg_impress_insert_card);
+                cell.setPadding(host.dpToPx(8), host.dpToPx(16), host.dpToPx(8), host.dpToPx(14));
+                cell.setMinimumHeight(host.dpToPx(INSERT_CELL_MIN_H_DP));
+
+                ImageView icon = new ImageView(host.getContext());
+                icon.setImageResource(item.iconResId);
+                icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                cell.addView(icon, new LinearLayout.LayoutParams(
+                        host.dpToPx(INSERT_ICON_SIZE_DP), host.dpToPx(INSERT_ICON_SIZE_DP)));
+
+                TextView label = new TextView(host.getContext());
+                label.setText(item.label);
+                label.setGravity(Gravity.CENTER);
+                label.setTextColor(COLOR_TITLE);
+                label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+                label.setPadding(0, host.dpToPx(8), 0, 0);
+                cell.addView(label);
+
+                LinearLayout.LayoutParams lp = createEqualWidthSlotParams(
+                        cols, i - rowStart, gap, ViewGroup.LayoutParams.WRAP_CONTENT);
+                lp.bottomMargin = gap;
+                cell.setLayoutParams(lp);
+                cell.setOnClickListener(v -> runInsertGridAction(item));
+                row.addView(cell);
+            }
+            for (int slot = rowEnd - rowStart; slot < cols; slot++) {
+                row.addView(new View(host.getContext()),
+                        createEqualWidthSlotParams(cols, slot, gap, ViewGroup.LayoutParams.WRAP_CONTENT));
+            }
+            grid.addView(row, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        Log.i(TAG, "insert_grid_render items=" + items.length);
+        return grid;
+    }
+
+    private void runInsertGridAction(InsertGridItem item) {
+        if ("insert_shape".equals(item.id)) {
+            showShapePickerDialog();
+            return;
+        }
+        if ("insert_chart".equals(item.id)) {
+            showChartTypePickerPage();
+            return;
+        }
+        if ("insert_hyperlink".equals(item.id)) {
+            showHyperlinkPickerPage();
+            return;
+        }
+        if ("insert_table".equals(item.id)) {
+            showTablePickerPage();
+            return;
+        }
+        if ("insert_comment".equals(item.id)) {
+            showCommentPickerPage();
+            return;
+        }
+        if ("insert_more_fields".equals(item.id)) {
+            host.toastTodo("「更多字段」功能开发中");
+            return;
+        }
+        runAndDismiss(() -> {
+            if (item.hostAction != null) {
+                item.hostAction.run();
+            } else if (item.unoCommand != null && !item.unoCommand.isEmpty()) {
+                host.executeUnoCommand(item.unoCommand);
+            }
+        });
+    }
+
+    private void showShapePickerDialog() {
+        dismiss();
+        if (shapePickerController == null) {
+            shapePickerController = new ImpressShapePickerController(new ImpressShapePickerController.Host() {
+                @Override
+                public android.content.Context getContext() {
+                    return host.getContext();
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return host.dpToPx(dp);
+                }
+
+                @Override
+                public void executeUnoCommand(String command) {
+                    host.executeUnoCommand(command);
+                }
+
+                @Override
+                public void runAfterDismiss(Runnable action) {
+                    host.runAfterFunctionPanelDismiss(action);
+                }
+            });
+        }
+        host.runAfterFunctionPanelDismiss(() -> shapePickerController.show());
+    }
+
+    private static final class ChartTypeOption {
+        final String label;
+        final int previewRes;
+        final String unoType;
+
+        ChartTypeOption(String label, int previewRes, String unoType) {
+            this.label = label;
+            this.previewRes = previewRes;
+            this.unoType = unoType;
+        }
+    }
+
+    private static final String[] CHART_CATEGORY_TITLES = {"饼图", "线图", "柱图"};
+    private static final ChartTypeOption[][] CHART_TYPE_ROWS = new ChartTypeOption[][] {
+            {
+                    new ChartTypeOption("基础饼图", R.drawable.lolib_chart_preview_pie_basic, "pie"),
+                    new ChartTypeOption("基础饼图(圆角)", R.drawable.lolib_chart_preview_pie_rounded, "pie-rounded"),
+                    new ChartTypeOption("变形饼图", R.drawable.lolib_chart_preview_pie_exploded, "pie-exploded"),
+            },
+            {
+                    new ChartTypeOption("折线图", R.drawable.lolib_chart_preview_line_basic, "line"),
+                    new ChartTypeOption("曲线折线图", R.drawable.lolib_chart_preview_line_curve, "line-curve"),
+            },
+            {
+                    new ChartTypeOption("基础柱状图", R.drawable.lolib_chart_preview_column_basic, "column"),
+                    new ChartTypeOption("基础条形图", R.drawable.lolib_chart_preview_bar_basic, "bar"),
+                    new ChartTypeOption("堆叠柱状图", R.drawable.lolib_chart_preview_column_stacked, "column-stacked"),
+            },
+    };
+
+    private void showChartTypePickerPage() {
+        dismissFontPicker();
+        chartPickerVisible = true;
+        submenuReturnTabIndex = selectedTabIndex;
+        setTabChromeVisible(false);
+
+        contentContainer.removeAllViews();
+        LinearLayout root = new LinearLayout(host.getContext());
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(createChartPickerHeader());
+
+        int sectionGap = host.dpToPx(16);
+        int rowGap = host.dpToPx(12);
+        for (int section = 0; section < CHART_TYPE_ROWS.length; section++) {
+            root.addView(createSectionLabel(CHART_CATEGORY_TITLES[section]));
+            LinearLayout row = createChartTypeRow(CHART_TYPE_ROWS[section]);
+            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (section > 0) {
+                rowLp.topMargin = rowGap;
+            }
+            row.setLayoutParams(rowLp);
+            root.addView(row);
+            if (section < CHART_TYPE_ROWS.length - 1) {
+                View spacer = new View(host.getContext());
+                root.addView(spacer, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, sectionGap));
+            }
+        }
+
+        contentContainer.addView(root);
+        Log.i(TAG, "chart_type_picker_show");
+    }
+
+    private View createChartPickerHeader() {
+        LinearLayout header = new LinearLayout(host.getContext());
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setMinimumHeight(host.dpToPx(48));
+        header.setPadding(host.dpToPx(4), 0, host.dpToPx(8), 0);
+
+        ImageButton back = new ImageButton(host.getContext());
+        TypedValue rippleAttr = new TypedValue();
+        if (host.getContext().getTheme().resolveAttribute(
+                android.R.attr.selectableItemBackgroundBorderless, rippleAttr, true)) {
+            back.setBackgroundResource(rippleAttr.resourceId);
+        }
+        back.setImageResource(R.drawable.lolib_ic_top_back);
+        back.setContentDescription("返回");
+        back.setPadding(host.dpToPx(12), host.dpToPx(12), host.dpToPx(12), host.dpToPx(12));
+        back.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        back.setOnClickListener(v -> dismissChartPickerPage());
+        header.addView(back, new LinearLayout.LayoutParams(host.dpToPx(48), host.dpToPx(48)));
+
+        TextView title = new TextView(host.getContext());
+        title.setText("图表");
+        title.setTextColor(COLOR_TITLE);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        title.setTypeface(null, Typeface.BOLD);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleLp.setMarginStart(host.dpToPx(4));
+        header.addView(title, titleLp);
+        return header;
+    }
+
+    private LinearLayout createChartTypeRow(ChartTypeOption[] options) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        int gap = host.dpToPx(8);
+        for (int slot = 0; slot < CHART_TYPE_MAX_COLUMNS; slot++) {
+            LinearLayout.LayoutParams lp = createEqualWidthSlotParams(
+                    CHART_TYPE_MAX_COLUMNS, slot, gap, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (slot < options.length) {
+                row.addView(createChartTypeCard(options[slot]), lp);
+            } else {
+                row.addView(new View(host.getContext()), lp);
+            }
+        }
+        return row;
+    }
+
+    private View createChartTypeCard(ChartTypeOption option) {
+        LinearLayout card = new LinearLayout(host.getContext());
+        card.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable background = new GradientDrawable();
+        background.setCornerRadius(host.dpToPx(8));
+        background.setColor(Color.WHITE);
+        background.setStroke(host.dpToPx(1), Color.parseColor("#CCCCCC"));
+        card.setBackground(background);
+        card.setClipToOutline(true);
+
+        ImageView preview = new ImageView(host.getContext());
+        preview.setImageResource(option.previewRes);
+        preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        preview.setBackgroundColor(Color.WHITE);
+        preview.setPadding(host.dpToPx(4), host.dpToPx(4), host.dpToPx(4), host.dpToPx(4));
+        card.addView(preview, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(56)));
+
+        TextView label = new TextView(host.getContext());
+        label.setText(option.label);
+        label.setGravity(Gravity.CENTER);
+        label.setTextColor(COLOR_TITLE);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        label.setMaxLines(2);
+        label.setBackgroundColor(Color.parseColor("#F2F3F5"));
+        label.setPadding(host.dpToPx(4), host.dpToPx(8), host.dpToPx(4), host.dpToPx(8));
+        card.addView(label, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        card.setOnClickListener(v -> {
+            final String unoType = option.unoType;
+            Log.i(TAG, "chart_type_selected type=" + unoType + " label=" + option.label);
+            dismiss();
+            host.runAfterFunctionPanelDismiss(() -> host.insertChartWithType(unoType));
+        });
+        return card;
+    }
+
+    private void dismissChartPickerPage() {
+        if (!chartPickerVisible) {
+            return;
+        }
+        chartPickerVisible = false;
+        setTabChromeVisible(true);
+        int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
+                ? submenuReturnTabIndex : selectedTabIndex;
+        selectedTabIndex = returnIndex;
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(returnIndex));
+        }
+    }
+
+    private void dismissHyperlinkPickerPage() {
+        if (!hyperlinkPickerVisible) {
+            return;
+        }
+        hyperlinkPickerVisible = false;
+        setTabChromeVisible(true);
+        int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
+                ? submenuReturnTabIndex : selectedTabIndex;
+        selectedTabIndex = returnIndex;
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(returnIndex));
+        }
+    }
+
+    private void showHyperlinkPickerPage() {
+        dismissFontPicker();
+        hyperlinkPickerVisible = true;
+        submenuReturnTabIndex = selectedTabIndex;
+        setTabChromeVisible(false);
+
+        if (hyperlinkPicker == null) {
+            hyperlinkPicker = new ImpressHyperlinkPickerController(new ImpressHyperlinkPickerController.Host() {
+                @Override
+                public android.content.Context getContext() {
+                    return host.getContext();
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return host.dpToPx(dp);
+                }
+
+                @Override
+                public void toastTodo(String text) {
+                    host.toastTodo(text);
+                }
+
+                @Override
+                public void insertHyperlink(String displayText, String url) {
+                    dismiss();
+                    host.runAfterFunctionPanelDismiss(
+                            () -> host.insertHyperlink(displayText, url));
+                }
+
+                @Override
+                public void fetchImpressHyperlinkContext(
+                        ImpressHyperlinkPickerController.HyperlinkContextCallback callback) {
+                    host.fetchImpressHyperlinkContext(callback);
+                }
+
+                @Override
+                public void onBack() {
+                    dismissHyperlinkPickerPage();
+                }
+            });
+        }
+
+        contentContainer.removeAllViews();
+        contentContainer.addView(hyperlinkPicker.buildRootView());
+        hyperlinkPicker.onPickerShown();
+        Log.i(TAG, "hyperlink_picker_show");
+    }
+
+    private void dismissTablePickerPage() {
+        if (!tablePickerVisible) {
+            return;
+        }
+        tablePickerVisible = false;
+        setTabChromeVisible(true);
+        int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
+                ? submenuReturnTabIndex : selectedTabIndex;
+        selectedTabIndex = returnIndex;
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(returnIndex));
+        }
+    }
+
+    private void showTablePickerPage() {
+        dismissFontPicker();
+        tablePickerVisible = true;
+        submenuReturnTabIndex = selectedTabIndex;
+        setTabChromeVisible(false);
+
+        if (tablePicker == null) {
+            tablePicker = new ImpressInsertTablePickerController(new ImpressInsertTablePickerController.Host() {
+                @Override
+                public android.content.Context getContext() {
+                    return host.getContext();
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return host.dpToPx(dp);
+                }
+
+                @Override
+                public void insertTable(int rows, int columns) {
+                    String command = ".uno:InsertTable?Columns=" + columns + "&Rows=" + rows;
+                    runAndDismiss(() -> host.executeUnoCommand(command));
+                }
+
+                @Override
+                public void onBack() {
+                    dismissTablePickerPage();
+                }
+            });
+        }
+
+        contentContainer.removeAllViews();
+        contentContainer.addView(tablePicker.buildRootView());
+        Log.i(TAG, "table_picker_show");
+    }
+
+    private void dismissCommentPickerPage() {
+        if (!commentPickerVisible) {
+            return;
+        }
+        commentPickerVisible = false;
+        setTabChromeVisible(true);
+        int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
+                ? submenuReturnTabIndex : selectedTabIndex;
+        selectedTabIndex = returnIndex;
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(returnIndex));
+        }
+    }
+
+    private void showCommentPickerPage() {
+        dismissFontPicker();
+        commentPickerVisible = true;
+        submenuReturnTabIndex = selectedTabIndex;
+        setTabChromeVisible(false);
+
+        if (commentPicker == null) {
+            commentPicker = new ImpressCommentPickerController(new ImpressCommentPickerController.Host() {
+                @Override
+                public android.content.Context getContext() {
+                    return host.getContext();
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return host.dpToPx(dp);
+                }
+
+                @Override
+                public String getCommentAuthorName() {
+                    return host.getCommentAuthorName();
+                }
+
+                @Override
+                public void toastTodo(String text) {
+                    host.toastTodo(text);
+                }
+
+                @Override
+                public void insertCommentWithText(String text) {
+                    dismiss();
+                    host.runAfterFunctionPanelDismiss(() -> host.insertCommentWithText(text));
+                }
+
+                @Override
+                public void onBack() {
+                    dismissCommentPickerPage();
+                }
+            });
+        }
+
+        contentContainer.removeAllViews();
+        contentContainer.addView(commentPicker.buildRootView());
+        Log.i(TAG, "comment_picker_show");
+    }
+
+    private void dismissReviewCommentPickerPage() {
+        if (!reviewCommentPickerVisible) {
+            return;
+        }
+        reviewCommentPickerVisible = false;
+        setTabChromeVisible(true);
+        int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
+                ? submenuReturnTabIndex : selectedTabIndex;
+        selectedTabIndex = returnIndex;
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(returnIndex));
+        }
+    }
+
+    private void showReviewCommentPickerPage() {
+        dismissFontPicker();
+        reviewCommentPickerVisible = true;
+        submenuReturnTabIndex = selectedTabIndex;
+        setTabChromeVisible(false);
+
+        if (reviewCommentPicker == null) {
+            reviewCommentPicker = new ImpressReviewCommentController(
+                    new ImpressReviewCommentController.Host() {
+                        @Override
+                        public android.content.Context getContext() {
+                            return host.getContext();
+                        }
+
+                        @Override
+                        public int dpToPx(int dp) {
+                            return host.dpToPx(dp);
+                        }
+
+                        @Override
+                        public String getCommentAuthorName() {
+                            return host.getCommentAuthorName();
+                        }
+
+                        @Override
+                        public void toastTodo(String text) {
+                            host.toastTodo(text);
+                        }
+
+                        @Override
+                        public void fetchReviewComments(
+                                ImpressReviewCommentController.ReviewCommentsCallback callback) {
+                            host.fetchReviewComments(callback);
+                        }
+
+                        @Override
+                        public void editCommentWithText(String id, String author, String text) {
+                            host.editCommentWithText(id, author, text);
+                        }
+
+                        @Override
+                        public void deleteCommentWithId(String id) {
+                            host.deleteCommentWithId(id);
+                        }
+
+                        @Override
+                        public void onBack() {
+                            dismissReviewCommentPickerPage();
+                        }
+                    });
+        }
+
+        contentContainer.removeAllViews();
+        contentContainer.addView(reviewCommentPicker.buildRootView());
+        reviewCommentPicker.onPickerShown();
+        Log.i(TAG, "review_comment_picker_show");
+    }
+
+    private LinearLayout.LayoutParams createEqualWidthSlotParams(
+            int maxCols, int slotIndex, int gap, int heightPx) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, heightPx, 1f);
+        if (slotIndex < maxCols - 1) {
+            lp.setMarginEnd(gap);
+        }
+        return lp;
+    }
+
+    private View createDivider() {
+        View divider = new View(host.getContext());
+        divider.setBackgroundColor(COLOR_DIVIDER);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1));
+        lp.setMarginStart(host.dpToPx(60));
+        divider.setLayoutParams(lp);
+        return divider;
     }
 
     private View createActionRow(PanelItem item) {
@@ -1148,8 +1824,8 @@ public class ImpressFunctionPanelController {
     }
 
     private void runItemAction(PanelItem item) {
-        if ("insert_shape".equals(item.id)) {
-            showShapePicker();
+        if ("review_comment".equals(item.id)) {
+            showReviewCommentPickerPage();
             return;
         }
         runAndDismiss(() -> {
@@ -1161,38 +1837,15 @@ public class ImpressFunctionPanelController {
         });
     }
 
+    /**
+     * 与 Writer {@link FunctionPanelController} / Calc 面板一致：先 dismiss，再立即执行。
+     * 延迟执行会导致 Android 图片选择 Intent / WebView file input 无响应。
+     */
     private void runAndDismiss(Runnable action) {
         dismiss();
-        host.runAfterFunctionPanelDismiss(action);
-    }
-
-    private void showShapePicker() {
-        if (shapePickerController == null) {
-            shapePickerController = new ImpressShapePickerController(new ImpressShapePickerController.Host() {
-                @Override
-                public android.content.Context getContext() {
-                    return host.getContext();
-                }
-
-                @Override
-                public int dpToPx(int dp) {
-                    return host.dpToPx(dp);
-                }
-
-                @Override
-                public void executeUnoCommand(String command) {
-                    host.executeUnoCommand(command);
-                }
-
-                @Override
-                public void runAfterDismiss(Runnable action) {
-                    dismiss();
-                    host.runAfterFunctionPanelDismiss(action);
-                }
-            });
+        if (action != null) {
+            action.run();
         }
-        shapePickerController.show();
-        Log.i(TAG, "insert_shape_picker_open");
     }
 
     private View buildTransitionTabContent() {
@@ -1207,28 +1860,39 @@ public class ImpressFunctionPanelController {
     }
 
     private View createApplyToAllRow() {
-        LinearLayout row = new LinearLayout(host.getContext());
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(host.dpToPx(56));
-        row.setPadding(host.dpToPx(16), host.dpToPx(12), host.dpToPx(16), host.dpToPx(8));
+        LinearLayout outer = new LinearLayout(host.getContext());
+        outer.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams outerLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        outerLp.bottomMargin = host.dpToPx(12);
+        outer.setLayoutParams(outerLp);
+
+        LinearLayout card = new LinearLayout(host.getContext());
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER);
+        card.setBackgroundResource(R.drawable.lolib_bg_impress_apply_all_row);
+        int hPad = host.dpToPx(16);
+        int vPad = host.dpToPx(14);
+        card.setPadding(hPad, vPad, hPad, vPad);
+        card.setMinimumHeight(host.dpToPx(48));
 
         ImageView icon = new ImageView(host.getContext());
         icon.setImageResource(R.drawable.lolib_ic_impress_apply_transition_all);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        row.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(32), host.dpToPx(32)));
+        card.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
 
         TextView label = new TextView(host.getContext());
         label.setText("应用到全部幻灯片");
         label.setTextColor(COLOR_TITLE);
         label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        labelLp.setMarginStart(host.dpToPx(12));
-        row.addView(label, labelLp);
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        labelLp.setMarginStart(host.dpToPx(8));
+        card.addView(label, labelLp);
 
-        row.setOnClickListener(v -> onApplyTransitionToAll());
-        return row;
+        card.setOnClickListener(v -> onApplyTransitionToAll());
+        outer.addView(card);
+        return outer;
     }
 
     private View createTransitionGrid() {
@@ -1334,6 +1998,114 @@ public class ImpressFunctionPanelController {
         }
     }
 
+    private View buildLayoutTabContent() {
+        LinearLayout root = new LinearLayout(host.getContext());
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(createLayoutGrid());
+        return root;
+    }
+
+    private View createLayoutGrid() {
+        layoutGridRoot = new LinearLayout(host.getContext());
+        layoutGridRoot.setOrientation(LinearLayout.VERTICAL);
+        int gap = host.dpToPx(INSERT_GRID_GAP_DP);
+        int sidePad = host.dpToPx(12);
+        layoutGridRoot.setPadding(sidePad, 0, sidePad, host.dpToPx(12));
+
+        ImpressSlideLayoutCatalog.Entry[] entries = ImpressSlideLayoutCatalog.ENTRIES;
+        for (int rowStart = 0; rowStart < entries.length; rowStart += LAYOUT_GRID_COLS) {
+            LinearLayout row = new LinearLayout(host.getContext());
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            int rowEnd = Math.min(rowStart + LAYOUT_GRID_COLS, entries.length);
+            for (int i = rowStart; i < rowEnd; i++) {
+                ImpressSlideLayoutCatalog.Entry entry = entries[i];
+                row.addView(createLayoutCell(entry, i < rowEnd - 1, gap));
+            }
+            for (int slot = rowEnd - rowStart; slot < LAYOUT_GRID_COLS; slot++) {
+                row.addView(new View(host.getContext()),
+                        createEqualWidthSlotParams(LAYOUT_GRID_COLS, slot, gap, ViewGroup.LayoutParams.WRAP_CONTENT));
+            }
+            if (rowStart > 0) {
+                LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                rowLp.topMargin = gap;
+                row.setLayoutParams(rowLp);
+            }
+            layoutGridRoot.addView(row);
+        }
+        Log.i(TAG, "layout_grid_render items=" + entries.length);
+        return layoutGridRoot;
+    }
+
+    private View createLayoutCell(ImpressSlideLayoutCatalog.Entry entry, boolean addEndGap, int gap) {
+        LinearLayout cell = new LinearLayout(host.getContext());
+        cell.setOrientation(LinearLayout.VERTICAL);
+        cell.setGravity(Gravity.CENTER_HORIZONTAL);
+        boolean selected = entry.index == selectedLayoutIndex;
+        cell.setBackgroundResource(selected
+                ? R.drawable.lolib_bg_impress_transition_cell_selected
+                : R.drawable.lolib_bg_impress_insert_card);
+        int vPad = host.dpToPx(LAYOUT_CELL_VPAD_DP);
+        cell.setPadding(host.dpToPx(6), vPad, host.dpToPx(6), vPad);
+        cell.setMinimumHeight(host.dpToPx(LAYOUT_CELL_MIN_H_DP));
+
+        ImageView thumb = new ImageView(host.getContext());
+        thumb.setImageResource(entry.iconResId);
+        thumb.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        cell.addView(thumb, new LinearLayout.LayoutParams(
+                host.dpToPx(LAYOUT_THUMB_W_DP), host.dpToPx(LAYOUT_THUMB_H_DP)));
+
+        TextView caption = new TextView(host.getContext());
+        caption.setText(entry.label);
+        caption.setGravity(Gravity.CENTER);
+        caption.setTextColor(COLOR_TITLE);
+        caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        caption.setMaxLines(2);
+        caption.setPadding(0, host.dpToPx(6), 0, 0);
+        cell.addView(caption);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        if (addEndGap) {
+            lp.setMarginEnd(gap);
+        }
+        cell.setLayoutParams(lp);
+        cell.setTag(entry.index);
+        cell.setOnClickListener(v -> onLayoutCellClick(entry));
+        return cell;
+    }
+
+    private void onLayoutCellClick(ImpressSlideLayoutCatalog.Entry entry) {
+        selectedLayoutIndex = entry.index;
+        String command = ".uno:AssignLayout?WhatLayout:long=" + entry.whatLayout;
+        Log.i(TAG, "layout_apply index=" + entry.index
+                + " label=" + entry.label + " whatLayout=" + entry.whatLayout);
+        runAndDismiss(() -> host.executeUnoCommand(command));
+    }
+
+    private void refreshLayoutSelection() {
+        if (layoutGridRoot == null) {
+            return;
+        }
+        for (int r = 0; r < layoutGridRoot.getChildCount(); r++) {
+            View rowView = layoutGridRoot.getChildAt(r);
+            if (!(rowView instanceof LinearLayout)) {
+                continue;
+            }
+            LinearLayout row = (LinearLayout) rowView;
+            for (int c = 0; c < row.getChildCount(); c++) {
+                View cell = row.getChildAt(c);
+                Object tag = cell.getTag();
+                boolean selected = tag instanceof Integer && ((Integer) tag) == selectedLayoutIndex;
+                cell.setBackgroundResource(selected
+                        ? R.drawable.lolib_bg_impress_transition_cell_selected
+                        : R.drawable.lolib_bg_impress_insert_card);
+            }
+        }
+    }
+
     private static final int[] CHAR_TOOL_ICONS_ROW1 = {
             R.drawable.lolib_ic_calc_bold,
             R.drawable.lolib_ic_calc_italic,
@@ -1368,9 +2140,9 @@ public class ImpressFunctionPanelController {
             R.drawable.lolib_ic_impress_layout_section,
     };
     private static final String[] LAYOUT_COMMANDS = {
-            ".uno:AssignLayout?WhatLayout:short=0",
-            ".uno:AssignLayout?WhatLayout:short=1",
-            ".uno:AssignLayout?WhatLayout:short=2",
+            ".uno:AssignLayout?WhatLayout:long=0",
+            ".uno:AssignLayout?WhatLayout:long=1",
+            ".uno:AssignLayout?WhatLayout:long=2",
     };
 
     private static final String[] PARA_LABELS = {

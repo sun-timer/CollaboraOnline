@@ -19,16 +19,16 @@
         android:descendantFocusability="blocksDescendants"
         android:focusable="true"
         android:focusableInTouchMode="true"
-        android:fillViewport="true">
+        android:fillViewport="false">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingStart="16dp"
-        android:paddingTop="16dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="16dp">
+        android:paddingStart="@dimen/ai_function_grid_padding"
+        android:paddingTop="@dimen/ai_function_grid_padding"
+        android:paddingEnd="@dimen/ai_function_grid_padding"
+        android:paddingBottom="@dimen/ai_function_grid_padding">
 
         <!-- ============== Selection hint ============== -->
         <TextView
@@ -62,9 +62,9 @@
             <LinearLayout
                 android:id="@+id/ai_op_calc_formula"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="@dimen/ai_function_card_gap"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
@@ -83,7 +83,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="AI公式"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -93,9 +93,9 @@
             <LinearLayout
                 android:id="@+id/ai_op_calc_cond_format"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="@dimen/ai_function_card_gap"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
@@ -114,7 +114,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="AI条件格式"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -124,7 +124,7 @@
             <LinearLayout
                 android:id="@+id/ai_op_calc_data_analysis"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
@@ -144,7 +144,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="AI数据分析"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -162,9 +162,9 @@
             <LinearLayout
                 android:id="@+id/ai_op_calc_data_process"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="@dimen/ai_function_card_gap"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
@@ -183,7 +183,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="AI数据处理"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -192,9 +192,9 @@
             <LinearLayout
                 android:id="@+id/ai_op_calc_chart"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="@dimen/ai_function_card_gap"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
@@ -213,7 +213,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="AI图表生成"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -227,58 +227,349 @@
             android:id="@+id/ai_op_impress_block"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
             android:orientation="vertical"
             android:visibility="gone">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="演示文稿"
-                android:textColor="#101010"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
             <LinearLayout
+                android:id="@+id/ai_op_impress_row1"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
                 android:orientation="horizontal">
 
                 <LinearLayout
                     android:id="@+id/ai_op_impress_ppt"
                     android:layout_width="0dp"
-                    android:layout_height="160dp"
+                    android:layout_height="@dimen/ai_function_card_height"
+                    android:layout_marginEnd="@dimen/ai_function_card_gap"
                     android:layout_weight="1"
-                    android:layout_marginEnd="10dp"
-                    android:background="@drawable/lolib_bg_ai_function_card"
+                    android:background="@drawable/lolib_bg_ai_function_card_compact"
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center"
                     android:orientation="vertical">
 
                     <ImageView
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        android:contentDescription="AI生成PPT"
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:contentDescription="生成PPT"
                         android:scaleType="centerInside"
-                        android:src="@drawable/lolib_ic_ai_chart_generate" />
+                        android:src="@drawable/lolib_ic_ai_impress_generate_ppt" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:text="AI生成PPT"
+                        android:layout_marginTop="8dp"
+                        android:text="生成PPT"
                         android:textColor="#101010"
                         android:textSize="14sp" />
                 </LinearLayout>
 
-                <!-- 占位 -->
-                <View
+                <LinearLayout
+                    android:id="@+id/ai_op_impress_continue_write"
                     android:layout_width="0dp"
-                    android:layout_height="160dp"
+                    android:layout_height="@dimen/ai_function_card_height"
+                    android:layout_marginEnd="@dimen/ai_function_card_gap"
                     android:layout_weight="1"
-                    android:visibility="invisible" />
+                    android:background="@drawable/lolib_bg_ai_function_card_compact"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:contentDescription="续写"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/lolib_ic_ai_impress_continue_write" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="续写"
+                        android:textColor="#101010"
+                        android:textSize="14sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/ai_op_impress_article_generate"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/ai_function_card_height"
+                    android:layout_weight="1"
+                    android:background="@drawable/lolib_bg_ai_function_card_compact"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:contentDescription="文案生成"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/lolib_ic_ai_impress_article_generate" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="文案生成"
+                        android:textColor="#101010"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/ai_op_impress_row2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/ai_function_row_gap"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:id="@+id/ai_op_impress_expand"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/ai_function_card_height"
+                    android:layout_marginEnd="@dimen/ai_function_card_gap"
+                    android:layout_weight="1"
+                    android:background="@drawable/lolib_bg_ai_function_card_compact"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:contentDescription="文案扩写"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/lolib_ic_ai_impress_expand" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="文案扩写"
+                        android:textColor="#101010"
+                        android:textSize="14sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/ai_op_impress_polish"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/ai_function_card_height"
+                    android:layout_marginEnd="@dimen/ai_function_card_gap"
+                    android:layout_weight="1"
+                    android:background="@drawable/lolib_bg_ai_function_card_compact"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:contentDescription="文案润色"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/lolib_ic_ai_impress_polish" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="文案润色"
+                        android:textColor="#101010"
+                        android:textSize="14sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/ai_op_impress_condense"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/ai_function_card_height"
+                    android:layout_weight="1"
+                    android:background="@drawable/lolib_bg_ai_function_card_compact"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:contentDescription="文案缩写"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/lolib_ic_ai_impress_condense" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="文案缩写"
+                        android:textColor="#101010"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/ai_op_impress_row3"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/ai_function_row_gap"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:id="@+id/ai_op_impress_rewrite"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/ai_function_card_height"
+                    android:layout_marginEnd="@dimen/ai_function_card_gap"
+                    android:layout_weight="1"
+                    android:background="@drawable/lolib_bg_ai_function_card_compact"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:contentDescription="文案重写"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/lolib_ic_ai_impress_rewrite" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="文案重写"
+                        android:textColor="#101010"
+                        android:textSize="14sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/ai_op_impress_text_extract"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/ai_function_card_height"
+                    android:layout_marginEnd="@dimen/ai_function_card_gap"
+                    android:layout_weight="1"
+                    android:background="@drawable/lolib_bg_ai_function_card_compact"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:contentDescription="文案提取"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/lolib_ic_ai_impress_text_extract" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="文案提取"
+                        android:textColor="#101010"
+                        android:textSize="14sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/ai_op_impress_typeset"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/ai_function_card_height"
+                    android:layout_weight="1"
+                    android:background="@drawable/lolib_bg_ai_function_card_compact"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:contentDescription="AI排版"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/lolib_ic_ai_impress_typeset" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="AI排版"
+                        android:textColor="#101010"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/ai_op_impress_row4"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/ai_function_row_gap"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:id="@+id/ai_op_impress_image_generate"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/ai_function_card_height"
+                    android:layout_marginEnd="@dimen/ai_function_card_gap"
+                    android:layout_weight="1"
+                    android:background="@drawable/lolib_bg_ai_function_card_compact"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:contentDescription="AI图片"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/lolib_ic_ai_impress_image" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="AI图片"
+                        android:textColor="#101010"
+                        android:textSize="14sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/ai_op_impress_format_batch"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/ai_function_card_height"
+                    android:layout_marginEnd="@dimen/ai_function_card_gap"
+                    android:layout_weight="1"
+                    android:background="@drawable/lolib_bg_ai_function_card_compact"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:contentDescription="格式批量处理"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/lolib_ic_ai_impress_format_batch" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="格式批量处理"
+                        android:textColor="#101010"
+                        android:textSize="14sp" />
+                </LinearLayout>
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/ai_function_card_height"
+                    android:layout_weight="1" />
             </LinearLayout>
         </LinearLayout>
 
@@ -304,9 +595,9 @@
             <LinearLayout
                 android:id="@+id/ai_op_continue_write"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="@dimen/ai_function_card_gap"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
@@ -325,7 +616,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="AI续写"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -335,9 +626,9 @@
             <LinearLayout
                 android:id="@+id/ai_op_outline"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="@dimen/ai_function_card_gap"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
@@ -356,7 +647,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="生成大纲"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -366,7 +657,7 @@
             <LinearLayout
                 android:id="@+id/ai_op_article_generate"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
@@ -386,7 +677,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="文案生成"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -415,9 +706,9 @@
             <LinearLayout
                 android:id="@+id/ai_op_polish"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="@dimen/ai_function_card_gap"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
@@ -436,7 +727,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="文案润色"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -446,9 +737,9 @@
             <LinearLayout
                 android:id="@+id/ai_op_expand"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="@dimen/ai_function_card_gap"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
@@ -467,7 +758,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="文案扩写"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -477,7 +768,7 @@
             <LinearLayout
                 android:id="@+id/ai_op_condense"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
@@ -497,7 +788,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="文案缩写"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -515,9 +806,9 @@
             <LinearLayout
                 android:id="@+id/ai_op_rewrite"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="@dimen/ai_function_card_gap"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
@@ -536,7 +827,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="文案重写"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -546,9 +837,9 @@
             <LinearLayout
                 android:id="@+id/ai_op_translate"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="@dimen/ai_function_card_gap"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
@@ -567,7 +858,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="文案翻译"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -575,7 +866,7 @@
 
             <Space
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1" />
         </LinearLayout>
 
@@ -601,9 +892,9 @@
             <LinearLayout
                 android:id="@+id/ai_op_text_extract"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="@dimen/ai_function_card_gap"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
@@ -622,7 +913,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="文字提取"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -632,9 +923,9 @@
             <LinearLayout
                 android:id="@+id/ai_op_typeset"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="@dimen/ai_function_card_gap"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
@@ -653,7 +944,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="AI排版"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -663,7 +954,7 @@
             <LinearLayout
                 android:id="@+id/ai_op_image_generate"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
@@ -683,7 +974,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="AI图片"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -701,9 +992,9 @@
             <LinearLayout
                 android:id="@+id/ai_op_format_batch"
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_marginEnd="@dimen/ai_function_card_gap"
                 android:background="@drawable/lolib_bg_ai_function_card"
                 android:clickable="true"
                 android:focusable="true"
@@ -722,7 +1013,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="格式批量处理"
                     android:textColor="#101010"
                     android:textSize="14sp" />
@@ -730,7 +1021,7 @@
 
             <Space
                 android:layout_width="0dp"
-                android:layout_height="160dp"
+                android:layout_height="@dimen/ai_function_card_height"
                 android:layout_weight="2" />
         </LinearLayout>
 
