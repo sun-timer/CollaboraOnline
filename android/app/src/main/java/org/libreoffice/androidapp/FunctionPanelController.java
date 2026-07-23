@@ -179,9 +179,9 @@ public class FunctionPanelController {
         View panel = LayoutInflater.from(host.getContext()).inflate(R.layout.lolib_sheet_functions_edit, null, false);
         tabBar = panel.findViewById(R.id.function_edit_tab_bar);
         contentContainer = panel.findViewById(R.id.function_edit_content_container);
-        ImageButton closeButton = panel.findViewById(R.id.function_edit_sheet_close);
-        if (closeButton != null) {
-            closeButton.setOnClickListener(v -> dismiss());
+        ImageButton collapseBtn = panel.findViewById(R.id.function_edit_btn_collapse);
+        if (collapseBtn != null) {
+            collapseBtn.setOnClickListener(v -> dismiss());
         }
         buildTabBar();
         selectTab(0);

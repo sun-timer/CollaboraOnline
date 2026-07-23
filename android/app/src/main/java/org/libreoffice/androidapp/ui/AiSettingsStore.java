@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
 
 import org.libreoffice.androidapp.R;
+import org.libreoffice.androidlib.ai.LocalModelManager;
 
 public final class AiSettingsStore {
     private AiSettingsStore() {}
@@ -13,6 +14,10 @@ public final class AiSettingsStore {
     public static final int MODEL_THINK = 1;
     public static final int MODEL_IMAGE = 2;
     public static final int MODEL_VISION = 3;
+    public static final int MODEL_LOCAL = 4;
+
+    public static final String KEY_LOCAL_ENABLED = LocalModelManager.KEY_ENABLED;
+    public static final String KEY_LOCAL_MODEL_PATH = LocalModelManager.KEY_MODEL_PATH;
 
     public static final String EXTRA_MODEL_TYPE = "extra_model_type";
     public static final String EXTRA_FROM_DRAWER = "extra_from_drawer";
