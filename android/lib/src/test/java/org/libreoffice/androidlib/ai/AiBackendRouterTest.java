@@ -27,36 +27,27 @@ public class AiBackendRouterTest {
     }
 
     @Test
-    public void outlineWithLocalReady_usesCloud() {
+    public void outlineWithLocalReady_usesLocal() {
         AiBackendRouter.ResolvedRoute route = router.resolve(
                 AiChatCoordinator.MODE_OUTLINE, "base", 0, readyState());
-        assertEquals(AiBackend.BACKEND_CLOUD, route.backend);
-        assertEquals("local_long_task_cloud", route.reason);
+        assertEquals(AiBackend.BACKEND_LOCAL, route.backend);
+        assertEquals("local_ready", route.reason);
     }
 
     @Test
-    public void continueWriteWithLocalReady_usesCloud() {
+    public void continueWriteWithLocalReady_usesLocal() {
         AiBackendRouter.ResolvedRoute route = router.resolve(
                 AiChatCoordinator.MODE_CONTINUE, "base", 0, readyState());
-        assertEquals(AiBackend.BACKEND_CLOUD, route.backend);
-        assertEquals("local_long_task_cloud", route.reason);
+        assertEquals(AiBackend.BACKEND_LOCAL, route.backend);
+        assertEquals("local_ready", route.reason);
     }
 
     @Test
-    public void impressGenerateWithLocalReady_usesCloud() {
+    public void impressGenerateWithLocalReady_usesLocal() {
         AiBackendRouter.ResolvedRoute route = router.resolve(
                 AiChatCoordinator.MODE_IMPRESS_GENERATE, "base", 0, readyState());
-        assertEquals(AiBackend.BACKEND_CLOUD, route.backend);
-        assertEquals("local_long_task_cloud", route.reason);
-    }
-
-    @Test
-    public void hugeDocContext_fallsBackCloud() {
-        AiBackendRouter.ResolvedRoute route = router.resolve(
-                AiChatCoordinator.MODE_POLISH, "base",
-                AiBackendRouter.LOCAL_MAX_PREFILL_TOKENS * 4 + 1, readyState());
-        assertEquals(AiBackend.BACKEND_CLOUD, route.backend);
-        assertEquals("local_prefill_too_long", route.reason);
+        assertEquals(AiBackend.BACKEND_LOCAL, route.backend);
+        assertEquals("local_ready", route.reason);
     }
 
     @Test

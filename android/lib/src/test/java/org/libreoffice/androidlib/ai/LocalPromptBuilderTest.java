@@ -31,7 +31,7 @@ public class LocalPromptBuilderTest {
         }
         JSONArray out = LocalPromptBuilder.buildPrompt(history, 2048, 512, true);
         int est = LocalPromptBuilder.estimateTokens(out);
-        assertTrue(est <= LocalPromptBuilder.LOCAL_MAX_PREFILL_TOKENS);
+        assertTrue(est <= 2048 - 512 - LocalPromptBuilder.SAFETY_MARGIN);
         JSONObject last = out.getJSONObject(out.length() - 1);
         assertEquals("user", last.getString("role"));
     }

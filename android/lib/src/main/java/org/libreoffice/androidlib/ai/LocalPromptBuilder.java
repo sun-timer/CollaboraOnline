@@ -9,8 +9,6 @@ import java.util.List;
 
 public final class LocalPromptBuilder {
     public static final int SAFETY_MARGIN = 128;
-    /** Align with AiBackendRouter.LOCAL_MAX_PREFILL_TOKENS for on-device prefill. */
-    public static final int LOCAL_MAX_PREFILL_TOKENS = AiBackendRouter.LOCAL_MAX_PREFILL_TOKENS;
 
     private LocalPromptBuilder() {}
 
@@ -35,12 +33,11 @@ public final class LocalPromptBuilder {
         if (history == null) {
             return new JSONArray();
         }
+        int budget = Math.max(256, contextSize - maxGenTokens - SAFETY_MARGIN);
         if (!multiTurn) {
-            return truncateToTokenBudget(new JSONArray(history.toString()), LOCAL_MAX_PREFILL_TOKENS);
+            return truncateToTokenBudget(new JSONArray(history.toString()), budget);
         }
 
-        int budget = Math.max(256, contextSize - maxGenTokens - SAFETY_MARGIN);
-        budget = Math.min(budget, LOCAL_MAX_PREFILL_TOKENS);
         JSONObject system = null;
         List<JSONObject> turns = new ArrayList<>();
         for (int i = 0; i < history.length(); i++) {
