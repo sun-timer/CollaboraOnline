@@ -22,4 +22,6 @@
     <string name="ask_for_convert_odf">确认文件格式</string>
     <string name="convert_odf_message">此文档可能包含无法以当前选择的文件格式“Text”保存的格式或内容。</string>
     <string name="cant_open_the_document">打不开文档</string>
+    <string name="ai_local_inference">本地推理</string>
+    <string name="ai_local_inference_running">本地模型处理中，请稍候…</string>
 </resources>

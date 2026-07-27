@@ -3082,6 +3082,7 @@ public class LOActivity extends AppCompatActivity {
         }
         if (useLocal) {
             Log.i(TAG, "ai_route_local requestId=" + requestId + " reason=" + route.reason);
+            dispatchAiState(requestId, AI_STATE_LOADING, getString(R.string.ai_local_inference_running));
         } else if (route.reason != null && !route.reason.isEmpty()) {
             Log.i(TAG, "ai_route_cloud requestId=" + requestId + " reason=" + route.reason);
         }
