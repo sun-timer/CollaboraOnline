@@ -48,7 +48,7 @@
             android:contentDescription="键盘"
             android:padding="8dp"
             android:scaleType="centerInside"
-            android:src="@drawable/lolib_ic_toolbar_keyboard" />
+            android:src="@drawable/lolib_ic_function_panel_keyboard" />
 
         <ImageButton
             android:id="@+id/impress_function_btn_collapse"
@@ -58,7 +58,7 @@
             android:contentDescription="收起"
             android:padding="8dp"
             android:scaleType="centerInside"
-            android:src="@drawable/lolib_ic_arrow_down" />
+            android:src="@drawable/lolib_ic_function_panel_collapse" />
     </LinearLayout>
 
     <FrameLayout

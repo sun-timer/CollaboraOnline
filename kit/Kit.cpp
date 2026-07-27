@@ -1143,6 +1143,11 @@ void Document::trimAfterInactivity()
     const std::string payload = p ? p : "(nil)";
     Document* self = static_cast<Document*>(data);
 
+    // Office callback may fire with nullptr between shutdownForExit clearing
+    // the old Document's this-pointer and onLoad setting the new one.
+    if (!self)
+        return;
+
     if (type == LOK_CALLBACK_PROFILE_FRAME)
     {
         // We must send the trace data to the WSD process for output
@@ -1296,6 +1301,11 @@ bool Document::onLoad(const std::string& sessionId,
     std::shared_ptr<ChildSession> session = it->second;
     try
     {
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "android_doc_onLoad_start session=%s docKey=%s pid=%d",
+                            sessionId.c_str(), _docKey.c_str(), getpid());
+#endif
         if (load(session, renderOpts))
         {
             return true;
@@ -1305,6 +1315,11 @@ bool Document::onLoad(const std::string& sessionId,
     {
         LOG_ERR("Exception while loading url [" << uriAnonym << "] for session [" << sessionId
                                                 << "]: " << exc.what());
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_ERROR, "LOActivity",
+                            "android_doc_onLoad_exception session=%s docKey=%s what=%s pid=%d",
+                            sessionId.c_str(), _docKey.c_str(), exc.what(), getpid());
+#endif
     }
 
     return false;
@@ -1406,6 +1421,50 @@ void Document::updateActivityHeader() const
     ss << "Commands:\n";
     SigUtil::setActivityHeader(ss.str());
 }
+
+#if MOBILEAPP
+void Document::shutdownForExit()
+{
+    _stop = true;
+
+    // Clear Office-level callback: its data pointer (this) becomes
+    // dangling after _loKitDocument is destroyed. onLoad will re-register
+    // with the new Document's this when loading the next document.
+    if (_loKit)
+        _loKit->registerCallback(nullptr, nullptr);
+
+    if (_loKitDocument && _loKitDocument->get())
+    {
+        const int viewCount = _loKitDocument->getViewsCount();
+        if (viewCount > 0)
+        {
+            std::vector<int> viewIds(viewCount);
+            _loKitDocument->getViewIds(viewIds.data(), viewCount);
+            for (const int viewId : viewIds)
+            {
+                _loKitDocument->setView(viewId);
+                _loKitDocument->registerCallback(nullptr, nullptr);
+            }
+        }
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_shutdown phase=before_loKitDocument_reset pid=%d", getpid());
+#endif
+        _loKitDocument.reset();
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_shutdown phase=after_loKitDocument_reset pid=%d", getpid());
+#endif
+    }
+
+#if defined(__ANDROID__)
+    clearAndroidOnlyDocumentRefs();
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "android_doc_shutdown_for_exit docKey=%s pid=%d", _docKey.c_str(),
+                        getpid());
+#endif
+}
+#endif
 
 bool Document::joinThreads()
 {
@@ -2061,10 +2120,21 @@ std::shared_ptr<lok::Document> Document::load(const std::shared_ptr<ChildSession
 
         const char* url = loadUri.c_str();
         LOG_DBG("Calling lokit::documentLoad(" << anonymizeUrl(url) << ", \"" << options << "\")");
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "android_lokit_documentLoad_enter docKey=%s session=%s pid=%d",
+                            _docKey.c_str(), sessionId.c_str(), getpid());
+#endif
         const auto start = std::chrono::steady_clock::now();
         _loKitDocument.reset(_loKit->documentLoad(url, options.c_str()));
 #ifdef __ANDROID__
         _loKitDocumentForAndroidOnly = _loKitDocument;
+        const auto duration = std::chrono::steady_clock::now() - start;
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "android_only_doc_refs_set docKey=%s hasDoc=%d elapsedMs=%lld pid=%d",
+                            _docKey.c_str(), _loKitDocumentForAndroidOnly ? 1 : 0,
+                            static_cast<long long>(elapsed.count()), getpid());
         {
             std::unique_lock<std::mutex> docBrokersLock(DocBrokersMutex);
             auto docBrokerIt = DocBrokers.find(_docKey);
@@ -2072,9 +2142,10 @@ std::shared_ptr<lok::Document> Document::load(const std::shared_ptr<ChildSession
             _documentBrokerForAndroidOnly = docBrokerIt->second;
         }
 #endif
-        const auto duration = std::chrono::steady_clock::now() - start;
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
-        LOG_DBG("Returned lokit::documentLoad(" << anonymizeUrl(url) << ") in " << elapsed);
+        const auto durationAfterRefs = std::chrono::steady_clock::now() - start;
+        const auto elapsedAfterRefs =
+            std::chrono::duration_cast<std::chrono::milliseconds>(durationAfterRefs);
+        LOG_DBG("Returned lokit::documentLoad(" << anonymizeUrl(url) << ") in " << elapsedAfterRefs);
 #ifdef IOS
         DocumentData::get(_mobileAppDocId).loKitDocument = _loKitDocument.get();
         {
@@ -2087,6 +2158,12 @@ std::shared_ptr<lok::Document> Document::load(const std::shared_ptr<ChildSession
         if (!_loKitDocument || !_loKitDocument->get())
         {
             LOG_ERR("Failed to load: " << uriAnonym << ", error: " << _loKit->getError());
+#if defined(__ANDROID__)
+            const char* loErr = _loKit ? _loKit->getError() : "(null)";
+            __android_log_print(ANDROID_LOG_ERROR, "LOActivity",
+                                "android_doc_load_fail docKey=%s session=%s loError=%s pid=%d",
+                                _docKey.c_str(), sessionId.c_str(), loErr ? loErr : "", getpid());
+#endif
 
             // Checking if wrong password or no password was reason for failure.
             if (_isDocPasswordProtected)
@@ -2917,8 +2994,21 @@ void flushTraceEventRecordings()
 
 #ifdef __ANDROID__
 
+#include <android/log.h>
+#include <unistd.h>
+
 std::shared_ptr<lok::Document> Document::_loKitDocumentForAndroidOnly = std::shared_ptr<lok::Document>();
 std::weak_ptr<DocumentBroker> Document::_documentBrokerForAndroidOnly;
+
+void Document::clearAndroidOnlyDocumentRefs()
+{
+    const bool hadDoc = static_cast<bool>(_loKitDocumentForAndroidOnly);
+    _loKitDocumentForAndroidOnly.reset();
+    _documentBrokerForAndroidOnly.reset();
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "android_only_doc_refs_cleared hadDoc=%d pid=%d", hadDoc ? 1 : 0,
+                        getpid());
+}
 
 std::shared_ptr<lok::Document> getLOKDocumentForAndroidOnly()
 {
@@ -2942,6 +3032,10 @@ KitSocketPoll::KitSocketPoll() : SocketPoll("kit")
 
 KitSocketPoll::~KitSocketPoll()
 {
+#if defined(__ANDROID__)
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "diag_destroy phase=~KitSocketPoll pid=%d", getpid());
+#endif
     // Just to make it easier to set a breakpoint
     mainPoll = nullptr;
 }
@@ -3949,6 +4043,15 @@ void lokit_main(
         static std::shared_ptr<lok::Office> loKit = std::make_shared<lok::Office>(kit);
         assert(loKit);
 
+#if defined(__ANDROID__)
+        static std::atomic<int> sAndroidLokitMainCount{0};
+        const int lokitEnterCount = ++sAndroidLokitMainCount;
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "android_lokit_main_office reuseLoKit=%d enterCount=%d appDocId=%zu pid=%d",
+                            lokitEnterCount > 1 ? 1 : 0, lokitEnterCount, numericIdentifier,
+                            getpid());
+#endif
+
         COOLWSD::LOKitVersion = loKit->getVersionInfo();
 
         // Dummies
@@ -4025,8 +4128,20 @@ void lokit_main(
 
         LOG_INF("Kit unipoll loop run terminated.");
 
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "android_lokit_main_runloop_done enterCount=%d pid=%d", lokitEnterCount,
+                            getpid());
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_post_runloop phase=before_wakeupWorld pid=%d", getpid());
+#endif
+
 #if MOBILEAPP
         SocketPoll::wakeupWorld();
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_post_runloop phase=after_wakeupWorld pid=%d", getpid());
+#endif
 #else
         // Trap the signal handler, if invoked,
         // to prevent exiting.
@@ -4039,6 +4154,11 @@ void lokit_main(
         std::unique_lock<std::mutex> lock(mainKit->terminationMutex);
         mainKit->terminationCV.wait(lock,[&]{ return mainKit->terminationFlag; } );
 #endif // !IOS
+
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_post_runloop phase=before_lokit_main_return pid=%d", getpid());
+#endif
     }
     catch (const Exception& exc)
     {

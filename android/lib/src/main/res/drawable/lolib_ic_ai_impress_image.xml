@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Impress AI function icon — scripts/generate-impress-ai-function-icons.js -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:pathData="M29.5 4L34 8L39.0161 5.0549L36.5 10.5L41 14.5L35 14L32.75 19L31.5 13.5L25.5002 13L30.7541 9.825L29.5 4Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#EC5D1F"
+        android:strokeWidth="2"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M24 21.0103L31.5 13.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#EC5D1F"
+        android:strokeWidth="2"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M42.6666 32.4288V42.1333C42.6666 43.1643 41.622 44 40.3333 44H7.66665C6.37798 44 5.33331 43.1643 5.33331 42.1333V8.53333C5.33331 7.50237 6.37798 6.66666 7.66665 6.66666H19.3333"
+        android:fillColor="#00000000"
+        android:strokeColor="#101010"
+        android:strokeWidth="2"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M6 34.9996L16.6931 25.1976C17.4389 24.5139 18.5779 24.4949 19.3461 25.1534L32 35.9996"
+        android:fillColor="#00000000"
+        android:strokeColor="#101010"
+        android:strokeWidth="2"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M28 30.9999L32.7735 26.2264C33.4772 25.5227 34.5914 25.4435 35.3877 26.0407L42 30.9999"
+        android:fillColor="#00000000"
+        android:strokeColor="#101010"
+        android:strokeWidth="2"
+        android:strokeLineCap="round" />
+</vector>

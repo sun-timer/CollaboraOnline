@@ -133,10 +133,12 @@ void KitWebSocketHandler::handleMessage(const std::vector<char>& data)
             _ksPoll->terminationFlag = true;
             _ksPoll->terminationCV.notify_all();
 #else
+            if (_document)
+                _document->shutdownForExit();
             LOG_INF("Setting TerminationFlag due to 'exit' command.");
             SigUtil::setTerminationFlag();
-#endif
             _document.reset();
+#endif
         }
     }
     else if (tokens.equals(0, "tile") || tokens.equals(0, "tilecombine") ||
@@ -151,6 +153,11 @@ void KitWebSocketHandler::handleMessage(const std::vector<char>& data)
         else
         {
             LOG_WRN("No document while processing " << tokens[0] << " request.");
+#if defined(__ANDROID__)
+            __android_log_print(ANDROID_LOG_WARN, "LOActivity",
+                                "android_kit_no_document token=%s pid=%d", tokens[0].c_str(),
+                                Util::getProcessId());
+#endif
         }
     }
     else if (!Util::isFuzzing() && tokens.size() == 3 && tokens.equals(0, "setconfig"))

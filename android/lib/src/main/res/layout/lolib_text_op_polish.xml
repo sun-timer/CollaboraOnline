@@ -13,32 +13,24 @@
         android:clickable="true"
         android:focusable="true"
         android:gravity="center_vertical"
-        android:minHeight="64dp"
+        android:minHeight="56dp"
         android:orientation="horizontal"
         android:paddingStart="20dp"
         android:paddingTop="16dp"
-        android:paddingEnd="20dp"
+        android:paddingEnd="16dp"
         android:paddingBottom="16dp">
 
         <TextView
+            android:id="@+id/text_op_polish_style_label"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="润色风格"
-            android:textColor="#999999"
-            android:textSize="14sp" />
-
-        <TextView
-            android:id="@+id/text_op_polish_style_label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
             android:text="快速润色"
             android:textColor="#333333"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:textSize="16sp" />
 
         <ImageView
+            android:id="@+id/text_op_polish_style_chevron"
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:contentDescription="选择风格"

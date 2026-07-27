@@ -347,6 +347,11 @@ SocketPoll::~SocketPoll()
 {
     LOG_DBG("~" << logInfo());
 
+#if defined(__ANDROID__)
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "diag_destroy phase=~SocketPoll_start pid=%d", getpid());
+#endif
+
 #if !MOBILEAPP
     if (PollWatchdog)
         PollWatchdog->removeTime(&_watchdogTime);
@@ -355,6 +360,11 @@ SocketPoll::~SocketPoll()
     joinThread();
 
     removeFromWakeupArray();
+
+#if defined(__ANDROID__)
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "diag_destroy phase=~SocketPoll_end pid=%d", getpid());
+#endif
 }
 
 void SocketPoll::checkAndReThread()
@@ -459,7 +469,15 @@ void SocketPoll::joinThread()
 
     if (_runOnClientThread)
     {
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_destroy phase=removeSockets_start pid=%d", getpid());
+#endif
         removeSockets();
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_destroy phase=removeSockets_end pid=%d", getpid());
+#endif
     }
 
     assert(_pollSockets.empty());

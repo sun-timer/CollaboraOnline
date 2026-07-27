@@ -204,6 +204,8 @@ window.L.Control.Tabs = window.L.Control.extend({
 					var menuData = window.L.Control.JSDialogBuilder.getMenuStructureForMobileWizard(menuItemMobile, true, '');
 				}
 
+				var sheetPartNames = e.partNames;
+				var sheetDisplayIndex = 0;
 				for (var i = 0; i < parts; i++) {
 					// Skip if hidden or a sheet view (implicitly hidden)
 					if (app.calc.isPartHidden(i) || app.calc.isPartSheetView(i))
@@ -216,17 +218,38 @@ window.L.Control.Tabs = window.L.Control.extend({
 					var id = 'spreadsheet-tab' + i;
 					var tab = window.L.DomUtil.create('button', 'spreadsheet-tab', ssTabScroll);
 					var label = window.L.DomUtil.create('div', '', tab);
-					window.L.DomUtil.create('div', 'lock', tab);
-					window.L.DomUtil.create('div', 'view-indicator', tab);
+					if (!(window.ThisIsTheAndroidApp && window.mode.isMobile())) {
+						window.L.DomUtil.create('div', 'lock', tab);
+						window.L.DomUtil.create('div', 'view-indicator', tab);
+					}
 					if (window.mode.isMobile() || window.mode.isTablet()) {
 						(new Hammer(tab, {recognizers: [[Hammer.Press]]}))
 							.on('press', function (j) {
-								return function(e) {
+								return function(pressEv) {
 									this._tabForContextMenu = j;
 									if (!this._map.isReadOnlyMode()) {
 										if (window.mode.isMobile()) {
-											window.contextMenuWizard = true;
-											this._map.fire('mobilewizard', {data: menuData});
+											if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {
+												var pressedTab = window.L.DomUtil.get('spreadsheet-tab' + j);
+												var tabEl = pressedTab;
+												if (pressEv && pressEv.target && pressEv.target.closest) {
+													tabEl = pressEv.target.closest('.spreadsheet-tab') || pressedTab;
+												}
+												var rect = tabEl ? tabEl.getBoundingClientRect() : null;
+												var sheetName = sheetPartNames && sheetPartNames[j] ? sheetPartNames[j] : label.textContent;
+												var isProtected = tabEl && window.L.DomUtil.hasClass(tabEl, 'spreadsheet-tab-protected');
+												window.postMobileMessage('SHEET_TAB_POPUP show ' + JSON.stringify({
+													tabIndex: j,
+													sheetName: sheetName,
+													isProtected: isProtected,
+													anchorX: rect ? rect.left + rect.width * 0.5 : 0,
+													anchorY: rect ? rect.top : 0,
+													anchorBottom: rect ? rect.bottom : 0
+												}));
+											} else {
+												window.contextMenuWizard = true;
+												this._map.fire('mobilewizard', {data: menuData});
+											}
 										} else {
 											$(e.target).trigger('contextmenu');
 										}
@@ -274,7 +297,12 @@ window.L.Control.Tabs = window.L.Control.extend({
 						window.L.DomUtil.removeClass(tab, 'spreadsheet-tab-sheetview');
 						window.L.DomUtil.removeClass(tab, 'spreadsheet-tab-sheetview-unsynced');
 					}
-					label.textContent = e.partNames[i];
+					sheetDisplayIndex++;
+					if (window.ThisIsTheAndroidApp && window.mode.isMobile()) {
+						label.textContent = 'Sheet ' + sheetDisplayIndex;
+					} else {
+						label.textContent = e.partNames[i];
+					}
 					tab.id = id;
 
 					window.L.DomEvent
@@ -376,6 +404,12 @@ window.L.Control.Tabs = window.L.Control.extend({
 	_moveOrCopySheet: function () {
 		var contextMenuTab = this._tabForContextMenu;
 		this._map.sendUnoCommand('.uno:Move?FromContextMenu:bool=true&MoveOrCopySheetDialog:bool=true&ContextMenuIndex=' + contextMenuTab);
+	},
+
+	_copySheet: function () {
+		var contextMenuTab = this._tabForContextMenu;
+		this._map.sendUnoCommand('.uno:Move?Copy:bool=true&UseCurrentDocument:bool=true&FromContextMenu:bool=true&ContextMenuIndex='
+			+ contextMenuTab + '&Index=' + (contextMenuTab + 2));
 	},
 
 	_moveSheetLR: function (contextMenuTab, newIndex) {

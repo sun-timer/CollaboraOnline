@@ -228,6 +228,69 @@ body.android-native-bottom-toolbar #mobile-edit-button {
 	transform: scale(1);
 }
 
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #spreadsheet-toolbar {
+	grid-template-columns: 40px auto;
+	height: 40px;
+	border-top: 1px solid #E3E3E3;
+	background-color: #FFFFFF;
+}
+
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #sheets-buttons-toolbox #insertsheet.unotoolbutton,
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet {
+	width: 40px !important;
+	height: 40px !important;
+	min-width: 40px !important;
+	min-height: 40px !important;
+	padding: 0 !important;
+	border-radius: 8px !important;
+	background-color: transparent !important;
+	-webkit-tap-highlight-color: transparent;
+}
+
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet .w2ui-icon,
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet.unotoolbutton img {
+	width: 40px !important;
+	height: 40px !important;
+	background: url('images/lc_insertsheet_calc_mobile.svg') no-repeat center / 28px 28px !important;
+}
+
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #sheets-buttons-toolbox #insertsheet.unotoolbutton:active,
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet:active {
+	background-color: #3B8040 !important;
+}
+
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet:active .w2ui-icon,
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet.unotoolbutton:active img {
+	background: url('images/lc_insertsheet_calc_mobile_active.svg') no-repeat center / contain !important;
+}
+
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #sheetlist {
+	display: none !important;
+}
+
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab {
+	background-color: #FFFFFF !important;
+	color: #80868B !important;
+	border: 1px solid transparent !important;
+	font-weight: 400 !important;
+}
+
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab.spreadsheet-tab-selected {
+	background-color: #FFFFFF !important;
+	color: #3B8040 !important;
+	border: 1px solid transparent !important;
+	font-weight: 500 !important;
+}
+
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab .lock,
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab .view-indicator {
+	display: none !important;
+}
+
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] .tab-drop-area {
+	display: none !important;
+}
+
 body.android-native-top-toolbar #toolbar-wrapper,
 body.android-native-top-toolbar #toolbar-up {
 	display: none !important;

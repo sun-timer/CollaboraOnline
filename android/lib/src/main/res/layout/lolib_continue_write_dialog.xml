@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- AI续写浮层 panel：标题 + 内容卡片(可滚动) + 两态底部(生成中=红色停止 / 完成=重写生成+插入文档)。
-     尺寸(宽≈屏宽-48dp / 高≈屏高80%)由 LOActivity.positionContinueDialogCenter() 运行时覆写。 -->
+<!-- AI续写浮层 panel：尺寸由 LOActivity.positionContinueDialogCenter() 运行时覆写（670×748 规范）。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/continue_dialog_root"
-    android:layout_width="328dp"
-    android:layout_height="560dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
     android:background="@drawable/lolib_bg_continue_dialog"
     android:elevation="50dp"
     android:orientation="vertical"
@@ -40,7 +39,7 @@
             android:src="@drawable/lolib_ic_dialog_close" />
     </FrameLayout>
 
-    <!-- ========== 内容卡片(可滚动) ========== -->
+    <!-- ========== 内容卡片(可滚动；生成中态显示蓝色虚线边框) ========== -->
     <androidx.core.widget.NestedScrollView
         android:id="@+id/continue_content_scroll"
         android:layout_width="match_parent"
@@ -88,24 +87,40 @@
             android:textSize="15sp" />
     </LinearLayout>
 
-    <!-- ========== 生成中态：红色停止按钮 ========== -->
-    <FrameLayout
-        android:id="@+id/continue_stop_button"
-        android:layout_width="72dp"
-        android:layout_height="72dp"
-        android:layout_gravity="center_horizontal"
+    <!-- ========== 生成中态：红色停止按钮 + 「停止生成」文案 ========== -->
+    <LinearLayout
+        android:id="@+id/continue_stop_group"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:background="@drawable/lolib_bg_continue_stop_button"
-        android:clickable="true"
-        android:focusable="true">
+        android:gravity="center_horizontal"
+        android:orientation="vertical">
 
-        <ImageView
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:layout_gravity="center"
-            android:contentDescription="停止生成"
-            android:src="@drawable/lolib_ic_continue_stop" />
-    </FrameLayout>
+        <FrameLayout
+            android:id="@+id/continue_stop_button"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:background="@drawable/lolib_bg_continue_stop_button"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_gravity="center"
+                android:contentDescription="停止生成"
+                android:src="@drawable/lolib_ic_continue_stop" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/continue_stop_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="停止生成"
+            android:textColor="#15171A"
+            android:textSize="15sp" />
+    </LinearLayout>
 
     <!-- ========== 完成态：重写生成 + 插入文档 ========== -->
     <LinearLayout

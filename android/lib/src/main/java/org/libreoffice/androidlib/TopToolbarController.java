@@ -42,9 +42,12 @@ public class TopToolbarController {
     private TextView previewTitleView;
     private TextView previewOpenDocsCountView;
     private TextView editOpenDocsCountView;
+    private View doneButton;
     private View undoButton;
     private View redoButton;
     private boolean isEditModeActive = false;
+    private boolean isCalcDocument = false;
+    private boolean isImpressDocument = false;
     private int undoCount = 0;
     private int redoCount = 0;
 
@@ -62,6 +65,7 @@ public class TopToolbarController {
         previewTitleView = asTextView(host.findViewById(R.id.top_title_preview));
         previewOpenDocsCountView = asTextView(host.findViewById(R.id.top_open_docs_count_preview));
         editOpenDocsCountView = asTextView(host.findViewById(R.id.top_open_docs_count_edit));
+        doneButton = host.findViewById(R.id.top_btn_done);
         undoButton = host.findViewById(R.id.top_btn_undo);
         redoButton = host.findViewById(R.id.top_btn_redo);
 
@@ -81,7 +85,15 @@ public class TopToolbarController {
         refreshDocumentTitle();
         refreshOpenDocumentCount();
         resetUndoRedoState("toolbar_setup");
+        applyDocumentThemeBackground();
         updateEditModeState(isEditModeActive, "toolbar_setup");
+    }
+
+    public void updateDocumentType(boolean isCalc, boolean isImpress) {
+        isCalcDocument = isCalc;
+        isImpressDocument = isImpress;
+        Runnable applyTask = this::applyDocumentThemeBackground;
+        runOnUi(applyTask);
     }
 
     public void refreshOpenDocumentCount() {
@@ -210,6 +222,19 @@ public class TopToolbarController {
         }
         button.setEnabled(enabled);
         button.setAlpha(enabled ? 1.0f : 0.32f);
+    }
+
+    private void applyDocumentThemeBackground() {
+        if (doneButton == null) {
+            return;
+        }
+        int backgroundResId = R.drawable.lolib_bg_top_done_button;
+        if (isImpressDocument) {
+            backgroundResId = R.drawable.lolib_bg_top_done_button_impress;
+        } else if (isCalcDocument) {
+            backgroundResId = R.drawable.lolib_bg_top_done_button_calc;
+        }
+        doneButton.setBackgroundResource(backgroundResId);
     }
 
     private void runOnUi(Runnable task) {

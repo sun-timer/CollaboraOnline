@@ -4,7 +4,10 @@ import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.text.Spannable;
+import android.text.SpannableString;
 import android.text.TextUtils;
+import android.text.style.ForegroundColorSpan;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -497,7 +500,7 @@ public class CalcFunctionPanelController {
                 case TOGGLE_PAIR:
                     flushToolButtons(root, pendingTools);
                     flushIconGrid(root, pendingGrid);
-                    root.addView(createDecimalTogglePairRow());
+                    root.addView(createTogglePairRow(item));
                     break;
                 case ICON_GRID:
                     pendingGrid.add(item);
@@ -568,20 +571,15 @@ public class CalcFunctionPanelController {
         } else if ("border_color".equals(item.id)) {
             colorIconRes = R.drawable.lolib_ic_calc_color_border_preview;
         }
-        if (colorIconRes != 0) {
-            ImageView colorDot = new ImageView(host.getContext());
-            colorDot.setImageResource(colorIconRes);
-            colorDot.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(host.dpToPx(20), host.dpToPx(20));
-            dotLp.setMarginEnd(host.dpToPx(8));
-            card.addView(colorDot, dotLp);
-        }
         TextView value = new TextView(host.getContext());
         value.setText(pickerValues.getOrDefault(item.id, item.subtitle));
         value.setTextColor(COLOR_TITLE);
         value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         card.addView(value, lp);
+        if (colorIconRes != 0) {
+            card.addView(createColorSwatchView(colorIconRes, null));
+        }
         card.addView(createChevron());
         card.setOnClickListener(v -> onPickerClick(item, value));
         return wrapBottomMargin(card);
@@ -610,14 +608,12 @@ public class CalcFunctionPanelController {
         fontColorPreviewDot = colorDot;
         updateColorPreviewDot(colorDot, pickerColorRgb.get("font_color"),
                 R.drawable.lolib_ic_calc_color_font_preview);
-        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(host.dpToPx(20), host.dpToPx(20));
-        dotLp.setMarginEnd(host.dpToPx(8));
         TextView colorLabel = new TextView(host.getContext());
         colorLabel.setText("字体颜色");
         colorLabel.setTextColor(COLOR_TITLE);
         colorLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        right.addView(colorDot, dotLp);
         right.addView(colorLabel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        right.addView(createColorSwatchView(0, colorDot));
         right.addView(createChevron());
         right.setOnClickListener(v -> showColorPickerPage(
                 ColorPickerKind.FONT, "font_color", fontColorPreviewDot,
@@ -867,7 +863,7 @@ public class CalcFunctionPanelController {
                     0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             rightLp.setMarginStart(host.dpToPx(10));
             View right = createLabeledStepperColumn(
-                    "前导零", "0",
+                    "前导零", "0.0 1",
                     ".uno:LeadingZeroes", ".uno:LeadingZeroes");
             right.setLayoutParams(rightLp);
             row.addView(right);
@@ -891,31 +887,51 @@ public class CalcFunctionPanelController {
     private View createStepperCard(String valueText, String incCmd, String decCmd) {
         LinearLayout card = createCardRow();
         card.setMinimumHeight(host.dpToPx(56));
-        ImageView minus = createStepperIcon(R.drawable.lolib_ic_calc_stepper_minus);
-        ImageView plus = createStepperIcon(R.drawable.lolib_ic_calc_stepper_plus);
         TextView value = new TextView(host.getContext());
-        value.setText(valueText);
+        applyStepperPreviewText(value, valueText);
         value.setGravity(Gravity.CENTER);
         value.setTextColor(COLOR_TITLE);
         value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        value.setBackgroundColor(Color.parseColor("#E5E6E8"));
-        int valuePadH = host.dpToPx(8);
-        int valuePadV = host.dpToPx(10);
+        value.setBackgroundResource(R.drawable.lolib_bg_stepper_value);
+        int valuePadH = host.dpToPx(10);
+        int valuePadV = host.dpToPx(8);
         value.setPadding(valuePadH, valuePadV, valuePadH, valuePadV);
+
+        LinearLayout buttons = new LinearLayout(host.getContext());
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView minus = createStepperIcon(R.drawable.lolib_ic_calc_stepper_minus);
+        ImageView plus = createStepperIcon(R.drawable.lolib_ic_calc_stepper_plus);
         minus.setOnClickListener(v -> host.executeUnoCommand(decCmd));
         plus.setOnClickListener(v -> host.executeUnoCommand(incCmd));
-        card.addView(minus);
-        card.addView(value, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        card.addView(plus);
+        buttons.addView(minus);
+        buttons.addView(plus);
+
+        LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        valueLp.setMarginEnd(host.dpToPx(8));
+        card.addView(value, valueLp);
+        card.addView(buttons);
         return card;
+    }
+
+    private void applyStepperPreviewText(TextView value, String valueText) {
+        if ("0.0 1".equals(valueText)) {
+            SpannableString spannable = new SpannableString(valueText);
+            spannable.setSpan(new ForegroundColorSpan(Color.parseColor("#3B8040")),
+                    2, 3, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            value.setText(spannable);
+            return;
+        }
+        value.setText(valueText);
     }
 
     private ImageView createStepperIcon(int iconRes) {
         ImageView icon = new ImageView(host.getContext());
         icon.setImageResource(iconRes);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        icon.setPadding(host.dpToPx(8), host.dpToPx(8), host.dpToPx(8), host.dpToPx(8));
-        icon.setMinimumWidth(host.dpToPx(36));
+        icon.setPadding(host.dpToPx(6), host.dpToPx(6), host.dpToPx(6), host.dpToPx(6));
+        icon.setMinimumWidth(host.dpToPx(32));
         return icon;
     }
 
@@ -936,7 +952,7 @@ public class CalcFunctionPanelController {
         indicator.setImageResource(initial
                 ? R.drawable.lolib_ic_calc_toggle_checked
                 : R.drawable.lolib_ic_calc_toggle_unchecked);
-        row.addView(indicator, new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
+        row.addView(indicator, new LinearLayout.LayoutParams(host.dpToPx(20), host.dpToPx(20)));
 
         row.setOnClickListener(v -> {
             boolean next = !toggleStates.getOrDefault(item.id, item.defaultOn);
@@ -947,6 +963,31 @@ public class CalcFunctionPanelController {
             onToggle(item, next);
         });
         return row;
+    }
+
+    private View createTogglePairRow(PanelItem item) {
+        if ("stack_wrap_toggles".equals(item.id)) {
+            return createStackWrapTogglePairRow();
+        }
+        return createDecimalTogglePairRow();
+    }
+
+    private View createStackWrapTogglePairRow() {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        PanelItem verticalStack = new PanelItem(ItemType.TOGGLE, "vertical_stack", "纵向排列",
+                ".uno:StackCharacterLeftToRight", false);
+        PanelItem wrapText = new PanelItem(ItemType.TOGGLE, "wrap_text", "文本换行",
+                ".uno:WrapText", false);
+        row.addView(createToggleCard(verticalStack), new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        LinearLayout.LayoutParams rightLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        rightLp.setMarginStart(host.dpToPx(10));
+        View right = createToggleCard(wrapText);
+        right.setLayoutParams(rightLp);
+        row.addView(right);
+        return wrapBottomMargin(row);
     }
 
     private View createDecimalTogglePairRow() {
@@ -992,14 +1033,12 @@ public class CalcFunctionPanelController {
             borderColorPreviewDot = colorDot;
         }
         updateColorPreviewDot(colorDot, pickerColorRgb.get(id), fallbackIconRes);
-        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(host.dpToPx(20), host.dpToPx(20));
-        dotLp.setMarginEnd(host.dpToPx(8));
         TextView label = new TextView(host.getContext());
         label.setText(title);
         label.setTextColor(COLOR_TITLE);
         label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        card.addView(colorDot, dotLp);
         card.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        card.addView(createColorSwatchView(0, colorDot));
         card.addView(createChevron());
         card.setOnClickListener(v -> {
             ColorPickerKind kind = "bg_color".equals(id) ? ColorPickerKind.BACKGROUND : ColorPickerKind.BORDER;
@@ -1547,6 +1586,20 @@ public class CalcFunctionPanelController {
         host.executeUnoCommand(buildColorUnoCommand(kind.unoCommand, kind.propertyName, rgb));
     }
 
+    private ImageView createColorSwatchView(int fallbackIconRes, ImageView existingDot) {
+        ImageView dot = existingDot != null ? existingDot : new ImageView(host.getContext());
+        dot.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        if (existingDot == null && fallbackIconRes != 0) {
+            dot.setImageResource(fallbackIconRes);
+        }
+        int size = host.dpToPx(24);
+        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(size, size);
+        dotLp.setMarginStart(host.dpToPx(8));
+        dotLp.setMarginEnd(host.dpToPx(8));
+        dot.setLayoutParams(dotLp);
+        return dot;
+    }
+
     private void updateColorPreviewDot(ImageView dot, Integer rgb, int fallbackIconRes) {
         if (dot == null) {
             return;
@@ -1557,7 +1610,7 @@ public class CalcFunctionPanelController {
             return;
         }
         dot.setImageDrawable(null);
-        int size = host.dpToPx(20);
+        int size = host.dpToPx(24);
         GradientDrawable drawable = createCircleSwatchDrawable(rgb);
         dot.setBackground(drawable);
         dot.setMinimumWidth(size);
@@ -1887,17 +1940,14 @@ public class CalcFunctionPanelController {
         common.add(new PanelItem(ItemType.TOGGLE_PAIR, "decimal_toggles", "数值开关"));
         common.add(new PanelItem(ItemType.SECTION, "sec_align", "对齐"));
         common.add(new PanelItem(ItemType.ICON_GRID, "align_grid", "对齐",
-                ALIGN_LABELS, ALIGN_COMMANDS, ALIGN_ICONS, 7, new int[] { 7, 4 }, true));
+                ALIGN_LABELS, ALIGN_COMMANDS, ALIGN_ICONS, 6, new int[] { 6, 5 }, true));
         common.add(new PanelItem(ItemType.STEPPER_PAIR, "indent_steppers", "缩进"));
-        common.add(new PanelItem(ItemType.TOGGLE, "vertical_stack", "纵向排列",
-                ".uno:StackCharacterLeftToRight", false));
-        common.add(new PanelItem(ItemType.TOGGLE, "wrap_text", "文本换行",
-                ".uno:WrapText", false));
+        common.add(new PanelItem(ItemType.TOGGLE_PAIR, "stack_wrap_toggles", "排列换行"));
         common.add(new PanelItem(ItemType.TOGGLE, "merge_cells", "合并单元格",
                 ".uno:ToggleMergeCells", false));
         common.add(new PanelItem(ItemType.SECTION, "sec_border", "边框"));
         common.add(new PanelItem(ItemType.ICON_GRID, "border_styles", "边框样式",
-                BORDER_LABELS, BORDER_COMMANDS, BORDER_ICONS, 6, new int[] { 6, 6 }, true));
+                BORDER_LABELS, BORDER_COMMANDS, BORDER_ICONS, 8, new int[] { 4, 8 }, true));
         common.add(new PanelItem(ItemType.COLOR_PICKER_PAIR, "color_pickers", "颜色"));
         common.add(new PanelItem(ItemType.SECTION, "sec_sheet", "工作表"));
         common.add(new PanelItem(ItemType.ICON_GRID, "sheet_ops", "工作表",
@@ -2029,8 +2079,8 @@ public class CalcFunctionPanelController {
     };
 
     private static final String[] ALIGN_LABELS = {
-            "左", "中", "右", "两端", "减缩进", "增缩进", "减行缩",
-            "顶", "中", "底", "增行缩"
+            "左", "中", "右", "两端", "减缩进", "增缩进",
+            "顶", "中", "底", "增行缩", "减行缩"
     };
     private static final int[] ALIGN_ICONS = {
             R.drawable.lolib_ic_calc_align_left,
@@ -2039,11 +2089,11 @@ public class CalcFunctionPanelController {
             R.drawable.lolib_ic_calc_align_justify,
             R.drawable.lolib_ic_calc_indent_decrease,
             R.drawable.lolib_ic_calc_indent_increase,
-            R.drawable.lolib_ic_calc_indent_decrease_row,
             R.drawable.lolib_ic_calc_align_top,
             R.drawable.lolib_ic_calc_align_center_v,
             R.drawable.lolib_ic_calc_align_bottom,
             R.drawable.lolib_ic_calc_indent_increase_row,
+            R.drawable.lolib_ic_calc_indent_decrease_row,
     };
     private static final String[] ALIGN_COMMANDS = {
             ".uno:AlignLeft",
@@ -2052,16 +2102,16 @@ public class CalcFunctionPanelController {
             ".uno:AlignBlock",
             ".uno:DecrementIndent",
             ".uno:IncrementIndent",
-            ".uno:DecrementIndent",
             ".uno:AlignTop",
             ".uno:AlignVCenter",
             ".uno:AlignBottom",
-            ".uno:IncrementIndent"
+            ".uno:IncrementIndent",
+            ".uno:DecrementIndent"
     };
 
     private static final String[] BORDER_LABELS = {
-            "全", "外", "框", "粗", "上", "下", "左",
-            "右", "↘", "↙", "内横", "无"
+            "全", "外", "框", "粗",
+            "上", "下", "左", "右", "竖", "内横", "↘", "↙"
     };
     private static final int[] BORDER_ICONS = {
             R.drawable.lolib_ic_calc_border_all_dashed,
@@ -2072,10 +2122,10 @@ public class CalcFunctionPanelController {
             R.drawable.lolib_ic_calc_border_bottom,
             R.drawable.lolib_ic_calc_border_left,
             R.drawable.lolib_ic_calc_border_right,
+            R.drawable.lolib_ic_calc_border_inner_vertical,
+            R.drawable.lolib_ic_calc_border_inner_horizontal,
             R.drawable.lolib_ic_calc_border_diag_tl_br,
             R.drawable.lolib_ic_calc_border_diag_tr_bl,
-            R.drawable.lolib_ic_calc_border_inner_horizontal,
-            R.drawable.lolib_ic_calc_border_clear,
     };
     private static final String[] BORDER_COMMANDS = {
             ".uno:SetBorderStyle",
@@ -2089,30 +2139,30 @@ public class CalcFunctionPanelController {
             ".uno:SetBorderStyle",
             ".uno:SetBorderStyle",
             ".uno:SetBorderStyle",
-            ".uno:ResetAttributes"
+            ".uno:SetBorderStyle",
     };
 
     private static final String[] SHEET_LABELS = {
-            "上行", "下行", "删行", "左列", "右列", "删列", "冻结"
+            "插入行", "插入列", "删除行", "删除列", "冻结行列", "冻结列", "冻结行"
     };
     private static final int[] SHEET_ICONS = {
-            R.drawable.lolib_ic_calc_sheet_insert_row_up,
-            R.drawable.lolib_ic_calc_sheet_insert_row_down,
+            R.drawable.lolib_ic_calc_sheet_insert_row,
+            R.drawable.lolib_ic_calc_sheet_insert_col,
             R.drawable.lolib_ic_calc_sheet_delete_row,
-            R.drawable.lolib_ic_calc_sheet_insert_col,
-            R.drawable.lolib_ic_calc_sheet_insert_col,
             R.drawable.lolib_ic_calc_sheet_delete_col,
             R.drawable.lolib_ic_calc_sheet_freeze_panes,
+            R.drawable.lolib_ic_calc_sheet_freeze_col,
+            R.drawable.lolib_ic_calc_sheet_freeze_row,
     };
 
     private static final String[] SHEET_COMMANDS = {
             ".uno:InsertRowsBefore",
-            ".uno:InsertRowsAfter",
-            ".uno:DeleteRows",
-            ".uno:InsertColumnsBefore",
             ".uno:InsertColumnsAfter",
+            ".uno:DeleteRows",
             ".uno:DeleteColumns",
-            ".uno:FreezePanes"
+            ".uno:FreezePanes",
+            ".uno:FreezePanesColumn",
+            ".uno:FreezePanesRow"
     };
 
     private static final String[] FALLBACK_FONT_OPTIONS = {

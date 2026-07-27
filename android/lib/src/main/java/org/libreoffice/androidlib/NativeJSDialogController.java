@@ -146,15 +146,8 @@ public final class NativeJSDialogController {
         if (dialog == null || dialog.getWindow() == null || root == null) {
             return;
         }
-        DisplayMetrics dm = host.getResources().getDisplayMetrics();
-        int margin = host.dpToPx(48);
-        int targetWidth = Math.min(host.dpToPx(670), dm.widthPixels - margin);
-        targetWidth = Math.max(targetWidth, host.dpToPx(280));
-
-        int maxHeight = Math.min(host.dpToPx(756), (int) (dm.heightPixels * 0.80f));
-        maxHeight = Math.max(maxHeight, host.dpToPx(200));
-        maxHeight = Math.min(maxHeight, dm.heightPixels - host.dpToPx(24));
-
+        int targetWidth = AiDialogHelper.computeTargetWidthPx(host.getResources());
+        int maxHeight = AiDialogHelper.computeMaxHeightHugPx(host.getResources());
         AiDialogHelper.applyFlexibleWidth(root, dialog, targetWidth, maxHeight);
     }
 

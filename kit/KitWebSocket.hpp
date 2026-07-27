@@ -15,6 +15,10 @@
 
 #include <net/WebSocketHandler.hpp>
 
+#if defined(__ANDROID__)
+#include <unistd.h>
+#endif
+
 class Document;
 class KitQueue;
 class KitSocketPoll;
@@ -46,6 +50,11 @@ public:
 
     ~KitWebSocketHandler()
     {
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_destroy phase=~KitWebSocketHandler pid=%d",
+                            (int)getpid());
+#endif
         // Just to make it easier to set a breakpoint
     }
 

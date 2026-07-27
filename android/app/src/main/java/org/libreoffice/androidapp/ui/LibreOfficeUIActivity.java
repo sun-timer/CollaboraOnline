@@ -325,7 +325,13 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         setupAiDrawerHeader(headerView);
         View localInstallButton = headerView.findViewById(R.id.localInstallButton);
         if (localInstallButton != null) {
-            localInstallButton.setOnClickListener(v -> Toast.makeText(this, R.string.local_model_todo, Toast.LENGTH_SHORT).show());
+            if (org.libreoffice.androidlib.ai.LocalModelManager.isDeviceSupported(this)) {
+                localInstallButton.setVisibility(View.VISIBLE);
+                localInstallButton.setOnClickListener(v ->
+                        startActivity(new Intent(this, LocalModelActivity.class)));
+            } else {
+                localInstallButton.setVisibility(View.GONE);
+            }
         }
         navigationDrawer.setNavigationItemSelectedListener(new NavigationView.OnNavigationItemSelectedListener() {
             @Override
@@ -590,6 +596,28 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         }
         if (visionValue != null) {
             visionValue.setText(AiSettingsStore.getModelDisplayName(this, AiSettingsStore.MODEL_VISION, unsetText));
+        }
+
+        TextView localInstallButton = headerView.findViewById(R.id.localInstallButton);
+        if (localInstallButton != null) {
+            if (!org.libreoffice.androidlib.ai.LocalModelManager.isDeviceSupported(this)) {
+                localInstallButton.setVisibility(View.GONE);
+            } else {
+                localInstallButton.setVisibility(View.VISIBLE);
+                org.libreoffice.androidlib.ai.LocalModelManager manager =
+                        org.libreoffice.androidlib.ai.LocalModelManager.getInstance(this);
+                String state = manager.getDownloadState();
+                if (org.libreoffice.androidlib.ai.LocalModelManager.STATE_DOWNLOADING.equals(state)) {
+                    localInstallButton.setText(R.string.local_model_downloading_short);
+                    localInstallButton.setEnabled(false);
+                } else if (manager.isInstalled()) {
+                    localInstallButton.setText(R.string.local_model_installed_short);
+                    localInstallButton.setEnabled(true);
+                } else {
+                    localInstallButton.setText(R.string.install);
+                    localInstallButton.setEnabled(true);
+                }
+            }
         }
     }
 

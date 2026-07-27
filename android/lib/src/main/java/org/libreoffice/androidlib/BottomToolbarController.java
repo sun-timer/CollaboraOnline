@@ -20,8 +20,8 @@ public class BottomToolbarController {
     private static final String TAG = "BottomToolbarController";
 
     private static final int[] PREVIEW_MODE_TOOLBAR_ITEM_IDS = new int[] {
-            R.id.toolbar_item_function,
             R.id.toolbar_item_mobile_preview,
+            R.id.toolbar_item_function,
             R.id.toolbar_item_ai_assistant
     };
     private static final int[] EDIT_MODE_COMMON_TOOLBAR_ITEM_IDS = new int[] {
@@ -142,6 +142,7 @@ public class BottomToolbarController {
     private boolean isImeVisibleForToolbar = false;
     private boolean isEditModeActive = false;
     private boolean isCalcDocument = false;
+    private boolean isImpressDocument = false;
     private QuickActionGroup activeQuickActionGroup = QuickActionGroup.NONE;
 
     public BottomToolbarController(Host host) {
@@ -199,14 +200,16 @@ public class BottomToolbarController {
         updateEditModeState(isEditModeActive, "toolbar_setup");
     }
 
-    public void updateDocumentType(boolean isCalc) {
+    public void updateDocumentType(boolean isCalc, boolean isImpress) {
         isCalcDocument = isCalc;
+        isImpressDocument = isImpress;
         Runnable applyTask = () -> {
             applyBottomToolbarMode(isEditModeActive);
             if (isCalcDocument) {
                 hideQuickActionPanel();
             }
-            Log.i(TAG, "bottom_toolbar_doc_type isCalc=" + isCalcDocument);
+            Log.i(TAG, "bottom_toolbar_doc_type isCalc=" + isCalcDocument
+                    + " isImpress=" + isImpressDocument);
         };
         if (Looper.myLooper() == Looper.getMainLooper()) {
             applyTask.run();
@@ -309,7 +312,35 @@ public class BottomToolbarController {
         bottomToolbarItemsRow.setLayoutParams(params);
         bottomToolbarItemsRow.setGravity(isEditMode
                 ? android.view.Gravity.CENTER_VERTICAL
-                : android.view.Gravity.CENTER);
+                : android.view.Gravity.CENTER_VERTICAL);
+        bottomToolbarItemsRow.setPadding(
+                isEditMode ? host.dpToPx(10) : 0,
+                bottomToolbarItemsRow.getPaddingTop(),
+                isEditMode ? host.dpToPx(10) : 0,
+                bottomToolbarItemsRow.getPaddingBottom());
+        applyPreviewToolbarItemWidths(!isEditMode);
+    }
+
+    private void applyPreviewToolbarItemWidths(boolean distributeEvenly) {
+        for (int itemId : PREVIEW_MODE_TOOLBAR_ITEM_IDS) {
+            View item = host.findViewById(itemId);
+            if (item == null) {
+                continue;
+            }
+            ViewGroup.LayoutParams rawParams = item.getLayoutParams();
+            if (!(rawParams instanceof LinearLayout.LayoutParams)) {
+                continue;
+            }
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) rawParams;
+            if (distributeEvenly) {
+                lp.width = 0;
+                lp.weight = 1f;
+            } else {
+                lp.weight = 0f;
+                lp.width = toolbarBaseItemWidths.getOrDefault(itemId, host.dpToPx(92));
+            }
+            item.setLayoutParams(lp);
+        }
     }
 
     private void setBottomToolbarItemsVisible(int[] itemIds, boolean visible) {
