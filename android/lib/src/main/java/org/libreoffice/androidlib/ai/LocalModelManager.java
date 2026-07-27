@@ -81,13 +81,19 @@ public final class LocalModelManager {
         return instance;
     }
 
+    /** Primary mirror for CN networks; HuggingFace as fallback when mirror is down. */
+    private static final String[] DEFAULT_MODEL_URLS = {
+            "https://hf-mirror.com/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+            "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+    };
+
     public static CatalogEntry getDefaultCatalogEntry() {
         return new CatalogEntry(
                 "qwen2.5-1.5b-q4",
                 "Qwen2.5-1.5B-Instruct",
                 "Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
                 1100000000L,
-                "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+                DEFAULT_MODEL_URLS[0],
                 "");
     }
 
@@ -124,7 +130,8 @@ public final class LocalModelManager {
     }
 
     public boolean canUseLocalInference() {
-        return isDeviceSupported() && isInstalled() && isEnabled();
+        return isDeviceSupported() && isInstalled() && isEnabled()
+                && LocalInferenceEngine.isNativeAvailable();
     }
 
     public boolean isModelLoadedInEngine() {
@@ -186,96 +193,125 @@ public final class LocalModelManager {
 
         prefs.edit().putString(KEY_DOWNLOAD_STATE, STATE_DOWNLOADING).apply();
         downloadExecutor.execute(() -> {
-            File dest = new File(getModelsDir(), entry.fileName);
-            File tmp = new File(dest.getAbsolutePath() + ".part");
-            HttpURLConnection connection = null;
-            try {
-                URL url = new URL(entry.url);
-                connection = (HttpURLConnection) url.openConnection();
-                connection.setConnectTimeout(30000);
-                connection.setReadTimeout(120000);
-                long existing = tmp.exists() ? tmp.length() : 0L;
-                if (existing > 0) {
-                    connection.setRequestProperty("Range", "bytes=" + existing + "-");
-                }
-                connection.connect();
-                int code = connection.getResponseCode();
-                if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) {
-                    throw new IllegalStateException("http_" + code);
-                }
-
-                long total = entry.sizeBytes;
-                String contentRange = connection.getHeaderField("Content-Range");
-                if (contentRange != null && contentRange.contains("/")) {
-                    try {
-                        total = Long.parseLong(contentRange.substring(contentRange.lastIndexOf('/') + 1));
-                    } catch (NumberFormatException ignored) {
-                    }
-                } else {
-                    total = existing + connection.getContentLengthLong();
-                }
-
-                InputStream in = connection.getInputStream();
-                java.io.FileOutputStream out = new java.io.FileOutputStream(tmp, existing > 0);
-                byte[] buffer = new byte[8192];
-                long downloaded = existing;
-                int read;
-                while ((read = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, read);
-                    downloaded += read;
-                    if (callback != null && total > 0) {
-                        int percent = (int) Math.min(100, downloaded * 100 / total);
-                        callback.onProgress(percent, downloaded, total);
-                    }
-                }
-                out.flush();
-                out.close();
-                in.close();
-
-                if (dest.exists()) {
-                    //noinspection ResultOfMethodCallIgnored
-                    dest.delete();
-                }
-                if (!tmp.renameTo(dest)) {
-                    throw new IllegalStateException("rename_failed");
-                }
-
-                if (entry.sha256 != null && !entry.sha256.isEmpty()) {
-                    String actual = sha256Hex(dest);
-                    if (!entry.sha256.equalsIgnoreCase(actual)) {
+            String[] urls = resolveDownloadUrls(entry);
+            Exception lastError = null;
+            for (int i = 0; i < urls.length; i++) {
+                String url = urls[i];
+                Log.i(TAG, "local_download_try url_index=" + i + " url=" + url);
+                try {
+                    downloadModelFromUrl(entry, url, callback);
+                    return;
+                } catch (Exception e) {
+                    lastError = e;
+                    File partial = new File(getModelsDir(), entry.fileName + ".part");
+                    if (partial.exists()) {
                         //noinspection ResultOfMethodCallIgnored
-                        dest.delete();
-                        prefs.edit().putString(KEY_DOWNLOAD_STATE, STATE_ERROR).apply();
-                        Log.e(TAG, "local_sha256_mismatch expected=" + entry.sha256 + " actual=" + actual);
-                        if (callback != null) {
-                            callback.onError("local_sha256_mismatch", "模型校验失败");
-                        }
-                        return;
+                        partial.delete();
                     }
-                }
-
-                prefs.edit()
-                        .putString(KEY_MODEL_ID, entry.id)
-                        .putString(KEY_MODEL_PATH, dest.getAbsolutePath())
-                        .putString(KEY_SHA256, entry.sha256)
-                        .putString(KEY_DOWNLOAD_STATE, STATE_READY)
-                        .apply();
-                Log.i(TAG, "local_download_ok path=" + dest.getAbsolutePath());
-                if (callback != null) {
-                    callback.onComplete(true, dest.getAbsolutePath());
-                }
-            } catch (Exception e) {
-                prefs.edit().putString(KEY_DOWNLOAD_STATE, STATE_ERROR).apply();
-                Log.e(TAG, "local_download_fail reason=" + e.getMessage(), e);
-                if (callback != null) {
-                    callback.onError("download_failed", e.getMessage());
-                }
-            } finally {
-                if (connection != null) {
-                    connection.disconnect();
+                    Log.w(TAG, "local_download_fail url_index=" + i + " reason=" + e.getMessage());
                 }
             }
+            prefs.edit().putString(KEY_DOWNLOAD_STATE, STATE_ERROR).apply();
+            Log.e(TAG, "local_download_fail reason=all_urls_failed", lastError);
+            if (callback != null) {
+                String message = lastError != null && lastError.getMessage() != null
+                        ? lastError.getMessage()
+                        : "all_urls_failed";
+                callback.onError("download_failed", message);
+            }
         });
+    }
+
+    private static String[] resolveDownloadUrls(CatalogEntry entry) {
+        if (entry == null || entry.url == null || entry.url.isEmpty()) {
+            return DEFAULT_MODEL_URLS;
+        }
+        if ("qwen2.5-1.5b-q4".equals(entry.id)) {
+            return DEFAULT_MODEL_URLS;
+        }
+        return new String[] {entry.url};
+    }
+
+    private void downloadModelFromUrl(CatalogEntry entry, String urlString, DownloadProgressCallback callback)
+            throws Exception {
+        File dest = new File(getModelsDir(), entry.fileName);
+        File tmp = new File(dest.getAbsolutePath() + ".part");
+        HttpURLConnection connection = null;
+        try {
+            URL url = new URL(urlString);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setConnectTimeout(30000);
+            connection.setReadTimeout(120000);
+            long existing = tmp.exists() ? tmp.length() : 0L;
+            if (existing > 0) {
+                connection.setRequestProperty("Range", "bytes=" + existing + "-");
+            }
+            connection.connect();
+            int code = connection.getResponseCode();
+            if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) {
+                throw new IllegalStateException("http_" + code);
+            }
+
+            long total = entry.sizeBytes;
+            String contentRange = connection.getHeaderField("Content-Range");
+            if (contentRange != null && contentRange.contains("/")) {
+                try {
+                    total = Long.parseLong(contentRange.substring(contentRange.lastIndexOf('/') + 1));
+                } catch (NumberFormatException ignored) {
+                }
+            } else {
+                total = existing + connection.getContentLengthLong();
+            }
+
+            InputStream in = connection.getInputStream();
+            java.io.FileOutputStream out = new java.io.FileOutputStream(tmp, existing > 0);
+            byte[] buffer = new byte[8192];
+            long downloaded = existing;
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+                downloaded += read;
+                if (callback != null && total > 0) {
+                    int percent = (int) Math.min(100, downloaded * 100 / total);
+                    callback.onProgress(percent, downloaded, total);
+                }
+            }
+            out.flush();
+            out.close();
+            in.close();
+
+            if (dest.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                dest.delete();
+            }
+            if (!tmp.renameTo(dest)) {
+                throw new IllegalStateException("rename_failed");
+            }
+
+            if (entry.sha256 != null && !entry.sha256.isEmpty()) {
+                String actual = sha256Hex(dest);
+                if (!entry.sha256.equalsIgnoreCase(actual)) {
+                    //noinspection ResultOfMethodCallIgnored
+                    dest.delete();
+                    throw new IllegalStateException("local_sha256_mismatch");
+                }
+            }
+
+            prefs.edit()
+                    .putString(KEY_MODEL_ID, entry.id)
+                    .putString(KEY_MODEL_PATH, dest.getAbsolutePath())
+                    .putString(KEY_SHA256, entry.sha256)
+                    .putString(KEY_DOWNLOAD_STATE, STATE_READY)
+                    .apply();
+            Log.i(TAG, "local_download_ok path=" + dest.getAbsolutePath() + " url=" + urlString);
+            if (callback != null) {
+                callback.onComplete(true, dest.getAbsolutePath());
+            }
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
     }
 
     public static String sha256Hex(File file) throws Exception {

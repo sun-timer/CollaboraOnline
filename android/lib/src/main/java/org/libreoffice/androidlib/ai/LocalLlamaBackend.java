@@ -23,7 +23,7 @@ public final class LocalLlamaBackend implements AiBackend {
         LocalModelManager manager = LocalModelManager.getInstance(appContext);
         if (!manager.isModelLoadedInEngine() && manager.isInstalled()) {
             LocalInferenceParams params = LocalInferenceParams.fromDevice(appContext);
-            engine.loadModel(manager.getModelPath(), params, (success, message) -> {
+            engine.loadModel(appContext, manager.getModelPath(), params, (success, message) -> {
                 if (success) {
                     manager.markEngineLoaded(true);
                     runGenerate(requestId, messages, multiTurn, session, callback);

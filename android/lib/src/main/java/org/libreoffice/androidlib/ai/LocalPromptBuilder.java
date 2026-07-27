@@ -9,6 +9,8 @@ import java.util.List;
 
 public final class LocalPromptBuilder {
     public static final int SAFETY_MARGIN = 128;
+    /** Align with AiBackendRouter.LOCAL_MAX_PREFILL_TOKENS for on-device prefill. */
+    public static final int LOCAL_MAX_PREFILL_TOKENS = AiBackendRouter.LOCAL_MAX_PREFILL_TOKENS;
 
     private LocalPromptBuilder() {}
 
@@ -22,6 +24,7 @@ public final class LocalPromptBuilder {
             if (item == null) {
                 continue;
             }
+            chars += item.optString("role", "").length();
             chars += item.optString("content", "").length();
         }
         return Math.max(1, chars / 2);
@@ -33,10 +36,11 @@ public final class LocalPromptBuilder {
             return new JSONArray();
         }
         if (!multiTurn) {
-            return new JSONArray(history.toString());
+            return truncateToTokenBudget(new JSONArray(history.toString()), LOCAL_MAX_PREFILL_TOKENS);
         }
 
         int budget = Math.max(256, contextSize - maxGenTokens - SAFETY_MARGIN);
+        budget = Math.min(budget, LOCAL_MAX_PREFILL_TOKENS);
         JSONObject system = null;
         List<JSONObject> turns = new ArrayList<>();
         for (int i = 0; i < history.length(); i++) {
@@ -69,21 +73,45 @@ public final class LocalPromptBuilder {
         return selected;
     }
 
-    public static String formatPrompt(JSONArray messages) throws JSONException {
-        StringBuilder sb = new StringBuilder();
+    public static JSONArray truncateToTokenBudget(JSONArray messages, int maxTokens) throws JSONException {
+        if (messages == null || messages.length() == 0 || maxTokens <= 0) {
+            return messages == null ? new JSONArray() : messages;
+        }
+        if (estimateTokens(messages) <= maxTokens) {
+            return messages;
+        }
+
+        JSONObject system = null;
+        List<JSONObject> turns = new ArrayList<>();
         for (int i = 0; i < messages.length(); i++) {
             JSONObject item = messages.getJSONObject(i);
-            String role = item.optString("role", "user");
-            String content = item.optString("content", "");
-            if ("system".equals(role)) {
-                sb.append("System: ").append(content).append("\n\n");
-            } else if ("assistant".equals(role)) {
-                sb.append("Assistant: ").append(content).append("\n\n");
+            if ("system".equals(item.optString("role", "")) && system == null) {
+                system = item;
             } else {
-                sb.append("User: ").append(content).append("\n\n");
+                turns.add(item);
             }
         }
-        sb.append("Assistant: ");
-        return sb.toString();
+
+        JSONArray trimmed = new JSONArray();
+        if (system != null) {
+            trimmed.put(system);
+        }
+        for (int i = turns.size() - 1; i >= 0; i--) {
+            JSONArray trial = new JSONArray();
+            if (system != null) {
+                trial.put(system);
+            }
+            for (int j = i; j < turns.size(); j++) {
+                trial.put(turns.get(j));
+            }
+            if (estimateTokens(trial) <= maxTokens) {
+                trimmed = trial;
+                break;
+            }
+        }
+        if (trimmed.length() == 0 && !turns.isEmpty()) {
+            trimmed.put(turns.get(turns.size() - 1));
+        }
+        return trimmed;
     }
 }

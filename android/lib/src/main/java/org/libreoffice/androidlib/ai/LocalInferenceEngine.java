@@ -30,13 +30,20 @@ public final class LocalInferenceEngine {
     private volatile InferenceSession executingSession;
     private volatile LocalInferenceParams loadedParams;
     private volatile String loadedModelPath = "";
+    private static volatile boolean nativeLibraryLoaded;
 
     static {
         try {
             System.loadLibrary("llama_jni");
+            nativeLibraryLoaded = true;
         } catch (UnsatisfiedLinkError e) {
+            nativeLibraryLoaded = false;
             Log.w(TAG, "local_engine reason=llama_jni_not_loaded " + e.getMessage());
         }
+    }
+
+    public static boolean isNativeAvailable() {
+        return nativeLibraryLoaded;
     }
 
     public static LocalInferenceEngine getInstance() {
@@ -47,9 +54,15 @@ public final class LocalInferenceEngine {
         return loadedModelPath != null && !loadedModelPath.isEmpty();
     }
 
-    public void loadModel(String path, LocalInferenceParams params, LoadCallback callback) {
+    public void loadModel(Context context, String path, LocalInferenceParams params, LoadCallback callback) {
+        final String nativeLibDir =
+                context.getApplicationContext().getApplicationInfo().nativeLibraryDir;
         executor.execute(() -> {
-            boolean ok = nativeLoadModel(path, params.contextSize, params.threads);
+            if (!nativeLibraryLoaded) {
+                notifyLoadFailed(callback, "local_jni_missing");
+                return;
+            }
+            boolean ok = nativeLoadModel(path, params.contextSize, params.threads, nativeLibDir);
             if (ok) {
                 loadedModelPath = path;
                 loadedParams = params;
@@ -60,6 +73,13 @@ public final class LocalInferenceEngine {
                 callback.onLoaded(false, "local_load_fail");
             }
         });
+    }
+
+    private static void notifyLoadFailed(LoadCallback callback, String reason) {
+        Log.e(TAG, "local_infer_fail reason=" + reason);
+        if (callback != null) {
+            callback.onLoaded(false, reason);
+        }
     }
 
     public void unloadModel() {
@@ -86,6 +106,12 @@ public final class LocalInferenceEngine {
             session.resetCancelled();
             executingSession = session;
 
+            if (!nativeLibraryLoaded) {
+                notifyError(callback, "local_jni_missing", "本地推理库未打包，请重新编译 libllama_jni");
+                executingSession = null;
+                return;
+            }
+
             if (!isModelLoaded()) {
                 notifyError(callback, "local_not_loaded", "本地模型未加载");
                 executingSession = null;
@@ -101,12 +127,23 @@ public final class LocalInferenceEngine {
                 nativeClearKvCache();
                 JSONArray promptMessages = LocalPromptBuilder.buildPrompt(
                         messages, params.contextSize, params.maxTokens, multiTurn);
-                String prompt = LocalPromptBuilder.formatPrompt(promptMessages);
+                String[] roles = new String[promptMessages.length()];
+                String[] contents = new String[promptMessages.length()];
+                for (int i = 0; i < promptMessages.length(); i++) {
+                    JSONObject item = promptMessages.getJSONObject(i);
+                    roles[i] = item.optString("role", "user");
+                    contents[i] = item.optString("content", "");
+                }
 
-                if (!nativePrefill(prompt)) {
+                Log.i(TAG, "local_prefill_start requestId=" + requestId
+                        + " msgs=" + promptMessages.length());
+                long prefillStartMs = System.currentTimeMillis();
+                if (!nativePrefillMessages(roles, contents)) {
                     notifyError(callback, "local_prefill_fail", "本地推理 prefill 失败");
                     return;
                 }
+                Log.i(TAG, "local_prefill_ok requestId=" + requestId
+                        + " ms=" + (System.currentTimeMillis() - prefillStartMs));
 
                 StringBuilder full = new StringBuilder();
                 long firstTokenMs = 0L;
@@ -127,6 +164,7 @@ public final class LocalInferenceEngine {
                     }
                     if (tokenCount == 0) {
                         firstTokenMs = System.currentTimeMillis() - startMs;
+                        Log.i(TAG, "local_first_token requestId=" + requestId + " ttft_ms=" + firstTokenMs);
                     }
                     tokenCount++;
                     full.append(piece);
@@ -160,13 +198,16 @@ public final class LocalInferenceEngine {
         }
     }
 
-    private static native boolean nativeLoadModel(String path, int contextSize, int threads);
+    private static native boolean nativeLoadModel(String path, int contextSize, int threads,
+            String nativeLibDir);
 
     private static native void nativeUnloadModel();
 
     private static native void nativeClearKvCache();
 
     private static native boolean nativePrefill(String prompt);
+
+    private static native boolean nativePrefillMessages(String[] roles, String[] contents);
 
     private static native String nativeSampleToken();
 }
