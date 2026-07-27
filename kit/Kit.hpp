@@ -297,6 +297,11 @@ public:
 
     void updateActivityHeader() const;
 
+#if MOBILEAPP
+    /// Tear down LOK document before Android kit reuse (exit command).
+    void shutdownForExit();
+#endif
+
     /// Really important that if we drop, we re-start for the kit.
     class ThreadDropper final {
         Document *_doc;
@@ -472,6 +477,7 @@ private:
 #ifdef __ANDROID__
     static std::shared_ptr<lok::Document> _loKitDocumentForAndroidOnly;
     static std::weak_ptr<DocumentBroker> _documentBrokerForAndroidOnly;
+    static void clearAndroidOnlyDocumentRefs();
 #endif
     std::unique_ptr<KitQueue> _queue;
 

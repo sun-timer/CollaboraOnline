@@ -155,8 +155,8 @@ void KitWebSocketHandler::handleMessage(const std::vector<char>& data)
             LOG_WRN("No document while processing " << tokens[0] << " request.");
 #if defined(__ANDROID__)
             __android_log_print(ANDROID_LOG_WARN, "LOActivity",
-                                "android_kit_no_document token=%s pid=%d", tokens[0].c_str(),
-                                Util::getProcessId());
+                                "android_kit_no_document token=%s pid=%ld", tokens[0].c_str(),
+                                (long)Util::getProcessId());
 #endif
         }
     }
