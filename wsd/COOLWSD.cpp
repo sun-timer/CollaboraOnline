@@ -1010,11 +1010,21 @@ std::shared_ptr<ChildProcess> getNewChild_Blocks(const std::shared_ptr<SocketPol
     std::thread([docId]
                 {
 #ifndef IOS
+#if defined(__ANDROID__)
+                    // Android in-process: lokit_main blocks in runLoop for the first
+                    // document. Drop the mutex before calling lokit_main so subsequent
+                    // documents can set up their FakeSocket connections without blocking.
+                    // lok_init_2 inside lokit_main has its own thread-safety (static guard).
+                    {
+                        std::lock_guard<std::mutex> initLock(COOLWSD::lokit_main_mutex);
+                        Util::setThreadName("lokit_main");
+                        AndroidLokitMainActiveGuard lokitMainGuard;
+                        androidLogCoolwsdDiag("lokit_main_enter", Util::encodeId(docId, 3).c_str());
+                    }
+                    // Mutex released — safe to call lokit_main which may block forever.
+#else
                     std::lock_guard<std::mutex> lock(COOLWSD::lokit_main_mutex);
                     Util::setThreadName("lokit_main");
-#if defined(__ANDROID__)
-                    AndroidLokitMainActiveGuard lokitMainGuard;
-                    androidLogCoolwsdDiag("lokit_main_enter", Util::encodeId(docId, 3).c_str());
 #endif
 #else
                     Util::setThreadName("lokit_main_" + Util::encodeId(docId, 3));

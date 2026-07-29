@@ -47,6 +47,11 @@ void KitWebSocketHandler::handleMessage(const std::vector<char>& data)
         return;
 
     StringVector tokens = StringVector::tokenize(message);
+#if defined(__ANDROID__)
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "diag_kit phase=handleMessage_enter token=%s pid=%d",
+                        tokens.size() > 0 ? tokens[0].c_str() : "(empty)", getpid());
+#endif
 
     LOG_DBG(_socketName << ": recv [" << [&](auto& log) {
         for (const auto& token : tokens)
@@ -77,6 +82,11 @@ void KitWebSocketHandler::handleMessage(const std::vector<char>& data)
     }
     else if (tokens.equals(0, "session"))
     {
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_kit phase=session_msg_enter session=%s docKey=%s pid=%d",
+                            tokens[1].c_str(), tokens[2].c_str(), getpid());
+#endif
         const std::string& sessionId = tokens[1];
         _docKey = tokens[2];
         const std::string& docId = tokens[3];
@@ -87,6 +97,11 @@ void KitWebSocketHandler::handleMessage(const std::vector<char>& data)
 
         if (!_document)
         {
+#if defined(__ANDROID__)
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "diag_kit phase=session_msg_create_document session=%s pid=%d",
+                                sessionId.c_str(), getpid());
+#endif
 #ifndef IOS
             Util::setThreadName("kit" SHARED_DOC_THREADNAME_SUFFIX + docId);
 #endif
@@ -109,6 +124,11 @@ void KitWebSocketHandler::handleMessage(const std::vector<char>& data)
         {
             LOG_DBG("CreateSession failed.");
         }
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_kit phase=session_msg_create_session_done session=%s pid=%d",
+                            sessionId.c_str(), getpid());
+#endif
     }
     else if (!Util::isFuzzing() && tokens.equals(0, "exit"))
     {
@@ -132,6 +152,17 @@ void KitWebSocketHandler::handleMessage(const std::vector<char>& data)
             std::unique_lock<std::mutex> lock(_ksPoll->terminationMutex);
             _ksPoll->terminationFlag = true;
             _ksPoll->terminationCV.notify_all();
+#elif defined(__ANDROID__)
+            // Android: in-process model — keep runLoop alive across documents.
+            // Only clean up the current document, don't terminate the kit thread.
+            if (_document)
+                _document->shutdownForExit();
+            LOG_INF("Kit document exit (Android: keeping runLoop alive for document reuse).");
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "diag_kit phase=exit_cleanup docKey=%s pid=%d",
+                                _docKey.c_str(), getpid());
+            _document.reset();
+            // Do NOT set TerminationFlag — the kit thread persists across documents.
 #else
             if (_document)
                 _document->shutdownForExit();
@@ -222,7 +253,22 @@ void KitWebSocketHandler::onDisconnect()
         _ksPoll->terminationCV.notify_all();
     }
 #endif
+#if defined(__ANDROID__)
+    // Android: FakeSocket disconnect for one document — clean up Document,
+    // but keep the KitSocketPoll (shared across documents) and runLoop alive.
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "diag_kit phase=onDisconnect docKey=%s pid=%d",
+                        _docKey.c_str(), getpid());
+    if (_document)
+    {
+        _document->shutdownForExit();
+        _document.reset();
+    }
+    // Do NOT _ksPoll.reset() — shared KitSocketPoll across documents.
+    // Do NOT set TerminationFlag — runLoop must stay alive.
+#else
     _ksPoll.reset();
+#endif
 }
 
 // transient background save child message handler

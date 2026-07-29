@@ -194,6 +194,12 @@ namespace
 
 bool ChildSession::_handleInput(const char *buffer, int length)
 {
+#if defined(__ANDROID__)
+    const std::string firstTokenDbg = std::string(buffer, std::min(static_cast<int>(length), 40));
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "diag_child phase=_handleInput_enter token=%.40s session=%s pid=%d",
+                        firstTokenDbg.c_str(), getId().c_str(), getpid());
+#endif
     LOG_TRC("handling [" << getAbbreviatedMessage(buffer, length) << ']');
     const std::string firstLine = getFirstLine(buffer, length);
     const StringVector tokens = StringVector::tokenize(firstLine.data(), firstLine.size());
@@ -296,6 +302,11 @@ bool ChildSession::_handleInput(const char *buffer, int length)
     }
     else if (tokens.equals(0, "load"))
     {
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_child phase=load_enter session=%s pid=%d",
+                            getId().c_str(), getpid());
+#endif
         if (_isDocLoaded)
         {
             sendTextFrameAndLogError("error: cmd=load kind=docalreadyloaded");
@@ -309,6 +320,11 @@ bool ChildSession::_handleInput(const char *buffer, int length)
         // disable watchdog while loading
         WatchdogGuard watchdogGuard;
         _isDocLoaded = loadDocument(tokens);
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_child phase=loadDocument_returned isLoaded=%d session=%s pid=%d",
+                            _isDocLoaded ? 1 : 0, getId().c_str(), getpid());
+#endif
 
         LogUiCommands uiLog(*this);
         uiLog.logSaveLoad("load", Poco::URI(getJailedFilePath()).getPath(), timeStart);

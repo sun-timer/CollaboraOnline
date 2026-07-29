@@ -986,6 +986,11 @@ bool DocumentBroker::download(
     bool firstInstance = false;
     if (_storage == nullptr)
     {
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_broker phase=download_first_instance docKey=%s session=%s pid=%d",
+                            _docKey.c_str(), sessionId.c_str(), getPid());
+#endif
         _docState.setStatus(DocumentState::Status::Downloading);
 
         UNITWSD_CALL_INSTANCE(_unitWsd, onPerfDocumentLoading());
@@ -1229,6 +1234,11 @@ bool DocumentBroker::download(
 
 #endif // !MOBILEAPP
 
+#if defined(__ANDROID__)
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "diag_broker phase=download_before_return docKey=%s pid=%d",
+                        _docKey.c_str(), getPid());
+#endif
     return true;
 }
 
@@ -1346,6 +1356,11 @@ bool DocumentBroker::doDownloadDocument(const Authorization& auth,
                                              _saveManager.getLastModifiedLocalTime(), dontUseCache);
     _tileCache->setThreadOwner(std::this_thread::get_id());
 
+#if defined(__ANDROID__)
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "diag_broker phase=doDownloadDocument_before_return docKey=%s pid=%d",
+                        _docKey.c_str(), getPid());
+#endif
     return true;
 }
 
@@ -3870,6 +3885,11 @@ std::size_t DocumentBroker::addSession(const std::shared_ptr<ClientSession>& ses
     try
     {
         // First, download the document, since this can fail.
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_broker phase=addSession_before_download docKey=%s session=%s pid=%d",
+                            _docKey.c_str(), id.c_str(), getPid());
+#endif
         if (!download(session, _childProcess->getJailId(), session->getPublicUri(),
                       session->getAdditionalFilePublicUri(),
                       std::move(wopiFileInfo)))
@@ -3878,10 +3898,25 @@ std::size_t DocumentBroker::addSession(const std::shared_ptr<ClientSession>& ses
             LOG_ERR(msg);
             throw std::runtime_error(msg);
         }
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_broker phase=addSession_after_download docKey=%s session=%s pid=%d",
+                            _docKey.c_str(), id.c_str(), getPid());
+#endif
 
         // Request a new session from the child kit.
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_broker phase=addSession_before_send_session_to_child docKey=%s session=%s pid=%d",
+                            _docKey.c_str(), id.c_str(), getPid());
+#endif
         const std::string message = "session " + id + ' ' + _docKey + ' ' + _docId;
         _childProcess->sendTextFrame(message);
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_broker phase=addSession_after_send_session_to_child docKey=%s session=%s pid=%d",
+                            _docKey.c_str(), id.c_str(), getPid());
+#endif
 
 #if !MOBILEAPP
         // Tell the admin console about this new doc
@@ -5288,8 +5323,19 @@ bool DocumentBroker::forwardToChild(const std::shared_ptr<ClientSession>& sessio
                 return true;
             }
 #endif
+#if defined(__ANDROID__)
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "diag_broker phase=forwardToChild_before_sendFrame_load docKey=%s pid=%d",
+                                _docKey.c_str(), getPid());
+#endif
             return _childProcess->sendFrame(applyViewSetting(msg, viewId, session), binary);
         }
+
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_broker phase=forwardToChild_sending docKey=%s token=load pid=%d",
+                            _docKey.c_str(), getPid());
+#endif
     }
 
     // Forward message with prefix to the Kit.
