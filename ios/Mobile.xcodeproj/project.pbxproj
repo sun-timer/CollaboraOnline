@@ -40,9 +40,9 @@
 		BE5EB5CF213FE2D000E0826C /* ClientSession.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5CC213FE2D000E0826C /* ClientSession.cpp */; };
 		BE5EB5D0213FE2D000E0826C /* TileCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5CD213FE2D000E0826C /* TileCache.cpp */; };
 		BE5EB5D22140039100E0826C /* COOLWSD.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5D12140039100E0826C /* COOLWSD.cpp */; };
+		BE5EB5D22140039100E0826D /* ClientRequestDispatcher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5D12140039100E0826D /* ClientRequestDispatcher.cpp */; };
 		BE5EB5D22140039100E0836C /* KitWSDGlobals.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5D12140039100E0836C /* KitWSDGlobals.cpp */; };
 		BE5EB5D22140039101E0927D /* dumpWsdState.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5D12140039110E0836F /* dumpWsdState.cpp */; };
-		BE5EB5D22140039100E0826D /* ClientRequestDispatcher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5D12140039100E0826D /* ClientRequestDispatcher.cpp */; };
 		BE5EB5D421400DC100E0826C /* DocumentBroker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5D321400DC100E0826C /* DocumentBroker.cpp */; };
 		BE5EB5D621401E0F00E0826C /* Storage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5D521401E0F00E0826C /* Storage.cpp */; };
 		BE5EB5DA2140363100E0826C /* ios.mm in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5D92140363100E0826C /* ios.mm */; };
@@ -124,6 +124,7 @@
 		A5C2FA592AC1BB3800265946 /* Simd.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Simd.cpp; sourceTree = "<group>"; };
 		A5C2FA5B2AC1BEC500265946 /* DeltaSimd.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = DeltaSimd.c; sourceTree = "<group>"; };
 		A5C2FA5C2AC1BEC500265946 /* DeltaSimd.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DeltaSimd.h; sourceTree = "<group>"; };
+		ACCACA1E3019CCE0003D0280 /* MobileDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MobileDebug.entitlements; sourceTree = "<group>"; };
 		BE00F89621396585001CE2D4 /* cool.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; name = cool.html; path = ../../../browser/dist/cool.html; sourceTree = "<group>"; };
 		BE00F89721396585001CE2D4 /* bundle.css */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.css; name = bundle.css; path = ../../../browser/dist/bundle.css; sourceTree = "<group>"; };
 		BE00F89921396585001CE2D4 /* bundle.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; name = bundle.js; path = ../../../browser/dist/bundle.js; sourceTree = "<group>"; };
@@ -619,9 +620,9 @@
 		BE5EB5CC213FE2D000E0826C /* ClientSession.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ClientSession.cpp; sourceTree = "<group>"; };
 		BE5EB5CD213FE2D000E0826C /* TileCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TileCache.cpp; sourceTree = "<group>"; };
 		BE5EB5D12140039100E0826C /* COOLWSD.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = COOLWSD.cpp; sourceTree = "<group>"; };
+		BE5EB5D12140039100E0826D /* ClientRequestDispatcher.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ClientRequestDispatcher.cpp; sourceTree = "<group>"; };
 		BE5EB5D12140039100E0836C /* KitWSDGlobals.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = KitWSDGlobals.cpp; sourceTree = "<group>"; };
 		BE5EB5D12140039110E0836F /* dumpWsdState.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = dumpWsdState.cpp; sourceTree = "<group>"; };
-		BE5EB5D12140039100E0826D /* ClientRequestDispatcher.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ClientRequestDispatcher.cpp; sourceTree = "<group>"; };
 		BE5EB5D321400DC100E0826C /* DocumentBroker.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DocumentBroker.cpp; sourceTree = "<group>"; };
 		BE5EB5D521401E0F00E0826C /* Storage.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Storage.cpp; sourceTree = "<group>"; };
 		BE5EB5D92140363100E0826C /* ios.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = ios.mm; path = ../../ios/ios.mm; sourceTree = "<group>"; };
@@ -895,7 +896,7 @@
 		BE8C03C12242BA680048B7EA /* helpinterceptor.cxx */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = helpinterceptor.cxx; path = "../lobuilddir-symlink/sfx2/source/appl/helpinterceptor.cxx"; sourceTree = "<group>"; };
 		BE8C03C22242BA680048B7EA /* workwin.cxx */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = workwin.cxx; path = "../lobuilddir-symlink/sfx2/source/appl/workwin.cxx"; sourceTree = "<group>"; };
 		BE8C03C32242BA680048B7EA /* appdata.cxx */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = appdata.cxx; path = "../lobuilddir-symlink/sfx2/source/appl/appdata.cxx"; sourceTree = "<group>"; };
-		BE8D77272136762500AC58EA /* Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BE8D77272136762500AC58EA /* orange office.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "orange office.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BE8D772A2136762500AC58EA /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		BE8D772B2136762500AC58EA /* AppDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppDelegate.mm; sourceTree = "<group>"; };
 		BE8D772D2136762500AC58EA /* DocumentBrowserViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DocumentBrowserViewController.h; sourceTree = "<group>"; };
@@ -2682,7 +2683,7 @@
 		BE8D77282136762500AC58EA /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				BE8D77272136762500AC58EA /* Mobile.app */,
+				BE8D77272136762500AC58EA /* orange office.app */,
 				C73BEA612E8429C4009E12D3 /* MobileUITests.xctest */,
 			);
 			name = Products;
@@ -2691,6 +2692,7 @@
 		BE8D77292136762500AC58EA /* Mobile */ = {
 			isa = PBXGroup;
 			children = (
+				ACCACA1E3019CCE0003D0280 /* MobileDebug.entitlements */,
 				C792822F2DF89BB2001EA43B /* MobileSocket.h */,
 				C79282302DF89BB2001EA43B /* MobileSocket.mm */,
 				D4A0F3D82D663A0000472DEE /* CoolURLSchemeHandler.h */,
@@ -3626,7 +3628,7 @@
 			);
 			name = Mobile;
 			productName = Mobile;
-			productReference = BE8D77272136762500AC58EA /* Mobile.app */;
+			productReference = BE8D77272136762500AC58EA /* orange office.app */;
 			productType = "com.apple.product-type.application";
 		};
 		C73BEA602E8429C4009E12D3 /* MobileUITests */ = {
@@ -3759,7 +3761,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "${SOURCE_ROOT}/modify_bundle_version.sh\n\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    rm -r \"${BUILT_PRODUCTS_DIR}/Mobile.app/data\"\nfi\n";
+			shellScript = "${SOURCE_ROOT}/modify_bundle_version.sh\n\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    rm -rf \"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/data\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -3778,7 +3780,7 @@
 				BE980C592CEB557A00FED7BC /* FileUtil-apple.mm in Sources */,
 				BE5EB5D22140039100E0826C /* COOLWSD.cpp in Sources */,
 				BE5EB5D22140039100E0836C /* KitWSDGlobals.cpp in Sources */,
-                BE5EB5D22140039101E0927D /* dumpWsdState.cpp in Sources */,
+				BE5EB5D22140039101E0927D /* dumpWsdState.cpp in Sources */,
 				BE5EB5D22140039100E0826D /* ClientRequestDispatcher.cpp in Sources */,
 				BEFB1EE121C29CC70081D757 /* L10n.mm in Sources */,
 				BEDCC8992456FFAD00FB02BD /* SceneDelegate.mm in Sources */,
@@ -3983,9 +3985,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_WARN_DOCUMENTATION_COMMENTS = NO;
-				CODE_SIGN_ENTITLEMENTS = Mobile/Mobile.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Mobile/MobileDebug.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = J4FQ687VJK;
+				CURRENT_PROJECT_VERSION = 1.0;
+				DEVELOPMENT_TEAM = 9RY28GXMM3;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"IOS=IOS",
@@ -4013,11 +4016,13 @@
 					"$(SOURCE_ROOT)/../zstdinclude-symlink",
 				);
 				INFOPLIST_FILE = Mobile/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Orange Office";
 				LD_GENERATE_MAP_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				OTHER_CPLUSPLUSFLAGS = (
 					"-x",
 					"objective-c++",
@@ -4037,8 +4042,9 @@
 					"$(SOURCE_ROOT)/../zstdlib-symlink",
 					"-lzstd",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.collabora.office.Mobile;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.xunlong.xloffice;
+				PRODUCT_NAME = "orange office";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -4049,8 +4055,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_WARN_DOCUMENTATION_COMMENTS = NO;
 				CODE_SIGN_ENTITLEMENTS = Mobile/Mobile.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = J4FQ687VJK;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1.0;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 9RY28GXMM3;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"IOS=IOS",
@@ -4077,11 +4086,13 @@
 					"$(SOURCE_ROOT)/../zstdinclude-symlink",
 				);
 				INFOPLIST_FILE = Mobile/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Orange Office";
 				LD_GENERATE_MAP_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				OTHER_CPLUSPLUSFLAGS = (
 					"-x",
 					"objective-c++",
@@ -4101,8 +4112,10 @@
 					"$(SOURCE_ROOT)/../zstdlib-symlink",
 					"-lzstd",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.collabora.office.Mobile;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.xunlong.xloffice;
+				PRODUCT_NAME = "orange office";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "XL Office App Store";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

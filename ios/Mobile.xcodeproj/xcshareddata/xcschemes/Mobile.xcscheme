@@ -15,7 +15,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "BE8D77262136762500AC58EA"
-               BuildableName = "Mobile.app"
+               BuildableName = "orange office.app"
                BlueprintName = "Mobile"
                ReferencedContainer = "container:Mobile.xcodeproj">
             </BuildableReference>
@@ -56,7 +56,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "BE8D77262136762500AC58EA"
-            BuildableName = "Mobile.app"
+            BuildableName = "orange office.app"
             BlueprintName = "Mobile"
             ReferencedContainer = "container:Mobile.xcodeproj">
          </BuildableReference>
@@ -80,7 +80,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "BE8D77262136762500AC58EA"
-            BuildableName = "Mobile.app"
+            BuildableName = "orange office.app"
             BlueprintName = "Mobile"
             ReferencedContainer = "container:Mobile.xcodeproj">
          </BuildableReference>

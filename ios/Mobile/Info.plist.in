@@ -6,6 +6,8 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>@APP_NAME@</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<!-- Some of these then have entries in the UTExportedTypeDeclarations array, some in the
@@ -258,7 +260,7 @@
 	</array>
 	<key>NSUbiquitousContainers</key>
 	<dict>
-		<key>iCloud.com.collabora.office.Mobile</key>
+		<key>iCloud.com.xunlong.xloffice</key>
 		<dict>
 			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
 			<true/>
