@@ -131,9 +131,19 @@ ClientSession::ClientSession(const std::shared_ptr<ProtocolHandlerInterface>& ws
 // Can't take a reference in the constructor.
 void ClientSession::construct()
 {
+#if defined(__ANDROID__)
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "diag_session phase=construct_enter session=%s pid=%d",
+                        getId().c_str(), Util::getProcessId());
+#endif
     std::unique_lock<std::mutex> lock(GlobalSessionMapMutex);
     MessageHandlerInterface::initialize();
     GlobalSessionMap[getId()] = client_from_this();
+#if defined(__ANDROID__)
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "diag_session phase=construct_exit session=%s pid=%d",
+                        getId().c_str(), Util::getProcessId());
+#endif
 }
 
 ClientSession::~ClientSession()
@@ -778,6 +788,11 @@ bool ClientSession::_handleInput(const char *buffer, int length)
 
     if (tokens.equals(0, "coolclient"))
     {
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_session phase=coolclient_enter session=%s pid=%d",
+                            getId().c_str(), Util::getProcessId());
+#endif
         if (tokens.size() < 2)
         {
             sendTextFrameAndLogError("error: cmd=coolclient kind=badprotocolversion");
@@ -810,10 +825,20 @@ bool ClientSession::_handleInput(const char *buffer, int length)
                 {
                     // Now we know how to translate from the client's performance.now() values to
                     // microseconds since the epoch.
+#if defined(__ANDROID__)
+                    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                        "diag_session phase=timestamps_before session=%s pid=%d",
+                                        getId().c_str(), Util::getProcessId());
+#endif
                     _performanceCounterEpoch = ts * 1000 - (uint64_t)(counter * 1000);
                     LOG_INF("Client timestamps: Date.now():" << ts <<
                             ", performance.now():" << counter
                             << " => " << _performanceCounterEpoch);
+#if defined(__ANDROID__)
+                    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                        "diag_session phase=timestamps_after session=%s pid=%d",
+                                        getId().c_str(), Util::getProcessId());
+#endif
                 }
             }
         }

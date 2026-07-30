@@ -520,6 +520,11 @@ void RequestVettingStation::createClientSession(const std::shared_ptr<DocumentBr
                 const bool isReadOnly = Uri::hasReadonlyPermission(uriPublic.toString());
                 std::shared_ptr<ClientSession> clientSession = docBroker->createNewClientSession(
                     ws, id, uriPublic, isReadOnly, requestDetails);
+#if defined(__ANDROID__)
+                __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                    "diag_rvs phase=after_createNewClientSession session=%s pid=%d",
+                                    id.c_str(), Util::getProcessId());
+#endif
                 if (!clientSession)
                 {
                     // createNewClientSession() has sent the error to the client WebSocket.
@@ -535,14 +540,34 @@ void RequestVettingStation::createClientSession(const std::shared_ptr<DocumentBr
 
                 // Add and load the session.
                 // Will download synchronously, but in own docBroker thread.
+#if defined(__ANDROID__)
+                __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                    "diag_rvs phase=before_addSession docKey=%s session=%s pid=%d",
+                                    docKey.c_str(), id.c_str(), Util::getProcessId());
+#endif
                 docBroker->addSession(clientSession, std::move(*wopiFileInfo));
+#if defined(__ANDROID__)
+                __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                    "diag_rvs phase=after_addSession docKey=%s session=%s pid=%d",
+                                    docKey.c_str(), id.c_str(), Util::getProcessId());
+#endif
 
                 COOLWSD::checkDiskSpaceAndWarnClients(true);
                 // Users of development versions get just an info
                 // when reaching max documents or connections
                 COOLWSD::checkSessionLimitsAndWarnClients();
 
+#if defined(__ANDROID__)
+                __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                    "diag_rvs phase=before_sendLoadResult session=%s pid=%d",
+                                    id.c_str(), Util::getProcessId());
+#endif
                 sendLoadResult(clientSession, /*success=*/true, /*errorMsg=*/std::string());
+#if defined(__ANDROID__)
+                __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                    "diag_rvs phase=after_sendLoadResult session=%s pid=%d",
+                                    id.c_str(), Util::getProcessId());
+#endif
             }
             catch (const UnauthorizedRequestException& exc)
             {

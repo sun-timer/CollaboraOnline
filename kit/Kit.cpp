@@ -1285,6 +1285,11 @@ bool Document::onLoad(const std::string& sessionId,
                       const std::string& uriAnonym,
                       const std::string& renderOpts)
 {
+#if defined(__ANDROID__)
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "diag_doc phase=onLoad_enter session=%s docKey=%s pid=%d",
+                        sessionId.c_str(), _docKey.c_str(), getpid());
+#endif
     LOG_INF("Loading url [" << uriAnonym << "] for session [" << sessionId <<
             "] which has " << (_sessions.size() - 1) << " sessions.");
 
@@ -2135,6 +2140,9 @@ std::shared_ptr<lok::Document> Document::load(const std::shared_ptr<ChildSession
                             "android_only_doc_refs_set docKey=%s hasDoc=%d elapsedMs=%lld pid=%d",
                             _docKey.c_str(), _loKitDocumentForAndroidOnly ? 1 : 0,
                             static_cast<long long>(elapsed.count()), getpid());
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_doc phase=documentLoad_done session=%s docKey=%s pid=%d",
+                            sessionId.c_str(), _docKey.c_str(), getpid());
         {
             std::unique_lock<std::mutex> docBrokersLock(DocBrokersMutex);
             auto docBrokerIt = DocBrokers.find(_docKey);
@@ -3228,8 +3236,35 @@ namespace
 {
 
 /// Called by LOK main-loop the central location for data processing.
+#if defined(__ANDROID__)
+static std::atomic<int> g_androidPollCallbackEnterCount{0};
+// Shared KitSocketPoll reused across documents (Android in-process model).
+// First lokit_main creates it; subsequent lokit_main calls insert their
+// FakeSocket into this existing poll, then exit without entering runLoop.
+static std::shared_ptr<KitSocketPoll> g_androidSharedKitSocketPoll;
+#endif
+
 int pollCallback(void* data, int timeoutUs)
 {
+#if defined(__ANDROID__)
+    static std::atomic<int> sPollCallbackCount{0};
+    static std::atomic<int> sPollCallbackLastEnterCount{0};
+    const int cnt = ++sPollCallbackCount;
+    const int currentEnter = g_androidPollCallbackEnterCount.load();
+    if (sPollCallbackLastEnterCount.load() != currentEnter)
+    {
+        sPollCallbackLastEnterCount.store(currentEnter);
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_kit phase=pollCallback_enter enterCount=%d pollCount=%d pid=%d",
+                            currentEnter, cnt, getpid());
+    }
+    if (cnt <= 3 || cnt % 3000 == 0)
+    {
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_kit phase=pollCallback poll=%d pid=%d",
+                            cnt, getpid());
+    }
+#endif
     if (!Util::isMobileApp())
         UnitKit::get().preKitPollCallback();
 
@@ -4059,8 +4094,29 @@ void lokit_main(
 
 #endif // MOBILEAPP
 
+#if defined(__ANDROID__)
+        const bool isFirstKit = (lokitEnterCount == 1);
+        std::shared_ptr<KitSocketPoll> mainKit;
+        if (isFirstKit)
+        {
+            mainKit = KitSocketPoll::create();
+            mainKit->runOnClientThread(); // We will do the polling on this thread.
+            g_androidSharedKitSocketPoll = mainKit;
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "diag_kit phase=KitSocketPoll_created enterCount=%d pid=%d",
+                                lokitEnterCount, getpid());
+        }
+        else
+        {
+            mainKit = g_androidSharedKitSocketPoll;
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "diag_kit phase=KitSocketPoll_reused enterCount=%d pid=%d",
+                                lokitEnterCount, getpid());
+        }
+#else
         auto mainKit = KitSocketPoll::create();
         mainKit->runOnClientThread(); // We will do the polling on this thread.
+#endif
 
         std::shared_ptr<KitWebSocketHandler> websocketHandler =
             std::make_shared<KitWebSocketHandler>("child_ws", loKit, jailId, mainKit, numericIdentifier);
@@ -4093,6 +4149,11 @@ void lokit_main(
 #endif
 
         LOG_INF("New kit client websocket inserted.");
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "diag_kit phase=insertSocket_done enterCount=%d pid=%d",
+                            lokitEnterCount, getpid());
+#endif
 
 #if !MOBILEAPP
 
@@ -4113,34 +4174,44 @@ void lokit_main(
 #endif
 
 #ifndef IOS
-        if (!LIBREOFFICEKIT_HAS(kit, runLoop))
+#if defined(__ANDROID__)
+        if (isFirstKit)
         {
-            LOG_FTL("Kit is missing Unipoll API");
-            std::cout << "Fatal: out of date LibreOfficeKit - no Unipoll API\n";
-            Util::forcedExit(EX_SOFTWARE);
-        }
+#endif
+            if (!LIBREOFFICEKIT_HAS(kit, runLoop))
+            {
+                LOG_FTL("Kit is missing Unipoll API");
+                std::cout << "Fatal: out of date LibreOfficeKit - no Unipoll API\n";
+                Util::forcedExit(EX_SOFTWARE);
+            }
 
-        loKit->registerAnyInputCallback(anyInputCallback, mainKit.get());
+            loKit->registerAnyInputCallback(anyInputCallback, mainKit.get());
 
-        LOG_INF("Kit unipoll loop run");
-
-        loKit->runLoop(pollCallback, wakeCallback, mainKit.get());
-
-        LOG_INF("Kit unipoll loop run terminated.");
+            LOG_INF("Kit unipoll loop run");
 
 #if defined(__ANDROID__)
-        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
-                            "android_lokit_main_runloop_done enterCount=%d pid=%d", lokitEnterCount,
-                            getpid());
-        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
-                            "diag_post_runloop phase=before_wakeupWorld pid=%d", getpid());
+            g_androidPollCallbackEnterCount.store(lokitEnterCount);
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "diag_kit phase=before_runLoop enterCount=%d pid=%d",
+                                lokitEnterCount, getpid());
+#endif
+            loKit->runLoop(pollCallback, wakeCallback, mainKit.get());
+
+            LOG_INF("Kit unipoll loop run terminated.");
+
+#if defined(__ANDROID__)
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "android_lokit_main_runloop_done enterCount=%d pid=%d", lokitEnterCount,
+                                getpid());
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "diag_post_runloop phase=before_wakeupWorld pid=%d", getpid());
 #endif
 
 #if MOBILEAPP
-        SocketPoll::wakeupWorld();
+            SocketPoll::wakeupWorld();
 #if defined(__ANDROID__)
-        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
-                            "diag_post_runloop phase=after_wakeupWorld pid=%d", getpid());
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "diag_post_runloop phase=after_wakeupWorld pid=%d", getpid());
 #endif
 #else
         // Trap the signal handler, if invoked,
@@ -4150,6 +4221,18 @@ void lokit_main(
         // Let forkit handle the jail cleanup.
 #endif
 
+#if defined(__ANDROID__)
+        } // end isFirstKit
+        else
+        {
+            // Second+ document: runLoop is already running in the first thread.
+            // The FakeSocket was inserted above; wake the runLoop to pick it up.
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "diag_kit phase=lokit_main_reuse_done enterCount=%d pid=%d",
+                                lokitEnterCount, getpid());
+            SocketPoll::wakeupWorld();
+        }
+#endif
 #else // IOS
         std::unique_lock<std::mutex> lock(mainKit->terminationMutex);
         mainKit->terminationCV.wait(lock,[&]{ return mainKit->terminationFlag; } );
