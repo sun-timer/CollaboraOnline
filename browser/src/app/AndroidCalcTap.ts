@@ -9,7 +9,7 @@ class AndroidCalcTap {
 	private static readonly dedupeMs = 120;
 
 	private static report(message: string): void {
-		if (typeof window.postMobileMessage === 'function') {
+		if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {
 			window.postMobileMessage('CALC_CELL_TAP ' + message);
 		}
 	}

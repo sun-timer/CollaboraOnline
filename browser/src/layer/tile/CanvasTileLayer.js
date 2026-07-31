@@ -1678,7 +1678,12 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		var sameAddress = oldCursorAddress.equals(app.calc.cellAddress.toArray());
 
 		console.log('calc_cell_tap: _onCellCursorMsg result sameAddr=' + sameAddress + ' newAddr=(' + app.calc.cellAddress.x + ',' + app.calc.cellAddress.y + ')');
-		try { window.postMobileMessage('CALC_CELL_TAP cursorAddr col=' + app.calc.cellAddress.x + ' row=' + app.calc.cellAddress.y + ' topLeft=(' + topLeftTwips.x + ',' + topLeftTwips.y + ')'); } catch(e) { /* diagnostic */ }
+		if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {
+			try {
+				var topLeft = typeof topLeftTwips !== 'undefined' ? ' topLeft=(' + topLeftTwips.x + ',' + topLeftTwips.y + ')' : '';
+				window.postMobileMessage('CALC_CELL_TAP cursorAddr col=' + app.calc.cellAddress.x + ' row=' + app.calc.cellAddress.y + topLeft);
+			} catch(e) { /* diagnostic */ }
+		}
 		var isFollowingOwnCursor = parseInt(app.getFollowedViewId()) === parseInt(this._viewId);
 		var notJump = sameAddress || !isFollowingOwnCursor;
 		var scrollToCursor = this._sheetSwitch.tryRestore(notJump, this._selectedPart);

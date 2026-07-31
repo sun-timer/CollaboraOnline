@@ -133,7 +133,7 @@ class AndroidNativeDialogRouter {
 	}
 
 	private postPayload(payload: NativeDialogPayload): void {
-		if (!window.postMobileMessage) {
+		if (!window.ThisIsTheAndroidApp || typeof window.postMobileMessage !== 'function') {
 			return;
 		}
 		window.postMobileMessage('JSDIALOG ' + JSON.stringify(payload));
