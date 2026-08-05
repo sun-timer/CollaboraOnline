@@ -30,9 +30,13 @@ import org.libreoffice.androidlib.impress.ImpressSolidColorPickerController;
 import org.libreoffice.androidlib.impress.ImpressTransitionCatalog;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Impress edit-mode function panel: 常用 / 文件 / 插入 / 切换 / 布局 / 审阅.
@@ -156,6 +160,8 @@ public class ImpressFunctionPanelController {
         void editCommentWithText(String id, String author, String text);
 
         void deleteCommentWithId(String id);
+
+        void startSlideShow();
     }
 
     private enum ItemType {
@@ -254,6 +260,12 @@ public class ImpressFunctionPanelController {
     private final List<PanelTab> tabs;
     private int selectedTabIndex = 0;
     private boolean fontPickerVisible;
+    private boolean slideOptionPickerVisible;
+    private boolean currentBold;
+    private boolean currentItalic;
+    private boolean currentUnderline;
+    private boolean currentStrikethrough;
+    private TextView slideOptionValueView;
     private final Map<String, String> pickerValues = new HashMap<>();
     private final Map<String, Integer> pickerColorRgb = new HashMap<>();
     private String[] cachedFontOptions = FALLBACK_FONT_OPTIONS;
@@ -271,7 +283,9 @@ public class ImpressFunctionPanelController {
     private boolean reviewCommentPickerVisible;
     private int submenuReturnTabIndex = -1;
     private TextView slideMasterValueView;
+    private TextView slideBackgroundValueView;
     private Integer selectedMasterSolidRgb;
+    private boolean solidColorForSlideBackground;
     private int selectedTransitionIndex = DEFAULT_SELECTED_TRANSITION_INDEX;
     private LinearLayout transitionGridRoot;
     private int selectedLayoutIndex = -1;
@@ -281,7 +295,7 @@ public class ImpressFunctionPanelController {
     public ImpressFunctionPanelController(Host host) {
         this.host = host;
         this.tabs = buildTabs();
-        pickerValues.put("slide_format", "16:9 屏幕");
+        pickerValues.put("slide_format", "A4");
         pickerValues.put("slide_orientation", "横向");
         pickerValues.put("slide_background", "无");
         pickerValues.put("slide_master", "默认");
@@ -336,7 +350,7 @@ public class ImpressFunctionPanelController {
     }
 
     public void dismiss() {
-        dismissFontPicker();
+        dismissSecondaryListPanel();
         dismissSolidColorPickerPage();
         chartPickerVisible = false;
         hyperlinkPickerVisible = false;
@@ -381,7 +395,7 @@ public class ImpressFunctionPanelController {
     }
 
     private void selectTab(int index) {
-        dismissFontPicker();
+        dismissSecondaryListPanel();
         dismissSolidColorPickerPage();
         dismissChartPickerPage();
         dismissHyperlinkPickerPage();
@@ -535,11 +549,16 @@ public class ImpressFunctionPanelController {
 
     private void onSlidePickerClick(PanelItem item, TextView valueView) {
         if ("slide_format".equals(item.id)) {
-            showLabelPicker("格式", FORMAT_LABELS, null, item.id, valueView);
+            showSlideOptionPickerPage("格式", FORMAT_LABELS, FORMAT_COMMANDS, item.id, valueView, null);
             return;
         }
         if ("slide_orientation".equals(item.id)) {
-            showLabelPicker("方向", ORIENTATION_LABELS, ORIENTATION_COMMANDS, item.id, valueView);
+            showSlideOptionPickerPage("方向", ORIENTATION_LABELS, ORIENTATION_COMMANDS, item.id, valueView, null);
+            return;
+        }
+        if ("slide_background".equals(item.id)) {
+            showSlideOptionPickerPage("背景", BACKGROUND_LABELS, BACKGROUND_COMMANDS, item.id, valueView,
+                    createBackgroundActions());
             return;
         }
         if ("slide_master".equals(item.id)) {
@@ -585,6 +604,7 @@ public class ImpressFunctionPanelController {
             return;
         }
         solidColorPickerVisible = false;
+        solidColorForSlideBackground = false;
         setTabChromeVisible(true);
         expandSheet(SHEET_HEIGHT_RATIO);
         int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
@@ -596,8 +616,18 @@ public class ImpressFunctionPanelController {
     }
 
     private void showSolidColorPickerPage() {
-        dismissFontPicker();
+        showSolidColorPickerPage(false);
+    }
+
+    private void showSlideBackgroundColorPicker() {
+        dismissSlideOptionPicker();
+        showSolidColorPickerPage(true);
+    }
+
+    private void showSolidColorPickerPage(boolean forSlideBackground) {
+        dismissSecondaryListPanel();
         solidColorPickerVisible = true;
+        solidColorForSlideBackground = forSlideBackground;
         submenuReturnTabIndex = selectedTabIndex;
         setTabChromeVisible(false);
         expandSheet(SOLID_COLOR_SHEET_HEIGHT_RATIO);
@@ -621,6 +651,16 @@ public class ImpressFunctionPanelController {
 
                     @Override
                     public void onColorSelected(int index, int rgb) {
+                        if (solidColorForSlideBackground) {
+                            applySlideBackgroundColor(rgb);
+                            pickerValues.put("slide_background", "颜色");
+                            if (slideBackgroundValueView != null) {
+                                slideBackgroundValueView.setText("颜色");
+                            }
+                            Log.i(TAG, "slide_background_color index=" + index
+                                    + " rgb=#" + Integer.toHexString(rgb).toUpperCase());
+                            return;
+                        }
                         applyMasterSolidColor(rgb);
                         pickerValues.put("slide_master", "纯色");
                         if (slideMasterValueView != null) {
@@ -646,6 +686,15 @@ public class ImpressFunctionPanelController {
         host.executeUnoCommand(buildBackgroundColorUnoCommand(rgb));
     }
 
+    private void applySlideBackgroundColor(int rgb) {
+        host.executeUnoCommand(buildFillPageStyleUnoCommand(FILL_STYLE_SOLID));
+        host.executeUnoCommand(buildBackgroundColorUnoCommand(rgb));
+    }
+
+    private String buildFillPageStyleUnoCommand(int fillStyle) {
+        return ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":" + fillStyle + "}}";
+    }
+
     private String buildBackgroundColorUnoCommand(int rgb) {
         return ".uno:BackgroundColor {\"BackgroundColor.Color\":{\"type\":\"long\",\"value\":" + rgb + "}}";
     }
@@ -665,6 +714,95 @@ public class ImpressFunctionPanelController {
                 })
                 .setNegativeButton("取消", null)
                 .show();
+    }
+
+    private void showSlideOptionPickerPage(String title, String[] labels, String[] commands,
+            String pickerId, TextView valueView, Runnable[] extraActions) {
+        if (fontPickerPanel == null || dialog == null) {
+            return;
+        }
+        dismissSolidColorPickerPage();
+        slideOptionPickerVisible = true;
+        slideOptionValueView = valueView;
+        if ("slide_background".equals(pickerId)) {
+            slideBackgroundValueView = valueView;
+        }
+
+        TextView titleView = fontPickerPanel.findViewById(R.id.font_picker_title);
+        if (titleView != null) {
+            titleView.setText(title);
+        }
+        ImageButton back = fontPickerPanel.findViewById(R.id.font_picker_back);
+        LinearLayout list = fontPickerPanel.findViewById(R.id.font_picker_list);
+        if (back != null) {
+            back.setOnClickListener(v -> dismissSlideOptionPicker());
+        }
+        populateSlideOptionList(list, labels, commands, pickerId, valueView, extraActions);
+
+        setTabChromeVisible(false);
+        if (contentContainer != null) {
+            contentContainer.setVisibility(View.GONE);
+        }
+        fontPickerPanel.setVisibility(View.VISIBLE);
+        expandSheet(SHEET_HEIGHT_RATIO);
+        Log.i(TAG, "slide_option_picker_show pickerId=" + pickerId + " title=" + title);
+    }
+
+    private void populateSlideOptionList(LinearLayout list, String[] labels, String[] commands,
+            String pickerId, TextView valueView, Runnable[] extraActions) {
+        list.removeAllViews();
+        String selected = pickerValues.getOrDefault(pickerId, labels.length > 0 ? labels[0] : "");
+        LayoutInflater inflater = LayoutInflater.from(host.getContext());
+        for (int i = 0; i < labels.length; i++) {
+            final String label = labels[i];
+            final int index = i;
+            View row = inflater.inflate(R.layout.lolib_item_impress_option_picker_row, list, false);
+            TextView name = row.findViewById(R.id.impress_option_picker_item_name);
+            ImageView check = row.findViewById(R.id.impress_option_picker_item_check);
+            name.setText(label);
+            boolean isSelected = label.equals(selected);
+            name.setTextColor(COLOR_TITLE);
+            check.setImageResource(isSelected
+                    ? R.drawable.lolib_ic_impress_radio_checked
+                    : R.drawable.lolib_ic_impress_radio_unchecked);
+            row.setOnClickListener(v -> {
+                pickerValues.put(pickerId, label);
+                valueView.setText(label);
+                if (commands != null && index < commands.length
+                        && commands[index] != null && !commands[index].isEmpty()) {
+                    host.executeUnoCommand(commands[index]);
+                }
+                if (extraActions != null && index < extraActions.length
+                        && extraActions[index] != null) {
+                    extraActions[index].run();
+                }
+                populateSlideOptionList(list, labels, commands, pickerId, valueView, extraActions);
+                Log.i(TAG, "slide_option_picked pickerId=" + pickerId + " label=" + label);
+            });
+            list.addView(row);
+            if (i < labels.length - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(COLOR_DIVIDER);
+                list.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+    }
+
+    private void dismissSlideOptionPicker() {
+        if (!slideOptionPickerVisible) {
+            return;
+        }
+        slideOptionPickerVisible = false;
+        slideOptionValueView = null;
+        setTabChromeVisible(true);
+        if (contentContainer != null) {
+            contentContainer.setVisibility(View.VISIBLE);
+        }
+        if (fontPickerPanel != null) {
+            fontPickerPanel.setVisibility(View.GONE);
+        }
+        expandSheet(SHEET_HEIGHT_RATIO);
     }
 
     private View createFullPickerRow(PanelItem item) {
@@ -751,10 +889,27 @@ public class ImpressFunctionPanelController {
             }
             lp.bottomMargin = gap;
             btn.setLayoutParams(lp);
+            // Apply selected-state visual feedback for toggle-style char format buttons
+            boolean isActive = isCharCommandActive(command);
+            btn.setSelected(isActive);
+            if (isActive) {
+                btn.getBackground().mutate().setTint(0xFF1A73E8);
+                icon.setImageTintList(android.content.res.ColorStateList.valueOf(0xFFFFFFFF));
+            }
             btn.setOnClickListener(v -> host.executeUnoCommand(command));
             row.addView(btn);
         }
         return row;
+    }
+
+    private boolean isCharCommandActive(String command) {
+        switch (command) {
+            case ".uno:Bold": return currentBold;
+            case ".uno:Italic": return currentItalic;
+            case ".uno:Underline": return currentUnderline;
+            case ".uno:Strikeout": return currentStrikethrough;
+            default: return false;
+        }
     }
 
     private View createLabeledGrid(String[] labels, String[] commands, int[] iconRes, int cols) {
@@ -875,9 +1030,12 @@ public class ImpressFunctionPanelController {
         }
         host.fetchFontList((labels, values) -> {
             if (labels != null && !labels.isEmpty()) {
-                cachedFontOptions = labels.toArray(new String[0]);
-                cachedFontValues = values != null && !values.isEmpty()
-                        ? values.toArray(new String[0]) : cachedFontOptions;
+                filterFonts(labels, values);
+                if (!labels.isEmpty()) {
+                    cachedFontOptions = labels.toArray(new String[0]);
+                    cachedFontValues = values != null && !values.isEmpty()
+                            ? values.toArray(new String[0]) : cachedFontOptions;
+                }
             }
             open.run();
         });
@@ -886,6 +1044,11 @@ public class ImpressFunctionPanelController {
     private void openFontPickerPanel(TextView valueView) {
         if (fontPickerPanel == null || dialog == null) {
             return;
+        }
+        dismissSlideOptionPicker();
+        TextView titleView = fontPickerPanel.findViewById(R.id.font_picker_title);
+        if (titleView != null) {
+            titleView.setText("字体");
         }
         ImageButton back = fontPickerPanel.findViewById(R.id.font_picker_back);
         LinearLayout list = fontPickerPanel.findViewById(R.id.font_picker_list);
@@ -928,7 +1091,7 @@ public class ImpressFunctionPanelController {
                 pickerValues.put("font_name", label);
                 valueView.setText(label);
                 host.applyFont(value);
-                dismissFontPicker();
+                dismissSecondaryListPanel();
             });
             list.addView(row);
             if (i < cachedFontOptions.length - 1) {
@@ -958,6 +1121,11 @@ public class ImpressFunctionPanelController {
             fontPickerPanel.setVisibility(View.GONE);
         }
         expandSheet(SHEET_HEIGHT_RATIO);
+    }
+
+    private void dismissSecondaryListPanel() {
+        dismissFontPicker();
+        dismissSlideOptionPicker();
     }
 
     private void showFontColorPicker(TextView labelView, ImageView previewDot) {
@@ -1081,7 +1249,8 @@ public class ImpressFunctionPanelController {
     }
 
     private void syncCurrentFormatting() {
-        host.fetchCurrentFormatting((styleName, fontName, fontSizePt, paragraphAlignment) -> {
+        host.fetchCurrentFormatting((styleName, fontName, fontSizePt, paragraphAlignment,
+                                    bold, italic, underline, strikethrough) -> {
             if (fontName != null && !fontName.trim().isEmpty()) {
                 pickerValues.put("font_name", fontName.trim());
             }
@@ -1089,6 +1258,10 @@ public class ImpressFunctionPanelController {
             if (!TextUtils.isEmpty(sizeLabel)) {
                 pickerValues.put("font_size", sizeLabel);
             }
+            currentBold = bold;
+            currentItalic = italic;
+            currentUnderline = underline;
+            currentStrikethrough = strikethrough;
             if (dialog != null && dialog.isShowing() && selectedTabIndex == 0) {
                 renderTabContent(tabs.get(selectedTabIndex));
             }
@@ -1141,7 +1314,7 @@ public class ImpressFunctionPanelController {
 
         List<PanelItem> common = new ArrayList<>();
         common.add(new PanelItem(ItemType.SECTION, "sec_slide", "幻灯片"));
-        common.add(new PanelItem(ItemType.SLIDE_PICKER, "slide_format", "格式", "16:9 屏幕",
+        common.add(new PanelItem(ItemType.SLIDE_PICKER, "slide_format", "格式", "A4",
                 R.drawable.lolib_ic_impress_slide_format));
         common.add(new PanelItem(ItemType.SLIDE_PICKER, "slide_orientation", "方向", "横向",
                 R.drawable.lolib_ic_impress_slide_orientation));
@@ -1192,6 +1365,8 @@ public class ImpressFunctionPanelController {
                 R.drawable.lolib_ic_calc_file_export, host::exportDocumentAsPdf));
         file.add(new PanelItem(ItemType.ACTION, "print", "打印",
                 R.drawable.lolib_ic_calc_file_print, host::initiatePrint));
+        file.add(new PanelItem(ItemType.ACTION, "slideshow", "幻灯片放映",
+                R.drawable.lolib_ic_calc_file_print, host::startSlideShow));
         return file;
     }
 
@@ -1393,7 +1568,7 @@ public class ImpressFunctionPanelController {
     };
 
     private void showChartTypePickerPage() {
-        dismissFontPicker();
+        dismissSecondaryListPanel();
         chartPickerVisible = true;
         submenuReturnTabIndex = selectedTabIndex;
         setTabChromeVisible(false);
@@ -1546,7 +1721,7 @@ public class ImpressFunctionPanelController {
     }
 
     private void showHyperlinkPickerPage() {
-        dismissFontPicker();
+        dismissSecondaryListPanel();
         hyperlinkPickerVisible = true;
         submenuReturnTabIndex = selectedTabIndex;
         setTabChromeVisible(false);
@@ -1609,7 +1784,7 @@ public class ImpressFunctionPanelController {
     }
 
     private void showTablePickerPage() {
-        dismissFontPicker();
+        dismissSecondaryListPanel();
         tablePickerVisible = true;
         submenuReturnTabIndex = selectedTabIndex;
         setTabChromeVisible(false);
@@ -1659,7 +1834,7 @@ public class ImpressFunctionPanelController {
     }
 
     private void showCommentPickerPage() {
-        dismissFontPicker();
+        dismissSecondaryListPanel();
         commentPickerVisible = true;
         submenuReturnTabIndex = selectedTabIndex;
         setTabChromeVisible(false);
@@ -1719,7 +1894,7 @@ public class ImpressFunctionPanelController {
     }
 
     private void showReviewCommentPickerPage() {
-        dismissFontPicker();
+        dismissSecondaryListPanel();
         reviewCommentPickerVisible = true;
         submenuReturnTabIndex = selectedTabIndex;
         setTabChromeVisible(false);
@@ -2165,17 +2340,152 @@ public class ImpressFunctionPanelController {
             ".uno:DefaultNumbering",
     };
 
-    private static final String[] FORMAT_LABELS = { "16:9 屏幕", "4:3 屏幕", "A4 纸张" };
+    private static final int FILL_STYLE_NONE = 0;
+    private static final int FILL_STYLE_SOLID = 1;
+    private static final int FILL_STYLE_GRADIENT = 2;
+    private static final int FILL_STYLE_HATCH = 3;
+    private static final int FILL_STYLE_BITMAP = 4;
+
+    private static final String[] FORMAT_LABELS = {
+            "A4", "A3", "A5", "A6", "A2", "A1", "A0",
+            "B6(ISO)", "B5(ISO)", "B4(ISO)",
+            "B6(JIS)", "B5(JIS)", "B4(JIS)",
+            "Letter", "Legal", "Tabloid",
+            "16开", "32开", "大32开",
+            "自定义"
+    };
+    private static final String[] FORMAT_COMMANDS = {
+            ".uno:AttributePageSize?PaperFormat:short=4",   // A4
+            ".uno:AttributePageSize?PaperFormat:short=3",   // A3
+            ".uno:AttributePageSize?PaperFormat:short=5",   // A5
+            ".uno:AttributePageSize?PaperFormat:short=56",  // A6
+            ".uno:AttributePageSize?PaperFormat:short=2",   // A2
+            ".uno:AttributePageSize?PaperFormat:short=1",   // A1
+            ".uno:AttributePageSize?PaperFormat:short=0",   // A0
+            ".uno:AttributePageSize?PaperFormat:short=12",  // B6 ISO
+            ".uno:AttributePageSize?PaperFormat:short=7",   // B5 ISO
+            ".uno:AttributePageSize?PaperFormat:short=6",   // B4 ISO
+            ".uno:AttributePageSize?PaperFormat:short=36",  // B6 JIS
+            ".uno:AttributePageSize?PaperFormat:short=35",  // B5 JIS
+            ".uno:AttributePageSize?PaperFormat:short=34",  // B4 JIS
+            ".uno:AttributePageSize?PaperFormat:short=8",   // Letter
+            ".uno:AttributePageSize?PaperFormat:short=9",   // Legal
+            ".uno:AttributePageSize?PaperFormat:short=10",  // Tabloid
+            ".uno:AttributePageSize?PaperFormat:short=31",  // 16开 KAI16
+            ".uno:AttributePageSize?PaperFormat:short=32",  // 32开 KAI32
+            ".uno:AttributePageSize?PaperFormat:short=33",  // 大32开 KAI32BIG
+            ".uno:AttributePageSize?PaperFormat:short=11",  // User
+    };
     private static final String[] ORIENTATION_LABELS = { "横向", "纵向" };
     private static final String[] ORIENTATION_COMMANDS = {
             ".uno:Orientation?isLandscape:bool=true",
             ".uno:Orientation?isLandscape:bool=false",
     };
+    private static final String[] BACKGROUND_LABELS = {
+            "无", "颜色", "渐变", "阴影线", "位图", "图案", "使用幻灯片背景"
+    };
+    private static final String[] BACKGROUND_COMMANDS = {
+            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":0}}",
+            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":1}}",
+            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":2}}",
+            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":3}}",
+            ".uno:SelectBackground",
+            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":4}}",
+            ".uno:DisplayMasterBackground?DisplayMasterBackground:bool=true",
+    };
+
+    private Runnable[] createBackgroundActions() {
+        return new Runnable[] {
+                null,
+                this::showSlideBackgroundColorPicker,
+                null,
+                null,
+                () -> host.runAfterFunctionPanelDismiss(() -> host.openLocalImagePickerFromWeb()),
+                null,
+                null,
+        };
+    }
 
     private static final String[] FALLBACK_FONT_OPTIONS = {
             "宋体", "Liberation Serif", "Liberation Sans", "Arial"
     };
     private static final String[] FALLBACK_FONT_VALUES = FALLBACK_FONT_OPTIONS;
+
+    /** Font names excluded from the picker (case-insensitive). */
+    private static final Set<String> FONT_BLOCKLIST = new HashSet<>(Arrays.asList(
+            "AndroidClock",
+            "droid sans mono",
+            "MiSansC Mitype Mono Rounded Normal Cond",
+            "Mitype Mono VG",
+            "Mitype Rounded Normal",
+            "Mitype VF",
+            "MIUI EX",
+            "Noto Color Emoji Flags",
+            "Noto Naskh Arabic UI",
+            "Noto Sans Ahom",
+            "Noto Sans AnatoHiero",
+            "Noto Sans Avestan",
+            "Noto Sans Bengali UI",
+            "Noto Sans CanAborig",
+            "Noto Sans Devanagari",
+            "Noto Sans Devanagari UI",
+            "OpenSymbol",
+            "Liberation Mono",
+            "Liberation Sans Narrow",
+            "MiClock Extralight",
+            "MiClock Mono Extralight"
+    ));
+
+    /** For Noto* fonts, only these two are kept; all others are filtered out. */
+    private static final Set<String> NOTO_ALLOWED = new HashSet<>(Arrays.asList(
+            "Noto Sans", "Noto Serif"
+    ));
+
+    /** Returns true if the font name should be hidden from the picker. */
+    private static boolean isFontBlocked(String name) {
+        if (name == null || name.isEmpty()) {
+            return true;
+        }
+        String lower = name.toLowerCase(Locale.ROOT);
+        // 1. Exact-match blocklist
+        for (String blocked : FONT_BLOCKLIST) {
+            if (lower.equals(blocked.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        // 2. Noto rule: keep only "Noto Sans" and "Noto Serif"
+        if (lower.startsWith("noto")) {
+            boolean allowed = false;
+            for (String a : NOTO_ALLOWED) {
+                if (lower.equals(a.toLowerCase(Locale.ROOT))) {
+                    allowed = true;
+                    break;
+                }
+            }
+            if (!allowed) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Filters a font list, returning only names that pass {@link #isFontBlocked} inverted. */
+    private static void filterFonts(List<String> labels, List<String> values) {
+        if (labels == null) {
+            return;
+        }
+        int i = 0;
+        while (i < labels.size()) {
+            if (isFontBlocked(labels.get(i))) {
+                labels.remove(i);
+                if (values != null && i < values.size()) {
+                    values.remove(i);
+                }
+            } else {
+                i++;
+            }
+        }
+    }
 
     private static final String[] SIZE_OPTIONS = {
             "初号", "小初", "一号", "小一", "二号", "小二", "三号", "小三", "四号", "小四", "五号", "小五"

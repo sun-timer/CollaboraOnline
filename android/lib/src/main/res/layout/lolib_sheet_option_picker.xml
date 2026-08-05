@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 字体二级页：样式对齐 Figma 参考 5252:56110。 -->
+<!-- 通用二级列表页：返回键 + 标题 + 滚动列表。
+     复用方通过代码动态设置标题和填充列表行。
+     样式对齐 Figma 参考 5252:56110：标题栏左 inset 32px、标题 16sp regular、
+     边框 #A2A9B2、列表行两侧 32px 边距。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -15,7 +18,7 @@
         android:paddingEnd="8dp">
 
         <ImageButton
-            android:id="@+id/font_picker_back"
+            android:id="@+id/option_picker_back"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
@@ -25,11 +28,10 @@
             android:src="@drawable/lolib_ic_top_back" />
 
         <TextView
-            android:id="@+id/font_picker_title"
+            android:id="@+id/option_picker_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:text="字体"
             android:textColor="#333333"
             android:textSize="16sp" />
     </LinearLayout>
@@ -43,16 +45,19 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:fillViewport="true"
+        android:fillViewport="false"
         android:overScrollMode="ifContentScrolls"
         android:scrollbars="vertical">
 
         <LinearLayout
-            android:id="@+id/font_picker_list"
+            android:id="@+id/option_picker_list"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingStart="16dp"
-            android:paddingEnd="16dp" />
+            android:paddingTop="0dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="16dp" />
     </androidx.core.widget.NestedScrollView>
+
 </LinearLayout>

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Figma 参考节点 5252:56110 的行风格：minHeight 48dp, padding [12,12,12,12], 文字 16sp,
+<!-- Figma 参考节点 5252:56110 的行风格：
+     minHeight 48dp, padding [12,12,12,12], 文字 16sp,
      选中行 #1278D9 文字 + 右侧对勾 24dp 可见，分隔线 #00000014 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -14,7 +15,7 @@
     android:paddingBottom="12dp">
 
     <TextView
-        android:id="@+id/font_picker_item_name"
+        android:id="@+id/option_picker_item_name"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
@@ -24,7 +25,7 @@
         android:textSize="16sp" />
 
     <ImageView
-        android:id="@+id/font_picker_item_check"
+        android:id="@+id/option_picker_item_check"
         android:layout_width="24dp"
         android:layout_height="24dp"
         android:contentDescription="已选中"

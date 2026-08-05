@@ -1,8 +1,8 @@
 package org.libreoffice.androidlib;
 
-import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -15,6 +15,7 @@ import androidx.core.widget.NestedScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.CompoundButton;
+import android.widget.PopupWindow;
 import android.widget.TextView;
 import androidx.appcompat.widget.SwitchCompat;
 
@@ -22,10 +23,12 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.ai.AiDialogHelper;
+import org.libreoffice.androidlib.impress.ImpressShapePickerController;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -48,13 +51,18 @@ public class FunctionPanelController {
     private static final int COLOR_TAB_BAR_BORDER = Color.parseColor("#A2A9B2");
     /** Figma 750×1624 canvas: sheet height 1066px ≈ 65.6% screen. */
     private static final float FONT_PICKER_HEIGHT_RATIO = 1066f / 1624f;
+    /** 纸张方向 2 项，二级弹窗压缩高度。 */
+    private static final float ORIENTATION_PICKER_HEIGHT_RATIO = 0.26f;
+    /** 文件/插入/布局/审阅 tab 固定高度（内容少下方留空，多则内容滚动）。 */
+    private static final float TAB_HEIGHT_OTHER = 0.55f;
 
     public interface StringListCallback {
         void onResult(List<String> labels, List<String> values);
     }
 
     public interface FormattingCallback {
-        void onResult(String styleName, String fontName, String fontSizePt, String paragraphAlignment);
+        void onResult(String styleName, String fontName, String fontSizePt, String paragraphAlignment,
+                      boolean bold, boolean italic, boolean underline, boolean strikethrough);
     }
 
     public interface Host {
@@ -76,7 +84,7 @@ public class FunctionPanelController {
 
         void toastTodo(String text);
 
-        void showWatermarkDialog(boolean enabled);
+        void applyWatermark(String text, String font, int angle, int transparency);
 
         void applyParagraphStyle(String styleName);
 
@@ -85,6 +93,12 @@ public class FunctionPanelController {
         void applyFontSize(String fontSizePt);
 
         void insertComment();
+
+        String getCommentAuthorName();
+
+        void insertCommentWithText(String text);
+
+        void runAfterFunctionPanelDismiss(Runnable action);
 
         void fetchStyleList(StringListCallback callback);
 
@@ -105,7 +119,8 @@ public class FunctionPanelController {
         PARAGRAPH_CHIP,
         ACTION,
         GRID_ACTION,
-        TOGGLE
+        TOGGLE,
+        WATERMARK
     }
 
     private static final class FunctionItem {
@@ -167,8 +182,11 @@ public class FunctionPanelController {
     private View tabHeader;
     private View functionTabArea;
     private View fontPickerPanel;
+    private View optionPickerPanel;
+    private PopupWindow fontSizePopup;
     private View sheetContentRoot;
     private boolean fontPickerVisible;
+    private boolean optionPickerVisible;
     private final List<TextView> tabViews = new ArrayList<>();
     private View tabIndicator;
     private final List<FunctionTab> tabs;
@@ -177,17 +195,33 @@ public class FunctionPanelController {
     private final Map<String, Boolean> toggleStates = new HashMap<>();
     private String[] cachedFontOptions = FALLBACK_FONT_OPTIONS;
     private String[] cachedFontValues = FALLBACK_FONT_VALUES;
+    private String[] cachedStyleLabels;
+    private String[] cachedStyleValues;
+    private ImpressInsertTablePickerController tablePicker;
+    private ImpressShapePickerController shapePicker;
+    private ImpressCommentPickerController commentPicker;
+    private boolean commentPickerVisible;
+    private WatermarkSettingsController watermarkPicker;
+    private PaperSizePickerController paperSizePicker;
+    private double customPaperWidthCm = 21.0;
+    private double customPaperHeightCm = 29.7;
     private String currentStyleName = "";
     private String currentParagraphAlignment = "";
+    private String watermarkText = "水印文本";
+    private String watermarkFont = "";
+    private int watermarkAngle = 45;
+    private int watermarkTransparency = 50;
+    private SwitchCompat watermarkToggleView;
 
     public FunctionPanelController(Host host) {
         this.host = host;
         this.tabs = buildTabs();
         pickerValues.put("font_name", "字体");
         pickerValues.put("font_size", "4号");
-        pickerValues.put("page_margins", "默认");
+        pickerValues.put("page_margins", WriterLayoutCatalog.MARGINS[0].label);
         pickerValues.put("paper_size", "A4");
         pickerValues.put("paper_orientation", "纵向");
+        pickerValues.put("style_picker", "正文");
         toggleStates.put("watermark", false);
         toggleStates.put("track_changes", false);
         toggleStates.put("show_changes", true);
@@ -202,6 +236,7 @@ public class FunctionPanelController {
         tabHeader = panel.findViewById(R.id.function_edit_tab_header);
         functionTabArea = panel.findViewById(R.id.function_edit_tab_area);
         fontPickerPanel = panel.findViewById(R.id.function_font_picker_panel);
+        optionPickerPanel = panel.findViewById(R.id.function_option_picker_panel);
         tabBar = panel.findViewById(R.id.function_edit_tab_bar);
         contentContainer = panel.findViewById(R.id.function_edit_content_container);
         tabIndicator = panel.findViewById(R.id.function_edit_tab_indicator);
@@ -232,11 +267,16 @@ public class FunctionPanelController {
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
         dialog.setOnDismissListener(d -> dialog = null);
         dialog.show();
-        expandSheet();
+        expandSheet(currentTabHeightRatio());
     }
 
     public void dismiss() {
         dismissFontPickerDialog();
+        dismissOptionPicker();
+        dismissFontSizePopup();
+        dismissCommentPickerPage();
+        dismissWatermarkSettingsPage();
+        dismissPaperSizePickerPage();
         if (dialog != null) {
             dialog.dismiss();
             dialog = null;
@@ -288,8 +328,13 @@ public class FunctionPanelController {
         updateTabIndicator(index);
         renderTabContent(tabs.get(index));
         if (dialog != null) {
-            expandSheet();
+            expandSheet(currentTabHeightRatio());
         }
+    }
+
+    /** 当前 tab 固定高度：五个 tab 统一（内容少下方留空、多则滚动）。 */
+    private float currentTabHeightRatio() {
+        return TAB_HEIGHT_OTHER;
     }
 
     private void updateTabIndicator(int index) {
@@ -325,27 +370,17 @@ public class FunctionPanelController {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        List<FunctionItem> pendingStyleChips = new ArrayList<>();
         List<FunctionItem> pendingParagraphChips = new ArrayList<>();
         List<FunctionItem> pendingGridActions = new ArrayList<>();
+        List<FunctionItem> pendingLayoutPickers = new ArrayList<>();
 
         for (FunctionItem item : tab.items) {
             switch (item.type) {
                 case SECTION:
-                    flushStyleChips(root, pendingStyleChips);
                     flushParagraphChips(root, pendingParagraphChips);
                     flushGridActions(root, pendingGridActions);
+                    flushLayoutPickers(root, pendingLayoutPickers);
                     root.addView(createSectionHeader(item.label));
-                    break;
-                case STYLE_SECTION:
-                    flushStyleChips(root, pendingStyleChips);
-                    flushParagraphChips(root, pendingParagraphChips);
-                    flushGridActions(root, pendingGridActions);
-                    root.addView(createSectionHeader(item.label));
-                    root.addView(createDynamicStylePlaceholder());
-                    break;
-                case STYLE_CHIP:
-                    pendingStyleChips.add(item);
                     break;
                 case PARAGRAPH_CHIP:
                     pendingParagraphChips.add(item);
@@ -354,40 +389,127 @@ public class FunctionPanelController {
                     pendingGridActions.add(item);
                     break;
                 case PICKER:
-                    flushStyleChips(root, pendingStyleChips);
                     flushParagraphChips(root, pendingParagraphChips);
                     flushGridActions(root, pendingGridActions);
-                    root.addView(createPickerRow(item));
+                    if ("layout".equals(tab.id)) {
+                        pendingLayoutPickers.add(item);
+                    } else {
+                        flushLayoutPickers(root, pendingLayoutPickers);
+                        root.addView(createPickerRow(item));
+                    }
                     break;
                 case ACTION:
-                    flushStyleChips(root, pendingStyleChips);
                     flushParagraphChips(root, pendingParagraphChips);
                     flushGridActions(root, pendingGridActions);
+                    flushLayoutPickers(root, pendingLayoutPickers);
                     root.addView(createActionRow(item));
                     root.addView(createDivider());
                     break;
                 case TOGGLE:
-                    flushStyleChips(root, pendingStyleChips);
                     flushParagraphChips(root, pendingParagraphChips);
                     flushGridActions(root, pendingGridActions);
+                    flushLayoutPickers(root, pendingLayoutPickers);
                     root.addView(createToggleRow(item));
+                    break;
+                case WATERMARK:
+                    flushParagraphChips(root, pendingParagraphChips);
+                    flushGridActions(root, pendingGridActions);
+                    flushLayoutPickers(root, pendingLayoutPickers);
+                    root.addView(createWatermarkRow(item));
+                    root.addView(createLayoutSectionSpacer());
                     break;
                 default:
                     break;
             }
         }
-        flushStyleChips(root, pendingStyleChips);
         flushParagraphChips(root, pendingParagraphChips);
         flushGridActions(root, pendingGridActions);
+        flushLayoutPickers(root, pendingLayoutPickers);
 
         contentContainer.addView(root);
     }
 
-    private void flushStyleChips(LinearLayout root, List<FunctionItem> chips) {
-        if (!chips.isEmpty()) {
-            root.addView(createStyleChipRow(chips));
-            chips.clear();
+    private void flushLayoutPickers(LinearLayout root, List<FunctionItem> pickers) {
+        if (pickers.isEmpty()) {
+            return;
         }
+        root.addView(createGroupedLayoutPickers(pickers));
+        pickers.clear();
+    }
+
+    private View createLayoutSectionSpacer() {
+        View spacer = new View(host.getContext());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(40));
+        spacer.setLayoutParams(lp);
+        return spacer;
+    }
+
+    private View createGroupedLayoutPickers(List<FunctionItem> pickers) {
+        LinearLayout group = new LinearLayout(host.getContext());
+        group.setOrientation(LinearLayout.VERTICAL);
+        group.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
+        LinearLayout.LayoutParams groupLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        group.setLayoutParams(groupLp);
+
+        for (int i = 0; i < pickers.size(); i++) {
+            group.addView(createGroupedPickerRow(pickers.get(i)));
+            if (i < pickers.size() - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x14000000);
+                group.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+        return group;
+    }
+
+    private View createGroupedPickerRow(FunctionItem item) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(host.dpToPx(16), host.dpToPx(12), host.dpToPx(12), host.dpToPx(12));
+        row.setMinimumHeight(host.dpToPx(56));
+
+        if (item.iconResId != 0) {
+            ImageView icon = new ImageView(host.getContext());
+            icon.setImageResource(item.iconResId);
+            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            row.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
+        }
+
+        TextView label = new TextView(host.getContext());
+        label.setText(item.label);
+        label.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+        label.setTextSize(16);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        labelLp.setMarginStart(host.dpToPx(item.iconResId != 0 ? 16 : 0));
+        row.addView(label, labelLp);
+
+        TextView valueView = null;
+        if ("paper_size".equals(item.id) || "paper_orientation".equals(item.id)) {
+            String currentValue = pickerValues.getOrDefault(item.id, item.subtitle);
+            valueView = new TextView(host.getContext());
+            valueView.setText(currentValue);
+            valueView.setTextColor(Color.parseColor("#6A6A6A"));
+            valueView.setTextSize(14);
+            LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            valueLp.setMarginEnd(host.dpToPx(8));
+            row.addView(valueView, valueLp);
+        }
+
+        ImageView chevron = new ImageView(host.getContext());
+        chevron.setImageResource(R.drawable.lolib_ic_chevron_right);
+        chevron.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        int chevronSize = host.dpToPx(16);
+        row.addView(chevron, new LinearLayout.LayoutParams(chevronSize, chevronSize));
+
+        final TextView valueTarget = valueView;
+        row.setOnClickListener(v -> showPickerDialog(item, valueTarget != null ? valueTarget : label));
+        return row;
     }
 
     private void flushParagraphChips(LinearLayout root, List<FunctionItem> chips) {
@@ -420,119 +542,6 @@ public class FunctionPanelController {
                 ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1));
         divider.setLayoutParams(lp);
         return divider;
-    }
-
-    private View createDynamicStylePlaceholder() {
-        FrameLayout container = new FrameLayout(host.getContext());
-        container.setTag("dynamic_style_container");
-        container.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        populateDynamicStyleContainer(container, buildStyleLabels(), buildStyleValues());
-        return container;
-    }
-
-    private List<String> buildStyleLabels() {
-        List<String> labels = new ArrayList<>();
-        // Figma: clean 3-item layout, no "当前" prefix
-        for (String fallback : FALLBACK_STYLE_LABELS) {
-            labels.add(fallback);
-        }
-        return labels;
-    }
-
-    private List<String> buildStyleValues() {
-        List<String> values = new ArrayList<>();
-        for (String fallback : FALLBACK_STYLE_VALUES) {
-            values.add(fallback);
-        }
-        return values;
-    }
-
-    private void populateDynamicStyleContainer(FrameLayout container, List<String> labels, List<String> values) {
-        container.removeAllViews();
-        if (labels == null || values == null || labels.isEmpty()) {
-            labels = new ArrayList<>();
-            values = new ArrayList<>();
-            for (int i = 0; i < FALLBACK_STYLE_LABELS.length; i++) {
-                labels.add(FALLBACK_STYLE_LABELS[i]);
-                values.add(FALLBACK_STYLE_VALUES[i]);
-            }
-        }
-        container.addView(createHorizontalStyleChipRow(labels, values));
-    }
-
-    private View createHorizontalStyleChipRow(List<String> labels, List<String> styleIds) {
-        // Legacy path: no icons (used by dynamic style placeholder, no longer primary path)
-        List<Integer> emptyIcons = new ArrayList<>();
-        for (int i = 0; i < labels.size(); i++) emptyIcons.add(0);
-        return createStyleCardGrid(labels, styleIds, emptyIcons);
-    }
-
-    private View createStyleChipRow(List<FunctionItem> chips) {
-        List<String> labels = new ArrayList<>();
-        List<String> styleIds = new ArrayList<>();
-        List<Integer> iconIds = new ArrayList<>();
-        for (FunctionItem chip : chips) {
-            labels.add(chip.label);
-            styleIds.add(chip.unoCommand);
-            iconIds.add(chip.iconResId);
-        }
-        return createStyleCardGrid(labels, styleIds, iconIds);
-    }
-
-    /**
-     * Creates a 3-column card grid matching Figma style cards.
-     * Cards: bg #F2F3F5, no border, rounded 12dp, icon 24dp + label 14sp.
-     */
-    private View createStyleCardGrid(List<String> labels, List<String> styleIds,
-                                      List<Integer> iconIds) {
-        LinearLayout grid = new LinearLayout(host.getContext());
-        grid.setOrientation(LinearLayout.VERTICAL);
-        int cols = 3;
-        for (int rowStart = 0; rowStart < labels.size(); rowStart += cols) {
-            LinearLayout row = new LinearLayout(host.getContext());
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            for (int i = rowStart; i < Math.min(rowStart + cols, labels.size()); i++) {
-                final String label = labels.get(i);
-                final String styleId = i < styleIds.size() ? styleIds.get(i) : label;
-                final int iconRes = i < iconIds.size() ? iconIds.get(i) : 0;
-
-                LinearLayout card = new LinearLayout(host.getContext());
-                card.setOrientation(LinearLayout.VERTICAL);
-                card.setGravity(Gravity.CENTER);
-                card.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
-                card.setPadding(host.dpToPx(10), host.dpToPx(18), host.dpToPx(10), host.dpToPx(16));
-                card.setMinimumHeight(host.dpToPx(80));
-
-                // Icon (24dp, matching Figma 48px at ~2x scale)
-                if (iconRes != 0) {
-                    ImageView icon = new ImageView(host.getContext());
-                    icon.setImageResource(iconRes);
-                    icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-                    LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(
-                            host.dpToPx(24), host.dpToPx(24));
-                    card.addView(icon, iconLp);
-                }
-
-                TextView text = new TextView(host.getContext());
-                text.setText(label);
-                text.setGravity(Gravity.CENTER);
-                text.setTextColor(COLOR_SECTION_TITLE);
-                text.setTextSize(14);
-                text.setPadding(0, iconRes != 0 ? host.dpToPx(8) : 0, 0, 0);
-                card.addView(text);
-
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-                int lastInRow = Math.min(rowStart + cols, labels.size()) - 1;
-                lp.setMarginEnd(host.dpToPx(i < lastInRow ? 12 : 0));
-                card.setLayoutParams(lp);
-                card.setOnClickListener(v -> runAndDismiss(() -> host.applyParagraphStyle(styleId)));
-                row.addView(card);
-            }
-            grid.addView(row);
-        }
-        return grid;
     }
 
     private View createParagraphChipGrid(List<FunctionItem> chips) {
@@ -632,14 +641,17 @@ public class FunctionPanelController {
             value.setTextSize(14);
             valueBox.addView(value);
 
-            TextView arrow = new TextView(host.getContext());
-            arrow.setText("›");
-            arrow.setTextColor(COLOR_TAB_UNSELECTED_TEXT);
-            arrow.setTextSize(18);
-            arrow.setPadding(host.dpToPx(4), 0, 0, 0);
-            valueBox.addView(arrow);
+            // 字号箭头：开口朝下（Figma 3082:59940），点击弹出字号浮层
+            ImageView arrow = new ImageView(host.getContext());
+            arrow.setImageResource(R.drawable.lolib_ic_chevron_down);
+            arrow.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            arrow.setContentDescription("选择字号");
+            int arrowSize = host.dpToPx(20);
+            LinearLayout.LayoutParams arrowLp = new LinearLayout.LayoutParams(arrowSize, arrowSize);
+            arrowLp.setMarginStart(host.dpToPx(6));
+            valueBox.addView(arrow, arrowLp);
 
-            valueBox.setOnClickListener(v -> showPickerDialog(item, value));
+            valueBox.setOnClickListener(v -> showFontSizePopup(value, valueBox));
             card.addView(valueBox);
         } else {
             // Figma字体: icon + current font name (e.g. "宋体") + arrow
@@ -731,6 +743,56 @@ public class FunctionPanelController {
         return row;
     }
 
+    private View createWatermarkRow(FunctionItem item) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
+        row.setPadding(host.dpToPx(16), host.dpToPx(12), host.dpToPx(8), host.dpToPx(12));
+        row.setMinimumHeight(host.dpToPx(56));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        row.setLayoutParams(rowLp);
+
+        if (item.iconResId != 0) {
+            ImageView icon = new ImageView(host.getContext());
+            icon.setImageResource(item.iconResId);
+            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            row.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
+        }
+
+        TextView label = new TextView(host.getContext());
+        label.setText(item.label);
+        label.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+        label.setTextSize(16);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        labelLp.setMarginStart(host.dpToPx(item.iconResId != 0 ? 16 : 0));
+        row.addView(label, labelLp);
+
+        SwitchCompat toggle = new SwitchCompat(host.getContext());
+        boolean initial = toggleStates.getOrDefault(item.id, item.defaultToggleOn);
+        toggle.setChecked(initial);
+        toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            toggleStates.put(item.id, isChecked);
+            dispatchWatermarkToggle(isChecked, buttonView);
+        });
+        watermarkToggleView = toggle;
+        row.addView(toggle);
+
+        ImageView chevron = new ImageView(host.getContext());
+        chevron.setImageResource(R.drawable.lolib_ic_chevron_right);
+        chevron.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        chevron.setContentDescription("水印设置");
+        int chevronSize = host.dpToPx(32);
+        LinearLayout.LayoutParams chevronLp = new LinearLayout.LayoutParams(chevronSize, chevronSize);
+        chevronLp.setMarginStart(host.dpToPx(4));
+        row.addView(chevron, chevronLp);
+        chevron.setOnClickListener(v -> showWatermarkSettingsPage());
+
+        return row;
+    }
+
     private View createGridActions(List<FunctionItem> actions) {
         // Figma-style: 3-column grid of large cards (icon 24dp + label 14sp), h ~84dp
         LinearLayout grid = new LinearLayout(host.getContext());
@@ -763,8 +825,9 @@ public class FunctionPanelController {
                 label.setPadding(0, host.dpToPx(8), 0, 0);
                 cell.addView(label);
 
+                // 显式固定高度（不再依赖 minHeight），保证卡片接近方形，避免内容不足时高度塌缩成宽扁长方形
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                        0, host.dpToPx(84), 1f);
                 lp.setMarginEnd(host.dpToPx(
                         i < Math.min(rowStart + cols, actions.size()) - 1 ? 12 : 0));
                 lp.bottomMargin = host.dpToPx(10);
@@ -783,22 +846,105 @@ public class FunctionPanelController {
             showFontPickerDialog(valueView);
             return;
         }
+        if ("style_picker".equals(item.id)) {
+            showStylePickerPage(valueView);
+            return;
+        }
+        if ("page_margins".equals(item.id)) {
+            showPageMarginsPickerPage(valueView);
+            return;
+        }
+        if ("paper_size".equals(item.id)) {
+            showPaperSizePickerPage(valueView);
+            return;
+        }
+        if ("paper_orientation".equals(item.id)) {
+            showPaperOrientationPickerPage(valueView);
+            return;
+        }
         if (item.pickerOptions == null || item.pickerOptions.length == 0) {
             host.toastTodo(item.label + " 后续接入");
             return;
         }
-        new AlertDialog.Builder(host.getContext())
-                .setTitle(item.label)
-                .setItems(item.pickerOptions, (dialog, which) -> {
-                    String label = item.pickerOptions[which];
-                    String value = item.pickerValues != null && which < item.pickerValues.length
-                            ? item.pickerValues[which] : label;
-                    pickerValues.put(item.id, label);
-                    valueView.setText(label);
-                    applyPickerValue(item.id, value);
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        showOptionPickerPage(item.label, item.pickerOptions,
+                item.pickerValues != null ? item.pickerValues : item.pickerOptions,
+                item.id, valueView, FONT_PICKER_HEIGHT_RATIO);
+    }
+
+    // === 字号浮层（Figma 3082:60036：320×460 圆角卡片，锚定在字号框下方，不用二级页） ===
+
+    private void showFontSizePopup(TextView valueView, View anchor) {
+        dismissFontSizePopup();
+        LinearLayout rows = new LinearLayout(host.getContext());
+        rows.setOrientation(LinearLayout.VERTICAL);
+        rows.setPadding(host.dpToPx(8), host.dpToPx(8), host.dpToPx(8), host.dpToPx(8));
+
+        String selectedLabel = pickerValues.getOrDefault("font_size", "");
+        for (int i = 0; i < SIZE_OPTIONS.length; i++) {
+            final String label = SIZE_OPTIONS[i];
+            final String value = SIZE_VALUES[i];
+            rows.addView(createFontSizeRow(label, value, selectedLabel, valueView));
+            if (i < SIZE_OPTIONS.length - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x1F000000);
+                rows.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+
+        NestedScrollView scroll = new NestedScrollView(host.getContext());
+        scroll.setFillViewport(false);
+        scroll.setVerticalScrollBarEnabled(true);
+        scroll.setBackgroundResource(R.drawable.lolib_bg_font_size_popup);
+        scroll.setClipToOutline(true);
+        scroll.addView(rows);
+
+        int width = host.dpToPx(160);
+        int height = host.dpToPx(230);
+        fontSizePopup = new PopupWindow(scroll, width, height, true);
+        fontSizePopup.setElevation(host.dpToPx(16));
+        fontSizePopup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        fontSizePopup.setOutsideTouchable(true);
+        fontSizePopup.showAsDropDown(anchor, 0, -host.dpToPx(4));
+    }
+
+    private LinearLayout createFontSizeRow(String label, String value, String selectedLabel,
+            TextView valueView) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(host.dpToPx(12), host.dpToPx(10), host.dpToPx(12), host.dpToPx(10));
+        row.setMinimumHeight(host.dpToPx(40));
+        boolean selected = label.equals(selectedLabel) || value.equals(selectedLabel);
+
+        TextView text = new TextView(host.getContext());
+        text.setText(label);
+        text.setTextSize(14);
+        text.setTextColor(selected ? COLOR_TAB_ACTIVE_TEXT : COLOR_TAB_INACTIVE_TEXT);
+        row.addView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        ImageView check = new ImageView(host.getContext());
+        check.setImageResource(selected
+                ? R.drawable.lolib_ic_option_circle_checked
+                : R.drawable.lolib_ic_option_circle_unchecked);
+        int checkSize = host.dpToPx(16);
+        check.setLayoutParams(new LinearLayout.LayoutParams(checkSize, checkSize));
+        row.addView(check);
+
+        row.setOnClickListener(v -> {
+            pickerValues.put("font_size", label);
+            valueView.setText(label);
+            dismissFontSizePopup();
+            applyPickerValue("font_size", value);
+        });
+        return row;
+    }
+
+    private void dismissFontSizePopup() {
+        if (fontSizePopup != null) {
+            fontSizePopup.dismiss();
+            fontSizePopup = null;
+        }
     }
 
     private void showFontPickerDialog(TextView valueView) {
@@ -828,18 +974,13 @@ public class FunctionPanelController {
         }
         populateFontPickerList(list, valueView);
 
-        if (tabHeader != null) {
-            tabHeader.setVisibility(View.GONE);
-        }
-        if (functionTabArea != null) {
-            functionTabArea.setVisibility(View.GONE);
-        }
+        dismissOptionPicker();
+        setTabChromeVisible(false);
         if (contentContainer != null) {
             contentContainer.setVisibility(View.GONE);
         }
         fontPickerPanel.setVisibility(View.VISIBLE);
         fontPickerVisible = true;
-        setSheetContentHeight(ViewGroup.LayoutParams.MATCH_PARENT);
         expandSheet(FONT_PICKER_HEIGHT_RATIO);
     }
 
@@ -865,12 +1006,18 @@ public class FunctionPanelController {
             TextView name = row.findViewById(R.id.font_picker_item_name);
             ImageView check = row.findViewById(R.id.font_picker_item_check);
             name.setText(label);
-            Typeface previewTypeface = Typeface.create(label, Typeface.NORMAL);
+            Typeface previewTypeface = resolveFontTypeface(label);
             if (previewTypeface != null) {
                 name.setTypeface(previewTypeface);
             }
             boolean selected = label.equals(selectedLabel) || value.equals(selectedLabel);
-            check.setVisibility(selected ? View.VISIBLE : View.GONE);
+            if (selected) {
+                name.setTextColor(COLOR_TAB_ACTIVE_TEXT);
+                check.setVisibility(View.VISIBLE);
+            } else {
+                name.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+                check.setVisibility(View.GONE);
+            }
             row.setOnClickListener(v -> {
                 pickerValues.put("font_name", label);
                 valueView.setText(label);
@@ -880,11 +1027,111 @@ public class FunctionPanelController {
             list.addView(row);
             if (i < cachedFontOptions.length - 1) {
                 View divider = new View(host.getContext());
-                divider.setBackgroundColor(COLOR_DIVIDER);
+                divider.setBackgroundColor(0x14000000);
                 list.addView(divider, new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
             }
         }
+    }
+
+    /**
+     * CO（LibreOffice core）提供的字体名 → Android assets 里打包的真实字体文件。
+     * Android 端在 assets/unpack/user/fonts/ 下打包了 core 的部分字体（Liberation 系列、
+     * Caladea、Carlito、Gentium、OpenSymbol），用 createFromAsset 加载，使字体选项行
+     * 显示对应真实字形。匹配不到的（如中文 Noto CJK 未打包）再 fallback 系统家族。
+     */
+    private static final String[][] FONT_ASSET_MAP = new String[][]{
+            {"Liberation Serif", "unpack/user/fonts/LiberationSerif-Regular.ttf"},
+            {"Liberation Sans", "unpack/user/fonts/LiberationSans-Regular.ttf"},
+            {"Liberation Mono", "unpack/user/fonts/LiberationMono-Regular.ttf"},
+            {"Liberation Sans Narrow", "unpack/user/fonts/LiberationSansNarrow-Regular.ttf"},
+            {"Caladea", "unpack/user/fonts/Caladea-Regular.ttf"},
+            {"Carlito", "unpack/user/fonts/Carlito-Regular.ttf"},
+            {"Gentium Basic", "unpack/user/fonts/GenBasR.ttf"},
+            {"Gentium Book Basic", "unpack/user/fonts/GenBkBasR.ttf"},
+            {"OpenSymbol", "unpack/user/fonts/opens___.ttf"},
+    };
+
+    /** 常见「Windows 字体名 / 替代字体」→ CO 打包字体名（.uno:CharFontName 可能返回这些）。 */
+    private static final String[][] FONT_ALIAS_MAP = new String[][]{
+            {"Times New Roman", "Liberation Serif"},
+            {"Arial", "Liberation Sans"},
+            {"Courier New", "Liberation Mono"},
+            {"Calibri", "Carlito"},
+            {"Cambria", "Caladea"},
+    };
+
+    /** 加载后缓存，避免重复 createFromAsset（该调用耗时）。 */
+    private final Map<String, Typeface> fontTypefaceCache = new HashMap<>();
+
+    private Typeface resolveFontTypeface(String fontName) {
+        if (fontName == null) {
+            return null;
+        }
+        Typeface cached = fontTypefaceCache.get(fontName);
+        if (cached != null) {
+            return cached;
+        }
+        Typeface tf = loadAssetFont(fontName);
+        if (tf != null) {
+            fontTypefaceCache.put(fontName, tf);
+            return tf;
+        }
+        // 无打包字体文件时，按关键字给一个语义接近的系统 family（衬线/无衬线/等宽）
+        tf = Typeface.create(fallbackSystemFamily(fontName), Typeface.NORMAL);
+        fontTypefaceCache.put(fontName, tf);
+        return tf;
+    }
+
+    private Typeface loadAssetFont(String fontName) {
+        String target = resolveAssetFamily(fontName);
+        if (target == null) {
+            return null;
+        }
+        try {
+            Typeface tf = Typeface.createFromAsset(host.getContext().getAssets(), target);
+            if (tf != null) {
+                return tf;
+            }
+        } catch (RuntimeException ignored) {
+            // 字体文件缺失/损坏 → fallback
+        }
+        return null;
+    }
+
+    private String resolveAssetFamily(String fontName) {
+        String n = fontName.trim();
+        for (String[] pair : FONT_ASSET_MAP) {
+            if (n.equalsIgnoreCase(pair[0])) {
+                return pair[1];
+            }
+        }
+        for (String[] pair : FONT_ALIAS_MAP) {
+            if (n.equalsIgnoreCase(pair[0])) {
+                for (String[] asset : FONT_ASSET_MAP) {
+                    if (asset[0].equalsIgnoreCase(pair[1])) {
+                        return asset[1];
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private String fallbackSystemFamily(String fontName) {
+        String n = fontName.toLowerCase(Locale.US);
+        if (n.contains("mono") || n.contains("courier") || n.contains("consolas")
+                || n.contains("code") || n.contains("等宽")) {
+            return "monospace";
+        }
+        if (n.contains("serif") || n.contains("song") || n.contains("ming")
+                || n.contains("宋") || n.contains("明") || n.contains("楷")
+                || n.contains("kai") || n.contains("仿") || n.contains("fangsong")
+                || n.contains("times") || n.contains("simsun") || n.contains("cambria")
+                || n.contains("georgia") || n.contains("cjk") || n.contains("noto")) {
+            return "serif";
+        }
+        return "sans-serif";
     }
 
     private void dismissFontPickerDialog() {
@@ -892,12 +1139,7 @@ public class FunctionPanelController {
             return;
         }
         fontPickerVisible = false;
-        if (tabHeader != null) {
-            tabHeader.setVisibility(View.VISIBLE);
-        }
-        if (functionTabArea != null) {
-            functionTabArea.setVisibility(View.VISIBLE);
-        }
+        setTabChromeVisible(true);
         if (contentContainer != null) {
             contentContainer.setVisibility(View.VISIBLE);
         }
@@ -905,15 +1147,16 @@ public class FunctionPanelController {
             fontPickerPanel.setVisibility(View.GONE);
         }
         setSheetContentHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
-        expandSheet(0f);
+        expandSheet(currentTabHeightRatio());
     }
 
     private void syncCurrentFormatting() {
-        host.fetchCurrentFormatting((styleName, fontName, fontSizePt, paragraphAlignment) -> {
+        host.fetchCurrentFormatting((styleName, fontName, fontSizePt, paragraphAlignment,
+                                    bold, italic, underline, strikethrough) -> {
             applyCurrentFormatting(styleName, fontName, fontSizePt, paragraphAlignment);
             if (dialog != null && dialog.isShowing() && selectedTabIndex == 0) {
                 renderTabContent(tabs.get(selectedTabIndex));
-                expandSheet();
+                expandSheet(currentTabHeightRatio());
             }
         });
     }
@@ -922,6 +1165,7 @@ public class FunctionPanelController {
             String paragraphAlignment) {
         if (styleName != null && !styleName.trim().isEmpty()) {
             currentStyleName = styleName.trim();
+            pickerValues.put("style_picker", styleName.trim());
         }
         if (paragraphAlignment != null && !paragraphAlignment.trim().isEmpty()) {
             currentParagraphAlignment = paragraphAlignment.trim();
@@ -959,18 +1203,609 @@ public class FunctionPanelController {
         return normalized + " pt";
     }
 
+    // === Shape picker — delegates to ImpressShapePickerController ===
+
     private void showShapePickerDialog() {
-        final String[] labels = new String[SHAPE_LABELS.length];
-        System.arraycopy(SHAPE_LABELS, 0, labels, 0, SHAPE_LABELS.length);
-        new AlertDialog.Builder(host.getContext())
-                .setTitle("插入形状")
-                .setItems(labels, (dialog, which) -> {
-                    if (which >= 0 && which < SHAPE_COMMANDS.length) {
-                        runAndDismiss(() -> host.executeUnoCommand(SHAPE_COMMANDS[which]));
+        dismiss();
+        if (shapePicker == null) {
+            shapePicker = new ImpressShapePickerController(new ImpressShapePickerController.Host() {
+                @Override
+                public android.content.Context getContext() {
+                    return host.getContext();
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return host.dpToPx(dp);
+                }
+
+                @Override
+                public void executeUnoCommand(String command) {
+                    host.executeUnoCommand(command);
+                }
+
+                @Override
+                public void runAfterDismiss(Runnable action) {
+                    // After function panel dismisses, show the shape picker
+                    action.run();
+                }
+            });
+        }
+        shapePicker.show();
+    }
+
+    // === Table picker — reuses ImpressInsertTablePickerController ===
+
+    private void showTablePickerPage() {
+        if (optionPickerVisible) {
+            dismissOptionPicker();
+        }
+        dismissFontPickerDialog();
+        setTabChromeVisible(false);
+        if (tablePicker == null) {
+            tablePicker = new ImpressInsertTablePickerController(new ImpressInsertTablePickerController.Host() {
+                @Override
+                public android.content.Context getContext() {
+                    return host.getContext();
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return host.dpToPx(dp);
+                }
+
+                @Override
+                public void insertTable(int rows, int columns) {
+                    runAndDismiss(() -> host.executeUnoCommand(
+                            ".uno:InsertTable?Columns=" + columns + "&Rows=" + rows));
+                }
+
+                @Override
+                public void onBack() {
+                    dismissTablePickerPage();
+                }
+            });
+            // 文档主题色：插入按钮用 Writer 蓝，而非 Impress 橙
+            tablePicker.setPrimaryButtonBackground(R.drawable.lolib_bg_writer_primary_button);
+        }
+        if (contentContainer != null) {
+            contentContainer.removeAllViews();
+            contentContainer.addView(tablePicker.buildRootView());
+        }
+    }
+
+    private void dismissTablePickerPage() {
+        setTabChromeVisible(true);
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(selectedTabIndex));
+        }
+    }
+
+    // === Comment picker — reuses ImpressCommentPickerController（native 输入框 → UNO 插入） ===
+
+    private void showCommentPickerPage() {
+        if (optionPickerVisible) {
+            dismissOptionPicker();
+        }
+        dismissFontPickerDialog();
+        setTabChromeVisible(false);
+        commentPickerVisible = true;
+        if (commentPicker == null) {
+            commentPicker = new ImpressCommentPickerController(new ImpressCommentPickerController.Host() {
+                @Override
+                public android.content.Context getContext() {
+                    return host.getContext();
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return host.dpToPx(dp);
+                }
+
+                @Override
+                public String getCommentAuthorName() {
+                    return host.getCommentAuthorName();
+                }
+
+                @Override
+                public void toastTodo(String text) {
+                    host.toastTodo(text);
+                }
+
+                @Override
+                public void insertCommentWithText(String text) {
+                    dismiss();
+                    host.runAfterFunctionPanelDismiss(() -> host.insertCommentWithText(text));
+                }
+
+                @Override
+                public void onBack() {
+                    dismissCommentPickerPage();
+                }
+            });
+        }
+        if (contentContainer != null) {
+            contentContainer.removeAllViews();
+            contentContainer.addView(commentPicker.buildRootView());
+        }
+    }
+
+    private void dismissCommentPickerPage() {
+        if (!commentPickerVisible) {
+            return;
+        }
+        commentPickerVisible = false;
+        setTabChromeVisible(true);
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(selectedTabIndex));
+            expandSheet(currentTabHeightRatio());
+        }
+    }
+
+    private void showWatermarkSettingsPage() {
+        if (optionPickerVisible) {
+            dismissOptionPicker();
+        }
+        dismissFontPickerDialog();
+        setTabChromeVisible(false);
+        ensureWatermarkFontDefault();
+        watermarkPicker = new WatermarkSettingsController(
+                new WatermarkSettingsController.Host() {
+                    @Override
+                    public android.content.Context getContext() {
+                        return host.getContext();
                     }
-                })
-                .setNegativeButton("取消", null)
-                .show();
+
+                    @Override
+                    public int dpToPx(int dp) {
+                        return host.dpToPx(dp);
+                    }
+
+                    @Override
+                    public void onBack() {
+                        dismissWatermarkSettingsPage();
+                    }
+
+                    @Override
+                    public void onConfirm(String text, String font, int angle, int transparency) {
+                        watermarkText = text == null ? "" : text.trim();
+                        watermarkFont = font == null || font.isEmpty() ? watermarkFont : font;
+                        watermarkAngle = angle;
+                        watermarkTransparency = transparency;
+                        toggleStates.put("watermark", true);
+                        if (watermarkToggleView != null) {
+                            watermarkToggleView.setChecked(true);
+                        }
+                        applyCurrentWatermarkSettings();
+                        dismissWatermarkSettingsPage();
+                    }
+
+                    @Override
+                    public void pickFont(String currentFont, WatermarkSettingsController.FontPickCallback callback) {
+                        showWatermarkFontPicker(currentFont, callback);
+                    }
+
+                    @Override
+                    public android.graphics.Typeface resolveFontPreviewTypeface(String fontName) {
+                        return resolveFontTypeface(fontName);
+                    }
+                },
+                watermarkText, watermarkFont, watermarkAngle, watermarkTransparency);
+        if (contentContainer != null) {
+            contentContainer.removeAllViews();
+            contentContainer.addView(watermarkPicker.buildRootView());
+        }
+        expandSheet(FONT_PICKER_HEIGHT_RATIO);
+    }
+
+    private void showWatermarkFontPicker(String currentFont,
+            WatermarkSettingsController.FontPickCallback callback) {
+        Runnable openSheet = () -> {
+            if (fontPickerPanel == null || dialog == null) {
+                return;
+            }
+            ImageButton back = fontPickerPanel.findViewById(R.id.font_picker_back);
+            LinearLayout list = fontPickerPanel.findViewById(R.id.font_picker_list);
+            if (back != null) {
+                back.setOnClickListener(v -> {
+                    dismissFontPickerDialog();
+                    if (contentContainer != null && watermarkPicker != null) {
+                        contentContainer.setVisibility(View.VISIBLE);
+                        contentContainer.removeAllViews();
+                        contentContainer.addView(watermarkPicker.buildRootView());
+                    }
+                    setTabChromeVisible(false);
+                    expandSheet(FONT_PICKER_HEIGHT_RATIO);
+                });
+            }
+            populateWatermarkFontList(list, currentFont, callback);
+            if (contentContainer != null) {
+                contentContainer.setVisibility(View.GONE);
+            }
+            fontPickerPanel.setVisibility(View.VISIBLE);
+            fontPickerVisible = true;
+            expandSheet(FONT_PICKER_HEIGHT_RATIO);
+        };
+        if (cachedFontOptions != null && cachedFontOptions.length > FALLBACK_FONT_OPTIONS.length) {
+            openSheet.run();
+            return;
+        }
+        host.fetchFontList((labels, values) -> {
+            if (labels != null && !labels.isEmpty()) {
+                cachedFontOptions = labels.toArray(new String[0]);
+                cachedFontValues = values != null && !values.isEmpty()
+                        ? values.toArray(new String[0]) : cachedFontOptions;
+            }
+            openSheet.run();
+        });
+    }
+
+    private void populateWatermarkFontList(LinearLayout list, String currentFont,
+            WatermarkSettingsController.FontPickCallback callback) {
+        list.removeAllViews();
+        LayoutInflater inflater = LayoutInflater.from(host.getContext());
+        for (int i = 0; i < cachedFontOptions.length; i++) {
+            final String label = cachedFontOptions[i];
+            View row = inflater.inflate(R.layout.lolib_item_font_picker_row, list, false);
+            TextView name = row.findViewById(R.id.font_picker_item_name);
+            ImageView check = row.findViewById(R.id.font_picker_item_check);
+            name.setText(label);
+            Typeface previewTypeface = resolveFontTypeface(label);
+            if (previewTypeface != null) {
+                name.setTypeface(previewTypeface);
+            }
+            boolean selected = label.equals(currentFont);
+            name.setTextColor(selected ? COLOR_TAB_ACTIVE_TEXT : COLOR_TAB_INACTIVE_TEXT);
+            check.setVisibility(selected ? View.VISIBLE : View.GONE);
+            row.setOnClickListener(v -> {
+                callback.onFontPicked(label);
+                dismissFontPickerDialog();
+                if (contentContainer != null && watermarkPicker != null) {
+                    contentContainer.setVisibility(View.VISIBLE);
+                    contentContainer.removeAllViews();
+                    contentContainer.addView(watermarkPicker.buildRootView());
+                }
+                setTabChromeVisible(false);
+                expandSheet(FONT_PICKER_HEIGHT_RATIO);
+            });
+            list.addView(row);
+            if (i < cachedFontOptions.length - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x14000000);
+                list.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+    }
+
+    private void dismissWatermarkSettingsPage() {
+        setTabChromeVisible(true);
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(selectedTabIndex));
+            expandSheet(currentTabHeightRatio());
+        }
+    }
+
+    private void showPageMarginsPickerPage(TextView valueView) {
+        dismissPaperSizePickerPage();
+        // 高度与纸张大小弹窗一致（FONT_PICKER_HEIGHT_RATIO），两弹窗切换时高度不跳变
+        showOptionPickerPage("页边距", WriterLayoutCatalog.marginLabels(),
+                WriterLayoutCatalog.marginIds(), "page_margins", valueView,
+                FONT_PICKER_HEIGHT_RATIO);
+    }
+
+    private void showPaperOrientationPickerPage(TextView valueView) {
+        dismissPaperSizePickerPage();
+        showOptionPickerPage("纸张方向", ORIENTATION_OPTIONS, ORIENTATION_VALUES,
+                "paper_orientation", valueView, ORIENTATION_PICKER_HEIGHT_RATIO);
+    }
+
+    private void showPaperSizePickerPage(TextView valueView) {
+        if (optionPickerVisible) {
+            dismissOptionPicker();
+        }
+        dismissFontPickerDialog();
+        setTabChromeVisible(false);
+        paperSizePicker = new PaperSizePickerController(
+                new PaperSizePickerController.Host() {
+                    @Override
+                    public android.content.Context getContext() {
+                        return host.getContext();
+                    }
+
+                    @Override
+                    public int dpToPx(int dp) {
+                        return host.dpToPx(dp);
+                    }
+
+                    @Override
+                    public void onBack() {
+                        dismissPaperSizePickerPage();
+                    }
+
+                    @Override
+                    public void onPresetSelected(WriterLayoutCatalog.PaperSizeOption option) {
+                        pickerValues.put("paper_size", option.label);
+                        if (valueView != null) {
+                            valueView.setText(option.label);
+                        }
+                        applyPaperFormat(option.paperFormat);
+                        dismissPaperSizePickerPage();
+                    }
+
+                    @Override
+                    public void onCustomSizeApplied(double widthCm, double heightCm) {
+                        customPaperWidthCm = widthCm;
+                        customPaperHeightCm = heightCm;
+                        String label = PaperSizePickerController.formatCustomLabel(widthCm, heightCm);
+                        pickerValues.put("paper_size", label);
+                        if (valueView != null) {
+                            valueView.setText(label);
+                        }
+                        applyCustomPaperSize(widthCm, heightCm);
+                    }
+                },
+                pickerValues.getOrDefault("paper_size", "A4"),
+                customPaperWidthCm, customPaperHeightCm);
+        if (contentContainer != null) {
+            contentContainer.removeAllViews();
+            contentContainer.setVisibility(View.VISIBLE);
+            contentContainer.addView(paperSizePicker.buildRootView());
+        }
+        if (optionPickerPanel != null) {
+            optionPickerPanel.setVisibility(View.GONE);
+        }
+        expandSheet(FONT_PICKER_HEIGHT_RATIO);
+    }
+
+    private void dismissPaperSizePickerPage() {
+        if (paperSizePicker == null) {
+            return;
+        }
+        paperSizePicker = null;
+        setTabChromeVisible(true);
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(selectedTabIndex));
+            expandSheet(currentTabHeightRatio());
+        }
+    }
+
+    private void ensureWatermarkFontDefault() {
+        if (watermarkFont != null && !watermarkFont.isEmpty() && !"宋体".equals(watermarkFont)) {
+            return;
+        }
+        String docFont = pickerValues.get("font_name");
+        if (docFont != null && !docFont.isEmpty() && !"字体".equals(docFont)) {
+            watermarkFont = docFont;
+            return;
+        }
+        if (cachedFontOptions != null && cachedFontOptions.length > 0) {
+            watermarkFont = cachedFontOptions[0];
+        } else {
+            watermarkFont = FALLBACK_FONT_OPTIONS[0];
+        }
+    }
+
+    // === Generic option picker page — replaces AlertDialog ===
+
+    /** 打开二级页框架（隐藏 tab chrome、显示 option picker 面板、展开 sheet）。 */
+    private void openOptionPickerFrame(String title, float heightRatio) {
+        if (optionPickerPanel == null || dialog == null) {
+            return;
+        }
+        dismissFontPickerDialog();
+        dismissPaperSizePickerPage();
+        setTabChromeVisible(false);
+        if (contentContainer != null) {
+            contentContainer.setVisibility(View.GONE);
+        }
+        if (fontPickerPanel != null) {
+            fontPickerPanel.setVisibility(View.GONE);
+        }
+        TextView titleView = optionPickerPanel.findViewById(R.id.option_picker_title);
+        if (titleView != null) {
+            titleView.setText(title);
+        }
+        ImageButton back = optionPickerPanel.findViewById(R.id.option_picker_back);
+        if (back != null) {
+            back.setOnClickListener(v -> dismissOptionPicker());
+        }
+        optionPickerPanel.setVisibility(View.VISIBLE);
+        optionPickerVisible = true;
+        expandSheet(heightRatio);
+    }
+
+    private void showOptionPickerPage(String title, String[] labels, String[] values,
+            String pickerId, TextView valueView, float heightRatio) {
+        openOptionPickerFrame(title, heightRatio);
+        LinearLayout list = optionPickerPanel.findViewById(R.id.option_picker_list);
+        populateOptionList(list, labels, values, pickerId, valueView);
+    }
+
+    private void populateOptionList(LinearLayout list, String[] labels, String[] values,
+            String pickerId, TextView valueView) {
+        list.removeAllViews();
+        String selectedLabel = pickerValues.getOrDefault(pickerId,
+                labels.length > 0 ? labels[0] : "");
+        LayoutInflater inflater = LayoutInflater.from(host.getContext());
+        for (int i = 0; i < labels.length; i++) {
+            final String label = labels[i];
+            final String value = i < values.length ? values[i] : label;
+            View row = inflater.inflate(R.layout.lolib_item_option_picker_row, list, false);
+            TextView name = row.findViewById(R.id.option_picker_item_name);
+            ImageView check = row.findViewById(R.id.option_picker_item_check);
+            name.setText(label);
+            boolean selected = label.equals(selectedLabel) || value.equals(selectedLabel);
+            if (selected) {
+                name.setTextColor(COLOR_TAB_ACTIVE_TEXT);
+                check.setVisibility(View.VISIBLE);
+            } else {
+                name.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+                check.setVisibility(View.GONE);
+            }
+            row.setOnClickListener(v -> {
+                pickerValues.put(pickerId, label);
+                if (valueView != null) {
+                    valueView.setText(label);
+                }
+                dismissOptionPicker();
+                applyPickerValue(pickerId, value);
+            });
+            list.addView(row);
+            if (i < labels.length - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x14000000);
+                list.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+    }
+
+    private void dismissOptionPicker() {
+        if (!optionPickerVisible) {
+            return;
+        }
+        optionPickerVisible = false;
+        setTabChromeVisible(true);
+        if (contentContainer != null) {
+            contentContainer.setVisibility(View.VISIBLE);
+        }
+        if (optionPickerPanel != null) {
+            optionPickerPanel.setVisibility(View.GONE);
+        }
+        setSheetContentHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
+        expandSheet(currentTabHeightRatio());
+    }
+
+    // === Style picker — fetches full Collabora style list, then opens option picker ===
+
+    /** 样式二级页顺序（Figma 5252:56110 + 用户指定）：正文/列表/题注/索引/标题1/2/3/caption，其余 CO 选项追加在后。 */
+    private static final String[][] STYLE_ORDER = new String[][]{
+            {"正文", "Default Paragraph Style"},
+            {"列表", "List"},
+            {"题注", "Caption"},
+            {"索引", "Index"},
+            {"标题1", "Heading 1"},
+            {"标题2", "Heading 2"},
+            {"标题3", "Heading 3"},
+            {"caption", "caption"},
+    };
+
+    private void showStylePickerPage(TextView valueView) {
+        Runnable openSheet = () -> {
+            openOptionPickerFrame("样式", FONT_PICKER_HEIGHT_RATIO);
+            LinearLayout list = optionPickerPanel.findViewById(R.id.option_picker_list);
+            populateStyleOptionList(list, valueView);
+        };
+        if (cachedStyleLabels != null && cachedStyleLabels.length > 0) {
+            openSheet.run();
+            return;
+        }
+        host.fetchStyleList((labels, values) -> {
+            if (labels != null && !labels.isEmpty()) {
+                reorderStyles(labels.toArray(new String[0]),
+                        values != null && !values.isEmpty()
+                                ? values.toArray(new String[0])
+                                : labels.toArray(new String[0]));
+            } else {
+                cachedStyleLabels = new String[]{"正文", "列表", "题注", "索引", "标题1", "标题2", "标题3", "caption"};
+                cachedStyleValues = new String[]{"Default Paragraph Style", "List", "Caption",
+                        "Index", "Heading 1", "Heading 2", "Heading 3", "caption"};
+            }
+            openSheet.run();
+        });
+    }
+
+    /** 按 STYLE_ORDER 重排样式，未匹配的 CO 其它样式按原序追加在后。 */
+    private void reorderStyles(String[] labels, String[] values) {
+        List<String> newLabels = new ArrayList<>();
+        List<String> newValues = new ArrayList<>();
+        boolean[] used = new boolean[values.length];
+        for (String[] pair : STYLE_ORDER) {
+            for (int i = 0; i < values.length; i++) {
+                if (!used[i] && styleMatches(values[i], pair[1])) {
+                    newLabels.add(pair[0]);
+                    newValues.add(values[i]);
+                    used[i] = true;
+                    break;
+                }
+            }
+        }
+        for (int i = 0; i < values.length; i++) {
+            if (!used[i]) {
+                newLabels.add(labels[i]);
+                newValues.add(values[i]);
+            }
+        }
+        cachedStyleLabels = newLabels.toArray(new String[0]);
+        cachedStyleValues = newValues.toArray(new String[0]);
+    }
+
+    private boolean styleMatches(String styleId, String target) {
+        if (styleId == null) {
+            return false;
+        }
+        String s = styleId.trim();
+        if (s.equalsIgnoreCase(target)) {
+            return true;
+        }
+        String lower = s.toLowerCase(Locale.US);
+        if ("list".equalsIgnoreCase(target) && lower.startsWith("list")) {
+            return true;
+        }
+        if ("index".equalsIgnoreCase(target) && lower.startsWith("index")) {
+            return true;
+        }
+        return false;
+    }
+
+    private void populateStyleOptionList(LinearLayout list, TextView valueView) {
+        list.removeAllViews();
+        String selectedLabel = pickerValues.getOrDefault("style_picker", "");
+        String[] labels = cachedStyleLabels;
+        String[] values = cachedStyleValues;
+        if (labels == null || values == null) {
+            return;
+        }
+        LayoutInflater inflater = LayoutInflater.from(host.getContext());
+        for (int i = 0; i < labels.length; i++) {
+            final String label = labels[i];
+            final String styleId = i < values.length ? values[i] : label;
+            View row = inflater.inflate(R.layout.lolib_item_option_picker_row, list, false);
+            TextView name = row.findViewById(R.id.option_picker_item_name);
+            ImageView check = row.findViewById(R.id.option_picker_item_check);
+            name.setText(label);
+            if (label.equals(selectedLabel) || styleId.equals(selectedLabel)) {
+                name.setTextColor(COLOR_TAB_ACTIVE_TEXT);
+                check.setVisibility(View.VISIBLE);
+            } else {
+                name.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+                check.setVisibility(View.GONE);
+            }
+            row.setOnClickListener(v -> {
+                pickerValues.put("style_picker", label);
+                valueView.setText(label);
+                dismissOptionPicker();
+                host.applyParagraphStyle(styleId);
+            });
+            list.addView(row);
+            if (i < labels.length - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x14000000);
+                list.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+    }
+
+    private void setTabChromeVisible(boolean visible) {
+        int v = visible ? View.VISIBLE : View.GONE;
+        if (tabHeader != null) {
+            tabHeader.setVisibility(v);
+        }
+        if (functionTabArea != null) {
+            functionTabArea.setVisibility(v);
+        }
     }
 
     private void applyPickerValue(String pickerId, String value) {
@@ -1001,22 +1836,7 @@ public class FunctionPanelController {
     }
 
     private void dispatchToggle(FunctionItem item, boolean enabled, CompoundButton buttonView) {
-        if ("watermark".equals(item.id)) {
-            host.showWatermarkDialog(enabled);
-            return;
-        }
         switch (item.id) {
-            case "watermark":
-                if (enabled) {
-                    host.toastTodo("水印设置需要对话框，移动端后续接入");
-                    toggleStates.put(item.id, false);
-                    if (buttonView != null) {
-                        buttonView.setChecked(false);
-                    }
-                } else {
-                    host.toastTodo("关闭水印后续接入");
-                }
-                break;
             case "track_changes":
                 host.executeUnoCommand(enabled ? ".uno:TrackChangesInAllViews" : ".uno:TrackChanges?TrackChanges:bool=false");
                 break;
@@ -1031,39 +1851,72 @@ public class FunctionPanelController {
         }
     }
 
-    private void applyPageMargins(String value) {
-        int left = 2000;
-        int right = 2000;
-        int top = 2000;
-        int bottom = 2000;
-        if ("narrow".equals(value)) {
-            left = right = top = bottom = 1270;
-        } else if ("moderate".equals(value)) {
-            left = right = 1905;
-            top = bottom = 2540;
-        } else if ("wide".equals(value)) {
-            left = right = 5080;
-            top = bottom = 2540;
+    private void dispatchWatermarkToggle(boolean enabled, CompoundButton buttonView) {
+        if (enabled) {
+            applyCurrentWatermarkSettings();
+        } else {
+            host.applyWatermark("", watermarkFont, watermarkAngle, watermarkTransparency);
         }
-        host.executeUnoCommand(".uno:PageLRMargin?Page.Left:long=" + left + "&Page.Right:long=" + right);
-        host.executeUnoCommand(".uno:PageULMargin?Page.Upper:long=" + top + "&Page.Lower:long=" + bottom);
+    }
+
+    private void applyCurrentWatermarkSettings() {
+        host.applyWatermark(watermarkText, resolveWatermarkFontValue(watermarkFont),
+                watermarkAngle, watermarkTransparency);
+    }
+
+    private String resolveWatermarkFontValue(String label) {
+        if (label == null || label.isEmpty()) {
+            return FALLBACK_FONT_OPTIONS[0];
+        }
+        if (cachedFontOptions != null && cachedFontValues != null) {
+            for (int i = 0; i < cachedFontOptions.length; i++) {
+                if (label.equals(cachedFontOptions[i])) {
+                    return i < cachedFontValues.length ? cachedFontValues[i] : label;
+                }
+            }
+        }
+        return label;
+    }
+
+    private void applyPageMargins(String value) {
+        WriterLayoutCatalog.MarginOption option = WriterLayoutCatalog.findMarginByLabel(value);
+        host.executeUnoCommand(".uno:PageLRMargin?Page.Left:long=" + option.leftHmm
+                + "&Page.Right:long=" + option.rightHmm);
+        host.executeUnoCommand(".uno:PageULMargin?Page.Upper:long=" + option.topHmm
+                + "&Page.Lower:long=" + option.bottomHmm);
     }
 
     private void applyPaperSize(String value) {
-        int paperFormat = 4; // A4
-        if ("A3".equals(value)) {
-            paperFormat = 3;
-        } else if ("Letter".equals(value)) {
-            paperFormat = 8;
-        } else if ("Legal".equals(value)) {
-            paperFormat = 9;
+        WriterLayoutCatalog.PaperSizeOption option = WriterLayoutCatalog.findPaperByLabel(value);
+        if (option.label.equals(value) || option.id.equals(value)) {
+            applyPaperFormat(option.paperFormat);
+            return;
         }
+        applyCustomPaperSize(customPaperWidthCm, customPaperHeightCm);
+    }
+
+    private void applyPaperFormat(int paperFormat) {
         host.executeUnoCommand(".uno:AttributePageSize?PaperFormat:short=" + paperFormat);
+    }
+
+    private void applyCustomPaperSize(double widthCm, double heightCm) {
+        int widthHmm = PaperSizePickerController.cmToHmm(widthCm);
+        int heightHmm = PaperSizePickerController.cmToHmm(heightCm);
+        host.executeUnoCommand(".uno:AttributePageSize?AttributePageSize.Width:long="
+                + widthHmm + "&AttributePageSize.Height:long=" + heightHmm);
     }
 
     private void runItemAction(FunctionItem item) {
         if ("insert_shape".equals(item.id)) {
             showShapePickerDialog();
+            return;
+        }
+        if ("insert_table".equals(item.id)) {
+            showTablePickerPage();
+            return;
+        }
+        if ("insert_comment".equals(item.id)) {
+            showCommentPickerPage();
             return;
         }
         runAndDismiss(() -> {
@@ -1080,10 +1933,6 @@ public class FunctionPanelController {
         action.run();
     }
 
-    private void expandSheet() {
-        expandSheet(0f);
-    }
-
     private void expandSheet(float heightRatio) {
         if (dialog == null) {
             return;
@@ -1093,23 +1942,25 @@ public class FunctionPanelController {
             return;
         }
         BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
-        ViewGroup.LayoutParams layoutParams = bottomSheet.getLayoutParams();
         if (heightRatio > 0f) {
+            // 二级页：contentView 与 bottomSheet 都设为明确高度，fitToContents 保持底部弹出
             int screenHeight = host.getContext().getResources().getDisplayMetrics().heightPixels;
             int targetHeight = Math.round(screenHeight * heightRatio);
+            setSheetContentHeight(targetHeight);
+            ViewGroup.LayoutParams layoutParams = bottomSheet.getLayoutParams();
             if (layoutParams != null) {
                 layoutParams.height = targetHeight;
                 bottomSheet.setLayoutParams(layoutParams);
             }
             bottomSheet.setBackgroundResource(R.drawable.lolib_bg_font_picker_sheet);
             bottomSheet.setElevation(host.dpToPx(28));
-            behavior.setFitToContents(false);
+            behavior.setFitToContents(true);
             behavior.setSkipCollapsed(true);
             behavior.setHideable(true);
             behavior.setDraggable(true);
-            behavior.setPeekHeight(targetHeight, false);
-            behavior.setMaxHeight(targetHeight);
         } else {
+            setSheetContentHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
+            ViewGroup.LayoutParams layoutParams = bottomSheet.getLayoutParams();
             if (layoutParams != null) {
                 layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
                 bottomSheet.setLayoutParams(layoutParams);
@@ -1136,12 +1987,8 @@ public class FunctionPanelController {
 
         List<FunctionItem> commonItems = new ArrayList<>();
         commonItems.add(new FunctionItem(ItemType.SECTION, "section_style", "样式"));
-        commonItems.add(new FunctionItem(ItemType.STYLE_CHIP, "style_title1", "标题1",
-                R.drawable.lolib_ic_style_title1, "Heading 1"));
-        commonItems.add(new FunctionItem(ItemType.STYLE_CHIP, "style_title2", "标题2",
-                R.drawable.lolib_ic_style_title2, "Heading 2"));
-        commonItems.add(new FunctionItem(ItemType.STYLE_CHIP, "style_body", "正文",
-                R.drawable.lolib_ic_style_body, "Default Paragraph Style"));
+        commonItems.add(new FunctionItem(ItemType.PICKER, "style_picker", "样式", "正文",
+                R.drawable.lolib_ic_style_body, "", null, null, null, false));
         commonItems.add(new FunctionItem(ItemType.SECTION, "section_font", "字体"));
         commonItems.add(new FunctionItem(ItemType.PICKER, "font_name", "字体", "字体",
                 R.drawable.lolib_ic_picker_font, "", null, null, null, false));
@@ -1190,15 +2037,15 @@ public class FunctionPanelController {
         result.add(new FunctionTab("insert", "插入", insertItems));
 
         List<FunctionItem> layoutItems = new ArrayList<>();
-        layoutItems.add(new FunctionItem(ItemType.TOGGLE, "watermark", "水印", "",
+        layoutItems.add(new FunctionItem(ItemType.WATERMARK, "watermark", "水印", "",
                 R.drawable.lolib_ic_layout_watermark, ".uno:Watermark",
                 null, null, null, false));
-        layoutItems.add(new FunctionItem(ItemType.PICKER, "page_margins", "页边距", "默认",
+        layoutItems.add(new FunctionItem(ItemType.PICKER, "page_margins", "页边距", WriterLayoutCatalog.MARGINS[0].label,
                 R.drawable.lolib_ic_layout_page_margins, "", null,
-                MARGIN_OPTIONS, MARGIN_VALUES, false));
+                WriterLayoutCatalog.marginLabels(), WriterLayoutCatalog.marginIds(), false));
         layoutItems.add(new FunctionItem(ItemType.PICKER, "paper_size", "纸张大小", "A4",
                 R.drawable.lolib_ic_layout_paper_size, "", null,
-                PAPER_SIZE_OPTIONS, PAPER_SIZE_VALUES, false));
+                null, null, false));
         layoutItems.add(new FunctionItem(ItemType.PICKER, "paper_orientation", "纸张方向", "纵向",
                 R.drawable.lolib_ic_layout_paper_orientation, "", null,
                 ORIENTATION_OPTIONS, ORIENTATION_VALUES, false));
@@ -1219,13 +2066,6 @@ public class FunctionPanelController {
 
         return result;
     }
-
-    private static final String[] FALLBACK_STYLE_LABELS = new String[] {
-            "标题1", "标题2", "正文"
-    };
-    private static final String[] FALLBACK_STYLE_VALUES = new String[] {
-            "Heading 1", "Heading 2", "Default Paragraph Style"
-    };
 
     private static final String[] FALLBACK_FONT_OPTIONS = new String[] {
             "Liberation Serif", "Liberation Sans", "Liberation Mono", "Arial", "Times New Roman"
@@ -1250,12 +2090,6 @@ public class FunctionPanelController {
     private static final String[] SIZE_VALUES = new String[] {
             "42", "36", "26", "24", "22", "18", "16", "15", "14", "12", "10.5", "9"
     };
-
-    private static final String[] MARGIN_OPTIONS = new String[] { "默认", "窄", "适中", "宽" };
-    private static final String[] MARGIN_VALUES = new String[] { "default", "narrow", "moderate", "wide" };
-
-    private static final String[] PAPER_SIZE_OPTIONS = new String[] { "A4", "A3", "Letter", "Legal" };
-    private static final String[] PAPER_SIZE_VALUES = new String[] { "A4", "A3", "Letter", "Legal" };
 
     private static final String[] ORIENTATION_OPTIONS = new String[] { "纵向", "横向" };
     private static final String[] ORIENTATION_VALUES = new String[] { "portrait", "landscape" };

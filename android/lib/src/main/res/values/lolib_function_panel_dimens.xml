@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 功能面板顶栏：Figma 750 画布 px ÷2 → dp -->
+    <dimen name="function_panel_header_action_btn_size">40dp</dimen>
+    <dimen name="function_panel_icon_ai_width">17dp</dimen>
+    <dimen name="function_panel_icon_ai_height">18.22dp</dimen>
+    <dimen name="function_panel_icon_keyboard_size">21dp</dimen>
+    <dimen name="function_panel_icon_collapse_size">24dp</dimen>
+    <dimen name="function_panel_header_divider_width">1dp</dimen>
+    <dimen name="function_panel_header_divider_height">26.5dp</dimen>
+</resources>

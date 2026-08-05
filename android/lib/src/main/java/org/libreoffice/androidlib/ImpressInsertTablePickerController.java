@@ -41,12 +41,20 @@ final class ImpressInsertTablePickerController {
     private int rowCount = DEFAULT_ROWS;
     private int columnCount = DEFAULT_COLUMNS;
 
+    /** 主按钮背景资源；默认 Impress 主题色，其他宿主可通过 setter 覆盖为各自主题色。 */
+    private int primaryButtonRes = R.drawable.lolib_bg_impress_primary_button;
+
     private View rootView;
     private TextView rowValueView;
     private TextView columnValueView;
 
     ImpressInsertTablePickerController(Host host) {
         this.host = host;
+    }
+
+    /** 覆盖主按钮主题色背景资源（默认 Impress 橙）。 */
+    void setPrimaryButtonBackground(int res) {
+        this.primaryButtonRes = res;
     }
 
     View buildRootView() {
@@ -221,7 +229,7 @@ final class ImpressInsertTablePickerController {
         button.setTextColor(Color.WHITE);
         button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         button.setTypeface(null, Typeface.BOLD);
-        button.setBackgroundResource(R.drawable.lolib_bg_impress_primary_button);
+        button.setBackgroundResource(primaryButtonRes);
         int vPad = host.dpToPx(14);
         button.setPadding(host.dpToPx(16), vPad, host.dpToPx(16), vPad);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
