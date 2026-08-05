@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Calc 数据有效性圆 checkbox selector -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/lolib_ic_checkbox_calc_checked" android:state_checked="true" />
+    <item android:drawable="@drawable/lolib_ic_checkbox_calc_unchecked" />
+</selector>

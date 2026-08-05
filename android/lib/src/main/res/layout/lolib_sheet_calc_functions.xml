@@ -31,33 +31,43 @@
                 android:orientation="horizontal" />
         </HorizontalScrollView>
 
+        <ImageView
+            android:layout_width="@dimen/function_panel_header_divider_width"
+            android:layout_height="@dimen/function_panel_header_divider_height"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
+            android:src="@drawable/lolib_ic_function_panel_header_divider" />
+
         <ImageButton
             android:id="@+id/calc_function_btn_ai"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="@dimen/function_panel_header_action_btn_size"
+            android:layout_height="@dimen/function_panel_header_action_btn_size"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="AI功能"
-            android:padding="8dp"
+            android:padding="0dp"
             android:scaleType="centerInside"
-            android:src="@drawable/lolib_ic_ai_ops_sparkle" />
+            android:src="@drawable/lolib_ic_function_panel_ai_sparkle" />
 
         <ImageButton
             android:id="@+id/calc_function_btn_keyboard"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="@dimen/function_panel_header_action_btn_size"
+            android:layout_height="@dimen/function_panel_header_action_btn_size"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="键盘"
-            android:padding="8dp"
+            android:padding="0dp"
             android:scaleType="centerInside"
             android:src="@drawable/lolib_ic_function_panel_keyboard" />
 
         <ImageButton
             android:id="@+id/calc_function_btn_collapse"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="@dimen/function_panel_header_action_btn_size"
+            android:layout_height="@dimen/function_panel_header_action_btn_size"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="收起"
-            android:padding="8dp"
+            android:padding="0dp"
             android:scaleType="centerInside"
             android:src="@drawable/lolib_ic_function_panel_collapse" />
     </LinearLayout>

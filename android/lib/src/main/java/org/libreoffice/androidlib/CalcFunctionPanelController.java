@@ -53,6 +53,10 @@ public class CalcFunctionPanelController {
     private static final int COLOR_DIVIDER = Color.parseColor("#E3E3E3");
     /** Figma 750×1624: sheet height 1066px ≈ 65.6% screen. */
     private static final float SHEET_HEIGHT_RATIO = 1066f / 1624f;
+    /** Figma 5279-57088 条件页主面板约 900px。 */
+    private static final float DATA_VALIDATION_SHEET_HEIGHT_RATIO = 900f / 1624f;
+    /** Figma 5279-57408：「允许」选项列表弹层约 880px。 */
+    private static final float DATA_VALIDATION_OPTION_SHEET_HEIGHT_RATIO = 880f / 1624f;
     /** Figma px ÷ 2 → dp. */
     private static final int CHAR_CELL_W_DP = 51;
     private static final int CHAR_CELL_H_DP = 50;
@@ -127,6 +131,18 @@ public class CalcFunctionPanelController {
 
         /** 预读 Calc 选区 / 工作表，供超链接文档 Tab 默认值。 */
         void fetchCalcHyperlinkContext(CalcHyperlinkPickerController.HyperlinkContextCallback callback);
+
+        /** 应用数据有效性（自定义 UI 确定后）。 */
+        void applyCalcDataValidation(CalcDataValidationState state);
+
+        /** 打开 CO 宏浏览对话框。 */
+        void openMacroChooser(CalcValidationMacroPickerController.MacroChooseCallback callback);
+
+        /** 读当前选区已有有效性设置，异步回填 target 后回调 onLoaded。 */
+        void loadCurrentValidationState(CalcDataValidationState target, Runnable onLoaded);
+
+        /** 关闭可能残留的 CO Validation 原生对话框。 */
+        void dismissCoValidationDialog();
     }
 
     private enum ItemType {
@@ -266,6 +282,12 @@ public class CalcFunctionPanelController {
     private boolean chartPickerVisible;
     private boolean hyperlinkPickerVisible;
     private CalcHyperlinkPickerController hyperlinkPicker;
+    private boolean dataValidationVisible;
+    private CalcDataValidationController dataValidationPicker;
+    private boolean currentBold;
+    private boolean currentItalic;
+    private boolean currentUnderline;
+    private boolean currentStrikethrough;
     private boolean colorPickerVisible;
     private CalcFontColorPickerController colorPicker;
     private ColorPickerKind activeColorPickerKind;
@@ -351,6 +373,10 @@ public class CalcFunctionPanelController {
         dismissChartPickerPage();
         dismissHyperlinkPickerPage();
         dismissColorPickerPage();
+        if (dataValidationVisible) {
+            dataValidationVisible = false;
+            host.dismissCoValidationDialog();
+        }
         if (dialog != null) {
             dialog.dismiss();
             dialog = null;
@@ -657,10 +683,27 @@ public class CalcFunctionPanelController {
             }
             lp.bottomMargin = gap;
             btn.setLayoutParams(lp);
+            // Apply selected-state visual feedback for toggle-style char format buttons
+            boolean isActive = isCharCommandActive(command);
+            btn.setSelected(isActive);
+            if (isActive) {
+                btn.getBackground().mutate().setTint(0xFF1A73E8);
+                icon.setImageTintList(android.content.res.ColorStateList.valueOf(0xFFFFFFFF));
+            }
             btn.setOnClickListener(v -> host.executeUnoCommand(command));
             row.addView(btn);
         }
         return row;
+    }
+
+    private boolean isCharCommandActive(String command) {
+        switch (command) {
+            case ".uno:Bold": return currentBold;
+            case ".uno:Italic": return currentItalic;
+            case ".uno:Underline": return currentUnderline;
+            case ".uno:Strikeout": return currentStrikethrough;
+            default: return false;
+        }
     }
 
     private View createFormatGrid(PanelItem item) {
@@ -1433,6 +1476,80 @@ public class CalcFunctionPanelController {
         Log.i(TAG, "hyperlink_picker_show");
     }
 
+    private void dismissDataValidationPage() {
+        if (!dataValidationVisible) {
+            return;
+        }
+        dataValidationVisible = false;
+        host.dismissCoValidationDialog();
+        expandSheet(SHEET_HEIGHT_RATIO);
+        setTabChromeVisible(true);
+        int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
+                ? submenuReturnTabIndex : selectedTabIndex;
+        selectedTabIndex = returnIndex;
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(returnIndex));
+        }
+    }
+
+    private void showDataValidationPage() {
+        dismissFontPicker();
+        dataValidationVisible = true;
+        submenuReturnTabIndex = selectedTabIndex;
+        setTabChromeVisible(false);
+
+        if (dataValidationPicker == null) {
+            dataValidationPicker = new CalcDataValidationController(new CalcDataValidationController.Host() {
+                @Override
+                public android.content.Context getContext() {
+                    return host.getContext();
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return host.dpToPx(dp);
+                }
+
+                @Override
+                public void onBack() {
+                    dismissDataValidationPage();
+                }
+
+                @Override
+                public void applyValidation(CalcDataValidationState state) {
+                    dismiss();
+                    host.runAfterFunctionPanelDismiss(
+                            () -> host.applyCalcDataValidation(state));
+                }
+
+                @Override
+                public void openMacroChooser(CalcValidationMacroPickerController.MacroChooseCallback callback) {
+                    host.openMacroChooser(callback);
+                }
+
+                @Override
+                public void loadCurrentValidationState(CalcDataValidationState target, Runnable onLoaded) {
+                    host.loadCurrentValidationState(target, onLoaded);
+                }
+
+                @Override
+                public void setBottomSheetHeightRatio(float heightRatio) {
+                    expandSheet(heightRatio);
+                }
+
+                @Override
+                public void dismissCoValidationDialog() {
+                    host.dismissCoValidationDialog();
+                }
+            });
+        }
+
+        contentContainer.removeAllViews();
+        contentContainer.addView(dataValidationPicker.buildRootView());
+        expandSheet(DATA_VALIDATION_SHEET_HEIGHT_RATIO);
+        Log.i(TAG, "data_validation_picker_show");
+    }
+
     private void dismissColorPickerPage() {
         if (!colorPickerVisible) {
             return;
@@ -1799,7 +1916,8 @@ public class CalcFunctionPanelController {
     }
 
     private void syncCurrentFormatting() {
-        host.fetchCurrentFormatting((styleName, fontName, fontSizePt, paragraphAlignment) -> {
+        host.fetchCurrentFormatting((styleName, fontName, fontSizePt, paragraphAlignment,
+                                    bold, italic, underline, strikethrough) -> {
             if (fontName != null && !fontName.trim().isEmpty()) {
                 pickerValues.put("font_name", fontName.trim());
             }
@@ -1807,6 +1925,10 @@ public class CalcFunctionPanelController {
             if (!TextUtils.isEmpty(sizeLabel)) {
                 pickerValues.put("font_size", sizeLabel);
             }
+            currentBold = bold;
+            currentItalic = italic;
+            currentUnderline = underline;
+            currentStrikethrough = strikethrough;
             if (dialog != null && dialog.isShowing() && selectedTabIndex == 0) {
                 renderTabContent(tabs.get(selectedTabIndex));
             }
@@ -1853,6 +1975,10 @@ public class CalcFunctionPanelController {
         }
         if ("insert_hyperlink".equals(item.id)) {
             showHyperlinkPickerPage();
+            return;
+        }
+        if ("data_validation".equals(item.id)) {
+            showDataValidationPage();
             return;
         }
         Runnable action = () -> {
@@ -1947,7 +2073,7 @@ public class CalcFunctionPanelController {
                 ".uno:ToggleMergeCells", false));
         common.add(new PanelItem(ItemType.SECTION, "sec_border", "边框"));
         common.add(new PanelItem(ItemType.ICON_GRID, "border_styles", "边框样式",
-                BORDER_LABELS, BORDER_COMMANDS, BORDER_ICONS, 8, new int[] { 4, 8 }, true));
+                BORDER_LABELS, BORDER_COMMANDS, BORDER_ICONS, 6, new int[] { 6, 6 }, true));
         common.add(new PanelItem(ItemType.COLOR_PICKER_PAIR, "color_pickers", "颜色"));
         common.add(new PanelItem(ItemType.SECTION, "sec_sheet", "工作表"));
         common.add(new PanelItem(ItemType.ICON_GRID, "sheet_ops", "工作表",
