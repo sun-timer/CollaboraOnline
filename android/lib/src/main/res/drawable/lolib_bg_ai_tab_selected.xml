@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#FFFFFF" />
-    <corners android:radius="12dp" />
-</shape>
+<!-- Figma：选中 Tab 60px 高在 76px 外框内 → 上下各 inset 2dp -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetBottom="2dp"
+    android:insetLeft="0dp"
+    android:insetRight="0dp"
+    android:insetTop="2dp">
+    <shape android:shape="rectangle">
+        <solid android:color="#FFFFFF" />
+        <corners android:radius="4dp" />
+    </shape>
+</inset>

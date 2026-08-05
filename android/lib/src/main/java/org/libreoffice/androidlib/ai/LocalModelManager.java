@@ -13,6 +13,9 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -25,6 +28,7 @@ public final class LocalModelManager {
     public static final String KEY_MODEL_PATH = "AI_MODEL_LOCAL_model_path";
     public static final String KEY_SHA256 = "AI_MODEL_LOCAL_sha256";
     public static final String KEY_DOWNLOAD_STATE = "AI_MODEL_LOCAL_download_state";
+    public static final String KEY_DOWNLOADING_MODEL_ID = "AI_MODEL_LOCAL_downloading_model_id";
 
     public static final String STATE_IDLE = "idle";
     public static final String STATE_DOWNLOADING = "downloading";
@@ -82,19 +86,75 @@ public final class LocalModelManager {
     }
 
     /** Primary mirror for CN networks; HuggingFace as fallback when mirror is down. */
-    private static final String[] DEFAULT_MODEL_URLS = {
+    private static final String[] QWEN_MODEL_URLS = {
             "https://hf-mirror.com/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
             "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
     };
 
+    private static final String[] GEMMA_4B_MODEL_URLS = {
+            "https://hf-mirror.com/ggml-org/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q4_K_M.gguf",
+            "https://huggingface.co/ggml-org/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q4_K_M.gguf",
+    };
+
     public static CatalogEntry getDefaultCatalogEntry() {
+        return getQwenCatalogEntry();
+    }
+
+    public static CatalogEntry getQwenCatalogEntry() {
         return new CatalogEntry(
                 "qwen2.5-1.5b-q4",
                 "Qwen2.5-1.5B-Instruct",
                 "Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
                 1100000000L,
-                DEFAULT_MODEL_URLS[0],
+                QWEN_MODEL_URLS[0],
                 "");
+    }
+
+    public static CatalogEntry getGemma4bCatalogEntry() {
+        return new CatalogEntry(
+                "gemma-3-4b-q4",
+                "Gemma 3 4B Instruct",
+                "gemma-3-4b-it-Q4_K_M.gguf",
+                2800000000L,
+                GEMMA_4B_MODEL_URLS[0],
+                "");
+    }
+
+    public static List<CatalogEntry> getCatalogEntries() {
+        return Collections.unmodifiableList(Arrays.asList(
+                getQwenCatalogEntry(),
+                getGemma4bCatalogEntry()));
+    }
+
+    public CatalogEntry getInstalledCatalogEntry() {
+        String installedId = prefs.getString(KEY_MODEL_ID, "");
+        if (installedId == null || installedId.isEmpty()) {
+            return null;
+        }
+        for (CatalogEntry entry : getCatalogEntries()) {
+            if (installedId.equals(entry.id)) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    public String getInstalledModelId() {
+        return prefs.getString(KEY_MODEL_ID, "");
+    }
+
+    public String getDownloadingModelId() {
+        return prefs.getString(KEY_DOWNLOADING_MODEL_ID, "");
+    }
+
+    public boolean isEntryInstalled(CatalogEntry entry) {
+        return entry != null && isInstalled() && entry.id.equals(getInstalledModelId());
+    }
+
+    public boolean isEntryDownloading(CatalogEntry entry) {
+        return entry != null
+                && STATE_DOWNLOADING.equals(getDownloadState())
+                && entry.id.equals(getDownloadingModelId());
     }
 
     public static boolean isDeviceSupported(Context context) {
@@ -166,6 +226,8 @@ public final class LocalModelManager {
         prefs.edit()
                 .remove(KEY_MODEL_PATH)
                 .remove(KEY_SHA256)
+                .remove(KEY_MODEL_ID)
+                .remove(KEY_DOWNLOADING_MODEL_ID)
                 .putString(KEY_DOWNLOAD_STATE, STATE_IDLE)
                 .putBoolean(KEY_ENABLED, false)
                 .apply();
@@ -191,7 +253,10 @@ public final class LocalModelManager {
             return;
         }
 
-        prefs.edit().putString(KEY_DOWNLOAD_STATE, STATE_DOWNLOADING).apply();
+        prefs.edit()
+                .putString(KEY_DOWNLOAD_STATE, STATE_DOWNLOADING)
+                .putString(KEY_DOWNLOADING_MODEL_ID, entry.id)
+                .apply();
         downloadExecutor.execute(() -> {
             String[] urls = resolveDownloadUrls(entry);
             Exception lastError = null;
@@ -211,7 +276,10 @@ public final class LocalModelManager {
                     Log.w(TAG, "local_download_fail url_index=" + i + " reason=" + e.getMessage());
                 }
             }
-            prefs.edit().putString(KEY_DOWNLOAD_STATE, STATE_ERROR).apply();
+            prefs.edit()
+                    .putString(KEY_DOWNLOAD_STATE, STATE_ERROR)
+                    .remove(KEY_DOWNLOADING_MODEL_ID)
+                    .apply();
             Log.e(TAG, "local_download_fail reason=all_urls_failed", lastError);
             if (callback != null) {
                 String message = lastError != null && lastError.getMessage() != null
@@ -223,11 +291,17 @@ public final class LocalModelManager {
     }
 
     private static String[] resolveDownloadUrls(CatalogEntry entry) {
-        if (entry == null || entry.url == null || entry.url.isEmpty()) {
-            return DEFAULT_MODEL_URLS;
+        if (entry == null) {
+            return QWEN_MODEL_URLS;
         }
         if ("qwen2.5-1.5b-q4".equals(entry.id)) {
-            return DEFAULT_MODEL_URLS;
+            return QWEN_MODEL_URLS;
+        }
+        if ("gemma-3-4b-q4".equals(entry.id)) {
+            return GEMMA_4B_MODEL_URLS;
+        }
+        if (entry.url == null || entry.url.isEmpty()) {
+            return new String[] {QWEN_MODEL_URLS[0]};
         }
         return new String[] {entry.url};
     }
@@ -302,6 +376,7 @@ public final class LocalModelManager {
                     .putString(KEY_MODEL_PATH, dest.getAbsolutePath())
                     .putString(KEY_SHA256, entry.sha256)
                     .putString(KEY_DOWNLOAD_STATE, STATE_READY)
+                    .remove(KEY_DOWNLOADING_MODEL_ID)
                     .apply();
             Log.i(TAG, "local_download_ok path=" + dest.getAbsolutePath() + " url=" + urlString);
             if (callback != null) {

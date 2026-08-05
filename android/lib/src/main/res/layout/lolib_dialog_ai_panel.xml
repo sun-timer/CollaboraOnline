@@ -2,99 +2,128 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FFFFFF"
+    android:background="@drawable/lolib_bg_ai_panel_root"
     android:orientation="vertical">
 
-    <!-- Header：淡紫→白渐变，标题居中，关闭按钮与下方内容右对齐 -->
+    <!-- Figma 250:12839 标题栏：炫彩渐变，标题水平居中，关闭钮与下方内容右缘对齐 -->
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="@dimen/ai_sheet_header_height"
         android:background="@drawable/lolib_bg_ai_panel_header"
-        android:paddingStart="16dp"
-        android:paddingTop="14dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="14dp">
+        android:paddingStart="@dimen/ai_panel_horizontal_margin"
+        android:paddingEnd="@dimen/ai_panel_horizontal_margin">
 
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <ImageView
-                android:id="@+id/ai_header_logo"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:contentDescription="AI助手"
-                android:src="@drawable/lolib_ic_ai_assistant_logo" />
+            <View
+                android:layout_width="@dimen/ai_sheet_header_close_size"
+                android:layout_height="@dimen/ai_sheet_header_close_size"
+                android:importantForAccessibility="no" />
 
-            <TextView
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:text="AI助手"
-                android:textColor="#101010"
-                android:textSize="20sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="horizontal">
 
-        <ImageButton
-            android:id="@+id/ai_close"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_gravity="top|end"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="关闭"
-            android:scaleType="centerInside"
-            android:src="@drawable/lolib_ic_dialog_close" />
+                <ImageView
+                    android:id="@+id/ai_header_logo"
+                    android:layout_width="@dimen/ai_sheet_header_icon_size"
+                    android:layout_height="@dimen/ai_sheet_header_icon_size"
+                    android:contentDescription="AI助手"
+                    android:src="@drawable/lolib_ic_ai_assistant_logo" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/ai_sheet_header_title_gap"
+                    android:text="AI助手"
+                    android:textColor="#101010"
+                    android:textSize="20sp" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/ai_close"
+                android:layout_width="@dimen/ai_sheet_header_close_size"
+                android:layout_height="@dimen/ai_sheet_header_close_size"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="关闭"
+                android:padding="8dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/lolib_ic_dialog_close" />
+        </LinearLayout>
     </FrameLayout>
 
-    <!-- Tab 区：灰底容器 76dp，选中 60dp / 未选中 76dp -->
+    <!-- Figma 250:12856 Tab 外框 76px→38dp，圆角 12px→6dp -->
     <LinearLayout
         android:id="@+id/ai_tab_container"
         android:layout_width="match_parent"
-        android:layout_height="76dp"
-        android:layout_marginStart="16dp"
+        android:layout_height="@dimen/ai_panel_tab_container_height"
+        android:layout_marginStart="@dimen/ai_panel_horizontal_margin"
         android:layout_marginTop="12dp"
-        android:layout_marginEnd="16dp"
-        android:background="#E2E3E5"
+        android:layout_marginEnd="@dimen/ai_panel_horizontal_margin"
+        android:background="@drawable/lolib_bg_ai_tab_container"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="4dp">
+        android:paddingStart="@dimen/ai_panel_tab_container_padding_h"
+        android:paddingTop="@dimen/ai_panel_tab_container_padding_v"
+        android:paddingEnd="@dimen/ai_panel_tab_container_padding_h"
+        android:paddingBottom="@dimen/ai_panel_tab_container_padding_v">
 
-        <TextView
-            android:id="@+id/ai_tab_doc_qa"
+        <FrameLayout
+            android:id="@+id/ai_tab_doc_qa_cell"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_height="@dimen/ai_panel_tab_selected_height"
+            android:layout_gravity="center_vertical"
             android:layout_weight="1"
-            android:background="@drawable/lolib_bg_ai_tab_selected"
-            android:gravity="center"
-            android:text="文档Q&amp;A"
-            android:textColor="#222222"
-            android:textSize="16sp" />
+            android:background="@drawable/lolib_bg_ai_tab_cell_selected">
 
-        <TextView
-            android:id="@+id/ai_tab_chat"
+            <TextView
+                android:id="@+id/ai_tab_doc_qa"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent"
+                android:gravity="center"
+                android:text="文档Q&amp;A"
+                android:textColor="#101010"
+                android:textSize="16sp" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/ai_tab_chat_cell"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_marginStart="6dp"
+            android:layout_height="@dimen/ai_panel_tab_selected_height"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="@dimen/ai_panel_tab_gap"
             android:layout_weight="1"
-            android:background="@drawable/lolib_bg_ai_tab_unselected"
-            android:gravity="center"
-            android:text="聊天"
-            android:textColor="#80868B"
-            android:textSize="16sp" />
+            android:background="@android:color/transparent">
+
+            <TextView
+                android:id="@+id/ai_tab_chat"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent"
+                android:gravity="center"
+                android:text="聊天"
+                android:textColor="#6A6A6A"
+                android:textSize="16sp" />
+        </FrameLayout>
     </LinearLayout>
 
     <ScrollView
         android:id="@+id/ai_messages_scroll"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginStart="16dp"
+        android:layout_marginStart="@dimen/ai_panel_horizontal_margin"
         android:layout_marginTop="12dp"
-        android:layout_marginEnd="16dp"
+        android:layout_marginEnd="@dimen/ai_panel_horizontal_margin"
         android:layout_weight="1"
+        android:clipToPadding="false"
         android:fillViewport="true"
         android:minHeight="120dp"
         android:overScrollMode="ifContentScrolls"
@@ -108,70 +137,13 @@
             android:paddingBottom="6dp" />
     </ScrollView>
 
-    <!-- 底部输入框：圆角容器 + 56dp 发送按钮 -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="12dp"
-        android:background="@drawable/lolib_bg_ai_panel_input"
-        android:gravity="center_vertical"
-        android:minHeight="56dp"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingTop="4dp"
-        android:paddingEnd="4dp"
-        android:paddingBottom="4dp">
-
-        <EditText
-            android:id="@+id/ai_prompt"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="@android:color/transparent"
-            android:hint="发消息..."
-            android:imeOptions="actionSend"
-            android:inputType="textMultiLine"
-            android:maxLines="3"
-            android:minHeight="40dp"
-            android:paddingEnd="8dp"
-            android:textColor="#202124"
-            android:textColorHint="#9AA0A6"
-            android:textSize="18sp" />
-
-        <ImageButton
-            android:id="@+id/ai_run"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:background="@drawable/lolib_bg_ai_send_button"
-            android:contentDescription="发送"
-            android:padding="16dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/lolib_ic_ai_send_plane" />
-    </LinearLayout>
-
-    <Button
-        android:id="@+id/ai_cancel"
-        android:layout_width="1dp"
-        android:layout_height="1dp"
-        android:visibility="gone" />
-
-    <Button
-        android:id="@+id/ai_accept"
-        android:layout_width="1dp"
-        android:layout_height="1dp"
-        android:visibility="gone" />
-
-    <!-- AI Generating progress indicator (hidden by default) -->
     <LinearLayout
         android:id="@+id/ai_progress_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginStart="@dimen/ai_panel_horizontal_margin"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="@dimen/ai_panel_horizontal_margin"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:visibility="gone">
@@ -193,12 +165,66 @@
             android:textSize="13sp" />
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/ai_input_container"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/ai_panel_input_height"
+        android:layout_marginStart="@dimen/ai_panel_horizontal_margin"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="@dimen/ai_panel_horizontal_margin"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/lolib_bg_ai_panel_input"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="6dp">
+
+        <EditText
+            android:id="@+id/ai_prompt"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@android:color/transparent"
+            android:gravity="center_vertical"
+            android:hint="发消息..."
+            android:imeOptions="actionSend"
+            android:inputType="textMultiLine"
+            android:maxLines="3"
+            android:paddingEnd="8dp"
+            android:textColor="#202124"
+            android:textColorHint="#9AA0A6"
+            android:textCursorDrawable="@drawable/lolib_ai_text_cursor"
+            android:textSize="16sp" />
+
+        <ImageButton
+            android:id="@+id/ai_run"
+            android:layout_width="@dimen/ai_panel_send_button_size"
+            android:layout_height="@dimen/ai_panel_send_button_size"
+            android:background="@drawable/lolib_bg_ai_send_button"
+            android:contentDescription="发送"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/lolib_ic_ai_send_plane" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/ai_cancel"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/ai_accept"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/ai_status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
+        android:layout_marginStart="@dimen/ai_panel_horizontal_margin"
+        android:layout_marginEnd="@dimen/ai_panel_horizontal_margin"
         android:layout_marginBottom="8dp"
         android:textColor="#5F6368"
         android:textSize="12sp"

@@ -237,31 +237,37 @@ body.android-native-bottom-toolbar[data-docType='spreadsheet'] #spreadsheet-tool
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #sheets-buttons-toolbox #insertsheet.unotoolbutton,
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet {
-	width: 40px !important;
-	height: 40px !important;
-	min-width: 40px !important;
-	min-height: 40px !important;
+	width: 36px !important;
+	height: 36px !important;
+	min-width: 36px !important;
+	min-height: 36px !important;
+	margin: 2px !important;
 	padding: 0 !important;
 	border-radius: 8px !important;
 	background-color: transparent !important;
+	border-right: 1px solid #CBD1D7 !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
 	-webkit-tap-highlight-color: transparent;
 }
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet .w2ui-icon,
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet.unotoolbutton img {
-	width: 40px !important;
-	height: 40px !important;
-	background: url('images/lc_insertsheet_calc_mobile.svg') no-repeat center / 28px 28px !important;
+	width: 24px !important;
+	height: 24px !important;
+	background: url('images/lc_insertsheet_calc_mobile.svg') no-repeat center / contain !important;
 }
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #sheets-buttons-toolbox #insertsheet.unotoolbutton:active,
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet:active {
 	background-color: #3B8040 !important;
+	border-right-color: #3B8040 !important;
 }
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet:active .w2ui-icon,
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet.unotoolbutton:active img {
-	background: url('images/lc_insertsheet_calc_mobile_active.svg') no-repeat center / contain !important;
+	background: url('images/lc_insertsheet_calc_mobile_active.svg') no-repeat center / 36px 36px !important;
 }
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #sheetlist {
@@ -270,7 +276,7 @@ body.android-native-bottom-toolbar[data-docType='spreadsheet'] #sheetlist {
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab {
 	background-color: #FFFFFF !important;
-	color: #80868B !important;
+	color: #6A6A6A !important;
 	border: 1px solid transparent !important;
 	font-weight: 400 !important;
 }
@@ -279,7 +285,7 @@ body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab.
 	background-color: #FFFFFF !important;
 	color: #3B8040 !important;
 	border: 1px solid transparent !important;
-	font-weight: 500 !important;
+	font-weight: 700 !important;
 }
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab .lock,

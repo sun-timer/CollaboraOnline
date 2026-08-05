@@ -5,6 +5,20 @@
     <dimen name="ai_sheet_header_padding_v">15dp</dimen>
     <dimen name="ai_sheet_header_padding_h">12dp</dimen>
     <dimen name="ai_sheet_header_icon_size">32dp</dimen>
+    <dimen name="ai_sheet_header_title_gap">10dp</dimen>
+    <dimen name="ai_sheet_header_close_size">40dp</dimen>
+
+    <!-- AI 助手聊天面板 Tab：Figma 686×76 / 331×60 → 343×38 / 171×30 dp -->
+    <dimen name="ai_panel_tab_container_height">38dp</dimen>
+    <dimen name="ai_panel_tab_selected_height">30dp</dimen>
+    <dimen name="ai_panel_tab_container_padding_v">2dp</dimen>
+    <dimen name="ai_panel_tab_container_padding_h">4dp</dimen>
+    <dimen name="ai_panel_tab_gap">4dp</dimen>
+    <dimen name="ai_panel_horizontal_margin">16dp</dimen>
+    <dimen name="ai_panel_message_gap">20dp</dimen>
+    <dimen name="ai_panel_user_bubble_min_height">45dp</dimen>
+    <dimen name="ai_panel_input_height">48dp</dimen>
+    <dimen name="ai_panel_send_button_size">36dp</dimen>
 
     <!-- AI 功能网格：Figma 图标 64×64，卡片高约 112dp（64+间距+文案） -->
     <dimen name="ai_function_icon_size">64dp</dimen>
@@ -12,4 +26,14 @@
     <dimen name="ai_function_card_gap">8dp</dimen>
     <dimen name="ai_function_grid_padding">12dp</dimen>
     <dimen name="ai_function_row_gap">8dp</dimen>
+
+    <!-- Figma 3079:59671：未配置基础模型弹窗 670×388px → 335×194dp -->
+    <dimen name="ai_model_required_dialog_width">335dp</dimen>
+    <dimen name="ai_model_required_title_height">60dp</dimen>
+    <dimen name="ai_model_required_content_padding_h">24dp</dimen>
+    <dimen name="ai_model_required_content_padding_v">12dp</dimen>
+    <dimen name="ai_model_required_button_padding_h">20dp</dimen>
+    <dimen name="ai_model_required_button_padding_v">12dp</dimen>
+    <dimen name="ai_model_required_button_height">35dp</dimen>
+    <dimen name="ai_model_required_button_gap">28dp</dimen>
 </resources>

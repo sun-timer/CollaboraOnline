@@ -327,6 +327,7 @@ public class LOActivity extends AppCompatActivity {
     private boolean aiBridgeInjected = false;
     private String aiActiveRequestId = "";
     private BottomSheetDialog aiPanelDialog;
+    private AlertDialog aiModelRequiredDialog;
     private BottomSheetDialog functionPanelDialog;
     private EditText aiPromptInput;
     private TextView aiStatusText;
@@ -339,6 +340,10 @@ public class LOActivity extends AppCompatActivity {
     private ImageButton aiCloseButton;
     private TextView aiTabDocQa;
     private TextView aiTabChat;
+    private View aiTabDocQaCell;
+    private View aiTabChatCell;
+    private View aiTabContainer;
+    private View aiInputContainer;
     private LinearLayout aiMessagesContainer;
     private ScrollView aiMessagesScroll;
     private boolean aiDocQaMode = true;
@@ -687,6 +692,9 @@ public class LOActivity extends AppCompatActivity {
     private static final int IMPRESS_OUTLINE_STATE_ERROR = 3;
     private static final int REQUEST_CODE_IMPRESS_PICK_DOC = 9002;
     private static final int REQUEST_CODE_INSERT_LOCAL_IMAGE = 9003;
+    private static final int REQUEST_CODE_INSERT_CAMERA_IMAGE = 9004;
+    private static final int PERMISSION_INSERT_CAMERA = 9010;
+    private Uri pendingInsertCameraUri;
 
     // ========== Impress PPT 模板选择 + 生成 ==========
     private LinearLayout impressTemplateGridContainer;
@@ -1304,9 +1312,7 @@ public class LOActivity extends AppCompatActivity {
             ((TextView) clearCache).setText(getStringByName("action_clear_cache", "Clear cache"));
         }
         if (clearCache != null) {
-            clearCache.setOnClickListener(v ->
-                    Toast.makeText(this, getStringByName("clear_cache_todo", "Clear cache is not implemented yet."), Toast.LENGTH_SHORT).show()
-            );
+            clearCache.setOnClickListener(v -> clearDocumentCache());
         }
 
         View about = findViewById(R.id.doc_settings_about);
@@ -1503,6 +1509,13 @@ public class LOActivity extends AppCompatActivity {
                     startCameraForTextExtract();
                 } else {
                     toastTodo("需要相机权限才能拍照识别");
+                }
+                break;
+            case PERMISSION_INSERT_CAMERA:
+                if (permissions.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    startCameraForInsertImage();
+                } else {
+                    toastTodo("需要相机权限才能拍照插入图片");
                 }
                 break;
             default:
@@ -2014,6 +2027,12 @@ public class LOActivity extends AppCompatActivity {
             case REQUEST_CODE_INSERT_LOCAL_IMAGE:
                 if (intent != null && intent.getData() != null) {
                     handleLocalImagePickedForInsert(intent.getData());
+                }
+                return;
+            case REQUEST_CODE_INSERT_CAMERA_IMAGE:
+                if (pendingInsertCameraUri != null) {
+                    handleLocalImagePickedForInsert(pendingInsertCameraUri);
+                    pendingInsertCameraUri = null;
                 }
                 return;
         }
@@ -4184,8 +4203,18 @@ public class LOActivity extends AppCompatActivity {
                     }
 
                     @Override
+                    public void evaluateJavascript(String script) {
+                        LOActivity.this.evaluateJavascript(script, null);
+                    }
+
+                    @Override
                     public void copySheet(int tabIndex) {
                         LOActivity.this.copyCalcSheet(tabIndex);
+                    }
+
+                    @Override
+                    public void ensureEditModeThen(Runnable action) {
+                        LOActivity.this.ensureEditModeThen(action);
                     }
                 });
         calcSheetTabPopupController.setup();
@@ -8724,6 +8753,20 @@ public class LOActivity extends AppCompatActivity {
                 public void executeUnoCommand(String command) {
                     LOActivity.this.executeUnoCommand(command);
                 }
+
+                @Override
+                public void fetchCharFormatState(BottomToolbarController.CharFormatCallback callback) {
+                    fetchCurrentFormattingAsync(new FunctionPanelController.FormattingCallback() {
+                        @Override
+                        public void onResult(String styleName, String fontName, String fontSizePt,
+                                             String paragraphAlignment,
+                                             boolean bold, boolean italic, boolean underline, boolean strikethrough) {
+                            if (callback != null) {
+                                callback.onResult(bold, italic, underline, strikethrough);
+                            }
+                        }
+                    });
+                }
             });
         }
         return bottomToolbarController;
@@ -8947,22 +8990,22 @@ public class LOActivity extends AppCompatActivity {
         View saveAction = panel.findViewById(R.id.function_action_save);
         View exportPdfAction = panel.findViewById(R.id.function_action_export_pdf);
         View printAction = panel.findViewById(R.id.function_action_print);
-        View countAction = panel.findViewById(R.id.function_action_word_count);
         View findAction = panel.findViewById(R.id.function_action_find_replace);
+        View wordCountAction = panel.findViewById(R.id.function_action_word_count);
 
         View.OnClickListener showFileTab = v -> {
             tabFile.setBackgroundResource(R.drawable.lolib_bg_function_tab_active);
             tabReview.setBackgroundResource(R.drawable.lolib_bg_function_tab_inactive);
-            tabFile.setTextColor(Color.parseColor("#202124"));
-            tabReview.setTextColor(Color.parseColor("#80868B"));
+            tabFile.setTextColor(Color.parseColor("#101010"));
+            tabReview.setTextColor(Color.parseColor("#6A6A6A"));
             fileList.setVisibility(View.VISIBLE);
             reviewList.setVisibility(View.GONE);
         };
         View.OnClickListener showReviewTab = v -> {
             tabReview.setBackgroundResource(R.drawable.lolib_bg_function_tab_active);
             tabFile.setBackgroundResource(R.drawable.lolib_bg_function_tab_inactive);
-            tabReview.setTextColor(Color.parseColor("#202124"));
-            tabFile.setTextColor(Color.parseColor("#80868B"));
+            tabReview.setTextColor(Color.parseColor("#101010"));
+            tabFile.setTextColor(Color.parseColor("#6A6A6A"));
             reviewList.setVisibility(View.VISIBLE);
             fileList.setVisibility(View.GONE);
         };
@@ -8981,10 +9024,14 @@ public class LOActivity extends AppCompatActivity {
                 postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1")));
         if (exportPdfAction != null) exportPdfAction.setOnClickListener(v -> runFunctionAction(this::downloadCurrentTextDocumentAsPdf));
         if (printAction != null) printAction.setOnClickListener(v -> runFunctionAction(this::initiatePrint));
-        if (countAction != null) countAction.setOnClickListener(v -> runFunctionAction(() ->
-                executeUnoCommand(".uno:WordCountDialog")));
         if (findAction != null) findAction.setOnClickListener(v -> runFunctionAction(() ->
                 executeUnoCommand(".uno:SearchDialog?InitialFocusReplace:bool=true")));
+        // 字数统计：仅 Writer 文档显示（表格无此功能），点击打开字数统计对话框
+        if (wordCountAction != null) {
+            wordCountAction.setVisibility(mIsCalcDocument ? View.GONE : View.VISIBLE);
+            wordCountAction.setOnClickListener(v -> runFunctionAction(() ->
+                    executeUnoCommand(".uno:WordCountDialog")));
+        }
 
         functionPanelDialog = new BottomSheetDialog(this);
         functionPanelDialog.setContentView(panel);
@@ -9099,6 +9146,11 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public void runAfterFunctionPanelDismiss(Runnable action) {
+                    LOActivity.this.runAfterFunctionPanelDismiss(action);
+                }
+
+                @Override
                 public void toastTodo(String text) {
                     LOActivity.this.toastTodo(text);
                 }
@@ -9134,11 +9186,6 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
-                public void runAfterFunctionPanelDismiss(Runnable action) {
-                    LOActivity.this.runAfterFunctionPanelDismiss(action);
-                }
-
-                @Override
                 public void insertChartWithType(String unoChartType) {
                     LOActivity.this.insertChartWithType(unoChartType);
                 }
@@ -9152,6 +9199,26 @@ public class LOActivity extends AppCompatActivity {
                 public void fetchCalcHyperlinkContext(
                         CalcHyperlinkPickerController.HyperlinkContextCallback callback) {
                     LOActivity.this.fetchCalcHyperlinkContext(callback);
+                }
+
+                @Override
+                public void applyCalcDataValidation(CalcDataValidationState state) {
+                    LOActivity.this.applyCalcDataValidation(state);
+                }
+
+                @Override
+                public void openMacroChooser(CalcValidationMacroPickerController.MacroChooseCallback callback) {
+                    LOActivity.this.openMacroChooser(callback);
+                }
+
+                @Override
+                public void loadCurrentValidationState(CalcDataValidationState target, Runnable onLoaded) {
+                    LOActivity.this.loadCurrentValidationState(target, onLoaded);
+                }
+
+                @Override
+                public void dismissCoValidationDialog() {
+                    LOActivity.this.dismissCoValidationDialog();
                 }
             });
         }
@@ -9207,8 +9274,8 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
-                public void showWatermarkDialog(boolean enabled) {
-                    LOActivity.this.showWatermarkDialog(enabled);
+                public void applyWatermark(String text, String font, int angle, int transparency) {
+                    LOActivity.this.applyDocumentWatermark(text, font, angle, transparency);
                 }
 
                 @Override
@@ -9229,6 +9296,21 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void insertComment() {
                     LOActivity.this.insertCommentFromPanel();
+                }
+
+                @Override
+                public String getCommentAuthorName() {
+                    return LOActivity.this.getPrefs().getString(USER_NAME_KEY, "Guest User");
+                }
+
+                @Override
+                public void insertCommentWithText(String text) {
+                    LOActivity.this.insertCommentWithText(text);
+                }
+
+                @Override
+                public void runAfterFunctionPanelDismiss(Runnable action) {
+                    LOActivity.this.runAfterFunctionPanelDismiss(action);
                 }
 
                 @Override
@@ -9390,9 +9472,78 @@ public class LOActivity extends AppCompatActivity {
                 public void deleteCommentWithId(String id) {
                     LOActivity.this.deleteCommentWithId(id);
                 }
+
+                @Override
+                public void startSlideShow() {
+                    LOActivity.this.startSlideShow();
+                }
             });
         }
         return impressFunctionPanelController;
+    }
+
+    private void startSlideShow() {
+        Log.i(TAG, "start_slide_show");
+        runWebJs("(function(){try{"
+                + "if(window.app&&app.map&&app.map.slideShow){"
+                + "app.map.slideShow._startFullscreenSlideshow();"
+                + "}else if(window.L&&window.L.Map&&window.app&&app.map){"
+                + "app.map.downloadAs('slideshow.svg','svg',null,'slideshow');"
+                + "}"
+                + "}catch(e){console.error('slideshow_error',e);}})();", null);
+    }
+
+    private void clearDocumentCache() {
+        new AlertDialog.Builder(this)
+                .setTitle("清理缓存")
+                .setMessage("将清除应用缓存文件，不会删除您的文档。确定继续吗？")
+                .setPositiveButton("清理", (dialog, which) -> {
+                    new Thread(() -> {
+                        long freed = 0;
+                        try {
+                            File cacheDir = getCacheDir();
+                            freed = deleteCacheDir(cacheDir);
+                            File extCacheDir = getExternalCacheDir();
+                            if (extCacheDir != null) {
+                                freed += deleteCacheDir(extCacheDir);
+                            }
+                        } catch (Exception e) {
+                            Log.w(TAG, "clear_cache_failed", e);
+                        }
+                        final long bytesFreed = freed;
+                        runOnUiThread(() -> {
+                            String msg;
+                            if (bytesFreed > 0) {
+                                double mb = bytesFreed / (1024.0 * 1024.0);
+                                msg = String.format("缓存已清理（释放 %.1f MB）", mb);
+                            } else {
+                                msg = "缓存已清理";
+                            }
+                            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+                        });
+                    }).start();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private long deleteCacheDir(File dir) {
+        if (dir == null || !dir.exists()) {
+            return 0;
+        }
+        long size = 0;
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    size += deleteCacheDir(file);
+                } else {
+                    size += file.length();
+                    file.delete();
+                }
+            }
+        }
+        return size;
     }
 
     private void showSaveAsFormatDialog() {
@@ -9401,6 +9552,9 @@ public class LOActivity extends AppCompatActivity {
         if (mIsImpressDocument) {
             labels = new String[] { "ODP 演示文稿", "PPTX 演示文稿" };
             formats = new String[] { "odp", "pptx" };
+        } else if (mIsCalcDocument) {
+            labels = new String[] { "ODS 电子表格", "XLSX 电子表格", "XLS 电子表格" };
+            formats = new String[] { "ods", "xlsx", "xls" };
         } else {
             labels = new String[] { "ODT 文档", "DOCX 文档" };
             formats = new String[] { "odt", "docx" };
@@ -9426,47 +9580,22 @@ public class LOActivity extends AppCompatActivity {
                 .show();
     }
 
-    private void showWatermarkDialog(boolean enabled) {
-        if (!enabled) {
-            applyDocumentWatermark("");
-            return;
-        }
-        final EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setHint("请输入水印文字");
-        input.setText("水印");
-        input.setSelectAllOnFocus(true);
-
-        int padding = dpToPx(20);
-        FrameLayout container = new FrameLayout(this);
-        container.setPadding(padding, dpToPx(8), padding, 0);
-        container.addView(input, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        new AlertDialog.Builder(this)
-                .setTitle("水印")
-                .setView(container)
-                .setNegativeButton("取消", null)
-                .setPositiveButton("确定", (dialog, which) -> {
-                    String text = input.getText() == null ? "" : input.getText().toString().trim();
-                    applyDocumentWatermark(text);
-                })
-                .show();
-    }
-
-    private void applyDocumentWatermark(String text) {
+    private void applyDocumentWatermark(String text, String font, int angle, int transparency) {
         if (mWebView == null) {
             return;
         }
         final String safeText = JSONObject.quote(text == null ? "" : text);
+        final String safeFont = JSONObject.quote(
+                font == null || font.isEmpty() ? "Noto Serif CJK SC" : font);
+        final int safeAngle = Math.max(0, Math.min(360, angle));
+        final int safeTransparency = Math.max(0, Math.min(100, transparency));
         final String script = "(function(){try{"
                 + "if(!(window.app&&app.map&&typeof app.map.sendUnoCommand==='function')){return 'no_map';}"
                 + "var args={"
                 + "Text:{type:'string',value:" + safeText + "},"
-                + "Font:{type:'string',value:'Noto Serif CJK SC'},"
-                + "Angle:{type:'long',value:45},"
-                + "Transparency:{type:'long',value:50},"
+                + "Font:{type:'string',value:" + safeFont + "},"
+                + "Angle:{type:'long',value:" + safeAngle + "},"
+                + "Transparency:{type:'long',value:" + safeTransparency + "},"
                 + "Color:{type:'long',value:12632256}"
                 + "};"
                 + "app.map.sendUnoCommand('.uno:Watermark',args);"
@@ -9492,14 +9621,52 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void launchLocalImagePickerForInsert() {
+        String[] options = {"拍照", "从相册选择"};
+        new AlertDialog.Builder(this)
+                .setTitle("插入图片")
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        launchCameraForInsertImage();
+                    } else {
+                        launchGalleryForInsertImage();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void launchGalleryForInsertImage() {
         try {
             Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
             intent.setType("image/*");
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             startActivityForResult(Intent.createChooser(intent, "选择图片"), REQUEST_CODE_INSERT_LOCAL_IMAGE);
         } catch (ActivityNotFoundException e) {
-            Log.w(TAG, "launchLocalImagePickerForInsert no activity, fallback uno");
+            Log.w(TAG, "launchGalleryForInsertImage no activity, fallback uno");
             executeUnoCommand(".uno:InsertGraphic");
+        }
+    }
+
+    private void launchCameraForInsertImage() {
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, PERMISSION_INSERT_CAMERA);
+            return;
+        }
+        startCameraForInsertImage();
+    }
+
+    private void startCameraForInsertImage() {
+        try {
+            File photoFile = new File(getCacheDir(), "insert_img_" + System.currentTimeMillis() + ".jpg");
+            pendingInsertCameraUri = FileProvider.getUriForFile(this,
+                    getApplicationContext().getPackageName() + ".fileprovider", photoFile);
+            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, pendingInsertCameraUri);
+            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            startActivityForResult(intent, REQUEST_CODE_INSERT_CAMERA_IMAGE);
+        } catch (Exception e) {
+            toastTodo("无法启动相机");
+            Log.e(TAG, "startCameraForInsertImage failed", e);
         }
     }
 
@@ -9957,6 +10124,78 @@ public class LOActivity extends AppCompatActivity {
                 })));
     }
 
+    private CalcDataValidationApplier createValidationApplier() {
+        return new CalcDataValidationApplier(new CalcDataValidationApplier.Host() {
+            @Override
+            public void postUnoCommand(String command, String args, boolean notify) {
+                LOActivity.this.postUnoCommand(command, args, notify);
+            }
+
+            @Override
+            public void evaluateJavascript(String script, android.webkit.ValueCallback<String> callback) {
+                LOActivity.this.evaluateJavascript(script, callback);
+            }
+
+            @Override
+            public void runOnUiThread(Runnable action) {
+                LOActivity.this.runOnUiThread(action);
+            }
+        });
+    }
+
+    void applyCalcDataValidation(CalcDataValidationState state) {
+        if (state == null) {
+            return;
+        }
+        Log.i(TAG, "apply_calc_data_validation allow=" + state.allowIndex
+                + " data=" + state.dataIndex);
+        Runnable apply = () -> {
+            requestWebViewFocusForPanelAction("data_validation");
+            createValidationApplier().apply(state);
+            nudgeSocketIfStalled("data_validation");
+        };
+        if (mIsCalcDocument) {
+            ensureEditModeThen(apply);
+        } else {
+            apply.run();
+        }
+    }
+
+    void loadCurrentValidationState(CalcDataValidationState target, Runnable onLoaded) {
+        if (target == null) {
+            if (onLoaded != null) {
+                onLoaded.run();
+            }
+            return;
+        }
+        Log.i(TAG, "load_calc_data_validation_state");
+        Runnable read = () -> {
+            requestWebViewFocusForPanelAction("data_validation_read");
+            createValidationApplier().read(target, () -> {
+                dismissCoValidationDialog();
+                if (onLoaded != null) {
+                    onLoaded.run();
+                }
+            });
+            nudgeSocketIfStalled("data_validation_read");
+        };
+        if (mIsCalcDocument) {
+            ensureEditModeThen(read);
+        } else {
+            read.run();
+        }
+    }
+
+    void dismissCoValidationDialog() {
+        Log.i(TAG, "dismiss_co_validation_dialog");
+        closeMobileWizardFromAndroid("data_validation_dismiss");
+        createValidationApplier().forceCloseDialog(null);
+    }
+
+    void openMacroChooser(CalcValidationMacroPickerController.MacroChooseCallback callback) {
+        Log.i(TAG, "open_macro_chooser_skipped_use_in_app_picker");
+    }
+
     void fetchImpressHyperlinkContext(ImpressHyperlinkPickerController.HyperlinkContextCallback callback) {
         if (callback == null) {
             return;
@@ -10120,14 +10359,23 @@ public class LOActivity extends AppCompatActivity {
                 + "else if(active('.uno:CenterPara')){align='para_center';}"
                 + "else if(active('.uno:RightPara')){align='para_right';}"
                 + "else if(active('.uno:JustifyPara')){align='para_justify';}"
+                + "var bold=active('.uno:Bold');"
+                + "var italic=active('.uno:Italic');"
+                + "var underline=active('.uno:Underline');"
+                + "var strikethrough=active('.uno:Strikeout');"
                 + "font=font.split(';')[0].trim();"
                 + "size=size.replace('pt','').trim();"
-                + "return JSON.stringify({style:style,font:font,size:size,align:align});"
+                + "return JSON.stringify({style:style,font:font,size:size,align:align,"
+                + "bold:bold,italic:italic,underline:underline,strikethrough:strikethrough});"
                 + "}catch(e){return '{}';}})();", value -> {
             String style = "";
             String font = "";
             String size = "";
             String align = "";
+            boolean bold = false;
+            boolean italic = false;
+            boolean underline = false;
+            boolean strikethrough = false;
             String trimmed = value == null ? "" : value.trim();
             if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
                 trimmed = trimmed.substring(1, trimmed.length() - 1);
@@ -10139,17 +10387,28 @@ public class LOActivity extends AppCompatActivity {
                 font = obj.optString("font", "");
                 size = obj.optString("size", "");
                 align = obj.optString("align", "");
+                bold = obj.optBoolean("bold", false);
+                italic = obj.optBoolean("italic", false);
+                underline = obj.optBoolean("underline", false);
+                strikethrough = obj.optBoolean("strikethrough", false);
             } catch (JSONException e) {
                 Log.w(TAG, "function_current_format_parse_failed", e);
             }
             Log.i(TAG, "function_current_format style=" + style + " font=" + font
-                    + " size=" + size + " align=" + align);
+                    + " size=" + size + " align=" + align
+                    + " bold=" + bold + " italic=" + italic
+                    + " underline=" + underline + " strike=" + strikethrough);
             if (callback != null) {
                 final String finalStyle = style;
                 final String finalFont = font;
                 final String finalSize = size;
                 final String finalAlign = align;
-                runOnUiThread(() -> callback.onResult(finalStyle, finalFont, finalSize, finalAlign));
+                final boolean finalBold = bold;
+                final boolean finalItalic = italic;
+                final boolean finalUnderline = underline;
+                final boolean finalStrike = strikethrough;
+                runOnUiThread(() -> callback.onResult(finalStyle, finalFont, finalSize, finalAlign,
+                        finalBold, finalItalic, finalUnderline, finalStrike));
             }
         });
     }
@@ -10648,6 +10907,10 @@ public class LOActivity extends AppCompatActivity {
         aiCloseButton = panel.findViewById(R.id.ai_close);
         aiTabDocQa = panel.findViewById(R.id.ai_tab_doc_qa);
         aiTabChat = panel.findViewById(R.id.ai_tab_chat);
+        aiTabDocQaCell = panel.findViewById(R.id.ai_tab_doc_qa_cell);
+        aiTabChatCell = panel.findViewById(R.id.ai_tab_chat_cell);
+        aiTabContainer = panel.findViewById(R.id.ai_tab_container);
+        aiInputContainer = panel.findViewById(R.id.ai_input_container);
         aiMessagesContainer = panel.findViewById(R.id.ai_messages_container);
         aiMessagesScroll = panel.findViewById(R.id.ai_messages_scroll);
         if (aiTabDocQa != null) {
@@ -10659,6 +10922,11 @@ public class LOActivity extends AppCompatActivity {
                 : pendingAutoOpenAiPrompt;
         aiPromptInput.setText(initialPrompt);
         aiPromptInput.setHint("发消息...");
+        aiPromptInput.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) {
+                aiPanelController.requestInsetsRefresh();
+            }
+        });
         aiStatusText.setText("Ready");
         aiOutputText.setText("");
         aiDocQaMode = true;
@@ -10674,16 +10942,18 @@ public class LOActivity extends AppCompatActivity {
         aiAcceptButton.setOnClickListener(v -> acceptAiFromNativePanel());
         if (aiTabDocQa != null) {
             aiTabDocQa.setOnClickListener(v -> {
-                aiDocQaMode = true;
-                updateAiPanelTabStyle();
-                renderAiHistoryForCurrentMode();
+                if (!aiDocQaMode) {
+                    aiDocQaMode = true;
+                    renderAiHistoryForCurrentMode();
+                }
             });
         }
         if (aiTabChat != null) {
             aiTabChat.setOnClickListener(v -> {
-                aiDocQaMode = false;
-                updateAiPanelTabStyle();
-                renderAiHistoryForCurrentMode();
+                if (aiDocQaMode) {
+                    aiDocQaMode = false;
+                    renderAiHistoryForCurrentMode();
+                }
             });
         }
         aiCloseButton.setOnClickListener(v -> {
@@ -10710,6 +10980,10 @@ public class LOActivity extends AppCompatActivity {
             aiCloseButton = null;
             aiTabDocQa = null;
             aiTabChat = null;
+            aiTabDocQaCell = null;
+            aiTabChatCell = null;
+            aiTabContainer = null;
+            aiInputContainer = null;
             aiMessagesContainer = null;
             aiMessagesScroll = null;
             aiStreamingMessageView = null;
@@ -10723,7 +10997,8 @@ public class LOActivity extends AppCompatActivity {
         int orientation = getResources().getConfiguration().orientation;
         aiPanelDialog.setOnShowListener(dialog -> aiPanelContent.post(() ->
                 aiPanelController.configureBottomSheet(
-                        aiPanelDialog, aiPanelContent, screenHeight, screenWidth, orientation)));
+                        aiPanelDialog, aiPanelContent, screenHeight, screenWidth, orientation,
+                        this::scheduleAiPanelChromeRefresh)));
         aiPanelDialog.show();
 
         aiPanelController.installMessageScrollTouchPolicy(aiMessagesScroll, new AiPanelController.ScrollCallbacks() {
@@ -11042,14 +11317,14 @@ public class LOActivity extends AppCompatActivity {
                         screenHeight,
                         screenWidth,
                         orientation,
-                        0.55f));
+                        0.85f));
             }
             if (mIsCalcDocument) {
                 getMainHandler().postDelayed(() -> preReadCalcSelectionForSheet(), 200);
             }
         });
         aiPanelController.configureBottomSheetFitContent(
-                aiOperationSheet, panel, screenHeight, screenWidth, orientation, 0.55f);
+                aiOperationSheet, panel, screenHeight, screenWidth, orientation, 0.85f);
 
         aiOperationSheet.show();
         Log.i(TAG, "ai_op_sheet_shown");
@@ -15398,55 +15673,222 @@ public class LOActivity extends AppCompatActivity {
         if (isFinishing()) {
             return;
         }
-        new AlertDialog.Builder(LOActivity.this)
-                .setTitle("需要配置基础模型")
-                .setMessage(message)
-                .setPositiveButton("知道了", null)
-                .show();
+        if (aiModelRequiredDialog != null && aiModelRequiredDialog.isShowing()) {
+            return;
+        }
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_ai_model_required, null, false);
+        TextView messageView = root.findViewById(R.id.ai_model_required_message);
+        if (messageView != null && message != null && !message.isEmpty()) {
+            messageView.setText(message);
+        }
+        aiModelRequiredDialog = new AlertDialog.Builder(this).create();
+        aiModelRequiredDialog.setView(root);
+        AiDialogHelper.applyTransparentWindow(aiModelRequiredDialog);
+        aiModelRequiredDialog.setCancelable(true);
+        aiModelRequiredDialog.setCanceledOnTouchOutside(true);
+        aiModelRequiredDialog.setOnDismissListener(dialog -> aiModelRequiredDialog = null);
+        View cancelButton = root.findViewById(R.id.ai_model_required_cancel);
+        if (cancelButton != null) {
+            cancelButton.setOnClickListener(v -> {
+                if (aiModelRequiredDialog != null) {
+                    aiModelRequiredDialog.dismiss();
+                }
+            });
+        }
+        View confirmButton = root.findViewById(R.id.ai_model_required_confirm);
+        if (confirmButton != null) {
+            confirmButton.setOnClickListener(v -> {
+                if (aiModelRequiredDialog != null) {
+                    aiModelRequiredDialog.dismiss();
+                }
+                openModelSettingsActivity(MODEL_TYPE_BASE);
+            });
+        }
+        aiModelRequiredDialog.show();
+        if (aiModelRequiredDialog.getWindow() != null) {
+            WindowManager.LayoutParams params = aiModelRequiredDialog.getWindow().getAttributes();
+            params.dimAmount = 0.3f;
+            aiModelRequiredDialog.getWindow().setAttributes(params);
+            aiModelRequiredDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            int widthPx = getResources().getDimensionPixelSize(R.dimen.ai_model_required_dialog_width);
+            AiDialogHelper.applyFlexibleWidth(root, aiModelRequiredDialog, widthPx,
+                    AiDialogHelper.computeMaxHeightHugPx(getResources()));
+        }
+        Log.i(TAG, "ai_model_required_dialog shown message=" + message);
     }
 
     private void updateAiPanelTabStyle() {
-        if (aiTabDocQa == null || aiTabChat == null) {
+        ensureAiPanelChromeStyles();
+        Log.i(TAG, "ai_panel_tab_style docQaMode=" + aiDocQaMode
+                + " tabContainerH=" + (aiTabContainer != null ? aiTabContainer.getHeight() : -1));
+    }
+
+    private void scheduleAiPanelChromeRefresh() {
+        if (aiPanelDialog != null) {
+            aiPanelController.syncSheetPosition(aiPanelDialog);
+        }
+        updateAiPanelTabStyle();
+        logAiPanelLayoutDiagnostics("chrome_refresh");
+    }
+
+    private void logAiPanelLayoutDiagnostics(String reason) {
+        if (aiPanelDialog == null || !aiPanelDialog.isShowing()) {
             return;
         }
-        ViewGroup.LayoutParams docQaParams = aiTabDocQa.getLayoutParams();
-        ViewGroup.LayoutParams chatParams = aiTabChat.getLayoutParams();
-        int selectedHeight = dpToPx(60);
-        if (aiDocQaMode) {
-            docQaParams.height = selectedHeight;
-            chatParams.height = ViewGroup.LayoutParams.MATCH_PARENT;
-            aiTabDocQa.setBackgroundResource(R.drawable.lolib_bg_ai_tab_selected);
-            aiTabChat.setBackgroundResource(R.drawable.lolib_bg_ai_tab_unselected);
-            aiTabDocQa.setTextColor(Color.parseColor("#202124"));
-            aiTabChat.setTextColor(Color.parseColor("#80868B"));
-        } else {
-            chatParams.height = selectedHeight;
-            docQaParams.height = ViewGroup.LayoutParams.MATCH_PARENT;
-            aiTabChat.setBackgroundResource(R.drawable.lolib_bg_ai_tab_selected);
-            aiTabDocQa.setBackgroundResource(R.drawable.lolib_bg_ai_tab_unselected);
-            aiTabChat.setTextColor(Color.parseColor("#202124"));
-            aiTabDocQa.setTextColor(Color.parseColor("#80868B"));
+        FrameLayout bottomSheet = aiPanelDialog.findViewById(
+                com.google.android.material.R.id.design_bottom_sheet);
+        View contentRoot = bottomSheet != null && bottomSheet.getChildCount() > 0
+                ? bottomSheet.getChildAt(0) : null;
+        int sheetH = bottomSheet != null ? bottomSheet.getHeight() : -1;
+        int sheetTop = bottomSheet != null ? bottomSheet.getTop() : -1;
+        int sheetBottom = bottomSheet != null ? bottomSheet.getBottom() : -1;
+        int contentH = contentRoot != null ? contentRoot.getHeight() : -1;
+        int contentPadBottom = contentRoot != null ? contentRoot.getPaddingBottom() : -1;
+        int tabH = aiTabContainer != null ? aiTabContainer.getHeight() : -1;
+        int inputH = aiInputContainer != null ? aiInputContainer.getHeight() : -1;
+        int inputBottom = aiInputContainer != null ? aiInputContainer.getBottom() : -1;
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        Log.i(TAG, "ai_panel_layout reason=" + reason
+                + " docQaMode=" + aiDocQaMode
+                + " screenH=" + screenH
+                + " sheetH=" + sheetH
+                + " sheetTop=" + sheetTop
+                + " sheetBottom=" + sheetBottom
+                + " contentH=" + contentH
+                + " contentPadBottom=" + contentPadBottom
+                + " tabH=" + tabH
+                + " inputH=" + inputH
+                + " inputBottom=" + inputBottom
+                + " msgCount=" + (aiMessagesContainer != null ? aiMessagesContainer.getChildCount() : -1));
+    }
+
+    private void applyAiTabCellStyle(View cell, TextView tab, boolean selected) {
+        if (cell == null || tab == null) {
+            return;
         }
-        aiTabDocQa.setLayoutParams(docQaParams);
-        aiTabChat.setLayoutParams(chatParams);
+        int selectedHeight = getResources().getDimensionPixelSize(R.dimen.ai_panel_tab_selected_height);
+        ViewGroup.LayoutParams rawParams = cell.getLayoutParams();
+        if (rawParams instanceof LinearLayout.LayoutParams) {
+            LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) rawParams;
+            params.width = 0;
+            params.weight = 1f;
+            params.height = selectedHeight;
+            params.gravity = Gravity.CENTER_VERTICAL;
+            cell.setLayoutParams(params);
+        }
+        if (selected) {
+            cell.setBackgroundResource(R.drawable.lolib_bg_ai_tab_cell_selected);
+        } else {
+            cell.setBackgroundColor(Color.TRANSPARENT);
+        }
+        tab.setBackgroundColor(Color.TRANSPARENT);
+        tab.setTextColor(Color.parseColor(selected ? "#101010" : "#6A6A6A"));
+        tab.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f);
+        tab.setTypeface(null, android.graphics.Typeface.NORMAL);
+        tab.setGravity(Gravity.CENTER);
+    }
+
+    /** 防止 Tab 切换 / 发消息后 BottomSheet 重测导致 chrome 样式被冲掉。 */
+    private void ensureAiPanelChromeStyles() {
+        if (aiTabContainer != null) {
+            ViewGroup.LayoutParams tabContainerParams = aiTabContainer.getLayoutParams();
+            if (tabContainerParams != null) {
+                tabContainerParams.height = getResources().getDimensionPixelSize(
+                        R.dimen.ai_panel_tab_container_height);
+                aiTabContainer.setLayoutParams(tabContainerParams);
+            }
+            aiTabContainer.setBackgroundResource(R.drawable.lolib_bg_ai_tab_container);
+        }
+        if (aiTabDocQaCell != null && aiTabDocQa != null && aiTabChatCell != null && aiTabChat != null) {
+            applyAiTabCellStyle(aiTabDocQaCell, aiTabDocQa, aiDocQaMode);
+            applyAiTabCellStyle(aiTabChatCell, aiTabChat, !aiDocQaMode);
+        }
+        if (aiInputContainer != null) {
+            ViewGroup.LayoutParams inputParams = aiInputContainer.getLayoutParams();
+            if (inputParams != null) {
+                inputParams.height = getResources().getDimensionPixelSize(R.dimen.ai_panel_input_height);
+                aiInputContainer.setLayoutParams(inputParams);
+            }
+            aiInputContainer.setBackgroundResource(R.drawable.lolib_bg_ai_panel_input);
+        }
+        if (aiRunButton != null) {
+            ViewGroup.LayoutParams sendParams = aiRunButton.getLayoutParams();
+            if (sendParams != null) {
+                int sendSize = getResources().getDimensionPixelSize(R.dimen.ai_panel_send_button_size);
+                sendParams.width = sendSize;
+                sendParams.height = sendSize;
+                aiRunButton.setLayoutParams(sendParams);
+            }
+            aiRunButton.setBackgroundResource(R.drawable.lolib_bg_ai_send_button);
+        }
+        if (aiPromptInput != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            aiPromptInput.setTextCursorDrawable(R.drawable.lolib_ai_text_cursor);
+        }
+        refreshAiMessageBubbleStyles();
+    }
+
+    private void refreshAiMessageBubbleStyles() {
+        if (aiMessagesContainer == null) {
+            return;
+        }
+        for (int i = 0; i < aiMessagesContainer.getChildCount(); i++) {
+            View child = aiMessagesContainer.getChildAt(i);
+            if (child instanceof TextView) {
+                Object tag = child.getTag();
+                applyAiMessageBubbleStyle((TextView) child, Boolean.TRUE.equals(tag));
+            }
+        }
+    }
+
+    private void applyAiMessageBubbleStyle(TextView bubble, boolean userMessage) {
+        if (bubble == null) {
+            return;
+        }
+        int horizontalPadding = dpToPx(16);
+        int verticalPadding = dpToPx(12);
+        int userMinHeight = getResources().getDimensionPixelSize(R.dimen.ai_panel_user_bubble_min_height);
+        ViewGroup.LayoutParams rawParams = bubble.getLayoutParams();
+        if (rawParams instanceof LinearLayout.LayoutParams) {
+            LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) rawParams;
+            params.width = userMessage
+                    ? ViewGroup.LayoutParams.WRAP_CONTENT
+                    : ViewGroup.LayoutParams.MATCH_PARENT;
+            params.gravity = userMessage ? Gravity.END : Gravity.START;
+            bubble.setLayoutParams(params);
+        }
+        bubble.setTextSize(16f);
+        bubble.setTextColor(Color.parseColor("#101010"));
+        if (userMessage) {
+            bubble.setMinHeight(userMinHeight);
+            bubble.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
+            bubble.setBackgroundResource(R.drawable.lolib_bg_ai_user_message);
+            bubble.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * 0.78f));
+        } else {
+            bubble.setMinHeight(0);
+            bubble.setPadding(0, 0, 0, 0);
+            bubble.setBackgroundColor(Color.TRANSPARENT);
+        }
     }
 
     private TextView appendAiMessage(String text, boolean userMessage, boolean streaming) {
         if (aiMessagesContainer == null) {
             return null;
         }
+        int messageGap = getResources().getDimensionPixelSize(R.dimen.ai_panel_message_gap);
+
         TextView bubble = new TextView(this);
-        bubble.setTextSize(16f);
-        bubble.setTextColor(Color.parseColor("#202124"));
-        bubble.setPadding(22, 16, 22, 16);
+        bubble.setTag(userMessage);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        params.topMargin = 10;
+                userMessage ? ViewGroup.LayoutParams.WRAP_CONTENT : ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        if (aiMessagesContainer.getChildCount() > 0) {
+            params.topMargin = messageGap;
+        }
         params.gravity = userMessage ? Gravity.END : Gravity.START;
         bubble.setLayoutParams(params);
-        bubble.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * 0.75f));
-        bubble.setBackgroundColor(userMessage ? Color.parseColor("#E7ECF3") : Color.parseColor("#FFFFFF"));
+        applyAiMessageBubbleStyle(bubble, userMessage);
         renderAiMessageContent(normalizeAiText(text), bubble, userMessage, streaming);
+        applyAiMessageBubbleStyle(bubble, userMessage);
         aiMessagesContainer.addView(bubble);
         if (aiMessagesScroll != null) {
             aiMessagesScroll.post(() -> aiMessagesScroll.fullScroll(View.FOCUS_DOWN));
@@ -15456,6 +15898,7 @@ public class LOActivity extends AppCompatActivity {
 
     private void renderAiMessageContent(String rawText, TextView target, boolean userMessage, boolean streaming) {
         AiMarkdownRenderer.render(rawText, target, userMessage || streaming);
+        applyAiMessageBubbleStyle(target, userMessage);
     }
 
     private void cancelAiFromNativePanel() {
@@ -15578,6 +16021,7 @@ public class LOActivity extends AppCompatActivity {
             }
             appendAiMessage(content, "user".equals(role), false);
         }
+        scheduleAiPanelChromeRefresh();
     }
 
     private void appendAiHistoryMessage(String mode, String role, String content) {
@@ -15849,11 +16293,7 @@ public class LOActivity extends AppCompatActivity {
                     renderAiMessageContent(errorMessage, streamViewSnapshot, false, false);
                 }
                 if ("config_missing".equals(errorCode) && !isFinishing()) {
-                    new AlertDialog.Builder(LOActivity.this)
-                            .setTitle("需要配置基础模型")
-                            .setMessage(errorMessage)
-                            .setPositiveButton("知道了", null)
-                            .show();
+                    showBaseModelConfigRequiredDialog(errorMessage);
                 }
                 aiRequestModeById.remove(requestId);
                 cleanupRequestUiState(requestId);
@@ -15917,6 +16357,7 @@ public class LOActivity extends AppCompatActivity {
             } else {
                 aiStatusText.setTextColor(Color.parseColor("#2E7D32"));
             }
+            ensureAiPanelChromeStyles();
         });
     }
 

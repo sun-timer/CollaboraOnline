@@ -35,9 +35,10 @@
             android:src="@drawable/lolib_ic_dialog_close" />
     </FrameLayout>
 
+    <!-- Figma 125:12715：大框高 76px(38dp) 圆角 12dp，内含两个小框高 60px(30dp) 圆角 8dp -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="38dp"
         android:layout_marginTop="16dp"
         android:background="@drawable/lolib_bg_function_tab_track"
         android:orientation="horizontal"
@@ -46,25 +47,25 @@
         <TextView
             android:id="@+id/function_tab_file"
             android:layout_width="0dp"
-            android:layout_height="60dp"
+            android:layout_height="30dp"
             android:layout_weight="1"
             android:background="@drawable/lolib_bg_function_tab_active"
             android:gravity="center"
             android:text="文件操作"
-            android:textColor="#202124"
+            android:textColor="#101010"
             android:textSize="16sp"
             android:textStyle="normal" />
 
         <TextView
             android:id="@+id/function_tab_review"
             android:layout_width="0dp"
-            android:layout_height="76dp"
+            android:layout_height="30dp"
             android:layout_marginStart="4dp"
             android:layout_weight="1"
             android:background="@drawable/lolib_bg_function_tab_inactive"
             android:gravity="center"
             android:text="审阅"
-            android:textColor="#80868B"
+            android:textColor="#6A6A6A"
             android:textSize="16sp"
             android:textStyle="normal" />
     </LinearLayout>
@@ -171,6 +172,37 @@
         android:visibility="gone">
 
         <LinearLayout
+            android:id="@+id/function_action_find_replace"
+            android:layout_width="match_parent"
+            android:layout_height="76dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp">
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:contentDescription="查找"
+                android:src="@drawable/lolib_ic_function_find_replace" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:text="查找"
+                android:textColor="#202124"
+                android:textSize="18sp"
+                android:textStyle="normal" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#E3E3E3" />
+
+        <!-- 字数统计：仅 Writer 文档显示（表格无此功能） -->
+        <LinearLayout
             android:id="@+id/function_action_word_count"
             android:layout_width="match_parent"
             android:layout_height="76dp"
@@ -183,43 +215,13 @@
                 android:layout_width="28dp"
                 android:layout_height="28dp"
                 android:contentDescription="字数统计"
-                android:src="@drawable/lolib_ic_function_word_count" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
-                android:text="字数统计"
-                android:textColor="#202124"
-                android:textSize="18sp"
-                android:textStyle="normal" />
-        </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#E3E3E3" />
-
-        <LinearLayout
-            android:id="@+id/function_action_find_replace"
-            android:layout_width="match_parent"
-            android:layout_height="76dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
-
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:contentDescription="查找替换"
                 android:src="@drawable/lolib_ic_function_find_replace" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="14dp"
-                android:text="查找替换"
+                android:text="字数统计"
                 android:textColor="#202124"
                 android:textSize="18sp"
                 android:textStyle="normal" />

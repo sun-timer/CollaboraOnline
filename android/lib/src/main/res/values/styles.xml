@@ -2,7 +2,7 @@
 <resources>
     <!-- Selection Popup Button Style: icon over label, compact 5-column row -->
     <style name="SelectionPopupButton">
-        <item name="android:layout_width">56dp</item>
+        <item name="android:layout_width">62dp</item>
         <item name="android:layout_height">match_parent</item>
         <item name="android:background">?attr/selectableItemBackground</item>
         <item name="android:clickable">true</item>
@@ -17,8 +17,8 @@
     </style>
 
     <style name="SelectionPopupButtonIcon">
-        <item name="android:layout_width">24dp</item>
-        <item name="android:layout_height">24dp</item>
+        <item name="android:layout_width">20dp</item>
+        <item name="android:layout_height">20dp</item>
         <item name="android:contentDescription">图标</item>
     </style>
 
