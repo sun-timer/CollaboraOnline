@@ -632,7 +632,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             aiModelConfigDialog.dismiss();
         }
 
-        final Dialog dialog = new Dialog(this, R.style.AiModelConfigDialog);
+        // 勿用自定义透明主题(AiModelConfigDialog: windowIsFloating=false + 透明背景 + 无dim)，
+        // 会导致全屏透明 window 内容不绘制(标题栏在、表单灰)。与重命名/创建 Dialog 一致，用默认浮窗主题 + dim 遮罩。
+        final Dialog dialog = new Dialog(this);
         aiModelConfigDialog = dialog;
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.activity_ai_model_config);
@@ -657,9 +659,13 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         Window window = dialog.getWindow();
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             window.setGravity(Gravity.TOP | Gravity.START);
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            // 带 dim 遮罩，与重命名/创建 Dialog 一致；原 clearFlags(FLAG_DIM_BEHIND) 导致透明 window 内容不绘制
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams params = window.getAttributes();
+            params.dimAmount = 0.3f;
+            window.setAttributes(params);
         }
 
         if (drawerLayout != null) {
