@@ -5,6 +5,7 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Looper;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
@@ -12,6 +13,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.appcompat.widget.AppCompatImageButton;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -126,6 +128,12 @@ public class BottomToolbarController {
         void openLocalImagePickerFromWeb();
 
         void executeUnoCommand(String command);
+
+        void fetchCharFormatState(CharFormatCallback callback);
+    }
+
+    public interface CharFormatCallback {
+        void onResult(boolean bold, boolean italic, boolean underline, boolean strikethrough);
     }
 
     private final Host host;
@@ -193,7 +201,7 @@ public class BottomToolbarController {
         });
         bindToolbarClick(R.id.toolbar_item_merge_cell, v -> {
             hideQuickActionPanel();
-            host.executeUnoCommand(".uno:ToggleMergeCells");
+            showMergeOptions();
         });
 
         applyImeState(isImeVisibleForToolbar, bottomToolbarImeInsetPx, navigationBarInsetPx);
@@ -396,6 +404,16 @@ public class BottomToolbarController {
         quickActionOverlayView.setVisibility(View.VISIBLE);
         quickActionPanelView.setVisibility(View.VISIBLE);
         updateQuickActionToggleState();
+
+        // Fetch current char format state to highlight active toggle buttons
+        if (group == QuickActionGroup.CHARACTER) {
+            host.fetchCharFormatState((bold, italic, underline, strikethrough) -> {
+                updateQuickActionToggleVisual(".uno:Bold", bold);
+                updateQuickActionToggleVisual(".uno:Italic", italic);
+                updateQuickActionToggleVisual(".uno:Underline", underline);
+                updateQuickActionToggleVisual(".uno:Strikeout", strikethrough);
+            });
+        }
     }
 
     private View createQuickActionButton(QuickActionItem item) {
@@ -415,6 +433,9 @@ public class BottomToolbarController {
                 host.dpToPx(QUICK_ACTION_BUTTON_PADDING_V_DP));
         button.setBackgroundResource(R.drawable.lolib_bg_quick_action_chip);
         button.setContentDescription(item.contentDescription);
+        if (item.unoCommand != null && !item.unoCommand.isEmpty()) {
+            button.setTag(item.unoCommand);
+        }
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -435,6 +456,28 @@ public class BottomToolbarController {
             return;
         }
         host.executeUnoCommand(item.unoCommand);
+    }
+
+    private void updateQuickActionToggleVisual(String unoCommand, boolean active) {
+        if (quickActionActionsRow == null) {
+            return;
+        }
+        for (int i = 0; i < quickActionActionsRow.getChildCount(); i++) {
+            View child = quickActionActionsRow.getChildAt(i);
+            if (!(child instanceof AppCompatImageButton)) {
+                continue;
+            }
+            Object tag = child.getTag();
+            if (unoCommand.equals(tag)) {
+                child.setSelected(active);
+                if (active) {
+                    child.getBackground().mutate().setTint(0xFF1A73E8);
+                    ((AppCompatImageButton) child).setImageTintList(
+                            android.content.res.ColorStateList.valueOf(0xFFFFFFFF));
+                }
+                break;
+            }
+        }
     }
 
     private void showColorPicker(String title, String unoCommand, String propertyName, ColorOption[] options) {
@@ -485,6 +528,206 @@ public class BottomToolbarController {
         dialogRef[0] = dialog;
         dialog.show();
         Log.i(TAG, "show_quick_color_picker command=" + unoCommand);
+    }
+
+    private static final String[] MERGE_OPTION_LABELS = {
+            "合并内容", "合并单元格", "合并相同单元格"
+    };
+    private static final String[] MERGE_OPTION_COMMANDS = {
+            ".uno:MergeCells?MoveContents:bool=true",
+            ".uno:MergeCells?MoveContents:bool=false",
+            ".uno:MergeCells?MoveContents:bool=false",
+    };
+
+    /** 合并单元格选项弹窗（Figma 5274:56201）：标题栏 + 提示 + 3 单选选项（各带示意图）+ 确定。 */
+    private void showMergeOptions() {
+        LinearLayout root = new LinearLayout(host.getContext());
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Color.WHITE);
+
+        // 标题栏：返回箭头 + 标题，底部 1px 灰边（Figma 750×86px → 43dp 高）
+        LinearLayout header = new LinearLayout(host.getContext());
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        header.setMinimumHeight(host.dpToPx(43));
+        header.setPadding(host.dpToPx(8), 0, host.dpToPx(16), 0);
+        header.setBackground(createHeaderBottomLineBackground());
+
+        AppCompatImageButton backBtn = new AppCompatImageButton(host.getContext());
+        backBtn.setImageResource(R.drawable.lolib_ic_top_back);
+        TypedValue rippleAttr = new TypedValue();
+        if (host.getContext().getTheme().resolveAttribute(
+                android.R.attr.selectableItemBackgroundBorderless, rippleAttr, true)) {
+            backBtn.setBackgroundResource(rippleAttr.resourceId);
+        }
+        backBtn.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        backBtn.setPadding(host.dpToPx(10), host.dpToPx(10), host.dpToPx(10), host.dpToPx(10));
+        header.addView(backBtn, new LinearLayout.LayoutParams(host.dpToPx(48), host.dpToPx(48)));
+
+        TextView title = new TextView(host.getContext());
+        title.setText("合并单元格");
+        title.setTextColor(Color.parseColor("#333333"));
+        title.setTextSize(16);
+        header.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(header);
+
+        LinearLayout content = new LinearLayout(host.getContext());
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(host.dpToPx(20), host.dpToPx(8), host.dpToPx(20), host.dpToPx(20));
+
+        // 提示文字（Figma 38px → 19sp，#101010）
+        TextView hint = new TextView(host.getContext());
+        hint.setText("部分单元格不为空。");
+        hint.setTextColor(Color.parseColor("#101010"));
+        hint.setTextSize(16);
+        hint.setPadding(0, host.dpToPx(4), 0, host.dpToPx(8));
+        content.addView(hint);
+
+        final int[] selectedIndex = {0};
+        final ImageView[] radioViews = new ImageView[MERGE_OPTION_LABELS.length];
+        final BottomSheetDialog[] dialogRef = new BottomSheetDialog[1];
+
+        for (int i = 0; i < MERGE_OPTION_LABELS.length; i++) {
+            final int index = i;
+            LinearLayout row = new LinearLayout(host.getContext());
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(host.dpToPx(8), host.dpToPx(4), host.dpToPx(8), host.dpToPx(8));
+
+            LinearLayout rowHeader = new LinearLayout(host.getContext());
+            rowHeader.setOrientation(LinearLayout.HORIZONTAL);
+            rowHeader.setGravity(android.view.Gravity.CENTER_VERTICAL);
+
+            TextView label = new TextView(host.getContext());
+            label.setText(MERGE_OPTION_LABELS[i]);
+            label.setTextColor(Color.parseColor("#333333"));
+            label.setTextSize(16);
+            rowHeader.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            ImageView radio = new ImageView(host.getContext());
+            radio.setImageResource(i == 0
+                    ? R.drawable.lolib_ic_calc_toggle_checked
+                    : R.drawable.lolib_ic_calc_toggle_unchecked);
+            rowHeader.addView(radio, new LinearLayout.LayoutParams(host.dpToPx(20), host.dpToPx(20)));
+            radioViews[i] = radio;
+
+            View preview = createMergePreviewRow(index);
+            LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(32));
+            previewLp.topMargin = host.dpToPx(4);
+
+            row.addView(rowHeader);
+            row.addView(preview, previewLp);
+
+            row.setOnClickListener(v -> {
+                selectedIndex[0] = index;
+                for (int j = 0; j < radioViews.length; j++) {
+                    radioViews[j].setImageResource(j == index
+                            ? R.drawable.lolib_ic_calc_toggle_checked
+                            : R.drawable.lolib_ic_calc_toggle_unchecked);
+                }
+            });
+            content.addView(row);
+        }
+
+        TextView confirm = new TextView(host.getContext());
+        confirm.setText("确定");
+        confirm.setTextColor(Color.WHITE);
+        confirm.setTextSize(16);
+        confirm.setGravity(android.view.Gravity.CENTER);
+        confirm.setBackground(createMergeConfirmBackground());
+        LinearLayout.LayoutParams confirmLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(44));
+        confirmLp.topMargin = host.dpToPx(12);
+        confirm.setLayoutParams(confirmLp);
+        confirm.setOnClickListener(v -> {
+            host.executeUnoCommand(MERGE_OPTION_COMMANDS[selectedIndex[0]]);
+            if (dialogRef[0] != null) {
+                dialogRef[0].dismiss();
+            }
+        });
+        content.addView(confirm);
+
+        root.addView(content);
+
+        final BottomSheetDialog dialog = new BottomSheetDialog(host.getContext());
+        dialog.setContentView(root);
+        dialogRef[0] = dialog;
+        backBtn.setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
+        Log.i(TAG, "show_merge_options");
+    }
+
+    /** 合并示意图（代码绘制，避免 vector 渲染问题）：[1][2] → [合并后] */
+    private View createMergePreviewRow(int mode) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+
+        // 合并前两个格子
+        row.addView(createPreviewCell(host.dpToPx(36), "1"));
+        row.addView(createPreviewCell(host.dpToPx(36), "2"));
+
+        // 箭头
+        TextView arrow = new TextView(host.getContext());
+        arrow.setText("→");
+        arrow.setTextColor(Color.parseColor("#333333"));
+        arrow.setTextSize(16);
+        LinearLayout.LayoutParams arrowLp = new LinearLayout.LayoutParams(
+                host.dpToPx(28), ViewGroup.LayoutParams.WRAP_CONTENT);
+        arrow.setGravity(android.view.Gravity.CENTER);
+        row.addView(arrow, arrowLp);
+
+        // 合并后格子：content 模式保留两个值，cells/same 只留一个
+        if (mode == 0) {
+            row.addView(createPreviewCell(host.dpToPx(72), "1 2"));
+        } else {
+            row.addView(createPreviewCell(host.dpToPx(72), "1"));
+        }
+        return row;
+    }
+
+    /** 单个示意图格子：带边框 + 居中小字。 */
+    private View createPreviewCell(int widthDp, String text) {
+        TextView cell = new TextView(host.getContext());
+        cell.setText(text);
+        cell.setTextColor(Color.parseColor("#333333"));
+        cell.setTextSize(12);
+        cell.setGravity(android.view.Gravity.CENTER);
+        cell.setBackground(createPreviewCellBackground());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(widthDp, host.dpToPx(28));
+        lp.setMargins(host.dpToPx(2), 0, host.dpToPx(2), 0);
+        cell.setLayoutParams(lp);
+        return cell;
+    }
+
+    private GradientDrawable createPreviewCellBackground() {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.RECTANGLE);
+        drawable.setColor(Color.WHITE);
+        drawable.setStroke(host.dpToPx(1), Color.parseColor("#333333"));
+        return drawable;
+    }
+
+    private android.graphics.drawable.Drawable createHeaderBottomLineBackground() {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.RECTANGLE);
+        bg.setColor(Color.WHITE);
+        GradientDrawable line = new GradientDrawable();
+        line.setShape(GradientDrawable.RECTANGLE);
+        line.setColor(Color.parseColor("#A2A9B2"));
+        android.graphics.drawable.LayerDrawable layer = new android.graphics.drawable.LayerDrawable(
+                new android.graphics.drawable.Drawable[]{bg, line});
+        layer.setLayerInset(1, 0, host.dpToPx(42), 0, 0);
+        return layer;
+    }
+
+    private GradientDrawable createMergeConfirmBackground() {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.RECTANGLE);
+        drawable.setColor(Color.parseColor("#3B8040"));
+        drawable.setCornerRadius(host.dpToPx(22));
+        return drawable;
     }
 
     private GradientDrawable createColorChipBackground(int rgb) {
