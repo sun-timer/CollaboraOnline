@@ -40,8 +40,8 @@ public class TopToolbarController {
     private LinearLayout previewToolbarView;
     private View editToolbarView;
     private TextView previewTitleView;
-    private TextView previewOpenDocsCountView;
-    private TextView editOpenDocsCountView;
+    private TextView openDocsCountPreviewView;
+    private TextView openDocsCountEditView;
     private View doneButton;
     private View undoButton;
     private View redoButton;
@@ -63,8 +63,8 @@ public class TopToolbarController {
         previewToolbarView = asLinearLayout(host.findViewById(R.id.top_toolbar_preview));
         editToolbarView = host.findViewById(R.id.top_toolbar_edit);
         previewTitleView = asTextView(host.findViewById(R.id.top_title_preview));
-        previewOpenDocsCountView = asTextView(host.findViewById(R.id.top_open_docs_count_preview));
-        editOpenDocsCountView = asTextView(host.findViewById(R.id.top_open_docs_count_edit));
+        openDocsCountPreviewView = asTextView(host.findViewById(R.id.top_open_docs_count_preview));
+        openDocsCountEditView = asTextView(host.findViewById(R.id.top_open_docs_count_edit));
         doneButton = host.findViewById(R.id.top_btn_done);
         undoButton = host.findViewById(R.id.top_btn_undo);
         redoButton = host.findViewById(R.id.top_btn_redo);
@@ -79,7 +79,6 @@ public class TopToolbarController {
         bindClick(R.id.top_btn_search_preview, v -> host.showFindReplaceSheet());
         bindClick(R.id.top_btn_share_preview, v -> host.shareCurrentDocument());
         bindClick(R.id.top_btn_open_docs_preview, v -> host.showDocumentTabsSheet());
-        bindClick(R.id.top_btn_search_edit, v -> host.showFindReplaceSheet());
         bindClick(R.id.top_btn_open_docs_edit, v -> host.showDocumentTabsSheet());
 
         refreshDocumentTitle();
@@ -98,12 +97,13 @@ public class TopToolbarController {
 
     public void refreshOpenDocumentCount() {
         Runnable applyTask = () -> {
-            String countText = String.valueOf(Math.max(1, host.getOpenDocumentCount()));
-            if (previewOpenDocsCountView != null) {
-                previewOpenDocsCountView.setText(countText);
+            int count = host.getOpenDocumentCount();
+            String label = String.valueOf(count);
+            if (openDocsCountPreviewView != null) {
+                openDocsCountPreviewView.setText(label);
             }
-            if (editOpenDocsCountView != null) {
-                editOpenDocsCountView.setText(countText);
+            if (openDocsCountEditView != null) {
+                openDocsCountEditView.setText(label);
             }
         };
         runOnUi(applyTask);
@@ -150,7 +150,6 @@ public class TopToolbarController {
             if (editToolbarView != null) {
                 editToolbarView.setVisibility(isEditMode ? View.VISIBLE : View.GONE);
             }
-            refreshOpenDocumentCount();
             Log.i(TAG, "top_toolbar_mode edit=" + isEditMode + " reason=" + reason);
         };
         if (Looper.myLooper() == Looper.getMainLooper()) {

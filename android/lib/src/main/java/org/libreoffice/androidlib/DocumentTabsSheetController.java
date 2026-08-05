@@ -180,11 +180,11 @@ public class DocumentTabsSheetController {
         if (TextUtils.isEmpty(displayName)) {
             displayName = uri.getLastPathSegment();
         }
-        title.setText(displayName);
-        subtitle.setText(formatSubtitle(uri));
         if (icon != null) {
             icon.setImageResource(fileTypeIconRes(displayName));
         }
+        title.setText(stripDisplayExtension(displayName));
+        subtitle.setText(formatSubtitle(uri));
 
         boolean isCurrent = uriString.equals(currentUri);
         current.setVisibility(isCurrent ? View.VISIBLE : View.GONE);
@@ -224,6 +224,37 @@ public class DocumentTabsSheetController {
         return R.drawable.lolib_ic_file_type_writer;
     }
 
+    private static String stripDisplayExtension(String name) {
+        if (TextUtils.isEmpty(name)) {
+            return name;
+        }
+        int dot = name.lastIndexOf('.');
+        if (dot <= 0 || dot >= name.length() - 1) {
+            return name;
+        }
+        String ext = name.substring(dot + 1).toLowerCase(Locale.ROOT);
+        switch (ext) {
+            case "odt":
+            case "ods":
+            case "odp":
+            case "odg":
+            case "odf":
+            case "doc":
+            case "docx":
+            case "xls":
+            case "xlsx":
+            case "ppt":
+            case "pptx":
+            case "pdf":
+            case "txt":
+            case "rtf":
+            case "csv":
+                return name.substring(0, dot);
+            default:
+                return name;
+        }
+    }
+
     private String queryDisplayName(Uri uri) {
         Cursor cursor = null;
         try {
@@ -261,17 +292,29 @@ public class DocumentTabsSheetController {
                 cursor.close();
             }
         }
+        SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd", Locale.getDefault());
         if (updated <= 0L) {
-            return "今天";
+            return timeFormat.format(new Date());
         }
         Calendar today = Calendar.getInstance();
         Calendar fileDay = Calendar.getInstance();
         fileDay.setTimeInMillis(updated);
-        if (today.get(Calendar.YEAR) == fileDay.get(Calendar.YEAR)
-                && today.get(Calendar.DAY_OF_YEAR) == fileDay.get(Calendar.DAY_OF_YEAR)) {
-            return "今天 " + new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(updated));
+        Date updatedDate = new Date(updated);
+        if (isSameDay(today, fileDay)) {
+            return timeFormat.format(updatedDate);
         }
-        return new SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(new Date(updated));
+        Calendar yesterday = Calendar.getInstance();
+        yesterday.add(Calendar.DAY_OF_YEAR, -1);
+        if (isSameDay(yesterday, fileDay)) {
+            return "昨天 " + timeFormat.format(updatedDate);
+        }
+        return dateFormat.format(updatedDate);
+    }
+
+    private static boolean isSameDay(Calendar left, Calendar right) {
+        return left.get(Calendar.YEAR) == right.get(Calendar.YEAR)
+                && left.get(Calendar.DAY_OF_YEAR) == right.get(Calendar.DAY_OF_YEAR);
     }
 
     private static void styleTab(TextView tab, boolean active) {
@@ -281,6 +324,7 @@ public class DocumentTabsSheetController {
         tab.setBackgroundResource(active
                 ? R.drawable.lolib_bg_document_tabs_tab_active
                 : android.R.color.transparent);
-        tab.setTextColor(active ? 0xFF202124 : 0xFF80868B);
+        tab.setTextColor(active ? 0xFF101010 : 0xFFCCCCCC);
+        tab.setTypeface(tab.getTypeface(), android.graphics.Typeface.NORMAL);
     }
 }

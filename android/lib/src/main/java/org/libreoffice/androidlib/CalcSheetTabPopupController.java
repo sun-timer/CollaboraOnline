@@ -36,7 +36,11 @@ public final class CalcSheetTabPopupController {
 
         void executeUnoCommand(String command);
 
+        void evaluateJavascript(String script);
+
         void copySheet(int tabIndex);
+
+        void ensureEditModeThen(Runnable action);
     }
 
     private final Host host;
@@ -79,6 +83,8 @@ public final class CalcSheetTabPopupController {
     }
 
     private void setupRenameDialog() {
+        Log.i(TAG, "setup_rename_dialog overlayNull=" + (renameOverlayView == null)
+                + " panelNull=" + (renamePanelView == null));
         if (renameOverlayView == null || renamePanelView == null) {
             return;
         }
@@ -88,6 +94,11 @@ public final class CalcSheetTabPopupController {
         View closeBtn = renamePanelView.findViewById(R.id.ai_dialog_header_close);
         View cancelBtn = renamePanelView.findViewById(R.id.calc_sheet_rename_cancel);
         View confirmBtn = renamePanelView.findViewById(R.id.calc_sheet_rename_confirm);
+        Log.i(TAG, "setup_rename_dialog inputNull=" + (renameInputView == null)
+                + " titleNull=" + (titleView == null)
+                + " closeNull=" + (closeBtn == null)
+                + " cancelNull=" + (cancelBtn == null)
+                + " confirmNull=" + (confirmBtn == null));
         if (titleView != null) {
             titleView.setText("重命名工作表");
         }
@@ -171,7 +182,9 @@ public final class CalcSheetTabPopupController {
     }
 
     private void positionPopup(float anchorX, float anchorY, float anchorBottom) {
-        positionFloatingPanel(popupView, anchorX, anchorY, anchorBottom, 0);
+        // 固定 206dp 宽（对齐设计稿 412×224px ÷2），避免 WRAP_CONTENT 被内容撑满屏
+        positionFloatingPanel(popupView, anchorX, anchorY, anchorBottom,
+                Math.round(host.dpToPx(206f)));
     }
 
     /**
@@ -294,6 +307,8 @@ public final class CalcSheetTabPopupController {
         renameInputView.setSelection(renameInputView.getText().length());
         renameOverlayView.setVisibility(View.VISIBLE);
         renamePanelView.setVisibility(View.VISIBLE);
+        // 确保弹窗面板在透明遮罩之上，否则确定/取消点击会被 overlay 拦截（点确定只关闭弹窗）
+        renamePanelView.bringToFront();
         renamePanelView.post(() -> {
             positionRenameDialogNearAnchor(anchorX, anchorY, anchorBottom);
             renameInputView.requestFocus();
@@ -309,20 +324,43 @@ public final class CalcSheetTabPopupController {
 
     private void positionRenameDialogNearAnchor(float anchorX, float anchorY, float anchorBottom) {
         View parent = (View) renamePanelView.getParent();
-        if (parent == null) {
+        if (parent == null || !(renamePanelView.getLayoutParams() instanceof ConstraintLayout.LayoutParams)) {
             return;
         }
         int parentWidth = parent.getWidth();
-        if (parentWidth <= 0) {
+        int parentHeight = parent.getHeight();
+        if (parentWidth <= 0 || parentHeight <= 0) {
             return;
         }
         int targetWidth = Math.min(
                 Math.round(host.dpToPx(RENAME_DIALOG_MAX_WIDTH_DP)),
                 parentWidth - Math.round(host.dpToPx(RENAME_DIALOG_SIDE_MARGIN_DP)));
-        positionFloatingPanel(renamePanelView, anchorX, anchorY, anchorBottom, targetWidth);
+        renamePanelView.measure(
+                View.MeasureSpec.makeMeasureSpec(targetWidth, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        int popupW = renamePanelView.getMeasuredWidth();
+        int popupH = renamePanelView.getMeasuredHeight();
+
+        ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) renamePanelView.getLayoutParams();
+        lp.width = targetWidth;
+        lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+        lp.leftToLeft = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.rightToRight = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.horizontalBias = 0.5f;
+        lp.verticalBias = 0.5f;
+        lp.leftMargin = 0;
+        lp.topMargin = 0;
+        lp.rightMargin = 0;
+        lp.bottomMargin = 0;
+        renamePanelView.setLayoutParams(lp);
+        Log.i(TAG, "position_rename_dialog_centered size=" + popupW + "x" + popupH
+                + " parent=" + parentWidth + "x" + parentHeight);
     }
 
     private void hideRenameDialog() {
+        Log.i(TAG, "hide_rename_dialog from=" + Thread.currentThread().getStackTrace()[3].getMethodName());
         if (renameInputView != null) {
             InputMethodManager imm = (InputMethodManager) host.getContext()
                     .getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -340,12 +378,15 @@ public final class CalcSheetTabPopupController {
     }
 
     private void confirmRename() {
+        Log.i(TAG, "confirm_rename entered renameTabIndex=" + renameTabIndex
+                + " inputNull=" + (renameInputView == null));
         if (renameInputView == null || renameTabIndex < 0) {
             hideRenameDialog();
             return;
         }
         String newName = renameInputView.getText() != null
                 ? renameInputView.getText().toString().trim() : "";
+        Log.i(TAG, "confirm_rename newName='" + newName + "' len=" + newName.length());
         if (TextUtils.isEmpty(newName)) {
             Toast.makeText(host.getContext(), "请输入工作表名称", Toast.LENGTH_SHORT).show();
             return;
@@ -357,17 +398,16 @@ public final class CalcSheetTabPopupController {
 
     private void renameSheet(int tabIndex, String newName) {
         try {
-            JSONObject nameObj = new JSONObject();
-            nameObj.put("type", "string");
-            nameObj.put("value", newName);
-            JSONObject indexObj = new JSONObject();
-            indexObj.put("type", "long");
-            indexObj.put("value", tabIndex + 1);
-            JSONObject args = new JSONObject();
-            args.put("Name", nameObj);
-            args.put("Index", indexObj);
-            host.executeUnoCommand(".uno:Name " + args);
-            Log.i(TAG, "rename_sheet index=" + tabIndex + " name=" + newName);
+            // core FID_TAB_RENAME 需要：文档可编辑(IsDocEditable)、sheet 未保护(IsTabProtected)、
+            // 选中单一 sheet；否则直接 return 不重命名。因此用 ensureEditModeThen 包裹，
+            // 确保进入编辑模式后再发命令。
+            // Index 参数：core 按 1-based 读入后转回 0-based（tabvwshf.cxx），故传 tabIndex+1。
+            final String command = ".uno:Name?Name:string=" + newName + "&Index=" + (tabIndex + 1);
+            host.ensureEditModeThen(() -> {
+                host.executeUnoCommand(command);
+                Log.i(TAG, "rename_sheet_uno index=" + tabIndex + " name=" + newName
+                        + " command=" + command);
+            });
         } catch (Exception e) {
             Log.w(TAG, "rename_sheet failed: " + e.getMessage());
         }

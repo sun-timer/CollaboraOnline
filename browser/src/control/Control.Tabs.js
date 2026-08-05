@@ -389,6 +389,21 @@ window.L.Control.Tabs = window.L.Control.extend({
 		if (part !== this._map._docLayer._selectedPart) {
 			this._setPartIndex(part);
 		}
+		else if (window.ThisIsTheAndroidApp && window.mode.isMobile()) {
+			// 点击当前选中的工作表 tab → 弹出重命名/复制菜单
+			var tabEl = e.currentTarget;
+			var rect = tabEl.getBoundingClientRect();
+			var sheetName = tabEl.textContent || ('Sheet ' + (part + 1));
+			var isProtected = window.L.DomUtil.hasClass(tabEl, 'spreadsheet-tab-protected');
+			window.postMobileMessage('SHEET_TAB_POPUP show ' + JSON.stringify({
+				tabIndex: part,
+				sheetName: sheetName,
+				isProtected: isProtected,
+				anchorX: rect ? rect.left + rect.width * 0.5 : 0,
+				anchorY: rect ? rect.top : 0,
+				anchorBottom: rect ? rect.bottom : 0
+			}));
+		}
 	},
 
 	//selected sheet is moved to new index

@@ -37,9 +37,8 @@
             android:maxLines="1"
             android:paddingStart="4dp"
             android:paddingEnd="8dp"
-            android:textColor="#202124"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:textColor="#101010"
+            android:textSize="18sp" />
 
         <ImageButton
             android:id="@+id/top_btn_search_preview"
@@ -68,28 +67,25 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:clickable="true"
             android:contentDescription="已打开文档"
-            android:focusable="true"
-            android:padding="11dp">
+            android:focusable="true">
 
             <ImageView
-                android:layout_width="26dp"
-                android:layout_height="31dp"
-                android:layout_gravity="center"
-                android:contentDescription="已打开文档"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:importantForAccessibility="no"
+                android:padding="12dp"
                 android:scaleType="fitCenter"
-                android:src="@drawable/lolib_ic_top_open_docs_frame" />
+                android:src="@drawable/lolib_ic_top_open_docs" />
 
             <TextView
                 android:id="@+id/top_open_docs_count_preview"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:layout_marginTop="2dp"
-                android:gravity="center"
-                android:includeFontPadding="false"
-                android:textColor="#101010"
-                android:textSize="12sp"
-                android:textStyle="bold" />
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="18dp"
+                android:importantForAccessibility="no"
+                android:textColor="#000000"
+                android:textSize="10sp" />
         </FrameLayout>
     </LinearLayout>
 
@@ -154,16 +150,6 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <ImageButton
-                android:id="@+id/top_btn_search_edit"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="搜索"
-                android:padding="12dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/lolib_ic_top_search" />
-
             <FrameLayout
                 android:id="@+id/top_btn_open_docs_edit"
                 android:layout_width="48dp"
@@ -171,28 +157,25 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:clickable="true"
                 android:contentDescription="已打开文档"
-                android:focusable="true"
-                android:padding="11dp">
+                android:focusable="true">
 
                 <ImageView
-                    android:layout_width="26dp"
-                    android:layout_height="31dp"
-                    android:layout_gravity="center"
-                    android:contentDescription="已打开文档"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:importantForAccessibility="no"
+                    android:padding="12dp"
                     android:scaleType="fitCenter"
-                    android:src="@drawable/lolib_ic_top_open_docs_frame" />
+                    android:src="@drawable/lolib_ic_top_open_docs" />
 
                 <TextView
                     android:id="@+id/top_open_docs_count_edit"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:layout_marginTop="2dp"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:textColor="#101010"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="18dp"
+                    android:importantForAccessibility="no"
+                    android:textColor="#000000"
+                    android:textSize="10sp" />
             </FrameLayout>
 
             <ImageButton

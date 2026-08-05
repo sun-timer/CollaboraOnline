@@ -17,7 +17,7 @@ public class SelectionMenuController {
     private static final float POPUP_MARGIN_DP = 16f;
     private static final float POPUP_ANCHOR_GAP_DP = 12f;
     private static final float POPUP_SELECTION_GAP_DP = 24f;
-    private static final float POPUP_MAX_WIDTH_DP = 296f; // 5 × 56dp + padding
+    private static final float POPUP_MAX_WIDTH_DP = 260f; // 4 × 62dp + padding (Figma 520px)
     private static final int[] SELECTION_AI_SECTION_IDS = new int[] {
             R.id.selection_divider_1,
             R.id.selection_ai_row_1,
@@ -255,13 +255,14 @@ public class SelectionMenuController {
     }
 
     private void updateEditActionVisibility() {
-        boolean showEditActions = host.isEditModeActive();
+        boolean docEditable = host.isDocEditable();
+        boolean editMode = host.isEditModeActive();
 
         if (graphicMode) {
             // Graphic mode: only show delete, copy, cut
             setViewVisibility(R.id.selection_op_delete, View.VISIBLE);
             setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
-            setViewVisibility(R.id.selection_op_cut, showEditActions ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_cut, docEditable ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_paste, View.GONE);
             setViewVisibility(R.id.selection_op_select_all, View.GONE);
             setViewVisibility(R.id.selection_op_translate, View.GONE);
@@ -271,13 +272,16 @@ public class SelectionMenuController {
             updatePopupWidthForGraphic();
         } else {
             setViewVisibility(R.id.selection_op_delete, View.GONE);
-            setViewVisibility(R.id.selection_op_paste, showEditActions ? View.VISIBLE : View.GONE);
-            setViewVisibility(R.id.selection_op_cut, showEditActions ? View.VISIBLE : View.GONE);
-            setViewVisibility(R.id.selection_op_translate, showEditActions ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_select_all, View.VISIBLE);
+            setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
+            // Paste/cut: available whenever the document is editable (preview or edit mode).
+            setViewVisibility(R.id.selection_op_paste, docEditable ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_cut, docEditable ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_translate, editMode ? View.VISIBLE : View.GONE);
             for (int sectionId : SELECTION_AI_SECTION_IDS) {
-                setViewVisibility(sectionId, showEditActions ? View.VISIBLE : View.GONE);
+                setViewVisibility(sectionId, editMode ? View.VISIBLE : View.GONE);
             }
-            updatePopupWidth(showEditActions);
+            updatePopupWidth(editMode);
         }
     }
 
