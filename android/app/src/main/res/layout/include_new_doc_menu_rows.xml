@@ -4,16 +4,16 @@
     <LinearLayout
         android:id="@+id/newDocMenuRowWriter"
         android:layout_width="match_parent"
-        android:layout_height="96dp"
+        android:layout_height="@dimen/home_new_doc_menu_row_height"
         android:background="?android:attr/selectableItemBackground"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp">
+        android:paddingStart="@dimen/home_new_doc_menu_row_padding"
+        android:paddingEnd="@dimen/home_new_doc_menu_row_padding">
 
         <ImageView
-            android:layout_width="56dp"
-            android:layout_height="56dp"
+            android:layout_width="@dimen/home_new_doc_menu_icon_width"
+            android:layout_height="@dimen/home_new_doc_menu_icon_height"
             android:contentDescription="@string/new_doc_writer_label"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_file_type_writer" />
@@ -21,10 +21,12 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
+            android:layout_marginStart="@dimen/home_new_doc_menu_row_gap"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:text="@string/new_doc_writer_label"
             android:textColor="#333333"
-            android:textSize="17sp" />
+            android:textSize="@dimen/home_new_doc_menu_text_size" />
     </LinearLayout>
 
     <View
@@ -35,16 +37,16 @@
     <LinearLayout
         android:id="@+id/newDocMenuRowCalc"
         android:layout_width="match_parent"
-        android:layout_height="96dp"
+        android:layout_height="@dimen/home_new_doc_menu_row_height"
         android:background="?android:attr/selectableItemBackground"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp">
+        android:paddingStart="@dimen/home_new_doc_menu_row_padding"
+        android:paddingEnd="@dimen/home_new_doc_menu_row_padding">
 
         <ImageView
-            android:layout_width="56dp"
-            android:layout_height="56dp"
+            android:layout_width="@dimen/home_new_doc_menu_icon_width"
+            android:layout_height="@dimen/home_new_doc_menu_icon_height"
             android:contentDescription="@string/new_doc_calc_label"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_file_type_calc" />
@@ -52,10 +54,12 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
+            android:layout_marginStart="@dimen/home_new_doc_menu_row_gap"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:text="@string/new_doc_calc_label"
             android:textColor="#333333"
-            android:textSize="17sp" />
+            android:textSize="@dimen/home_new_doc_menu_text_size" />
     </LinearLayout>
 
     <View
@@ -66,16 +70,16 @@
     <LinearLayout
         android:id="@+id/newDocMenuRowImpress"
         android:layout_width="match_parent"
-        android:layout_height="96dp"
+        android:layout_height="@dimen/home_new_doc_menu_row_height"
         android:background="?android:attr/selectableItemBackground"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp">
+        android:paddingStart="@dimen/home_new_doc_menu_row_padding"
+        android:paddingEnd="@dimen/home_new_doc_menu_row_padding">
 
         <ImageView
-            android:layout_width="56dp"
-            android:layout_height="56dp"
+            android:layout_width="@dimen/home_new_doc_menu_icon_width"
+            android:layout_height="@dimen/home_new_doc_menu_icon_height"
             android:contentDescription="@string/new_doc_impress_label"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_file_type_impress" />
@@ -83,9 +87,11 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
+            android:layout_marginStart="@dimen/home_new_doc_menu_row_gap"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:text="@string/new_doc_impress_label"
             android:textColor="#333333"
-            android:textSize="17sp" />
+            android:textSize="@dimen/home_new_doc_menu_text_size" />
     </LinearLayout>
 </merge>

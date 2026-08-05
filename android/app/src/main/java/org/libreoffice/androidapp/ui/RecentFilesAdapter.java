@@ -21,6 +21,7 @@ import org.libreoffice.androidapp.R;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -147,8 +148,25 @@ class RecentFilesAdapter extends RecyclerView.Adapter<RecentFilesAdapter.ViewHol
         if (openedAt <= 0L) {
             return "";
         }
-        SimpleDateFormat df = new SimpleDateFormat("yyyy/M/d", Locale.getDefault());
-        return df.format(new Date(openedAt));
+        Calendar today = Calendar.getInstance();
+        today.set(Calendar.HOUR_OF_DAY, 0);
+        today.set(Calendar.MINUTE, 0);
+        today.set(Calendar.SECOND, 0);
+        today.set(Calendar.MILLISECOND, 0);
+        long todayStart = today.getTimeInMillis();
+        long yesterdayStart = todayStart - 24L * 60L * 60L * 1000L;
+
+        Date date = new Date(openedAt);
+        if (openedAt >= todayStart) {
+            SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
+            return timeFormat.format(date);
+        }
+        if (openedAt >= yesterdayStart) {
+            SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
+            return "昨天 " + timeFormat.format(date);
+        }
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy/M/d", Locale.getDefault());
+        return dateFormat.format(date);
     }
 
     @Override

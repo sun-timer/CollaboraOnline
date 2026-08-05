@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="14dp"
+    android:layout_marginTop="@dimen/ai_model_config_slider_item_gap"
     android:orientation="vertical">
 
     <LinearLayout
@@ -15,22 +15,27 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="@string/ai_max_tokens"
-            android:textColor="#202124"
-            android:textSize="16sp" />
+            android:textColor="#101010"
+            android:textSize="@dimen/ai_model_config_slider_label_size" />
 
         <TextView
             android:id="@+id/maxTokensValue"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#202124"
-            android:textSize="16sp" />
+            android:textColor="#101010"
+            android:textSize="@dimen/ai_model_config_slider_label_size" />
     </LinearLayout>
 
     <SeekBar
         android:id="@+id/maxTokensBar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:progressTint="#FF6D00"
-        android:thumbTint="#FF6D00" />
+        android:layout_height="@dimen/ai_model_config_slider_track_height"
+        android:layout_marginTop="@dimen/ai_model_config_slider_label_bar_gap"
+        android:maxHeight="@dimen/ai_model_config_slider_track_height"
+        android:minHeight="@dimen/ai_model_config_slider_track_height"
+        android:paddingStart="0dp"
+        android:paddingEnd="0dp"
+        android:progressTint="#FA6200"
+        android:splitTrack="false"
+        android:thumbTint="#FA6200" />
 </LinearLayout>

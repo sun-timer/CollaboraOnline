@@ -1,8 +1,12 @@
 package org.libreoffice.androidapp.ui;
 
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.view.View;
-import android.widget.Button;
+import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -19,14 +23,15 @@ public class LocalModelActivity extends AppCompatActivity {
     private TextView statusText;
     private ProgressBar progressBar;
     private TextView progressText;
-    private Button downloadButton;
+    private TextView downloadButton;
     private SwitchCompat enableSwitch;
-    private Button deleteButton;
+    private TextView deleteButton;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_local_model);
+        setupBottomSheetWindow();
 
         modelManager = LocalModelManager.getInstance(this);
         statusText = findViewById(R.id.localModelStatusText);
@@ -35,6 +40,24 @@ public class LocalModelActivity extends AppCompatActivity {
         downloadButton = findViewById(R.id.localModelDownloadButton);
         enableSwitch = findViewById(R.id.localModelEnableSwitch);
         deleteButton = findViewById(R.id.localModelDeleteButton);
+
+        View root = findViewById(R.id.localModelRoot);
+        View sheet = findViewById(R.id.localModelSheet);
+        View closeButton = findViewById(R.id.localModelCloseButton);
+        View confirmButton = findViewById(R.id.localModelConfirmButton);
+
+        if (root != null) {
+            root.setOnClickListener(v -> finish());
+        }
+        if (sheet != null) {
+            sheet.setOnClickListener(v -> { /* keep sheet open */ });
+        }
+        if (closeButton != null) {
+            closeButton.setOnClickListener(v -> finish());
+        }
+        if (confirmButton != null) {
+            confirmButton.setOnClickListener(v -> finish());
+        }
 
         if (!modelManager.isDeviceSupported()) {
             statusText.setText(R.string.local_model_device_unsupported);
@@ -58,6 +81,20 @@ public class LocalModelActivity extends AppCompatActivity {
         refreshUi();
     }
 
+    private void setupBottomSheetWindow() {
+        Window window = getWindow();
+        if (window == null) {
+            return;
+        }
+        window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        window.setGravity(android.view.Gravity.BOTTOM);
+        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        WindowManager.LayoutParams params = window.getAttributes();
+        params.dimAmount = 0.3f;
+        window.setAttributes(params);
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -70,7 +107,6 @@ public class LocalModelActivity extends AppCompatActivity {
     }
 
     private void startDownload() {
-        LocalModelManager.CatalogEntry entry = LocalModelManager.getDefaultCatalogEntry();
         progressBar.setVisibility(View.VISIBLE);
         progressText.setVisibility(View.VISIBLE);
         downloadButton.setEnabled(false);

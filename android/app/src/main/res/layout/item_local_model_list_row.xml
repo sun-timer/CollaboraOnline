@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/local_model_list_row_height"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/local_model_list_row_padding_h"
+        android:paddingEnd="@dimen/local_model_list_row_padding_h">
+
+        <TextView
+            android:id="@+id/localModelRowName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="#333333"
+            android:textSize="@dimen/local_model_list_row_title_size" />
+
+        <TextView
+            android:id="@+id/localModelRowAction"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/local_model_list_action_height"
+            android:background="@drawable/bg_local_model_action_btn"
+            android:gravity="center"
+            android:minWidth="@dimen/local_model_list_action_min_width"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:textColor="#333333"
+            android:textSize="@dimen/local_model_list_action_text_size" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_drawer_model_divider" />
+</LinearLayout>

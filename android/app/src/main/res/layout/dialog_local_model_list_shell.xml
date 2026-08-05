@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/localModelListDialogRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:id="@+id/localModelListDialogCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginStart="@dimen/local_model_list_dialog_margin_h"
+        android:layout_marginEnd="@dimen/local_model_list_dialog_margin_h"
+        android:background="@drawable/bg_local_model_dialog_card"
+        android:clickable="true"
+        android:elevation="8dp"
+        android:focusable="true"
+        android:maxHeight="@dimen/local_model_list_max_height"
+        android:orientation="vertical">
+
+        <include layout="@layout/dialog_local_model_list" />
+    </LinearLayout>
+</FrameLayout>

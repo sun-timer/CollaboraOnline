@@ -24,6 +24,24 @@
         <item name="colorPrimary">@android:color/black</item>
     </style>
 
+    <style name="LocalModelBottomSheet" parent="LibreOfficeTheme.Base">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
+
+    <!-- 全屏 Dialog 二级面板：windowIsFloating=false，独立 Window 盖在 Drawer 之上 -->
+    <style name="AiModelConfigDialog" parent="Theme.AppCompat.Dialog">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+
+    <!-- 勿加 windowIsTranslucent：会导致二级配置页整屏发灰、内容不绘制（与历史动画主题问题同类） -->
+    <style name="AiModelConfigOverlay" parent="LibreOfficeTheme.Base">
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+
     <style name="NewDocumentTextView">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>

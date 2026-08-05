@@ -1,26 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/createDialogScroll"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/createDialogRoot"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:clipToPadding="false"
-    android:fillViewport="true"
-    android:paddingStart="20dp"
-    android:paddingTop="48dp"
-    android:paddingEnd="20dp"
-    android:paddingBottom="24dp"
-    android:scrollbars="none">
+    android:layout_height="match_parent">
 
     <LinearLayout
-        android:id="@+id/createDialogInner"
+        android:id="@+id/createDialogCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
+        android:layout_gravity="bottom"
+        android:background="@drawable/bg_create_file_bottom_sheet"
+        android:clickable="true"
+        android:focusable="true"
         android:orientation="vertical">
 
-        <include
-            layout="@layout/dialog_create_file"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+        <include layout="@layout/dialog_create_file" />
     </LinearLayout>
-</ScrollView>
+</FrameLayout>

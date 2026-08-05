@@ -200,7 +200,8 @@
         <activity
             android:name=".ui.LocalModelActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
-            android:exported="false" />
+            android:exported="false"
+            android:theme="@style/LocalModelBottomSheet" />
 
         <service
             android:name="org.libreoffice.androidlib.ai.LocalInferenceService"
