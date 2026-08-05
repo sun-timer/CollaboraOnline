@@ -651,14 +651,23 @@ static IMP standardImpOfInputAccessoryView = nil;
             }
 
             return;
-        } else if ([message.body hasPrefix:@"HYPERLINK"]) {
+        } else if ([message.body hasPrefix:@"CALC_CELL_TAP"]) {
+            // Android-only diagnostic/gesture bridge message.  Older shared
+            // Browser bundles may still emit it; never send it to Core.
+            LOG_TRC("Ignoring Android-only CALC_CELL_TAP message from WebView");
+            return;
+        } else if ([message.body hasPrefix:@"OPENLINK"] || [message.body hasPrefix:@"HYPERLINK"]) {
             NSArray *messageBodyItems = [message.body componentsSeparatedByString:@" "];
             if ([messageBodyItems count] >= 2) {
                 NSURL *url = [[NSURL alloc] initWithString:messageBodyItems[1]];
-                UIApplication *application = [UIApplication sharedApplication];
-                [application openURL:url options:@{} completionHandler:nil];
-                return;
+                if (url != nil) {
+                    UIApplication *application = [UIApplication sharedApplication];
+                    [application openURL:url options:@{} completionHandler:nil];
+                }
             }
+            // Consume the native link command even when its payload is malformed;
+            // it must never fall through to the Core/FakeSocket protocol.
+            return;
         } else if ([message.body isEqualToString:@"FONTPICKER"]) {
             UIFontPickerViewControllerConfiguration *configuration = [[UIFontPickerViewControllerConfiguration alloc] init];
             configuration.includeFaces = NO;
