@@ -194,9 +194,9 @@ window.L.ImpressTileLayer = window.L.CanvasTileLayer.extend({
 	onUpdatePermission: function (e) {
 		if (window.mode.isMobile()) {
 			if (e.detail.perm === 'edit') {
-				this._addButton.addTo(this._map);
+				this._addButton.attach(this._map);
 			} else {
-				this._addButton.remove();
+				this._addButton.detach();
 			}
 		}
 	},
