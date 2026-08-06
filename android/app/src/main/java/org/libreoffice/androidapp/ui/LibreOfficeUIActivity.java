@@ -51,6 +51,8 @@ import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.animation.Animation;
+import android.view.animation.AnimationUtils;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
@@ -60,6 +62,7 @@ import android.widget.ImageView;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.PopupWindow;
 import android.widget.Toast;
@@ -85,6 +88,7 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBarDrawerToggle;
@@ -187,6 +191,28 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     private String pendingAutoAiPrompt = "";
     private String pendingAutoUserDescription = "";
     private AlertDialog aiGeneratingDialog;
+
+    // 抽屉内二级面板：基础模型配置（activity_ai_model_config.xml 完整静态布局，addView 到 navigationDrawer）
+    private View modelConfigPanel;
+    private int modelConfigModelType = AiSettingsStore.MODEL_BASE;
+    private SharedPreferences modelConfigPrefs;
+    private EditText modelConfigNameInput;
+    private EditText modelProviderInput;
+    private EditText modelUrlInput;
+    private EditText modelApiKeyInput;
+    private EditText modelNameInput;
+    private SeekBar topPBar;
+    private SeekBar temperatureBar;
+    private SeekBar presencePenaltyBar;
+    private SeekBar frequencyPenaltyBar;
+    private SeekBar maxTokensBar;
+    private SeekBar seedBar;
+    private TextView topPValue;
+    private TextView temperatureValue;
+    private TextView presencePenaltyValue;
+    private TextView frequencyPenaltyValue;
+    private TextView maxTokensValue;
+    private TextView seedValue;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -548,6 +574,12 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 navigationDrawer.requestFocus(); // Make keypad navigation easier
                 collapseFabMenu();
             }
+
+            @Override
+            public void onDrawerClosed(View drawerView) {
+                super.onDrawerClosed(drawerView);
+                dismissModelConfigPanelImmediate();
+            }
         };
         drawerToggle.setDrawerIndicatorEnabled(true);
         drawerLayout.addDrawerListener(drawerToggle);
@@ -617,13 +649,208 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     }
 
     private void openModelConfig(int modelType) {
-        // 回退：08-04 前用独立 Activity 正常显示；改 Dialog 后在真机灰屏（透明 window 内容不绘制）。
-        // onActivityResult 已处理 RESULT_BACK_TO_DRAWER 重开抽屉 + 刷新头部。
-        Log.i("LOActivity", "ai_model_config_open modelType=" + modelType + " via=activity");
-        Intent intent = new Intent(this, AiModelConfigActivity.class);
-        intent.putExtra(AiSettingsStore.EXTRA_MODEL_TYPE, modelType);
-        intent.putExtra(AiSettingsStore.EXTRA_FROM_DRAWER, true);
-        startActivityForResult(intent, AI_MODEL_SETTINGS_REQUEST_CODE);
+        if (modelConfigPanel != null) {
+            return; // 面板已打开
+        }
+        Log.i("LOActivity", "ai_model_config_open_panel modelType=" + modelType + " via=drawer-panel");
+        modelConfigModelType = modelType;
+        modelConfigPrefs = AiSettingsStore.prefs(this);
+
+        View panel = LayoutInflater.from(this).inflate(R.layout.activity_ai_model_config, navigationDrawer, false);
+        panel.setClickable(true); // 吞掉面板空白处点击，防止穿透到下方抽屉菜单
+        panel.setFocusable(true);
+        bindModelConfigPanel(panel);
+        navigationDrawer.addView(panel, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        modelConfigPanel = panel;
+        // 从左滑入（-100%p 相对 drawer 宽度=356dp，正好从抽屉左缘滑入）
+        panel.startAnimation(AnimationUtils.loadAnimation(this, R.anim.slide_in_left));
+    }
+
+    private void bindModelConfigPanel(View panel) {
+        modelConfigNameInput = panel.findViewById(R.id.modelConfigNameInput);
+        modelProviderInput = panel.findViewById(R.id.modelProviderInput);
+        modelUrlInput = panel.findViewById(R.id.modelUrlInput);
+        modelApiKeyInput = panel.findViewById(R.id.modelApiKeyInput);
+        modelNameInput = panel.findViewById(R.id.modelNameInput);
+        topPBar = panel.findViewById(R.id.topPBar);
+        temperatureBar = panel.findViewById(R.id.temperatureBar);
+        presencePenaltyBar = panel.findViewById(R.id.presencePenaltyBar);
+        frequencyPenaltyBar = panel.findViewById(R.id.frequencyPenaltyBar);
+        maxTokensBar = panel.findViewById(R.id.maxTokensBar);
+        seedBar = panel.findViewById(R.id.seedBar);
+        topPValue = panel.findViewById(R.id.topPValue);
+        temperatureValue = panel.findViewById(R.id.temperatureValue);
+        presencePenaltyValue = panel.findViewById(R.id.presencePenaltyValue);
+        frequencyPenaltyValue = panel.findViewById(R.id.frequencyPenaltyValue);
+        maxTokensValue = panel.findViewById(R.id.maxTokensValue);
+        seedValue = panel.findViewById(R.id.seedValue);
+
+        TextView title = panel.findViewById(R.id.modelConfigTitle);
+        ImageView icon = panel.findViewById(R.id.modelConnectionIcon);
+        ImageButton backButton = panel.findViewById(R.id.modelConfigBackButton);
+        title.setText(AiSettingsStore.modelTitleRes(modelConfigModelType));
+        icon.setImageResource(R.drawable.ic_ai_connection);
+        backButton.setOnClickListener(v -> closeModelConfigPanel());
+
+        loadModelConfigValues();
+        bindModelConfigSliders();
+        bindModelConfigActions();
+
+        View scrim = panel.findViewById(R.id.modelConfigScrim);
+        if (scrim != null) {
+            // 抽屉内 356dp 宽，scrim 本来 0 宽，显式隐藏避免残留 focusable 节点
+            scrim.setVisibility(View.GONE);
+            scrim.setOnClickListener(v -> closeModelConfigPanel());
+        }
+    }
+
+    private void loadModelConfigValues() {
+        modelConfigNameInput.setText(getModelConfigString(AiSettingsStore.FIELD_CONFIG_NAME,
+                getString(AiSettingsStore.modelTitleRes(modelConfigModelType)) + "配置"));
+        modelProviderInput.setText(getModelConfigString(AiSettingsStore.FIELD_PROVIDER, "OpenAI"));
+        modelUrlInput.setText(getModelConfigString(AiSettingsStore.FIELD_URL, "https://api.openai.com/v1/chat/completions"));
+        modelApiKeyInput.setText(getModelConfigString(AiSettingsStore.FIELD_API_KEY, ""));
+        modelNameInput.setText(getModelConfigString(AiSettingsStore.FIELD_MODEL_NAME, AiSettingsStore.defaultModelName(modelConfigModelType)));
+
+        setModelConfigSlider(topPBar, getModelConfigFloat(AiSettingsStore.FIELD_TOP_P, 0.5f), topPValue);
+        setModelConfigSlider(temperatureBar, getModelConfigFloat(AiSettingsStore.FIELD_TEMPERATURE, 0.9f), temperatureValue);
+        setModelConfigSlider(presencePenaltyBar, getModelConfigFloat(AiSettingsStore.FIELD_PRESENCE_PENALTY, 0f), presencePenaltyValue);
+        setModelConfigSlider(frequencyPenaltyBar, getModelConfigFloat(AiSettingsStore.FIELD_FREQUENCY_PENALTY, 0.8f), frequencyPenaltyValue);
+        setModelConfigSlider(maxTokensBar, getModelConfigFloat(AiSettingsStore.FIELD_MAX_TOKENS_RATIO, 0.8f), maxTokensValue);
+        setModelConfigSlider(seedBar, getModelConfigFloat(AiSettingsStore.FIELD_SEED_RATIO, 0.8f), seedValue);
+    }
+
+    private void bindModelConfigSliders() {
+        bindModelConfigSlider(topPBar, topPValue);
+        bindModelConfigSlider(temperatureBar, temperatureValue);
+        bindModelConfigSlider(presencePenaltyBar, presencePenaltyValue);
+        bindModelConfigSlider(frequencyPenaltyBar, frequencyPenaltyValue);
+        bindModelConfigSlider(maxTokensBar, maxTokensValue);
+        bindModelConfigSlider(seedBar, seedValue);
+    }
+
+    private void bindModelConfigSlider(SeekBar seekBar, TextView valueView) {
+        seekBar.setMax(100);
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                valueView.setText(formatModelConfigRatio(progress / 100f));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar bar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar bar) {
+            }
+        });
+    }
+
+    private void bindModelConfigActions() {
+        View cancelButton = panelFind(R.id.modelConfigCancelButton);
+        View saveButton = panelFind(R.id.modelConfigSaveButton);
+        if (cancelButton != null) {
+            cancelButton.setOnClickListener(v -> closeModelConfigPanel());
+        }
+        if (saveButton != null) {
+            saveButton.setOnClickListener(v -> saveModelConfigAndClose());
+        }
+    }
+
+    private void saveModelConfigAndClose() {
+        SharedPreferences.Editor editor = modelConfigPrefs.edit();
+        editor.putString(modelConfigKey(AiSettingsStore.FIELD_CONFIG_NAME), readModelConfigInput(modelConfigNameInput));
+        editor.putString(modelConfigKey(AiSettingsStore.FIELD_PROVIDER), readModelConfigInput(modelProviderInput));
+        editor.putString(modelConfigKey(AiSettingsStore.FIELD_URL), readModelConfigInput(modelUrlInput));
+        editor.putString(modelConfigKey(AiSettingsStore.FIELD_API_KEY), readModelConfigInput(modelApiKeyInput));
+        editor.putString(modelConfigKey(AiSettingsStore.FIELD_MODEL_NAME), readModelConfigInput(modelNameInput));
+
+        editor.putFloat(modelConfigKey(AiSettingsStore.FIELD_TOP_P), toModelConfigRatio(topPBar.getProgress()));
+        editor.putFloat(modelConfigKey(AiSettingsStore.FIELD_TEMPERATURE), toModelConfigRatio(temperatureBar.getProgress()));
+        editor.putFloat(modelConfigKey(AiSettingsStore.FIELD_PRESENCE_PENALTY), toModelConfigRatio(presencePenaltyBar.getProgress()));
+        editor.putFloat(modelConfigKey(AiSettingsStore.FIELD_FREQUENCY_PENALTY), toModelConfigRatio(frequencyPenaltyBar.getProgress()));
+        editor.putFloat(modelConfigKey(AiSettingsStore.FIELD_MAX_TOKENS_RATIO), toModelConfigRatio(maxTokensBar.getProgress()));
+        editor.putFloat(modelConfigKey(AiSettingsStore.FIELD_SEED_RATIO), toModelConfigRatio(seedBar.getProgress()));
+        editor.apply();
+
+        if (modelConfigModelType == AiSettingsStore.MODEL_BASE) {
+            AiSettingsStore.syncBaseModelToRuntime(this);
+        }
+
+        closeModelConfigPanel();
+    }
+
+    private View panelFind(int id) {
+        return modelConfigPanel == null ? null : modelConfigPanel.findViewById(id);
+    }
+
+    private String readModelConfigInput(EditText editText) {
+        return editText.getText() == null ? "" : editText.getText().toString().trim();
+    }
+
+    private void setModelConfigSlider(SeekBar seekBar, float value, TextView valueView) {
+        int progress = Math.max(0, Math.min(100, Math.round(value * 100f)));
+        seekBar.setProgress(progress);
+        valueView.setText(formatModelConfigRatio(progress / 100f));
+    }
+
+    private float toModelConfigRatio(int progress) {
+        return Math.max(0f, Math.min(1f, progress / 100f));
+    }
+
+    private String formatModelConfigRatio(float value) {
+        if (Math.abs(value - Math.round(value)) < 0.0001f) {
+            return String.format(Locale.getDefault(), "%.0f", value);
+        }
+        return String.format(Locale.getDefault(), "%.1f", value);
+    }
+
+    private String modelConfigKey(String field) {
+        return AiSettingsStore.modelKey(modelConfigModelType, field);
+    }
+
+    private String getModelConfigString(String field, String defaultValue) {
+        return modelConfigPrefs.getString(modelConfigKey(field), defaultValue);
+    }
+
+    private float getModelConfigFloat(String field, float defaultValue) {
+        return modelConfigPrefs.getFloat(modelConfigKey(field), defaultValue);
+    }
+
+    private void closeModelConfigPanel() {
+        if (modelConfigPanel == null) {
+            return;
+        }
+        View panel = modelConfigPanel;
+        modelConfigPanel = null;
+        Animation out = AnimationUtils.loadAnimation(this, R.anim.slide_out_left);
+        out.setFillAfter(true); // 动画结束保持 -100%（在左缘外），removeView 前不闪回
+        out.setAnimationListener(new Animation.AnimationListener() {
+            @Override
+            public void onAnimationStart(Animation animation) {
+            }
+
+            @Override
+            public void onAnimationEnd(Animation animation) {
+                navigationDrawer.removeView(panel);
+            }
+
+            @Override
+            public void onAnimationRepeat(Animation animation) {
+            }
+        });
+        panel.startAnimation(out);
+        refreshAiDrawerHeader();
+    }
+
+    /** 抽屉被关闭时无动画移除面板（onDrawerClosed 调用）。 */
+    private void dismissModelConfigPanelImmediate() {
+        if (modelConfigPanel != null) {
+            navigationDrawer.removeView(modelConfigPanel);
+            modelConfigPanel = null;
+        }
     }
 
     private void refreshAiDrawerHeader() {
@@ -984,7 +1211,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
     @Override
     public void onBackPressed() {
-        if (drawerLayout.isDrawerOpen(navigationDrawer)) {
+        if (modelConfigPanel != null) {
+            closeModelConfigPanel();
+        } else if (drawerLayout.isDrawerOpen(navigationDrawer)) {
             drawerLayout.closeDrawer(navigationDrawer);
             collapseFabMenu();
         } else if (isFabMenuOpen) {
