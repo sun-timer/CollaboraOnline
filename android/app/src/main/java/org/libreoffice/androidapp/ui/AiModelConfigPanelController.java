@@ -2,12 +2,8 @@ package org.libreoffice.androidapp.ui;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.view.Gravity;
-import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.SeekBar;
@@ -56,49 +52,10 @@ final class AiModelConfigPanelController {
         this.prefs = AiSettingsStore.prefs(context);
     }
 
-    static void attachPanel(Context context, ViewGroup root, int panelWidthPx) {
-        if (root == null) {
-            android.util.Log.e("LOActivity", "ai_model_config_attach_fail reason=root_null");
-            return;
-        }
-        if (root.findViewById(R.id.aiModelConfigPanel) != null) {
-            android.util.Log.i("LOActivity", "ai_model_config_attach_skip reason=already_attached");
-            return;
-        }
-        ViewGroup host = root.findViewById(R.id.aiModelConfigPanelHost);
-        if (host == null) {
-            android.util.Log.e("LOActivity", "ai_model_config_attach_fail reason=host_missing");
-            return;
-        }
-        host.removeAllViews();
-        View panel = LayoutInflater.from(context).inflate(R.layout.panel_ai_model_config, host, true);
-        android.util.Log.i("LOActivity", "ai_model_config_attach_ok widthPx=" + panelWidthPx
-                + " hostW=" + host.getWidth()
-                + " panel=" + (panel != null));
-    }
-
-    private void ensurePanelInflated() {
-        if (root.findViewById(R.id.aiModelConfigPanel) != null) {
-            return;
-        }
-        ViewGroup host = root.findViewById(R.id.aiModelConfigPanelHost);
-        if (host == null) {
-            android.util.Log.e("LOActivity", "ai_model_config_inflate_fail reason=host_missing root="
-                    + root.getClass().getSimpleName());
-            return;
-        }
-        host.removeAllViews();
-        View panel = LayoutInflater.from(context).inflate(R.layout.panel_ai_model_config, host, false);
-        host.addView(panel, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT));
-        android.util.Log.i("LOActivity", "ai_model_config_inflate_ok hostChildCount=" + host.getChildCount()
-                + " panel=" + (panel != null ? panel.getClass().getSimpleName() : "null"));
-    }
-
     void bind() {
+        // 静态布局：activity_ai_model_config.xml 已内联完整表单（aiModelConfigPanel 直接存在），无需动态 inflate。
+        // 08-04 曾动态 inflate panel_ai_model_config → 真机 ScrollView 内容不渲染(灰屏)。
         android.util.Log.i("LOActivity", "ai_model_config_bind start modelType=" + modelType);
-        ensurePanelInflated();
         bindViews();
         if (configNameInput == null) {
             android.util.Log.e("LOActivity", "ai_model_config_bind_fail reason=panel_views_missing root="

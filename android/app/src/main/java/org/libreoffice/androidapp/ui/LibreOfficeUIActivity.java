@@ -616,87 +616,14 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         startActivityForResult(intent, AI_PROFILE_SETTINGS_REQUEST_CODE);
     }
 
-    private Dialog aiModelConfigDialog;
-
     private void openModelConfig(int modelType) {
-        Log.i("LOActivity", "ai_model_config_open modelType=" + modelType + " via=dialog");
-        showAiModelConfigDialog(modelType);
-    }
-
-    /**
-     * Secondary drawer via full-screen Dialog (separate Window — always above DrawerLayout).
-     * addContentView bind_ok but drawer still paints on top → gray screen.
-     */
-    private void showAiModelConfigDialog(int modelType) {
-        if (aiModelConfigDialog != null && aiModelConfigDialog.isShowing()) {
-            aiModelConfigDialog.dismiss();
-        }
-
-        // 勿用自定义透明主题(AiModelConfigDialog: windowIsFloating=false + 透明背景 + 无dim)，
-        // 会导致全屏透明 window 内容不绘制(标题栏在、表单灰)。与重命名/创建 Dialog 一致，用默认浮窗主题 + dim 遮罩。
-        final Dialog dialog = new Dialog(this);
-        aiModelConfigDialog = dialog;
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        dialog.setContentView(R.layout.activity_ai_model_config);
-
-        View root = dialog.findViewById(R.id.activity_ai_model_config_root);
-        View panelHost = dialog.findViewById(R.id.aiModelConfigPanelHost);
-
-        Runnable closeDialog = () -> {
-            dialog.dismiss();
-            aiModelConfigDialog = null;
-            if (drawerLayout != null) {
-                drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED, GravityCompat.START);
-            }
-            refreshAiDrawerHeader();
-            if (drawerLayout != null) {
-                drawerLayout.post(() -> drawerLayout.openDrawer(GravityCompat.START));
-            }
-        };
-
-        new AiModelConfigPanelController(this, root, modelType, saved -> closeDialog.run()).bind();
-
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setGravity(Gravity.TOP | Gravity.START);
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            // 带 dim 遮罩，与重命名/创建 Dialog 一致；原 clearFlags(FLAG_DIM_BEHIND) 导致透明 window 内容不绘制
-            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            WindowManager.LayoutParams params = window.getAttributes();
-            params.dimAmount = 0.3f;
-            window.setAttributes(params);
-        }
-
-        if (drawerLayout != null) {
-            drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED, GravityCompat.START);
-        }
-
-        dialog.setCancelable(true);
-        dialog.setOnCancelListener(d -> closeDialog.run());
-        dialog.setOnDismissListener(d -> {
-            aiModelConfigDialog = null;
-            if (drawerLayout != null) {
-                drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED, GravityCompat.START);
-            }
-        });
-        dialog.show();
-
-        View finalPanelHost = panelHost;
-        root.post(() -> {
-            View panel = dialog.findViewById(R.id.aiModelConfigPanel);
-            int[] loc = new int[2];
-            if (finalPanelHost != null) {
-                finalPanelHost.getLocationOnScreen(loc);
-            }
-            Log.i("LOActivity", "ai_model_config_dialog_layout host="
-                    + (finalPanelHost == null ? "null" : finalPanelHost.getWidth() + "x" + finalPanelHost.getHeight())
-                    + " panel=" + (panel == null ? "null" : panel.getClass().getSimpleName())
-                    + " hostX=" + loc[0]
-                    + " visible=" + (panel != null && panel.getVisibility() == View.VISIBLE)
-                    + " childCount=" + (finalPanelHost instanceof ViewGroup
-                    ? ((ViewGroup) finalPanelHost).getChildCount() : 0));
-        });
+        // 回退：08-04 前用独立 Activity 正常显示；改 Dialog 后在真机灰屏（透明 window 内容不绘制）。
+        // onActivityResult 已处理 RESULT_BACK_TO_DRAWER 重开抽屉 + 刷新头部。
+        Log.i("LOActivity", "ai_model_config_open modelType=" + modelType + " via=activity");
+        Intent intent = new Intent(this, AiModelConfigActivity.class);
+        intent.putExtra(AiSettingsStore.EXTRA_MODEL_TYPE, modelType);
+        intent.putExtra(AiSettingsStore.EXTRA_FROM_DRAWER, true);
+        startActivityForResult(intent, AI_MODEL_SETTINGS_REQUEST_CODE);
     }
 
     private void refreshAiDrawerHeader() {
@@ -1057,10 +984,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
     @Override
     public void onBackPressed() {
-        if (aiModelConfigDialog != null && aiModelConfigDialog.isShowing()) {
-            aiModelConfigDialog.cancel();
-            return;
-        }
         if (drawerLayout.isDrawerOpen(navigationDrawer)) {
             drawerLayout.closeDrawer(navigationDrawer);
             collapseFabMenu();
