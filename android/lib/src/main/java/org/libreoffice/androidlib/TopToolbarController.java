@@ -45,6 +45,7 @@ public class TopToolbarController {
     private View doneButton;
     private View undoButton;
     private View redoButton;
+    private View searchPreviewButton;
     private boolean isEditModeActive = false;
     private boolean isCalcDocument = false;
     private boolean isImpressDocument = false;
@@ -68,6 +69,7 @@ public class TopToolbarController {
         doneButton = host.findViewById(R.id.top_btn_done);
         undoButton = host.findViewById(R.id.top_btn_undo);
         redoButton = host.findViewById(R.id.top_btn_redo);
+        searchPreviewButton = host.findViewById(R.id.top_btn_search_preview);
 
         bindClick(R.id.top_btn_back, v -> host.onTopToolbarBack());
         bindClick(R.id.top_btn_done, v -> host.switchToViewingMode());
@@ -85,14 +87,26 @@ public class TopToolbarController {
         refreshOpenDocumentCount();
         resetUndoRedoState("toolbar_setup");
         applyDocumentThemeBackground();
+        applyImpressSearchVisibility();
         updateEditModeState(isEditModeActive, "toolbar_setup");
     }
 
     public void updateDocumentType(boolean isCalc, boolean isImpress) {
         isCalcDocument = isCalc;
         isImpressDocument = isImpress;
-        Runnable applyTask = this::applyDocumentThemeBackground;
+        Runnable applyTask = () -> {
+            applyDocumentThemeBackground();
+            applyImpressSearchVisibility();
+        };
         runOnUi(applyTask);
+    }
+
+    /** 演示文稿顶栏不展示搜索图标(对齐 Figma:标题栏右侧无搜索)。 */
+    private void applyImpressSearchVisibility() {
+        if (searchPreviewButton == null) {
+            return;
+        }
+        searchPreviewButton.setVisibility(isImpressDocument ? View.GONE : View.VISIBLE);
     }
 
     public void refreshOpenDocumentCount() {

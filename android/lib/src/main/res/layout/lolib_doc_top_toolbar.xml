@@ -24,7 +24,8 @@
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="返回"
-            android:padding="12dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="8dp"
             android:scaleType="fitCenter"
             android:src="@drawable/lolib_ic_top_back" />
 
@@ -35,7 +36,7 @@
             android:layout_weight="1"
             android:ellipsize="end"
             android:maxLines="1"
-            android:paddingStart="4dp"
+            android:paddingStart="0dp"
             android:paddingEnd="8dp"
             android:textColor="#101010"
             android:textSize="18sp" />
@@ -101,7 +102,7 @@
         <TextView
             android:id="@+id/top_btn_done"
             android:layout_width="wrap_content"
-            android:layout_height="40dp"
+            android:layout_height="wrap_content"
             android:layout_gravity="start|center_vertical"
             android:background="@drawable/lolib_bg_top_done_button"
             android:clickable="true"
@@ -109,7 +110,9 @@
             android:gravity="center"
             android:minWidth="72dp"
             android:paddingStart="20dp"
+            android:paddingTop="6dp"
             android:paddingEnd="20dp"
+            android:paddingBottom="6dp"
             android:text="完成"
             android:textColor="#FFFFFF"
             android:textSize="16sp"
