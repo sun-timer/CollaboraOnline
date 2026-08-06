@@ -150,6 +150,10 @@
     <string name="about_moreinfo">更多信息</string>
     <string name="about_notice">显示通知</string>
     <string name="about_license">显示许可证</string>
+    <string name="about_title">关于</string>
+    <string name="about_version_info">版本信息</string>
+    <string name="about_feedback">问题和建议</string>
+    <string name="about_copyright">版权所有 ©2025-2026 深圳市迅龙科技有限公司。保留一切权利。</string>
     <string name="pref_enable_chrome_debugger_info">启用以在文档中使用 Chrome 的调试工具</string>
     <string name="pref_enable_chrome_debugger">Chrome 调试</string>
     <string name="pref_show_debug_info_summary">启用以在文档查看器中显示调试信息</string>
