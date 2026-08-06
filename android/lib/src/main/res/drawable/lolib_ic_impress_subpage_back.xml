@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 宏树展开箭头：向下 -->
+<!-- Figma icon/Impress/14/上一张幻灯片：8×16 描边 chevron，stroke #333 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
+    android:width="8dp"
+    android:height="16dp"
+    android:viewportWidth="8"
+    android:viewportHeight="16">
     <path
         android:fillColor="@android:color/transparent"
-        android:pathData="M6,9 L12,15 L18,9"
+        android:pathData="M7,15 L1,8 L7,1"
         android:strokeColor="#333333"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:strokeWidth="2" />
+        android:strokeWidth="1.15" />
 </vector>

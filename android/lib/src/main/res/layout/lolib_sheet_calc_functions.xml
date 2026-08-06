@@ -75,7 +75,7 @@
     <FrameLayout
         android:id="@+id/calc_function_tab_indicator_area"
         android:layout_width="match_parent"
-        android:layout_height="4dp">
+        android:layout_height="8dp">
 
         <View
             android:layout_width="match_parent"
@@ -88,6 +88,7 @@
             android:layout_width="24dp"
             android:layout_height="3dp"
             android:layout_gravity="bottom|start"
+            android:layout_marginBottom="5dp"
             android:background="@drawable/lolib_bg_calc_tab_indicator"
             android:visibility="invisible" />
     </FrameLayout>

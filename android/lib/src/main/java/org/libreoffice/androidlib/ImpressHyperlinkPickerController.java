@@ -16,6 +16,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import org.libreoffice.androidlib.impress.ImpressSubpageHeader;
 import org.libreoffice.androidlib.R;
 
 /**
@@ -112,6 +113,7 @@ final class ImpressHyperlinkPickerController {
                 ViewGroup.LayoutParams.MATCH_PARENT));
 
         root.addView(createHeader());
+        root.addView(ImpressSubpageHeader.createDivider(host.getContext()));
         root.addView(createSegmentControl());
         root.addView(createFieldsArea(), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
@@ -124,35 +126,8 @@ final class ImpressHyperlinkPickerController {
     }
 
     private View createHeader() {
-        LinearLayout header = new LinearLayout(host.getContext());
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setMinimumHeight(host.dpToPx(48));
-        header.setPadding(host.dpToPx(4), 0, host.dpToPx(8), 0);
-
-        ImageButton back = new ImageButton(host.getContext());
-        TypedValue rippleAttr = new TypedValue();
-        if (host.getContext().getTheme().resolveAttribute(
-                android.R.attr.selectableItemBackgroundBorderless, rippleAttr, true)) {
-            back.setBackgroundResource(rippleAttr.resourceId);
-        }
-        back.setImageResource(R.drawable.lolib_ic_top_back);
-        back.setContentDescription("返回");
-        back.setPadding(host.dpToPx(12), host.dpToPx(12), host.dpToPx(12), host.dpToPx(12));
-        back.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        back.setOnClickListener(v -> onHeaderBack());
-        header.addView(back, new LinearLayout.LayoutParams(host.dpToPx(48), host.dpToPx(48)));
-
-        TextView title = new TextView(host.getContext());
-        title.setText("超链接");
-        title.setTextColor(Color.parseColor("#101010"));
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-        title.setTypeface(null, Typeface.BOLD);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        titleLp.setMarginStart(host.dpToPx(4));
-        header.addView(title, titleLp);
-        return header;
+        return ImpressSubpageHeader.create(
+                host.getContext(), host::dpToPx, "超链接", v -> onHeaderBack());
     }
 
     private void onHeaderBack() {

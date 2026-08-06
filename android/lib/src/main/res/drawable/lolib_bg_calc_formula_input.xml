@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 数据有效性输入框：#CBD1D7 描边 + 圆角 16（Figma frame-3468932 "蓝色大按钮"） -->
+<!-- Figma 输入框/单行 622×86：描边 #CBD1D7，圆角 24px → 12dp -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="#FFFFFF" />
     <stroke
-        android:width="2dp"
+        android:width="1dp"
         android:color="#CBD1D7" />
-    <corners android:radius="16dp" />
+    <corners android:radius="12dp" />
 </shape>

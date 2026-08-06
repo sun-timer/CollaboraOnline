@@ -810,3 +810,104 @@ div#fontstyletoolbox + div#style.mobile-wizard {
 		display: none !important;
 	}
 }
+
+/* === Android 演示文稿 slide 缩略图条对齐 Figma(仅 Android App,不影响 iOS/桌面) === */
+body.android-native-bottom-toolbar[data-docType='presentation'] #presentation-controls-wrapper {
+	background: #FFFFFF;
+	border-bottom: 1px solid #CBD1D7;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter {
+	background: #FFFFFF;
+	padding-right: 40px;
+	box-sizing: border-box;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #presentation-controls-wrapper.portrait {
+	max-height: 87px;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait {
+	max-height: 87px;
+	padding-top: 16px;
+	padding-bottom: 16px;
+	line-height: normal;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait .preview-frame {
+	max-height: 87px;
+	max-width: 100%;
+	display: inline-block;
+	padding: 0;
+	margin: 0;
+	position: relative;
+	line-height: normal;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait .preview-frame.preview-img-dropsite {
+	border-right: 0px;
+	border-bottom: none;
+	padding-right: 0px;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait .preview-img {
+	min-width: 0;
+	max-width: 98px;
+	max-height: 55px;
+	margin: 0 4px;
+	border: 1px solid #CBD1D7 !important;
+	outline: none !important;
+	border-radius: 4px;
+	box-sizing: border-box;
+	vertical-align: middle;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait .preview-img.preview-img-currentpart {
+	border: 4px solid #EC5D1F !important;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait .preview-page-badge {
+	position: absolute;
+	right: 4px;
+	bottom: 4px;
+	min-width: 14px;
+	height: 14px;
+	padding: 0 3px;
+	border-radius: 2px;
+	background: rgba(0, 0, 0, 0.4);
+	color: #FFFFFF;
+	font-size: 10px;
+	line-height: 14px;
+	text-align: center;
+	box-sizing: border-box;
+	pointer-events: none;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait .preview-img.preview-img-currentpart + .preview-page-badge {
+	background: #EC5D1F;
+}
+
+/* 右侧新增幻灯片竖条(替代独立浮动 + 按钮) */
+body.android-native-bottom-toolbar[data-docType='presentation'] .mobile-slide-strip {
+	position: absolute;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	width: 40px;
+	background: #FFFFFF;
+	border-left: 1px solid #CBD1D7;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 10;
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] .mobile-slide-strip .mobile-slide-strip-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 40px;
+	height: 40px;
+}

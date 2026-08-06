@@ -15,7 +15,6 @@
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#FFFFFF"
         android:descendantFocusability="blocksDescendants"
         android:focusable="true"
         android:focusableInTouchMode="true"
@@ -48,7 +47,6 @@
             android:id="@+id/ai_op_calc_block"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
             android:orientation="vertical"
             android:visibility="gone">
 
@@ -74,8 +72,8 @@
                 android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_width="@dimen/ai_function_icon_size"
+                    android:layout_height="@dimen/ai_function_icon_size"
                     android:contentDescription="AI公式"
                     android:scaleType="centerInside"
                     android:src="@drawable/lolib_ic_ai_calc_formula" />
@@ -86,7 +84,7 @@
                     android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="AI公式"
                     android:textColor="#101010"
-                    android:textSize="14sp" />
+                    android:textSize="@dimen/ai_function_label_text_size" />
             </LinearLayout>
 
             <!-- AI条件格式 -->
@@ -105,8 +103,8 @@
                 android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_width="@dimen/ai_function_icon_size"
+                    android:layout_height="@dimen/ai_function_icon_size"
                     android:contentDescription="AI条件格式"
                     android:scaleType="centerInside"
                     android:src="@drawable/lolib_ic_ai_calc_cond_format" />
@@ -117,7 +115,7 @@
                     android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="AI条件格式"
                     android:textColor="#101010"
-                    android:textSize="14sp" />
+                    android:textSize="@dimen/ai_function_label_text_size" />
             </LinearLayout>
 
             <!-- AI数据分析 -->
@@ -135,8 +133,8 @@
                 android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_width="@dimen/ai_function_icon_size"
+                    android:layout_height="@dimen/ai_function_icon_size"
                     android:contentDescription="AI数据分析"
                     android:scaleType="centerInside"
                     android:src="@drawable/lolib_ic_ai_calc_data_analysis" />
@@ -147,7 +145,7 @@
                     android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="AI数据分析"
                     android:textColor="#101010"
-                    android:textSize="14sp" />
+                    android:textSize="@dimen/ai_function_label_text_size" />
             </LinearLayout>
         </LinearLayout>
 
@@ -156,7 +154,7 @@
             android:id="@+id/ai_op_calc_section_row2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/ai_function_section_row_gap"
             android:orientation="horizontal">
 
             <LinearLayout
@@ -174,8 +172,8 @@
                 android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_width="@dimen/ai_function_icon_size"
+                    android:layout_height="@dimen/ai_function_icon_size"
                     android:contentDescription="AI数据处理"
                     android:scaleType="centerInside"
                     android:src="@drawable/lolib_ic_ai_calc_data_process" />
@@ -186,7 +184,7 @@
                     android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="AI数据处理"
                     android:textColor="#101010"
-                    android:textSize="14sp" />
+                    android:textSize="@dimen/ai_function_label_text_size" />
             </LinearLayout>
 
             <LinearLayout
@@ -204,8 +202,8 @@
                 android:paddingBottom="0dp">
 
                 <ImageView
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_width="@dimen/ai_function_icon_size"
+                    android:layout_height="@dimen/ai_function_icon_size"
                     android:contentDescription="AI图表生成"
                     android:scaleType="centerInside"
                     android:src="@drawable/lolib_ic_ai_calc_chart_generate" />
@@ -216,7 +214,7 @@
                     android:layout_marginTop="@dimen/ai_function_row_gap"
                     android:text="AI图表生成"
                     android:textColor="#101010"
-                    android:textSize="14sp" />
+                    android:textSize="@dimen/ai_function_label_text_size" />
             </LinearLayout>
         </LinearLayout>
 

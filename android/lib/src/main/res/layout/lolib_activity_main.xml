@@ -476,10 +476,10 @@
             android:elevation="45dp"
             android:focusable="true"
             android:visibility="gone"
-            app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
+            app:layout_constraintTop_toTopOf="parent" />
 
         <!-- Calc AI公式生成浮层 panel（尺寸/位置由 LOActivity.positionCalcFormulaDialogCenter() 运行时设置） -->
         <include
@@ -501,10 +501,10 @@
             android:elevation="45dp"
             android:focusable="true"
             android:visibility="gone"
-            app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
+            app:layout_constraintTop_toTopOf="parent" />
 
         <!-- Calc AI条件格式浮层 panel -->
         <include
@@ -526,10 +526,10 @@
             android:elevation="45dp"
             android:focusable="true"
             android:visibility="gone"
-            app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
+            app:layout_constraintTop_toTopOf="parent" />
 
         <!-- Calc AI数据处理浮层 panel -->
         <include
@@ -547,23 +547,24 @@
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:background="#80000000"
+            android:clickable="true"
+            android:elevation="45dp"
+            android:focusable="true"
             android:visibility="gone"
-            app:layout_constraintBottom_toBottomOf="@id/doc_main_content"
-            app:layout_constraintEnd_toEndOf="@id/doc_main_content"
-            app:layout_constraintStart_toStartOf="@id/doc_main_content"
-            app:layout_constraintTop_toTopOf="@id/doc_main_content" />
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
 
         <!-- AI图表生成弹窗 -->
         <include
             android:id="@+id/chart_dialog_panel"
             layout="@layout/lolib_calc_chart_dialog"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:visibility="gone"
-            app:layout_constraintBottom_toBottomOf="@id/doc_main_content"
-            app:layout_constraintEnd_toEndOf="@id/doc_main_content"
-            app:layout_constraintStart_toStartOf="@id/doc_main_content"
-            app:layout_constraintTop_toTopOf="@id/doc_main_content" />
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
 
         <!-- AI生成PPT overlay -->
         <View

@@ -61,6 +61,7 @@ public final class ImpressSolidColorPickerController {
                 ViewGroup.LayoutParams.MATCH_PARENT));
 
         root.addView(createHeader());
+        root.addView(ImpressSubpageHeader.createDivider(host.getContext()));
 
         ScrollView scroll = new ScrollView(host.getContext());
         scroll.setFillViewport(true);
@@ -87,35 +88,8 @@ public final class ImpressSolidColorPickerController {
     }
 
     private View createHeader() {
-        LinearLayout header = new LinearLayout(host.getContext());
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setMinimumHeight(host.dpToPx(48));
-        header.setPadding(host.dpToPx(4), 0, host.dpToPx(8), 0);
-
-        ImageButton back = new ImageButton(host.getContext());
-        TypedValue rippleAttr = new TypedValue();
-        if (host.getContext().getTheme().resolveAttribute(
-                android.R.attr.selectableItemBackgroundBorderless, rippleAttr, true)) {
-            back.setBackgroundResource(rippleAttr.resourceId);
-        }
-        back.setImageResource(R.drawable.lolib_ic_top_back);
-        back.setContentDescription("返回");
-        back.setPadding(host.dpToPx(12), host.dpToPx(12), host.dpToPx(12), host.dpToPx(12));
-        back.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        back.setOnClickListener(v -> host.onBack());
-        header.addView(back, new LinearLayout.LayoutParams(host.dpToPx(48), host.dpToPx(48)));
-
-        TextView title = new TextView(host.getContext());
-        title.setText("纯色");
-        title.setTextColor(Color.parseColor("#101010"));
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-        title.setTypeface(null, Typeface.BOLD);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        titleLp.setMarginStart(host.dpToPx(4));
-        header.addView(title, titleLp);
-        return header;
+        return ImpressSubpageHeader.create(
+                host.getContext(), host::dpToPx, "纯色", v -> host.onBack());
     }
 
     private View createColorBlock(int blockIndex, ImpressSolidColorCatalog.Entry[] entries) {

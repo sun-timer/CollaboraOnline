@@ -277,6 +277,11 @@ public class LOActivity extends AppCompatActivity {
      */
     private boolean mMobileWizardVisible = false;
     private NativeJSDialogController nativeJSDialogController;
+    /** 数据有效性拦截读回填：非 null 表示等 ValidationDialog 拦截后解析控件值回填。 */
+    private CalcDataValidationState pendingValidationRead;
+    private Runnable pendingValidationReadCallback;
+    /** 数据有效性拦截写应用：非 null 表示等 ValidationDialog 拦截后用 dialogevent 写值。 */
+    private CalcDataValidationState pendingValidationWrite;
     private boolean mIsEditModeActive = false;
     private static final long MOBILE_PREVIEW_ACK_TIMEOUT_MS = 2200L;
     private static final long SELECTION_SYNC_THROTTLE_MS = 450L;
@@ -539,40 +544,48 @@ public class LOActivity extends AppCompatActivity {
     private View calcFormulaPanel;
     private EditText calcFormulaInput;
     private View calcFormulaInputGroup;
-    private TextView calcFormulaGenerateBtn;
-    private View calcFormulaContentScroll;
-    private TextView calcFormulaUserInputDisplay;
+    private View calcFormulaGenerateBtn;
+    private View calcFormulaWorkGroup;
+    private TextView calcFormulaQueryText;
+    private TextView calcFormulaStatusText;
+    private View calcFormulaStatusSpinner;
     private TextView calcFormulaContentText;
-    private View calcFormulaCopyBar;
-    private View calcFormulaStopBtn;
+    private View calcFormulaStopGroup;
+    private View calcFormulaRestartGroup;
     private View calcFormulaCompletedGroup;
     private View calcFormulaRegenBtn;
     private View calcFormulaInsertBtn;
     private TextView calcFormulaCellHint;
     private String calcFormulaCellAddress = "";
+    private String calcFormulaLastInput = "";
     private String calcFormulaActiveRequestId = "";
     private String calcFormulaResultText = "";
+    private int calcFormulaDialogState = 0;
     private final java.util.Set<String> calcFormulaRequestIds =
             java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 
-    // Calc AI条件格式浮层（三态：输入态/生成中态/完成态）
+    // Calc AI条件格式浮层（四态：输入 / 生成中 / 停止 / 完成）
     private View condFormatOverlay;
     private View condFormatPanel;
     private EditText condFormatInput;
     private View condFormatInputGroup;
-    private TextView condFormatGenerateBtn;
-    private View condFormatContentScroll;
-    private TextView condFormatUserInputDisplay;
+    private View condFormatGenerateBtn;
+    private View condFormatWorkGroup;
+    private TextView condFormatQueryText;
+    private TextView condFormatStatusText;
+    private View condFormatStatusSpinner;
     private TextView condFormatContentText;
-    private View condFormatCopyBar;
-    private View condFormatStopBtn;
+    private View condFormatStopGroup;
+    private View condFormatRestartGroup;
     private View condFormatCompletedGroup;
     private View condFormatRegenBtn;
     private View condFormatApplyBtn;
     private TextView condFormatRangeHint;
     private String condFormatCellRange = "";
+    private String condFormatLastInput = "";
     private String condFormatActiveRequestId = "";
     private String condFormatResultText = "";
+    private int condFormatDialogState = 0;
     private CondFormatApplier.CondFormatPlan condFormatPlan = null;
     private volatile boolean condFormatApplying = false;
     private CondFormatApplier.ApplyResultCallback condFormatApplyCallback = null;
@@ -587,51 +600,65 @@ public class LOActivity extends AppCompatActivity {
     private final java.util.Set<String> condFormatRequestIds =
             java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 
-    // Calc AI数据处理浮层（四态：输入态/生成中态/完成态/执行中态）
+    // Calc AI数据处理浮层（输入 / 生成中 / 停止 / 完成 / 执行中）
     private View dpOverlay;
     private View dpPanel;
     private EditText dpInput;
     private View dpInputGroup;
-    private TextView dpGenerateBtn;
-    private View dpContentScroll;
-    private TextView dpUserInputDisplay;
+    private View dpGenerateBtn;
+    private View dpWorkGroup;
+    private TextView dpQueryText;
+    private TextView dpStatusText;
+    private View dpStatusSpinner;
     private TextView dpContentText;
-    private View dpStopBtn;
-    private TextView dpGeneratingStatus;
+    private View dpStopGroup;
+    private View dpRestartGroup;
     private View dpCompletedGroup;
     private TextView dpTitle;
     private View dpRegenerateBtn;
     private View dpExecuteBtn;
+    private View dpExecutingGroup;
     private TextView dpExecutingStatus;
     private TextView dpRangeHint;
     private String dpCellRange = "";
+    private String dpLastInput = "";
     private String dpActiveRequestId = "";
     private String dpResultText = "";
+    private int dpDialogState = 0;
     private final java.util.Set<String> dpRequestIds =
             java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     private org.json.JSONArray dpPendingOperations = null;
     private boolean dpIsAnalysisMode = false;
 
-    // Calc AI图表生成弹窗（四态：输入态/生成中态/完成态/执行中态）
+    // Calc AI图表生成弹窗（输入 / 生成中 / 停止 / 完成 / 执行中）
     private View chartOverlay;
     private View chartPanel;
     private EditText chartInput;
-    private TextView chartGenerateBtn;
-    private TextView chartLoadingStatus;
+    private View chartInputGroup;
+    private View chartGenerateBtn;
+    private View chartWorkGroup;
+    private TextView chartQueryText;
+    private TextView chartStatusText;
+    private View chartStatusSpinner;
     private TextView chartResultText;
+    private View chartStopGroup;
+    private View chartRestartGroup;
     private View chartCompletedGroup;
     private TextView chartRegenerateBtn;
     private TextView chartInsertBtn;
+    private View chartExecutingGroup;
     private TextView chartExecutingStatus;
     private String chartActiveRequestId = "";
     private String chartResultJson = "";
+    private String chartLastInput = "";
     private String chartSelectedRange = "";
     // Calc 通用：在 AI 功能面板弹出时缓存选区范围（避免 dismiss 后读取为空）
     private String calcSelectedRange = "";
     private static final int CHART_STATE_INPUT = 0;
     private static final int CHART_STATE_GENERATING = 1;
-    private static final int CHART_STATE_COMPLETED = 2;
-    private static final int CHART_STATE_EXECUTING = 3;
+    private static final int CHART_STATE_STOPPED = 2;
+    private static final int CHART_STATE_COMPLETED = 3;
+    private static final int CHART_STATE_EXECUTING = 4;
 
     // ========== Impress PPT 大纲生成弹窗 ==========
     private View impressOutlineOverlay;
@@ -3999,6 +4026,70 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+    /** Figma Hug 弹窗：宽度随内容区，高度随内容 Hug（maxHeightDp≤0 时用 {@link AiDialogHelper#MAX_HEIGHT_HUG_DP}）。 */
+    private void positionAiOverlayPanelHug(View panel, int maxHeightDp) {
+        if (panel == null) {
+            return;
+        }
+        View parent = (View) panel.getParent();
+        if (parent == null) {
+            return;
+        }
+        int parentWidth = parent.getWidth();
+        int parentHeight = parent.getHeight();
+        if (parentWidth <= 0 || parentHeight <= 0) {
+            return;
+        }
+        int targetWidth = AiDialogHelper.computeTargetWidthPx(getResources(), parentWidth);
+        int widthSpec = View.MeasureSpec.makeMeasureSpec(targetWidth, View.MeasureSpec.EXACTLY);
+        int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+        panel.measure(widthSpec, heightSpec);
+        int contentHeight = panel.getMeasuredHeight();
+        int maxHeightPx = maxHeightDp > 0
+                ? dpToPx(maxHeightDp)
+                : AiDialogHelper.computeMaxHeightHugPx(getResources());
+        int heightBufferPx = dpToPx(16);
+        int targetHeight = contentHeight + heightBufferPx;
+        boolean contentFits = targetHeight <= maxHeightPx;
+        if (!contentFits) {
+            targetHeight = maxHeightPx;
+        }
+        targetHeight = Math.max(targetHeight, dpToPx(120));
+        int x = Math.max(0, (parentWidth - targetWidth) / 2);
+        int y = Math.max(0, (parentHeight - targetHeight) / 2);
+
+        ViewGroup.LayoutParams rawLp = panel.getLayoutParams();
+        int layoutHeight = contentFits ? ViewGroup.LayoutParams.WRAP_CONTENT : targetHeight;
+        if (contentFits) {
+            y = Math.max(0, (parentHeight - contentHeight - heightBufferPx) / 2);
+        }
+        if (rawLp instanceof ConstraintLayout.LayoutParams) {
+            ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) rawLp;
+            lp.width = targetWidth;
+            lp.height = layoutHeight;
+            lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
+            lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
+            lp.endToEnd = ConstraintLayout.LayoutParams.UNSET;
+            lp.bottomToBottom = ConstraintLayout.LayoutParams.UNSET;
+            lp.horizontalBias = 0f;
+            lp.verticalBias = 0f;
+            lp.leftMargin = x;
+            lp.topMargin = y;
+            panel.setLayoutParams(lp);
+        } else if (rawLp instanceof ViewGroup.MarginLayoutParams) {
+            ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) rawLp;
+            lp.width = targetWidth;
+            lp.height = layoutHeight;
+            lp.setMargins(x, y, x, 0);
+            panel.setLayoutParams(lp);
+            panel.requestLayout();
+        }
+        if (panel instanceof ViewGroup) {
+            ((ViewGroup) panel).setClipToPadding(false);
+            ((ViewGroup) panel).setClipChildren(false);
+        }
+    }
+
     private float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(value, max));
     }
@@ -4205,6 +4296,11 @@ public class LOActivity extends AppCompatActivity {
                     @Override
                     public void evaluateJavascript(String script) {
                         LOActivity.this.evaluateJavascript(script, null);
+                    }
+
+                    @Override
+                    public void evaluateJavascript(String script, android.webkit.ValueCallback<String> callback) {
+                        LOActivity.this.evaluateJavascript(script, callback);
                     }
 
                     @Override
@@ -4621,19 +4717,18 @@ public class LOActivity extends AppCompatActivity {
         calcFormulaInput = calcFormulaPanel.findViewById(R.id.calc_formula_input);
         calcFormulaInputGroup = calcFormulaPanel.findViewById(R.id.calc_formula_input_group);
         calcFormulaGenerateBtn = calcFormulaPanel.findViewById(R.id.calc_formula_generate_btn);
-        calcFormulaContentScroll = calcFormulaPanel.findViewById(R.id.calc_formula_content_scroll);
-        calcFormulaUserInputDisplay = calcFormulaPanel.findViewById(R.id.calc_formula_user_input_display);
+        calcFormulaWorkGroup = calcFormulaPanel.findViewById(R.id.calc_formula_work_group);
+        calcFormulaQueryText = calcFormulaPanel.findViewById(R.id.calc_formula_query_text);
+        calcFormulaStatusText = calcFormulaPanel.findViewById(R.id.calc_formula_status_text);
+        calcFormulaStatusSpinner = calcFormulaPanel.findViewById(R.id.calc_formula_status_spinner);
         calcFormulaContentText = calcFormulaPanel.findViewById(R.id.calc_formula_content_text);
-        calcFormulaCopyBar = calcFormulaPanel.findViewById(R.id.calc_formula_copy_bar);
-        calcFormulaStopBtn = calcFormulaPanel.findViewById(R.id.calc_formula_stop_button);
+        calcFormulaStopGroup = calcFormulaPanel.findViewById(R.id.calc_formula_stop_group);
+        calcFormulaRestartGroup = calcFormulaPanel.findViewById(R.id.calc_formula_restart_group);
         calcFormulaCompletedGroup = calcFormulaPanel.findViewById(R.id.calc_formula_completed_group);
         calcFormulaRegenBtn = calcFormulaPanel.findViewById(R.id.calc_formula_regenerate_button);
         calcFormulaInsertBtn = calcFormulaPanel.findViewById(R.id.calc_formula_insert_button);
         calcFormulaCellHint = calcFormulaPanel.findViewById(R.id.calc_formula_cell_hint);
 
-        if (calcFormulaCopyBar != null) {
-            calcFormulaCopyBar.setOnClickListener(v -> onCalcFormulaCopy());
-        }
         calcFormulaOverlay.setOnClickListener(v -> dismissCalcFormulaDialog());
         View closeBtn = calcFormulaPanel.findViewById(R.id.calc_formula_close_button);
         if (closeBtn != null) {
@@ -4642,8 +4737,11 @@ public class LOActivity extends AppCompatActivity {
         if (calcFormulaGenerateBtn != null) {
             calcFormulaGenerateBtn.setOnClickListener(v -> onCalcFormulaGenerate());
         }
-        if (calcFormulaStopBtn != null) {
-            calcFormulaStopBtn.setOnClickListener(v -> onCalcFormulaStop());
+        if (calcFormulaStopGroup != null) {
+            calcFormulaStopGroup.setOnClickListener(v -> onCalcFormulaStop());
+        }
+        if (calcFormulaRestartGroup != null) {
+            calcFormulaRestartGroup.setOnClickListener(v -> onCalcFormulaRestart());
         }
         if (calcFormulaRegenBtn != null) {
             calcFormulaRegenBtn.setOnClickListener(v -> onCalcFormulaRegenerate());
@@ -4707,48 +4805,105 @@ public class LOActivity extends AppCompatActivity {
     }
 
     /**
-     * 居中定位公式生成浮层，复用续写浮层的定位逻辑。
+     * 居中定位公式生成浮层：高度随内容 Hug，上限见 {@link AiDialogHelper#MAX_HEIGHT_HUG_DP}。
      */
     private void positionCalcFormulaDialogCenter() {
-        positionAiOverlayPanelCenter(calcFormulaPanel, true);
+        positionAiOverlayPanelHug(calcFormulaPanel, AiDialogHelper.MAX_HEIGHT_HUG_DP);
     }
 
-    // 三态常量
     private static final int STATE_INPUT = 0;
     private static final int STATE_GENERATING = 1;
-    private static final int STATE_COMPLETED = 2;
+    private static final int STATE_STOPPED = 2;
+    private static final int STATE_COMPLETED = 3;
+
+    private void applyAiGradientText(TextView textView) {
+        if (textView == null) {
+            return;
+        }
+        textView.post(() -> {
+            CharSequence text = textView.getText();
+            if (text == null || text.length() == 0) {
+                return;
+            }
+            float width = textView.getPaint().measureText(text.toString());
+            if (width <= 0f) {
+                width = textView.getWidth() > 0 ? textView.getWidth() : dpToPx(80);
+            }
+            android.graphics.LinearGradient gradient = new android.graphics.LinearGradient(
+                    0f, 0f, width, textView.getTextSize(),
+                    new int[]{0xFF1DA8FF, 0xFFDD00CE},
+                    null,
+                    android.graphics.Shader.TileMode.CLAMP);
+            textView.getPaint().setShader(gradient);
+            textView.invalidate();
+        });
+    }
+
+    private void clearTextGradient(TextView textView) {
+        if (textView == null) {
+            return;
+        }
+        textView.getPaint().setShader(null);
+        textView.invalidate();
+    }
 
     /**
-     * 切换公式生成浮层三态。
-     * INPUT：显示输入区 + 生成按钮，隐藏内容/停止/完成组
-     * GENERATING：显示流式输出 + 停止按钮，隐藏输入区/完成组
-     * COMPLETED：显示流式输出 + 完成组（重新生成+复制到单元格）+ 复制栏
+     * 切换公式生成浮层四态（Figma：输入 / 生成中 / 停止 / 完成）。
      */
     private void setCalcFormulaDialogState(int state) {
+        calcFormulaDialogState = state;
         boolean input = state == STATE_INPUT;
         boolean generating = state == STATE_GENERATING;
+        boolean stopped = state == STATE_STOPPED;
         boolean completed = state == STATE_COMPLETED;
+        boolean workVisible = !input;
 
         if (calcFormulaInputGroup != null) {
             calcFormulaInputGroup.setVisibility(input ? View.VISIBLE : View.GONE);
         }
-        if (calcFormulaContentScroll != null) {
-            calcFormulaContentScroll.setVisibility((generating || completed) ? View.VISIBLE : View.GONE);
+        if (calcFormulaWorkGroup != null) {
+            calcFormulaWorkGroup.setVisibility(workVisible ? View.VISIBLE : View.GONE);
         }
-        if (calcFormulaStopBtn != null) {
-            calcFormulaStopBtn.setVisibility(generating ? View.VISIBLE : View.GONE);
+        if (calcFormulaStopGroup != null) {
+            calcFormulaStopGroup.setVisibility(generating ? View.VISIBLE : View.GONE);
+        }
+        if (calcFormulaRestartGroup != null) {
+            calcFormulaRestartGroup.setVisibility(stopped ? View.VISIBLE : View.GONE);
         }
         if (calcFormulaCompletedGroup != null) {
             calcFormulaCompletedGroup.setVisibility(completed ? View.VISIBLE : View.GONE);
         }
-        if (calcFormulaCopyBar != null) {
-            calcFormulaCopyBar.setVisibility(completed ? View.VISIBLE : View.GONE);
+        if (calcFormulaStatusSpinner != null) {
+            calcFormulaStatusSpinner.setVisibility(generating ? View.VISIBLE : View.GONE);
         }
-        if (generating || input) {
+        if (calcFormulaContentText != null) {
+            calcFormulaContentText.setVisibility(completed ? View.VISIBLE : View.GONE);
+        }
+        if (calcFormulaStatusText != null) {
+            if (generating) {
+                calcFormulaStatusText.setText("公式生成中");
+                applyAiGradientText(calcFormulaStatusText);
+            } else if (stopped) {
+                clearTextGradient(calcFormulaStatusText);
+                calcFormulaStatusText.setText("停止生成");
+                calcFormulaStatusText.setTextColor(0xFFFE3A3A);
+            } else if (completed) {
+                calcFormulaStatusText.setText("公式已生成");
+                applyAiGradientText(calcFormulaStatusText);
+            }
+        }
+        if (calcFormulaQueryText != null && workVisible) {
+            calcFormulaQueryText.setTextColor(0xFF999999);
+        }
+        if (input) {
+            calcFormulaResultText = "";
             if (calcFormulaContentText != null) {
                 calcFormulaContentText.setText("");
             }
-            calcFormulaResultText = "";
+        }
+        if (calcFormulaPanel != null && calcFormulaPanel.getVisibility() == View.VISIBLE) {
+            calcFormulaPanel.post(this::positionCalcFormulaDialogCenter);
+            calcFormulaPanel.postDelayed(this::positionCalcFormulaDialogCenter, 50);
         }
     }
 
@@ -4767,10 +4922,12 @@ public class LOActivity extends AppCompatActivity {
         if (imm != null && calcFormulaInput != null) {
             imm.hideSoftInputFromWindow(calcFormulaInput.getWindowToken(), 0);
         }
-        // Show user input in the display area
-        if (calcFormulaUserInputDisplay != null) {
-            calcFormulaUserInputDisplay.setText("需求：" + input);
-            calcFormulaUserInputDisplay.setVisibility(View.VISIBLE);
+        calcFormulaLastInput = input;
+        if (calcFormulaQueryText != null) {
+            calcFormulaQueryText.setText(input);
+        }
+        if (calcFormulaContentText != null) {
+            calcFormulaContentText.setText("");
         }
         setCalcFormulaDialogState(STATE_GENERATING);
         startCalcFormulaRequest(input);
@@ -4824,13 +4981,16 @@ public class LOActivity extends AppCompatActivity {
         final String text = fullText == null ? "" : fullText;
         runOnUiThread(() -> {
             calcFormulaResultText = text;
+            if (calcFormulaContentText != null) {
+                calcFormulaContentText.setText(text);
+            }
             setCalcFormulaDialogState(STATE_COMPLETED);
             Log.i(TAG, "calc_formula_done requestId=" + requestId + " chars=" + text.length());
         });
     }
 
     /**
-     * 点停止按钮：取消在途请求，保留已流式部分，切到完成态。
+     * 点停止生成：取消在途请求，切到停止态。
      */
     private void onCalcFormulaStop() {
         String rid = calcFormulaActiveRequestId;
@@ -4846,23 +5006,45 @@ public class LOActivity extends AppCompatActivity {
         if (!rid.isEmpty()) {
             aiStreamingViewByRequestId.remove(rid);
         }
-        setCalcFormulaDialogState(STATE_COMPLETED);
+        setCalcFormulaDialogState(STATE_STOPPED);
         Log.i(TAG, "calc_formula_stopped requestId=" + rid + " chars=" + text.length());
     }
 
     /**
-     * 点「重新生成」：取消旧请求，回到输入态让用户修改后重新生成。
+     * 停止后点「开始生成」：用同一需求重新发起。
+     */
+    private void onCalcFormulaRestart() {
+        if (calcFormulaLastInput == null || calcFormulaLastInput.trim().isEmpty()) {
+            setCalcFormulaDialogState(STATE_INPUT);
+            return;
+        }
+        if (calcFormulaContentText != null) {
+            calcFormulaContentText.setText("");
+        }
+        calcFormulaResultText = "";
+        setCalcFormulaDialogState(STATE_GENERATING);
+        startCalcFormulaRequest(calcFormulaLastInput);
+        Log.i(TAG, "calc_formula_restart");
+    }
+
+    /**
+     * 点「重新生成」：取消旧请求并用同一需求重新生成。
      */
     private void onCalcFormulaRegenerate() {
         if (!calcFormulaActiveRequestId.isEmpty()) {
             cancelAiRequest(calcFormulaActiveRequestId);
             aiStreamingViewByRequestId.remove(calcFormulaActiveRequestId);
         }
-        // Return to input state, keep the previous input text
-        setCalcFormulaDialogState(STATE_INPUT);
-        if (calcFormulaUserInputDisplay != null) {
-            calcFormulaUserInputDisplay.setVisibility(View.GONE);
+        if (calcFormulaLastInput == null || calcFormulaLastInput.trim().isEmpty()) {
+            setCalcFormulaDialogState(STATE_INPUT);
+            return;
         }
+        if (calcFormulaContentText != null) {
+            calcFormulaContentText.setText("");
+        }
+        calcFormulaResultText = "";
+        setCalcFormulaDialogState(STATE_GENERATING);
+        startCalcFormulaRequest(calcFormulaLastInput);
         Log.i(TAG, "calc_formula_regenerate");
     }
 
@@ -4887,24 +5069,6 @@ public class LOActivity extends AppCompatActivity {
     }
 
     /**
-     * 点复制栏：将公式结果复制到剪贴板。
-     */
-    private void onCalcFormulaCopy() {
-        String text = calcFormulaResultText;
-        if ((text == null || text.isEmpty()) && calcFormulaContentText != null) {
-            text = calcFormulaContentText.getText().toString();
-        }
-        if (text == null || text.trim().isEmpty()) {
-            return;
-        }
-        if (clipboardManager != null) {
-            clipboardManager.setPrimaryClip(ClipData.newPlainText("calc_formula", text));
-        }
-        Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show();
-        Log.i(TAG, "calc_formula_copy chars=" + text.length());
-    }
-
-    /**
      * 关闭公式生成浮层：取消在途请求、清理流式注册、隐藏 overlay+panel。
      */
     private void dismissCalcFormulaDialog() {
@@ -4925,16 +5089,17 @@ public class LOActivity extends AppCompatActivity {
     // ==================== Calc AI公式生成浮层结束 ====================
 
     // ==================== Calc AI条件格式浮层 ====================
-    // 三态：STATE_INPUT=0 / STATE_GENERATING=1 / STATE_COMPLETED=2
     private static final int COND_FORMAT_STATE_INPUT = 0;
     private static final int COND_FORMAT_STATE_GENERATING = 1;
-    private static final int COND_FORMAT_STATE_COMPLETED = 2;
+    private static final int COND_FORMAT_STATE_STOPPED = 2;
+    private static final int COND_FORMAT_STATE_COMPLETED = 3;
 
     // 数据处理四态
     private static final int DP_STATE_INPUT = 0;
     private static final int DP_STATE_GENERATING = 1;
-    private static final int DP_STATE_COMPLETED = 2;
-    private static final int DP_STATE_EXECUTING = 3;
+    private static final int DP_STATE_STOPPED = 2;
+    private static final int DP_STATE_COMPLETED = 3;
+    private static final int DP_STATE_EXECUTING = 4;
 
     private void setupCondFormatDialog() {
         condFormatOverlay = findViewById(R.id.cond_format_overlay);
@@ -4945,19 +5110,18 @@ public class LOActivity extends AppCompatActivity {
         condFormatInput = condFormatPanel.findViewById(R.id.cond_format_input);
         condFormatInputGroup = condFormatPanel.findViewById(R.id.cond_format_input_group);
         condFormatGenerateBtn = condFormatPanel.findViewById(R.id.cond_format_generate_btn);
-        condFormatContentScroll = condFormatPanel.findViewById(R.id.cond_format_content_scroll);
-        condFormatUserInputDisplay = condFormatPanel.findViewById(R.id.cond_format_user_input_display);
+        condFormatWorkGroup = condFormatPanel.findViewById(R.id.cond_format_work_group);
+        condFormatQueryText = condFormatPanel.findViewById(R.id.cond_format_query_text);
+        condFormatStatusText = condFormatPanel.findViewById(R.id.cond_format_status_text);
+        condFormatStatusSpinner = condFormatPanel.findViewById(R.id.cond_format_status_spinner);
         condFormatContentText = condFormatPanel.findViewById(R.id.cond_format_content_text);
-        condFormatCopyBar = condFormatPanel.findViewById(R.id.cond_format_copy_bar);
-        condFormatStopBtn = condFormatPanel.findViewById(R.id.cond_format_stop_button);
+        condFormatStopGroup = condFormatPanel.findViewById(R.id.cond_format_stop_group);
+        condFormatRestartGroup = condFormatPanel.findViewById(R.id.cond_format_restart_group);
         condFormatCompletedGroup = condFormatPanel.findViewById(R.id.cond_format_completed_group);
         condFormatRegenBtn = condFormatPanel.findViewById(R.id.cond_format_regenerate_button);
         condFormatApplyBtn = condFormatPanel.findViewById(R.id.cond_format_apply_button);
         condFormatRangeHint = condFormatPanel.findViewById(R.id.cond_format_range_hint);
 
-        if (condFormatCopyBar != null) {
-            condFormatCopyBar.setOnClickListener(v -> onCondFormatCopy());
-        }
         condFormatOverlay.setOnClickListener(v -> dismissCondFormatDialog());
         View closeBtn = condFormatPanel.findViewById(R.id.cond_format_close_button);
         if (closeBtn != null) {
@@ -4966,8 +5130,11 @@ public class LOActivity extends AppCompatActivity {
         if (condFormatGenerateBtn != null) {
             condFormatGenerateBtn.setOnClickListener(v -> onCondFormatGenerate());
         }
-        if (condFormatStopBtn != null) {
-            condFormatStopBtn.setOnClickListener(v -> onCondFormatStop());
+        if (condFormatStopGroup != null) {
+            condFormatStopGroup.setOnClickListener(v -> onCondFormatStop());
+        }
+        if (condFormatRestartGroup != null) {
+            condFormatRestartGroup.setOnClickListener(v -> onCondFormatRestart());
         }
         if (condFormatRegenBtn != null) {
             condFormatRegenBtn.setOnClickListener(v -> onCondFormatRegenerate());
@@ -4978,7 +5145,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void positionCondFormatDialogCenter() {
-        positionAiOverlayPanelCenter(condFormatPanel, true);
+        positionAiOverlayPanelHug(condFormatPanel, AiDialogHelper.MAX_HEIGHT_HUG_DP);
     }
 
     private void openCondFormatDialog() {
@@ -5024,27 +5191,59 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void setCondFormatDialogState(int state) {
-        boolean isInput = (state == COND_FORMAT_STATE_INPUT);
-        boolean isGenerating = (state == COND_FORMAT_STATE_GENERATING);
-        boolean isCompleted = (state == COND_FORMAT_STATE_COMPLETED);
+        condFormatDialogState = state;
+        boolean input = state == COND_FORMAT_STATE_INPUT;
+        boolean generating = state == COND_FORMAT_STATE_GENERATING;
+        boolean stopped = state == COND_FORMAT_STATE_STOPPED;
+        boolean completed = state == COND_FORMAT_STATE_COMPLETED;
+        boolean workVisible = !input;
+
         if (condFormatInputGroup != null) {
-            condFormatInputGroup.setVisibility(isInput ? View.VISIBLE : View.GONE);
+            condFormatInputGroup.setVisibility(input ? View.VISIBLE : View.GONE);
         }
-        if (condFormatContentScroll != null) {
-            condFormatContentScroll.setVisibility((isGenerating || isCompleted) ? View.VISIBLE : View.GONE);
+        if (condFormatWorkGroup != null) {
+            condFormatWorkGroup.setVisibility(workVisible ? View.VISIBLE : View.GONE);
         }
-        if (condFormatStopBtn != null) {
-            condFormatStopBtn.setVisibility(isGenerating ? View.VISIBLE : View.GONE);
+        if (condFormatStopGroup != null) {
+            condFormatStopGroup.setVisibility(generating ? View.VISIBLE : View.GONE);
+        }
+        if (condFormatRestartGroup != null) {
+            condFormatRestartGroup.setVisibility(stopped ? View.VISIBLE : View.GONE);
         }
         if (condFormatCompletedGroup != null) {
-            condFormatCompletedGroup.setVisibility(isCompleted ? View.VISIBLE : View.GONE);
+            condFormatCompletedGroup.setVisibility(completed ? View.VISIBLE : View.GONE);
         }
-        if (condFormatCopyBar != null) {
-            condFormatCopyBar.setVisibility(isCompleted ? View.VISIBLE : View.GONE);
+        if (condFormatStatusSpinner != null) {
+            condFormatStatusSpinner.setVisibility(generating ? View.VISIBLE : View.GONE);
         }
-        if (isInput || isGenerating) {
-            if (condFormatContentText != null) condFormatContentText.setText("");
+        if (condFormatContentText != null) {
+            condFormatContentText.setVisibility(completed ? View.VISIBLE : View.GONE);
+        }
+        if (condFormatStatusText != null) {
+            if (generating) {
+                condFormatStatusText.setText("规则生成中");
+                applyAiGradientText(condFormatStatusText);
+            } else if (stopped) {
+                clearTextGradient(condFormatStatusText);
+                condFormatStatusText.setText("停止生成");
+                condFormatStatusText.setTextColor(0xFFFE3A3A);
+            } else if (completed) {
+                condFormatStatusText.setText("格式已生成");
+                applyAiGradientText(condFormatStatusText);
+            }
+        }
+        if (condFormatQueryText != null && workVisible) {
+            condFormatQueryText.setTextColor(0xFF999999);
+        }
+        if (input) {
             condFormatResultText = "";
+            if (condFormatContentText != null) {
+                condFormatContentText.setText("");
+            }
+        }
+        if (condFormatPanel != null && condFormatPanel.getVisibility() == View.VISIBLE) {
+            condFormatPanel.post(this::positionCondFormatDialogCenter);
+            condFormatPanel.postDelayed(this::positionCondFormatDialogCenter, 50);
         }
     }
 
@@ -5059,9 +5258,12 @@ public class LOActivity extends AppCompatActivity {
         if (imm != null && condFormatInput.getWindowToken() != null) {
             imm.hideSoftInputFromWindow(condFormatInput.getWindowToken(), 0);
         }
-        if (condFormatUserInputDisplay != null) {
-            condFormatUserInputDisplay.setText(input);
-            condFormatUserInputDisplay.setVisibility(View.VISIBLE);
+        condFormatLastInput = input;
+        if (condFormatQueryText != null) {
+            condFormatQueryText.setText(input);
+        }
+        if (condFormatContentText != null) {
+            condFormatContentText.setText("");
         }
         setCondFormatDialogState(COND_FORMAT_STATE_GENERATING);
         startCondFormatRequest(input);
@@ -5187,50 +5389,58 @@ public class LOActivity extends AppCompatActivity {
 
     private void onCondFormatStop() {
         String rid = condFormatActiveRequestId;
-        if (rid == null || rid.isEmpty()) return;
-        cancelAiRequest(rid);
-        StringBuilder partialSb = aiTextByRequestId.remove(rid);
+        if (!rid.isEmpty()) {
+            cancelAiRequest(rid);
+        }
+        StringBuilder partialSb = aiTextByRequestId.get(rid);
         String partial = partialSb != null ? partialSb.toString() : "";
-        if (partial == null || partial.isEmpty()) {
-            partial = condFormatContentText != null ? condFormatContentText.getText().toString() : "";
+        if (partial.isEmpty() && condFormatContentText != null) {
+            partial = condFormatContentText.getText().toString();
         }
         condFormatResultText = partial;
         condFormatPlan = null;
-        aiStreamingViewByRequestId.remove(rid);
+        if (!rid.isEmpty()) {
+            aiStreamingViewByRequestId.remove(rid);
+        }
         condFormatActiveRequestId = "";
-        setCondFormatDialogState(COND_FORMAT_STATE_COMPLETED);
+        setCondFormatDialogState(COND_FORMAT_STATE_STOPPED);
         Log.i(TAG, "cond_format_stop requestId=" + rid + " chars=" + condFormatResultText.length());
+    }
+
+    private void onCondFormatRestart() {
+        if (condFormatLastInput == null || condFormatLastInput.trim().isEmpty()) {
+            setCondFormatDialogState(COND_FORMAT_STATE_INPUT);
+            return;
+        }
+        if (condFormatContentText != null) {
+            condFormatContentText.setText("");
+        }
+        condFormatResultText = "";
+        condFormatPlan = null;
+        setCondFormatDialogState(COND_FORMAT_STATE_GENERATING);
+        startCondFormatRequest(condFormatLastInput);
+        Log.i(TAG, "cond_format_restart");
     }
 
     private void onCondFormatRegenerate() {
         String rid = condFormatActiveRequestId;
-        if (!rid.isEmpty()) {
+        if (rid != null && !rid.isEmpty()) {
             cancelAiRequest(rid);
             aiStreamingViewByRequestId.remove(rid);
             condFormatActiveRequestId = "";
         }
-        condFormatPlan = null;
-        setCondFormatDialogState(COND_FORMAT_STATE_INPUT);
-        if (condFormatUserInputDisplay != null) {
-            condFormatUserInputDisplay.setVisibility(View.GONE);
-        }
-    }
-
-    private void onCondFormatCopy() {
-        String text = condFormatResultText;
-        if (text == null || text.isEmpty()) {
-            text = condFormatContentText != null ? condFormatContentText.getText().toString() : "";
-        }
-        if (text.isEmpty()) {
-            toastTodo("没有可复制的内容");
+        if (condFormatLastInput == null || condFormatLastInput.trim().isEmpty()) {
+            setCondFormatDialogState(COND_FORMAT_STATE_INPUT);
             return;
         }
-        android.content.ClipboardManager cm = (android.content.ClipboardManager)
-                getSystemService(Context.CLIPBOARD_SERVICE);
-        if (cm != null) {
-            cm.setPrimaryClip(android.content.ClipData.newPlainText("cond_format", text));
-            toastTodo("规则已复制");
+        if (condFormatContentText != null) {
+            condFormatContentText.setText("");
         }
+        condFormatResultText = "";
+        condFormatPlan = null;
+        setCondFormatDialogState(COND_FORMAT_STATE_GENERATING);
+        startCondFormatRequest(condFormatLastInput);
+        Log.i(TAG, "cond_format_regenerate");
     }
 
     private void onCondFormatApply() {
@@ -5406,14 +5616,17 @@ public class LOActivity extends AppCompatActivity {
         dpInput = dpPanel.findViewById(R.id.dp_input);
         dpInputGroup = dpPanel.findViewById(R.id.dp_input_group);
         dpGenerateBtn = dpPanel.findViewById(R.id.dp_generate_btn);
-        dpContentScroll = dpPanel.findViewById(R.id.dp_content_scroll);
-        dpUserInputDisplay = dpPanel.findViewById(R.id.dp_user_input_display);
+        dpWorkGroup = dpPanel.findViewById(R.id.dp_work_group);
+        dpQueryText = dpPanel.findViewById(R.id.dp_query_text);
+        dpStatusText = dpPanel.findViewById(R.id.dp_status_text);
+        dpStatusSpinner = dpPanel.findViewById(R.id.dp_status_spinner);
         dpContentText = dpPanel.findViewById(R.id.dp_content_text);
-        dpStopBtn = dpPanel.findViewById(R.id.dp_stop_button);
-        dpGeneratingStatus = dpPanel.findViewById(R.id.dp_generating_status);
+        dpStopGroup = dpPanel.findViewById(R.id.dp_stop_group);
+        dpRestartGroup = dpPanel.findViewById(R.id.dp_restart_group);
         dpCompletedGroup = dpPanel.findViewById(R.id.dp_completed_group);
         dpRegenerateBtn = dpPanel.findViewById(R.id.dp_regenerate_button);
         dpExecuteBtn = dpPanel.findViewById(R.id.dp_execute_button);
+        dpExecutingGroup = dpPanel.findViewById(R.id.dp_executing_group);
         dpExecutingStatus = dpPanel.findViewById(R.id.dp_executing_status);
         dpRangeHint = dpPanel.findViewById(R.id.dp_range_hint);
         dpTitle = dpPanel.findViewById(R.id.dp_title);
@@ -5422,46 +5635,76 @@ public class LOActivity extends AppCompatActivity {
         View closeBtn = dpPanel.findViewById(R.id.dp_close_button);
         if (closeBtn != null) closeBtn.setOnClickListener(v -> dismissDataProcessDialog());
         if (dpGenerateBtn != null) dpGenerateBtn.setOnClickListener(v -> onDataProcessGenerate());
-        if (dpStopBtn != null) dpStopBtn.setOnClickListener(v -> onDataProcessStop());
+        if (dpStopGroup != null) dpStopGroup.setOnClickListener(v -> onDataProcessStop());
+        if (dpRestartGroup != null) dpRestartGroup.setOnClickListener(v -> onDataProcessRestart());
         if (dpRegenerateBtn != null) dpRegenerateBtn.setOnClickListener(v -> onDataProcessRegenerate());
         if (dpExecuteBtn != null) dpExecuteBtn.setOnClickListener(v -> onDataProcessExecute());
     }
 
     private void setDataProcessDialogState(int state) {
+        dpDialogState = state;
         boolean input = state == DP_STATE_INPUT;
         boolean generating = state == DP_STATE_GENERATING;
+        boolean stopped = state == DP_STATE_STOPPED;
         boolean completed = state == DP_STATE_COMPLETED;
         boolean executing = state == DP_STATE_EXECUTING;
+        boolean workVisible = generating || stopped || completed;
 
         if (dpInputGroup != null) dpInputGroup.setVisibility(input ? View.VISIBLE : View.GONE);
-        if (dpContentScroll != null)
-            dpContentScroll.setVisibility((generating || completed) ? View.VISIBLE : View.GONE);
-        if (dpStopBtn != null) dpStopBtn.setVisibility(generating ? View.VISIBLE : View.GONE);
-        if (dpGeneratingStatus != null)
-            dpGeneratingStatus.setVisibility(generating ? View.VISIBLE : View.GONE);
+        if (dpWorkGroup != null) dpWorkGroup.setVisibility(workVisible ? View.VISIBLE : View.GONE);
+        if (dpStopGroup != null) dpStopGroup.setVisibility(generating ? View.VISIBLE : View.GONE);
+        if (dpRestartGroup != null) dpRestartGroup.setVisibility(stopped ? View.VISIBLE : View.GONE);
         if (dpCompletedGroup != null) dpCompletedGroup.setVisibility(completed ? View.VISIBLE : View.GONE);
-        // 分析模式或无操作时隐藏"执行操作"按钮
+        if (dpExecutingGroup != null) dpExecutingGroup.setVisibility(executing ? View.VISIBLE : View.GONE);
+        if (dpStatusSpinner != null) dpStatusSpinner.setVisibility(generating ? View.VISIBLE : View.GONE);
+        if (dpContentText != null) {
+            boolean showContent = completed || (generating && dpIsAnalysisMode);
+            dpContentText.setVisibility(showContent ? View.VISIBLE : View.GONE);
+        }
         if (dpExecuteBtn != null) {
             boolean hasOps = dpPendingOperations != null && dpPendingOperations.length() > 0;
             boolean showExecute = completed && !dpIsAnalysisMode && hasOps;
             dpExecuteBtn.setVisibility(showExecute ? View.VISIBLE : View.GONE);
         }
-        if (dpExecutingStatus != null) {
-            dpExecutingStatus.setVisibility(executing ? View.VISIBLE : View.GONE);
-            if (executing) dpExecutingStatus.setText("正在执行操作...");
+        if (dpExecutingStatus != null && executing) {
+            dpExecutingStatus.setText("正在执行操作...");
         }
-        if (input || generating) {
+        if (dpStatusText != null) {
+            String generatingLabel = dpIsAnalysisMode ? "分析生成中" : "方案生成中";
+            String completedLabel = dpIsAnalysisMode ? "分析已完成" : "方案已生成";
+            if (generating) {
+                dpStatusText.setText(generatingLabel);
+                applyAiGradientText(dpStatusText);
+            } else if (stopped) {
+                clearTextGradient(dpStatusText);
+                dpStatusText.setText("停止生成");
+                dpStatusText.setTextColor(0xFFFE3A3A);
+            } else if (completed) {
+                dpStatusText.setText(completedLabel);
+                applyAiGradientText(dpStatusText);
+            }
+        }
+        if (dpQueryText != null && workVisible) {
+            dpQueryText.setTextColor(0xFF999999);
+        }
+        if (input) {
             if (dpContentText != null) dpContentText.setText("");
             dpResultText = "";
             dpPendingOperations = null;
         }
+        if (dpPanel != null && dpPanel.getVisibility() == View.VISIBLE) {
+            dpPanel.post(this::positionDataProcessDialogCenter);
+            dpPanel.postDelayed(this::positionDataProcessDialogCenter, 50);
+        }
     }
 
     private void positionDataProcessDialogCenter() {
-        positionAiOverlayPanelCenter(dpPanel, true);
+        positionAiOverlayPanelHug(dpPanel, AiDialogHelper.MAX_HEIGHT_HUG_DP);
     }
 
     private void openDataProcessDialog() {
+        if (dpTitle != null) dpTitle.setText("AI数据处理");
+        if (dpInput != null) dpInput.setHint("重复数据全部清除");
         if (mWebView != null) {
             openDataProcessDialogWithRangeNow();
         } else if (calcSelectedRange != null && !calcSelectedRange.isEmpty()) {
@@ -5513,9 +5756,12 @@ public class LOActivity extends AppCompatActivity {
         if (imm != null && dpInput != null && dpInput.getWindowToken() != null) {
             imm.hideSoftInputFromWindow(dpInput.getWindowToken(), 0);
         }
-        if (dpUserInputDisplay != null) {
-            dpUserInputDisplay.setText(input);
-            dpUserInputDisplay.setVisibility(View.VISIBLE);
+        dpLastInput = input;
+        if (dpQueryText != null) {
+            dpQueryText.setText(input);
+        }
+        if (dpContentText != null) {
+            dpContentText.setText("");
         }
         setDataProcessDialogState(DP_STATE_GENERATING);
         startDataProcessRequest(input);
@@ -5674,21 +5920,47 @@ public class LOActivity extends AppCompatActivity {
             text = dpContentText.getText().toString();
         }
         dpResultText = text;
+        dpPendingOperations = null;
         if (!rid.isEmpty()) {
             aiStreamingViewByRequestId.remove(rid);
         }
-        setDataProcessDialogState(DP_STATE_COMPLETED);
+        dpActiveRequestId = "";
+        setDataProcessDialogState(DP_STATE_STOPPED);
         Log.i(TAG, "calc_data_process_stopped requestId=" + rid);
+    }
+
+    private void onDataProcessRestart() {
+        if (dpLastInput == null || dpLastInput.trim().isEmpty()) {
+            setDataProcessDialogState(DP_STATE_INPUT);
+            return;
+        }
+        if (dpContentText != null) {
+            dpContentText.setText("");
+        }
+        dpResultText = "";
+        dpPendingOperations = null;
+        setDataProcessDialogState(DP_STATE_GENERATING);
+        startDataProcessRequest(dpLastInput);
+        Log.i(TAG, "calc_data_process_restart");
     }
 
     private void onDataProcessRegenerate() {
         if (!dpActiveRequestId.isEmpty()) {
             cancelAiRequest(dpActiveRequestId);
             aiStreamingViewByRequestId.remove(dpActiveRequestId);
+            dpActiveRequestId = "";
         }
+        if (dpLastInput == null || dpLastInput.trim().isEmpty()) {
+            setDataProcessDialogState(DP_STATE_INPUT);
+            return;
+        }
+        if (dpContentText != null) {
+            dpContentText.setText("");
+        }
+        dpResultText = "";
         dpPendingOperations = null;
-        setDataProcessDialogState(DP_STATE_INPUT);
-        if (dpUserInputDisplay != null) dpUserInputDisplay.setVisibility(View.GONE);
+        setDataProcessDialogState(DP_STATE_GENERATING);
+        startDataProcessRequest(dpLastInput);
         Log.i(TAG, "calc_data_process_regenerate");
     }
 
@@ -5724,34 +5996,82 @@ public class LOActivity extends AppCompatActivity {
     private void setupChartDialog() {
         chartOverlay = findViewById(R.id.chart_overlay);
         chartPanel = findViewById(R.id.chart_dialog_panel);
+        if (chartOverlay == null || chartPanel == null) {
+            return;
+        }
 
         chartInput = chartPanel.findViewById(R.id.chart_input);
+        chartInputGroup = chartPanel.findViewById(R.id.chart_input_group);
         chartGenerateBtn = chartPanel.findViewById(R.id.chart_generate_btn);
-        chartLoadingStatus = chartPanel.findViewById(R.id.chart_loading_status);
+        chartWorkGroup = chartPanel.findViewById(R.id.chart_work_group);
+        chartQueryText = chartPanel.findViewById(R.id.chart_query_text);
+        chartStatusText = chartPanel.findViewById(R.id.chart_status_text);
+        chartStatusSpinner = chartPanel.findViewById(R.id.chart_status_spinner);
         chartResultText = chartPanel.findViewById(R.id.chart_result_text);
+        chartStopGroup = chartPanel.findViewById(R.id.chart_stop_group);
+        chartRestartGroup = chartPanel.findViewById(R.id.chart_restart_group);
         chartCompletedGroup = chartPanel.findViewById(R.id.chart_completed_group);
         chartRegenerateBtn = chartPanel.findViewById(R.id.chart_regenerate_btn);
         chartInsertBtn = chartPanel.findViewById(R.id.chart_insert_btn);
+        chartExecutingGroup = chartPanel.findViewById(R.id.chart_executing_group);
         chartExecutingStatus = chartPanel.findViewById(R.id.chart_executing_status);
 
+        chartOverlay.setOnClickListener(v -> dismissChartDialog());
         View closeBtn = chartPanel.findViewById(R.id.chart_close_button);
-        closeBtn.setOnClickListener(v -> dismissChartDialog());
-
-        chartGenerateBtn.setOnClickListener(v -> onChartGenerate());
-        chartRegenerateBtn.setOnClickListener(v -> onChartRegenerate());
-        chartInsertBtn.setOnClickListener(v -> onChartInsert());
+        if (closeBtn != null) {
+            closeBtn.setOnClickListener(v -> dismissChartDialog());
+        }
+        if (chartGenerateBtn != null) chartGenerateBtn.setOnClickListener(v -> onChartGenerate());
+        if (chartStopGroup != null) chartStopGroup.setOnClickListener(v -> onChartStop());
+        if (chartRestartGroup != null) chartRestartGroup.setOnClickListener(v -> onChartRestart());
+        if (chartRegenerateBtn != null) chartRegenerateBtn.setOnClickListener(v -> onChartRegenerate());
+        if (chartInsertBtn != null) chartInsertBtn.setOnClickListener(v -> onChartInsert());
     }
 
     private void setChartDialogState(int state) {
-        chartInput.setVisibility(state == CHART_STATE_INPUT ? View.VISIBLE : View.GONE);
-        chartGenerateBtn.setVisibility(state == CHART_STATE_INPUT ? View.VISIBLE : View.GONE);
-        chartLoadingStatus.setVisibility(state == CHART_STATE_GENERATING ? View.VISIBLE : View.GONE);
-        chartCompletedGroup.setVisibility(state == CHART_STATE_COMPLETED ? View.VISIBLE : View.GONE);
-        chartExecutingStatus.setVisibility(state == CHART_STATE_EXECUTING ? View.VISIBLE : View.GONE);
+        boolean input = state == CHART_STATE_INPUT;
+        boolean generating = state == CHART_STATE_GENERATING;
+        boolean stopped = state == CHART_STATE_STOPPED;
+        boolean completed = state == CHART_STATE_COMPLETED;
+        boolean executing = state == CHART_STATE_EXECUTING;
+        boolean workVisible = generating || stopped || completed;
+
+        if (chartInputGroup != null) chartInputGroup.setVisibility(input ? View.VISIBLE : View.GONE);
+        if (chartWorkGroup != null) chartWorkGroup.setVisibility(workVisible ? View.VISIBLE : View.GONE);
+        if (chartStopGroup != null) chartStopGroup.setVisibility(generating ? View.VISIBLE : View.GONE);
+        if (chartRestartGroup != null) chartRestartGroup.setVisibility(stopped ? View.VISIBLE : View.GONE);
+        if (chartCompletedGroup != null) chartCompletedGroup.setVisibility(completed ? View.VISIBLE : View.GONE);
+        if (chartExecutingGroup != null) chartExecutingGroup.setVisibility(executing ? View.VISIBLE : View.GONE);
+        if (chartStatusSpinner != null) chartStatusSpinner.setVisibility(generating ? View.VISIBLE : View.GONE);
+        if (chartResultText != null) chartResultText.setVisibility(completed ? View.VISIBLE : View.GONE);
+        if (chartStatusText != null) {
+            if (generating) {
+                chartStatusText.setText("图表生成中");
+                applyAiGradientText(chartStatusText);
+            } else if (stopped) {
+                clearTextGradient(chartStatusText);
+                chartStatusText.setText("停止生成");
+                chartStatusText.setTextColor(0xFFFE3A3A);
+            } else if (completed) {
+                chartStatusText.setText("图表已生成");
+                applyAiGradientText(chartStatusText);
+            }
+        }
+        if (chartQueryText != null && workVisible) {
+            chartQueryText.setTextColor(0xFF999999);
+        }
+        if (input) {
+            if (chartResultText != null) chartResultText.setText("");
+            chartResultJson = "";
+        }
+        if (chartPanel != null && chartPanel.getVisibility() == View.VISIBLE) {
+            chartPanel.post(this::positionChartDialogCenter);
+            chartPanel.postDelayed(this::positionChartDialogCenter, 50);
+        }
     }
 
     private void positionChartDialogCenter() {
-        positionAiOverlayPanelCenter(chartPanel, true);
+        positionAiOverlayPanelHug(chartPanel, AiDialogHelper.MAX_HEIGHT_HUG_DP);
     }
 
     private void openChartDialog() {
@@ -5805,12 +6125,19 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void onChartGenerate() {
-        String input = chartInput.getText().toString().trim();
+        String input = chartInput != null ? chartInput.getText().toString().trim() : "";
         if (input.isEmpty()) {
             Toast.makeText(this, "请输入图表需求", Toast.LENGTH_SHORT).show();
             return;
         }
         hideKeyboard();
+        chartLastInput = input;
+        if (chartQueryText != null) {
+            chartQueryText.setText(input);
+        }
+        if (chartResultText != null) {
+            chartResultText.setText("");
+        }
         setChartDialogState(CHART_STATE_GENERATING);
         startChartRequest(input);
     }
@@ -5919,20 +6246,55 @@ public class LOActivity extends AppCompatActivity {
         });
     }
 
+    private void onChartStop() {
+        String rid = chartActiveRequestId;
+        if (!rid.isEmpty()) {
+            cancelAiRequest(rid);
+            aiStreamingViewByRequestId.remove(rid);
+        }
+        chartActiveRequestId = "";
+        setChartDialogState(CHART_STATE_STOPPED);
+        Log.i(TAG, "calc_chart_stopped requestId=" + rid);
+    }
+
+    private void onChartRestart() {
+        if (chartLastInput == null || chartLastInput.trim().isEmpty()) {
+            setChartDialogState(CHART_STATE_INPUT);
+            return;
+        }
+        if (chartResultText != null) {
+            chartResultText.setText("");
+        }
+        chartResultJson = "";
+        setChartDialogState(CHART_STATE_GENERATING);
+        startChartRequest(chartLastInput);
+        Log.i(TAG, "calc_chart_restart");
+    }
+
     private void onChartRegenerate() {
         if (!chartActiveRequestId.isEmpty()) {
             cancelAiRequest(chartActiveRequestId);
             aiStreamingViewByRequestId.remove(chartActiveRequestId);
             chartActiveRequestId = "";
         }
+        if (chartLastInput == null || chartLastInput.trim().isEmpty()) {
+            setChartDialogState(CHART_STATE_INPUT);
+            return;
+        }
+        if (chartResultText != null) {
+            chartResultText.setText("");
+        }
         chartResultJson = "";
-        chartInput.setText("");
-        setChartDialogState(CHART_STATE_INPUT);
+        setChartDialogState(CHART_STATE_GENERATING);
+        startChartRequest(chartLastInput);
+        Log.i(TAG, "calc_chart_regenerate");
     }
 
     private void onChartInsert() {
         setChartDialogState(CHART_STATE_EXECUTING);
-        chartExecutingStatus.setText("正在插入图表...");
+        if (chartExecutingStatus != null) {
+            chartExecutingStatus.setText("正在插入图表...");
+        }
         final String requestId = chartActiveRequestId;
 
         new Thread(() -> {
@@ -8988,7 +9350,7 @@ public class LOActivity extends AppCompatActivity {
         View reviewList = panel.findViewById(R.id.function_review_list);
         ImageButton closeButton = panel.findViewById(R.id.function_sheet_close);
         View saveAction = panel.findViewById(R.id.function_action_save);
-        View exportPdfAction = panel.findViewById(R.id.function_action_export_pdf);
+        View downloadAction = panel.findViewById(R.id.function_action_download);
         View printAction = panel.findViewById(R.id.function_action_print);
         View findAction = panel.findViewById(R.id.function_action_find_replace);
         View wordCountAction = panel.findViewById(R.id.function_action_word_count);
@@ -9022,13 +9384,14 @@ public class LOActivity extends AppCompatActivity {
         }
         if (saveAction != null) saveAction.setOnClickListener(v -> runFunctionAction(() ->
                 postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1")));
-        if (exportPdfAction != null) exportPdfAction.setOnClickListener(v -> runFunctionAction(this::downloadCurrentTextDocumentAsPdf));
+        if (downloadAction != null) downloadAction.setOnClickListener(v -> runFunctionAction(this::downloadCurrentTextDocumentAsPdf));
         if (printAction != null) printAction.setOnClickListener(v -> runFunctionAction(this::initiatePrint));
         if (findAction != null) findAction.setOnClickListener(v -> runFunctionAction(() ->
                 executeUnoCommand(".uno:SearchDialog?InitialFocusReplace:bool=true")));
-        // 字数统计：仅 Writer 文档显示（表格无此功能），点击打开字数统计对话框
+        // 字数统计：仅 Writer 文档显示（表格/演示文稿无此功能），点击打开字数统计对话框
         if (wordCountAction != null) {
-            wordCountAction.setVisibility(mIsCalcDocument ? View.GONE : View.VISIBLE);
+            wordCountAction.setVisibility(
+                    (mIsCalcDocument || mIsImpressDocument) ? View.GONE : View.VISIBLE);
             wordCountAction.setOnClickListener(v -> runFunctionAction(() ->
                     executeUnoCommand(".uno:WordCountDialog")));
         }
@@ -9219,6 +9582,11 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void dismissCoValidationDialog() {
                     LOActivity.this.dismissCoValidationDialog();
+                }
+
+                @Override
+                public void loadMacroCatalog(CalcValidationMacroCatalog.Callback callback) {
+                    LOActivity.this.loadMacroCatalog(callback);
                 }
             });
         }
@@ -10124,25 +10492,6 @@ public class LOActivity extends AppCompatActivity {
                 })));
     }
 
-    private CalcDataValidationApplier createValidationApplier() {
-        return new CalcDataValidationApplier(new CalcDataValidationApplier.Host() {
-            @Override
-            public void postUnoCommand(String command, String args, boolean notify) {
-                LOActivity.this.postUnoCommand(command, args, notify);
-            }
-
-            @Override
-            public void evaluateJavascript(String script, android.webkit.ValueCallback<String> callback) {
-                LOActivity.this.evaluateJavascript(script, callback);
-            }
-
-            @Override
-            public void runOnUiThread(Runnable action) {
-                LOActivity.this.runOnUiThread(action);
-            }
-        });
-    }
-
     void applyCalcDataValidation(CalcDataValidationState state) {
         if (state == null) {
             return;
@@ -10151,7 +10500,8 @@ public class LOActivity extends AppCompatActivity {
                 + " data=" + state.dataIndex);
         Runnable apply = () -> {
             requestWebViewFocusForPanelAction("data_validation");
-            createValidationApplier().apply(state);
+            pendingValidationWrite = state;
+            postUnoCommand(".uno:Validation", "{}", false);
             nudgeSocketIfStalled("data_validation");
         };
         if (mIsCalcDocument) {
@@ -10171,12 +10521,9 @@ public class LOActivity extends AppCompatActivity {
         Log.i(TAG, "load_calc_data_validation_state");
         Runnable read = () -> {
             requestWebViewFocusForPanelAction("data_validation_read");
-            createValidationApplier().read(target, () -> {
-                dismissCoValidationDialog();
-                if (onLoaded != null) {
-                    onLoaded.run();
-                }
-            });
+            pendingValidationRead = target;
+            pendingValidationReadCallback = onLoaded;
+            postUnoCommand(".uno:Validation", "{}", false);
             nudgeSocketIfStalled("data_validation_read");
         };
         if (mIsCalcDocument) {
@@ -10186,14 +10533,68 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * ValidationDialog 被拦截后回调：区分读/写模式。
+     * 读：解析 payload.controls 回填 pendingValidationRead 并回调；
+     * 写：用 sendDialogEvent 把 pendingValidationWrite 写入 core 各控件并点 ok。
+     */
+    void onValidationDialogIntercepted(org.json.JSONObject payload) {
+        int windowId = payload.optInt("windowId", -1);
+        Log.i(TAG, "on_validation_intercepted windowId=" + windowId
+                + " read=" + (pendingValidationRead != null)
+                + " write=" + (pendingValidationWrite != null));
+        if (windowId < 0) {
+            return;
+        }
+        NativeJSDialogController ctrl = ensureNativeJSDialogController();
+        if (pendingValidationWrite != null) {
+            CalcDataValidationState write = pendingValidationWrite;
+            pendingValidationWrite = null;
+            ctrl.applyValidationState(windowId, write);
+            return;
+        }
+        if (pendingValidationRead != null) {
+            CalcDataValidationState target = pendingValidationRead;
+            Runnable callback = pendingValidationReadCallback;
+            pendingValidationRead = null;
+            pendingValidationReadCallback = null;
+            boolean parsed = ctrl.parseValidationPayload(payload, target);
+            Log.i(TAG, "on_validation_intercepted parse=" + parsed
+                    + " allow=" + target.allowIndex + " data=" + target.dataIndex);
+            // 读模式：cancel 关闭弹窗（不应用任何变更）
+            ctrl.sendResponse(windowId, "cancel", 2);
+            if (callback != null) {
+                callback.run();
+            }
+        }
+    }
+
     void dismissCoValidationDialog() {
         Log.i(TAG, "dismiss_co_validation_dialog");
         closeMobileWizardFromAndroid("data_validation_dismiss");
-        createValidationApplier().forceCloseDialog(null);
     }
 
     void openMacroChooser(CalcValidationMacroPickerController.MacroChooseCallback callback) {
         Log.i(TAG, "open_macro_chooser_skipped_use_in_app_picker");
+    }
+
+    /**
+     * 枚举真实宏树：拦截 MacroSelectorDialog（.uno:RunMacro 打开）逐层收集，回调 catalog。
+     * 发 RunMacro 而非 ChooseMacro（SID_RUNMACRO 打开即 MacroSelectorDialog；harvest 完成后 cancel 不执行宏）。
+     */
+    void loadMacroCatalog(CalcValidationMacroCatalog.Callback callback) {
+        Log.i(TAG, "load_macro_catalog");
+        Runnable load = () -> {
+            requestWebViewFocusForPanelAction("macro_catalog");
+            ensureNativeJSDialogController().startMacroCatalogHarvest(callback);
+            postUnoCommand(".uno:RunMacro", "{}", false);
+            nudgeSocketIfStalled("macro_catalog");
+        };
+        if (mIsCalcDocument) {
+            ensureEditModeThen(load);
+        } else {
+            load.run();
+        }
     }
 
     void fetchImpressHyperlinkContext(ImpressHyperlinkPickerController.HyperlinkContextCallback callback) {
@@ -11363,15 +11764,30 @@ public class LOActivity extends AppCompatActivity {
     private static final int AI_FUNCTION_ICON_DP = 64;
     private static final int AI_FUNCTION_CARD_HEIGHT_DP = 112;
     private static final int AI_FUNCTION_CARD_GAP_DP = 8;
+    /** Calc AI 功能网格：Figma 750 画布尺寸 ÷2 */
+    private static final int AI_FUNCTION_CALC_ICON_DP = 24;
+    private static final int AI_FUNCTION_CALC_CARD_HEIGHT_DP = 80;
+    private static final int AI_FUNCTION_CALC_CARD_GAP_DP = 20;
 
-    /** 统一 AI 功能面板网格：每行固定 3 列等宽，图标固定 64dp 不随列数拉伸。 */
+    /** 统一 AI 功能面板网格：每行固定 3 列等宽，图标不随列数拉伸。 */
     private void normalizeAiFunctionSheetLayout(View panel) {
         if (panel == null) {
             return;
         }
-        int[] rowIds = {
+        int[] calcRowIds = {
                 R.id.ai_op_calc_section_row,
                 R.id.ai_op_calc_section_row2,
+        };
+        for (int rowId : calcRowIds) {
+            normalizeAiFunctionGridRow(
+                    panel.findViewById(rowId),
+                    AI_FUNCTION_GRID_COLUMNS,
+                    AI_FUNCTION_CALC_ICON_DP,
+                    AI_FUNCTION_CALC_CARD_HEIGHT_DP,
+                    AI_FUNCTION_CALC_CARD_GAP_DP,
+                    true);
+        }
+        int[] otherRowIds = {
                 R.id.ai_op_impress_row1,
                 R.id.ai_op_impress_row2,
                 R.id.ai_op_impress_row3,
@@ -11382,12 +11798,24 @@ public class LOActivity extends AppCompatActivity {
                 R.id.ai_op_other_row1,
                 R.id.ai_op_other_row2,
         };
-        for (int rowId : rowIds) {
-            normalizeAiFunctionGridRow(panel.findViewById(rowId), AI_FUNCTION_GRID_COLUMNS);
+        for (int rowId : otherRowIds) {
+            normalizeAiFunctionGridRow(
+                    panel.findViewById(rowId),
+                    AI_FUNCTION_GRID_COLUMNS,
+                    AI_FUNCTION_ICON_DP,
+                    AI_FUNCTION_CARD_HEIGHT_DP,
+                    AI_FUNCTION_CARD_GAP_DP,
+                    false);
         }
     }
 
-    private void normalizeAiFunctionGridRow(View rowView, int columnCount) {
+    private void normalizeAiFunctionGridRow(
+            View rowView,
+            int columnCount,
+            int iconDp,
+            int cardHeightDp,
+            int gapDp,
+            boolean applyCalcLabelSize) {
         if (!(rowView instanceof LinearLayout)) {
             return;
         }
@@ -11408,10 +11836,10 @@ public class LOActivity extends AppCompatActivity {
                 continue;
             }
             visibleCards++;
-            enforceAiFunctionCardIconSize(child);
+            enforceAiFunctionCardIconSize(child, iconDp, applyCalcLabelSize);
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) child.getLayoutParams();
             lp.width = 0;
-            lp.height = dpToPx(AI_FUNCTION_CARD_HEIGHT_DP);
+            lp.height = dpToPx(cardHeightDp);
             lp.weight = 1f;
             child.setLayoutParams(lp);
         }
@@ -11423,7 +11851,7 @@ public class LOActivity extends AppCompatActivity {
         for (int i = 0; i < neededSpaces; i++) {
             Space space = new Space(this);
             LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
-                    0, dpToPx(AI_FUNCTION_CARD_HEIGHT_DP), 1f);
+                    0, dpToPx(cardHeightDp), 1f);
             space.setLayoutParams(slp);
             row.addView(space);
         }
@@ -11448,22 +11876,23 @@ public class LOActivity extends AppCompatActivity {
                     break;
                 }
             }
-            lp.setMarginEnd(hasVisibleSiblingAfter ? dpToPx(AI_FUNCTION_CARD_GAP_DP) : 0);
+            lp.setMarginEnd(hasVisibleSiblingAfter ? dpToPx(gapDp) : 0);
             child.setLayoutParams(lp);
         }
     }
 
-    private void enforceAiFunctionCardIconSize(View card) {
+    private void enforceAiFunctionCardIconSize(View card, int iconDp, boolean applyCalcLabelSize) {
         if (!(card instanceof ViewGroup)) {
             return;
         }
         ViewGroup group = (ViewGroup) card;
+        float calcLabelSizePx = getResources().getDimension(R.dimen.ai_function_label_text_size);
         for (int i = 0; i < group.getChildCount(); i++) {
             View child = group.getChildAt(i);
             if (child instanceof ImageView) {
                 ImageView icon = (ImageView) child;
                 icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-                int iconPx = dpToPx(AI_FUNCTION_ICON_DP);
+                int iconPx = dpToPx(iconDp);
                 ViewGroup.LayoutParams raw = icon.getLayoutParams();
                 if (raw instanceof LinearLayout.LayoutParams) {
                     LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) raw;
@@ -11476,7 +11905,9 @@ public class LOActivity extends AppCompatActivity {
                     raw.height = iconPx;
                     icon.setLayoutParams(raw);
                 }
-                return;
+            } else if (child instanceof TextView && applyCalcLabelSize) {
+                TextView label = (TextView) child;
+                label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, calcLabelSizePx);
             }
         }
     }

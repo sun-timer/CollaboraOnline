@@ -45,7 +45,7 @@ import java.util.Map;
 public class CalcFunctionPanelController {
     private static final String TAG = "CalcFunctionPanel";
 
-    private static final int COLOR_TAB_ACTIVE = Color.parseColor("#34A853");
+    private static final int COLOR_TAB_ACTIVE = Color.parseColor("#3B8040");
     private static final int COLOR_TAB_INACTIVE = Color.parseColor("#333333");
     private static final int COLOR_SECTION = Color.parseColor("#80868B");
     private static final int COLOR_TITLE = Color.parseColor("#101010");
@@ -53,10 +53,6 @@ public class CalcFunctionPanelController {
     private static final int COLOR_DIVIDER = Color.parseColor("#E3E3E3");
     /** Figma 750×1624: sheet height 1066px ≈ 65.6% screen. */
     private static final float SHEET_HEIGHT_RATIO = 1066f / 1624f;
-    /** Figma 5279-57088 条件页主面板约 900px。 */
-    private static final float DATA_VALIDATION_SHEET_HEIGHT_RATIO = 900f / 1624f;
-    /** Figma 5279-57408：「允许」选项列表弹层约 880px。 */
-    private static final float DATA_VALIDATION_OPTION_SHEET_HEIGHT_RATIO = 880f / 1624f;
     /** Figma px ÷ 2 → dp. */
     private static final int CHAR_CELL_W_DP = 51;
     private static final int CHAR_CELL_H_DP = 50;
@@ -143,6 +139,9 @@ public class CalcFunctionPanelController {
 
         /** 关闭可能残留的 CO Validation 原生对话框。 */
         void dismissCoValidationDialog();
+
+        /** 枚举真实宏树，回调 catalog。 */
+        void loadMacroCatalog(CalcValidationMacroCatalog.Callback callback);
     }
 
     private enum ItemType {
@@ -429,7 +428,7 @@ public class CalcFunctionPanelController {
         for (int i = 0; i < tabViews.size(); i++) {
             TextView tabView = tabViews.get(i);
             tabView.setTextColor(i == index ? COLOR_TAB_ACTIVE : COLOR_TAB_INACTIVE);
-            tabView.setTypeface(null, i == index ? Typeface.BOLD : Typeface.NORMAL);
+            tabView.setTypeface(null, Typeface.NORMAL);
         }
         updateTabIndicator(index);
         renderTabContent(tabs.get(index));
@@ -1212,13 +1211,18 @@ public class CalcFunctionPanelController {
         TextView title = new TextView(host.getContext());
         title.setText(parent.label);
         title.setTextColor(COLOR_TITLE);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-        title.setTypeface(null, Typeface.BOLD);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        title.setTypeface(null, Typeface.NORMAL);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         titleLp.setMarginStart(host.dpToPx(4));
         header.addView(title, titleLp);
         root.addView(header);
+
+        View headerDivider = new View(host.getContext());
+        headerDivider.setBackgroundColor(Color.parseColor("#A2A9B2"));
+        root.addView(headerDivider, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
 
         PanelItem[] items = parent.submenuItems;
         for (int i = 0; i < items.length; i++) {
@@ -1482,7 +1486,6 @@ public class CalcFunctionPanelController {
         }
         dataValidationVisible = false;
         host.dismissCoValidationDialog();
-        expandSheet(SHEET_HEIGHT_RATIO);
         setTabChromeVisible(true);
         int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
                 ? submenuReturnTabIndex : selectedTabIndex;
@@ -1533,20 +1536,19 @@ public class CalcFunctionPanelController {
                 }
 
                 @Override
-                public void setBottomSheetHeightRatio(float heightRatio) {
-                    expandSheet(heightRatio);
+                public void dismissCoValidationDialog() {
+                    host.dismissCoValidationDialog();
                 }
 
                 @Override
-                public void dismissCoValidationDialog() {
-                    host.dismissCoValidationDialog();
+                public void loadMacroCatalog(CalcValidationMacroCatalog.Callback callback) {
+                    host.loadMacroCatalog(callback);
                 }
             });
         }
 
         contentContainer.removeAllViews();
         contentContainer.addView(dataValidationPicker.buildRootView());
-        expandSheet(DATA_VALIDATION_SHEET_HEIGHT_RATIO);
         Log.i(TAG, "data_validation_picker_show");
     }
 
@@ -2019,6 +2021,15 @@ public class CalcFunctionPanelController {
     }
 
     private void expandSheet(float heightRatio) {
+        expandSheet(heightRatio, false);
+    }
+
+    /** 固定高度展开：setFitToContents(false)，sheet 高度 = targetHeight，内容不收缩。 */
+    private void expandSheetFixed(float heightRatio) {
+        expandSheet(heightRatio, true);
+    }
+
+    private void expandSheet(float heightRatio, boolean fixedHeight) {
         if (dialog == null) {
             return;
         }
@@ -2035,19 +2046,35 @@ public class CalcFunctionPanelController {
             layoutParams.height = targetHeight;
             if (layoutParams instanceof CoordinatorLayout.LayoutParams) {
                 CoordinatorLayout.LayoutParams clp = (CoordinatorLayout.LayoutParams) layoutParams;
-                clp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+                // 固定高度时用 NO_GRAVITY + expandedOffset 定位（BOTTOM gravity 会与 offset 冲突导致飘顶）
+                clp.gravity = fixedHeight ? Gravity.NO_GRAVITY : (Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
             }
             bottomSheet.setLayoutParams(layoutParams);
         }
         bottomSheet.setBackgroundResource(R.drawable.lolib_bg_calc_bottom_sheet);
-        behavior.setFitToContents(true);
+        behavior.setFitToContents(!fixedHeight);
         behavior.setSkipCollapsed(true);
         behavior.setHideable(true);
         behavior.setDraggable(true);
         bottomSheet.post(() -> {
-            behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
-            Log.i(TAG, "calc_function_sheet_expanded height=" + bottomSheet.getHeight()
-                    + " target=" + targetHeight);
+            if (fixedHeight) {
+                // 固定高度：peek=targetHeight + expandedOffset 定位到底部，避免首次飘顶
+                int coordinatorHeight = screenHeight;
+                View parent = (View) bottomSheet.getParent();
+                if (parent != null && parent.getHeight() > 0) {
+                    coordinatorHeight = parent.getHeight();
+                }
+                int expandedOffset = Math.max(0, Math.min(coordinatorHeight, screenHeight) - targetHeight);
+                behavior.setPeekHeight(targetHeight, false);
+                behavior.setExpandedOffset(expandedOffset);
+                behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+                Log.i(TAG, "calc_function_sheet_expanded_fixed height=" + bottomSheet.getHeight()
+                        + " target=" + targetHeight + " offset=" + expandedOffset);
+            } else {
+                behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+                Log.i(TAG, "calc_function_sheet_expanded height=" + bottomSheet.getHeight()
+                        + " target=" + targetHeight);
+            }
         });
     }
 

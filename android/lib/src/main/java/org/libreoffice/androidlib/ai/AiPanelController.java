@@ -211,6 +211,7 @@ public class AiPanelController {
         sheetExpandedOnce = false;
         lastScreenHeight = screenHeight;
         lastScreenWidth = screenWidth;
+        ensureBottomSheetContentWrapHeight(contentRoot);
         prepareDialogWindow(dialog, screenWidth, screenHeight);
         boolean isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE || screenWidth > screenHeight;
         float ratioCap = maxScreenRatio > 0f ? maxScreenRatio : (isLandscape ? 0.52f : 0.55f);
@@ -221,6 +222,11 @@ public class AiPanelController {
         contentRoot.measure(widthSpec, heightSpec);
         int contentHeight = contentRoot.getMeasuredHeight();
         int minHeight = computeMinPanelHeightPx(contentRoot.getResources());
+        View calcBlock = contentRoot.findViewById(R.id.ai_op_calc_block);
+        if (calcBlock != null && calcBlock.getVisibility() == View.VISIBLE) {
+            minHeight = Math.max(minHeight,
+                    contentRoot.getResources().getDimensionPixelSize(R.dimen.ai_sheet_calc_min_height));
+        }
         int navBarHeight = getNavigationBarHeightPx(contentRoot.getResources());
         int targetHeight = Math.min(Math.max(Math.max(contentHeight, minHeight), 1), maxHeight);
 
@@ -385,6 +391,23 @@ public class AiPanelController {
         } else {
             lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
             lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+        }
+        contentRoot.setLayoutParams(lp);
+    }
+
+    /** 仅用于 fit-content 测量前：保持宽度 match，高度随内容 Hug。 */
+    private static void ensureBottomSheetContentWrapHeight(View contentRoot) {
+        if (contentRoot == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = contentRoot.getLayoutParams();
+        if (lp == null) {
+            lp = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+        } else {
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
         }
         contentRoot.setLayoutParams(lp);
     }

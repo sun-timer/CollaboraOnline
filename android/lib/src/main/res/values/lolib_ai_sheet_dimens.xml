@@ -20,12 +20,17 @@
     <dimen name="ai_panel_input_height">48dp</dimen>
     <dimen name="ai_panel_send_button_size">36dp</dimen>
 
-    <!-- AI 功能网格：Figma 图标 64×64，卡片高约 112dp（64+间距+文案） -->
-    <dimen name="ai_function_icon_size">64dp</dimen>
-    <dimen name="ai_function_card_height">112dp</dimen>
-    <dimen name="ai_function_card_gap">8dp</dimen>
-    <dimen name="ai_function_grid_padding">12dp</dimen>
-    <dimen name="ai_function_row_gap">8dp</dimen>
+    <!-- Calc AI 功能网格：Figma 750 画布 图标 48px、文案 24px、卡片高 160px、间距 40px → ÷2 -->
+    <dimen name="ai_function_icon_size">24dp</dimen>
+    <dimen name="ai_function_card_height">80dp</dimen>
+    <dimen name="ai_function_label_text_size">12sp</dimen>
+    <dimen name="ai_function_card_gap">20dp</dimen>
+    <dimen name="ai_function_grid_padding">16dp</dimen>
+    <dimen name="ai_function_row_gap">6dp</dimen>
+    <dimen name="ai_function_section_row_gap">12dp</dimen>
+
+    <!-- Calc AI 功能 BottomSheet：Figma 750×640 → 375×320dp 最小高度 -->
+    <dimen name="ai_sheet_calc_min_height">320dp</dimen>
 
     <!-- Figma 3079:59671：未配置基础模型弹窗 670×388px → 335×194dp -->
     <dimen name="ai_model_required_dialog_width">335dp</dimen>

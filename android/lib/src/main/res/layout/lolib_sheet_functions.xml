@@ -19,7 +19,7 @@
             android:gravity="center"
             android:text="功能"
             android:textColor="#15171A"
-            android:textSize="36sp"
+            android:textSize="18sp"
             android:textStyle="normal"
             android:fontFamily="sans-serif-medium" />
 
@@ -80,15 +80,15 @@
         <LinearLayout
             android:id="@+id/function_action_save"
             android:layout_width="match_parent"
-            android:layout_height="60dp"
+            android:layout_height="64dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingStart="8dp"
             android:paddingEnd="8dp">
 
             <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
                 android:contentDescription="保存"
                 android:src="@drawable/lolib_ic_function_save" />
 
@@ -108,25 +108,25 @@
             android:background="#E3E3E3" />
 
         <LinearLayout
-            android:id="@+id/function_action_export_pdf"
+            android:id="@+id/function_action_download"
             android:layout_width="match_parent"
-            android:layout_height="60dp"
+            android:layout_height="64dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingStart="8dp"
             android:paddingEnd="8dp">
 
             <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:contentDescription="导出PDF"
-                android:src="@drawable/lolib_ic_function_export_pdf" />
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:contentDescription="下载"
+                android:src="@drawable/lolib_ic_function_download" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="14dp"
-                android:text="导出PDF"
+                android:text="下载"
                 android:textColor="#202124"
                 android:textSize="18sp"
                 android:textStyle="normal" />
@@ -140,15 +140,15 @@
         <LinearLayout
             android:id="@+id/function_action_print"
             android:layout_width="match_parent"
-            android:layout_height="60dp"
+            android:layout_height="64dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingStart="8dp"
             android:paddingEnd="8dp">
 
             <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
                 android:contentDescription="打印"
                 android:src="@drawable/lolib_ic_function_print" />
 
@@ -181,8 +181,8 @@
             android:paddingEnd="8dp">
 
             <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
                 android:contentDescription="查找"
                 android:src="@drawable/lolib_ic_function_find_replace" />
 
@@ -212,8 +212,8 @@
             android:paddingEnd="8dp">
 
             <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
                 android:contentDescription="字数统计"
                 android:src="@drawable/lolib_ic_function_find_replace" />
 

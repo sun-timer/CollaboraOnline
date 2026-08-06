@@ -37,12 +37,12 @@
 
     <ImageButton
         android:id="@+id/ai_sheet_header_close"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
         android:layout_gravity="end|center_vertical"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="关闭"
-        android:padding="8dp"
+        android:padding="0dp"
         android:scaleType="centerInside"
         android:src="@drawable/lolib_ic_dialog_close" />
 </FrameLayout>

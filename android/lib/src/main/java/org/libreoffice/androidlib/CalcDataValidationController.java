@@ -25,9 +25,6 @@ import org.libreoffice.androidlib.R;
 final class CalcDataValidationController {
 
     private static final int CONTENT_INDENT_DP = 16;
-    /** Figma 5279-57408 */
-    private static final float OPTION_SHEET_HEIGHT_RATIO = 880f / 1624f;
-    private static final float MAIN_SHEET_HEIGHT_RATIO = 900f / 1624f;
 
     private enum Tab {
         CRITERIA, INPUT_HELP, ERROR_ALERT
@@ -55,9 +52,10 @@ final class CalcDataValidationController {
         /** 读当前选区已有有效性设置，异步回填 target 后回调 onLoaded。 */
         void loadCurrentValidationState(CalcDataValidationState target, Runnable onLoaded);
 
-        void setBottomSheetHeightRatio(float heightRatio);
-
         void dismissCoValidationDialog();
+
+        /** 枚举真实宏树，回调 catalog。 */
+        void loadMacroCatalog(CalcValidationMacroCatalog.Callback callback);
     }
 
     private final Host host;
@@ -103,7 +101,7 @@ final class CalcDataValidationController {
     private TextView errorActionValueView;
     private View errorContentSection;
     private View macroBrowseSection;
-    private TextView macroBrowseValueView;
+    private View macroBrowseButton;
     private EditText errorTitleInput;
     private EditText errorMessageInput;
 
@@ -143,7 +141,7 @@ final class CalcDataValidationController {
         showTab(Tab.CRITERIA);
         refreshDynamicFields();
         refreshValueLabels();
-        requestLoadCurrentState();
+        root.post(this::requestLoadCurrentState);
         return rootView;
     }
 
@@ -207,7 +205,6 @@ final class CalcDataValidationController {
     }
 
     private void onMainHeaderBack() {
-        host.dismissCoValidationDialog();
         host.onBack();
     }
 
@@ -403,25 +400,19 @@ final class CalcDataValidationController {
         });
         body.addView(createDivider());
 
-        errorActionValueView = new TextView(host.getContext());
-        body.addView(createSectionPicker("操作", errorActionValueView,
-                () -> openOptionPicker(OptionKind.ERROR_ACTION)));
-        body.addView(createDivider());
-
-        macroBrowseValueView = new TextView(host.getContext());
-        macroBrowseSection = wrapWithDivider(createSectionPicker("宏", macroBrowseValueView, this::openMacroPicker));
+        // 操作行内：值框 + 浏览按钮同行（Figma 5279:60548：518 宽值框 + 右侧浏览按钮）
+        macroBrowseSection = wrapWithDivider(createErrorActionRow());
         body.addView(macroBrowseSection);
 
+        // 标题/错误信息：通栏，与操作同样式（不缩进）
         LinearLayout errorContentInner = new LinearLayout(host.getContext());
         errorContentInner.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout indented = createIndentedBlock();
         errorTitleInput = createValueEdit();
         errorTitleInput.addTextChangedListener(simpleWatcher(s -> state.errorTitle = s));
-        indented.addView(createIndentedField(fieldLabel("标题"), errorTitleInput));
+        errorContentInner.addView(createSectionField(sectionLabel("标题"), errorTitleInput));
         errorMessageInput = createMultilineEdit();
         errorMessageInput.addTextChangedListener(simpleWatcher(s -> state.errorMessage = s));
-        indented.addView(createIndentedField(fieldLabel("错误信息"), errorMessageInput));
-        errorContentInner.addView(indented);
+        errorContentInner.addView(createSectionField(sectionLabel("错误信息"), errorMessageInput));
         errorContentSection = wrapWithDivider(errorContentInner);
         body.addView(errorContentSection);
 
@@ -471,6 +462,60 @@ final class CalcDataValidationController {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         inputLp.topMargin = host.dpToPx(8);
         section.addView(input, inputLp);
+        return section;
+    }
+
+    /** 操作行内：值框 + 浏览按钮同行（Figma 5279:60548：518 值框 + 右侧 144 浏览按钮）。 */
+    private View createErrorActionRow() {
+        LinearLayout section = new LinearLayout(host.getContext());
+        section.setOrientation(LinearLayout.VERTICAL);
+        section.setPadding(0, host.dpToPx(8), 0, host.dpToPx(8));
+        section.addView(sectionLabel("操作"));
+
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(host.dpToPx(44));
+
+        // 值框：操作类型（停止/警告/信息/宏/默默拒绝）+ chevron，#F2F3F5 圆角 24
+        errorActionValueView = new TextView(host.getContext());
+        errorActionValueView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        errorActionValueView.setTextColor(Color.parseColor("#333333"));
+        errorActionValueView.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout box = new LinearLayout(host.getContext());
+        box.setOrientation(LinearLayout.HORIZONTAL);
+        box.setGravity(Gravity.CENTER_VERTICAL);
+        box.setBackgroundResource(R.drawable.lolib_bg_calc_validation_picker);
+        box.setPadding(host.dpToPx(12), host.dpToPx(8), host.dpToPx(8), host.dpToPx(8));
+        box.addView(errorActionValueView, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView chevron = new TextView(host.getContext());
+        chevron.setText("›");
+        chevron.setTextColor(Color.parseColor("#80868B"));
+        chevron.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        box.addView(chevron);
+        box.setOnClickListener(v -> openOptionPicker(OptionKind.ERROR_ACTION));
+        LinearLayout.LayoutParams boxLp = new LinearLayout.LayoutParams(
+                0, host.dpToPx(44), 1f);
+        boxLp.topMargin = host.dpToPx(8);
+        row.addView(box, boxLp);
+
+        // 浏览按钮：144 宽，#3B80401F 半透明绿底圆角 full，绿字；仅操作=宏时显示
+        TextView browse = new TextView(host.getContext());
+        browse.setText("浏览");
+        browse.setTextColor(Color.parseColor("#3B8040"));
+        browse.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        browse.setGravity(Gravity.CENTER);
+        browse.setBackgroundResource(R.drawable.lolib_bg_calc_macro_browse);
+        LinearLayout.LayoutParams browseLp = new LinearLayout.LayoutParams(
+                host.dpToPx(96), host.dpToPx(40));
+        browseLp.topMargin = host.dpToPx(8);
+        browseLp.setMarginStart(host.dpToPx(8));
+        browse.setOnClickListener(v -> openMacroPicker());
+        row.addView(browse, browseLp);
+        macroBrowseButton = browse;
+
+        section.addView(row);
         return section;
     }
 
@@ -603,7 +648,6 @@ final class CalcDataValidationController {
             optionPickerTitle.setText(title);
         }
         populateOptionList(options, selectedIndex);
-        host.setBottomSheetHeightRatio(OPTION_SHEET_HEIGHT_RATIO);
         showOverlay(Overlay.OPTION_PICKER);
     }
 
@@ -645,12 +689,14 @@ final class CalcDataValidationController {
             default:
                 break;
         }
+        Log.i("CalcDataValidation", "option_selected kind=" + activeOptionKind
+                + " index=" + option.index + " allow=" + state.allowIndex
+                + " data=" + state.dataIndex);
         refreshDynamicFields();
         refreshValueLabels();
     }
 
     private void closeOptionPicker() {
-        host.setBottomSheetHeightRatio(MAIN_SHEET_HEIGHT_RATIO);
         showOverlay(Overlay.NONE);
     }
 
@@ -684,12 +730,23 @@ final class CalcDataValidationController {
                 public void openMacroChooser(CalcValidationMacroPickerController.MacroChooseCallback callback) {
                     host.openMacroChooser(callback);
                 }
+
+                @Override
+                public void loadMacroCatalog(CalcValidationMacroCatalog.Callback callback) {
+                    host.loadMacroCatalog(callback);
+                }
             }, state.macroUrl);
         }
         FrameLayout shell = (FrameLayout) macroPickerPage;
         shell.removeAllViews();
         shell.addView(macroPicker.buildRootView());
         showOverlay(Overlay.MACRO_PICKER);
+        // 异步枚举真实宏树回填（回调在主线程 evaluateJavascript 链上）
+        host.loadMacroCatalog(cat -> {
+            if (cat != null) {
+                macroPicker.setCatalog(cat);
+            }
+        });
     }
 
     private void closeMacroPicker() {
@@ -712,15 +769,6 @@ final class CalcDataValidationController {
         if (errorActionValueView != null) {
             errorActionValueView.setText(state.errorActionOption().label);
         }
-        if (macroBrowseValueView != null) {
-            if (macroDisplayName.isEmpty() && state.macroUrl.isEmpty()) {
-                macroBrowseValueView.setText("浏览…");
-                macroBrowseValueView.setTextColor(Color.parseColor("#1278D9"));
-            } else {
-                macroBrowseValueView.setText(macroDisplayName.isEmpty() ? state.macroUrl : macroDisplayName);
-                macroBrowseValueView.setTextColor(Color.parseColor("#333333"));
-            }
-        }
         refreshErrorFields();
     }
 
@@ -729,19 +777,20 @@ final class CalcDataValidationController {
         boolean list = CalcValidationCatalog.isListAllow(state.allowIndex);
         boolean range = CalcValidationCatalog.isRangeAllow(state.allowIndex);
         boolean custom = CalcValidationCatalog.isCustomAllow(state.allowIndex);
-        boolean needsData = CalcValidationCatalog.needsDataOperator(state.allowIndex)
-                && !list && !range && !custom;
+        boolean needsBetween = CalcValidationCatalog.needsBetweenValues(state.dataIndex);
+        // 数据=… / 数值输入：所有值/整数/小数/日期/时间/文本长度 都显示（Figma 57088 主屏）
+        boolean showDataValue = !list && !range && !custom;
 
-        setSectionVisible(dataSection, needsData);
-        setSectionVisible(valueSection, needsData || range);
-        setSectionVisible(maxSection, needsData && CalcValidationCatalog.needsBetweenValues(state.dataIndex));
+        setSectionVisible(dataSection, showDataValue);
+        setSectionVisible(valueSection, showDataValue);
+        setSectionVisible(maxSection, showDataValue && needsBetween);
         setSectionVisible(listSection, list);
         setSectionVisible(listExtraSection, list);
         setSectionVisible(rangeExtraSection, range);
         setSectionVisible(customExtraSection, custom);
         setSectionVisible(customFormulaSection, custom);
 
-        boolean showAllowBlank = anyValue || needsData || custom;
+        boolean showAllowBlank = anyValue || showDataValue || custom;
         setSectionVisible(allowBlankRow, showAllowBlank);
 
         if (valueLabel != null) {
@@ -769,11 +818,20 @@ final class CalcDataValidationController {
     private void refreshErrorFields() {
         boolean macro = state.errorActionIndex == 3;
         boolean silent = state.errorActionIndex == 4;
-        setSectionVisible(macroBrowseSection, macro && state.showErrorAlert);
+        // 操作行始终显示；浏览按钮仅操作=宏时显示（Figma 5279:60548）
+        setSectionVisible(macroBrowseSection, state.showErrorAlert);
+        setViewVisible(macroBrowseButton, macro && state.showErrorAlert);
         if (errorContentSection != null) {
-            errorContentSection.setVisibility(!macro && !silent && state.showErrorAlert
+            errorContentSection.setVisibility(!silent && state.showErrorAlert
                     ? View.VISIBLE : View.GONE);
         }
+    }
+
+    private static void setViewVisible(View view, boolean visible) {
+        if (view == null) {
+            return;
+        }
+        view.setVisibility(visible ? View.VISIBLE : View.GONE);
     }
 
     private static void setSectionVisible(View section, boolean visible) {
@@ -807,18 +865,6 @@ final class CalcDataValidationController {
         tv.setTextColor(Color.parseColor("#101010"));
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         return tv;
-    }
-
-    private View createIndentedField(TextView labelView, EditText input) {
-        LinearLayout section = new LinearLayout(host.getContext());
-        section.setOrientation(LinearLayout.VERTICAL);
-        section.setPadding(0, host.dpToPx(8), 0, host.dpToPx(8));
-        section.addView(labelView);
-        LinearLayout.LayoutParams inputLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        inputLp.topMargin = host.dpToPx(8);
-        section.addView(input, inputLp);
-        return section;
     }
 
     private TextView fieldLabel(String text) {
@@ -886,7 +932,7 @@ final class CalcDataValidationController {
 
     private View createDivider() {
         View divider = new View(host.getContext());
-        divider.setBackgroundColor(Color.parseColor("#14000000"));
+        divider.setBackgroundColor(Color.parseColor("#0A000000"));
         divider.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
         return divider;

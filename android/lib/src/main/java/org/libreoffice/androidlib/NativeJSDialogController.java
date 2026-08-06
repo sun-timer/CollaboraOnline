@@ -43,18 +43,23 @@ public final class NativeJSDialogController {
     private final Map<String, DialogHandler> dialogHandlers = new HashMap<>();
     private final SpellingDialogHandler spellingDialogHandler;
     private final SimpleConfirmDialogHandler confirmHandler = new SimpleConfirmDialogHandler();
+    private final MacroSelectorDialogHandler macroSelectorDialogHandler;
     private AlertDialog activeDialog;
     private int activeWindowId = -1;
+    private CalcValidationMacroCatalog.Callback macroHarvestCallback;
 
     public NativeJSDialogController(LOActivity host) {
         this.host = host;
         spellingDialogHandler = new SpellingDialogHandler(this, host);
+        macroSelectorDialogHandler = new MacroSelectorDialogHandler();
         registerDialogHandlers();
     }
 
     private void registerDialogHandlers() {
         dialogHandlers.put("DeleteContentsDialog", new DeleteContentsDialogHandler());
         dialogHandlers.put("SpellingDialog", spellingDialogHandler);
+        dialogHandlers.put("ValidationDialog", new ValidationDialogHandler());
+        dialogHandlers.put("MacroSelectorDialog", macroSelectorDialogHandler);
     }
 
     public boolean isActive() {
@@ -177,6 +182,178 @@ public final class NativeJSDialogController {
 
     void sendCheckboxChange(int windowId, String controlId, boolean checked) {
         sendDialogEvent(windowId, controlId, "change", checked ? "true" : "false", "checkbox");
+    }
+
+    /** 写数据有效性：把 state 各控件值经 dialogevent 写入 core，最后点 ok。 */
+    void applyValidationState(int windowId, CalcDataValidationState state) {
+        if (state == null || windowId < 0) {
+            return;
+        }
+        Log.i(TAG, "validation_apply windowId=" + windowId
+                + " allow=" + state.allowIndex + " data=" + state.dataIndex);
+        selectList(windowId, "allow", state.allowIndex);
+        if (CalcValidationCatalog.needsDataOperator(state.allowIndex)) {
+            selectList(windowId, "data", state.dataIndex);
+        }
+        if (CalcValidationCatalog.isListAllow(state.allowIndex)) {
+            modifyEntry(windowId, "minlist", state.listEntries);
+            check(windowId, "allowempty", state.allowEmpty);
+            check(windowId, "showlist", state.showDropdownList);
+            check(windowId, "sortascend", state.sortAscending);
+            check(windowId, "casesens", state.caseSensitive);
+        } else if (CalcValidationCatalog.isRangeAllow(state.allowIndex)) {
+            modifyEntry(windowId, "min", state.minValue);
+            check(windowId, "allowempty", state.allowEmpty);
+            check(windowId, "showlist", state.showDropdownList);
+        } else if (CalcValidationCatalog.isCustomAllow(state.allowIndex)) {
+            modifyEntry(windowId, "min", state.minValue);
+            check(windowId, "allowempty", state.allowEmpty);
+        } else if (state.allowIndex != 0) {
+            modifyEntry(windowId, "min", state.minValue);
+            if (CalcValidationCatalog.needsBetweenValues(state.dataIndex)) {
+                modifyEntry(windowId, "max", state.maxValue);
+            }
+            check(windowId, "allowempty", state.allowEmpty);
+        }
+
+        selectTab(windowId, 1);
+        check(windowId, "tsbhelp", state.showInputHelp);
+        modifyEntry(windowId, "title", state.inputHelpTitle);
+        modifyEntry(windowId, "inputhelp_text", state.inputHelpText);
+
+        selectTab(windowId, 2);
+        check(windowId, "tsbshow", state.showErrorAlert);
+        selectList(windowId, "actionCB", state.errorActionIndex);
+        if (state.errorActionIndex == 3) {
+            modifyEntry(windowId, "erroralert_title", state.macroUrl);
+        } else if (state.errorActionIndex != 4) {
+            modifyEntry(windowId, "erroralert_title", state.errorTitle);
+            modifyEntry(windowId, "errorMsg", state.errorMessage);
+        }
+
+        sendResponse(windowId, "ok", 1);
+        Log.i(TAG, "validation_apply_sent windowId=" + windowId);
+    }
+
+    /** 读数据有效性：解析拦截 payload 的控件值回填 target。 */
+    boolean parseValidationPayload(JSONObject payload, CalcDataValidationState target) {
+        if (payload == null || target == null) {
+            return false;
+        }
+        JSONArray controls = payload.optJSONArray("controls");
+        if (controls == null) {
+            return false;
+        }
+        try {
+            target.allowIndex = optListIndex(controls, "allow", 0);
+            target.dataIndex = optListIndex(controls, "data", 0);
+            target.errorActionIndex = optListIndex(controls, "actionCB", 0);
+            target.minValue = optEntryText(controls, "min");
+            target.maxValue = optEntryText(controls, "max");
+            target.listEntries = optEntryText(controls, "minlist");
+            target.inputHelpTitle = optEntryText(controls, "title");
+            target.inputHelpText = optEntryText(controls, "inputhelp_text");
+            target.errorTitle = optEntryText(controls, "erroralert_title");
+            if (target.errorActionIndex == 3) {
+                target.macroUrl = target.errorTitle;
+            }
+            target.errorMessage = optEntryText(controls, "errorMsg");
+            target.allowEmpty = optCheck(controls, "allowempty", true);
+            target.showDropdownList = optCheck(controls, "showlist", true);
+            target.sortAscending = optCheck(controls, "sortascend", true);
+            target.caseSensitive = optCheck(controls, "casesens", false);
+            target.showInputHelp = optCheck(controls, "tsbhelp", false);
+            target.showErrorAlert = optCheck(controls, "tsbshow", true);
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "validation_parse_failed", e);
+            return false;
+        }
+    }
+
+    private void selectList(int windowId, String controlId, int index) {
+        sendDialogEvent(windowId, controlId, "select", String.valueOf(index), "list");
+    }
+
+    private void selectTab(int windowId, int index) {
+        sendDialogEvent(windowId, "tabcontrol", "selecttab", String.valueOf(index), "tabcontrol");
+    }
+
+    private void modifyEntry(int windowId, String controlId, String value) {
+        sendDialogEvent(windowId, controlId, "modify",
+                value == null ? "" : value, "entry");
+    }
+
+    private void check(int windowId, String controlId, boolean on) {
+        sendDialogEvent(windowId, controlId, "click", on ? "1" : "0", "checkbox");
+    }
+
+    private static int optListIndex(JSONArray controls, String controlId, int fallback) {
+        JSONObject control = findControl(controls, controlId);
+        if (control == null) {
+            return fallback;
+        }
+        // listbox 控件：selectedEntries 数组首项为选中 index；无则回退
+        JSONArray selected = control.optJSONArray("selectedEntries");
+        if (selected != null && selected.length() > 0) {
+            try {
+                return Integer.parseInt(String.valueOf(selected.opt(0)).trim());
+            } catch (Exception ignored) {
+            }
+        }
+        JSONArray entries = control.optJSONArray("entries");
+        if (entries != null && selected != null && selected.length() > 0) {
+            String selectedText = String.valueOf(selected.opt(0));
+            for (int i = 0; i < entries.length(); i++) {
+                if (selectedText.equals(String.valueOf(entries.opt(i)))) {
+                    return i;
+                }
+            }
+        }
+        return fallback;
+    }
+
+    private static String optEntryText(JSONArray controls, String controlId) {
+        JSONObject control = findControl(controls, controlId);
+        if (control == null) {
+            return "";
+        }
+        String text = control.optString("text", "");
+        if (text.isEmpty()) {
+            text = control.optString("value", "");
+        }
+        return text;
+    }
+
+    private static boolean optCheck(JSONArray controls, String controlId, boolean fallback) {
+        JSONObject control = findControl(controls, controlId);
+        if (control == null) {
+            return fallback;
+        }
+        if (control.has("checked")) {
+            return control.optBoolean("checked", fallback);
+        }
+        String active = control.optString("active", "");
+        if (!active.isEmpty()) {
+            return "true".equalsIgnoreCase(active) || "1".equals(active);
+        }
+        return fallback;
+    }
+
+    private static JSONObject findControl(JSONArray controls, String controlId) {
+        if (controls == null) {
+            return null;
+        }
+        for (int i = 0; i < controls.length(); i++) {
+            JSONObject item = controls.optJSONObject(i);
+            if (item == null) {
+                continue;
+            }
+            if (controlId.equals(item.optString("id", ""))) {
+                return item;
+            }
+        }
+        return null;
     }
 
     private static boolean optChecked(JSONObject payload, String controlId, boolean defaultValue) {
@@ -600,5 +777,329 @@ public final class NativeJSDialogController {
             this.response = response;
             this.primary = primary;
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Calc 数据有效性 (.uno:Validation) — 吞掉原生弹窗，自定义 UI 已接管
+    // -------------------------------------------------------------------------
+
+    private final class ValidationDialogHandler implements DialogHandler {
+        @Override
+        public boolean canHandle(JSONObject payload) {
+            return "ValidationDialog".equals(payload.optString("dialogId", ""));
+        }
+
+        @Override
+        public void show(LOActivity activity, JSONObject payload) {
+            int windowId = payload.optInt("windowId", -1);
+            Log.i(TAG, "validation_dialog_intercepted windowId=" + windowId
+                    + " controls=" + (payload.optJSONArray("controls") == null ? 0
+                    : payload.optJSONArray("controls").length()));
+            // 拦截原生弹窗，读/写交给 LOActivity 协调（见 onValidationDialogIntercepted）
+            activity.onValidationDialogIntercepted(payload);
+            activity.closeMobileWizardFromNative("validation_intercepted");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // MacroSelectorDialog (.uno:RunMacro) — 懒加载枚举真实宏树
+    // -------------------------------------------------------------------------
+
+    private final class MacroSelectorDialogHandler implements UpdatableDialogHandler {
+        private static final int STAGE_SCOPE_EXPAND = 0; // 展开作用域根（我的宏/应用宏）
+        private static final int STAGE_LIB_EXPAND = 1;   // 展开库
+        private static final int STAGE_LIB_SELECT = 2;   // select 库收宏
+        private static final int STAGE_DONE = 3;
+
+        private boolean sessionOpen = false;
+        private int windowId = -1;
+        private CalcValidationMacroCatalog.Callback callback;
+        private final CalcValidationMacroCatalog catalog = new CalcValidationMacroCatalog();
+        private boolean awaitingUpdate = false;
+        private int stage = STAGE_DONE;
+        private final java.util.List<String> scopeQueue = new java.util.ArrayList<>();
+        private final java.util.List<int[]> libQueue = new java.util.ArrayList<>(); // {row, ...} 待展开库
+        private final java.util.List<String> libNames = new java.util.ArrayList<>();
+        private String currentScope = "document";
+        private int currentScopeRow = -1;
+        private int currentLibRow = -1;
+        private String currentLibrary = "";
+
+        @Override
+        public boolean canHandle(JSONObject payload) {
+            return "MacroSelectorDialog".equals(payload.optString("dialogId", ""));
+        }
+
+        @Override
+        public boolean isActive() {
+            return sessionOpen;
+        }
+
+        @Override
+        public void show(LOActivity activity, JSONObject payload) {
+            windowId = payload.optInt("windowId", -1);
+            sessionOpen = true;
+            awaitingUpdate = false;
+            scopeQueue.clear();
+            libQueue.clear();
+            callback = macroHarvestCallback;
+            Log.i(TAG, "macro_selector_show windowId=" + windowId);
+            // 解析 categories 顶层 scope 根（我的宏/应用程序的宏）
+            JSONArray controls = payload.optJSONArray("controls");
+            JSONObject categories = findControl(controls, "categories");
+            if (categories == null) {
+                finishHarvest(activity);
+                return;
+            }
+            JSONArray entries = categories.optJSONArray("entries");
+            if (entries == null || entries.length() == 0) {
+                finishHarvest(activity);
+                return;
+            }
+            for (int i = 0; i < entries.length(); i++) {
+                JSONObject entry = entries.optJSONObject(i);
+                if (entry == null) {
+                    continue;
+                }
+                String text = entry.optString("text", "");
+                int row = entry.optInt("row", -1);
+                boolean scopeDoc = isDocumentScope(text);
+                if (scopeDoc) {
+                    currentScopeRow = row;
+                }
+            }
+            if (currentScopeRow < 0) {
+                finishHarvest(activity);
+                return;
+            }
+            currentScope = "document";
+            scopeQueue.clear();
+            stage = STAGE_SCOPE_EXPAND;
+            expandScopeRow(activity, currentScopeRow);
+        }
+
+        /** 展开作用域根行（我的宏/应用宏）。 */
+        private void expandScopeRow(LOActivity activity, int row) {
+            if (row < 0) {
+                nextScopeOrFinish(activity);
+                return;
+            }
+            sendTreeViewEvent(windowId, "categories", "expand", row);
+            awaitingUpdate = true;
+            Log.i(TAG, "macro_selector_expand_scope row=" + row + " scope=" + currentScope);
+        }
+
+        @Override
+        public void update(JSONObject payload) {
+            if (!sessionOpen) {
+                return;
+            }
+            JSONArray controls = payload.optJSONArray("controls");
+            JSONObject control = controls == null || controls.length() == 0 ? null : controls.optJSONObject(0);
+            if (control == null) {
+                return;
+            }
+            String controlId = control.optString("id", "");
+            Log.i(TAG, "macro_selector_update id=" + controlId
+                    + " entries=" + (control.optJSONArray("entries") == null ? 0
+                    : control.optJSONArray("entries").length())
+                    + " stage=" + stage);
+            awaitingUpdate = false;
+            if ("categories".equals(controlId)) {
+                handleCategoriesUpdate(control);
+            } else if ("commands".equals(controlId)) {
+                handleCommandsUpdate(control);
+            }
+        }
+
+        private void handleCategoriesUpdate(JSONObject control) {
+            JSONArray entries = control.optJSONArray("entries");
+            if (entries == null) {
+                return;
+            }
+            if (stage == STAGE_SCOPE_EXPAND) {
+                // 展开作用域根后：解析库列表（scope 根的 children）
+                libQueue.clear();
+                collectLibraries(entries, currentScope, libQueue);
+                Log.i(TAG, "macro_selector_libraries scope=" + currentScope
+                        + " count=" + libQueue.size());
+                if (libQueue.isEmpty()) {
+                    nextScopeOrFinish(host);
+                } else {
+                    stage = STAGE_LIB_EXPAND;
+                    expandNextLibrary(host);
+                }
+            } else if (stage == STAGE_LIB_EXPAND) {
+                // 库展开后：select 库收宏
+                stage = STAGE_LIB_SELECT;
+                selectCurrentLibrary(host);
+            }
+        }
+
+        /** 从 scope 根的 children 收集库列表 {row, name}。 */
+        private void collectLibraries(JSONArray entries, String scopeKey, java.util.List<int[]> out) {
+            if (entries == null) {
+                return;
+            }
+            for (int i = 0; i < entries.length(); i++) {
+                JSONObject entry = entries.optJSONObject(i);
+                if (entry == null) {
+                    continue;
+                }
+                String text = entry.optString("text", "");
+                int row = entry.optInt("row", -1);
+                if (row < 0 || text.isEmpty()) {
+                    continue;
+                }
+                boolean isScope = isDocumentScope(text);
+                boolean matchesScope = "document".equals(scopeKey) ? isScope : !isScope;
+                if (matchesScope) {
+                    JSONArray children = entry.optJSONArray("children");
+                    if (children != null) {
+                        // 库在 scope 根的 children
+                        for (int j = 0; j < children.length(); j++) {
+                            JSONObject lib = children.optJSONObject(j);
+                            if (lib == null) {
+                                continue;
+                            }
+                            String libText = lib.optString("text", "");
+                            int libRow = lib.optInt("row", -1);
+                            if (libRow >= 0 && !libText.isEmpty()) {
+                                out.add(new int[]{libRow});
+                                libNames.add(libText);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private void expandNextLibrary(LOActivity activity) {
+            if (libQueue.isEmpty()) {
+                nextScopeOrFinish(activity);
+                return;
+            }
+            int[] lib = libQueue.get(0);
+            currentLibRow = lib[0];
+            currentLibrary = libNames.isEmpty() ? "" : libNames.get(0);
+            if (!libNames.isEmpty()) {
+                libNames.remove(0);
+            }
+            stage = STAGE_LIB_EXPAND;
+            sendTreeViewEvent(windowId, "categories", "expand", currentLibRow);
+            awaitingUpdate = true;
+            Log.i(TAG, "macro_selector_expand_lib row=" + currentLibRow + " lib=" + currentLibrary);
+        }
+
+        private void selectCurrentLibrary(LOActivity activity) {
+            sendTreeViewEvent(windowId, "categories", "select", currentLibRow);
+            awaitingUpdate = true;
+            Log.i(TAG, "macro_selector_select_lib row=" + currentLibRow + " lib=" + currentLibrary);
+        }
+
+        private void handleCommandsUpdate(JSONObject control) {
+            if (stage != STAGE_LIB_SELECT) {
+                return;
+            }
+            JSONArray entries = control.optJSONArray("entries");
+            boolean docScope = "document".equals(currentScope);
+            String scopeLabel = docScope ? "我的宏" : "应用程序的宏";
+            String library = currentLibrary.isEmpty() ? "Standard" : currentLibrary;
+            if (entries != null) {
+                for (int i = 0; i < entries.length(); i++) {
+                    JSONObject entry = entries.optJSONObject(i);
+                    if (entry == null) {
+                        continue;
+                    }
+                    String name = entry.optString("text", "");
+                    if (name.isEmpty() || "<dummy>".equals(name)) {
+                        continue;
+                    }
+                    String uri = buildMacroUri(library, "", name, docScope);
+                    catalog.add(new CalcValidationMacroCatalog.MacroItem(
+                            docScope, scopeLabel, library, "", name, uri));
+                }
+            }
+            // 移除当前库，继续下一个库 / 下一作用域
+            if (!libQueue.isEmpty()) {
+                libQueue.remove(0);
+            }
+            expandNextLibrary(host);
+        }
+
+        private void nextScopeOrFinish(LOActivity activity) {
+            if (!scopeQueue.isEmpty()) {
+                currentScope = scopeQueue.get(0);
+                scopeQueue.remove(0);
+                currentScopeRow = -1;
+                stage = STAGE_SCOPE_EXPAND;
+                expandScopeRow(activity, currentScopeRow);
+                return;
+            }
+            finishHarvest(activity);
+        }
+
+        private void finishHarvest(LOActivity activity) {
+            sessionOpen = false;
+            awaitingUpdate = false;
+            int cancelCode = 0;
+            if (windowId >= 0) {
+                sendResponse(windowId, "cancel", cancelCode);
+            }
+            Log.i(TAG, "macro_selector_finish items=" + catalog.items().size());
+            if (callback != null) {
+                callback.onCatalogLoaded(catalog);
+            }
+            if (windowId >= 0) {
+                activity.closeMobileWizardFromNative("macro_harvest_finish");
+            }
+        }
+    }
+
+    private static boolean isDocumentScope(String text) {
+        if (text == null) {
+            return true;
+        }
+        return !text.contains("应用程序的宏") && !text.contains("Application")
+                && !text.contains("share");
+    }
+
+    private static String buildMacroUri(String library, String module, String name, boolean docScope) {
+        String location = docScope ? "document" : "application";
+        StringBuilder sb = new StringBuilder("vnd.sun.star.script:");
+        if (library != null) {
+            sb.append(library);
+        }
+        if (module != null && !module.isEmpty()) {
+            sb.append('.').append(module);
+        }
+        sb.append('.').append(name);
+        sb.append("?language=Basic&location=").append(location);
+        return sb.toString();
+    }
+
+    private void sendTreeViewEvent(int windowId, String controlId, String cmd, int row) {
+        if (windowId < 0) {
+            return;
+        }
+        String js = "(function(){"
+                + "try{"
+                + "if(!window.app||!app.socket){return 'no_socket';}"
+                + "var msg='dialogevent " + windowId + " '"
+                + "+JSON.stringify({id:" + JSONObject.quote(controlId)
+                + ",cmd:" + JSONObject.quote(cmd)
+                + ",data:" + row
+                + ",type:'treeview'});"
+                + "app.socket.sendMessage(msg);"
+                + "return 'ok';"
+                + "}catch(e){return 'err:'+e;}"
+                + "})()";
+        host.evaluateJavascript(js, value -> Log.d(TAG, "treeview_event_sent id=" + controlId
+                + " cmd=" + cmd + " row=" + row + " result=" + value));
+    }
+
+    /** 启动真实宏枚举：LOActivity 调用，openMacroPicker 前先 harvest。 */
+    void startMacroCatalogHarvest(CalcValidationMacroCatalog.Callback callback) {
+        this.macroHarvestCallback = callback;
     }
 }

@@ -3,6 +3,7 @@ package org.libreoffice.androidlib;
 import android.content.Context;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
@@ -12,6 +13,9 @@ import android.widget.Toast;
 
 import androidx.constraintlayout.widget.ConstraintLayout;
 
+import com.google.android.material.bottomsheet.BottomSheetDialog;
+
+import org.libreoffice.androidlib.ai.AiDialogHelper;
 import org.json.JSONObject;
 
 /**
@@ -22,8 +26,6 @@ public final class CalcSheetTabPopupController {
     private static final String TAG = "CalcSheetTabPopup";
     private static final float MARGIN_DP = 12f;
     private static final float GAP_ABOVE_ANCHOR_DP = 8f;
-    private static final float RENAME_DIALOG_MAX_WIDTH_DP = 670f;
-    private static final float RENAME_DIALOG_SIDE_MARGIN_DP = 48f;
 
     public interface Host {
         Context getContext();
@@ -38,6 +40,8 @@ public final class CalcSheetTabPopupController {
 
         void evaluateJavascript(String script);
 
+        void evaluateJavascript(String script, android.webkit.ValueCallback<String> callback);
+
         void copySheet(int tabIndex);
 
         void ensureEditModeThen(Runnable action);
@@ -47,9 +51,9 @@ public final class CalcSheetTabPopupController {
     private View overlayView;
     private View popupView;
     private View renameRow;
-    private View renameOverlayView;
     private View renamePanelView;
     private EditText renameInputView;
+    private BottomSheetDialog renameDialog;
     private int renameTabIndex = -1;
     private int currentTabIndex = -1;
     private String currentSheetName = "";
@@ -65,8 +69,7 @@ public final class CalcSheetTabPopupController {
     public void setup() {
         overlayView = host.findViewById(R.id.calc_sheet_tab_popup_overlay);
         popupView = host.findViewById(R.id.calc_sheet_tab_popup_panel);
-        renameOverlayView = host.findViewById(R.id.calc_sheet_rename_overlay);
-        renamePanelView = host.findViewById(R.id.calc_sheet_rename_panel);
+        setupRenameDialog();
         if (overlayView == null || popupView == null) {
             return;
         }
@@ -79,16 +82,28 @@ public final class CalcSheetTabPopupController {
         if (copyRow != null) {
             copyRow.setOnClickListener(v -> onCopyClicked());
         }
-        setupRenameDialog();
     }
 
     private void setupRenameDialog() {
-        Log.i(TAG, "setup_rename_dialog overlayNull=" + (renameOverlayView == null)
-                + " panelNull=" + (renamePanelView == null));
-        if (renameOverlayView == null || renamePanelView == null) {
+        ensureRenameDialog();
+    }
+
+    /** 懒创建重命名 BottomSheetDialog；dismiss 后 renameDialog 被置 null，下次 show 前重建。 */
+    private void ensureRenameDialog() {
+        if (renameDialog != null) {
             return;
         }
-        renameOverlayView.setOnClickListener(v -> hideRenameDialog());
+        // 用独立 BottomSheetDialog 承载重命名弹窗，避免主布局 overlay 盖住确定按钮（点击被拦截）
+        renamePanelView = LayoutInflater.from(host.getContext())
+                .inflate(R.layout.lolib_dialog_calc_sheet_rename, null, false);
+        renameDialog = new BottomSheetDialog(host.getContext());
+        renameDialog.setContentView(renamePanelView);
+        AiDialogHelper.applyCloseOnlyDismiss(renameDialog);
+        renameDialog.setOnDismissListener(d -> {
+            renameDialog = null;
+            renameTabIndex = -1;
+        });
+
         renameInputView = renamePanelView.findViewById(R.id.calc_sheet_rename_input);
         TextView titleView = renamePanelView.findViewById(R.id.ai_dialog_header_title);
         View closeBtn = renamePanelView.findViewById(R.id.ai_dialog_header_close);
@@ -103,13 +118,13 @@ public final class CalcSheetTabPopupController {
             titleView.setText("重命名工作表");
         }
         if (closeBtn != null) {
-            closeBtn.setOnClickListener(v -> hideRenameDialog());
+            closeBtn.setOnClickListener(v -> onCloseClicked());
         }
         if (cancelBtn != null) {
-            cancelBtn.setOnClickListener(v -> hideRenameDialog());
+            cancelBtn.setOnClickListener(v -> onCancelClicked());
         }
         if (confirmBtn != null) {
-            confirmBtn.setOnClickListener(v -> confirmRename());
+            confirmBtn.setOnClickListener(v -> onConfirmClicked());
         }
         if (renameInputView != null) {
             renameInputView.setOnEditorActionListener((v, actionId, event) -> {
@@ -121,7 +136,7 @@ public final class CalcSheetTabPopupController {
 
     public boolean isVisible() {
         return (popupView != null && popupView.getVisibility() == View.VISIBLE)
-                || (renamePanelView != null && renamePanelView.getVisibility() == View.VISIBLE);
+                || (renameDialog != null && renameDialog.isShowing());
     }
 
     public void hide() {
@@ -299,18 +314,15 @@ public final class CalcSheetTabPopupController {
 
     private void showRenameDialog(int tabIndex, String sheetName,
                                   float anchorX, float anchorY, float anchorBottom) {
-        if (renameOverlayView == null || renamePanelView == null || renameInputView == null || tabIndex < 0) {
+        ensureRenameDialog();
+        if (renameDialog == null || renamePanelView == null || renameInputView == null || tabIndex < 0) {
             return;
         }
         renameTabIndex = tabIndex;
         renameInputView.setText(sheetName != null ? sheetName : "");
         renameInputView.setSelection(renameInputView.getText().length());
-        renameOverlayView.setVisibility(View.VISIBLE);
-        renamePanelView.setVisibility(View.VISIBLE);
-        // 确保弹窗面板在透明遮罩之上，否则确定/取消点击会被 overlay 拦截（点确定只关闭弹窗）
-        renamePanelView.bringToFront();
+        renameDialog.show();
         renamePanelView.post(() -> {
-            positionRenameDialogNearAnchor(anchorX, anchorY, anchorBottom);
             renameInputView.requestFocus();
             InputMethodManager imm = (InputMethodManager) host.getContext()
                     .getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -322,45 +334,22 @@ public final class CalcSheetTabPopupController {
                 + " anchor=" + anchorX + "," + anchorY + "," + anchorBottom);
     }
 
-    private void positionRenameDialogNearAnchor(float anchorX, float anchorY, float anchorBottom) {
-        View parent = (View) renamePanelView.getParent();
-        if (parent == null || !(renamePanelView.getLayoutParams() instanceof ConstraintLayout.LayoutParams)) {
-            return;
-        }
-        int parentWidth = parent.getWidth();
-        int parentHeight = parent.getHeight();
-        if (parentWidth <= 0 || parentHeight <= 0) {
-            return;
-        }
-        int targetWidth = Math.min(
-                Math.round(host.dpToPx(RENAME_DIALOG_MAX_WIDTH_DP)),
-                parentWidth - Math.round(host.dpToPx(RENAME_DIALOG_SIDE_MARGIN_DP)));
-        renamePanelView.measure(
-                View.MeasureSpec.makeMeasureSpec(targetWidth, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-        int popupW = renamePanelView.getMeasuredWidth();
-        int popupH = renamePanelView.getMeasuredHeight();
+    private void onCloseClicked() {
+        Log.i(TAG, "click_target=close");
+        hideRenameDialog();
+    }
 
-        ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) renamePanelView.getLayoutParams();
-        lp.width = targetWidth;
-        lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-        lp.leftToLeft = ConstraintLayout.LayoutParams.PARENT_ID;
-        lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
-        lp.rightToRight = ConstraintLayout.LayoutParams.PARENT_ID;
-        lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
-        lp.horizontalBias = 0.5f;
-        lp.verticalBias = 0.5f;
-        lp.leftMargin = 0;
-        lp.topMargin = 0;
-        lp.rightMargin = 0;
-        lp.bottomMargin = 0;
-        renamePanelView.setLayoutParams(lp);
-        Log.i(TAG, "position_rename_dialog_centered size=" + popupW + "x" + popupH
-                + " parent=" + parentWidth + "x" + parentHeight);
+    private void onCancelClicked() {
+        Log.i(TAG, "click_target=cancel");
+        hideRenameDialog();
+    }
+
+    private void onConfirmClicked() {
+        Log.i(TAG, "click_target=confirm");
+        confirmRename();
     }
 
     private void hideRenameDialog() {
-        Log.i(TAG, "hide_rename_dialog from=" + Thread.currentThread().getStackTrace()[3].getMethodName());
         if (renameInputView != null) {
             InputMethodManager imm = (InputMethodManager) host.getContext()
                     .getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -368,11 +357,8 @@ public final class CalcSheetTabPopupController {
                 imm.hideSoftInputFromWindow(renameInputView.getWindowToken(), 0);
             }
         }
-        if (renameOverlayView != null) {
-            renameOverlayView.setVisibility(View.GONE);
-        }
-        if (renamePanelView != null) {
-            renamePanelView.setVisibility(View.GONE);
+        if (renameDialog != null) {
+            renameDialog.dismiss();
         }
         renameTabIndex = -1;
     }
@@ -398,15 +384,22 @@ public final class CalcSheetTabPopupController {
 
     private void renameSheet(int tabIndex, String newName) {
         try {
-            // core FID_TAB_RENAME 需要：文档可编辑(IsDocEditable)、sheet 未保护(IsTabProtected)、
-            // 选中单一 sheet；否则直接 return 不重命名。因此用 ensureEditModeThen 包裹，
-            // 确保进入编辑模式后再发命令。
-            // Index 参数：core 按 1-based 读入后转回 0-based（tabvwshf.cxx），故传 tabIndex+1。
-            final String command = ".uno:Name?Name:string=" + newName + "&Index=" + (tabIndex + 1);
+            // 复用官方已验证的 map.renamePage（Parts.js）：通过 socket 直发
+            // 'uno .uno:Name {JSON}'（core 只认 JSON 参数，URL ?Name:string= 不被解析）。
+            // evaluateJavascript 走 Web 层，绕开原生 postMobileMessage 链路。
             host.ensureEditModeThen(() -> {
-                host.executeUnoCommand(command);
-                Log.i(TAG, "rename_sheet_uno index=" + tabIndex + " name=" + newName
-                        + " command=" + command);
+                // 走 Web socket 直发（与可用字体命令 .uno:CharFontName 同链路）。
+                // 原生 executeUnoCommand → postMobileMessage 链路对 .uno:Name 的 JSON 参数解析失败
+                // （aName 空 → "Invalid sheet name"）。
+                String jsName = newName.replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"");
+                String script = "(function(){"
+                        + "if(window.app&&app.socket&&typeof app.socket.sendMessage==='function'){"
+                        + "app.socket.sendMessage('uno .uno:Name {\\\"Name\\\":{\\\"type\\\":\\\"string\\\",\\\"value\\\":\\\""
+                        + jsName + "\\\"}}');}"
+                        + "return true;})();";
+                host.evaluateJavascript(script);
+                Log.i(TAG, "rename_sheet_via_socket index=" + tabIndex + " name=" + newName
+                        + " script=" + script);
             });
         } catch (Exception e) {
             Log.w(TAG, "rename_sheet failed: " + e.getMessage());

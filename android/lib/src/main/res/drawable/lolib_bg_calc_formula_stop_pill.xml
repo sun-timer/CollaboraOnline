@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Figma 停止生成按钮：#FE3A3A1A 背景 + 全圆角 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#F2F3F5" />
-    <corners android:radius="12dp" />
+    <solid android:color="#1AFE3A3A" />
+    <corners android:radius="35dp" />
 </shape>

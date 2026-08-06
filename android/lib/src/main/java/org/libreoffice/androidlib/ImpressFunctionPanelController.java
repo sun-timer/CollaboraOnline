@@ -27,6 +27,7 @@ import org.libreoffice.androidlib.ai.AiDialogHelper;
 import org.libreoffice.androidlib.impress.ImpressShapePickerController;
 import org.libreoffice.androidlib.impress.ImpressSlideLayoutCatalog;
 import org.libreoffice.androidlib.impress.ImpressSolidColorPickerController;
+import org.libreoffice.androidlib.impress.ImpressSubpageHeader;
 import org.libreoffice.androidlib.impress.ImpressTransitionCatalog;
 
 import java.util.ArrayList;
@@ -50,6 +51,7 @@ public class ImpressFunctionPanelController {
     private static final int COLOR_SECTION = Color.parseColor("#80868B");
     private static final int COLOR_TITLE = Color.parseColor("#101010");
     private static final int COLOR_VALUE = Color.parseColor("#6A6A6A");
+    private static final int COLOR_SLIDE_VALUE = Color.parseColor("#333333");
     private static final int COLOR_DIVIDER = Color.parseColor("#E3E3E3");
     private static final float SHEET_HEIGHT_RATIO = 1066f / 1624f;
     private static final float SOLID_COLOR_SHEET_HEIGHT_RATIO = 0.92f;
@@ -509,8 +511,8 @@ public class ImpressFunctionPanelController {
     private TextView createSectionLabel(String title) {
         TextView label = new TextView(host.getContext());
         label.setText(title);
-        label.setTextColor(COLOR_SECTION);
-        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        label.setTextColor(COLOR_TITLE);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         label.setPadding(host.dpToPx(2), host.dpToPx(14), host.dpToPx(2), host.dpToPx(6));
         return label;
     }
@@ -535,8 +537,8 @@ public class ImpressFunctionPanelController {
 
         TextView value = new TextView(host.getContext());
         value.setText(pickerValues.getOrDefault(item.id, item.subtitle));
-        value.setTextColor(COLOR_VALUE);
-        value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        value.setTextColor(COLOR_SLIDE_VALUE);
+        value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         value.setGravity(Gravity.END);
         LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
@@ -1000,11 +1002,13 @@ public class ImpressFunctionPanelController {
         return view;
     }
 
-    private TextView createChevron() {
-        TextView arrow = new TextView(host.getContext());
-        arrow.setText("›");
-        arrow.setTextColor(COLOR_SECTION);
-        arrow.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+    private View createChevron() {
+        ImageView arrow = new ImageView(host.getContext());
+        arrow.setImageResource(R.drawable.lolib_ic_impress_row_chevron);
+        arrow.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(host.dpToPx(16), host.dpToPx(16));
+        lp.setMarginStart(host.dpToPx(12));
+        arrow.setLayoutParams(lp);
         return arrow;
     }
 
@@ -1351,6 +1355,8 @@ public class ImpressFunctionPanelController {
                 R.drawable.lolib_ic_impress_spell_check, ".uno:SpellDialog"));
         review.add(new PanelItem(ItemType.ACTION, "review_comment", "批注",
                 R.drawable.lolib_ic_impress_review_comment, ""));
+        review.add(new PanelItem(ItemType.ACTION, "find", "查找",
+                R.drawable.lolib_ic_function_find_replace, ".uno:SearchDialog"));
         Log.i(TAG, "buildTabs review_items=" + review.size() + " layout=list+icons");
         return review;
     }
@@ -1580,6 +1586,7 @@ public class ImpressFunctionPanelController {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(createChartPickerHeader());
+        root.addView(ImpressSubpageHeader.createDivider(host.getContext()));
 
         int sectionGap = host.dpToPx(16);
         int rowGap = host.dpToPx(12);
@@ -1605,35 +1612,8 @@ public class ImpressFunctionPanelController {
     }
 
     private View createChartPickerHeader() {
-        LinearLayout header = new LinearLayout(host.getContext());
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setMinimumHeight(host.dpToPx(48));
-        header.setPadding(host.dpToPx(4), 0, host.dpToPx(8), 0);
-
-        ImageButton back = new ImageButton(host.getContext());
-        TypedValue rippleAttr = new TypedValue();
-        if (host.getContext().getTheme().resolveAttribute(
-                android.R.attr.selectableItemBackgroundBorderless, rippleAttr, true)) {
-            back.setBackgroundResource(rippleAttr.resourceId);
-        }
-        back.setImageResource(R.drawable.lolib_ic_top_back);
-        back.setContentDescription("返回");
-        back.setPadding(host.dpToPx(12), host.dpToPx(12), host.dpToPx(12), host.dpToPx(12));
-        back.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        back.setOnClickListener(v -> dismissChartPickerPage());
-        header.addView(back, new LinearLayout.LayoutParams(host.dpToPx(48), host.dpToPx(48)));
-
-        TextView title = new TextView(host.getContext());
-        title.setText("图表");
-        title.setTextColor(COLOR_TITLE);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-        title.setTypeface(null, Typeface.BOLD);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        titleLp.setMarginStart(host.dpToPx(4));
-        header.addView(title, titleLp);
-        return header;
+        return ImpressSubpageHeader.create(
+                host.getContext(), host::dpToPx, "图表", v -> dismissChartPickerPage());
     }
 
     private LinearLayout createChartTypeRow(ChartTypeOption[] options) {
@@ -2309,10 +2289,11 @@ public class ImpressFunctionPanelController {
     private static final String[] LAYOUT_LABELS = {
             "标题幻灯片", "标题和内容", "节标题"
     };
+    // 与「布局」Tab 一致（ImpressSlideLayoutCatalog 前 3 个）
     private static final int[] LAYOUT_ICONS = {
-            R.drawable.lolib_ic_impress_layout_title,
-            R.drawable.lolib_ic_impress_layout_title_content,
-            R.drawable.lolib_ic_impress_layout_section,
+            R.drawable.lolib_ic_impress_layout_01_title,
+            R.drawable.lolib_ic_impress_layout_02_title_content,
+            R.drawable.lolib_ic_impress_layout_03_section,
     };
     private static final String[] LAYOUT_COMMANDS = {
             ".uno:AssignLayout?WhatLayout:long=0",

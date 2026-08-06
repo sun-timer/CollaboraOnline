@@ -21,8 +21,8 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 		frameClass: '',
 		axis: '',
 		allowOrientation: true,
-		maxWidth: window.mode.isDesktop() ? 180: (window.mode.isTablet() ? 120: 60),
-		maxHeight: window.mode.isDesktop() ? 180: (window.mode.isTablet() ? 120: 60)
+		maxWidth: window.mode.isDesktop() ? 180: (window.mode.isTablet() ? 120: (window.ThisIsTheAndroidApp ? 98: 60)),
+		maxHeight: window.mode.isDesktop() ? 180: (window.mode.isTablet() ? 120: (window.ThisIsTheAndroidApp ? 55: 60))
 	},
 	partsFocused: false,
 
@@ -198,6 +198,10 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 		img.hash = hashCode;
 		img.src = document.querySelector('meta[name="previewSmile"]').content;
 		img.fetched = false;
+		// Android 缩略图右下角页码角标(Figma:未选中黑40% / 选中橙底,白字)
+		if (window.ThisIsTheAndroidApp) {
+			window.L.DomUtil.create('span', 'preview-page-badge', frame).textContent = String(i + 1);
+		}
 		if (!window.mode.isDesktop()) {
 			(new Hammer(img, {recognizers: [[Hammer.Press]]}))
 				.on('press', function (e) {
