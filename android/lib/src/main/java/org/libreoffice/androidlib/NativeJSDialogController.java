@@ -271,21 +271,38 @@ public final class NativeJSDialogController {
         }
     }
 
+    /** combobox 选中：core executor 认 {type:"combobox", cmd:"selected", data:"pos;text"}。 */
     private void selectList(int windowId, String controlId, int index) {
-        sendDialogEvent(windowId, controlId, "select", String.valueOf(index), "list");
+        String text = comboTextFor(controlId, index);
+        sendDialogEvent(windowId, controlId, "selected", index + ";" + text, "combobox");
+    }
+
+    private static String comboTextFor(String controlId, int index) {
+        if ("allow".equals(controlId)) {
+            return CalcValidationCatalog.findAllowByIndex(index).label;
+        }
+        if ("data".equals(controlId)) {
+            return CalcValidationCatalog.findDataByIndex(index).label;
+        }
+        if ("actionCB".equals(controlId)) {
+            return CalcValidationCatalog.findErrorActionByIndex(index).label;
+        }
+        return "";
     }
 
     private void selectTab(int windowId, int index) {
         sendDialogEvent(windowId, "tabcontrol", "selecttab", String.valueOf(index), "tabcontrol");
     }
 
+    /** edit 写入：core executor 认 {type:"edit", cmd:"change"}。 */
     private void modifyEntry(int windowId, String controlId, String value) {
-        sendDialogEvent(windowId, controlId, "modify",
-                value == null ? "" : value, "entry");
+        sendDialogEvent(windowId, controlId, "change",
+                value == null ? "" : value, "edit");
     }
 
+    /** checkbox：core executor 认 {type:"checkbox", cmd:"change", data:"true"/"false"}。 */
     private void check(int windowId, String controlId, boolean on) {
-        sendDialogEvent(windowId, controlId, "click", on ? "1" : "0", "checkbox");
+        sendDialogEvent(windowId, controlId, "change", on ? "true" : "false", "checkbox");
     }
 
     private static int optListIndex(JSONArray controls, String controlId, int fallback) {
@@ -415,6 +432,17 @@ public final class NativeJSDialogController {
         return rawText != null ? rawText : "";
     }
 
+    /** 标题是否是应用名（Collabora Office Calc 等），此时正文错误信息在 controls/text。 */
+    private static boolean isAppNameTitle(String title) {
+        if (title == null || title.isEmpty()) {
+            return false;
+        }
+        String t = title.trim();
+        return t.contains("Collabora") || t.contains("LibreOffice")
+                || t.contains("Office Calc") || t.contains("Office Writer")
+                || t.contains("Office Impress");
+    }
+
     private static boolean isGenericMessageboxTitle(String title) {
         if (title == null || title.isEmpty()) {
             return true;
@@ -438,7 +466,8 @@ public final class NativeJSDialogController {
                 continue;
             }
             String type = item.optString("type", "");
-            if (!"fixedtext".equals(type) && !"label".equals(type)) {
+            // 只取正文控件：fixedtext/label/multilineedit；排除按钮（pushbutton/okbutton 等）
+            if (!"fixedtext".equals(type) && !"label".equals(type) && !"multilineedit".equals(type)) {
                 continue;
             }
             String text = item.optString("text", "");
@@ -649,28 +678,47 @@ public final class NativeJSDialogController {
         @Override
         public void show(LOActivity activity, JSONObject payload) {
             int windowId = payload.optInt("windowId", -1);
-            View root = LayoutInflater.from(activity).inflate(R.layout.lolib_dialog_native_confirm, null);
+            Log.i(TAG, "confirm_payload windowId=" + windowId
+                    + " title=" + payload.optString("title", "")
+                    + " text=" + payload.optString("text", "")
+                    + " controls=" + (payload.optJSONArray("controls") == null ? 0
+                    : payload.optJSONArray("controls").length())
+                    + " responses=" + (payload.optJSONArray("responses") == null ? 0
+                    : payload.optJSONArray("responses").length()));
+            View root = LayoutInflater.from(activity).inflate(R.layout.lolib_dialog_calc_confirm, null);
 
-            TextView titleView = root.findViewById(R.id.ai_dialog_header_title);
             String rawTitle = payload.optString("title", "");
             String rawText = payload.optString("text", "");
             JSONArray controls = payload.optJSONArray("controls");
-            String message = resolveMessageboxMessage(rawTitle, rawText, controls);
-            String title = resolveMessageboxTitle(rawTitle, message);
-            titleView.setText(title);
+            // 应用名标题（Collabora Office Calc）→ 错误信息在 controls/text
+            boolean appTitle = isAppNameTitle(rawTitle);
+            String message = appTitle
+                    ? extractFixedTextFromControls(controls)
+                    : resolveMessageboxMessage(rawTitle, rawText, controls);
+            if (message.isEmpty() && !appTitle) {
+                message = rawText;
+            }
+            String title = appTitle ? "提示" : resolveMessageboxTitle(rawTitle, message);
+            Log.i(TAG, "confirm_resolved title=" + title + " message=" + message
+                    + " appTitle=" + appTitle);
+            String displayTitle = title;
+            String displayMessage = message;
+            if (displayMessage.isEmpty() || displayMessage.equals(rawTitle)) {
+                displayMessage = "";
+            }
 
-            TextView messageView = root.findViewById(R.id.native_confirm_message);
-            if (message.isEmpty() || message.equals(title)) {
+            TextView titleView = root.findViewById(R.id.calc_confirm_title);
+            titleView.setText(displayTitle);
+
+            TextView messageView = root.findViewById(R.id.calc_confirm_message);
+            if (displayMessage.isEmpty()) {
                 messageView.setVisibility(View.GONE);
             } else {
                 messageView.setVisibility(View.VISIBLE);
-                messageView.setText(message);
+                messageView.setText(displayMessage);
             }
 
-            root.findViewById(R.id.ai_dialog_header_close).setOnClickListener(v ->
-                    dismissWithResponse(payload, windowId, "cancel", 2));
-
-            LinearLayout buttonRow = root.findViewById(R.id.native_confirm_button_row);
+            LinearLayout buttonRow = root.findViewById(R.id.calc_confirm_button_row);
             List<ButtonSpec> buttons = buildButtons(payload);
             if (buttons.isEmpty()) {
                 buttons.add(new ButtonSpec("ok", "确定", 1, true));
@@ -678,9 +726,9 @@ public final class NativeJSDialogController {
             for (int i = 0; i < buttons.size(); i++) {
                 ButtonSpec spec = buttons.get(i);
                 boolean primary = spec.primary;
-                View button = buildActionButton(activity, spec.label, primary);
+                View button = buildCalcButton(activity, spec.label, primary);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                        0, host.dpToPx(52), 1f);
+                        0, host.dpToPx(44), 1f);
                 if (i < buttons.size() - 1) {
                     lp.setMarginEnd(host.dpToPx(12));
                 }
@@ -717,6 +765,25 @@ public final class NativeJSDialogController {
             if (primary) {
                 text.setTypeface(text.getTypeface(), android.graphics.Typeface.BOLD);
             }
+            container.addView(text);
+            return container;
+        }
+
+        /** Calc 表格风格按钮：主按钮绿色胶囊，次按钮描边。 */
+        private View buildCalcButton(LOActivity activity, String label, boolean primary) {
+            LinearLayout container = new LinearLayout(activity);
+            container.setOrientation(LinearLayout.HORIZONTAL);
+            container.setGravity(android.view.Gravity.CENTER);
+            container.setClickable(true);
+            container.setFocusable(true);
+            container.setBackgroundResource(primary
+                    ? R.drawable.lolib_bg_calc_sheet_pill_primary
+                    : R.drawable.lolib_bg_outline_secondary_button);
+
+            TextView text = new TextView(activity);
+            text.setText(label);
+            text.setTextSize(16);
+            text.setTextColor(primary ? 0xFFFFFFFF : 0xFF333333);
             container.addView(text);
             return container;
         }

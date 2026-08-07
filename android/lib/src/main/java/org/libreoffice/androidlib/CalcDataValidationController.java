@@ -3,6 +3,7 @@ package org.libreoffice.androidlib;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.text.InputType;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;

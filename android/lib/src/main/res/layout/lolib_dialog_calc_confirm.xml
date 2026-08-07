@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 数据有效性拒绝弹窗：Calc 表格风格（白底圆角24，标题居中，绿色确定按钮） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/lolib_bg_dialog_outline"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingTop="20dp"
+    android:paddingEnd="24dp"
+    android:paddingBottom="20dp">
+
+    <TextView
+        android:id="@+id/calc_confirm_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textColor="#101010"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/calc_confirm_message"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="center"
+        android:lineSpacingExtra="4dp"
+        android:textColor="#333333"
+        android:textSize="16sp" />
+
+    <LinearLayout
+        android:id="@+id/calc_confirm_button_row"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:gravity="center"
+        android:orientation="horizontal" />
+</LinearLayout>

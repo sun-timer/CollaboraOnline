@@ -38,12 +38,13 @@ class AndroidNativeDialogRouter {
 	private activeDialogIds = new Map<number, string>();
 
 	private extractControl(child: any): NativeDialogControl | null {
-		if (!child || !child.id) {
+		if (!child || !child.type) {
 			return null;
 		}
 		const type = child.type;
+		// messagebox 的错误文本控件（fixedtext/multilineedit）无 id，放空 id 让其进入 controls
 		const control: NativeDialogControl = {
-			id: child.id,
+			id: child.id || ('_' + type),
 			type: type,
 		};
 		if (child.text !== undefined) {
