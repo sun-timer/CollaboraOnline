@@ -55,13 +55,26 @@ public class ImpressFunctionPanelController {
     private static final int COLOR_DIVIDER = Color.parseColor("#E3E3E3");
     private static final float SHEET_HEIGHT_RATIO = 1066f / 1624f;
     private static final float SOLID_COLOR_SHEET_HEIGHT_RATIO = 0.92f;
-    private static final int CHAR_CELL_W_DP = 51;
+    /** Figma 207:15020：101×100px → 50×50dp；第一行 weight 铺满，第二行固定左对齐。 */
+    private static final int CHAR_CELL_W_DP = 50;
     private static final int CHAR_CELL_H_DP = 50;
     private static final int CHAR_CELL_PAD_DP = 12;
+    private static final int CHAR_GRID_GAP_DP = 8;
+    private static final int CHAR_ROW_GAP_DP = 12;
     private static final int ICON_SIZE_DP = 24;
     private static final int NUMFMT_CELL_H_DP = 80;
     private static final int NUMFMT_CELL_VPAD_DP = 12;
     private static final int GRID_GAP_DP = 5;
+    /** Figma 207:15082：202×160px → 101×80dp，三列 weight 铺满。 */
+    private static final int PARA_CELL_W_DP = 101;
+    private static final int PARA_CELL_H_DP = 80;
+    private static final int PARA_CELL_PAD_DP = 12;
+    private static final int PARA_GRID_GAP_H_DP = 20;
+    private static final int PARA_GRID_GAP_V_DP = 12;
+    /** Figma 圆角 24px → 12dp。 */
+    private static final int IMPRESS_GRID_RADIUS_DP = 12;
+    private static final int IMPRESS_GRID_CELL_BG = Color.parseColor("#F2F3F5");
+    private static final int IMPRESS_GRID_CELL_BG_SELECTED = Color.parseColor("#E5E6E8");
     private static final int COLOR_SWATCH_SIZE_DP = 40;
     private static final int COLOR_SWATCH_GAP_DP = 10;
     private static final int COLOR_SWATCH_COLS = 6;
@@ -78,8 +91,20 @@ public class ImpressFunctionPanelController {
     private static final int LAYOUT_GRID_COLS = 3;
     private static final int LAYOUT_THUMB_W_DP = 100;
     private static final int LAYOUT_THUMB_H_DP = 56;
-    private static final int LAYOUT_CELL_VPAD_DP = 8;
-    private static final int LAYOUT_CELL_MIN_H_DP = 96;
+    private static final int LAYOUT_CELL_H_DP = 89;
+    private static final int LAYOUT_CELL_PAD_DP = 4;
+    private static final int LAYOUT_ROW_GAP_DP = 20;
+    private static final int LAYOUT_HEADER_GAP_DP = 12;
+    private static final int LAYOUT_LABEL_SP = 12;
+    private static final int LAYOUT_ALL_BTN_TEXT_SP = 14;
+    private static final int COMMON_LAYOUT_PREVIEW_COUNT = 3;
+    private static final int FILE_ACTION_ICON_DP = 32;
+    private static final int FILE_ACTION_ROW_H_DP = 64;
+    private static final int FILE_ACTION_TEXT_SP = 18;
+    private static final int FILE_ACTION_ICON_TEXT_GAP_DP = 12;
+    private static final int FILE_ACTION_ROW_HPAD_DP = 16;
+    private static final int FILE_ACTION_ROW_VPAD_DP = 12;
+    private static final int FILE_ACTION_DIVIDER_COLOR = 0x14000000;
 
     private static final class ColorSwatch {
         final String label;
@@ -173,6 +198,7 @@ public class ImpressFunctionPanelController {
         PICKER_PAIR,
         TOOL_BUTTONS,
         FORMAT_GRID,
+        LAYOUT_SECTION,
         ACTION,
         STUB
     }
@@ -287,6 +313,7 @@ public class ImpressFunctionPanelController {
     private TextView slideMasterValueView;
     private TextView slideBackgroundValueView;
     private Integer selectedMasterSolidRgb;
+    private Integer selectedMasterSolidIndex;
     private boolean solidColorForSlideBackground;
     private int selectedTransitionIndex = DEFAULT_SELECTED_TRANSITION_INDEX;
     private LinearLayout transitionGridRoot;
@@ -492,8 +519,16 @@ public class ImpressFunctionPanelController {
                     root.addView(createToolButtonRow());
                     break;
                 case FORMAT_GRID:
-                    root.addView(createLabeledGrid(
-                            item.gridLabels, item.gridCommands, item.gridIconRes, item.cols));
+                    if ("para_grid".equals(item.id)) {
+                        root.addView(createParagraphGrid(
+                                item.gridLabels, item.gridCommands, item.gridIconRes));
+                    } else {
+                        root.addView(createLabeledGrid(
+                                item.gridLabels, item.gridCommands, item.gridIconRes, item.cols));
+                    }
+                    break;
+                case LAYOUT_SECTION:
+                    root.addView(createCommonLayoutSection());
                     break;
                 case ACTION:
                     root.addView(createActionRow(item));
@@ -515,6 +550,73 @@ public class ImpressFunctionPanelController {
         label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         label.setPadding(host.dpToPx(2), host.dpToPx(14), host.dpToPx(2), host.dpToPx(6));
         return label;
+    }
+
+    private View createCommonLayoutSection() {
+        LinearLayout section = new LinearLayout(host.getContext());
+        section.setOrientation(LinearLayout.VERTICAL);
+        section.addView(createLayoutSectionHeader());
+        section.addView(createCommonLayoutPreviewRow());
+        return wrapBottomMargin(section);
+    }
+
+    private View createLayoutSectionHeader() {
+        LinearLayout header = new LinearLayout(host.getContext());
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(host.dpToPx(2), host.dpToPx(14), host.dpToPx(2), 0);
+
+        TextView title = new TextView(host.getContext());
+        title.setText("布局");
+        title.setTextColor(COLOR_TITLE);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        header.addView(title, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        LinearLayout allBtn = new LinearLayout(host.getContext());
+        allBtn.setOrientation(LinearLayout.HORIZONTAL);
+        allBtn.setGravity(Gravity.CENTER_VERTICAL);
+        TextView allLabel = new TextView(host.getContext());
+        allLabel.setText("全部");
+        allLabel.setTextColor(COLOR_VALUE);
+        allLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, LAYOUT_ALL_BTN_TEXT_SP);
+        allBtn.addView(allLabel);
+        ImageView chevron = new ImageView(host.getContext());
+        chevron.setImageResource(R.drawable.lolib_ic_impress_row_chevron);
+        chevron.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        LinearLayout.LayoutParams chevronLp = new LinearLayout.LayoutParams(host.dpToPx(16), host.dpToPx(16));
+        chevronLp.setMarginStart(host.dpToPx(4));
+        allBtn.addView(chevron, chevronLp);
+        allBtn.setOnClickListener(v -> switchToLayoutTab());
+        header.addView(allBtn, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return header;
+    }
+
+    private View createCommonLayoutPreviewRow() {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.topMargin = host.dpToPx(LAYOUT_HEADER_GAP_DP);
+        row.setLayoutParams(rowLp);
+        int gap = host.dpToPx(LAYOUT_ROW_GAP_DP);
+        int count = Math.min(COMMON_LAYOUT_PREVIEW_COUNT, ImpressSlideLayoutCatalog.ENTRIES.length);
+        for (int i = 0; i < count; i++) {
+            ImpressSlideLayoutCatalog.Entry entry = ImpressSlideLayoutCatalog.ENTRIES[i];
+            row.addView(createLayoutCell(entry, i < count - 1, gap));
+        }
+        return row;
+    }
+
+    private void switchToLayoutTab() {
+        for (int i = 0; i < tabs.size(); i++) {
+            if ("layout_tab".equals(tabs.get(i).id)) {
+                selectTab(i);
+                return;
+            }
+        }
     }
 
     private View createSlidePickerRow(PanelItem item) {
@@ -584,6 +686,7 @@ public class ImpressFunctionPanelController {
                     }
                     pickerValues.put("slide_master", label);
                     selectedMasterSolidRgb = null;
+                    selectedMasterSolidIndex = null;
                     valueView.setText(label);
                     Log.i(TAG, "slide_master_picked label=" + label);
                 })
@@ -647,12 +750,13 @@ public class ImpressFunctionPanelController {
                     }
 
                     @Override
-                    public Integer getSelectedRgb() {
-                        return selectedMasterSolidRgb;
+                    public Integer getSelectedIndex() {
+                        return selectedMasterSolidIndex;
                     }
 
                     @Override
                     public void onColorSelected(int index, int rgb) {
+                        selectedMasterSolidIndex = index;
                         if (solidColorForSlideBackground) {
                             applySlideBackgroundColor(rgb);
                             pickerValues.put("slide_background", "颜色");
@@ -861,47 +965,117 @@ public class ImpressFunctionPanelController {
     private View createToolButtonRow() {
         LinearLayout container = new LinearLayout(host.getContext());
         container.setOrientation(LinearLayout.VERTICAL);
-        container.addView(buildCharToolRow(CHAR_TOOL_ICONS_ROW1, CHAR_TOOL_COMMANDS_ROW1));
-        container.addView(buildCharToolRow(CHAR_TOOL_ICONS_ROW2, CHAR_TOOL_COMMANDS_ROW2));
-        return container;
+        container.addView(buildCharToolRow(CHAR_TOOL_ICONS_ROW1, CHAR_TOOL_COMMANDS_ROW1, true));
+        View row2 = buildCharToolRow(CHAR_TOOL_ICONS_ROW2, CHAR_TOOL_COMMANDS_ROW2, false);
+        LinearLayout.LayoutParams row2Lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        row2Lp.topMargin = host.dpToPx(CHAR_ROW_GAP_DP);
+        container.addView(row2, row2Lp);
+        return wrapBottomMargin(container);
     }
 
-    private View buildCharToolRow(int[] iconResIds, String[] commands) {
+    private GradientDrawable createImpressGridCellDrawable(boolean selected) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.RECTANGLE);
+        drawable.setCornerRadius(host.dpToPx(IMPRESS_GRID_RADIUS_DP));
+        drawable.setColor(selected ? IMPRESS_GRID_CELL_BG_SELECTED : IMPRESS_GRID_CELL_BG);
+        return drawable;
+    }
+
+    private View buildCharToolRow(int[] iconResIds, String[] commands, boolean fillRow) {
         LinearLayout row = new LinearLayout(host.getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.START);
+        row.setLayoutParams(new LinearLayout.LayoutParams(
+                fillRow ? ViewGroup.LayoutParams.MATCH_PARENT : ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
         int cellW = host.dpToPx(CHAR_CELL_W_DP);
         int cellH = host.dpToPx(CHAR_CELL_H_DP);
         int pad = host.dpToPx(CHAR_CELL_PAD_DP);
-        int gap = host.dpToPx(GRID_GAP_DP);
+        int gap = host.dpToPx(CHAR_GRID_GAP_DP);
         for (int i = 0; i < commands.length; i++) {
             final String command = commands[i];
             LinearLayout btn = new LinearLayout(host.getContext());
             btn.setOrientation(LinearLayout.VERTICAL);
             btn.setGravity(Gravity.CENTER);
-            btn.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
             btn.setPadding(pad, pad, pad, pad);
             ImageView icon = new ImageView(host.getContext());
             icon.setImageResource(iconResIds[i]);
-            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
             btn.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(ICON_SIZE_DP), host.dpToPx(ICON_SIZE_DP)));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(cellW, cellH);
+            boolean isActive = isCharCommandActive(command);
+            btn.setBackground(createImpressGridCellDrawable(isActive));
+            btn.setSelected(isActive);
+            LinearLayout.LayoutParams lp;
+            if (fillRow) {
+                lp = new LinearLayout.LayoutParams(0, cellH, 1f);
+            } else {
+                lp = new LinearLayout.LayoutParams(cellW, cellH);
+            }
             if (i < commands.length - 1) {
                 lp.setMarginEnd(gap);
             }
-            lp.bottomMargin = gap;
             btn.setLayoutParams(lp);
-            // Apply selected-state visual feedback for toggle-style char format buttons
-            boolean isActive = isCharCommandActive(command);
-            btn.setSelected(isActive);
-            if (isActive) {
-                btn.getBackground().mutate().setTint(0xFF1A73E8);
-                icon.setImageTintList(android.content.res.ColorStateList.valueOf(0xFFFFFFFF));
-            }
             btn.setOnClickListener(v -> host.executeUnoCommand(command));
             row.addView(btn);
         }
         return row;
+    }
+
+    private View createParagraphGrid(String[] labels, String[] commands, int[] iconRes) {
+        LinearLayout grid = new LinearLayout(host.getContext());
+        grid.setOrientation(LinearLayout.VERTICAL);
+        if (labels == null || labels.length == 0) {
+            return grid;
+        }
+        final int cols = 3;
+        int gapH = host.dpToPx(PARA_GRID_GAP_H_DP);
+        int gapV = host.dpToPx(PARA_GRID_GAP_V_DP);
+        int cellH = host.dpToPx(PARA_CELL_H_DP);
+        int pad = host.dpToPx(PARA_CELL_PAD_DP);
+        for (int rowStart = 0; rowStart < labels.length; rowStart += cols) {
+            LinearLayout row = new LinearLayout(host.getContext());
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (rowStart > 0) {
+                rowLp.topMargin = gapV;
+            }
+            row.setLayoutParams(rowLp);
+            int rowEnd = Math.min(rowStart + cols, labels.length);
+            for (int i = rowStart; i < rowEnd; i++) {
+                final String label = labels[i];
+                final String command = commands != null && i < commands.length ? commands[i] : "";
+                LinearLayout cell = new LinearLayout(host.getContext());
+                cell.setOrientation(LinearLayout.VERTICAL);
+                cell.setGravity(Gravity.CENTER);
+                cell.setBackground(createImpressGridCellDrawable(false));
+                cell.setPadding(pad, pad, pad, pad);
+                if (iconRes != null && i < iconRes.length && iconRes[i] != 0) {
+                    ImageView icon = new ImageView(host.getContext());
+                    icon.setImageResource(iconRes[i]);
+                    icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                    cell.addView(icon, new LinearLayout.LayoutParams(
+                            host.dpToPx(ICON_SIZE_DP), host.dpToPx(ICON_SIZE_DP)));
+                }
+                TextView caption = new TextView(host.getContext());
+                caption.setText(label);
+                caption.setGravity(Gravity.CENTER);
+                caption.setTextColor(COLOR_TITLE);
+                caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                caption.setPadding(0, host.dpToPx(6), 0, 0);
+                cell.addView(caption);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, cellH, 1f);
+                if (i < rowEnd - 1) {
+                    lp.setMarginEnd(gapH);
+                }
+                cell.setLayoutParams(lp);
+                cell.setOnClickListener(v -> onGridCommand(command, label));
+                row.addView(cell);
+            }
+            grid.addView(row);
+        }
+        return wrapBottomMargin(grid);
     }
 
     private boolean isCharCommandActive(String command) {
@@ -1327,9 +1501,7 @@ public class ImpressFunctionPanelController {
         common.add(new PanelItem(ItemType.SLIDE_PICKER, "slide_master", "母版幻灯片", "默认",
                 R.drawable.lolib_ic_impress_slide_master));
 
-        common.add(new PanelItem(ItemType.SECTION, "sec_layout", "布局"));
-        common.add(new PanelItem(ItemType.FORMAT_GRID, "layout_grid", "布局",
-                LAYOUT_LABELS, LAYOUT_COMMANDS, LAYOUT_ICONS, 3));
+        common.add(new PanelItem(ItemType.LAYOUT_SECTION, "layout_preview", "布局"));
 
         common.add(new PanelItem(ItemType.SECTION, "sec_char", "字符"));
         common.add(new PanelItem(ItemType.PICKER_ROW, "font_name", "字体", "宋体"));
@@ -1371,8 +1543,6 @@ public class ImpressFunctionPanelController {
                 R.drawable.lolib_ic_calc_file_export, host::exportDocumentAsPdf));
         file.add(new PanelItem(ItemType.ACTION, "print", "打印",
                 R.drawable.lolib_ic_calc_file_print, host::initiatePrint));
-        file.add(new PanelItem(ItemType.ACTION, "slideshow", "幻灯片放映",
-                R.drawable.lolib_ic_calc_file_print, host::startSlideShow));
         return file;
     }
 
@@ -1942,11 +2112,9 @@ public class ImpressFunctionPanelController {
 
     private View createDivider() {
         View divider = new View(host.getContext());
-        divider.setBackgroundColor(COLOR_DIVIDER);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1));
-        lp.setMarginStart(host.dpToPx(60));
-        divider.setLayoutParams(lp);
+        divider.setBackgroundColor(FILE_ACTION_DIVIDER_COLOR);
+        divider.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
         return divider;
     }
 
@@ -1954,24 +2122,29 @@ public class ImpressFunctionPanelController {
         LinearLayout row = new LinearLayout(host.getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(host.dpToPx(56));
-        row.setPadding(host.dpToPx(16), host.dpToPx(14), host.dpToPx(16), host.dpToPx(14));
+        row.setMinimumHeight(host.dpToPx(FILE_ACTION_ROW_H_DP));
+        row.setPadding(
+                host.dpToPx(FILE_ACTION_ROW_HPAD_DP),
+                host.dpToPx(FILE_ACTION_ROW_VPAD_DP),
+                host.dpToPx(FILE_ACTION_ROW_HPAD_DP),
+                host.dpToPx(FILE_ACTION_ROW_VPAD_DP));
 
         if (item.iconResId != 0) {
             ImageView icon = new ImageView(host.getContext());
             icon.setImageResource(item.iconResId);
-            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            row.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(32), host.dpToPx(32)));
+            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            row.addView(icon, new LinearLayout.LayoutParams(
+                    host.dpToPx(FILE_ACTION_ICON_DP), host.dpToPx(FILE_ACTION_ICON_DP)));
         }
 
         TextView label = new TextView(host.getContext());
         label.setText(item.label);
-        label.setTextColor(COLOR_TITLE);
-        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        label.setTextColor(COLOR_SLIDE_VALUE);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, FILE_ACTION_TEXT_SP);
         LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         if (item.iconResId != 0) {
-            labelLp.setMarginStart(host.dpToPx(12));
+            labelLp.setMarginStart(host.dpToPx(FILE_ACTION_ICON_TEXT_GAP_DP));
         }
         row.addView(label, labelLp);
         row.setOnClickListener(v -> runItemAction(item));
@@ -2166,7 +2339,7 @@ public class ImpressFunctionPanelController {
     private View createLayoutGrid() {
         layoutGridRoot = new LinearLayout(host.getContext());
         layoutGridRoot.setOrientation(LinearLayout.VERTICAL);
-        int gap = host.dpToPx(INSERT_GRID_GAP_DP);
+        int gap = host.dpToPx(LAYOUT_ROW_GAP_DP);
         int sidePad = host.dpToPx(12);
         layoutGridRoot.setPadding(sidePad, 0, sidePad, host.dpToPx(12));
 
@@ -2203,9 +2376,8 @@ public class ImpressFunctionPanelController {
         cell.setBackgroundResource(selected
                 ? R.drawable.lolib_bg_impress_transition_cell_selected
                 : R.drawable.lolib_bg_impress_insert_card);
-        int vPad = host.dpToPx(LAYOUT_CELL_VPAD_DP);
-        cell.setPadding(host.dpToPx(6), vPad, host.dpToPx(6), vPad);
-        cell.setMinimumHeight(host.dpToPx(LAYOUT_CELL_MIN_H_DP));
+        int pad = host.dpToPx(LAYOUT_CELL_PAD_DP);
+        cell.setPadding(pad, pad, pad, pad);
 
         ImageView thumb = new ImageView(host.getContext());
         thumb.setImageResource(entry.iconResId);
@@ -2217,12 +2389,13 @@ public class ImpressFunctionPanelController {
         caption.setText(entry.label);
         caption.setGravity(Gravity.CENTER);
         caption.setTextColor(COLOR_TITLE);
-        caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        caption.setTextSize(TypedValue.COMPLEX_UNIT_SP, LAYOUT_LABEL_SP);
         caption.setMaxLines(2);
         caption.setPadding(0, host.dpToPx(6), 0, 0);
         cell.addView(caption);
 
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                0, host.dpToPx(LAYOUT_CELL_H_DP), 1f);
         if (addEndGap) {
             lp.setMarginEnd(gap);
         }
@@ -2284,21 +2457,6 @@ public class ImpressFunctionPanelController {
     private static final String[] CHAR_TOOL_COMMANDS_ROW2 = {
             ".uno:SuperScript",
             ".uno:SubScript",
-    };
-
-    private static final String[] LAYOUT_LABELS = {
-            "标题幻灯片", "标题和内容", "节标题"
-    };
-    // 与「布局」Tab 一致（ImpressSlideLayoutCatalog 前 3 个）
-    private static final int[] LAYOUT_ICONS = {
-            R.drawable.lolib_ic_impress_layout_01_title,
-            R.drawable.lolib_ic_impress_layout_02_title_content,
-            R.drawable.lolib_ic_impress_layout_03_section,
-    };
-    private static final String[] LAYOUT_COMMANDS = {
-            ".uno:AssignLayout?WhatLayout:long=0",
-            ".uno:AssignLayout?WhatLayout:long=1",
-            ".uno:AssignLayout?WhatLayout:long=2",
     };
 
     private static final String[] PARA_LABELS = {
