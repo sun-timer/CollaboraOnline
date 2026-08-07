@@ -1630,9 +1630,17 @@ public class LOActivity extends AppCompatActivity {
      * content: URI.
      */
     private void copyTempBackToIntent() {
+        Log.i(TAG, "copy_temp_back_to_intent_enter isDocEditable=" + isDocEditable
+                + " tempFile=" + mTempFile
+                + " data=" + (getIntent().getData() != null ? getIntent().getData() : "null"));
         if (!isDocEditable || mTempFile == null || getIntent().getData() == null
-                || !getIntent().getData().getScheme().equals(ContentResolver.SCHEME_CONTENT))
+                || !getIntent().getData().getScheme().equals(ContentResolver.SCHEME_CONTENT)) {
+            Log.i(TAG, "copy_temp_back_to_intent_skip reason="
+                    + (!isDocEditable ? "not_editable"
+                            : (mTempFile == null ? "no_temp"
+                                    : (getIntent().getData() == null ? "no_data" : "not_content"))));
             return;
+        }
 
         final ContentResolver contentResolver = getContentResolver();
         try {
@@ -2147,7 +2155,16 @@ public class LOActivity extends AppCompatActivity {
             finish();
             return;
         }
-        mProgressDialog.indeterminate(R.string.exiting);
+        // 退出前先保存：文档有修改且未在保存中 → 先 saveAndCloseDocument（发 save，
+        // CO 保存完成回 SAVE → closeAfterSaveRequested=true → 再走本方法 finish）。
+        // 避免直接 BYE 退出导致 tmp 修改不拷回原文件。
+        if (documentModified && !closeAfterSaveRequested) {
+            ExitDiagHelper.logProbe("finishWithProgress_save_first", "modified=true");
+            saveAndCloseDocument();
+            return;
+        }
+        // ProgressDialog 必须在主线程创建/显示（SAVE 消息可能在后台线程处理，直接调用会崩）
+        runOnUiThread(() -> mProgressDialog.indeterminate(R.string.exiting));
 
         // 同步：先 BYE + 等 COOLWSD run 结束，再 finish() 回首页（避免二次开文档与上一轮 teardown 竞态）。
         getMainHandler().post(new Runnable() {
@@ -2327,8 +2344,14 @@ public class LOActivity extends AppCompatActivity {
                     documentSwitchInProgress,
                     getCallingActivity() != null, isTaskRoot(), "pending");
         }
+        final boolean isSaveMsg = message != null && (message.equals("SAVE") || message.startsWith("SAVE "));
+        if (isSaveMsg) {
+            Log.i(TAG, "postMobileMessage_SAVE_enter bridge=" + documentBridgeEnabled
+                    + " finishing=" + isFinishing() + " loaded=" + documentLoaded
+                    + " msg=" + (message.length() > 80 ? message.substring(0, 80) : message));
+        }
         if (!documentBridgeEnabled || isFinishing()) {
-            if (isBye) {
+            if (isBye || isSaveMsg) {
                 ExitDiagHelper.logByeProbe("postMobileMessage_blocked", message,
                         documentBridgeEnabled, isFinishing(), exitingToHome, documentLoaded,
                         documentSwitchInProgress,
@@ -9169,13 +9192,19 @@ public class LOActivity extends AppCompatActivity {
             if (impressFunctionPanelController != null) {
                 impressFunctionPanelController.dismiss();
             }
-            if (!documentLoaded || !documentModified) {
+            if (!documentLoaded) {
+                closeAfterSaveRequested = false;
+                finishWithProgress();
+                return;
+            }
+            if (!documentModified) {
                 closeAfterSaveRequested = false;
                 finishWithProgress();
                 return;
             }
 
-            showSaveModifiedDialog();
+            // 退出时先保存再退出（自动强制保存，不等用户确认对话框，避免竞态丢内容）
+            saveAndCloseDocument();
         });
     }
 
@@ -9285,7 +9314,7 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         closeAfterSaveRequested = true;
-        mProgressDialog.indeterminate(R.string.exiting);
+        runOnUiThread(() -> mProgressDialog.indeterminate(R.string.exiting));
         postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=0");
     }
 
@@ -10845,6 +10874,15 @@ public class LOActivity extends AppCompatActivity {
         mobilePreviewSwitchAttempt = 1;
         getMainHandler().removeCallbacks(mobilePreviewAckTimeoutRunnable);
         callFakeWebsocketOnMessage("mobile: readonlymode");
+        // 点「完成」切查看模式：先 readonlymode 提交编辑器内容到 core，再强制保存
+        // （覆盖「输入后直接收回键盘未按回车 → documentModified 未更新」的场景，退出不再丢内容）
+        getMainHandler().postDelayed(() -> {
+            if (isFinishing() || exitingToHome) {
+                return;
+            }
+            postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=0");
+            Log.i(TAG, "preview_switch_save_after_readonly");
+        }, 500L);
         getMainHandler().postDelayed(mobilePreviewAckTimeoutRunnable, MOBILE_PREVIEW_ACK_TIMEOUT_MS);
     }
 

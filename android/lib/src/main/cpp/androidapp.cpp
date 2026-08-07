@@ -156,7 +156,8 @@ static void send2JS(const JNIThreadContext &jctx, const std::vector<char>& buffe
 void postDirectMessage(std::string message)
 {
     const bool isBye = (message.rfind("BYE", 0) == 0);
-    if (isBye || message.rfind("close", 0) == 0)
+    const bool isSaveMsg = (message.rfind("SAVE", 0) == 0);
+    if (isBye || message.rfind("close", 0) == 0 || isSaveMsg)
     {
         __android_log_print(ANDROID_LOG_INFO, "LOActivity",
                             "exit_probe_postDirectMessage msg=%.96s callbacks=%d hasObj=%d pid=%d",
@@ -164,11 +165,11 @@ void postDirectMessage(std::string message)
                             g_loActivityObj != nullptr ? 1 : 0, getpid());
     }
     if (!g_javaCallbacksEnabled || g_loActivityObj == nullptr || g_loActivityClz == nullptr) {
-        if (isBye)
+        if (isBye || isSaveMsg)
         {
             __android_log_print(ANDROID_LOG_INFO, "LOActivity",
-                                "exit_probe_postDirectMessage_blocked reason=callbacks_disabled pid=%d",
-                                getpid());
+                                "exit_probe_postDirectMessage_blocked reason=callbacks_disabled msg=%.32s pid=%d",
+                                message.c_str(), getpid());
         }
         return;
     }
