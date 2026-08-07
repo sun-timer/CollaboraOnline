@@ -3,7 +3,7 @@ package org.libreoffice.androidlib.impress;
 import org.libreoffice.androidlib.R;
 
 /**
- * Impress 母版幻灯片 — 纯色色板（12 + 64，6 列网格）。
+ * Impress 母版幻灯片 — 纯色色板（12 + 58，6 列网格）。
  * 由 scripts/generate-impress-solid-color-assets.js 生成，请勿手改。
  */
 public final class ImpressSolidColorCatalog {
@@ -74,12 +74,6 @@ public final class ImpressSolidColorCatalog {
             new Entry(38, R.drawable.lolib_ic_impress_solid_color_038, 0xE3EBF7),
             new Entry(39, R.drawable.lolib_ic_impress_solid_color_039, 0xBFD5EB),
             new Entry(40, R.drawable.lolib_ic_impress_solid_color_040, 0x9DC3EA),
-            new Entry(41, R.drawable.lolib_ic_impress_solid_color_041, 0x3073B8),
-            new Entry(42, R.drawable.lolib_ic_impress_solid_color_042, 0x214C76),
-            new Entry(43, R.drawable.lolib_ic_impress_solid_color_043, 0x5E9FE5),
-            new Entry(44, R.drawable.lolib_ic_impress_solid_color_044, 0xE3EBF7),
-            new Entry(45, R.drawable.lolib_ic_impress_solid_color_045, 0xBFD5EB),
-            new Entry(46, R.drawable.lolib_ic_impress_solid_color_046, 0x9DC3EA),
             new Entry(47, R.drawable.lolib_ic_impress_solid_color_047, 0xC25A14),
             new Entry(48, R.drawable.lolib_ic_impress_solid_color_048, 0x853C0C),
             new Entry(49, R.drawable.lolib_ic_impress_solid_color_049, 0xE2732C),

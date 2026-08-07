@@ -1,43 +1,36 @@
 package org.libreoffice.androidlib.impress;
 
 import android.graphics.Color;
-import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.util.Log;
-import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.TextView;
 
 import org.libreoffice.androidlib.R;
 
 /**
- * Impress 母版幻灯片 — 纯色二级页（12 + 64 色块，6 列，F2F3F5 圆角卡片）。
+ * Impress 母版幻灯片 — 纯色二级页（12 + 58 色块，6 列，F2F3F5 圆角卡片）。
  */
 public final class ImpressSolidColorPickerController {
 
     private static final String TAG = "ImpressSolidColor";
     private static final int GRID_COLS = 6;
-    private static final int ROW_HEIGHT_DP = 48;
-    private static final int ICON_SIZE_DP = 32;
-    private static final int GRID_PAD_DP = 8;
-    private static final int ROW_GAP_DP = 4;
+    private static final int SWATCH_SIZE_DP = 32;
+    private static final int GRID_PAD_DP = 12;
+    private static final int ROW_GAP_DP = 20;
     private static final int BLOCK_GAP_DP = 12;
-    private static final int SELECT_RING_DP = 2;
-    private static final int COLOR_SELECT_RING = Color.parseColor("#1278D9");
+    private static final int CONTENT_SIDE_PAD_DP = 16;
 
     public interface Host {
         android.content.Context getContext();
 
         int dpToPx(int dp);
 
-        Integer getSelectedRgb();
+        Integer getSelectedIndex();
 
         void onColorSelected(int index, int rgb);
 
@@ -45,12 +38,12 @@ public final class ImpressSolidColorPickerController {
     }
 
     private final Host host;
-    private Integer selectedRgb;
+    private Integer selectedIndex;
     private final View[][] checkViews = new View[ImpressSolidColorCatalog.BLOCKS.length][];
 
     public ImpressSolidColorPickerController(Host host) {
         this.host = host;
-        this.selectedRgb = host.getSelectedRgb();
+        this.selectedIndex = host.getSelectedIndex();
     }
 
     public View buildRootView() {
@@ -67,7 +60,7 @@ public final class ImpressSolidColorPickerController {
         scroll.setFillViewport(true);
         LinearLayout content = new LinearLayout(host.getContext());
         content.setOrientation(LinearLayout.VERTICAL);
-        int sidePad = host.dpToPx(16);
+        int sidePad = host.dpToPx(CONTENT_SIDE_PAD_DP);
         content.setPadding(sidePad, host.dpToPx(4), sidePad, host.dpToPx(16));
 
         for (int b = 0; b < ImpressSolidColorCatalog.BLOCKS.length; b++) {
@@ -100,32 +93,34 @@ public final class ImpressSolidColorPickerController {
         card.setPadding(pad, pad, pad, pad);
 
         checkViews[blockIndex] = new View[entries.length];
-        int rowHeight = host.dpToPx(ROW_HEIGHT_DP);
-        int iconSize = host.dpToPx(ICON_SIZE_DP);
+        int swatchSize = host.dpToPx(SWATCH_SIZE_DP);
         int rowGap = host.dpToPx(ROW_GAP_DP);
+        int innerWidth = host.getContext().getResources().getDisplayMetrics().widthPixels
+                - host.dpToPx(CONTENT_SIDE_PAD_DP * 2 + GRID_PAD_DP * 2);
+        int gap = Math.max(0, (innerWidth - GRID_COLS * swatchSize) / (GRID_COLS - 1));
         LinearLayout row = null;
 
         for (int i = 0; i < entries.length; i++) {
             if (i % GRID_COLS == 0) {
                 row = new LinearLayout(host.getContext());
                 row.setOrientation(LinearLayout.HORIZONTAL);
-                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setGravity(Gravity.START);
+                LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, swatchSize);
                 if (i > 0) {
-                    LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT, rowHeight);
                     rowLp.topMargin = rowGap;
-                    row.setLayoutParams(rowLp);
-                } else {
-                    row.setLayoutParams(new LinearLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT, rowHeight));
                 }
+                row.setLayoutParams(rowLp);
                 card.addView(row);
             }
             ImpressSolidColorCatalog.Entry entry = entries[i];
-            FrameLayout cell = createColorCell(entry, iconSize);
+            FrameLayout cell = createColorCell(entry);
             checkViews[blockIndex][i] = cell.findViewWithTag("check");
-            cell.setLayoutParams(new LinearLayout.LayoutParams(0, rowHeight, 1f));
-            cell.setForeground(host.getContext().getDrawable(android.R.drawable.list_selector_background));
+            LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(swatchSize, swatchSize);
+            if (i % GRID_COLS > 0) {
+                cellLp.setMarginStart(gap);
+            }
+            cell.setLayoutParams(cellLp);
             cell.setOnClickListener(v -> onColorClicked(entry));
             if (row != null) {
                 row.addView(cell);
@@ -134,50 +129,32 @@ public final class ImpressSolidColorPickerController {
         return card;
     }
 
-    private FrameLayout createColorCell(ImpressSolidColorCatalog.Entry entry, int iconSize) {
+    private FrameLayout createColorCell(ImpressSolidColorCatalog.Entry entry) {
         FrameLayout cell = new FrameLayout(host.getContext());
-        boolean selected = selectedRgb != null && selectedRgb == entry.rgb;
-
-        if (selected) {
-            View ring = new View(host.getContext());
-            ring.setBackground(createSelectRingDrawable());
-            int ringPad = host.dpToPx(SELECT_RING_DP);
-            FrameLayout.LayoutParams ringLp = new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            ringLp.setMargins(ringPad, ringPad, ringPad, ringPad);
-            cell.addView(ring, ringLp);
-        }
+        boolean selected = selectedIndex != null && selectedIndex == entry.index;
 
         ImageView icon = new ImageView(host.getContext());
         icon.setImageResource(entry.iconResId);
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        FrameLayout.LayoutParams iconLp = new FrameLayout.LayoutParams(iconSize, iconSize);
+        int swatchSize = host.dpToPx(SWATCH_SIZE_DP);
+        FrameLayout.LayoutParams iconLp = new FrameLayout.LayoutParams(swatchSize, swatchSize);
         iconLp.gravity = Gravity.CENTER;
         cell.addView(icon, iconLp);
 
-        TextView check = new TextView(host.getContext());
+        ImageView check = new ImageView(host.getContext());
         check.setTag("check");
-        check.setText("✓");
-        check.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        check.setTypeface(Typeface.DEFAULT_BOLD);
-        check.setTextColor(isLightSwatch(entry.rgb) ? Color.parseColor("#333333") : Color.WHITE);
-        check.setGravity(Gravity.CENTER);
+        check.setImageResource(R.drawable.lolib_ic_impress_solid_color_check);
+        check.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        check.setImageTintList(android.content.res.ColorStateList.valueOf(
+                isLightSwatch(entry.rgb) ? Color.parseColor("#333333") : Color.WHITE));
         check.setVisibility(selected ? View.VISIBLE : View.GONE);
         cell.addView(check, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         return cell;
     }
 
-    private GradientDrawable createSelectRingDrawable() {
-        GradientDrawable ring = new GradientDrawable();
-        ring.setShape(GradientDrawable.OVAL);
-        ring.setColor(Color.TRANSPARENT);
-        ring.setStroke(host.dpToPx(SELECT_RING_DP), COLOR_SELECT_RING);
-        return ring;
-    }
-
     private void onColorClicked(ImpressSolidColorCatalog.Entry entry) {
-        selectedRgb = entry.rgb;
+        selectedIndex = entry.index;
         refreshSelectionUi();
         Log.i(TAG, "solid_color_selected index=" + entry.index
                 + " rgb=#" + Integer.toHexString(entry.rgb).toUpperCase());
@@ -196,25 +173,8 @@ public final class ImpressSolidColorPickerController {
                 if (check == null) {
                     continue;
                 }
-                boolean selected = selectedRgb != null && selectedRgb == entries[i].rgb;
+                boolean selected = selectedIndex != null && selectedIndex == entries[i].index;
                 check.setVisibility(selected ? View.VISIBLE : View.GONE);
-                FrameLayout cell = (FrameLayout) check.getParent();
-                if (cell == null) {
-                    continue;
-                }
-                View existingRing = cell.findViewWithTag("ring");
-                if (selected && existingRing == null) {
-                    View ring = new View(host.getContext());
-                    ring.setTag("ring");
-                    ring.setBackground(createSelectRingDrawable());
-                    int ringPad = host.dpToPx(SELECT_RING_DP);
-                    FrameLayout.LayoutParams ringLp = new FrameLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-                    ringLp.setMargins(ringPad, ringPad, ringPad, ringPad);
-                    cell.addView(ring, 0, ringLp);
-                } else if (!selected && existingRing != null) {
-                    cell.removeView(existingRing);
-                }
             }
         }
     }
