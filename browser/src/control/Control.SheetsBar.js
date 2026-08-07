@@ -163,6 +163,17 @@ class SheetsBar {
 			}
 			return;
 		}
+		if (object.id === 'insertsheet' && eventType === 'click') {
+			// 加号新增工作表：直接发 .uno:Insert（不走 dialogevent，core 不认识 insertsheet 控件；
+			// 也不走 map.insertPage，其依赖 _docLayer._sheetSwitch，Android 可能缺失）
+			if (window.app && app.socket && typeof app.socket.sendMessage === 'function') {
+				var totalParts = this.map && this.map._docLayer && this.map._docLayer._parts !== undefined
+					? this.map._docLayer._parts : (this.parts !== undefined ? this.parts : 0);
+				var cmd = {Name: {type: 'string', value: ''}, Index: {type: 'long', value: totalParts + 1}};
+				app.socket.sendMessage('uno .uno:Insert ' + JSON.stringify(cmd));
+			}
+			return;
+		}
 		builder._defaultCallbackHandler(objectType, eventType, object, data, builder);
   }
 

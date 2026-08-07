@@ -205,7 +205,6 @@ window.L.Control.Tabs = window.L.Control.extend({
 				}
 
 				var sheetPartNames = e.partNames;
-				var sheetDisplayIndex = 0;
 				for (var i = 0; i < parts; i++) {
 					// Skip if hidden or a sheet view (implicitly hidden)
 					if (app.calc.isPartHidden(i) || app.calc.isPartSheetView(i))
@@ -297,12 +296,8 @@ window.L.Control.Tabs = window.L.Control.extend({
 						window.L.DomUtil.removeClass(tab, 'spreadsheet-tab-sheetview');
 						window.L.DomUtil.removeClass(tab, 'spreadsheet-tab-sheetview-unsynced');
 					}
-					sheetDisplayIndex++;
-					if (window.ThisIsTheAndroidApp && window.mode.isMobile()) {
-						label.textContent = 'Sheet ' + sheetDisplayIndex;
-					} else {
-						label.textContent = e.partNames[i];
-					}
+					// Android 也用真实 sheet 名（改名前是硬编码 'Sheet N'，导致改名后 tab 不更新）
+					label.textContent = e.partNames[i];
 					tab.id = id;
 
 					window.L.DomEvent
