@@ -19,7 +19,6 @@ import android.widget.PopupWindow;
 import android.widget.TextView;
 import androidx.appcompat.widget.SwitchCompat;
 
-import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.ai.AiDialogHelper;
@@ -49,12 +48,8 @@ public class FunctionPanelController {
     private static final int COLOR_SECTION_TITLE = Color.parseColor("#101010");
     private static final int COLOR_CARD_BG = Color.parseColor("#F2F3F5");
     private static final int COLOR_TAB_BAR_BORDER = Color.parseColor("#A2A9B2");
-    /** Figma 750×1624 canvas: sheet height 1066px ≈ 65.6% screen. */
-    private static final float FONT_PICKER_HEIGHT_RATIO = 1066f / 1624f;
-    /** 纸张方向 2 项，二级弹窗压缩高度。 */
-    private static final float ORIENTATION_PICKER_HEIGHT_RATIO = 0.26f;
-    /** 文件/插入/布局/审阅 tab 固定高度（内容少下方留空，多则内容滚动）。 */
-    private static final float TAB_HEIGHT_OTHER = 0.55f;
+    /** Figma 750×1624 canvas: 功能面板统一固定高度（切换 tab 不变；内容滚动/留白）。 */
+    private static final float SHEET_HEIGHT_RATIO = BottomSheetAnchorHelper.FUNCTION_PANEL_HEIGHT_RATIO;
 
     public interface StringListCallback {
         void onResult(List<String> labels, List<String> values);
@@ -265,9 +260,12 @@ public class FunctionPanelController {
         dialog = new BottomSheetDialog(host.getContext());
         dialog.setContentView(panel);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
-        dialog.setOnDismissListener(d -> dialog = null);
+        dialog.setOnDismissListener(d -> {
+            BottomSheetAnchorHelper.clearAppliedHeight(dialog);
+            dialog = null;
+        });
+        dialog.setOnShowListener(d -> applyFixedSheetHeight());
         dialog.show();
-        expandSheet(currentTabHeightRatio());
     }
 
     public void dismiss() {
@@ -327,14 +325,28 @@ public class FunctionPanelController {
         // Update indicator position to center under the selected tab
         updateTabIndicator(index);
         renderTabContent(tabs.get(index));
-        if (dialog != null) {
-            expandSheet(currentTabHeightRatio());
+        if (contentContainer != null) {
+            contentContainer.scrollTo(0, 0);
         }
     }
 
-    /** 当前 tab 固定高度：五个 tab 统一（内容少下方留空、多则滚动）。 */
-    private float currentTabHeightRatio() {
-        return TAB_HEIGHT_OTHER;
+    private void applyFixedSheetHeight() {
+        if (dialog == null) {
+            return;
+        }
+        AiDialogHelper.applyNoDimScrim(dialog);
+        FrameLayout bottomSheet = dialog.findViewById(
+                com.google.android.material.R.id.design_bottom_sheet);
+        if (bottomSheet != null) {
+            bottomSheet.setBackgroundResource(R.drawable.lolib_bg_font_picker_sheet);
+            bottomSheet.setElevation(host.dpToPx(28));
+        }
+        int targetHeight = BottomSheetAnchorHelper.resolveTargetHeight(
+                host.getContext(), SHEET_HEIGHT_RATIO);
+        setSheetContentHeight(targetHeight);
+        BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
+        options.logTag = TAG;
+        BottomSheetAnchorHelper.expandRatio(dialog, SHEET_HEIGHT_RATIO, options);
     }
 
     private void updateTabIndicator(int index) {
@@ -868,7 +880,7 @@ public class FunctionPanelController {
         }
         showOptionPickerPage(item.label, item.pickerOptions,
                 item.pickerValues != null ? item.pickerValues : item.pickerOptions,
-                item.id, valueView, FONT_PICKER_HEIGHT_RATIO);
+                item.id, valueView, SHEET_HEIGHT_RATIO);
     }
 
     // === 字号浮层（Figma 3082:60036：320×460 圆角卡片，锚定在字号框下方，不用二级页） ===
@@ -981,7 +993,6 @@ public class FunctionPanelController {
         }
         fontPickerPanel.setVisibility(View.VISIBLE);
         fontPickerVisible = true;
-        expandSheet(FONT_PICKER_HEIGHT_RATIO);
     }
 
     private void setSheetContentHeight(int height) {
@@ -1146,8 +1157,6 @@ public class FunctionPanelController {
         if (fontPickerPanel != null) {
             fontPickerPanel.setVisibility(View.GONE);
         }
-        setSheetContentHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
-        expandSheet(currentTabHeightRatio());
     }
 
     private void syncCurrentFormatting() {
@@ -1156,7 +1165,6 @@ public class FunctionPanelController {
             applyCurrentFormatting(styleName, fontName, fontSizePt, paragraphAlignment);
             if (dialog != null && dialog.isShowing() && selectedTabIndex == 0) {
                 renderTabContent(tabs.get(selectedTabIndex));
-                expandSheet(currentTabHeightRatio());
             }
         });
     }
@@ -1338,7 +1346,6 @@ public class FunctionPanelController {
         setTabChromeVisible(true);
         if (dialog != null && dialog.isShowing()) {
             renderTabContent(tabs.get(selectedTabIndex));
-            expandSheet(currentTabHeightRatio());
         }
     }
 
@@ -1395,7 +1402,6 @@ public class FunctionPanelController {
             contentContainer.removeAllViews();
             contentContainer.addView(watermarkPicker.buildRootView());
         }
-        expandSheet(FONT_PICKER_HEIGHT_RATIO);
     }
 
     private void showWatermarkFontPicker(String currentFont,
@@ -1415,7 +1421,6 @@ public class FunctionPanelController {
                         contentContainer.addView(watermarkPicker.buildRootView());
                     }
                     setTabChromeVisible(false);
-                    expandSheet(FONT_PICKER_HEIGHT_RATIO);
                 });
             }
             populateWatermarkFontList(list, currentFont, callback);
@@ -1424,7 +1429,6 @@ public class FunctionPanelController {
             }
             fontPickerPanel.setVisibility(View.VISIBLE);
             fontPickerVisible = true;
-            expandSheet(FONT_PICKER_HEIGHT_RATIO);
         };
         if (cachedFontOptions != null && cachedFontOptions.length > FALLBACK_FONT_OPTIONS.length) {
             openSheet.run();
@@ -1466,7 +1470,6 @@ public class FunctionPanelController {
                     contentContainer.addView(watermarkPicker.buildRootView());
                 }
                 setTabChromeVisible(false);
-                expandSheet(FONT_PICKER_HEIGHT_RATIO);
             });
             list.addView(row);
             if (i < cachedFontOptions.length - 1) {
@@ -1482,22 +1485,20 @@ public class FunctionPanelController {
         setTabChromeVisible(true);
         if (dialog != null && dialog.isShowing()) {
             renderTabContent(tabs.get(selectedTabIndex));
-            expandSheet(currentTabHeightRatio());
         }
     }
 
     private void showPageMarginsPickerPage(TextView valueView) {
         dismissPaperSizePickerPage();
-        // 高度与纸张大小弹窗一致（FONT_PICKER_HEIGHT_RATIO），两弹窗切换时高度不跳变
         showOptionPickerPage("页边距", WriterLayoutCatalog.marginLabels(),
                 WriterLayoutCatalog.marginIds(), "page_margins", valueView,
-                FONT_PICKER_HEIGHT_RATIO);
+                SHEET_HEIGHT_RATIO);
     }
 
     private void showPaperOrientationPickerPage(TextView valueView) {
         dismissPaperSizePickerPage();
         showOptionPickerPage("纸张方向", ORIENTATION_OPTIONS, ORIENTATION_VALUES,
-                "paper_orientation", valueView, ORIENTATION_PICKER_HEIGHT_RATIO);
+                "paper_orientation", valueView, SHEET_HEIGHT_RATIO);
     }
 
     private void showPaperSizePickerPage(TextView valueView) {
@@ -1555,7 +1556,6 @@ public class FunctionPanelController {
         if (optionPickerPanel != null) {
             optionPickerPanel.setVisibility(View.GONE);
         }
-        expandSheet(FONT_PICKER_HEIGHT_RATIO);
     }
 
     private void dismissPaperSizePickerPage() {
@@ -1566,7 +1566,6 @@ public class FunctionPanelController {
         setTabChromeVisible(true);
         if (dialog != null && dialog.isShowing()) {
             renderTabContent(tabs.get(selectedTabIndex));
-            expandSheet(currentTabHeightRatio());
         }
     }
 
@@ -1588,8 +1587,8 @@ public class FunctionPanelController {
 
     // === Generic option picker page — replaces AlertDialog ===
 
-    /** 打开二级页框架（隐藏 tab chrome、显示 option picker 面板、展开 sheet）。 */
-    private void openOptionPickerFrame(String title, float heightRatio) {
+    /** 打开二级页框架（隐藏 tab chrome、显示 option picker 面板；sheet 高度保持不变）。 */
+    private void openOptionPickerFrame(String title, @SuppressWarnings("unused") float heightRatio) {
         if (optionPickerPanel == null || dialog == null) {
             return;
         }
@@ -1612,7 +1611,6 @@ public class FunctionPanelController {
         }
         optionPickerPanel.setVisibility(View.VISIBLE);
         optionPickerVisible = true;
-        expandSheet(heightRatio);
     }
 
     private void showOptionPickerPage(String title, String[] labels, String[] values,
@@ -1673,8 +1671,6 @@ public class FunctionPanelController {
         if (optionPickerPanel != null) {
             optionPickerPanel.setVisibility(View.GONE);
         }
-        setSheetContentHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
-        expandSheet(currentTabHeightRatio());
     }
 
     // === Style picker — fetches full Collabora style list, then opens option picker ===
@@ -1693,7 +1689,7 @@ public class FunctionPanelController {
 
     private void showStylePickerPage(TextView valueView) {
         Runnable openSheet = () -> {
-            openOptionPickerFrame("样式", FONT_PICKER_HEIGHT_RATIO);
+            openOptionPickerFrame("样式", SHEET_HEIGHT_RATIO);
             LinearLayout list = optionPickerPanel.findViewById(R.id.option_picker_list);
             populateStyleOptionList(list, valueView);
         };
@@ -1931,55 +1927,6 @@ public class FunctionPanelController {
     private void runAndDismiss(Runnable action) {
         dismiss();
         action.run();
-    }
-
-    private void expandSheet(float heightRatio) {
-        if (dialog == null) {
-            return;
-        }
-        FrameLayout bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
-        if (bottomSheet == null) {
-            return;
-        }
-        BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
-        if (heightRatio > 0f) {
-            // 二级页：contentView 与 bottomSheet 都设为明确高度，fitToContents 保持底部弹出
-            int screenHeight = host.getContext().getResources().getDisplayMetrics().heightPixels;
-            int targetHeight = Math.round(screenHeight * heightRatio);
-            setSheetContentHeight(targetHeight);
-            ViewGroup.LayoutParams layoutParams = bottomSheet.getLayoutParams();
-            if (layoutParams != null) {
-                layoutParams.height = targetHeight;
-                bottomSheet.setLayoutParams(layoutParams);
-            }
-            bottomSheet.setBackgroundResource(R.drawable.lolib_bg_font_picker_sheet);
-            bottomSheet.setElevation(host.dpToPx(28));
-            behavior.setFitToContents(true);
-            behavior.setSkipCollapsed(true);
-            behavior.setHideable(true);
-            behavior.setDraggable(true);
-        } else {
-            setSheetContentHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
-            ViewGroup.LayoutParams layoutParams = bottomSheet.getLayoutParams();
-            if (layoutParams != null) {
-                layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-                bottomSheet.setLayoutParams(layoutParams);
-            }
-            bottomSheet.setBackgroundColor(Color.WHITE);
-            bottomSheet.setElevation(0f);
-            behavior.setFitToContents(true);
-            behavior.setSkipCollapsed(true);
-            behavior.setHideable(false);
-            behavior.setDraggable(false);
-        }
-        bottomSheet.post(() -> {
-            if (heightRatio <= 0f) {
-                behavior.setPeekHeight(bottomSheet.getHeight(), false);
-            }
-            behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
-            Log.i(TAG, "function_edit_sheet_expanded height=" + bottomSheet.getHeight()
-                    + " ratio=" + heightRatio);
-        });
     }
 
     private List<FunctionTab> buildTabs() {

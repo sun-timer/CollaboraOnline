@@ -17,9 +17,9 @@ import android.widget.TextView;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.core.widget.NestedScrollView;
 
-import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
+import org.libreoffice.androidlib.BottomSheetAnchorHelper;
 import org.libreoffice.androidlib.R;
 import org.libreoffice.androidlib.ai.AiDialogHelper;
 
@@ -97,20 +97,10 @@ public class ImpressShapePickerController {
         if (bottomSheet == null) {
             return;
         }
-        BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
-        int screenHeight = host.getContext().getResources().getDisplayMetrics().heightPixels;
-        int targetHeight = Math.round(screenHeight * SHEET_HEIGHT_RATIO);
-        ViewGroup.LayoutParams layoutParams = bottomSheet.getLayoutParams();
-        if (layoutParams instanceof CoordinatorLayout.LayoutParams) {
-            layoutParams.height = targetHeight;
-            bottomSheet.setLayoutParams(layoutParams);
-        }
         bottomSheet.setBackgroundResource(R.drawable.lolib_bg_calc_bottom_sheet);
-        behavior.setFitToContents(true);
-        behavior.setSkipCollapsed(true);
-        behavior.setHideable(true);
-        behavior.setDraggable(true);
-        bottomSheet.post(() -> behavior.setState(BottomSheetBehavior.STATE_EXPANDED));
+        BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
+        options.logTag = "ImpressShapePicker";
+        BottomSheetAnchorHelper.expandRatio(dialog, SHEET_HEIGHT_RATIO, options);
     }
 
     private void buildShapeSections(LinearLayout root) {

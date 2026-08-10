@@ -20,10 +20,8 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.core.widget.NestedScrollView;
 
-import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.ai.AiDialogHelper;
@@ -52,7 +50,7 @@ public class CalcFunctionPanelController {
     private static final int COLOR_VALUE = Color.parseColor("#6A6A6A");
     private static final int COLOR_DIVIDER = Color.parseColor("#E3E3E3");
     /** Figma 750×1624: sheet height 1066px ≈ 65.6% screen. */
-    private static final float SHEET_HEIGHT_RATIO = 1066f / 1624f;
+    private static final float SHEET_HEIGHT_RATIO = BottomSheetAnchorHelper.FUNCTION_PANEL_HEIGHT_RATIO;
     /** Figma px ÷ 2 → dp. */
     private static final int CHAR_CELL_W_DP = 51;
     private static final int CHAR_CELL_H_DP = 50;
@@ -361,9 +359,27 @@ public class CalcFunctionPanelController {
         dialog = new BottomSheetDialog(host.getContext());
         dialog.setContentView(panel);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
-        dialog.setOnDismissListener(d -> dialog = null);
-        dialog.setOnShowListener(d -> expandSheet(SHEET_HEIGHT_RATIO));
+        dialog.setOnDismissListener(d -> {
+            BottomSheetAnchorHelper.clearAppliedHeight(dialog);
+            dialog = null;
+        });
+        dialog.setOnShowListener(d -> applyFixedSheetHeight());
         dialog.show();
+    }
+
+    private void applyFixedSheetHeight() {
+        if (dialog == null) {
+            return;
+        }
+        AiDialogHelper.applyNoDimScrim(dialog);
+        FrameLayout bottomSheet = dialog.findViewById(
+                com.google.android.material.R.id.design_bottom_sheet);
+        if (bottomSheet != null) {
+            bottomSheet.setBackgroundResource(R.drawable.lolib_bg_calc_bottom_sheet);
+        }
+        BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
+        options.logTag = TAG;
+        BottomSheetAnchorHelper.expandRatio(dialog, SHEET_HEIGHT_RATIO, options);
     }
 
     public void dismiss() {
@@ -432,6 +448,9 @@ public class CalcFunctionPanelController {
         }
         updateTabIndicator(index);
         renderTabContent(tabs.get(index));
+        if (contentContainer != null) {
+            contentContainer.scrollTo(0, 0);
+        }
     }
 
     private void updateTabIndicator(int index) {
@@ -1871,7 +1890,6 @@ public class CalcFunctionPanelController {
         if (contentContainer != null) contentContainer.setVisibility(View.GONE);
         fontPickerPanel.setVisibility(View.VISIBLE);
         fontPickerVisible = true;
-        expandSheet(SHEET_HEIGHT_RATIO);
     }
 
     private void populateFontList(LinearLayout list, TextView valueView) {
@@ -1914,7 +1932,6 @@ public class CalcFunctionPanelController {
         if (tabIndicatorArea != null) tabIndicatorArea.setVisibility(View.VISIBLE);
         if (contentContainer != null) contentContainer.setVisibility(View.VISIBLE);
         if (fontPickerPanel != null) fontPickerPanel.setVisibility(View.GONE);
-        expandSheet(SHEET_HEIGHT_RATIO);
     }
 
     private void syncCurrentFormatting() {
@@ -2018,64 +2035,6 @@ public class CalcFunctionPanelController {
                 })
                 .setNegativeButton("取消", null)
                 .show();
-    }
-
-    private void expandSheet(float heightRatio) {
-        expandSheet(heightRatio, false);
-    }
-
-    /** 固定高度展开：setFitToContents(false)，sheet 高度 = targetHeight，内容不收缩。 */
-    private void expandSheetFixed(float heightRatio) {
-        expandSheet(heightRatio, true);
-    }
-
-    private void expandSheet(float heightRatio, boolean fixedHeight) {
-        if (dialog == null) {
-            return;
-        }
-        FrameLayout bottomSheet = dialog.findViewById(
-                com.google.android.material.R.id.design_bottom_sheet);
-        if (bottomSheet == null) {
-            return;
-        }
-        BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
-        int screenHeight = host.getContext().getResources().getDisplayMetrics().heightPixels;
-        int targetHeight = Math.round(screenHeight * heightRatio);
-        ViewGroup.LayoutParams layoutParams = bottomSheet.getLayoutParams();
-        if (layoutParams != null) {
-            layoutParams.height = targetHeight;
-            if (layoutParams instanceof CoordinatorLayout.LayoutParams) {
-                CoordinatorLayout.LayoutParams clp = (CoordinatorLayout.LayoutParams) layoutParams;
-                // 固定高度时用 NO_GRAVITY + expandedOffset 定位（BOTTOM gravity 会与 offset 冲突导致飘顶）
-                clp.gravity = fixedHeight ? Gravity.NO_GRAVITY : (Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-            }
-            bottomSheet.setLayoutParams(layoutParams);
-        }
-        bottomSheet.setBackgroundResource(R.drawable.lolib_bg_calc_bottom_sheet);
-        behavior.setFitToContents(!fixedHeight);
-        behavior.setSkipCollapsed(true);
-        behavior.setHideable(true);
-        behavior.setDraggable(true);
-        bottomSheet.post(() -> {
-            if (fixedHeight) {
-                // 固定高度：peek=targetHeight + expandedOffset 定位到底部，避免首次飘顶
-                int coordinatorHeight = screenHeight;
-                View parent = (View) bottomSheet.getParent();
-                if (parent != null && parent.getHeight() > 0) {
-                    coordinatorHeight = parent.getHeight();
-                }
-                int expandedOffset = Math.max(0, Math.min(coordinatorHeight, screenHeight) - targetHeight);
-                behavior.setPeekHeight(targetHeight, false);
-                behavior.setExpandedOffset(expandedOffset);
-                behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
-                Log.i(TAG, "calc_function_sheet_expanded_fixed height=" + bottomSheet.getHeight()
-                        + " target=" + targetHeight + " offset=" + expandedOffset);
-            } else {
-                behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
-                Log.i(TAG, "calc_function_sheet_expanded height=" + bottomSheet.getHeight()
-                        + " target=" + targetHeight);
-            }
-        });
     }
 
     private List<PanelTab> buildTabs() {

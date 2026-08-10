@@ -20,7 +20,6 @@ import android.widget.TextView;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.core.widget.NestedScrollView;
 
-import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.ai.AiDialogHelper;
@@ -53,8 +52,7 @@ public class ImpressFunctionPanelController {
     private static final int COLOR_VALUE = Color.parseColor("#6A6A6A");
     private static final int COLOR_SLIDE_VALUE = Color.parseColor("#333333");
     private static final int COLOR_DIVIDER = Color.parseColor("#E3E3E3");
-    private static final float SHEET_HEIGHT_RATIO = 1066f / 1624f;
-    private static final float SOLID_COLOR_SHEET_HEIGHT_RATIO = 0.92f;
+    private static final float SHEET_HEIGHT_RATIO = BottomSheetAnchorHelper.FUNCTION_PANEL_HEIGHT_RATIO;
     /** Figma 207:15020：101×100px → 50×50dp；第一行 weight 铺满，第二行固定左对齐。 */
     private static final int CHAR_CELL_W_DP = 50;
     private static final int CHAR_CELL_H_DP = 50;
@@ -373,9 +371,27 @@ public class ImpressFunctionPanelController {
         dialog = new BottomSheetDialog(host.getContext());
         dialog.setContentView(panel);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
-        dialog.setOnDismissListener(d -> dialog = null);
-        dialog.setOnShowListener(d -> expandSheet(SHEET_HEIGHT_RATIO));
+        dialog.setOnDismissListener(d -> {
+            BottomSheetAnchorHelper.clearAppliedHeight(dialog);
+            dialog = null;
+        });
+        dialog.setOnShowListener(d -> applyFixedSheetHeight());
         dialog.show();
+    }
+
+    private void applyFixedSheetHeight() {
+        if (dialog == null) {
+            return;
+        }
+        AiDialogHelper.applyNoDimScrim(dialog);
+        FrameLayout bottomSheet = dialog.findViewById(
+                com.google.android.material.R.id.design_bottom_sheet);
+        if (bottomSheet != null) {
+            bottomSheet.setBackgroundResource(R.drawable.lolib_bg_calc_bottom_sheet);
+        }
+        BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
+        options.logTag = TAG;
+        BottomSheetAnchorHelper.expandRatio(dialog, SHEET_HEIGHT_RATIO, options);
     }
 
     public void dismiss() {
@@ -439,6 +455,9 @@ public class ImpressFunctionPanelController {
         }
         updateTabIndicator(index);
         renderTabContent(tabs.get(index));
+        if (contentContainer != null) {
+            contentContainer.scrollTo(0, 0);
+        }
     }
 
     private void updateTabIndicator(int index) {
@@ -711,7 +730,6 @@ public class ImpressFunctionPanelController {
         solidColorPickerVisible = false;
         solidColorForSlideBackground = false;
         setTabChromeVisible(true);
-        expandSheet(SHEET_HEIGHT_RATIO);
         int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
                 ? submenuReturnTabIndex : selectedTabIndex;
         selectedTabIndex = returnIndex;
@@ -735,7 +753,6 @@ public class ImpressFunctionPanelController {
         solidColorForSlideBackground = forSlideBackground;
         submenuReturnTabIndex = selectedTabIndex;
         setTabChromeVisible(false);
-        expandSheet(SOLID_COLOR_SHEET_HEIGHT_RATIO);
 
         solidColorPickerController = new ImpressSolidColorPickerController(
                 new ImpressSolidColorPickerController.Host() {
@@ -850,7 +867,6 @@ public class ImpressFunctionPanelController {
             contentContainer.setVisibility(View.GONE);
         }
         fontPickerPanel.setVisibility(View.VISIBLE);
-        expandSheet(SHEET_HEIGHT_RATIO);
         Log.i(TAG, "slide_option_picker_show pickerId=" + pickerId + " title=" + title);
     }
 
@@ -908,7 +924,6 @@ public class ImpressFunctionPanelController {
         if (fontPickerPanel != null) {
             fontPickerPanel.setVisibility(View.GONE);
         }
-        expandSheet(SHEET_HEIGHT_RATIO);
     }
 
     private View createFullPickerRow(PanelItem item) {
@@ -1245,7 +1260,6 @@ public class ImpressFunctionPanelController {
         }
         fontPickerPanel.setVisibility(View.VISIBLE);
         fontPickerVisible = true;
-        expandSheet(SHEET_HEIGHT_RATIO);
     }
 
     private void populateFontList(LinearLayout list, TextView valueView) {
@@ -1298,7 +1312,6 @@ public class ImpressFunctionPanelController {
         if (fontPickerPanel != null) {
             fontPickerPanel.setVisibility(View.GONE);
         }
-        expandSheet(SHEET_HEIGHT_RATIO);
     }
 
     private void dismissSecondaryListPanel() {
@@ -1459,34 +1472,6 @@ public class ImpressFunctionPanelController {
         return normalized + " pt";
     }
 
-    private void expandSheet(float heightRatio) {
-        if (dialog == null) {
-            return;
-        }
-        FrameLayout bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
-        if (bottomSheet == null) {
-            return;
-        }
-        BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
-        int screenHeight = host.getContext().getResources().getDisplayMetrics().heightPixels;
-        int targetHeight = Math.round(screenHeight * heightRatio);
-        ViewGroup.LayoutParams layoutParams = bottomSheet.getLayoutParams();
-        if (layoutParams instanceof CoordinatorLayout.LayoutParams) {
-            layoutParams.height = targetHeight;
-            bottomSheet.setLayoutParams(layoutParams);
-        }
-        bottomSheet.setBackgroundResource(R.drawable.lolib_bg_calc_bottom_sheet);
-        behavior.setFitToContents(true);
-        behavior.setSkipCollapsed(true);
-        behavior.setHideable(true);
-        behavior.setDraggable(true);
-        bottomSheet.post(() -> {
-            behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
-            Log.i(TAG, "impress_function_sheet_expanded height=" + bottomSheet.getHeight()
-                    + " target=" + targetHeight);
-        });
-    }
-
     private List<PanelTab> buildTabs() {
         List<PanelTab> result = new ArrayList<>();
 
@@ -1527,7 +1512,7 @@ public class ImpressFunctionPanelController {
                 R.drawable.lolib_ic_impress_spell_check, ".uno:SpellDialog"));
         review.add(new PanelItem(ItemType.ACTION, "review_comment", "批注",
                 R.drawable.lolib_ic_impress_review_comment, ""));
-        review.add(new PanelItem(ItemType.ACTION, "find", "查找",
+        review.add(new PanelItem(ItemType.ACTION, "find", "查找替换",
                 R.drawable.lolib_ic_function_find_replace, ".uno:SearchDialog"));
         Log.i(TAG, "buildTabs review_items=" + review.size() + " layout=list+icons");
         return review;
