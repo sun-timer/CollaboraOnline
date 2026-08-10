@@ -892,6 +892,13 @@ class TileManager {
 	// Make the given tile current and rehydrates if necessary. Returns true if the tile
 	// has pending updates.
 	private static makeTileCurrent(tile: Tile): boolean {
+		if (window.ThisIsTheAndroidApp) {
+			console.log('[kbprobe] makeTileCurrent key=' + tile.coords.key()
+				+ ' hasImg=' + (!!tile.image)
+				+ ' needsRehydrate=' + tile.needsRehydration()
+				+ ' lastPendingId=' + tile.lastPendingId
+				+ ' lastId=' + (tile.rawDeltas.length ? tile.rawDeltas[tile.rawDeltas.length - 1].id : 'n/a'));
+		}
 		tile.distanceFromView = 0;
 		tile.allowFastRequest();
 		this.rehydrateTile(tile, false);
@@ -1447,6 +1454,15 @@ class TileManager {
 
 					const key = coords.key();
 					const tile = this.tiles.get(key);
+
+					if (window.ThisIsTheAndroidApp && isCurrent && tile && !tile.isReadyToDraw()) {
+						console.log('[kbprobe] missingTile key=' + key
+							+ ' hasImg=' + (!!tile.image)
+							+ ' hasDeltas=' + (tile.rawDeltas ? tile.rawDeltas.length : 0)
+							+ ' needsFetch=' + tile.needsFetch()
+							+ ' needsRehydrate=' + tile.needsRehydration()
+							+ ' ready=' + tile.isReady());
+					}
 
 					if (!tile || tile.needsFetch()) queue.push(coords);
 					else if (isCurrent) this.makeTileCurrent(tile);
@@ -2084,17 +2100,31 @@ class TileManager {
 	public static update(center: any = null, zoom: number = null) {
 		const map: any = app.map;
 
+		// PROBE (keyboard-hide gray block): did the sizeincreased handler reach us?
+		if (window.ThisIsTheAndroidApp) {
+			console.log('[kbprobe] tileUpdate entry pausedForCoherency=' + this.pausedForCoherency
+				+ ' shrinkCurrentId=' + (this.shrinkCurrentId !== null));
+		}
+
 		if (
 			!map ||
 			app.map._docLayer._documentInfo === '' ||
 			!app.map._docLayer._canonicalIdInitialized
 		) {
+			if (window.ThisIsTheAndroidApp) {
+				console.log('[kbprobe] tileUpdate early_return docInfo=' + app.map._docLayer._documentInfo
+					+ ' canonical=' + app.map._docLayer._canonicalIdInitialized);
+			}
 			return;
 		}
 
 		// Calc: do not set view area too early after load and before we get the cursor position.
-		if (app.map._docLayer.isCalc() && !app.map._docLayer._gotFirstCellCursor)
+		if (app.map._docLayer.isCalc() && !app.map._docLayer._gotFirstCellCursor) {
+			if (window.ThisIsTheAndroidApp) {
+				console.log('[kbprobe] tileUpdate early_return no_first_cursor');
+			}
 			return;
+		}
 
 		// be sure canvas is initialized already and has the correct size.
 		const size: any = map.getSize();
@@ -2133,6 +2163,11 @@ class TileManager {
 
 		var pixelBounds = map.getPixelBoundsCore(center, zoom);
 		var queue = this.getMissingTiles(pixelBounds, zoom, true);
+
+		if (window.ThisIsTheAndroidApp) {
+			console.log('[kbprobe] tileUpdate request boundsH=' + (pixelBounds.max.y - pixelBounds.min.y)
+				+ ' missingQueue=' + queue.length + ' pausedForCoherency=' + this.pausedForCoherency);
+		}
 
 		app.map._docLayer._sendClientZoom();
 		app.activeDocument.activeLayout.sendClientVisibleArea();

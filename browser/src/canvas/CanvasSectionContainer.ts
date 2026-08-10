@@ -693,6 +693,11 @@ class CanvasSectionContainer {
 	}
 
 	public requestReDraw() {
+		if (window.ThisIsTheAndroidApp) {
+			console.log('[kbprobe] requestReDraw allowed=' + this.drawingAllowed()
+				+ ' paused=' + this.drawingPaused + ' enabled=' + this.drawingEnabled
+				+ ' defer=' + (this.deferredDrawCallback !== null));
+		}
 		if (!this.drawingAllowed()) return;
 		if (this.deferredDrawCallback) {
 			this.deferredDrawCallback();

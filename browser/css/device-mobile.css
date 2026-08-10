@@ -223,9 +223,12 @@ body.android-native-bottom-toolbar #toolbar-down {
 }
 
 body.android-native-bottom-toolbar #mobile-edit-button {
-	top: auto;
-	bottom: 100px;
-	transform: scale(1);
+	position: fixed !important;
+	left: auto !important;
+	top: auto !important;
+	right: 16px !important;
+	bottom: 100px !important;
+	transform: scale(1) !important;
 }
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #spreadsheet-toolbar {
@@ -632,6 +635,19 @@ body.android-native-top-toolbar #toolbar-up {
 #mobile-wizard.popup.landscape {
 	height: 75% !important;
 }
+/* Android 横屏：popup 贴可见区域底部，避免 top:0 + 100vh 被原生工具栏裁切 */
+body.android-native-bottom-toolbar #mobile-wizard.popup.landscape:not(.snackbar):not(.busypopup),
+body.android-native-top-toolbar #mobile-wizard.popup.landscape:not(.snackbar):not(.busypopup) {
+	top: auto !important;
+	bottom: 0 !important;
+	height: auto !important;
+	max-height: 75vh !important;
+}
+body.android-native-bottom-toolbar #mobile-wizard.popup.landscape:not(.snackbar):not(.busypopup) #mobile-wizard-content,
+body.android-native-top-toolbar #mobile-wizard.popup.landscape:not(.snackbar):not(.busypopup) #mobile-wizard-content {
+	max-height: 75vh;
+	overflow-y: auto;
+}
 #mobile-wizard.popup.landscape #mobile-wizard-content {
 	flex-direction: row;
 }
@@ -910,4 +926,76 @@ body.android-native-bottom-toolbar[data-docType='presentation'] .mobile-slide-st
 	justify-content: center;
 	width: 40px;
 	height: 40px;
+}
+
+/* Android 手机预览：固定竖屏视口，设备横屏/竖屏均可使用 */
+body.mobile-phone-preview-active {
+	overflow: hidden !important;
+}
+
+body.mobile-phone-preview-active::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.6);
+	z-index: 500;
+	pointer-events: none;
+}
+
+body.mobile-phone-preview-active #main-document-content {
+	position: fixed !important;
+	left: var(--mpp-left) !important;
+	top: var(--mpp-top) !important;
+	width: var(--mpp-width) !important;
+	height: var(--mpp-height) !important;
+	max-width: var(--mpp-width) !important;
+	max-height: var(--mpp-height) !important;
+	border-radius: 16px;
+	overflow: hidden !important;
+	z-index: 600;
+	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+	background: #FFFFFF;
+	transform: translateZ(0);
+	isolation: isolate;
+	flex: none !important;
+	clip-path: inset(0 round 16px);
+	contain: layout size style paint;
+}
+
+body.mobile-phone-preview-active #document-container,
+body.mobile-phone-preview-active #map,
+body.mobile-phone-preview-active #map .leaflet-container,
+body.mobile-phone-preview-active #map .leaflet-map-pane,
+body.mobile-phone-preview-active #map .leaflet-tile-pane {
+	position: absolute !important;
+	top: 0 !important;
+	left: 0 !important;
+	width: 100% !important;
+	height: 100% !important;
+	max-width: 100% !important;
+	max-height: 100% !important;
+	overflow: hidden !important;
+}
+
+body.mobile-phone-preview-active #document-container {
+	position: absolute !important;
+	top: 0 !important;
+	left: 0 !important;
+	right: 0 !important;
+	bottom: 0 !important;
+	width: auto !important;
+	height: auto !important;
+}
+
+body.mobile-phone-preview-active #navigation-sidebar,
+body.mobile-phone-preview-active #sidebar-dock-wrapper,
+body.mobile-phone-preview-active nav.main-nav,
+body.mobile-phone-preview-active #toolbar-wrapper,
+body.mobile-phone-preview-active #toolbar-down,
+body.mobile-phone-preview-active #mobile-edit-button,
+body.mobile-phone-preview-active #spreadsheet-toolbar,
+body.mobile-phone-preview-active #presentation-controls-wrapper {
+	display: none !important;
+	visibility: hidden !important;
+	pointer-events: none !important;
 }

@@ -138,6 +138,12 @@ class ViewLayoutBase {
 			' splity=' +
 			Math.round(splitPos.y);
 
+		if (window.ThisIsTheAndroidApp) {
+			console.log('[kbprobe] sendVisibleArea cmd=' + newClientVisibleAreaCommand
+				+ ' forceUpdate=' + forceUpdate
+				+ ' sameAsLast=' + (this.clientVisibleAreaCommand === newClientVisibleAreaCommand));
+		}
+
 		if (
 			this.clientVisibleAreaCommand !== newClientVisibleAreaCommand ||
 			forceUpdate
