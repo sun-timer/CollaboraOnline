@@ -46,7 +46,7 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="搜索"
+            android:contentDescription="查找替换"
             android:padding="12dp"
             android:scaleType="fitCenter"
             android:src="@drawable/lolib_ic_top_search" />

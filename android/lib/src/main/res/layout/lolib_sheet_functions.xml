@@ -183,14 +183,14 @@
             <ImageView
                 android:layout_width="32dp"
                 android:layout_height="32dp"
-                android:contentDescription="查找"
+                android:contentDescription="查找替换"
                 android:src="@drawable/lolib_ic_function_find_replace" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="14dp"
-                android:text="查找"
+                android:text="查找替换"
                 android:textColor="#202124"
                 android:textSize="18sp"
                 android:textStyle="normal" />
@@ -215,7 +215,7 @@
                 android:layout_width="32dp"
                 android:layout_height="32dp"
                 android:contentDescription="字数统计"
-                android:src="@drawable/lolib_ic_function_find_replace" />
+                android:src="@drawable/lolib_ic_function_word_count" />
 
             <TextView
                 android:layout_width="wrap_content"
