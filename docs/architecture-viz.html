@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Collabora Online 架构可视化</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --orange: #d2991d;
+    --red: #f85149;
+    --purple: #a371f7;
+    --pink: #db61a2;
+    --cyan: #39c5cf;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text);
+    line-height: 1.6;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 16px 24px; position: sticky; top: 0; z-index: 100;
+  }
+  header h1 { font-size: 20px; }
+  header span { color: var(--muted); font-size: 13px; }
+
+  nav {
+    display: flex; gap: 4px; padding: 12px 24px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    overflow-x: auto; position: sticky; top: 61px; z-index: 99;
+  }
+  nav button {
+    background: none; border: 1px solid transparent; color: var(--muted);
+    padding: 8px 16px; border-radius: 6px; cursor: pointer;
+    font-size: 14px; white-space: nowrap; transition: .15s;
+  }
+  nav button:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+  nav button.active { color: var(--accent); border-color: var(--border); background: var(--bg); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+  section { display: none; }
+  section.active { display: block; }
+
+  h2 { font-size: 22px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16px; margin: 24px 0 12px; color: var(--accent); }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 20px; margin-bottom: 16px;
+  }
+  .card h3 { margin-top: 0; }
+
+  /* === SVG Diagrams === */
+  .diagram-container {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px; margin: 16px 0;
+    overflow-x: auto;
+  }
+  .diagram-container svg { display: block; min-width: 700px; }
+
+  /* === Architecture diagram === */
+  .arch-svg text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .arch-svg .node-box { stroke-width: 2; rx: 6; }
+  .arch-svg .edge { stroke: var(--border); stroke-width: 1.5; fill: none; }
+  .arch-svg .edge-label { font-size: 11px; fill: var(--muted); }
+  .arch-svg .node-title { font-size: 14px; font-weight: 600; }
+  .arch-svg .node-sub { font-size: 11px; fill: var(--muted); }
+
+  /* === Legend === */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 3px; }
+
+  /* === Flow Step === */
+  .flow {
+    display: flex; flex-direction: column; gap: 0;
+    margin: 20px 0;
+  }
+  .flow-step {
+    display: flex; align-items: flex-start; gap: 14px;
+    position: relative;
+  }
+  .flow-step::before {
+    content: '';
+    position: absolute; left: 15px; top: 34px; bottom: -4px;
+    width: 2px; background: var(--border);
+  }
+  .flow-step:last-child::before { display: none; }
+  .flow-num {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; flex-shrink: 0;
+    border: 2px solid var(--border); z-index: 1;
+  }
+  .flow-num.wsd { background: #1a3a5c; border-color: var(--accent); color: var(--accent); }
+  .flow-num.kit { background: #1a3c2e; border-color: var(--green); color: var(--green); }
+  .flow-num.ws  { background: #3d2e1a; border-color: var(--orange); color: var(--orange); }
+  .flow-body { padding: 6px 0 20px; }
+  .flow-body strong { display: block; margin-bottom: 2px; }
+  .flow-body span { font-size: 13px; color: var(--muted); }
+
+  /* === Compare Table === */
+  table {
+    width: 100%; border-collapse: collapse; margin: 12px 0;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left; padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { background: var(--surface); color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  td { background: var(--surface); }
+
+  /* === Info boxes === */
+  .info { border-left: 3px solid var(--accent); padding: 12px 16px; background: rgba(88,166,255,0.06); margin: 12px 0; border-radius: 0 6px 6px 0; font-size: 14px; }
+  .info.warn { border-color: var(--orange); background: rgba(210,153,29,0.06); }
+  .info.tip  { border-color: var(--green); background: rgba(63,185,80,0.06); }
+
+  /* === Animations === */
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .pulse { animation: pulse 2s ease-in-out infinite; }
+  @keyframes dash { to { stroke-dashoffset: -20; } }
+  .flow-edge { stroke-dasharray: 6 3; animation: dash 0.6s linear infinite; stroke: var(--orange); stroke-width: 2; fill: none; }
+
+  /* === Responsive === */
+  @media (max-width: 768px) { main { padding: 16px 12px; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Collabora Online 架构可视化</h1>
+  <span>kit/ · wsd/ · net/ 模块交互 &amp; 文档生命周期</span>
+</header>
+
+<nav>
+  <button class="active" onclick="switchTab('overview')">🏛️ 总览架构</button>
+  <button onclick="switchTab('processes')">🔄 进程 &amp; 通信</button>
+  <button onclick="switchTab('tile')">🧩 Tile 体系</button>
+  <button onclick="switchTab('ws-vs-q')">📡 WebSocket vs Queue</button>
+  <button onclick="switchTab('lifecycle')">📄 文档生命周期</button>
+  <button onclick="switchTab('kit-files')">📁 Kit 文件地图</button>
+  <button onclick="switchTab('glossary')">📖 术语表</button>
+  <button onclick="switchTab('llama')">🧠 llama.cpp 原理</button>
+  <button onclick="switchTab('local-deploy')">📱 本地部署架构</button>
+</nav>
+
+<main>
+
+<!-- ==================== 1. OVERVIEW ==================== -->
+<section id="overview" class="active">
+  <h2>🏛️ 总览：三层架构</h2>
+  <p style="color:var(--muted);margin-bottom:16px;">Collabora Online 将 LibreOffice 搬到 Web/移动端。核心思路：<strong>浏览器只管显示，服务端负责渲染</strong>。</p>
+
+  <div class="diagram-container">
+    <svg viewBox="0 0 1000 520" class="arch-svg">
+      <defs>
+        <filter id="shadow"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/></filter>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#8b949e"/>
+        </marker>
+      </defs>
+
+      <!-- Browser -->
+      <rect x="30" y="30" width="220" height="110" fill="#1a2332" class="node-box" stroke="#58a6ff" filter="url(#shadow)"/>
+      <text x="140" y="58" text-anchor="middle" class="node-title" fill="#58a6ff">🌐 Browser / Mobile App</text>
+      <text x="140" y="78" text-anchor="middle" class="node-sub">HTML5 Canvas</text>
+      <text x="140" y="96" text-anchor="middle" class="node-sub">Tile 渲染 · 键盘/鼠标事件</text>
+      <text x="140" y="114" text-anchor="middle" class="node-sub">WebSocket 客户端</text>
+
+      <!-- Arrow Browser -> WSD -->
+      <line x1="250" y1="85" x2="330" y2="85" class="edge" marker-end="url(#arrow)"/>
+      <text x="290" y="78" text-anchor="middle" class="edge-label">WebSocket</text>
+      <text x="290" y="100" text-anchor="middle" class="edge-label">TCP :9980</text>
+
+      <!-- WSD -->
+      <rect x="340" y="30" width="320" height="200" fill="#1a1e2e" class="node-box" stroke="#a371f7" filter="url(#shadow)"/>
+      <text x="500" y="55" text-anchor="middle" class="node-title" fill="#a371f7">🧠 WSD (coolwsd)</text>
+      <text x="500" y="75" text-anchor="middle" class="node-sub">Web Services Daemon — 主控进程</text>
+      <line x1="360" y1="88" x2="640" y2="88" stroke="#30363d" stroke-width="1"/>
+      <text x="500" y="106" text-anchor="middle" fill="#a371f7" font-size="11">DocumentBroker × N</text>
+      <text x="500" y="122" text-anchor="middle" class="node-sub">文档下载/上传 · 保存管理 · 锁</text>
+      <text x="500" y="138" text-anchor="middle" fill="#a371f7" font-size="11">ClientSession × N</text>
+      <text x="500" y="154" text-anchor="middle" class="node-sub">用户会话 · Tile请求 · 消息路由</text>
+      <text x="500" y="170" text-anchor="middle" fill="#a371f7" font-size="11">TileCache</text>
+      <text x="500" y="186" text-anchor="middle" class="node-sub">已渲染 Tile 缓存 · Delta 追踪</text>
+      <text x="500" y="210" text-anchor="middle" class="node-sub" fill="#39c5cf">每个文档一个独立 Poll 线程</text>
+
+      <!-- Arrow WSD -> ForKit (left) -->
+      <line x1="340" y1="120" x2="290" y2="320" class="edge" marker-end="url(#arrow)"/>
+      <text x="290" y="220" text-anchor="middle" class="edge-label">fork 请求</text>
+
+      <!-- Arrow WSD -> Kit (direct WS) -->
+      <line x1="500" y1="230" x2="500" y2="290" class="edge" marker-end="url(#arrow)"/>
+      <text x="510" y="263" class="edge-label">WebSocket</text>
+
+      <!-- ForKit -->
+      <rect x="180" y="320" width="220" height="90" fill="#1a1e2e" class="node-box" stroke="#d2991d" filter="url(#shadow)"/>
+      <text x="290" y="348" text-anchor="middle" class="node-title" fill="#d2991d">🍴 ForKit</text>
+      <text x="290" y="368" text-anchor="middle" class="node-sub">Kit 进程池管理</text>
+      <text x="290" y="386" text-anchor="middle" class="node-sub">fork() · SIGCHLD 回收 · 预初始化</text>
+
+      <!-- Arrow ForKit -> Kit -->
+      <line x1="400" y1="365" x2="480" y2="365" class="edge" marker-end="url(#arrow)"/>
+      <text x="440" y="358" text-anchor="middle" class="edge-label">fork()</text>
+
+      <!-- Kit -->
+      <rect x="490" y="290" width="270" height="220" fill="#132a1a" class="node-box" stroke="#3fb950" filter="url(#shadow)"/>
+      <text x="625" y="315" text-anchor="middle" class="node-title" fill="#3fb950">🖐️ Kit 进程 (lokit)</text>
+      <text x="625" y="335" text-anchor="middle" class="node-sub">每个文档一个 Kit 进程</text>
+      <line x1="510" y1="348" x2="740" y2="348" stroke="#1a3c2e" stroke-width="1"/>
+      <text x="625" y="365" text-anchor="middle" fill="#3fb950" font-size="11">KitSocketPoll — 事件循环</text>
+      <text x="625" y="381" text-anchor="middle" fill="#3fb950" font-size="11">KitWebSocketHandler — WS 通信</text>
+      <text x="625" y="397" text-anchor="middle" fill="#3fb950" font-size="11">Document — 文档容器</text>
+      <text x="625" y="413" text-anchor="middle" fill="#3fb950" font-size="11">ChildSession × N — 用户会话</text>
+      <text x="625" y="429" text-anchor="middle" fill="#3fb950" font-size="11">KitQueue — 消息队列</text>
+      <text x="625" y="448" text-anchor="middle" class="node-sub">lok::Office → lok::Document</text>
+      <text x="625" y="464" text-anchor="middle" class="node-sub">Tile 渲染 · 增量压缩 · 回调</text>
+      <text x="625" y="490" text-anchor="middle" class="node-sub" fill="#39c5cf">包含 LibreOfficeKit (LOK)</text>
+
+      <!-- Storage (right side) -->
+      <rect x="780" y="50" width="190" height="100" fill="#1a1e2e" class="node-box" stroke="#8b949e" filter="url(#shadow)"/>
+      <text x="875" y="78" text-anchor="middle" class="node-title" fill="#8b949e">💾 Storage (WOPI)</text>
+      <text x="875" y="98" text-anchor="middle" class="node-sub">文档存储服务</text>
+      <text x="875" y="116" text-anchor="middle" class="node-sub">下载 · 上传 · 锁管理</text>
+
+      <!-- Arrow WSD -> Storage -->
+      <line x1="660" y1="80" x2="770" y2="80" class="edge" marker-end="url(#arrow)" stroke-dasharray="4 4"/>
+      <text x="715" y="73" text-anchor="middle" class="edge-label">HTTP (WOPI)</text>
+
+      <!-- Legend -->
+      <rect x="30" y="440" width="940" height="65" fill="none" stroke="#30363d" rx="6"/>
+      <text x="50" y="462" fill="var(--muted)" font-size="11" font-weight="600">图例</text>
+      <rect x="50" y="472" width="12" height="12" rx="2" fill="#58a6ff"/><text x="68" y="483" fill="var(--muted)" font-size="11">浏览器层</text>
+      <rect x="160" y="472" width="12" height="12" rx="2" fill="#a371f7"/><text x="178" y="483" fill="var(--muted)" font-size="11">WSD 进程</text>
+      <rect x="280" y="472" width="12" height="12" rx="2" fill="#d2991d"/><text x="298" y="483" fill="var(--muted)" font-size="11">ForKit</text>
+      <rect x="380" y="472" width="12" height="12" rx="2" fill="#3fb950"/><text x="398" y="483" fill="var(--muted)" font-size="11">Kit 进程</text>
+      <rect x="500" y="472" width="12" height="12" rx="2" fill="#8b949e"/><text x="518" y="483" fill="var(--muted)" font-size="11">外部存储</text>
+      <line x1="640" y1="478" x2="680" y2="478" stroke="#8b949e" stroke-width="1.5"/><text x="686" y="483" fill="var(--muted)" font-size="11">WebSocket</text>
+      <line x1="790" y1="478" x2="830" y2="478" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="4 4"/><text x="836" y="483" fill="var(--muted)" font-size="11">HTTP</text>
+    </svg>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--accent)"></div> WSD = Web Services Daemon</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--green)"></div> Kit = LibreOfficeKit 进程</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--orange)"></div> ForKit = Kit Forker</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--muted)"></div> WOPI = Web Application Open Platform Interface</div>
+  </div>
+
+  <div class="info">
+    <strong>🧠 核心分工记忆：</strong><br>
+    • <strong>WSD</strong> = 大脑（调度、存储、缓存、权限、路由）<br>
+    • <strong>Kit</strong> = 手（实际操控 LibreOffice，渲染文档、处理输入）<br>
+    • <strong>ForKit</strong> = 产房（预初始化 LOKit，按需 fork 出新 Kit）<br>
+    • 三者通过 <strong>WebSocket</strong> 通信，各自运行在独立进程中（沙箱隔离）
+  </div>
+
+  <div class="info tip">
+    <strong>📱 Mobile (Android/iOS) 特殊之处：</strong><br>
+    Mobile 端 WSD 和 Kit 运行在 <strong>同一进程</strong> 中（通过 FakeSocket 模拟 WebSocket），
+    只有 <strong>一个 DocumentBroker</strong> 和一个 <strong>Kit</strong>。
+    没有 ForKit 进程，没有 chroot jail 沙箱。
+  </div>
+</section>
+
+<!-- ==================== 2. PROCESSES & COMMUNICATION ==================== -->
+<section id="processes">
+  <h2>🔄 进程 &amp; 通信路径</h2>
+
+  <h3>1. 有哪些进程？</h3>
+  <table>
+    <tr><th>进程</th><th>可执行文件</th><th>实例数</th><th>职责</th></tr>
+    <tr>
+      <td><strong>WSD</strong></td>
+      <td><code>coolwsd</code></td>
+      <td>1 个主进程</td>
+      <td>TCP 监听、HTTP/WS 路由、存储管理、客户端会话</td>
+    </tr>
+    <tr>
+      <td><strong>ForKit</strong></td>
+      <td><code>coolforkit</code></td>
+      <td>1 个</td>
+      <td>预初始化 LOKit、按需 fork Kit、回收僵尸进程</td>
+    </tr>
+    <tr>
+      <td><strong>Kit</strong></td>
+      <td><code>coolkit</code></td>
+      <td>每文档 1 个</td>
+      <td>加载文档、渲染 Tile、处理用户输入、LOK 回调</td>
+    </tr>
+    <tr>
+      <td><strong>Kit (bg save)</strong></td>
+      <td>(Kit fork)</td>
+      <td>保存时临时</td>
+      <td>后台保存文档副本，避免阻塞主 Kit 响应</td>
+    </tr>
+  </table>
+
+  <h3>2. 通信路径总图</h3>
+  <div class="diagram-container">
+    <svg viewBox="0 0 1000 380" class="arch-svg">
+      <!-- Browser -->
+      <rect x="20" y="140" width="150" height="80" fill="#1a2332" stroke="#58a6ff" rx="6"/>
+      <text x="95" y="170" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="600">Browser</text>
+      <text x="95" y="190" text-anchor="middle" font-size="11" fill="var(--muted)">WebSocket</text>
+      <text x="95" y="206" text-anchor="middle" font-size="11" fill="var(--muted)">Client</text>
+
+      <!-- WSD Main Poll -->
+      <rect x="260" y="40" width="200" height="120" fill="#1a1e2e" stroke="#a371f7" rx="6"/>
+      <text x="360" y="68" text-anchor="middle" fill="#a371f7" font-size="13" font-weight="600">WSD 主 Poll 线程</text>
+      <text x="360" y="88" text-anchor="middle" font-size="11" fill="var(--muted)">TCP :9980 监听</text>
+      <text x="360" y="104" text-anchor="middle" font-size="11" fill="var(--muted)">接受新连接</text>
+      <text x="360" y="120" text-anchor="middle" font-size="11" fill="var(--muted)">HTTP 静态文件服务</text>
+      <text x="360" y="144" text-anchor="middle" font-size="10" fill="#d2991d">SocketDisposition</text>
+      <text x="360" y="156" text-anchor="middle" font-size="10" fill="#d2991d">把 Socket 转移到 DocBroker</text>
+
+      <!-- WS between Browser and WSD -->
+      <line x1="170" y1="180" x2="260" y2="100" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <text x="190" y="135" font-size="10" fill="var(--muted)">① WS 连接</text>
+
+      <!-- WSD DocBroker Poll -->
+      <rect x="260" y="220" width="200" height="140" fill="#1a1e2e" stroke="#a371f7" rx="6"/>
+      <text x="360" y="248" text-anchor="middle" fill="#a371f7" font-size="13" font-weight="600">DocBroker Poll 线程</text>
+      <text x="360" y="268" text-anchor="middle" font-size="11" fill="var(--muted)">ClientSession × N</text>
+      <text x="360" y="284" text-anchor="middle" font-size="11" fill="var(--muted)">TileCache</text>
+      <text x="360" y="300" text-anchor="middle" font-size="11" fill="var(--muted)">SaveManager / StorageManager</text>
+      <text x="360" y="328" text-anchor="middle" font-size="10" fill="#d2991d">SocketPoll 单线程</text>
+      <text x="360" y="344" text-anchor="middle" font-size="10" fill="#d2991d">所有 I/O 在此线程</text>
+
+      <!-- Transfer arrow -->
+      <line x1="360" y1="160" x2="360" y2="215" stroke="#d2991d" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+
+      <!-- WS DocBroker -> Kit -->
+      <line x1="460" y1="280" x2="560" y2="280" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <text x="510" y="273" font-size="10" fill="var(--muted)">② WS (Unix Socket)</text>
+
+      <!-- Kit -->
+      <rect x="570" y="180" width="220" height="180" fill="#132a1a" stroke="#3fb950" rx="6"/>
+      <text x="680" y="208" text-anchor="middle" fill="#3fb950" font-size="13" font-weight="600">Kit 进程</text>
+      <text x="680" y="228" text-anchor="middle" font-size="11" fill="var(--muted)">KitSocketPoll 事件循环</text>
+      <text x="680" y="244" text-anchor="middle" font-size="11" fill="var(--muted)">KitWebSocketHandler</text>
+      <text x="680" y="264" text-anchor="middle" font-size="11" fill="var(--muted)">Document + ChildSession × N</text>
+      <text x="680" y="284" text-anchor="middle" font-size="11" fill="var(--muted)">KitQueue (内部队列)</text>
+      <text x="680" y="304" text-anchor="middle" font-size="11" fill="var(--muted)">lok::Office → lok::Document</text>
+      <text x="680" y="340" text-anchor="middle" font-size="10" fill="#d2991d">LOK 回调来自任意线程</text>
+      <text x="680" y="354" text-anchor="middle" font-size="10" fill="#d2991d">通过 Queue 汇集到主线程</text>
+
+      <!-- WSD -> Storage -->
+      <line x1="460" y1="360" x2="820" y2="360" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 4"/>
+      <text x="640" y="353" font-size="10" fill="var(--muted)">③ HTTP (WOPI) — 下载/上传</text>
+
+      <!-- Storage -->
+      <rect x="830" y="310" width="140" height="80" fill="#1a1e2e" stroke="#8b949e" rx="6"/>
+      <text x="900" y="340" text-anchor="middle" fill="#8b949e" font-size="13" font-weight="600">WOPI Storage</text>
+      <text x="900" y="360" text-anchor="middle" font-size="11" fill="var(--muted)">文件存储</text>
+      <text x="900" y="378" text-anchor="middle" font-size="11" fill="var(--muted)">锁 / CheckFileInfo</text>
+    </svg>
+  </div>
+
+  <div class="card">
+    <h3>🔑 关键：Socket 转移 (SocketDisposition)</h3>
+    <p style="color:var(--muted);margin-bottom:8px">
+      浏览器连接 WSD 时，Socket 先归属于 <strong>WSD 主 Poll</strong>。
+      WSD 解析 URL 确定目标文档后，通过 <code>SocketDisposition::setTransfer()</code>
+      将 Socket <strong>转移到对应 DocumentBroker 的 Poll 线程</strong>。
+    </p>
+    <p style="color:var(--muted);">
+      这样设计的目的是 <strong>每个文档的 I/O 完全独立</strong>，不会因为一个文档繁忙而阻塞其他文档。
+    </p>
+  </div>
+
+  <h3>3. 三类 WebSocket 连接</h3>
+  <table>
+    <tr><th>连接</th><th>WSD 端 Handler</th><th>Kit 端 Handler</th><th>用途</th></tr>
+    <tr>
+      <td>Browser ↔ WSD</td>
+      <td><code>ClientSession</code></td>
+      <td>—</td>
+      <td>用户操作、Tile 请求/接收、状态同步</td>
+    </tr>
+    <tr>
+      <td>WSD ↔ Kit</td>
+      <td>(匿名 WS handler)</td>
+      <td><code>KitWebSocketHandler</code></td>
+      <td>文档加载、Tile 渲染命令、LOK 回调、保存、退出</td>
+    </tr>
+    <tr>
+      <td>Kit ↔ BgSave Kit</td>
+      <td><code>BgSaveParentWebSocketHandler</code></td>
+      <td><code>BgSaveChildWebSocketHandler</code></td>
+      <td>后台保存子进程通信</td>
+    </tr>
+  </table>
+</section>
+
+<!-- ==================== 3. TILE ==================== -->
+<section id="tile">
+  <h2>🧩 Tile 体系</h2>
+
+  <div class="card">
+    <h3>什么是 Tile？为什么用 Tile？</h3>
+    <p style="color:var(--muted)">
+      文档（如 Writer 文档）可能非常大（如 20000×30000 像素），如果一次性渲染整个文档再传给浏览器，
+      内存和带宽都不可接受。因此将文档画布<strong>切分成 256×256 像素的小方块（Tile）</strong>，
+      <strong>只渲染用户当前可见区域内的 Tile</strong>。
+    </p>
+  </div>
+
+  <!-- Tile visual -->
+  <div class="diagram-container">
+    <svg viewBox="0 0 900 400" class="arch-svg">
+      <!-- Document canvas -->
+      <rect x="30" y="20" width="600" height="360" fill="#0d1117" stroke="#30363d" stroke-width="2" rx="4"/>
+      <text x="330" y="45" text-anchor="middle" fill="var(--muted)" font-size="12">整个文档画布 (例如 20000 × 30000 pixels)</text>
+
+      <!-- Grid of tiles -->
+      <g fill="none" stroke="#1a3c2e" stroke-width="0.5">
+        <!-- Row 0 -->
+        <rect x="30" y="60" width="60" height="60"/><rect x="90" y="60" width="60" height="60"/><rect x="150" y="60" width="60" height="60"/>
+        <rect x="210" y="60" width="60" height="60"/><rect x="270" y="60" width="60" height="60"/><rect x="330" y="60" width="60" height="60"/>
+        <rect x="390" y="60" width="60" height="60"/><rect x="450" y="60" width="60" height="60"/><rect x="510" y="60" width="60" height="60"/>
+        <rect x="570" y="60" width="60" height="60"/>
+        <!-- Row 1 -->
+        <rect x="30" y="120" width="60" height="60"/><rect x="90" y="120" width="60" height="60"/><rect x="150" y="120" width="60" height="60"/>
+        <rect x="210" y="120" width="60" height="60"/><rect x="270" y="120" width="60" height="60"/><rect x="330" y="120" width="60" height="60"/>
+        <rect x="390" y="120" width="60" height="60"/><rect x="450" y="120" width="60" height="60"/><rect x="510" y="120" width="60" height="60"/>
+        <rect x="570" y="120" width="60" height="60"/>
+        <!-- Row 2 -->
+        <rect x="30" y="180" width="60" height="60"/><rect x="90" y="180" width="60" height="60"/><rect x="150" y="180" width="60" height="60"/>
+        <rect x="210" y="180" width="60" height="60"/><rect x="270" y="180" width="60" height="60"/><rect x="330" y="180" width="60" height="60"/>
+        <rect x="390" y="180" width="60" height="60"/><rect x="450" y="180" width="60" height="60"/><rect x="510" y="180" width="60" height="60"/>
+        <rect x="570" y="180" width="60" height="60"/>
+        <!-- Row 3 -->
+        <rect x="30" y="240" width="60" height="60"/><rect x="90" y="240" width="60" height="60"/><rect x="150" y="240" width="60" height="60"/>
+        <rect x="210" y="240" width="60" height="60"/><rect x="270" y="240" width="60" height="60"/><rect x="330" y="240" width="60" height="60"/>
+        <rect x="390" y="240" width="60" height="60"/><rect x="450" y="240" width="60" height="60"/><rect x="510" y="240" width="60" height="60"/>
+        <rect x="570" y="240" width="60" height="60"/>
+        <!-- Row 4 -->
+        <rect x="30" y="300" width="60" height="60"/><rect x="90" y="300" width="60" height="60"/><rect x="150" y="300" width="60" height="60"/>
+        <rect x="210" y="300" width="60" height="60"/><rect x="270" y="300" width="60" height="60"/><rect x="330" y="300" width="60" height="60"/>
+        <rect x="390" y="300" width="60" height="60"/><rect x="450" y="300" width="60" height="60"/><rect x="510" y="300" width="60" height="60"/>
+        <rect x="570" y="300" width="60" height="60"/>
+      </g>
+
+      <!-- Visible viewport highlight -->
+      <rect x="210" y="120" width="240" height="180" fill="rgba(88,166,255,0.12)" stroke="#58a6ff" stroke-width="2.5" rx="3"/>
+      <text x="330" y="112" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="600">用户可见区域 (Viewport)</text>
+
+      <!-- Arrow pointing to a single tile -->
+      <rect x="330" y="240" width="60" height="60" fill="rgba(63,185,80,0.2)" stroke="#3fb950" stroke-width="2" rx="3"/>
+      <text x="360" y="320" text-anchor="middle" fill="#3fb950" font-size="9">1 个 Tile</text>
+
+      <!-- Side panel - Tile data flow -->
+      <rect x="660" y="40" width="225" height="340" fill="none" stroke="#30363d" rx="6"/>
+      <text x="772" y="68" text-anchor="middle" fill="var(--muted)" font-size="12" font-weight="600">Tile 数据流</text>
+
+      <text x="685" y="100" fill="var(--accent)" font-size="11">① 用户滚动/缩放</text>
+      <text x="685" y="120" fill="var(--muted)" font-size="10">Browser 发送可视区域</text>
+      <text x="685" y="145" fill="var(--accent)" font-size="11">② WSD 计算需要哪些 Tile</text>
+      <text x="685" y="165" fill="var(--muted)" font-size="10">检查 TileCache 是否已有</text>
+      <text x="685" y="185" fill="var(--muted)" font-size="10">未命中的发 tilecombine 给 Kit</text>
+      <text x="685" y="210" fill="var(--accent)" font-size="11">③ Kit 渲染 Tile</text>
+      <text x="685" y="230" fill="var(--muted)" font-size="10">LOKit paintTile() 渲染</text>
+      <text x="685" y="250" fill="var(--muted)" font-size="10">DeltaGenerator 计算增量</text>
+      <text x="685" y="275" fill="var(--accent)" font-size="11">④ Kit → WSD tile:/delta:</text>
+      <text x="685" y="295" fill="var(--muted)" font-size="10">完整 Tile → "tile:" 帧</text>
+      <text x="685" y="315" fill="var(--muted)" font-size="10">增量更新 → "delta:" 帧</text>
+      <text x="685" y="340" fill="var(--accent)" font-size="11">⑤ WSD → Browser 显示</text>
+      <text x="685" y="360" fill="var(--muted)" font-size="10">TileCache 缓存 + 发送</text>
+    </svg>
+  </div>
+
+  <h3>核心类</h3>
+  <table>
+    <tr><th>类</th><th>文件</th><th>职责</th></tr>
+    <tr>
+      <td><code>TileDesc</code></td>
+      <td><code>wsd/TileDesc.hpp</code></td>
+      <td>Tile 描述符：坐标、尺寸、part、viewId、zoom、版本号</td>
+    </tr>
+    <tr>
+      <td><code>TileCombined</code></td>
+      <td><code>wsd/TileDesc.hpp</code></td>
+      <td>多个 Tile 的组合请求，一次渲染多个</td>
+    </tr>
+    <tr>
+      <td><code>TilePrioritizer</code></td>
+      <td><code>kit/KitQueue.hpp</code></td>
+      <td>Tile 渲染优先级：光标位置 > 可视中心 > 边缘</td>
+    </tr>
+    <tr>
+      <td><code>TileCache</code></td>
+      <td><code>wsd/TileCache.cpp</code></td>
+      <td>WSD 端缓存已渲染 Tile，避免重复请求</td>
+    </tr>
+    <tr>
+      <td><code>DeltaGenerator</code></td>
+      <td><code>kit/Delta.hpp</code></td>
+      <td>比较新旧 Tile 像素，生成增量 keyframe/delta + SIMD 加速</td>
+    </tr>
+  </table>
+
+  <div class="info tip">
+    <strong>💡 Delta 优化：</strong>
+    用户编辑文档后，大部分 Tile 内容不变。Delta 只传输 <strong>变化的像素区域</strong>，
+    而非整个 256×256 Tile，大幅减少网络流量。浏览器端 <code>ClientDeltaTracker</code> 负责拼合 Delta。
+  </div>
+</section>
+
+<!-- ==================== 4. WEBSOCKET vs QUEUE ==================== -->
+<section id="ws-vs-q">
+  <h2>📡 WebSocket vs Queue — 什么时候用哪个？</h2>
+
+  <div class="card">
+    <h3>核心区别</h3>
+    <table>
+      <tr><th></th><th>WebSocket</th><th>KitQueue / SenderQueue</th></tr>
+      <tr>
+        <td><strong>层面</strong></td>
+        <td>🔴 跨进程通信</td>
+        <td>🔵 进程内线程间</td>
+      </tr>
+      <tr>
+        <td><strong>传输内容</strong></td>
+        <td>序列化的消息帧 (Text/Binary)</td>
+        <td>内存中的 C++ 对象</td>
+      </tr>
+      <tr>
+        <td><strong>有无 I/O</strong></td>
+        <td>有（网络/Unix Socket 读写）</td>
+        <td>无（纯内存操作）</td>
+      </tr>
+      <tr>
+        <td><strong>方向</strong></td>
+        <td>双向（全双工）</td>
+        <td>单向入 (_queue) 或 单向出 (_callbacks)</td>
+      </tr>
+      <tr>
+        <td><strong>线程安全</strong></td>
+        <td>由 SocketPoll 保证单线程</td>
+        <td>Queue 自身是线程安全的（多生产者单消费者）</td>
+      </tr>
+    </table>
+  </div>
+
+  <h3>为什么 Kit 需要 KitQueue？</h3>
+  <div class="diagram-container">
+    <svg viewBox="0 0 900 300" class="arch-svg">
+      <!-- Multi-thread problem -->
+      <rect x="20" y="20" width="860" height="85" fill="#1a1e2e" stroke="#30363d" rx="6"/>
+      <text x="40" y="48" fill="#f85149" font-size="13" font-weight="600">⚠️ 问题：LOKit 回调可能来自 LibreOffice 的任意内部线程</text>
+      <text x="40" y="68" fill="var(--muted)" font-size="11">LOK 内部使用多线程处理文档渲染/计算。回调 (状态变更、tile 就绪等) 会从随机线程触发。</text>
+      <text x="40" y="86" fill="var(--muted)" font-size="11">但 WebSocket 的写入必须在 KitSocketPoll 主线程中进行（否则 Socket buffer 会损坏）。</text>
+
+      <!-- Solution -->
+      <rect x="20" y="115" width="860" height="170" fill="#132a1a" stroke="#3fb950" rx="6"/>
+      <text x="40" y="143" fill="#3fb950" font-size="13" font-weight="600">✅ 解决方案：KitQueue 作为生产者-消费者缓冲区</text>
+
+      <!-- Producers -->
+      <rect x="40" y="160" width="180" height="50" fill="#1a1e2e" stroke="#d2991d" rx="4"/>
+      <text x="130" y="180" text-anchor="middle" fill="#d2991d" font-size="11">LOKit Thread 1</text>
+      <text x="130" y="198" text-anchor="middle" fill="var(--muted)" font-size="10">回调: 状态变更</text>
+
+      <rect x="240" y="160" width="180" height="50" fill="#1a1e2e" stroke="#d2991d" rx="4"/>
+      <text x="330" y="180" text-anchor="middle" fill="#d2991d" font-size="11">LOKit Thread 2</text>
+      <text x="330" y="198" text-anchor="middle" fill="var(--muted)" font-size="10">回调: tile 渲染完成</text>
+
+      <!-- Queue center -->
+      <rect x="460" y="152" width="160" height="66" fill="#1a1e2e" stroke="#a371f7" stroke-width="2" rx="6"/>
+      <text x="540" y="178" text-anchor="middle" fill="#a371f7" font-size="12" font-weight="600">KitQueue</text>
+      <text x="540" y="196" text-anchor="middle" fill="var(--muted)" font-size="10">线程安全 put()</text>
+      <text x="540" y="210" text-anchor="middle" fill="var(--muted)" font-size="10">+ 消息合并优化</text>
+
+      <!-- Consumer -->
+      <rect x="660" y="160" width="200" height="50" fill="#1a1e2e" stroke="#3fb950" rx="4"/>
+      <text x="760" y="180" text-anchor="middle" fill="#3fb950" font-size="11">KitSocketPoll 主线程</text>
+      <text x="760" y="198" text-anchor="middle" fill="var(--muted)" font-size="10">drainCallbacks() 消费</text>
+
+      <!-- Arrows -->
+      <line x1="220" y1="185" x2="455" y2="185" stroke="#d2991d" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="420" y1="185" x2="455" y2="185" stroke="#d2991d" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="620" y1="185" x2="655" y2="185" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <!-- Labels -->
+      <text x="340" y="175" text-anchor="middle" fill="var(--muted)" font-size="9">putCallback()</text>
+      <text x="640" y="175" text-anchor="middle" fill="var(--muted)" font-size="9">getCallback()</text>
+
+      <!-- Same for WSD side -->
+      <text x="40" y="272" fill="var(--muted)" font-size="10">WSD 端也有类似机制：ClientSession → SenderQueue → 发送给浏览器</text>
+    </svg>
+  </div>
+
+  <div class="card">
+    <h3>KitQueue 的三个子队列</h3>
+    <table>
+      <tr><th>队列</th><th>数据来源</th><th>消费者</th><th>内容</th></tr>
+      <tr>
+        <td><code>_queue</code></td>
+        <td>WSD → WebSocket → Kit</td>
+        <td><code>Document::drainQueue()</code></td>
+        <td>WSD 发来的消息：key, mouse, uno, tile请求...</td>
+      </tr>
+      <tr>
+        <td><code>_tileQueues</code></td>
+        <td>WSD → WebSocket → Kit</td>
+        <td><code>Document::popTileQueue()</code></td>
+        <td>待渲染 Tile 请求，按 viewId 分队列，按优先级排序</td>
+      </tr>
+      <tr>
+        <td><code>_callbacks</code></td>
+        <td><strong>任意 LOKit 线程</strong></td>
+        <td><code>Document::drainCallbacks()</code></td>
+        <td>LOKit 回调：status 变更, tile 失效, 光标移动...</td>
+      </tr>
+    </table>
+  </div>
+</section>
+
+<!-- ==================== 5. DOC LIFECYCLE ==================== -->
+<section id="lifecycle">
+  <h2>📄 文档生命周期</h2>
+
+  <h3>阶段 1: 打开文档</h3>
+  <div class="flow">
+    <div class="flow-step">
+      <div class="flow-num ws">1</div>
+      <div class="flow-body"><strong>浏览器发起 WebSocket 连接</strong><span>发送 load 命令（含 WOPI URL），WSD 主 Poll 接受连接，创建 StreamSocket</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num wsd">2</div>
+      <div class="flow-body"><strong>WSD 创建 DocumentBroker + ClientSession</strong><span>SocketDisposition 将 Socket 转移到 DocumentBroker 专用 Poll 线程。state=DETACHED</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num wsd">3</div>
+      <div class="flow-body"><strong>WSD → ForKit: fork Kit</strong><span>向 ForKit 请求一个新 Kit 子进程。同时从 WOPI Storage 下载文档到 jail 目录</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num kit">4</div>
+      <div class="flow-body"><strong>Kit 进程启动</strong><span><code>lokit_main()</code> → 创建 KitSocketPoll → 初始化 lok::Office → 建立与 WSD 的 WebSocket</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num ws">5</div>
+      <div class="flow-body"><strong>WSD → Kit: "session &lt;id&gt; &lt;docKey&gt; &lt;docId&gt;"</strong><span>KitWebSocketHandler 创建 Document 对象 + ChildSession。再发 "load url=..." 加载文档</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num kit">6</div>
+      <div class="flow-body"><strong>Document::onLoad() → lok::Document 加载</strong><span>创建 LOKit View，回调 onStatusIndicator 报告进度</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num ws">7</div>
+      <div class="flow-body"><strong>Document State → Live</strong><span>status: 消息发给 WSD → ClientSession state=LIVE → 浏览器开始请求 Tile → 用户看到文档</span></div>
+    </div>
+  </div>
+
+  <!-- State machine diagram -->
+  <h3>WSD 端状态机 (DocumentBroker)</h3>
+  <div class="diagram-container">
+    <svg viewBox="0 0 900 130" class="arch-svg">
+      <defs>
+        <marker id="arrow2" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+          <path d="M0,0 L7,2.5 L0,5 Z" fill="#8b949e"/>
+        </marker>
+      </defs>
+      <!-- State boxes -->
+      <rect x="20" y="40" width="120" height="50" fill="#1a1e2e" stroke="#30363d" rx="6"/>
+      <text x="80" y="62" text-anchor="middle" fill="var(--muted)" font-size="12">None</text>
+      <text x="80" y="78" text-anchor="middle" fill="var(--muted)" font-size="10">初始状态</text>
+
+      <rect x="180" y="40" width="130" height="50" fill="#3d2e1a" stroke="#d2991d" rx="6"/>
+      <text x="245" y="62" text-anchor="middle" fill="#d2991d" font-size="12">Downloading</text>
+      <text x="245" y="78" text-anchor="middle" fill="var(--muted)" font-size="10">Storage → 本地磁盘</text>
+
+      <rect x="350" y="40" width="130" height="50" fill="#3d2e1a" stroke="#d2991d" rx="6"/>
+      <text x="415" y="62" text-anchor="middle" fill="#d2991d" font-size="12">Loading</text>
+      <text x="415" y="78" text-anchor="middle" fill="var(--muted)" font-size="10">本地 → LOKit 内存</text>
+
+      <rect x="520" y="40" width="140" height="50" fill="#132a1a" stroke="#3fb950" rx="6"/>
+      <text x="590" y="62" text-anchor="middle" fill="#3fb950" font-size="12">Live</text>
+      <text x="590" y="78" text-anchor="middle" fill="var(--muted)" font-size="10">可供查看/编辑</text>
+
+      <rect x="700" y="40" width="130" height="50" fill="#3d1a1a" stroke="#f85149" rx="6"/>
+      <text x="765" y="62" text-anchor="middle" fill="#f85149" font-size="12">Destroying →</text>
+      <text x="765" y="78" text-anchor="middle" fill="var(--muted)" font-size="10">Destroyed</text>
+
+      <!-- Arrows -->
+      <line x1="140" y1="65" x2="175" y2="65" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow2)"/>
+      <line x1="310" y1="65" x2="345" y2="65" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow2)"/>
+      <line x1="480" y1="65" x2="515" y2="65" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow2)"/>
+      <line x1="660" y1="65" x2="695" y2="65" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow2)"/>
+
+      <!-- WSD state annotation -->
+    </svg>
+  </div>
+
+  <h3>WSD 端 ClientSession 状态</h3>
+  <div class="diagram-container">
+    <svg viewBox="0 0 700 100" class="arch-svg">
+      <rect x="20" y="25" width="120" height="50" fill="#1a1e2e" stroke="#30363d" rx="6"/>
+      <text x="80" y="47" text-anchor="middle" fill="var(--muted)" font-size="12">DETACHED</text>
+      <text x="80" y="63" text-anchor="middle" fill="var(--muted)" font-size="10">初始</text>
+
+      <rect x="190" y="25" width="120" height="50" fill="#3d2e1a" stroke="#d2991d" rx="6"/>
+      <text x="250" y="47" text-anchor="middle" fill="#d2991d" font-size="12">LOADING</text>
+      <text x="250" y="63" text-anchor="middle" fill="var(--muted)" font-size="10">加载中</text>
+
+      <rect x="360" y="25" width="120" height="50" fill="#132a1a" stroke="#3fb950" rx="6"/>
+      <text x="420" y="47" text-anchor="middle" fill="#3fb950" font-size="12">LIVE</text>
+      <text x="420" y="63" text-anchor="middle" fill="var(--muted)" font-size="10">可编辑/查看</text>
+
+      <rect x="530" y="25" width="140" height="50" fill="#3d1a1a" stroke="#f85149" rx="6"/>
+      <text x="600" y="47" text-anchor="middle" fill="#f85149" font-size="12">WAIT_DISCONNECT</text>
+      <text x="600" y="63" text-anchor="middle" fill="var(--muted)" font-size="10">等待 Kit 确认</text>
+
+      <line x1="140" y1="50" x2="185" y2="50" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow2)"/>
+      <line x1="310" y1="50" x2="355" y2="50" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow2)"/>
+      <line x1="480" y1="50" x2="525" y2="50" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow2)"/>
+    </svg>
+  </div>
+
+  <h3>阶段 2: 编辑中 — 输入事件流</h3>
+  <div class="flow">
+    <div class="flow-step">
+      <div class="flow-num ws">1</div>
+      <div class="flow-body"><strong>Browser → WSD: 按键/mouse/UNO 命令</strong><span>ClientSession._handleInput() 解析过滤 → DocumentBroker::forwardToChild()</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num ws">2</div>
+      <div class="flow-body"><strong>WSD → Kit WebSocket: "child-&lt;sessionId&gt; key ..."</strong><span>KitWebSocketHandler → Document::queueMessage() → KitQueue._queue 入队</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num kit">3</div>
+      <div class="flow-body"><strong>KitSocketPoll → Document::drainQueue() → ChildSession::_handleInput()</strong><span>ChildSession 解析消息类型，调用对应处理方法：keyEvent / mouseEvent / unoCommand / paste / ...</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num kit">4</div>
+      <div class="flow-body"><strong>LOKit API 调用</strong><span>postKeyEvent / postMouseEvent / postUnoCommand → LibreOffice 核心处理文档修改</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num kit">5</div>
+      <div class="flow-body"><strong>LOKit 回调（来自任意线程）</strong><span>状态变更 / tile 失效 / 光标移动 → pushToMainThread → KitQueue._callbacks 入队</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num kit">6</div>
+      <div class="flow-body"><strong>KitSocketPoll → Document::drainCallbacks() 消费</strong><span>通过 WebSocket 发回 WSD → DocumentBroker → ClientSession → Browser</span></div>
+    </div>
+  </div>
+
+  <h3>阶段 3: 关闭文档</h3>
+  <div class="flow">
+    <div class="flow-step">
+      <div class="flow-num ws">1</div>
+      <div class="flow-body"><strong>用户关闭标签页 / Browser 断开连接</strong><span>ClientSession onDisconnect() → state=WAIT_DISCONNECT</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num wsd">2</div>
+      <div class="flow-body"><strong>DocumentBroker 检查剩余 session</strong><span>有其他 session → 只移除当前 session。无其他 session → 开始关闭流程</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num wsd">3</div>
+      <div class="flow-body"><strong>autoSaveAndStop() — 自动保存</strong><span>如果文档被修改 → 发送 uno:Save 到 Kit → 上传到 Storage（WOPI）</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num ws">4</div>
+      <div class="flow-body"><strong>WSD → Kit: "exit"</strong><span>Kit 收到 exit → Document::joinThreads() 停止线程池 → Log flush → Util::forcedExit(EX_OK)</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num wsd">5</div>
+      <div class="flow-body"><strong>清理</strong><span>DocumentBroker: Live → Destroying → Destroyed → ForKit 回收僵尸进程 (SIGCHLD)</span></div>
+    </div>
+  </div>
+
+  <div class="info warn">
+    <strong>⚠️ 异常关闭（Kit 崩溃）：</strong>
+    Kit 进程意外死亡 → WSD 端 WebSocket onDisconnect() → DocumentBroker::disconnectedFromKit(true)
+    → 通知所有 ClientSession "文档不可用" → 尝试保存本地副本（如果有）→ 清理资源
+  </div>
+</section>
+
+<!-- ==================== 6. KIT FILES ==================== -->
+<section id="kit-files">
+  <h2>📁 Kit 文件地图</h2>
+
+  <div class="diagram-container">
+    <svg viewBox="0 0 1000 620" class="arch-svg">
+      <!-- Header -->
+      <text x="500" y="25" text-anchor="middle" fill="var(--muted)" font-size="11">按职责分组 | 方框大小 ≈ 代码行数 | 浅绿=核心 | 浅灰=辅助</text>
+
+      <!-- Group: 核心三大件 -->
+      <rect x="10" y="40" width="320" height="200" fill="none" stroke="#3fb950" stroke-width="1.5" rx="6"/>
+      <text x="20" y="62" fill="#3fb950" font-size="12" font-weight="600">核心三大件</text>
+
+      <rect x="20" y="75" width="140" height="70" fill="#132a1a" stroke="#3fb950" rx="5"/>
+      <text x="90" y="98" text-anchor="middle" fill="#3fb950" font-size="12" font-weight="600">Kit.cpp/.hpp</text>
+      <text x="90" y="115" text-anchor="middle" fill="var(--muted)" font-size="9">~5000 行</text>
+      <text x="90" y="130" text-anchor="middle" fill="var(--muted)" font-size="9">进程入口 + Document + Poll</text>
+
+      <rect x="170" y="75" width="145" height="70" fill="#132a1a" stroke="#3fb950" rx="5"/>
+      <text x="242" y="98" text-anchor="middle" fill="#3fb950" font-size="12" font-weight="600">ChildSession.cpp/.hpp</text>
+      <text x="242" y="115" text-anchor="middle" fill="var(--muted)" font-size="9">~4700 行</text>
+      <text x="242" y="130" text-anchor="middle" fill="var(--muted)" font-size="9">用户会话 · 消息路由 · 200+ 命令</text>
+
+      <rect x="20" y="155" width="295" height="55" fill="#132a1a" stroke="#3fb950" rx="5"/>
+      <text x="167" y="175" text-anchor="middle" fill="#3fb950" font-size="12" font-weight="600">KitWebSocket.cpp/.hpp (500 行)</text>
+      <text x="167" y="193" text-anchor="middle" fill="var(--muted)" font-size="9">WSD 通信 · BgSave 父子 WebSocket</text>
+
+      <!-- Group: 基础设施 -->
+      <rect x="340" y="40" width="310" height="200" fill="none" stroke="#a371f7" stroke-width="1.5" rx="6"/>
+      <text x="350" y="62" fill="#a371f7" font-size="12" font-weight="600">基础设施</text>
+
+      <rect x="350" y="75" width="140" height="55" fill="#1a1e2e" stroke="#a371f7" rx="5"/>
+      <text x="420" y="95" text-anchor="middle" fill="#a371f7" font-size="11" font-weight="600">ForKit.cpp (1100 行)</text>
+      <text x="420" y="115" text-anchor="middle" fill="var(--muted)" font-size="9">Kit 进程池 · fork · SIGCHLD</text>
+
+      <rect x="500" y="75" width="140" height="55" fill="#1a1e2e" stroke="#a371f7" rx="5"/>
+      <text x="570" y="95" text-anchor="middle" fill="#a371f7" font-size="11" font-weight="600">KitQueue.cpp/.hpp</text>
+      <text x="570" y="115" text-anchor="middle" fill="var(--muted)" font-size="9">~1100 行 · 消息队列</text>
+
+      <rect x="350" y="140" width="140" height="55" fill="#1a1e2e" stroke="#a371f7" rx="5"/>
+      <text x="420" y="160" text-anchor="middle" fill="#a371f7" font-size="11" font-weight="600">KitHelper.hpp (200 行)</text>
+      <text x="420" y="180" text-anchor="middle" fill="var(--muted)" font-size="9">LOKit 辅助函数</text>
+
+      <rect x="500" y="140" width="140" height="55" fill="#1a1e2e" stroke="#a371f7" rx="5"/>
+      <text x="570" y="160" text-anchor="middle" fill="#a371f7" font-size="11" font-weight="600">Delta.hpp (1000 行)</text>
+      <text x="570" y="180" text-anchor="middle" fill="var(--muted)" font-size="9">Tile 增量压缩 + SIMD</text>
+
+      <!-- Group: 辅助组件 -->
+      <rect x="660" y="40" width="320" height="250" fill="none" stroke="#30363d" stroke-width="1.5" rx="6"/>
+      <text x="670" y="62" fill="var(--muted)" font-size="12" font-weight="600">辅助组件</text>
+
+      <g font-size="9" fill="var(--muted)">
+        <text x="670" y="88"><tspan fill="var(--accent)">Watermark.hpp</tspan> — 水印渲染到 Tile</text>
+        <text x="670" y="106"><tspan fill="var(--accent)">StateRecorder.hpp</tspan> — 非活跃用户事件录制</text>
+        <text x="670" y="124"><tspan fill="var(--accent)">SlideCompressor.hpp</tspan> — 幻灯片多线程压缩</text>
+        <text x="670" y="142"><tspan fill="var(--accent)">BgSaveWatchDog.hpp</tspan> — 后台保存超时看门狗</text>
+        <text x="670" y="160"><tspan fill="var(--accent)">LogUI.hpp/.cpp</tspan> — 用户操作日志</text>
+        <text x="670" y="178"><tspan fill="var(--accent)">SetupKitEnvironment.hpp</tspan> — 环境变量初始化</text>
+        <text x="670" y="196"><tspan fill="var(--accent)">KitGlobals.hpp/.cpp</tspan> — 全局变量定义</text>
+        <text x="670" y="214"><tspan fill="var(--accent)">forkit-main.cpp</tspan> — ForKit main() 入口</text>
+        <text x="670" y="232"><tspan fill="var(--accent)">TestStubs.cpp</tspan> — 测试桩代码</text>
+        <text x="670" y="250"><tspan fill="var(--accent)">DummyLibreOfficeKit</tspan> — LOKit Mock（测试用）</text>
+        <text x="670" y="268"><tspan fill="var(--accent)">DeltaSimd.c/h</tspan> — SIMD 像素比较</text>
+      </g>
+
+      <!-- Data flow arrows between key pieces -->
+      <line x1="160" y1="110" x2="165" y2="110" stroke="#3fb950" stroke-width="1" marker-end="url(#arrow)"/>
+      <text x="80" y="270" fill="var(--muted)" font-size="10">箭头表示调用/依赖关系</text>
+
+      <!-- Architecture call chain -->
+      <g font-size="10">
+        <text x="20" y="320" fill="var(--accent)" font-weight="600">调用链（打开文档时）：</text>
+        <text x="20" y="342" fill="var(--muted)">forkit-main.cpp → forkit_main() → fork() → Kit 子进程</text>
+        <text x="20" y="362" fill="var(--muted)">  └→ lokit_main() → KitSocketPoll::create() → KitSocketPoll::poll() 主循环</text>
+        <text x="20" y="382" fill="var(--muted)">       └→ KitWebSocketHandler::handleMessage("session ...")</text>
+        <text x="20" y="402" fill="var(--muted)">            └→ new Document() → Document::createSession() → new ChildSession()</text>
+        <text x="20" y="422" fill="var(--muted)">                 └→ Document::onLoad() → lok::Document 加载 → 回调 → KitQueue</text>
+      </g>
+
+      <text x="20" y="465" fill="var(--accent)" font-size="10" font-weight="600">编辑时的消息流：</text>
+      <g font-size="10">
+        <text x="20" y="485" fill="var(--muted)">WSD → KitWebSocket → 入 KitQueue._queue → Document::drainQueue()</text>
+        <text x="20" y="505" fill="var(--muted)">  → ChildSession::_handleInput() → LOKit API → 回调（任意线程）</text>
+        <text x="20" y="525" fill="var(--muted)">  → 入 KitQueue._callbacks → Document::drainCallbacks() → WebSocket → WSD</text>
+      </g>
+
+      <text x="20" y="565" fill="var(--accent)" font-size="10" font-weight="600">保存时的消息流：</text>
+      <g font-size="10">
+        <text x="20" y="585" fill="var(--muted)">WSD → Kit: save → ChildSession::saveDocumentBackground()</text>
+        <text x="20" y="605" fill="var(--muted)">  → Document::forkToSave() → fork() 子进程 → BgSaveChildWebSocketHandler</text>
+      </g>
+    </svg>
+  </div>
+</section>
+
+<!-- ==================== 7. GLOSSARY ==================== -->
+<section id="glossary">
+  <h2>📖 术语速查表</h2>
+  <table>
+    <tr><th>术语</th><th>全称</th><th>含义</th></tr>
+    <tr><td><strong>WSD</strong></td><td>Web Services Daemon</td><td>coolwsd 主控进程，负责调度、路由、存储、缓存</td></tr>
+    <tr><td><strong>Kit</strong></td><td>LibreOfficeKit 进程</td><td>每个文档一个进程，实际操作 LibreOffice 核心</td></tr>
+    <tr><td><strong>ForKit</strong></td><td>Kit Forker</td><td>预初始化 LOKit 并按需 fork Kit 子进程的管理器</td></tr>
+    <tr><td><strong>LOK / LOKit</strong></td><td>LibreOfficeKit</td><td>LibreOffice 的 C/C++ API，允许外部进程操控文档</td></tr>
+    <tr><td><strong>Tile</strong></td><td>—</td><td>文档画面的一个 256×256 像素方块，增量传输</td></tr>
+    <tr><td><strong>Delta</strong></td><td>—</td><td>两个 Tile 版本之间的像素差异，减少网络传输</td></tr>
+    <tr><td><strong>SocketPoll</strong></td><td>—</td><td>单线程事件循环（基于 poll(2)），管理一组 Socket</td></tr>
+    <tr><td><strong>SocketDisposition</strong></td><td>—</td><td>将 Socket 从一个 Poll 线程安全转移到另一个 Poll</td></tr>
+    <tr><td><strong>ChildSession</strong></td><td>—</td><td>Kit 进程中代表一个用户会话的对象</td></tr>
+    <tr><td><strong>ClientSession</strong></td><td>—</td><td>WSD 进程中代表一个浏览器客户端会话的对象</td></tr>
+    <tr><td><strong>DocumentBroker</strong></td><td>—</td><td>WSD 中管理一个文档完整生命周期（下载/加载/保存/上传）的对象</td></tr>
+    <tr><td><strong>KitQueue</strong></td><td>—</td><td>Kit 内部消息队列：_queue / _tileQueues / _callbacks</td></tr>
+    <tr><td><strong>Jail</strong></td><td>—</td><td>chroot 隔离的沙箱目录，每个 Kit 进程运行在独立 jail 中</td></tr>
+    <tr><td><strong>WOPI</strong></td><td>Web Application Open Platform Interface</td><td>文档存储服务的标准协议（下载/上传/锁/CheckFileInfo）</td></tr>
+    <tr><td><strong>BgSave</strong></td><td>Background Save</td><td>Kit fork 出子进程异步保存，避免阻塞主 Kit 响应</td></tr>
+    <tr><td><strong>UNO</strong></td><td>Universal Network Objects</td><td>LibreOffice 内部组件模型，.uno: 命令操控文档功能</td></tr>
+  </table>
+</section>
+
+
+<!-- ==================== 8. LLAMA.CPP PRINCIPLES ==================== -->
+<section id="llama">
+  <h2>🧠 llama.cpp 原理解析</h2>
+  <p style="color:var(--muted);margin-bottom:16px;">
+    llama.cpp 是一个纯 C/C++ 实现的 LLM 推理引擎。它的核心使命：<strong>在消费级设备上（无 GPU）高效运行大型语言模型</strong>。
+  </p>
+
+  <div class="card">
+    <h3>一句话总结</h3>
+    <p style="color:var(--muted);">
+      llama.cpp 把一个训练好的模型文件（GGUF 格式）加载到内存，用 <strong>量化压缩</strong> 减少内存占用，
+      再通过 <strong>手写 SIMD 优化的矩阵运算</strong>（ggml 张量库）在 CPU 上逐 token 生成文本。
+    </p>
+  </div>
+
+  <h3>1. 从用户输入到 AI 输出 — 完整推理流水线</h3>
+  <div class="diagram-container">
+    <svg viewBox="0 0 1000 300" class="arch-svg">
+      <defs>
+        <marker id="arrow3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#8b949e"/>
+        </marker>
+        <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+
+      <!-- Step 1: Tokenizer -->
+      <rect x="15" y="30" width="140" height="90" fill="#1a2332" stroke="#58a6ff" rx="8" filter="url(#shadow)"/>
+      <text x="85" y="58" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="600">① Tokenizer</text>
+      <text x="85" y="78" text-anchor="middle" fill="var(--muted)" font-size="10">文本 → Token ID 序列</text>
+      <text x="85" y="96" text-anchor="middle" fill="var(--muted)" font-size="10">BPE / SentencePiece</text>
+
+      <line x1="155" y1="75" x2="195" y2="75" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow3)"/>
+      <text x="175" y="68" fill="var(--muted)" font-size="9">tokens[]</text>
+
+      <!-- Step 2: Embedding -->
+      <rect x="200" y="30" width="140" height="90" fill="#1a1e2e" stroke="#a371f7" rx="8" filter="url(#shadow)"/>
+      <text x="270" y="58" text-anchor="middle" fill="#a371f7" font-size="13" font-weight="600">② Embedding</text>
+      <text x="270" y="78" text-anchor="middle" fill="var(--muted)" font-size="10">Token ID → 向量</text>
+      <text x="270" y="96" text-anchor="middle" fill="var(--muted)" font-size="10">查 embedding 表</text>
+
+      <line x1="340" y1="75" x2="380" y2="75" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow3)"/>
+      <text x="360" y="68" fill="var(--muted)" font-size="9">vectors</text>
+
+      <!-- Step 3: Transformer Blocks -->
+      <rect x="385" y="15" width="200" height="120" fill="#132a1a" stroke="#3fb950" stroke-width="2" rx="8" filter="url(#shadow)"/>
+      <text x="485" y="43" text-anchor="middle" fill="#3fb950" font-size="13" font-weight="600">③ Transformer Layers × N</text>
+      <text x="485" y="63" text-anchor="middle" fill="var(--muted)" font-size="10">Multi-Head Attention</text>
+      <text x="485" y="79" text-anchor="middle" fill="var(--muted)" font-size="10">+ Feed-Forward Network</text>
+      <text x="485" y="95" text-anchor="middle" fill="var(--muted)" font-size="10">+ RMS Norm + RoPE</text>
+      <text x="485" y="111" text-anchor="middle" fill="#d2991d" font-size="10">每一层都读写 KV Cache</text>
+      <text x="485" y="127" text-anchor="middle" fill="#d2991d" font-size="10">attention(Q, K_cache, V_cache)</text>
+
+      <line x1="585" y1="75" x2="625" y2="75" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow3)"/>
+      <text x="605" y="68" fill="var(--muted)" font-size="9">hidden</text>
+
+      <!-- Step 4: Output Head -->
+      <rect x="630" y="30" width="140" height="90" fill="#1a1e2e" stroke="#39c5cf" rx="8" filter="url(#shadow)"/>
+      <text x="700" y="58" text-anchor="middle" fill="#39c5cf" font-size="13" font-weight="600">④ Output / LM Head</text>
+      <text x="700" y="78" text-anchor="middle" fill="var(--muted)" font-size="10">hidden → vocab 概率</text>
+      <text x="700" y="96" text-anchor="middle" fill="var(--muted)" font-size="10">logits[0..vocab_size]</text>
+
+      <line x1="770" y1="75" x2="810" y2="75" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow3)"/>
+      <text x="790" y="68" fill="var(--muted)" font-size="9">logits</text>
+
+      <!-- Step 5: Sampler -->
+      <rect x="815" y="30" width="155" height="90" fill="#3d2e1a" stroke="#d2991d" rx="8" filter="url(#shadow)"/>
+      <text x="892" y="58" text-anchor="middle" fill="#d2991d" font-size="13" font-weight="600">⑤ Sampler</text>
+      <text x="892" y="78" text-anchor="middle" fill="var(--muted)" font-size="10">logits → 下一个 token</text>
+      <text x="892" y="96" text-anchor="middle" fill="var(--muted)" font-size="10">Temperature + Top-P</text>
+
+      <!-- Feedback loop arrow -->
+      <path d="M892,130 L892,155 Q892,170 877,170 L85,170 Q70,170 70,155 L70,125" stroke="#f85149" stroke-width="1.5" fill="none" stroke-dasharray="5 3" marker-end="url(#arrow3)"/>
+      <text x="490" y="190" text-anchor="middle" fill="#f85149" font-size="11" font-weight="600">⑥ 自回归循环：新 token 拼到输入后面，重复 ③④⑤</text>
+      <text x="490" y="206" text-anchor="middle" fill="var(--muted)" font-size="10">直到生成 EOS 或达到 maxTokens 上限</text>
+
+      <!-- Memory note -->
+      <rect x="15" y="220" width="955" height="65" fill="none" stroke="#30363d" rx="6"/>
+      <text x="35" y="245" fill="var(--muted)" font-size="11" font-weight="600">内存开销（以 Qwen2.5-1.5B Q4_K_M 为例）</text>
+      <text x="35" y="265" fill="var(--muted)" font-size="10">• GGUF 模型文件 ≈ 1.1 GB | 加载到内存 ≈ 1.1 GB (mmap) | KV Cache (4096 tokens) ≈ 0.5 GB | 总计 ≈ 1.6 GB</text>
+      <text x="35" y="280" fill="var(--muted)" font-size="10">• 原始 FP16 需 2×1.5B = 3 GB，Q4_K_M 量化把每个权重压缩到 ~4.5 bit → 内存需求降低 70%</text>
+    </svg>
+  </div>
+
+  <h3>2. 两大阶段：Prefill vs Decode</h3>
+  <div class="diagram-container">
+    <svg viewBox="0 0 1000 200" class="arch-svg">
+      <!-- Prefill -->
+      <rect x="15" y="20" width="470" height="165" fill="#1a2332" stroke="#58a6ff" rx="8"/>
+      <text x="250" y="50" text-anchor="middle" fill="#58a6ff" font-size="15" font-weight="700">⚡ Prefill（预填充） — 并行处理</text>
+      <text x="35" y="78" fill="var(--muted)" font-size="11">• 一次喂入所有 prompt tokens（如 512 个）</text>
+      <text x="35" y="98" fill="var(--muted)" font-size="11">• Transformer 并行计算所有位置的 hidden states</text>
+      <text x="35" y="118" fill="var(--muted)" font-size="11">• 生成完整的 KV Cache（每个 token 的 Key/Value 存入缓存）</text>
+      <text x="35" y="138" fill="var(--muted)" font-size="11">• 计算量大但只执行一次（矩阵乘法密集）</text>
+      <text x="35" y="158" fill="var(--accent)" font-size="11" font-weight="600">• n_past: 0 → 512 | batch 大小 = prompt 长度 | BATCH_SIZE=128 分批</text>
+
+      <!-- Arrow between -->
+      <line x1="485" y1="100" x2="510" y2="100" stroke="#d2991d" stroke-width="3" marker-end="url(#arrow3)"/>
+      <text x="475" y="90" text-anchor="middle" fill="#d2991d" font-size="10" font-weight="600">首 token 后</text>
+
+      <!-- Decode -->
+      <rect x="515" y="20" width="470" height="165" fill="#132a1a" stroke="#3fb950" rx="8"/>
+      <text x="750" y="50" text-anchor="middle" fill="#3fb950" font-size="15" font-weight="700">🐢 Decode（逐 token 生成） — 串行循环</text>
+      <text x="535" y="78" fill="var(--muted)" font-size="11">• 每次只喂 1 个新 token + 读取所有 KV Cache</text>
+      <text x="535" y="98" fill="var(--muted)" font-size="11">• Attention 只需计算新 token 对历史的 attention</text>
+      <text x="535" y="118" fill="var(--muted)" font-size="11">• 计算量小但重复 maxTokens 次（内存带宽瓶颈）</text>
+      <text x="535" y="138" fill="var(--muted)" font-size="11">• 每个 token 抽样后立即 decode 再存 KV Cache</text>
+      <text x="535" y="158" fill="var(--accent)" font-size="11" font-weight="600">• n_past: 512 → 512+maxTokens | batch = 1</text>
+    </svg>
+  </div>
+
+  <div class="info tip">
+    <strong>💡 为什么 Prefill 用 BATCH_SIZE=128 分批？</strong><br>
+    长 prompt (如 5000 tokens) 若一次全喂入，内存峰值巨大。
+    分 128 token/批 处理，每批之间可释放中间张量，内存更可控。
+    同时每 5 秒输出心跳日志防止用户以为卡死了。
+  </div>
+
+  <h3>3. GGUF 格式与量化</h3>
+  <div class="card">
+    <table>
+      <tr><th>量化格式</th><th>每权重 bit 数</th><th>1.5B 模型大小</th><th>质量</th><th>适用场景</th></tr>
+      <tr>
+        <td><strong>FP16</strong></td><td>16</td><td>~3.0 GB</td><td>原始精度</td><td>服务端部署</td>
+      </tr>
+      <tr>
+        <td><strong>Q8_0</strong></td><td>8</td><td>~1.6 GB</td><td>几乎无损</td><td>高性能桌面</td>
+      </tr>
+      <tr>
+        <td><strong>Q4_K_M</strong></td><td>~4.5</td><td>~1.1 GB</td><td><span style="color:var(--green)">✓ 本项目的选择</span></td><td>移动端 / 边缘设备</td>
+      </tr>
+      <tr>
+        <td><strong>Q2_K</strong></td><td>~2.5</td><td>~0.6 GB</td><td>有损</td><td>极低内存设备</td>
+      </tr>
+    </table>
+    <p style="color:var(--muted);margin-top:12px;">
+      <strong>GGUF</strong>（GGML Universal Format）是 llama.cpp 自有的模型文件格式，统一包含：
+      模型权重（量化后的 tensor）+ tokenizer 词表 + 超参数（n_layers, n_heads, n_embd 等）+ chat template + 元数据。
+      一个 .gguf 文件 = 完整的可部署模型。
+    </p>
+  </div>
+
+  <h3>4. 核心数据结构</h3>
+  <div class="diagram-container">
+    <svg viewBox="0 0 1000 280" class="arch-svg">
+      <!-- llama_model -->
+      <rect x="20" y="20" width="300" height="120" fill="#1a1e2e" stroke="#a371f7" rx="8" filter="url(#shadow)"/>
+      <text x="170" y="50" text-anchor="middle" fill="#a371f7" font-size="14" font-weight="700">llama_model</text>
+      <text x="40" y="72" fill="var(--muted)" font-size="11">• 从 GGUF 文件加载 (mmap 映射)</text>
+      <text x="40" y="90" fill="var(--muted)" font-size="11">• 包含所有权重张量 (ggml_tensor)</text>
+      <text x="40" y="108" fill="var(--muted)" font-size="11">• 超参数: n_layers, n_embd, n_heads, vocab_size</text>
+      <text x="40" y="126" fill="var(--muted)" font-size="11">• 只读共享，多个 context 可复用同一个 model</text>
+
+      <!-- Model creates Context -->
+      <line x1="320" y1="80" x2="365" y2="80" stroke="#8b949e" stroke-width="2" marker-end="url(#arrow3)"/>
+      <text x="325" y="72" fill="var(--muted)" font-size="10">llama_init_</text>
+      <text x="325" y="84" fill="var(--muted)" font-size="10">from_model()</text>
+
+      <!-- llama_context -->
+      <rect x="370" y="20" width="290" height="120" fill="#132a1a" stroke="#3fb950" rx="8" filter="url(#shadow)"/>
+      <text x="515" y="50" text-anchor="middle" fill="#3fb950" font-size="14" font-weight="700">llama_context</text>
+      <text x="390" y="72" fill="var(--muted)" font-size="11">• 推理会话状态</text>
+      <text x="390" y="90" fill="var(--muted)" font-size="11">• n_ctx = 上下文窗口大小 (4096)</text>
+      <text x="390" y="108" fill="var(--muted)" font-size="11">• n_threads = CPU 线程数 (2-4)</text>
+      <text x="390" y="126" fill="var(--muted)" font-size="11">• 计算图 (ggml_cgraph)</text>
+
+      <!-- KV Cache -->
+      <rect x="370" y="160" width="290" height="105" fill="#3d2e1a" stroke="#d2991d" rx="8" filter="url(#shadow)"/>
+      <text x="515" y="188" text-anchor="middle" fill="#d2991d" font-size="14" font-weight="700">llama_kv_cache (在 context 内)</text>
+      <text x="390" y="210" fill="var(--muted)" font-size="11">• 每层 Transformer 存一组 K, V 矩阵</text>
+      <text x="390" y="228" fill="var(--muted)" font-size="11">• 大小 = n_layers × n_ctx × n_embd × 2</text>
+      <text x="390" y="246" fill="var(--muted)" font-size="11">• Prefill 时批量写入，Decode 时追加 1 行</text>
+
+      <!-- Sampler -->
+      <rect x="690" y="20" width="290" height="120" fill="#1a1e2e" stroke="#39c5cf" rx="8" filter="url(#shadow)"/>
+      <text x="835" y="50" text-anchor="middle" fill="#39c5cf" font-size="14" font-weight="700">llama_sampler</text>
+      <text x="710" y="72" fill="var(--muted)" font-size="11">• 采样链: Temperature → Top-P → 抽样</text>
+      <text x="710" y="90" fill="var(--muted)" font-size="11">• temperature=0.3 (偏确定性)</text>
+      <text x="710" y="108" fill="var(--muted)" font-size="11">• llama_sampler_sample(ctx, -1)</text>
+      <text x="710" y="126" fill="var(--muted)" font-size="11">• 检测 EOS token → 停止生成</text>
+
+      <!-- Batch -->
+      <rect x="690" y="160" width="290" height="65" fill="#1a1e2e" stroke="#8b949e" rx="8"/>
+      <text x="835" y="188" text-anchor="middle" fill="#8b949e" font-size="13" font-weight="600">llama_batch</text>
+      <text x="710" y="208" fill="var(--muted)" font-size="11">• token[], pos[], seq_id[], logits[] 数组</text>
+      <text x="710" y="220" fill="var(--muted)" font-size="11">• BATCH_SIZE=128</text>
+    </svg>
+  </div>
+
+  <h3>5. ggml 后端 — 手写 SIMD 加速</h3>
+  <div class="card">
+    <p style="color:var(--muted)">
+      llama.cpp 的核心计算库 <strong>ggml</strong> 是一个纯 C 的张量计算库，不含任何外部依赖（不需要 BLAS/CUDA/cuDNN）。
+      它在不同 CPU 架构上使用手写 SIMD 指令（ARM NEON / x86 AVX2 / AVX512）加速矩阵乘法。
+    </p>
+    <p style="color:var(--muted);margin-top:8px;">
+      本项目的 Android arm64-v8a 构建启用了 <strong>KleidiAI</strong>（ARM 官方优化的矩阵乘法内核），
+      同时禁用了 OpenMP（避免与 LibreOfficeKit 的线程池竞争 libomp 状态导致死锁）。
+    </p>
+  </div>
+
+  <div class="info">
+    <strong>📖 更深入学习：</strong><br>
+    • <a href="https://github.com/ggerganov/llama.cpp" style="color:var(--accent)">github.com/ggerganov/llama.cpp</a> — 源码与文档<br>
+    • <a href="https://github.com/ggerganov/llama.cpp/discussions" style="color:var(--accent)">llama.cpp Discussions</a> — GGUF 格式规范、量化对比<br>
+    • 本项目源码：<code style="color:var(--muted)">android/lib/src/main/cpp/llama_jni.cpp</code> — JNI 接口实现<br>
+    • 本项目源码：<code style="color:var(--muted)">android/lib/src/main/cpp/llama.cpp/</code> — llama.cpp 子模块
+  </div>
+</section>
+
+<!-- ==================== 9. LOCAL DEPLOY ARCHITECTURE ==================== -->
+<section id="local-deploy">
+  <h2>📱 本地部署架构 — 如何在 Android 手机上运行 Qwen2.5-1.5B</h2>
+  <p style="color:var(--muted);margin-bottom:16px;">
+    本项目通过 <strong>JNI 桥接</strong> 将 llama.cpp C++ 推理引擎集成到 Android App 中，
+    实现了 <strong>纯本地的 LLM 推理能力</strong>，在网络离线时仍能使用 AI 功能。
+  </p>
+
+  <h3>1. 整体架构分层</h3>
+  <div class="diagram-container">
+    <svg viewBox="0 0 1000 550" class="arch-svg">
+      <!-- Layer 1: Android App (Java/Kotlin) -->
+      <rect x="20" y="20" width="960" height="155" fill="#1a2332" stroke="#58a6ff" stroke-width="2" rx="8" filter="url(#shadow)"/>
+      <text x="500" y="50" text-anchor="middle" fill="#58a6ff" font-size="15" font-weight="700">📱 Android App 层 (Java/Kotlin)</text>
+
+      <!-- AiBackendRouter -->
+      <rect x="40" y="65" width="210" height="55" fill="#1a1e2e" stroke="#a371f7" rx="5"/>
+      <text x="145" y="87" text-anchor="middle" fill="#a371f7" font-size="12" font-weight="600">AiBackendRouter</text>
+      <text x="145" y="105" text-anchor="middle" fill="var(--muted)" font-size="10">路由决策: cloud vs local</text>
+
+      <!-- LocalModelManager -->
+      <rect x="265" y="65" width="210" height="55" fill="#1a1e2e" stroke="#d2991d" rx="5"/>
+      <text x="370" y="87" text-anchor="middle" fill="#d2991d" font-size="12" font-weight="600">LocalModelManager</text>
+      <text x="370" y="105" text-anchor="middle" fill="var(--muted)" font-size="10">下载 · 校验 · 管理 · 配置</text>
+
+      <!-- LocalLlamaBackend -->
+      <rect x="490" y="65" width="210" height="55" fill="#1a1e2e" stroke="#39c5cf" rx="5"/>
+      <text x="595" y="87" text-anchor="middle" fill="#39c5cf" font-size="12" font-weight="600">LocalLlamaBackend</text>
+      <text x="595" y="105" text-anchor="middle" fill="var(--muted)" font-size="10">implements AiBackend</text>
+
+      <!-- LocalInferenceEngine -->
+      <rect x="715" y="65" width="240" height="55" fill="#132a1a" stroke="#3fb950" rx="5"/>
+      <text x="835" y="87" text-anchor="middle" fill="#3fb950" font-size="12" font-weight="600">LocalInferenceEngine</text>
+      <text x="835" y="105" text-anchor="middle" fill="var(--muted)" font-size="10">单线程执行器 + native 方法声明</text>
+
+      <!-- LocalPromptBuilder -->
+      <rect x="40" y="128" width="210" height="38" fill="#1a1e2e" stroke="#8b949e" rx="5"/>
+      <text x="145" y="152" text-anchor="middle" fill="var(--muted)" font-size="11">LocalPromptBuilder — chat template</text>
+
+      <rect x="265" y="128" width="210" height="38" fill="#1a1e2e" stroke="#8b949e" rx="5"/>
+      <text x="370" y="152" text-anchor="middle" fill="var(--muted)" font-size="11">LocalMemoryProbe — RAM 检测</text>
+
+      <rect x="490" y="128" width="210" height="38" fill="#1a1e2e" stroke="#8b949e" rx="5"/>
+      <text x="595" y="152" text-anchor="middle" fill="var(--muted)" font-size="11">LocalInferenceParams — 参数对象</text>
+
+      <rect x="715" y="128" width="240" height="38" fill="#1a1e2e" stroke="#8b949e" rx="5"/>
+      <text x="835" y="152" text-anchor="middle" fill="var(--muted)" font-size="11">CloudAiBackend — 云端 fallback</text>
+
+      <!-- Arrow to JNI -->
+      <line x1="835" y1="175" x2="835" y2="210" stroke="#f85149" stroke-width="3" marker-end="url(#arrow3)"/>
+      <text x="850" y="195" fill="#f85149" font-size="11" font-weight="700">← JNI 边界 (关键桥接层) →</text>
+
+      <!-- Layer 2: JNI Bridge -->
+      <rect x="60" y="215" width="880" height="42" fill="#3d1a1a" stroke="#f85149" rx="6"/>
+      <text x="500" y="242" text-anchor="middle" fill="#f85149" font-size="13" font-weight="700">🔗 JNI 层 (llama_jni.cpp) — libllama_jni.so</text>
+
+      <!-- Layer 3: llama.cpp -->
+      <rect x="60" y="270" width="880" height="120" fill="#132a1a" stroke="#3fb950" stroke-width="2" rx="8" filter="url(#shadow)"/>
+      <text x="500" y="300" text-anchor="middle" fill="#3fb950" font-size="15" font-weight="700">🖥️ llama.cpp C++ 推理引擎 (libllama.so + libggml.so)</text>
+
+      <rect x="80" y="315" width="200" height="60" fill="#1a1e2e" stroke="#a371f7" rx="5"/>
+      <text x="180" y="340" text-anchor="middle" fill="#a371f7" font-size="12" font-weight="600">llama_model</text>
+      <text x="180" y="358" text-anchor="middle" fill="var(--muted)" font-size="10">GGUF 权重 + 超参数</text>
+
+      <rect x="300" y="315" width="200" height="60" fill="#1a1e2e" stroke="#d2991d" rx="5"/>
+      <text x="400" y="340" text-anchor="middle" fill="#d2991d" font-size="12" font-weight="600">llama_context + KV Cache</text>
+      <text x="400" y="358" text-anchor="middle" fill="var(--muted)" font-size="10">推理状态 · libomp 隔离</text>
+
+      <rect x="520" y="315" width="200" height="60" fill="#1a1e2e" stroke="#39c5cf" rx="5"/>
+      <text x="620" y="340" text-anchor="middle" fill="#39c5cf" font-size="12" font-weight="600">llama_sampler</text>
+      <text x="620" y="358" text-anchor="middle" fill="var(--muted)" font-size="10">temp=0.3, 抽样 + EOS 检测</text>
+
+      <rect x="740" y="315" width="180" height="60" fill="#1a1e2e" stroke="#8b949e" rx="5"/>
+      <text x="830" y="340" text-anchor="middle" fill="var(--muted)" font-size="12" font-weight="600">ggml 后端</text>
+      <text x="830" y="358" text-anchor="middle" fill="var(--muted)" font-size="10">ARM NEON + KleidiAI</text>
+
+      <!-- Layer 4: GGUF Model -->
+      <rect x="120" y="405" width="760" height="55" fill="#1a1e2e" stroke="#8b949e" stroke-width="2" rx="6" stroke-dasharray="6 3"/>
+      <text x="500" y="430" text-anchor="middle" fill="#8b949e" font-size="13" font-weight="600">💾 GGUF 模型文件 (app filesDir/models/*.gguf)</text>
+      <text x="500" y="450" text-anchor="middle" fill="var(--muted)" font-size="11">Qwen2.5-1.5B-Instruct-Q4_K_M.gguf — 从 HuggingFace / hf-mirror.com 下载 — 默认 ~1.1 GB — mmap 直接映射</text>
+
+      <!-- JNI functions listing -->
+      <rect x="60" y="475" width="880" height="60" fill="#1a1e2e" stroke="#30363d" rx="6"/>
+      <text x="500" y="498" text-anchor="middle" fill="var(--muted)" font-size="11" font-weight="600">JNI 函数映射表</text>
+      <text x="500" y="518" text-anchor="middle" fill="var(--muted)" font-size="10">nativeLoadModel(path, ctx, threads, libDir) → llama_model_load_from_file + llama_init_from_model</text>
+      <text x="500" y="530" text-anchor="middle" fill="var(--muted)" font-size="10">nativePrefillMessages(roles[], contents[]) → tokenize + chat_template + decode_prompt_tokens</text>
+    </svg>
+  </div>
+
+  <h3>2. 模型下载流程</h3>
+  <div class="flow">
+    <div class="flow-step">
+      <div class="flow-num wsd">1</div>
+      <div class="flow-body"><strong>用户开启本地模型开关</strong><span>设置页 → AI_MODEL_LOCAL_enabled = true</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num wsd">2</div>
+      <div class="flow-body"><strong>设备检查</strong><span>ABI == arm64-v8a && RAM >= 4GB && 本地推理库已打包 (libllama_jni.so)</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num ws">3</div>
+      <div class="flow-body"><strong>LocalModelManager.downloadDefaultModel()</strong><span>检查存储空间 (需 1.1GB × 1.2) → 创建 .part 临时文件 → HTTP Range 断点续传</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num kit">4</div>
+      <div class="flow-body"><strong>多源下载（容错）</strong><span>优先 hf-mirror.com（国内镜像）→ 失败自动切到 huggingface.co</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num ws">5</div>
+      <div class="flow-body"><strong>下载完成验证</strong><span>SHA256 校验（可选）→ .part 重命名为最终文件 → 写入 SharedPreferences 路径</span></div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num kit">6</div>
+      <div class="flow-body"><strong>首次使用时 Load</strong><span>LocalLlamaBackend 首次 execute() 时 lazy-load：engine.loadModel(path, params)</span></div>
+    </div>
+  </div>
+
+  <h3>3. 推理执行流程（一次完整请求）</h3>
+  <div class="diagram-container">
+    <svg viewBox="0 0 1000 480" class="arch-svg">
+      <!-- Step 1 -->
+      <rect x="30" y="15" width="200" height="75" fill="#1a2332" stroke="#58a6ff" rx="6"/>
+      <text x="130" y="40" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">① AiChatCoordinator</text>
+      <text x="130" y="58" text-anchor="middle" fill="var(--muted)" font-size="10">构造 messages[] + taskType</text>
+      <text x="130" y="74" text-anchor="middle" fill="var(--muted)" font-size="10">business logic, context injection</text>
+
+      <line x1="230" y1="52" x2="280" y2="52" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow3)"/>
+
+      <!-- Step 2 -->
+      <rect x="285" y="15" width="200" height="75" fill="#1a1e2e" stroke="#a371f7" rx="6"/>
+      <text x="385" y="40" text-anchor="middle" fill="#a371f7" font-size="12" font-weight="600">② AiBackendRouter</text>
+      <text x="385" y="58" text-anchor="middle" fill="var(--muted)" font-size="10">resolve(taskType, mode, chars)</text>
+      <text x="385" y="74" text-anchor="middle" fill="var(--muted)" font-size="10">→ BACKEND_LOCAL / BACKEND_CLOUD</text>
+
+      <line x1="485" y1="52" x2="535" y2="52" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow3)"/>
+
+      <!-- Step 3 -->
+      <rect x="540" y="15" width="200" height="75" fill="#132a1a" stroke="#3fb950" rx="6"/>
+      <text x="640" y="40" text-anchor="middle" fill="#3fb950" font-size="12" font-weight="600">③ LocalLlamaBackend</text>
+      <text x="640" y="58" text-anchor="middle" fill="var(--muted)" font-size="10">execute(messages, callback)</text>
+      <text x="640" y="74" text-anchor="middle" fill="var(--muted)" font-size="10">lazy-load model if needed</text>
+
+      <line x1="740" y1="52" x2="790" y2="52" stroke="#8b949e" stroke-width="1.5" marker-end="url(#arrow3)"/>
+
+      <!-- Step 4 -->
+      <rect x="795" y="15" width="180" height="75" fill="#132a1a" stroke="#39c5cf" rx="6"/>
+      <text x="885" y="40" text-anchor="middle" fill="#39c5cf" font-size="12" font-weight="600">④ LocalInferenceEngine</text>
+      <text x="885" y="58" text-anchor="middle" fill="var(--muted)" font-size="10">单线程 generate()</text>
+      <text x="885" y="74" text-anchor="middle" fill="var(--muted)" font-size="10">executor.execute(...)</text>
+
+      <!-- Separator line -->
+      <line x1="30" y1="105" x2="970" y2="105" stroke="#30363d" stroke-width="1"/>
+      <text x="500" y="122" text-anchor="middle" fill="#f85149" font-size="11" font-weight="600">▼ JNI 调用链 ▼</text>
+
+      <!-- Step 5 prefetch -->
+      <rect x="30" y="135" width="940" height="55" fill="#1a2332" stroke="#58a6ff" rx="6"/>
+      <text x="500" y="158" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">⑤ nativeClearKvCache() → ⑥ LocalPromptBuilder.buildPrompt() → nativePrefillMessages(roles, contents)</text>
+      <text x="500" y="178" text-anchor="middle" fill="var(--muted)" font-size="10">构造 chat template 格式 prompt → tokenize 为 tokens[] → 分批 decode_prompt_tokens(max 128/batch) → n_past 推进</text>
+
+      <!-- Step 7 generate loop -->
+      <rect x="30" y="205" width="940" height="80" fill="#132a1a" stroke="#3fb950" stroke-width="2" rx="6"/>
+      <text x="500" y="232" text-anchor="middle" fill="#3fb950" font-size="13" font-weight="700">⑦ 自回归生成循环 (for i in 0..maxTokens)</text>
+      <text x="500" y="252" text-anchor="middle" fill="var(--muted)" font-size="11">nativeSampleToken() → llama_sampler_sample() → token_to_piece → onToken(txt) 流式回调</text>
+      <text x="500" y="270" text-anchor="middle" fill="var(--muted)" font-size="10">→ llama_decode(ctx, batch) 把新 token decode 进 KV Cache → n_past++ → EOS? → break</text>
+
+      <!-- Step output -->
+      <rect x="30" y="300" width="940" height="55" fill="#1a1e2e" stroke="#d2991d" rx="6"/>
+      <text x="500" y="323" text-anchor="middle" fill="#d2991d" font-size="12" font-weight="600">⑧ onComplete(fullText, ttftMs, tps) → callback.onDone(requestId, sanitized)</text>
+      <text x="500" y="343" text-anchor="middle" fill="var(--muted)" font-size="10">流式 token 拼接 fullText → sanitizePayload() → onDone 回调 → UI 更新</text>
+
+      <!-- Metrics box -->
+      <rect x="30" y="375" width="940" height="90" fill="#1a1e2e" stroke="#30363d" rx="6"/>
+      <text x="500" y="400" text-anchor="middle" fill="var(--accent)" font-size="12" font-weight="600">📊 性能指标 (日志输出)</text>
+      <text x="500" y="422" text-anchor="middle" fill="var(--muted)" font-size="10">• TTFT (Time-To-First-Token): Prefill 完成到第一个生成 token 的时间</text>
+      <text x="500" y="438" text-anchor="middle" fill="var(--muted)" font-size="10">• TPS (Tokens-Per-Second): 总生成 token 数 / (总耗时 - prefill 耗时)</text>
+      <text x="500" y="454" text-anchor="middle" fill="var(--muted)" font-size="10">• Native PSS: 推理前后 native 进程内存占用对比 (LocalMemoryProbe.samplePssBytes)</text>
+    </svg>
+  </div>
+
+  <h3>4. 云端 vs 本地路由决策</h3>
+  <div class="card">
+    <table>
+      <tr><th>taskType</th><th>路由结果</th><th>原因</th></tr>
+      <tr>
+        <td>image_generate, text_extract</td>
+        <td>☁️ 始终云端</td>
+        <td>本地 1.5B 模型无图像/OCR 能力</td>
+      </tr>
+      <tr>
+        <td>format_batch</td>
+        <td>☁️ 始终云端</td>
+        <td>需要准确格式化，不宜本地</td>
+      </tr>
+      <tr>
+        <td>chat, expand, polish, condense, rewrite, translate, summarise, etc.</td>
+        <td>📱 本地优先 (如可用)</td>
+        <td>纯文本任务，本地 1.5B 可胜任</td>
+      </tr>
+      <tr>
+        <td>doc_qa</td>
+        <td>☁️ 默认云端 (LOCAL_DOC_QA_ENABLED=false)</td>
+        <td>文档 QA 需长上下文，本地模型容量不足；开关可控制</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="info warn">
+    <strong>⚠️ 当前状态：</strong><br>
+    • 本地 doc_qa 默认 <strong>关闭</strong> (<code>LOCAL_DOC_QA_ENABLED = false</code>)，等效率实验验证后再开启<br>
+    • doc_qa 关闭时所有 doc_qa 请求回退云端 base 模型<br>
+    • 非 doc_qa 文本任务（chat/expand/polish/...）在本地模型就绪时 <strong>自动使用本地推理</strong>
+  </div>
+
+  <h3>5. 构建集成</h3>
+  <div class="card">
+    <h3>CMake 配置要点 (CMakeLists.txt L163-L184)</h3>
+    <table>
+      <tr><th>配置项</th><th>值</th><th>原因</th></tr>
+      <tr><td><code>GGML_CPU_ALL_VARIANTS</code></td><td>OFF</td><td>只编译 ARM 架构，减小库体积</td></tr>
+      <tr><td><code>GGML_CPU_KLEIDIAI</code></td><td>ON</td><td>启用 ARM KleidiAI 加速矩阵乘法</td></tr>
+      <tr><td><code>GGML_OPENMP</code></td><td><strong>OFF</strong></td><td>避免与 LO/kit 共享 libomp 导致 llama_decode 死锁</td></tr>
+      <tr><td><code>GGML_LLAMAFILE</code></td><td>OFF</td><td>不依赖 llamafile 运行时</td></tr>
+      <tr><td><code>BUILD_SHARED_LIBS</code></td><td>ON</td><td>生成 libllama.so 和 libggml.so</td></tr>
+      <tr><td><code>LLAMA_BUILD_TESTS/EXAMPLES/SERVER</code></td><td>OFF</td><td>只编译核心库，减小 APK 体积</td></tr>
+      <tr><td><strong>ABI 限制</strong></td><td>arm64-v8a only</td><td>llama.cpp 在模拟器/旧设备上不可用</td></tr>
+    </table>
+    <p style="color:var(--muted);margin-top:12px;">
+      产物：<code>libllama_jni.so</code>（自定义 JNI 桥）链接 <code>libllama.so</code>（llama.cpp 核心）和 <code>libggml.so</code>（张量计算）。
+    </p>
+  </div>
+
+  <h3>6. 关键设计决策</h3>
+  <div class="card">
+    <table>
+      <tr><th>决策</th><th>选择</th><th>原因</th></tr>
+      <tr>
+        <td>模型格式</td>
+        <td>GGUF Q4_K_M (4.5-bit)</td>
+        <td>质量与大小的最佳平衡点，1.5B 模型只需 1.1GB</td>
+      </tr>
+      <tr>
+        <td>推理线程</td>
+        <td>单线程 Executor</td>
+        <td>避免 JNI 并发冲突，简化全局状态管理 (g_model, g_ctx 全局变量)</td>
+      </tr>
+      <tr>
+        <td>模型加载</td>
+        <td>懒加载 (首次 execute 时)</td>
+        <td>不启动 App 就占用 1.6GB 内存</td>
+      </tr>
+      <tr>
+        <td>KV Cache 清理</td>
+        <td>每次请求前 clear</td>
+        <td>保证多轮对话之间状态隔离（multiTurn=false 时）</td>
+      </tr>
+      <tr>
+        <td>异常恢复</td>
+        <td>smoke_decode_test</td>
+        <td>模型加载后立即用 "hi" 做一次试推理，失败则回滚所有资源</td>
+      </tr>
+      <tr>
+        <td>心跳日志</td>
+        <td>每 5 秒输出进度</td>
+        <td>长推理时防止误判 ANR，辅助排障</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="info tip">
+    <strong>💡 为什么 Context Size 只有 4096？</strong><br>
+    Qwen2.5-1.5B 原生支持 32K 上下文，但移动端内存有限：
+    KV Cache 大小 ≈ n_layers × n_ctx × n_embd × 2 × 2 bytes (FP16)。4096 tokens 约需 500MB KV Cache，
+    加上模型 1.1GB，总计内存控制在 ~1.6GB，确保 4GB RAM 设备上稳定运行。
+    8GB+ 设备可扩展到 contextSize=4096, maxTokens=512。
+  </div>
+</section>
+</main>
+
+<script>
+function switchTab(id) {
+  document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelector(`nav button[onclick="switchTab('${id}')"]`).classList.add('active');
+}
+</script>
+
+</body>
+</html>
