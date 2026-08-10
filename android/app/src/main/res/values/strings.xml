@@ -132,6 +132,7 @@
     <string name="open">Open</string>
     <string name="share">Share</string>
     <string name="remove_from_list">Remove from the list</string>
+    <string name="remove_from_list_confirm_message">This only removes the record from the list. The document file is not deleted and can be reopened anytime.</string>
     <string name="share_via">Share via</string>
     <!-- Document browser filters -->
     <string name="filter_everything">Everything</string>

@@ -17,10 +17,12 @@
     <!-- Figma group-3466352 — new doc FAB -->
     <dimen name="home_fab_size">60dp</dimen>
     <dimen name="home_fab_icon_size">17dp</dimen>
-    <dimen name="home_fab_margin_end">35dp</dimen>
-    <dimen name="home_fab_margin_bottom">60dp</dimen>
+    <dimen name="home_fab_margin_end">54dp</dimen>
+    <dimen name="home_fab_margin_bottom">78dp</dimen>
     <dimen name="home_new_doc_menu_above_fab_gap">18dp</dimen>
-    <dimen name="home_fab_menu_panel_bottom_padding">138dp</dimen>
+    <dimen name="home_fab_menu_panel_bottom_padding">156dp</dimen>
+    <dimen name="home_recent_list_bottom_padding">140dp</dimen>
+    <dimen name="home_recent_actions_popup_screen_margin">8dp</dimen>
     <!-- Figma frame-3469172 — recent file actions popup -->
     <dimen name="home_recent_actions_popup_width">180dp</dimen>
     <dimen name="home_recent_actions_popup_height">124dp</dimen>
@@ -111,6 +113,7 @@
     <dimen name="drawer_model_text_gap">4dp</dimen>
     <dimen name="drawer_model_icon_text_gap">12dp</dimen>
     <dimen name="drawer_model_chevron_size">16dp</dimen>
+    <dimen name="drawer_ai_config_expand_chevron_size">20dp</dimen>
     <dimen name="drawer_model_row_icon_spacer">28dp</dimen>
     <dimen name="drawer_model_row_text_indent_gap">8dp</dimen>
     <dimen name="drawer_model_divider_margin_h">12dp</dimen>

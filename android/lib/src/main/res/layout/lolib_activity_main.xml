@@ -731,6 +731,16 @@
             </HorizontalScrollView>
         </LinearLayout>
 
+        <include
+            layout="@layout/lolib_mobile_phone_preview_overlay"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:elevation="24dp"
+            app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
+
     </androidx.constraintlayout.widget.ConstraintLayout>
 
     <LinearLayout
@@ -740,6 +750,11 @@
         android:layout_gravity="start"
         android:background="#F3F3F3"
         android:orientation="vertical">
+
+        <FrameLayout
+            android:id="@+id/doc_settings_drawer_profile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
 
         <ScrollView
             android:layout_width="match_parent"

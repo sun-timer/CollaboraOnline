@@ -61,6 +61,7 @@
     <string name="filter_everything">全部</string>
     <string name="share_via">共享方式</string>
     <string name="remove_from_list">从列表中删除</string>
+    <string name="remove_from_list_confirm_message">此操作仅从列表中移除记录，不会删除文档文件。文件仍然存在，您可以随时重新打开。</string>
     <string name="share">共享</string>
     <string name="open">打开</string>
     <string name="action_settings">设置</string>
