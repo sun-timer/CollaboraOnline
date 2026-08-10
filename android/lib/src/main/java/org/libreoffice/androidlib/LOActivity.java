@@ -774,6 +774,7 @@ public class LOActivity extends AppCompatActivity {
     private int bottomToolbarImeInsetPx = 0;
     private boolean isImeVisibleForToolbar = false;
     private BottomToolbarController bottomToolbarController;
+    private MobilePhonePreviewController mobilePhonePreviewController;
     private FunctionPanelController functionPanelController;
     private CalcFunctionPanelController calcFunctionPanelController;
     private ImpressFunctionPanelController impressFunctionPanelController;
@@ -1321,17 +1322,35 @@ public class LOActivity extends AppCompatActivity {
         }
         docDrawerLayout.setScrimColor(0x99000000);
 
+        FrameLayout profileContainer = findViewById(R.id.doc_settings_drawer_profile);
         FrameLayout drawerContent = findViewById(R.id.doc_settings_drawer_content);
-        if (drawerContent != null) {
+        int profileLayoutId = getResources().getIdentifier("navigation_drawer_profile", "layout", getPackageName());
+        int aiConfigLayoutId = getResources().getIdentifier("navigation_drawer_ai_config", "layout", getPackageName());
+        if (profileLayoutId != 0 && profileContainer != null) {
+            View profile = LayoutInflater.from(this).inflate(profileLayoutId, profileContainer, false);
+            profileContainer.removeAllViews();
+            profileContainer.addView(profile);
+        }
+        if (aiConfigLayoutId != 0 && drawerContent != null) {
+            View aiConfig = LayoutInflater.from(this).inflate(aiConfigLayoutId, drawerContent, false);
+            drawerContent.removeAllViews();
+            drawerContent.addView(aiConfig);
+            docDrawerHeaderView = aiConfig;
+        } else if (drawerContent != null) {
             int headerLayoutId = getResources().getIdentifier("navigation_header", "layout", getPackageName());
             if (headerLayoutId != 0) {
                 View header = LayoutInflater.from(this).inflate(headerLayoutId, drawerContent, false);
                 drawerContent.removeAllViews();
                 drawerContent.addView(header);
                 docDrawerHeaderView = header;
-                bindDocumentSettingsHeaderClicks(header);
-                refreshDocumentSettingsDrawer();
             }
+        }
+
+        View drawerRoot = findViewById(R.id.doc_settings_drawer);
+        if (drawerRoot != null) {
+            bindDocumentSettingsHeaderClicks(drawerRoot);
+            setupDocAiConfigExpandToggle(drawerRoot);
+            refreshDocumentSettingsDrawer();
         }
 
         View clearCache = findViewById(R.id.doc_settings_clear_cache);
@@ -1355,12 +1374,42 @@ public class LOActivity extends AppCompatActivity {
 
     private void bindDocumentSettingsHeaderClicks(View headerView) {
         bindClickByName(headerView, "profileEntry", v -> openProfileSettingsActivity());
-        bindClickByName(headerView, "aiConfigCard", v -> openProfileSettingsActivity());
-        bindClickByName(headerView, "aiConfigIcon", v -> openProfileSettingsActivity());
+        bindClickByName(headerView, "profileEditButton", v -> openProfileSettingsActivity());
         bindModelEntry(headerView, "modelItemBase", "modelBaseArrow", MODEL_TYPE_BASE);
         bindModelEntry(headerView, "modelItemThink", "modelThinkArrow", MODEL_TYPE_THINK);
         bindModelEntry(headerView, "modelItemImage", "modelImageArrow", MODEL_TYPE_IMAGE);
         bindModelEntry(headerView, "modelItemVision", "modelVisionArrow", MODEL_TYPE_VISION);
+    }
+
+    private boolean docAiConfigExpanded = true;
+
+    private void setupDocAiConfigExpandToggle(View headerView) {
+        ImageView toggle = asImageView(findViewByName(headerView, "aiConfigExpandToggle"));
+        View headerRow = findViewByName(headerView, "aiConfigHeaderRow");
+        View body = findViewByName(headerView, "aiConfigExpandableBody");
+        if (toggle == null || body == null) {
+            return;
+        }
+        updateDocAiConfigExpandedState(toggle, body, docAiConfigExpanded);
+        View.OnClickListener expandListener = v -> {
+            docAiConfigExpanded = !docAiConfigExpanded;
+            updateDocAiConfigExpandedState(toggle, body, docAiConfigExpanded);
+        };
+        toggle.setOnClickListener(expandListener);
+        if (headerRow != null) {
+            headerRow.setOnClickListener(expandListener);
+        }
+    }
+
+    private void updateDocAiConfigExpandedState(ImageView toggle, View body, boolean expanded) {
+        body.setVisibility(expanded ? View.VISIBLE : View.GONE);
+        int chevronUpId = getResources().getIdentifier("ic_ai_config_chevron_up", "drawable", getPackageName());
+        int chevronDownId = getResources().getIdentifier("ic_ai_config_chevron_down", "drawable", getPackageName());
+        if (expanded && chevronUpId != 0) {
+            toggle.setImageResource(chevronUpId);
+        } else if (!expanded && chevronDownId != 0) {
+            toggle.setImageResource(chevronDownId);
+        }
     }
 
     private void bindModelEntry(View headerView, String rowIdName, String arrowIdName, int modelType) {
@@ -1397,16 +1446,17 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void refreshDocumentSettingsDrawer() {
-        if (docDrawerHeaderView == null) {
+        View drawerRoot = findViewById(R.id.doc_settings_drawer);
+        if (drawerRoot == null) {
             return;
         }
         SharedPreferences prefs = getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
-        TextView profileName = asTextView(findViewByName(docDrawerHeaderView, "profileNameText"));
-        ImageView profileAvatar = asImageView(findViewByName(docDrawerHeaderView, "profileAvatar"));
-        TextView baseValue = asTextView(findViewByName(docDrawerHeaderView, "modelBaseValue"));
-        TextView thinkValue = asTextView(findViewByName(docDrawerHeaderView, "modelThinkValue"));
-        TextView imageValue = asTextView(findViewByName(docDrawerHeaderView, "modelImageValue"));
-        TextView visionValue = asTextView(findViewByName(docDrawerHeaderView, "modelVisionValue"));
+        TextView profileName = asTextView(findViewByName(drawerRoot, "profileNameText"));
+        ImageView profileAvatar = asImageView(findViewByName(drawerRoot, "profileAvatar"));
+        TextView baseValue = asTextView(findViewByName(drawerRoot, "modelBaseValue"));
+        TextView thinkValue = asTextView(findViewByName(drawerRoot, "modelThinkValue"));
+        TextView imageValue = asTextView(findViewByName(drawerRoot, "modelImageValue"));
+        TextView visionValue = asTextView(findViewByName(drawerRoot, "modelVisionValue"));
 
         String defaultNickname = getStringByName("ai_profile_name", "Nickname");
         String nickname = prefs.getString(KEY_PROFILE_NAME, defaultNickname);
@@ -1755,9 +1805,47 @@ public class LOActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
+        if (mobilePhonePreviewController != null && mobilePhonePreviewController.isShowing()) {
+            mobilePhonePreviewController.hide();
+            return;
+        }
         Log.i(TAG, "onBackPressed.. isFinishing=" + isFinishing() + " aiSheetShowing="
                 + (aiOperationSheet != null && aiOperationSheet.isShowing()));
         super.onBackPressed();
+    }
+
+    @Override
+    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        ensureBottomToolbarController().onConfigurationChanged();
+        notifyWebViewOrientationChanged();
+        if (mobilePhonePreviewController != null && mobilePhonePreviewController.isShowing()) {
+            mobilePhonePreviewController.relayout();
+        }
+    }
+
+    /** 横竖屏切换后重置 Web 侧编辑 FAB 位置并刷新 map 尺寸。 */
+    private void notifyWebViewOrientationChanged() {
+        if (mWebView == null) {
+            return;
+        }
+        final String script = "(function(){try{"
+                + "var btn=document.getElementById('mobile-edit-button');"
+                + "if(btn&&document.body.classList.contains('android-native-bottom-toolbar')){"
+                + "btn.style.left='';btn.style.top='';btn.style.right='';btn.style.bottom='';"
+                + "btn.style.transform='';"
+                + "}"
+                + "if(window.app&&app.map&&typeof app.map.invalidateSize==='function'){"
+                + "app.map.invalidateSize(false);"
+                + "}"
+                + "if(window.app&&app.map&&app.map._docLayer"
+                + "&&typeof app.map._docLayer.onResizeImpress==='function'){"
+                + "app.map._docLayer.onResizeImpress();"
+                + "}"
+                + "window.dispatchEvent(new Event('resize'));"
+                + "return 'ok';"
+                + "}catch(e){return String(e);}})();";
+        mWebView.evaluateJavascript(script, null);
     }
 
     @Override
@@ -8895,6 +8983,20 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public int dpToPx(int dp) {
+                    return LOActivity.this.dpToPx(dp);
+                }
+
+                @Override
+                public int getTopToolbarHeightPx() {
+                    int height = ensureTopToolbarController().getReservedTopHeightPx();
+                    if (height <= 0) {
+                        height = dpToPx(56);
+                    }
+                    return height;
+                }
+
+                @Override
                 public void runFindBridge(String js) {
                     LOActivity.this.runFindBridge(js);
                 }
@@ -9105,6 +9207,11 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public void toggleMobilePhonePreview() {
+                    ensureMobilePhonePreviewController().toggle();
+                }
+
+                @Override
                 public void switchToEditMode() {
                     LOActivity.this.switchToEditMode();
                 }
@@ -9155,6 +9262,51 @@ public class LOActivity extends AppCompatActivity {
             });
         }
         return bottomToolbarController;
+    }
+
+    private MobilePhonePreviewController ensureMobilePhonePreviewController() {
+        if (mobilePhonePreviewController == null) {
+            mobilePhonePreviewController = new MobilePhonePreviewController(new MobilePhonePreviewController.Host() {
+                @Override
+                public View findViewById(int id) {
+                    return LOActivity.this.findViewById(id);
+                }
+
+                @Override
+                public android.webkit.WebView getWebView() {
+                    return LOActivity.this.mWebView;
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return LOActivity.this.dpToPx(dp);
+                }
+
+                @Override
+                public void runOnUiThread(Runnable runnable) {
+                    LOActivity.this.runOnUiThread(runnable);
+                }
+
+                @Override
+                public boolean isEditModeActive() {
+                    return LOActivity.this.mIsEditModeActive;
+                }
+
+                @Override
+                public void switchToViewingMode() {
+                    LOActivity.this.switchToViewingMode();
+                }
+
+                @Override
+                public void setBottomToolbarVisible(boolean visible) {
+                    View toolbar = LOActivity.this.findViewById(R.id.doc_bottom_toolbar);
+                    if (toolbar != null) {
+                        toolbar.setVisibility(visible ? View.VISIBLE : View.GONE);
+                    }
+                }
+            });
+        }
+        return mobilePhonePreviewController;
     }
 
     private void updateEditModeState(boolean isEditMode, String reason) {
@@ -9417,7 +9569,7 @@ public class LOActivity extends AppCompatActivity {
         if (printAction != null) printAction.setOnClickListener(v -> runFunctionAction(this::initiatePrint));
         if (findAction != null) findAction.setOnClickListener(v -> runFunctionAction(() ->
                 executeUnoCommand(".uno:SearchDialog?InitialFocusReplace:bool=true")));
-        // 字数统计：仅 Writer 文档显示（表格/演示文稿无此功能），点击打开字数统计对话框
+        // 字数统计：仅 Writer 文档显示；打开 core 对话框并由 Native WordCountDialogHandler 展示原生底部弹窗
         if (wordCountAction != null) {
             wordCountAction.setVisibility(
                     (mIsCalcDocument || mIsImpressDocument) ? View.GONE : View.VISIBLE);
@@ -9436,21 +9588,18 @@ public class LOActivity extends AppCompatActivity {
         if (functionPanelDialog == null) {
             return;
         }
+        AiDialogHelper.applyNoDimScrim(functionPanelDialog);
         FrameLayout bottomSheet = functionPanelDialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
         if (bottomSheet == null) {
             return;
         }
         bottomSheet.setBackgroundResource(R.drawable.lolib_bg_function_sheet_panel);
-        BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
-        behavior.setFitToContents(true);
-        behavior.setSkipCollapsed(true);
-        behavior.setHideable(false);
-        behavior.setDraggable(false);
-        bottomSheet.post(() -> {
-            behavior.setPeekHeight(bottomSheet.getHeight(), false);
-            behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
-            Log.i(TAG, "function_sheet_force_expanded height=" + bottomSheet.getHeight());
-        });
+        BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
+        options.draggable = false;
+        options.hideable = false;
+        options.logTag = TAG;
+        BottomSheetAnchorHelper.expandRatio(
+                functionPanelDialog, BottomSheetAnchorHelper.FUNCTION_PANEL_HEIGHT_RATIO, options);
     }
 
     private void runFunctionAction(Runnable action) {
@@ -10098,6 +10247,13 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         String normalizedCommand = command.trim();
+        // .uno:SearchDialog 在 Android/LOK 无头模式打开 VCL 对话框会触发核心 SalAbort 闪退，
+        // 一律改走原生查找/替换面板（同顶栏搜索，ExecuteSearch 无对话框、headless 安全）。
+        if (normalizedCommand.startsWith(".uno:SearchDialog")) {
+            Log.i(TAG, "search_dialog_redirect_to_native_find_sheet command=" + normalizedCommand);
+            showFindReplaceSheet();
+            return;
+        }
         Log.i(TAG, "dispatch_uno_from_native_panel command=" + normalizedCommand);
         requestWebViewFocusForPanelAction("uno_dispatch");
         postMobileMessage("uno " + normalizedCommand);
