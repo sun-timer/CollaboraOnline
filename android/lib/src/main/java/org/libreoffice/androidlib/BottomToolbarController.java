@@ -1,6 +1,7 @@
 package org.libreoffice.androidlib;
 
 import android.app.AlertDialog;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Looper;
@@ -8,6 +9,7 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -39,9 +41,9 @@ public class BottomToolbarController {
             R.id.toolbar_item_fill_cell,
             R.id.toolbar_item_merge_cell
     };
-    private static final int[] ALL_TOOLBAR_ITEM_IDS = new int[] {
-            R.id.toolbar_item_function,
+    private static final int[] TOOLBAR_ITEM_DISPLAY_ORDER = new int[] {
             R.id.toolbar_item_mobile_preview,
+            R.id.toolbar_item_function,
             R.id.toolbar_item_ai_assistant,
             R.id.toolbar_item_ai_feature,
             R.id.toolbar_item_keyboard,
@@ -51,7 +53,12 @@ public class BottomToolbarController {
             R.id.toolbar_item_fill_cell,
             R.id.toolbar_item_merge_cell
     };
+    private static final int[] ALL_TOOLBAR_ITEM_IDS = TOOLBAR_ITEM_DISPLAY_ORDER;
     private static final int TOOLBAR_DEFAULT_HEIGHT_DP = 82;
+    private static final int TOOLBAR_LANDSCAPE_HEIGHT_DP = 82;
+    private static final int TOOLBAR_LANDSCAPE_ITEM_GAP_DP = 80;
+    private static final int TOOLBAR_LANDSCAPE_ITEM_DEFAULT_WIDTH_DP = 108;
+    private static final int TOOLBAR_LANDSCAPE_EDGE_PADDING_DP = 12;
     private static final int TOOLBAR_COMPACT_HEIGHT_DP = 48;
     private static final int TOOLBAR_IME_EXTRA_GAP_DP = 4;
     private static final int TOOLBAR_ITEM_COMPACT_WIDTH_DP = 74;
@@ -115,6 +122,8 @@ public class BottomToolbarController {
 
         void switchToViewingMode();
 
+        void toggleMobilePhonePreview();
+
         void switchToEditMode();
 
         void showNativeAiPanel();
@@ -172,9 +181,7 @@ public class BottomToolbarController {
         });
         bindToolbarClick(R.id.toolbar_item_mobile_preview, v -> {
             hideQuickActionPanel();
-            if (isEditModeActive) {
-                host.switchToViewingMode();
-            }
+            host.toggleMobilePhonePreview();
         });
         bindToolbarClick(R.id.toolbar_item_ai_assistant, v -> {
             hideQuickActionPanel();
@@ -206,6 +213,45 @@ public class BottomToolbarController {
 
         applyImeState(isImeVisibleForToolbar, bottomToolbarImeInsetPx, navigationBarInsetPx);
         updateEditModeState(isEditModeActive, "toolbar_setup");
+        if (bottomToolbarItemsRow != null) {
+            bottomToolbarItemsRow.post(() -> applyBottomToolbarItemsAlignment(isEditModeActive));
+        }
+    }
+
+    /** 横竖屏切换：清空残留 layout 后按当前方向重建（不继承另一方向的间距/宽度）。 */
+    public void onConfigurationChanged() {
+        Runnable task = () -> {
+            resetAllToolbarItemLayoutState();
+            applyBottomToolbarMode(isEditModeActive);
+            Log.i(TAG, "bottom_toolbar_orientation_change landscape=" + isLandscape()
+                    + " edit=" + isEditModeActive);
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            task.run();
+        } else {
+            host.runOnUiThread(task);
+        }
+    }
+
+    private void resetAllToolbarItemLayoutState() {
+        if (bottomToolbarItemsRow != null) {
+            bottomToolbarItemsRow.setPadding(0, 0, 0, 0);
+        }
+        resetLandscapeToolbarItemMargins();
+        for (int itemId : TOOLBAR_ITEM_DISPLAY_ORDER) {
+            View item = host.findViewById(itemId);
+            if (item == null) {
+                continue;
+            }
+            ViewGroup.LayoutParams rawParams = item.getLayoutParams();
+            if (!(rawParams instanceof LinearLayout.LayoutParams)) {
+                continue;
+            }
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) rawParams;
+            lp.weight = 0f;
+            lp.setMarginStart(0);
+            item.setLayoutParams(lp);
+        }
     }
 
     public void updateDocumentType(boolean isCalc, boolean isImpress) {
@@ -312,6 +358,10 @@ public class BottomToolbarController {
         if (bottomToolbarItemsRow == null) {
             return;
         }
+        if (isLandscape()) {
+            applyLandscapeToolbarLayout(isEditMode);
+            return;
+        }
         ViewGroup.LayoutParams params = bottomToolbarItemsRow.getLayoutParams();
         if (params == null) {
             return;
@@ -323,10 +373,224 @@ public class BottomToolbarController {
                 : android.view.Gravity.CENTER_VERTICAL);
         bottomToolbarItemsRow.setPadding(
                 isEditMode ? host.dpToPx(10) : 0,
-                bottomToolbarItemsRow.getPaddingTop(),
+                0,
                 isEditMode ? host.dpToPx(10) : 0,
-                bottomToolbarItemsRow.getPaddingBottom());
+                0);
         applyPreviewToolbarItemWidths(!isEditMode);
+        restorePortraitToolbarItemSpacing();
+        updatePortraitToolbarHeight();
+    }
+
+    private void applyLandscapeToolbarLayout(boolean isEditMode) {
+        if (bottomToolbarItemsRow == null) {
+            return;
+        }
+        resetLandscapeToolbarItemMargins();
+        if (!isEditMode) {
+            applyLandscapePreviewLayout();
+            return;
+        }
+        applyLandscapeEditLayout();
+    }
+
+    /** 清除所有按钮的横屏间距，避免 GONE 项残留 edit 布局参数。 */
+    private void resetLandscapeToolbarItemMargins() {
+        for (int itemId : TOOLBAR_ITEM_DISPLAY_ORDER) {
+            View item = host.findViewById(itemId);
+            if (item == null) {
+                continue;
+            }
+            ViewGroup.LayoutParams rawParams = item.getLayoutParams();
+            if (!(rawParams instanceof LinearLayout.LayoutParams)) {
+                continue;
+            }
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) rawParams;
+            lp.setMarginStart(0);
+            lp.weight = 0f;
+            item.setLayoutParams(lp);
+        }
+    }
+
+    /** 横屏预览：三等分均布（与竖屏预览一致）。 */
+    private void applyLandscapePreviewLayout() {
+        ViewGroup.LayoutParams params = bottomToolbarItemsRow.getLayoutParams();
+        if (params != null) {
+            params.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            bottomToolbarItemsRow.setLayoutParams(params);
+        }
+        bottomToolbarItemsRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        bottomToolbarItemsRow.setPadding(0, host.dpToPx(6), 0, host.dpToPx(6));
+
+        for (int itemId : PREVIEW_MODE_TOOLBAR_ITEM_IDS) {
+            View item = host.findViewById(itemId);
+            if (item == null) {
+                continue;
+            }
+            ViewGroup.LayoutParams rawParams = item.getLayoutParams();
+            if (!(rawParams instanceof LinearLayout.LayoutParams)) {
+                continue;
+            }
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) rawParams;
+            lp.width = 0;
+            lp.weight = 1f;
+            lp.setMarginStart(0);
+            item.setLayoutParams(lp);
+        }
+
+        for (int itemId : TOOLBAR_ITEM_DISPLAY_ORDER) {
+            if (isPreviewToolbarItem(itemId)) {
+                continue;
+            }
+            View item = host.findViewById(itemId);
+            if (item == null) {
+                continue;
+            }
+            ViewGroup.LayoutParams rawParams = item.getLayoutParams();
+            if (!(rawParams instanceof LinearLayout.LayoutParams)) {
+                continue;
+            }
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) rawParams;
+            lp.width = getLandscapeToolbarItemWidthPx(itemId);
+            lp.weight = 0f;
+            item.setLayoutParams(lp);
+        }
+
+        updateLandscapeToolbarHeight();
+    }
+
+    /** 横屏编辑：固定间距 + 居中（Figma 快捷功能栏）。 */
+    private void applyLandscapeEditLayout() {
+        ViewGroup.LayoutParams params = bottomToolbarItemsRow.getLayoutParams();
+        if (params != null) {
+            params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+            bottomToolbarItemsRow.setLayoutParams(params);
+        }
+        bottomToolbarItemsRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        bottomToolbarItemsRow.setPadding(0, host.dpToPx(6), 0, host.dpToPx(6));
+
+        int gapPx = host.dpToPx(TOOLBAR_LANDSCAPE_ITEM_GAP_DP);
+        boolean firstVisible = true;
+        for (int itemId : TOOLBAR_ITEM_DISPLAY_ORDER) {
+            View item = host.findViewById(itemId);
+            if (item == null || item.getVisibility() != View.VISIBLE) {
+                continue;
+            }
+            ViewGroup.LayoutParams rawParams = item.getLayoutParams();
+            if (!(rawParams instanceof LinearLayout.LayoutParams)) {
+                continue;
+            }
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) rawParams;
+            lp.width = getLandscapeToolbarItemWidthPx(itemId);
+            lp.weight = 0f;
+            lp.setMarginStart(firstVisible ? 0 : gapPx);
+            item.setLayoutParams(lp);
+            configureLandscapeToolbarItemLabel(itemId);
+            firstVisible = false;
+        }
+
+        updateLandscapeToolbarHeight();
+        scheduleLandscapeToolbarCentering();
+    }
+
+    private void scheduleLandscapeToolbarCentering() {
+        if (bottomToolbarItemsRow == null) {
+            return;
+        }
+        bottomToolbarItemsRow.post(this::centerToolbarItemsRowIfNeeded);
+        ViewTreeObserver observer = bottomToolbarItemsRow.getViewTreeObserver();
+        observer.addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                ViewTreeObserver current = bottomToolbarItemsRow.getViewTreeObserver();
+                if (current.isAlive()) {
+                    current.removeOnGlobalLayoutListener(this);
+                }
+                centerToolbarItemsRowIfNeeded();
+            }
+        });
+    }
+
+    private static boolean isPreviewToolbarItem(int itemId) {
+        for (int previewId : PREVIEW_MODE_TOOLBAR_ITEM_IDS) {
+            if (previewId == itemId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void restorePortraitToolbarItemSpacing() {
+        for (int itemId : TOOLBAR_ITEM_DISPLAY_ORDER) {
+            View item = host.findViewById(itemId);
+            if (item == null) {
+                continue;
+            }
+            ViewGroup.LayoutParams rawParams = item.getLayoutParams();
+            if (!(rawParams instanceof LinearLayout.LayoutParams)) {
+                continue;
+            }
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) rawParams;
+            lp.setMarginStart(0);
+            item.setLayoutParams(lp);
+        }
+    }
+
+    private void centerToolbarItemsRowIfNeeded() {
+        if (!isLandscape() || bottomToolbarItemsRow == null) {
+            return;
+        }
+        View parent = bottomToolbarItemsRow.getParent() instanceof View
+                ? (View) bottomToolbarItemsRow.getParent() : null;
+        if (parent == null) {
+            return;
+        }
+        int parentWidth = parent.getWidth();
+        int contentWidth = bottomToolbarItemsRow.getWidth();
+        if (parentWidth <= 0 || contentWidth <= 0) {
+            return;
+        }
+        int edgePad = host.dpToPx(TOOLBAR_LANDSCAPE_EDGE_PADDING_DP);
+        int horizontalPad = contentWidth + edgePad * 2 <= parentWidth
+                ? Math.max(edgePad, (parentWidth - contentWidth) / 2)
+                : edgePad;
+        bottomToolbarItemsRow.setPadding(horizontalPad, host.dpToPx(6), horizontalPad, host.dpToPx(6));
+    }
+
+    private void updateLandscapeToolbarHeight() {
+        if (bottomToolbarView == null || bottomToolbarCompactMode) {
+            return;
+        }
+        ViewGroup.LayoutParams toolbarLp = bottomToolbarView.getLayoutParams();
+        if (toolbarLp == null) {
+            return;
+        }
+        int targetHeight = host.dpToPx(TOOLBAR_LANDSCAPE_HEIGHT_DP);
+        if (toolbarLp.height != targetHeight) {
+            toolbarLp.height = targetHeight;
+            bottomToolbarView.setLayoutParams(toolbarLp);
+        }
+    }
+
+    private void updatePortraitToolbarHeight() {
+        if (bottomToolbarView == null || bottomToolbarCompactMode) {
+            return;
+        }
+        ViewGroup.LayoutParams toolbarLp = bottomToolbarView.getLayoutParams();
+        if (toolbarLp == null) {
+            return;
+        }
+        int targetHeight = bottomToolbarBaseHeightPx > 0
+                ? bottomToolbarBaseHeightPx
+                : host.dpToPx(TOOLBAR_DEFAULT_HEIGHT_DP);
+        if (toolbarLp.height != targetHeight) {
+            toolbarLp.height = targetHeight;
+            bottomToolbarView.setLayoutParams(toolbarLp);
+        }
+    }
+
+    private boolean isLandscape() {
+        return host.getContext().getResources().getConfiguration().orientation
+                == Configuration.ORIENTATION_LANDSCAPE;
     }
 
     private void applyPreviewToolbarItemWidths(boolean distributeEvenly) {
@@ -794,10 +1058,13 @@ public class BottomToolbarController {
         for (int itemId : ALL_TOOLBAR_ITEM_IDS) {
             int targetWidth = compactMode
                     ? host.dpToPx(TOOLBAR_ITEM_COMPACT_WIDTH_DP)
-                    : toolbarBaseItemWidths.getOrDefault(itemId, host.dpToPx(92));
+                    : resolveToolbarItemWidthPx(itemId);
             setToolbarItemWidth(itemId, targetWidth);
             setToolbarItemLabelVisibility(itemId, !compactMode);
             setToolbarItemVerticalPadding(itemId, compactMode ? 0 : host.dpToPx(4));
+        }
+        if (!compactMode) {
+            applyBottomToolbarItemsAlignment(isEditModeActive);
         }
     }
 
@@ -829,6 +1096,42 @@ public class BottomToolbarController {
                 toolbarBaseItemWidths.put(itemId, lp.width);
             }
         }
+    }
+
+    private int getLandscapeToolbarItemWidthPx(int itemId) {
+        Integer cached = toolbarBaseItemWidths.get(itemId);
+        if (cached != null && cached > 0) {
+            return cached;
+        }
+        return host.dpToPx(TOOLBAR_LANDSCAPE_ITEM_DEFAULT_WIDTH_DP);
+    }
+
+    /** 仅横屏：标签占满按钮宽度，避免长文案被裁切。 */
+    private void configureLandscapeToolbarItemLabel(int itemId) {
+        View item = host.findViewById(itemId);
+        if (!(item instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) item;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (!(child instanceof TextView)) {
+                continue;
+            }
+            TextView label = (TextView) child;
+            ViewGroup.LayoutParams lp = label.getLayoutParams();
+            if (lp != null) {
+                lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+                label.setLayoutParams(lp);
+            }
+            label.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+            label.setMaxLines(1);
+            label.setEllipsize(null);
+        }
+    }
+
+    private int resolveToolbarItemWidthPx(int itemId) {
+        return toolbarBaseItemWidths.getOrDefault(itemId, host.dpToPx(92));
     }
 
     private void setToolbarItemWidth(int itemId, int targetWidthPx) {
