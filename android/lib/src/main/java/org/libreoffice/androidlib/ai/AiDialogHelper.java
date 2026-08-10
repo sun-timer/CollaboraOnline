@@ -5,6 +5,8 @@ import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.util.DisplayMetrics;
+import android.view.Window;
+import android.view.WindowManager;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 /**
@@ -101,6 +103,23 @@ public final class AiDialogHelper {
         }
         dialog.setCancelable(false);
         dialog.setCanceledOnTouchOutside(false);
+    }
+
+    /** BottomSheet：去掉窗口遮罩（功能面板等需保持文档可见）。 */
+    public static void applyNoDimScrim(BottomSheetDialog dialog) {
+        if (dialog == null || dialog.getWindow() == null) {
+            return;
+        }
+        Window window = dialog.getWindow();
+        WindowManager.LayoutParams params = window.getAttributes();
+        params.dimAmount = 0f;
+        window.setAttributes(params);
+        window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        android.view.View touchOutside = dialog.findViewById(
+                com.google.android.material.R.id.touch_outside);
+        if (touchOutside != null) {
+            touchOutside.setBackgroundColor(Color.TRANSPARENT);
+        }
     }
 
     /** 透明圆角背景，配合 lolib_bg_dialog_outline 根布局。 */
