@@ -613,6 +613,12 @@ window.L.Control.MobileWizardWindow = window.L.Control.extend({
 			}
 
 			this._applySpecialClasses();
+			if (window.ThisIsTheAndroidApp && isPopup) {
+				var popupContent = document.getElementById('mobile-wizard-content');
+				if (popupContent) {
+					popupContent.scrollTop = 0;
+				}
+			}
 			this._inBuilding = false;
 		}
 	},

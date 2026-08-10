@@ -28,10 +28,21 @@ interface NativeDialogPayload {
 }
 
 /** Dialog types handled by a dedicated native layout on Android. */
-const NATIVE_SPECIFIC_DIALOG_IDS = new Set<string>(['DeleteContentsDialog', 'SpellingDialog', 'ValidationDialog', 'MacroSelectorDialog']);
+const NATIVE_SPECIFIC_DIALOG_IDS = new Set<string>([
+	'DeleteContentsDialog',
+	'SpellingDialog',
+	'WordCountDialog',
+	'ValidationDialog',
+	'MacroSelectorDialog',
+]);
 
 /** Dialogs that receive jsdialog update messages on the native side. */
-const NATIVE_UPDATE_DIALOG_IDS = new Set<string>(['SpellingDialog', 'ValidationDialog', 'MacroSelectorDialog']);
+const NATIVE_UPDATE_DIALOG_IDS = new Set<string>([
+	'SpellingDialog',
+	'WordCountDialog',
+	'ValidationDialog',
+	'MacroSelectorDialog',
+]);
 
 class AndroidNativeDialogRouter {
 	private activeWindowIds = new Set<number>();

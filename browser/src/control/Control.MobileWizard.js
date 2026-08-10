@@ -157,6 +157,13 @@ window.L.Control.MobileWizard = window.L.Control.extend({
 
 	_onResize: function() {
 		window.L.DomUtil.updateElementsOrientation(['mobile-wizard', 'mobile-wizard-content']);
+		if (window.ThisIsTheAndroidApp) {
+			var wizard = document.getElementById('mobile-wizard');
+			var content = document.getElementById('mobile-wizard-content');
+			if (wizard && wizard.classList.contains('popup') && content) {
+				content.scrollTop = 0;
+			}
+		}
 	},
 
 	selectedTab: function(tabText) {

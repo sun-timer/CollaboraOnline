@@ -42,6 +42,7 @@ public final class NativeJSDialogController {
     private final LOActivity host;
     private final Map<String, DialogHandler> dialogHandlers = new HashMap<>();
     private final SpellingDialogHandler spellingDialogHandler;
+    private final WordCountDialogHandler wordCountDialogHandler;
     private final SimpleConfirmDialogHandler confirmHandler = new SimpleConfirmDialogHandler();
     private final MacroSelectorDialogHandler macroSelectorDialogHandler;
     private AlertDialog activeDialog;
@@ -51,6 +52,7 @@ public final class NativeJSDialogController {
     public NativeJSDialogController(LOActivity host) {
         this.host = host;
         spellingDialogHandler = new SpellingDialogHandler(this, host);
+        wordCountDialogHandler = new WordCountDialogHandler(this, host);
         macroSelectorDialogHandler = new MacroSelectorDialogHandler();
         registerDialogHandlers();
     }
@@ -58,6 +60,7 @@ public final class NativeJSDialogController {
     private void registerDialogHandlers() {
         dialogHandlers.put("DeleteContentsDialog", new DeleteContentsDialogHandler());
         dialogHandlers.put("SpellingDialog", spellingDialogHandler);
+        dialogHandlers.put("WordCountDialog", wordCountDialogHandler);
         dialogHandlers.put("ValidationDialog", new ValidationDialogHandler());
         dialogHandlers.put("MacroSelectorDialog", macroSelectorDialogHandler);
     }
@@ -99,6 +102,9 @@ public final class NativeJSDialogController {
     private void dismissIfWindow(int windowId) {
         if (windowId == -1 || windowId == activeWindowId) {
             dismissActive();
+        }
+        if (wordCountDialogHandler.isActive()) {
+            wordCountDialogHandler.dismiss();
         }
     }
 
