@@ -31,13 +31,21 @@ class TextSelectionSection extends CanvasSectionObject {
 	private mode: number;
 	private part: number;
 	public color: string;
+	public strokeColor: string;
 	private polygons: Array<Array<cool.SimplePoint>> = [[]];
 
-	constructor(name: string, mode: number, part: number, color: string) {
+	constructor(
+		name: string,
+		mode: number,
+		part: number,
+		color: string,
+		strokeColor: string = color,
+	) {
 		super(name);
 		this.part = part;
 		this.mode = mode;
 		this.color = color;
+		this.strokeColor = strokeColor;
 	}
 
 	public setSelectionInfo(
@@ -106,7 +114,21 @@ class TextSelectionSection extends CanvasSectionObject {
 				this.context.lineCap = 'butt';
 				this.context.lineWidth = Math.max(2, 2 * app.dpiScale);
 				this.context.stroke();
+			} else if (app.map._docLayer._docType === 'text') {
+				// Writer design spec (AI Office 2026-08): translucent fill (#0081EA @ ~27%)
+				// with a solid outline (#0078D7 @ 3px).
+				this.context.fillStyle = this.color;
+				this.context.globalAlpha = 0.27;
+				this.context.fill();
+
+				this.context.globalAlpha = 1.0;
+				this.context.strokeStyle = this.strokeColor;
+				this.context.lineJoin = 'miter';
+				this.context.lineCap = 'butt';
+				this.context.lineWidth = Math.max(3, 3 * app.dpiScale);
+				this.context.stroke();
 			} else {
+				// Impress: keep the legacy single-color translucent fill + stroke.
 				this.context.globalAlpha = 0.25;
 				this.context.strokeStyle = this.color;
 				this.context.fillStyle = this.color;

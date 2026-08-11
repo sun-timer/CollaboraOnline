@@ -477,6 +477,128 @@ class CanvasSectionContainer {
 	 * Android native Calc tap at WebView client coordinates.
 	 * Uses canvas.getBoundingClientRect() + MouseControl.refreshPosition (same as preview).
 	 */
+	/**
+	 * Android 原生点击/长按落在行号或列标区域时，走行/列头菜单（COWebView 会吞掉 Web 长按）。
+	 */
+	public dispatchCalcHeaderMenuAtClient(
+		clientX: number,
+		clientY: number,
+		mode: 'tap' | 'longpress',
+	): boolean {
+		if (!app.map || app.map.getDocType() !== 'spreadsheet') {
+			return false;
+		}
+
+		const syntheticClick = new MouseEvent('click', {
+			bubbles: true,
+			cancelable: true,
+			view: window,
+			clientX: clientX / app.dpiScale,
+			clientY: clientY / app.dpiScale,
+			button: 0,
+			buttons: 0,
+		});
+		const canvasPos = this.convertPositionToCanvasLocale(syntheticClick);
+		const targetSection = this.resolveHeaderSectionAtCanvasPoint(canvasPos);
+		if (!targetSection) {
+			return false;
+		}
+
+		const sectionPos = this.convertPositionToSectionLocale(targetSection, canvasPos);
+		const point = cool.SimplePoint.fromCorePixels(sectionPos);
+		targetSection.onMouseMove(point, undefined, syntheticClick);
+
+		if (mode === 'tap') {
+			if ((targetSection as any)._hitResizeArea) {
+				return true;
+			}
+			targetSection.onClick(point, syntheticClick);
+		} else if ((window as any).AndroidCalcHeaderMenu) {
+			(window as any).AndroidCalcHeaderMenu.tryShow(
+				targetSection as cool.Header,
+				syntheticClick,
+			);
+		}
+		return true;
+	}
+
+	/** Row/column header hit: precise bounds first, then left/top zone fallback for Android taps. */
+	private resolveHeaderSectionAtCanvasPoint(
+		canvasPos: number[],
+	): CanvasSectionObject | null {
+		const slop = Math.round(12 * app.dpiScale);
+		const headerNames = [
+			app.CSections.RowHeader.name,
+			app.CSections.ColumnHeader.name,
+		];
+
+		for (let i = 0; i < headerNames.length; i++) {
+			const name = headerNames[i];
+			if (!this.doesSectionExist(name)) {
+				continue;
+			}
+			const section = this.getSectionWithName(name);
+			if (section && this.doesHeaderSectionIncludePoint(section, canvasPos)) {
+				return section;
+			}
+		}
+
+		const rowHeader = this.doesSectionExist(app.CSections.RowHeader.name)
+			? this.getSectionWithName(app.CSections.RowHeader.name)
+			: null;
+		const rowGroup = this.doesSectionExist(app.CSections.RowGroup.name)
+			? this.getSectionWithName(app.CSections.RowGroup.name)
+			: null;
+		const corner = this.doesSectionExist(app.CSections.CornerHeader.name)
+			? this.getSectionWithName(app.CSections.CornerHeader.name)
+			: null;
+		const colHeader = this.doesSectionExist(app.CSections.ColumnHeader.name)
+			? this.getSectionWithName(app.CSections.ColumnHeader.name)
+			: null;
+		const colGroup = this.doesSectionExist(app.CSections.ColumnGroup.name)
+			? this.getSectionWithName(app.CSections.ColumnGroup.name)
+			: null;
+
+		const x = canvasPos[0];
+		const y = canvasPos[1];
+
+		let rowZoneEnd = 0;
+		if (corner) {
+			rowZoneEnd = Math.max(rowZoneEnd, corner.myTopLeft[0] + corner.size[0]);
+		}
+		if (rowGroup) {
+			rowZoneEnd = Math.max(rowZoneEnd, rowGroup.myTopLeft[0] + rowGroup.size[0]);
+		}
+		if (rowHeader) {
+			rowZoneEnd = Math.max(rowZoneEnd, rowHeader.myTopLeft[0] + rowHeader.size[0]);
+		}
+
+		let colZoneEnd = 0;
+		if (corner) {
+			colZoneEnd = Math.max(colZoneEnd, corner.myTopLeft[1] + corner.size[1]);
+		}
+		if (colGroup) {
+			colZoneEnd = Math.max(colZoneEnd, colGroup.myTopLeft[1] + colGroup.size[1]);
+		}
+		if (colHeader) {
+			colZoneEnd = Math.max(colZoneEnd, colHeader.myTopLeft[1] + colHeader.size[1]);
+		}
+
+		const inRowZone = x >= 0 && x <= rowZoneEnd + slop;
+		const inColZone = y >= 0 && y <= colZoneEnd + slop;
+
+		if (inRowZone && inColZone) {
+			return x <= y ? rowHeader : colHeader;
+		}
+		if (inRowZone && rowHeader) {
+			return rowHeader;
+		}
+		if (inColZone && colHeader) {
+			return colHeader;
+		}
+		return null;
+	}
+
 	public dispatchCalcTapAtClient(
 		clientX: number,
 		clientY: number,
@@ -693,11 +815,6 @@ class CanvasSectionContainer {
 	}
 
 	public requestReDraw() {
-		if (window.ThisIsTheAndroidApp) {
-			console.log('[kbprobe] requestReDraw allowed=' + this.drawingAllowed()
-				+ ' paused=' + this.drawingPaused + ' enabled=' + this.drawingEnabled
-				+ ' defer=' + (this.deferredDrawCallback !== null));
-		}
 		if (!this.drawingAllowed()) return;
 		if (this.deferredDrawCallback) {
 			this.deferredDrawCallback();
@@ -1531,6 +1648,21 @@ class CanvasSectionContainer {
 	public doesSectionIncludePoint (section: any, point: number[]): boolean { // No ray casting here, it is a rectangle.
 		// use isHit from section, that does check against bounds of local range (position, size)
 		return section.isHit(point);
+	}
+
+	/** Row/column header hit test with touch slop (Android native taps often miss by a few px). */
+	private doesHeaderSectionIncludePoint(section: CanvasSectionObject, point: number[]): boolean {
+		if (this.doesSectionIncludePoint(section, point)) {
+			return true;
+		}
+		const slop = Math.round(10 * app.dpiScale);
+		const x = point[0];
+		const y = point[1];
+		const left = section.myTopLeft[0] - slop;
+		const top = section.myTopLeft[1] - slop;
+		const right = section.myTopLeft[0] + section.size[0] + slop;
+		const bottom = section.myTopLeft[1] + section.size[1] + slop;
+		return x >= left && x <= right && y >= top && y <= bottom;
 	}
 
 	private doSectionsIntersectOnYAxis (section1: any, section2: any): boolean {

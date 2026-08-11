@@ -23,6 +23,17 @@ class AndroidSelectionMenu {
 		return AndroidSelectionMenu.pendingLongPressSelection;
 	}
 
+	/** Debug trace; reaches logcat via WebChromeClient.onConsoleMessage. */
+	private static debugLog(msg: string): void {
+		try {
+			if (typeof console !== 'undefined' && typeof console.log === 'function') {
+				console.log('[selection_menu] ' + msg);
+			}
+		} catch (_e) {
+			// Best-effort only.
+		}
+	}
+
 	static hide(): void {
 		if (!window.ThisIsTheAndroidApp || typeof window.postMobileMessage !== 'function') {
 			return;
@@ -52,6 +63,24 @@ class AndroidSelectionMenu {
 			!!app.map &&
 			typeof app.map.isReadOnlyMode === 'function' &&
 			!app.map.isReadOnlyMode()
+		);
+	}
+
+	/**
+	 * In preview Writer, long-press always means "select text for the AI menu",
+	 * so the browser's 550ms long-press must never fall through to a right-click.
+	 * In edit-mode Writer we only suppress while a native selection gesture is in
+	 * flight, so a long-press that did NOT become a selection still keeps the
+	 * normal edit context menu.
+	 */
+	private static shouldSuppressContextMenu(): boolean {
+		if (!AndroidSelectionMenu.isWriterDoc()) {
+			return false;
+		}
+		return (
+			AndroidSelectionMenu.isPreviewWriterMode() ||
+			AndroidSelectionMenu.nativeSelectionDragActive ||
+			AndroidSelectionMenu.pendingLongPressSelection
 		);
 	}
 
@@ -170,7 +199,7 @@ class AndroidSelectionMenu {
 		if (!AndroidSelectionMenu.nativeSelectionDragActive) {
 			return;
 		}
-		if (!AndroidSelectionMenu.isPreviewWriterMode()) {
+		if (!AndroidSelectionMenu.isWriterDoc()) {
 			AndroidSelectionMenu.cancelGesture();
 			return;
 		}
@@ -184,6 +213,18 @@ class AndroidSelectionMenu {
 		}
 		const pos = AndroidSelectionMenu.viewPointToDocumentTwips(viewX, viewY);
 		if (!pos) {
+			return;
+		}
+		// Never send `selecttext end` at (or near) the start anchor: core collapses
+		// the word selection created by `selecttext start` to EMPTY (log evidence:
+		// start->rects then same-point end->EMPTY), which is the "selection flashes
+		// then disappears" bug. Only extend once the finger really moved.
+		const start = AndroidSelectionMenu.selectionStartTwips;
+		if (
+			start !== null &&
+			Math.abs(pos.x - start.x) < AndroidSelectionMenu.minSelectionSpanTwips &&
+			Math.abs(pos.y - start.y) < AndroidSelectionMenu.minSelectionSpanTwips
+		) {
 			return;
 		}
 		AndroidSelectionMenu.lastDragSelectionUpdateAt = now;
@@ -200,7 +241,23 @@ class AndroidSelectionMenu {
 		if (typeof viewX === 'number' && typeof viewY === 'number') {
 			endTwips = AndroidSelectionMenu.viewPointToDocumentTwips(viewX, viewY);
 			if (endTwips) {
-				AndroidSelectionMenu.updateTextSelectionEndAt(viewX, viewY, true);
+				const start = AndroidSelectionMenu.selectionStartTwips;
+				const dragged =
+					start === null ||
+					Math.abs(endTwips.x - start.x) >=
+						AndroidSelectionMenu.minSelectionSpanTwips ||
+					Math.abs(endTwips.y - start.y) >=
+						AndroidSelectionMenu.minSelectionSpanTwips;
+				if (dragged) {
+					AndroidSelectionMenu.updateTextSelectionEndAt(viewX, viewY, true);
+				}
+				// Stationary long-press: `selecttext start` already word-selected at the
+				// anchor; do not re-send `end` at the same point — it can make core
+				// collapse the selection to a caret (selection flash-away).
+				AndroidSelectionMenu.debugLog(
+					'finish start=' + (start ? start.x + ',' + start.y : 'null') +
+						' end=' + endTwips.x + ',' + endTwips.y +
+						' dragged=' + dragged);
 			}
 		}
 
@@ -454,7 +511,7 @@ class AndroidSelectionMenu {
 		document.addEventListener(
 			'contextmenu',
 			(e: Event) => {
-				if (AndroidSelectionMenu.isPreviewWriterMode()) {
+				if (AndroidSelectionMenu.shouldSuppressContextMenu()) {
 					e.preventDefault();
 					e.stopPropagation();
 				}
@@ -475,7 +532,7 @@ class AndroidSelectionMenu {
 			): void {
 				if (
 					window.ThisIsTheAndroidApp &&
-					AndroidSelectionMenu.isPreviewWriterMode()
+					AndroidSelectionMenu.shouldSuppressContextMenu()
 				) {
 					e.preventDefault();
 					e.stopPropagation();
@@ -501,6 +558,17 @@ class AndroidSelectionMenu {
 			layer._onTextSelectionMsg = function (textMsg: string) {
 				original(textMsg);
 				const payload = textMsg.replace('textselection:', '').trim();
+
+				AndroidSelectionMenu.debugLog(
+					'textselection payload=' +
+						(payload === 'EMPTY' || payload === ''
+							? 'EMPTY'
+							: 'rects len=' + payload.length) +
+						' preview=' + AndroidSelectionMenu.isPreviewWriterMode() +
+						' edit=' + AndroidSelectionMenu.isEditMode() +
+						' pending=' + AndroidSelectionMenu.pendingLongPressSelection +
+						' gestureComplete=' + AndroidSelectionMenu.selectionGestureComplete +
+						' dragActive=' + AndroidSelectionMenu.nativeSelectionDragActive);
 
 				// Preview (read-only) Writer mode: original gesture-driven logic.
 				if (AndroidSelectionMenu.isPreviewWriterMode()) {
@@ -535,6 +603,14 @@ class AndroidSelectionMenu {
 					AndroidSelectionMenu.isEditMode()
 				) {
 					if (payload && payload !== 'EMPTY') {
+						// Native long-press gesture still in flight: do NOT show the
+						// menu overlay now — it would intercept the finger-up and break
+						// the gesture (selection flash-away). finishTextSelectionDrag →
+						// scheduleTryShowAfterGesture shows it after finger-up. (The
+						// preview branch has the same nativeSelectionDragActive guard.)
+						if (AndroidSelectionMenu.nativeSelectionDragActive) {
+							return;
+						}
 						AndroidSelectionMenu.scheduleTryShowFromCoreSelection();
 					} else {
 						AndroidSelectionMenu.hide();

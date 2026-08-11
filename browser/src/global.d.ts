@@ -355,6 +355,10 @@ interface Window {
 		tryIntercept(msgData: any): boolean;
 		unregister(windowId: number): void;
 	};
+	AndroidCalcCellMenu: {
+		hide(): void;
+		tryShow(retry?: number): void;
+	};
 
 	allowUpdateNotification: boolean;
 	autoShowWelcome: boolean;

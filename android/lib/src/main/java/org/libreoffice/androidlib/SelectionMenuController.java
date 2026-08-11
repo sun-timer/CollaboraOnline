@@ -4,6 +4,8 @@ import android.content.Context;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewGroup;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.constraintlayout.widget.ConstraintLayout;
@@ -54,6 +56,7 @@ public class SelectionMenuController {
     private View menuView;
     private boolean visible = false;
     private boolean graphicMode = false;
+    private boolean calcMode = false;
     private float pendingAnchorX;
     private float pendingAnchorY;
     private float pendingAnchorBottomY;
@@ -66,6 +69,8 @@ public class SelectionMenuController {
         overlayView = host.findViewById(R.id.selection_menu_overlay);
         menuView = host.findViewById(R.id.selection_popup_panel);
         if (overlayView == null || menuView == null) {
+            Log.w(TAG, "setup_incomplete overlay=" + (overlayView != null)
+                    + " menu=" + (menuView != null));
             return;
         }
 
@@ -98,6 +103,9 @@ public class SelectionMenuController {
     /** @param anchorBottomY selection bottom Y for flip-below positioning. */
     public void showAtWindow(float windowX, float windowY, float anchorBottomY) {
         if (overlayView == null || menuView == null) {
+            Log.w(TAG, "show_aborted overlay=" + (overlayView != null)
+                    + " menu=" + (menuView != null)
+                    + " calcMode=" + calcMode);
             return;
         }
         host.hideQuickActionPanel();
@@ -108,6 +116,13 @@ public class SelectionMenuController {
 
         menuView.setVisibility(View.VISIBLE);
         overlayView.setVisibility(View.VISIBLE);
+        menuView.bringToFront();
+        overlayView.bringToFront();
+        ViewGroup parent = (ViewGroup) menuView.getParent();
+        if (parent != null) {
+            parent.bringChildToFront(overlayView);
+            parent.bringChildToFront(menuView);
+        }
         visible = true;
 
         menuView.post(this::positionPopupNearAnchor);
@@ -124,6 +139,8 @@ public class SelectionMenuController {
         overlayView.setVisibility(View.GONE);
         visible = false;
         graphicMode = false;
+        calcMode = false;
+        updateActionLabel(R.id.selection_op_delete, "删除");
     }
 
     public boolean isVisible() {
@@ -133,6 +150,18 @@ public class SelectionMenuController {
     /** Switch to graphic/image selection mode showing Delete/Copy/Cut. */
     public void setGraphicMode(boolean graphic) {
         graphicMode = graphic;
+        if (graphic) {
+            calcMode = false;
+        }
+        updateEditActionVisibility();
+    }
+
+    /** Calc cell selection: copy/paste/cut/clear/translate near the active cell. */
+    public void setCalcMode(boolean calc) {
+        calcMode = calc;
+        if (calc) {
+            graphicMode = false;
+        }
         updateEditActionVisibility();
     }
 
@@ -240,6 +269,10 @@ public class SelectionMenuController {
             toastReadOnlyDocument();
             return;
         }
+        if (calcMode) {
+            host.ensureEditModeThen(() -> host.executeUnoCommand(".uno:ClearContents"));
+            return;
+        }
         host.ensureEditModeThen(() -> host.executeUnoCommand(".uno:Delete"));
     }
 
@@ -258,9 +291,22 @@ public class SelectionMenuController {
         boolean docEditable = host.isDocEditable();
         boolean editMode = host.isEditModeActive();
 
-        if (graphicMode) {
+        if (calcMode) {
+            setViewVisibility(R.id.selection_op_select_all, View.GONE);
+            setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
+            setViewVisibility(R.id.selection_op_paste, docEditable ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_cut, docEditable && editMode ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_delete, docEditable && editMode ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_translate, editMode ? View.VISIBLE : View.GONE);
+            for (int sectionId : SELECTION_AI_SECTION_IDS) {
+                setViewVisibility(sectionId, View.GONE);
+            }
+            updateActionLabel(R.id.selection_op_delete, "清除");
+            updatePopupWidth(false);
+        } else if (graphicMode) {
             // Graphic mode: only show delete, copy, cut
             setViewVisibility(R.id.selection_op_delete, View.VISIBLE);
+            updateActionLabel(R.id.selection_op_delete, "删除");
             setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
             setViewVisibility(R.id.selection_op_cut, docEditable ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_paste, View.GONE);
@@ -271,6 +317,7 @@ public class SelectionMenuController {
             }
             updatePopupWidthForGraphic();
         } else {
+            updateActionLabel(R.id.selection_op_delete, "删除");
             setViewVisibility(R.id.selection_op_delete, View.GONE);
             setViewVisibility(R.id.selection_op_select_all, View.VISIBLE);
             setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
@@ -289,6 +336,21 @@ public class SelectionMenuController {
         View v = host.findViewById(viewId);
         if (v != null) {
             v.setVisibility(visibility);
+        }
+    }
+
+    private void updateActionLabel(int viewId, String label) {
+        View action = host.findViewById(viewId);
+        if (!(action instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) action;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child instanceof TextView) {
+                ((TextView) child).setText(label);
+                return;
+            }
         }
     }
 

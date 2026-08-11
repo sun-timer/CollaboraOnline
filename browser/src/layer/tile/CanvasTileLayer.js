@@ -1650,6 +1650,9 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 
 		if (textMsg.match('EMPTY')) {
 			app.calc.cellCursorVisible = false;
+			if (window.ThisIsTheAndroidApp && window.AndroidCalcCellMenu) {
+				window.AndroidCalcCellMenu.hide();
+			}
 			if (cellfillMarkerSection)
 				cellfillMarkerSection.calculatePositionViaCellCursor(null);
 			if (this._map._clip)
@@ -1683,6 +1686,11 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 				var topLeft = typeof topLeftTwips !== 'undefined' ? ' topLeft=(' + topLeftTwips.x + ',' + topLeftTwips.y + ')' : '';
 				window.postMobileMessage('CALC_CELL_TAP cursorAddr col=' + app.calc.cellAddress.x + ' row=' + app.calc.cellAddress.y + topLeft);
 			} catch(e) { /* diagnostic */ }
+		}
+		if (window.ThisIsTheAndroidApp && window.AndroidCalcCellMenu) {
+			window.AndroidCalcCellMenu.tryShow();
+		} else if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {
+			window.postMobileMessage('CALC_CELL_DISPATCH skip=no_bridge');
 		}
 		var isFollowingOwnCursor = parseInt(app.getFollowedViewId()) === parseInt(this._viewId);
 		var notJump = sameAddress || !isFollowingOwnCursor;

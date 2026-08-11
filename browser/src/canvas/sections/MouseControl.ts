@@ -417,7 +417,9 @@ class MouseControl extends CanvasSectionObject {
 
 	public getMobileKeyboardVisibility(): boolean {
 		if (!app.map._docLayer) return false;
-		else if (app.map._docLayer._docType === 'text') return true;
+		// Writer: never auto-popup the soft keyboard on a document tap — placing the
+		// cursor is enough; the user opens the keyboard via the bottom "呼出键盘" button.
+		else if (app.map._docLayer._docType === 'text') return false;
 		else if (app.map._docLayer._docType === 'spreadsheet') {
 			const acceptInput =
 				app.calc.cellCursorVisible &&
@@ -434,15 +436,18 @@ class MouseControl extends CanvasSectionObject {
 	 * editorgotfocus (Android native shell has no web mobileTopBar).
 	 */
 	public dispatchNativeCalcCellTap(point: cool.SimplePoint): { x: number; y: number } {
-		// Bypass refreshPosition + postCoreMouseEvent — they add viewedRectangle
-		// scroll offset which is already accounted for in the section position
-		// (myTopLeft). In edit mode, viewedRectangle.pX1 becomes non-zero due to
-		// _syncTilePanePos, causing double-counted scroll and wrong cell selection.
+		// Same coordinate transform as the preview onClick path. The section-local
+		// point does NOT include the scroll offset — visual scroll is done via
+		// _syncTilePanePos (Leaflet map-pane translation) + viewedRectangle, not via
+		// section myTopLeft. So refreshPosition must add viewedRectangle back to get
+		// document coordinates for core; sending the raw section-local point selects
+		// a cell short by the scroll amount once the sheet is scrolled.
+		this.refreshPosition(point);
 		const buttons = app.LOButtons.left;
-		app.map._docLayer._postMouseEvent('buttondown', point.x, point.y, 1, buttons, 0);
-		app.map._docLayer._postMouseEvent('buttonup', point.x, point.y, 1, buttons, 0);
+		this.postCoreMouseEvent('buttondown', this.currentPosition, 1, buttons, 0);
+		this.postCoreMouseEvent('buttonup', this.currentPosition, 1, buttons, 0);
 		app.map.focus(this.getMobileKeyboardVisibility());
-		return { x: point.x, y: point.y };
+		return { x: this.currentPosition.pX, y: this.currentPosition.pY };
 	}
 
 	private sendClick(clickInfo: any, count: number) {

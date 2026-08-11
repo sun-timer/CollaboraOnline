@@ -1247,8 +1247,16 @@ body {
 	display: none; /* prevent cypress failure */
 
 	background-color: rgba(var(--doc-type), 1); /* fill color */
+	border-top-color: rgba(var(--doc-type), 1); /* stroke color (defaults to fill) */
 	opacity: 0.25; /* opacity */
 	border-top-width: 1px; /* weight */
+}
+
+/* Writer-only design spec (AI Office 2026-08): fill #0081EA, outline #0078D7.
+   Calc / Impress keep their per-doc-type colors via the base rule above. */
+[data-doctype='text'] .selections-data {
+	background-color: rgb(0, 129, 234); /* fill color — design #0081EA */
+	border-top-color: #0078d7; /* stroke color — design */
 }
 
 .leaflet-canvas-container .splitters-data {

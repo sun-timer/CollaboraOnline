@@ -19,17 +19,20 @@
 class DocumentViewBase {
 	public readonly viewID: number;
 	private color: string;
+	private strokeColor: string;
 	private _selectionSection: TextSelectionSection;
 	public hasTextSelection: boolean = false;
 
 	constructor(viewID: number) {
 		this.viewID = viewID;
 		this.color = app.LOUtil.rgbToHex(app.LOUtil.getViewIdColor(this.viewID));
+		this.strokeColor = this.color;
 		this._selectionSection = new TextSelectionSection(
 			String(this.viewID) + '-text-selections',
 			0,
 			0,
 			this.color,
+			this.strokeColor,
 		);
 		// Remove any stale section with the same name so addSection succeeds.
 		if (app.sectionContainer.doesSectionExist(this._selectionSection.name))
@@ -82,7 +85,14 @@ class DocumentViewBase {
 
 	public setColor(color: string) {
 		this.color = color;
+		this.strokeColor = color;
 		this.selectionSection.color = this.color;
+		this.selectionSection.strokeColor = this.strokeColor;
+	}
+
+	public setStrokeColor(strokeColor: string) {
+		this.strokeColor = strokeColor;
+		this.selectionSection.strokeColor = this.strokeColor;
 	}
 
 	public clearTextSelection() {

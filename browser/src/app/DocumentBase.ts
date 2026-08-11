@@ -24,6 +24,7 @@ class DocumentBase {
 	protected activeViewID: number;
 	public activeView: DocumentViewBase;
 	private activeViewSelectionColor = 'lightblue'; // Overwritten in constructor.
+	private activeViewStrokeColor = '#0078d7'; // Overwritten in constructor.
 
 	protected _fileSize: cool.SimplePoint;
 
@@ -53,7 +54,11 @@ class DocumentBase {
 		document.body.appendChild(dummyDiv);
 		this.activeViewSelectionColor =
 			getComputedStyle(dummyDiv).getPropertyValue('background-color');
+		const strokeColor = getComputedStyle(dummyDiv).getPropertyValue('border-top-color');
+		this.activeViewStrokeColor =
+			strokeColor || this.activeViewSelectionColor;
 		this.activeView.setColor(this.activeViewSelectionColor);
+		this.activeView.setStrokeColor(this.activeViewStrokeColor);
 		dummyDiv.remove();
 	}
 
@@ -65,6 +70,7 @@ class DocumentBase {
 			app.sectionContainer.removeSection(this.activeView.selectionSection.name);
 			this.activeView = new DocumentViewBase(this.activeViewID);
 			this.activeView.setColor(this.activeViewSelectionColor);
+			this.activeView.setStrokeColor(this.activeViewStrokeColor);
 		}
 	}
 

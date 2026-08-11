@@ -278,10 +278,19 @@ window.L.Map.include({
 			this.fire('editorgotfocus');
 			this.fire('closemobilewizard');
 			if (window.ThisIsTheAndroidApp) {
-				this.focus(true);
-				setTimeout(function() {
-					app.map.focus(true);
-				}, 80);
+				if (this.getDocType() === 'text') {
+					// AI Office (Writer): entering edit mode must NOT auto-open the
+					// soft keyboard — the user opens it via the bottom "呼出键盘" button.
+					this.focus(false);
+					setTimeout(function() {
+						app.map.focus(false);
+					}, 80);
+				} else {
+					this.focus(true);
+					setTimeout(function() {
+						app.map.focus(true);
+					}, 80);
+				}
 			} else if (!window.ThisIsTheiOSApp)
 				this.focus();
 		}
