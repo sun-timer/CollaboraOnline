@@ -388,23 +388,6 @@ window.L.CalcTileLayer = window.L.CanvasTileLayer.extend({
 		const heightIncreased = oldMapSize[1] < newMapSize[1];
 		const sizeChanged = oldMapSize[0] !== newMapSize[0] || oldMapSize[1] !== newMapSize[1];
 
-		// PROBE (keyboard-hide gray block): log every resize decision so we can confirm
-		// whether the map is clamped to fileSize (heightShrinked) and misses a grow.
-		if (window.ThisIsTheAndroidApp) {
-			var fileSizePixelsProbe = app.activeDocument && app.activeDocument.fileSize
-				? app.activeDocument.fileSize.pToArray() : null;
-			console.log('[kbprobe] syncTileContainerSize'
-				+ ' containerH=' + documentContainerSize[1]
-				+ ' availH=' + availableSpace[1]
-				+ ' fileH=' + (fileSizePixelsProbe ? fileSizePixelsProbe[1] : 'n/a')
-				+ ' oldMapH=' + oldMapSize[1]
-				+ ' newMapH=' + newMapSize[1]
-				+ ' sizeChanged=' + sizeChanged
-				+ ' heightShrinked=' + this.heightShrinked
-				+ ' heightIncreased=' + heightIncreased
-				+ ' force=' + force);
-		}
-
 		// Early exit. If there is no need to update the size, return here.
 		if (sizeChanged || force) {
 			this._resizeMapElementAndTilesLayer(mapElement, marginLeft, marginTop, newMapSize);

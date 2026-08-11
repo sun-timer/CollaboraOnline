@@ -13,13 +13,11 @@ import android.widget.Toast;
 
 import androidx.constraintlayout.widget.ConstraintLayout;
 
-import com.google.android.material.bottomsheet.BottomSheetDialog;
-
 import org.libreoffice.androidlib.ai.AiDialogHelper;
 import org.json.JSONObject;
 
 /**
- * Calc Sheet Tab 长按 — 原生菜单（重命名 / 复制），替代 MobileWizard / C++ 弹窗。
+ * Calc Sheet Tab 长按 — 原生菜单（重命名 / 复制 / 删除），替代 MobileWizard / C++ 弹窗。
  */
 public final class CalcSheetTabPopupController {
 
@@ -44,6 +42,8 @@ public final class CalcSheetTabPopupController {
 
         void copySheet(int tabIndex);
 
+        void deleteSheet(int tabIndex);
+
         void ensureEditModeThen(Runnable action);
     }
 
@@ -51,13 +51,17 @@ public final class CalcSheetTabPopupController {
     private View overlayView;
     private View popupView;
     private View renameRow;
+    private View deleteRow;
     private View renamePanelView;
     private EditText renameInputView;
-    private BottomSheetDialog renameDialog;
+    private boolean renamePanelBound;
+    private AiDialogHelper.CompactPanelSession renameSession;
+    private AiDialogHelper.CompactPanelSession deleteConfirmSession;
     private int renameTabIndex = -1;
     private int currentTabIndex = -1;
     private String currentSheetName = "";
     private boolean currentProtected = false;
+    private boolean currentCanDelete = false;
     private float lastAnchorX = 0f;
     private float lastAnchorY = 0f;
     private float lastAnchorBottom = 0f;
@@ -76,39 +80,42 @@ public final class CalcSheetTabPopupController {
         overlayView.setOnClickListener(v -> hide());
         renameRow = popupView.findViewById(R.id.calc_sheet_tab_popup_rename);
         View copyRow = popupView.findViewById(R.id.calc_sheet_tab_popup_copy);
+        deleteRow = popupView.findViewById(R.id.calc_sheet_tab_popup_delete);
         if (renameRow != null) {
             renameRow.setOnClickListener(v -> onRenameClicked());
         }
         if (copyRow != null) {
             copyRow.setOnClickListener(v -> onCopyClicked());
         }
+        if (deleteRow != null) {
+            deleteRow.setOnClickListener(v -> onDeleteClicked());
+        }
     }
 
     private void setupRenameDialog() {
-        ensureRenameDialog();
+        ensureRenamePanel();
     }
 
-    /** 懒创建重命名 BottomSheetDialog；dismiss 后 renameDialog 被置 null，下次 show 前重建。 */
-    private void ensureRenameDialog() {
-        if (renameDialog != null) {
+    /** 懒创建重命名面板；横竖屏分别用居中 AlertDialog / 贴底 BottomSheet 展示。 */
+    private void ensureRenamePanel() {
+        if (renamePanelView != null) {
             return;
         }
-        // 用独立 BottomSheetDialog 承载重命名弹窗，避免主布局 overlay 盖住确定按钮（点击被拦截）
         renamePanelView = LayoutInflater.from(host.getContext())
                 .inflate(R.layout.lolib_dialog_calc_sheet_rename, null, false);
-        renameDialog = new BottomSheetDialog(host.getContext());
-        renameDialog.setContentView(renamePanelView);
-        AiDialogHelper.applyCloseOnlyDismiss(renameDialog);
-        renameDialog.setOnDismissListener(d -> {
-            renameDialog = null;
-            renameTabIndex = -1;
-        });
+        bindRenamePanel(renamePanelView);
+    }
 
-        renameInputView = renamePanelView.findViewById(R.id.calc_sheet_rename_input);
-        TextView titleView = renamePanelView.findViewById(R.id.ai_dialog_header_title);
-        View closeBtn = renamePanelView.findViewById(R.id.ai_dialog_header_close);
-        View cancelBtn = renamePanelView.findViewById(R.id.calc_sheet_rename_cancel);
-        View confirmBtn = renamePanelView.findViewById(R.id.calc_sheet_rename_confirm);
+    private void bindRenamePanel(View panel) {
+        if (panel == null || renamePanelBound) {
+            return;
+        }
+        renamePanelBound = true;
+        renameInputView = panel.findViewById(R.id.calc_sheet_rename_input);
+        TextView titleView = panel.findViewById(R.id.ai_dialog_header_title);
+        View closeBtn = panel.findViewById(R.id.ai_dialog_header_close);
+        View cancelBtn = panel.findViewById(R.id.calc_sheet_rename_cancel);
+        View confirmBtn = panel.findViewById(R.id.calc_sheet_rename_confirm);
         Log.i(TAG, "setup_rename_dialog inputNull=" + (renameInputView == null)
                 + " titleNull=" + (titleView == null)
                 + " closeNull=" + (closeBtn == null)
@@ -116,6 +123,9 @@ public final class CalcSheetTabPopupController {
                 + " confirmNull=" + (confirmBtn == null));
         if (titleView != null) {
             titleView.setText("重命名工作表");
+            titleView.setTextColor(0xFF1F1F1F);
+            titleView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 20);
+            titleView.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
         }
         if (closeBtn != null) {
             closeBtn.setOnClickListener(v -> onCloseClicked());
@@ -136,11 +146,13 @@ public final class CalcSheetTabPopupController {
 
     public boolean isVisible() {
         return (popupView != null && popupView.getVisibility() == View.VISIBLE)
-                || (renameDialog != null && renameDialog.isShowing());
+                || (renameSession != null && renameSession.isShowing())
+                || (deleteConfirmSession != null && deleteConfirmSession.isShowing());
     }
 
     public void hide() {
         hideRenameDialog();
+        hideDeleteConfirmDialog();
         if (overlayView != null) {
             overlayView.setVisibility(View.GONE);
         }
@@ -150,6 +162,7 @@ public final class CalcSheetTabPopupController {
         currentTabIndex = -1;
         currentSheetName = "";
         currentProtected = false;
+        currentCanDelete = false;
     }
 
     public void showFromJson(String json) {
@@ -161,16 +174,17 @@ public final class CalcSheetTabPopupController {
             int tabIndex = payload.optInt("tabIndex", -1);
             String sheetName = payload.optString("sheetName", "");
             boolean isProtected = payload.optBoolean("isProtected", false);
+            boolean canDelete = payload.optBoolean("canDelete", false);
             float anchorX = (float) payload.optDouble("anchorX", 0);
             float anchorY = (float) payload.optDouble("anchorY", 0);
             float anchorBottom = (float) payload.optDouble("anchorBottom", anchorY);
-            show(tabIndex, sheetName, isProtected, anchorX, anchorY, anchorBottom);
+            show(tabIndex, sheetName, isProtected, canDelete, anchorX, anchorY, anchorBottom);
         } catch (Exception e) {
             Log.w(TAG, "showFromJson failed: " + e.getMessage());
         }
     }
 
-    public void show(int tabIndex, String sheetName, boolean isProtected,
+    public void show(int tabIndex, String sheetName, boolean isProtected, boolean canDelete,
                      float anchorX, float anchorY, float anchorBottom) {
         if (popupView == null || tabIndex < 0) {
             return;
@@ -178,6 +192,7 @@ public final class CalcSheetTabPopupController {
         currentTabIndex = tabIndex;
         currentSheetName = sheetName != null ? sheetName : "";
         currentProtected = isProtected;
+        currentCanDelete = canDelete;
         lastAnchorX = anchorX;
         lastAnchorY = anchorY;
         lastAnchorBottom = anchorBottom > 0 ? anchorBottom : anchorY;
@@ -185,6 +200,11 @@ public final class CalcSheetTabPopupController {
         if (renameRow != null) {
             renameRow.setEnabled(!isProtected);
             renameRow.setAlpha(isProtected ? 0.4f : 1f);
+        }
+        if (deleteRow != null) {
+            boolean deleteEnabled = canDelete && !isProtected;
+            deleteRow.setEnabled(deleteEnabled);
+            deleteRow.setAlpha(deleteEnabled ? 1f : 0.4f);
         }
 
         if (overlayView != null) {
@@ -312,16 +332,94 @@ public final class CalcSheetTabPopupController {
         }
     }
 
+    private void onDeleteClicked() {
+        if (currentProtected) {
+            Toast.makeText(host.getContext(), "受保护的工作表无法删除", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!currentCanDelete) {
+            Toast.makeText(host.getContext(), "至少需要保留一个工作表", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        int tabIndex = currentTabIndex;
+        String sheetName = currentSheetName;
+        if (overlayView != null) {
+            overlayView.setVisibility(View.GONE);
+        }
+        if (popupView != null) {
+            popupView.setVisibility(View.GONE);
+        }
+        showDeleteConfirmDialog(tabIndex, sheetName);
+    }
+
+    private void showDeleteConfirmDialog(int tabIndex, String sheetName) {
+        if (tabIndex < 0) {
+            return;
+        }
+        View panelView = LayoutInflater.from(host.getContext())
+                .inflate(R.layout.lolib_dialog_calc_sheet_delete_confirm, null, false);
+        TextView titleView = panelView.findViewById(R.id.ai_dialog_header_title);
+        TextView messageView = panelView.findViewById(R.id.calc_sheet_delete_message);
+        View closeBtn = panelView.findViewById(R.id.ai_dialog_header_close);
+        View cancelBtn = panelView.findViewById(R.id.calc_sheet_delete_cancel);
+        View confirmBtn = panelView.findViewById(R.id.calc_sheet_delete_confirm);
+
+        if (titleView != null) {
+            titleView.setText("删除工作表");
+        }
+        String displayName = sheetName != null && !sheetName.isEmpty() ? sheetName : ("Sheet " + (tabIndex + 1));
+        if (messageView != null) {
+            messageView.setText("确定要删除工作表「" + displayName + "」吗？");
+        }
+
+        hideDeleteConfirmDialog();
+        deleteConfirmSession = AiDialogHelper.showCompactPanel(
+                host.getContext(), panelView, TAG + ":delete");
+        deleteConfirmSession.setOnDismissListener(() -> deleteConfirmSession = null);
+
+        Runnable dismiss = this::hideDeleteConfirmDialog;
+        if (closeBtn != null) {
+            closeBtn.setOnClickListener(v -> dismiss.run());
+        }
+        if (cancelBtn != null) {
+            cancelBtn.setOnClickListener(v -> dismiss.run());
+        }
+        if (confirmBtn != null) {
+            confirmBtn.setOnClickListener(v -> {
+                dismiss.run();
+                hide();
+                host.deleteSheet(tabIndex);
+            });
+        }
+
+        Log.i(TAG, "show_delete_confirm tabIndex=" + tabIndex + " name=" + displayName);
+    }
+
+    private void hideDeleteConfirmDialog() {
+        if (deleteConfirmSession != null) {
+            deleteConfirmSession.dismiss();
+            deleteConfirmSession = null;
+        }
+    }
+
     private void showRenameDialog(int tabIndex, String sheetName,
                                   float anchorX, float anchorY, float anchorBottom) {
-        ensureRenameDialog();
-        if (renameDialog == null || renamePanelView == null || renameInputView == null || tabIndex < 0) {
+        ensureRenamePanel();
+        if (renamePanelView == null || renameInputView == null || tabIndex < 0) {
             return;
         }
         renameTabIndex = tabIndex;
         renameInputView.setText(sheetName != null ? sheetName : "");
         renameInputView.setSelection(renameInputView.getText().length());
-        renameDialog.show();
+        if (renameSession != null && renameSession.isShowing()) {
+            renameSession.dismiss();
+        }
+        renameSession = AiDialogHelper.showCompactPanel(
+                host.getContext(), renamePanelView, TAG + ":rename");
+        renameSession.setOnDismissListener(() -> {
+            renameSession = null;
+            renameTabIndex = -1;
+        });
         renamePanelView.post(() -> {
             renameInputView.requestFocus();
             InputMethodManager imm = (InputMethodManager) host.getContext()
@@ -357,8 +455,9 @@ public final class CalcSheetTabPopupController {
                 imm.hideSoftInputFromWindow(renameInputView.getWindowToken(), 0);
             }
         }
-        if (renameDialog != null) {
-            renameDialog.dismiss();
+        if (renameSession != null) {
+            renameSession.dismiss();
+            renameSession = null;
         }
         renameTabIndex = -1;
     }

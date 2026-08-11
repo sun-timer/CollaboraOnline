@@ -237,10 +237,12 @@ window.L.Control.Tabs = window.L.Control.extend({
 												var rect = tabEl ? tabEl.getBoundingClientRect() : null;
 												var sheetName = sheetPartNames && sheetPartNames[j] ? sheetPartNames[j] : label.textContent;
 												var isProtected = tabEl && window.L.DomUtil.hasClass(tabEl, 'spreadsheet-tab-protected');
+												var canDelete = app.calc.getVisiblePartCount() !== 1;
 												window.postMobileMessage('SHEET_TAB_POPUP show ' + JSON.stringify({
 													tabIndex: j,
 													sheetName: sheetName,
 													isProtected: isProtected,
+													canDelete: canDelete,
 													anchorX: rect ? rect.left + rect.width * 0.5 : 0,
 													anchorY: rect ? rect.top : 0,
 													anchorBottom: rect ? rect.bottom : 0
@@ -390,10 +392,12 @@ window.L.Control.Tabs = window.L.Control.extend({
 			var rect = tabEl.getBoundingClientRect();
 			var sheetName = tabEl.textContent || ('Sheet ' + (part + 1));
 			var isProtected = window.L.DomUtil.hasClass(tabEl, 'spreadsheet-tab-protected');
+			var canDelete = app.calc.getVisiblePartCount() !== 1;
 			window.postMobileMessage('SHEET_TAB_POPUP show ' + JSON.stringify({
 				tabIndex: part,
 				sheetName: sheetName,
 				isProtected: isProtected,
+				canDelete: canDelete,
 				anchorX: rect ? rect.left + rect.width * 0.5 : 0,
 				anchorY: rect ? rect.top : 0,
 				anchorBottom: rect ? rect.bottom : 0

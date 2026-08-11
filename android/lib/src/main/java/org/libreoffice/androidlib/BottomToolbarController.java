@@ -15,7 +15,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.appcompat.widget.AppCompatImageButton;
-import com.google.android.material.bottomsheet.BottomSheetDialog;
+
+import org.libreoffice.androidlib.ai.AiDialogHelper;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -850,7 +851,7 @@ public class BottomToolbarController {
 
         final int[] selectedIndex = {0};
         final ImageView[] radioViews = new ImageView[MERGE_OPTION_LABELS.length];
-        final BottomSheetDialog[] dialogRef = new BottomSheetDialog[1];
+        final AiDialogHelper.CompactPanelSession[] dialogRef = new AiDialogHelper.CompactPanelSession[1];
 
         for (int i = 0; i < MERGE_OPTION_LABELS.length; i++) {
             final int index = i;
@@ -914,11 +915,12 @@ public class BottomToolbarController {
 
         root.addView(content);
 
-        final BottomSheetDialog dialog = new BottomSheetDialog(host.getContext());
-        dialog.setContentView(root);
-        dialogRef[0] = dialog;
-        backBtn.setOnClickListener(v -> dialog.dismiss());
-        dialog.show();
+        dialogRef[0] = AiDialogHelper.showCompactPanel(host.getContext(), root, TAG + ":merge");
+        backBtn.setOnClickListener(v -> {
+            if (dialogRef[0] != null) {
+                dialogRef[0].dismiss();
+            }
+        });
         Log.i(TAG, "show_merge_options");
     }
 

@@ -3,6 +3,7 @@ package org.libreoffice.androidlib;
 import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.text.Spannable;
 import android.text.SpannableString;
@@ -19,6 +20,7 @@ import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.PopupWindow;
 import android.widget.TextView;
 import androidx.core.widget.NestedScrollView;
 
@@ -100,6 +102,10 @@ public class CalcFunctionPanelController {
 
         void insertComment();
 
+        String getCommentAuthorName();
+
+        void insertCommentWithText(String text);
+
         void toastTodo(String text);
 
         void applyFont(String fontName);
@@ -154,7 +160,9 @@ public class CalcFunctionPanelController {
         TOGGLE_PAIR,
         ICON_GRID,
         ACTION,
-        GRID_ACTION
+        GRID_ACTION,
+        /** 图标 + 标签(左) + 状态值(右) + 箭头：布局 Tab 纸张方向 / 打印区域。 */
+        ICON_VALUE_ROW
     }
 
     private static final class PanelItem {
@@ -180,6 +188,10 @@ public class CalcFunctionPanelController {
 
         PanelItem(ItemType type, String id, String label, String subtitle) {
             this(type, id, label, subtitle, "", null, 0, null, null, null, 0, null, false, false, null);
+        }
+
+        PanelItem(ItemType type, String id, String label, String subtitle, int iconResId) {
+            this(type, id, label, subtitle, "", null, iconResId, null, null, null, 0, null, false, false, null);
         }
 
         PanelItem(ItemType type, String id, String label, String unoCommand, Runnable hostAction) {
@@ -267,6 +279,7 @@ public class CalcFunctionPanelController {
     private final Host host;
     private List<PanelTab> tabs;
     private BottomSheetDialog dialog;
+    private PopupWindow fontSizePopup;
     private LinearLayout tabBar;
     private NestedScrollView contentContainer;
     private View tabHeader;
@@ -296,9 +309,13 @@ public class CalcFunctionPanelController {
     private ImageView borderColorPreviewDot;
     private int submenuReturnTabIndex = 0;
     private int selectedTabIndex = 0;
+    private ImpressCommentPickerController commentPicker;
+    private boolean commentPickerVisible;
+    private boolean optionPickerVisible;
     private final List<TextView> tabViews = new ArrayList<>();
     private final Map<String, String> pickerValues = new HashMap<>();
     private final Map<String, Integer> pickerColorRgb = new HashMap<>();
+    private final Map<String, Integer> pickerColorIndex = new HashMap<>();
     private final Map<String, Boolean> toggleStates = new HashMap<>();
     private String[] cachedFontOptions = FALLBACK_FONT_OPTIONS;
     private String[] cachedFontValues = FALLBACK_FONT_VALUES;
@@ -388,6 +405,9 @@ public class CalcFunctionPanelController {
         dismissChartPickerPage();
         dismissHyperlinkPickerPage();
         dismissColorPickerPage();
+        dismissOptionPickerPage();
+        dismissCommentPickerPage();
+        dismissFontSizePopup();
         if (dataValidationVisible) {
             dataValidationVisible = false;
             host.dismissCoValidationDialog();
@@ -437,6 +457,14 @@ public class CalcFunctionPanelController {
         }
         if (colorPickerVisible) {
             colorPickerVisible = false;
+            setTabChromeVisible(true);
+        }
+        if (optionPickerVisible) {
+            optionPickerVisible = false;
+            setTabChromeVisible(true);
+        }
+        if (commentPickerVisible) {
+            commentPickerVisible = false;
             setTabChromeVisible(true);
         }
         dismissFontPicker();
@@ -512,6 +540,11 @@ public class CalcFunctionPanelController {
                     flushToolButtons(root, pendingTools);
                     flushIconGrid(root, pendingGrid);
                     root.addView(createFullPickerRow(item));
+                    break;
+                case ICON_VALUE_ROW:
+                    flushToolButtons(root, pendingTools);
+                    flushIconGrid(root, pendingGrid);
+                    root.addView(createIconValueRow(item));
                     break;
                 case PICKER_PAIR:
                     flushToolButtons(root, pendingTools);
@@ -629,6 +662,48 @@ public class CalcFunctionPanelController {
         return wrapBottomMargin(card);
     }
 
+    /** 布局 Tab 行：左侧图标 + 标签(主) + 右侧状态值 + 箭头（Figma 128px=64dp，无卡片底，底部细分隔线）。 */
+    private View createIconValueRow(PanelItem item) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(host.dpToPx(64));
+        row.setPadding(host.dpToPx(12), 0, host.dpToPx(12), 0);
+
+        ImageView icon = new ImageView(host.getContext());
+        icon.setImageResource(item.iconResId);
+        icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(host.dpToPx(32), host.dpToPx(32));
+        iconLp.setMarginEnd(host.dpToPx(12));
+        row.addView(icon, iconLp);
+
+        TextView label = new TextView(host.getContext());
+        label.setText(item.label);
+        label.setTextColor(Color.parseColor("#333333"));
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        row.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView value = new TextView(host.getContext());
+        value.setText(pickerValues.getOrDefault(item.id, item.subtitle));
+        value.setTextColor(COLOR_VALUE);
+        value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        valueLp.setMarginEnd(host.dpToPx(8));
+        row.addView(value, valueLp);
+        row.addView(createChevron());
+        row.setOnClickListener(v -> onPickerClick(item, value));
+
+        LinearLayout container = new LinearLayout(host.getContext());
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.addView(row);
+        View divider = new View(host.getContext());
+        divider.setBackgroundColor(Color.parseColor("#00000014"));
+        container.addView(divider, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+        return container;
+    }
+
     private View createSplitPickerRow(PanelItem item) {
         LinearLayout row = new LinearLayout(host.getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -641,7 +716,7 @@ public class CalcFunctionPanelController {
         sizeValue.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         left.addView(sizeValue, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         left.addView(createChevron());
-        left.setOnClickListener(v -> showSizePicker(sizeValue));
+        left.setOnClickListener(v -> showFontSizePopup(sizeValue, left));
 
         LinearLayout right = createCardRow();
         LinearLayout.LayoutParams rightLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
@@ -656,8 +731,8 @@ public class CalcFunctionPanelController {
         colorLabel.setText("字体颜色");
         colorLabel.setTextColor(COLOR_TITLE);
         colorLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        right.addView(colorLabel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         right.addView(createColorSwatchView(0, colorDot));
+        right.addView(colorLabel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         right.addView(createChevron());
         right.setOnClickListener(v -> showColorPickerPage(
                 ColorPickerKind.FONT, "font_color", fontColorPreviewDot,
@@ -997,9 +1072,53 @@ public class CalcFunctionPanelController {
     }
 
     private View createToggleRow(PanelItem item) {
+        if ("grid_lines".equals(item.id)) {
+            return createGridLinesToggleRow(item);
+        }
         return wrapBottomMargin(createToggleCard(item));
     }
 
+    /** 布局 Tab 显示网格线：无卡片底、图标 + 18sp 标签 + 滑块开关（与 ICON_VALUE_ROW 一致，末行无分隔线）。 */
+    private View createGridLinesToggleRow(PanelItem item) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(host.dpToPx(64));
+        row.setPadding(host.dpToPx(12), 0, host.dpToPx(12), 0);
+
+        if (item.iconResId != 0) {
+            ImageView icon = new ImageView(host.getContext());
+            icon.setImageResource(item.iconResId);
+            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(host.dpToPx(32), host.dpToPx(32));
+            iconLp.setMarginEnd(host.dpToPx(12));
+            row.addView(icon, iconLp);
+        }
+        TextView label = new TextView(host.getContext());
+        label.setText(item.label);
+        label.setTextColor(COLOR_TITLE);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        row.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        ImageView indicator = new ImageView(host.getContext());
+        boolean initial = toggleStates.getOrDefault(item.id, item.defaultOn);
+        indicator.setImageResource(initial
+                ? R.drawable.lolib_ic_calc_switch_on
+                : R.drawable.lolib_ic_calc_switch_off);
+        row.addView(indicator, new LinearLayout.LayoutParams(host.dpToPx(41), host.dpToPx(21)));
+
+        row.setOnClickListener(v -> {
+            boolean next = !toggleStates.getOrDefault(item.id, item.defaultOn);
+            toggleStates.put(item.id, next);
+            indicator.setImageResource(next
+                    ? R.drawable.lolib_ic_calc_switch_on
+                    : R.drawable.lolib_ic_calc_switch_off);
+            onToggle(item, next);
+        });
+        return row;
+    }
+
+    /** 其余开关（常用 Tab 等）用圆形多选框，带卡片底。 */
     private View createToggleCard(PanelItem item) {
         LinearLayout row = createCardRow();
         TextView label = new TextView(host.getContext());
@@ -1098,8 +1217,8 @@ public class CalcFunctionPanelController {
         label.setText(title);
         label.setTextColor(COLOR_TITLE);
         label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        card.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         card.addView(createColorSwatchView(0, colorDot));
+        card.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         card.addView(createChevron());
         card.setOnClickListener(v -> {
             ColorPickerKind kind = "bg_color".equals(id) ? ColorPickerKind.BACKGROUND : ColorPickerKind.BORDER;
@@ -1264,6 +1383,188 @@ public class CalcFunctionPanelController {
         if (dialog != null && dialog.isShowing()
                 && selectedTabIndex >= 0 && selectedTabIndex < tabs.size()) {
             renderTabContent(tabs.get(selectedTabIndex));
+        }
+    }
+
+    /** 纸张方向 / 打印区域二级页：返回头 + 可选项（选中 #1278D9 + 右侧对勾）。Figma 3094:61223。 */
+    private void showOptionPickerPage(String title, String[] labels, String[] commands,
+            String pickerId, TextView valueView) {
+        dismissFontPicker();
+        dismissSubmenuPage();
+        optionPickerVisible = true;
+        submenuReturnTabIndex = selectedTabIndex;
+        setTabChromeVisible(false);
+
+        contentContainer.removeAllViews();
+        LinearLayout root = new LinearLayout(host.getContext());
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout header = new LinearLayout(host.getContext());
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setMinimumHeight(host.dpToPx(48));
+        header.setPadding(host.dpToPx(4), 0, host.dpToPx(8), 0);
+
+        ImageButton back = new ImageButton(host.getContext());
+        TypedValue rippleAttr = new TypedValue();
+        if (host.getContext().getTheme().resolveAttribute(
+                android.R.attr.selectableItemBackgroundBorderless, rippleAttr, true)) {
+            back.setBackgroundResource(rippleAttr.resourceId);
+        }
+        back.setImageResource(R.drawable.lolib_ic_top_back);
+        back.setContentDescription("返回");
+        back.setPadding(host.dpToPx(12), host.dpToPx(12), host.dpToPx(12), host.dpToPx(12));
+        back.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        back.setOnClickListener(v -> dismissOptionPickerPage());
+        header.addView(back, new LinearLayout.LayoutParams(host.dpToPx(48), host.dpToPx(48)));
+
+        TextView titleView = new TextView(host.getContext());
+        titleView.setText(title);
+        titleView.setTextColor(COLOR_TITLE);
+        titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleLp.setMarginStart(host.dpToPx(4));
+        header.addView(titleView, titleLp);
+        root.addView(header);
+
+        View headerDivider = new View(host.getContext());
+        headerDivider.setBackgroundColor(Color.parseColor("#A2A9B2"));
+        root.addView(headerDivider, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+
+        String selectedLabel = pickerValues.getOrDefault(pickerId,
+                labels.length > 0 ? labels[0] : "");
+        for (int i = 0; i < labels.length; i++) {
+            final String label = labels[i];
+            final int index = i;
+            LinearLayout row = new LinearLayout(host.getContext());
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setMinimumHeight(host.dpToPx(48));
+            row.setPadding(host.dpToPx(16), host.dpToPx(6), host.dpToPx(16), host.dpToPx(6));
+            TypedValue rowRipple = new TypedValue();
+            if (host.getContext().getTheme().resolveAttribute(
+                    android.R.attr.selectableItemBackground, rowRipple, true)) {
+                row.setBackgroundResource(rowRipple.resourceId);
+            }
+
+            TextView name = new TextView(host.getContext());
+            name.setText(label);
+            name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            boolean selected = label.equals(selectedLabel);
+            name.setTextColor(selected
+                    ? Color.parseColor("#1278D9") : Color.parseColor("#333333"));
+            row.addView(name, new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            ImageView check = new ImageView(host.getContext());
+            check.setImageResource(R.drawable.lolib_ic_font_picker_check);
+            check.setVisibility(selected ? View.VISIBLE : View.GONE);
+            row.addView(check, new LinearLayout.LayoutParams(
+                    host.dpToPx(24), host.dpToPx(24)));
+
+            row.setOnClickListener(v -> {
+                pickerValues.put(pickerId, label);
+                if (valueView != null) {
+                    valueView.setText(label);
+                }
+                if (index < commands.length && commands[index] != null
+                        && !commands[index].isEmpty()) {
+                    host.executeUnoCommand(commands[index]);
+                }
+                dismissOptionPickerPage();
+            });
+            root.addView(row);
+
+            if (i < labels.length - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(Color.parseColor("#00000014"));
+                root.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+
+        contentContainer.addView(root);
+        Log.i(TAG, "option_picker_show title=" + title + " items=" + labels.length);
+    }
+
+    private void dismissOptionPickerPage() {
+        if (!optionPickerVisible) {
+            return;
+        }
+        optionPickerVisible = false;
+        setTabChromeVisible(true);
+        int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
+                ? submenuReturnTabIndex : selectedTabIndex;
+        selectedTabIndex = returnIndex;
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(returnIndex));
+        }
+    }
+
+    // === Comment picker — reuses ImpressCommentPickerController（native 输入框 → UNO 插入） ===
+
+    private void showCommentPickerPage() {
+        dismissFontPicker();
+        commentPickerVisible = true;
+        submenuReturnTabIndex = selectedTabIndex;
+        setTabChromeVisible(false);
+
+        if (commentPicker == null) {
+            commentPicker = new ImpressCommentPickerController(new ImpressCommentPickerController.Host() {
+                @Override
+                public android.content.Context getContext() {
+                    return host.getContext();
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return host.dpToPx(dp);
+                }
+
+                @Override
+                public String getCommentAuthorName() {
+                    return host.getCommentAuthorName();
+                }
+
+                @Override
+                public void toastTodo(String text) {
+                    host.toastTodo(text);
+                }
+
+                @Override
+                public void insertCommentWithText(String text) {
+                    dismiss();
+                    host.runAfterFunctionPanelDismiss(() -> host.insertCommentWithText(text));
+                }
+
+                @Override
+                public void onBack() {
+                    dismissCommentPickerPage();
+                }
+            });
+        }
+
+        contentContainer.removeAllViews();
+        contentContainer.addView(commentPicker.buildRootView());
+        Log.i(TAG, "comment_picker_show");
+    }
+
+    private void dismissCommentPickerPage() {
+        if (!commentPickerVisible) {
+            return;
+        }
+        commentPickerVisible = false;
+        setTabChromeVisible(true);
+        int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
+                ? submenuReturnTabIndex : selectedTabIndex;
+        selectedTabIndex = returnIndex;
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(returnIndex));
         }
     }
 
@@ -1596,39 +1897,47 @@ public class CalcFunctionPanelController {
         submenuReturnTabIndex = selectedTabIndex;
         setTabChromeVisible(false);
 
-        if (colorPicker == null) {
-            colorPicker = new CalcFontColorPickerController(new CalcFontColorPickerController.Host() {
-                @Override
-                public android.content.Context getContext() {
-                    return host.getContext();
-                }
-
-                @Override
-                public int dpToPx(int dp) {
-                    return host.dpToPx(dp);
-                }
-
-                @Override
-                public void onColorSelected(int rgb) {
-                    applyCalcColorSelection(activeColorPickerKind, rgb);
-                    pickerColorRgb.put(activeColorPickerId, rgb);
-                    updateColorPreviewDot(activeColorPreviewDot, rgb, activeColorPreviewFallback);
-                    Log.i(TAG, "calc_color_picked kind=" + activeColorPickerKind.name()
-                            + " id=" + activeColorPickerId
-                            + " rgb=#" + Integer.toHexString(rgb).toUpperCase());
-                    dismissColorPickerPage();
-                }
-
-                @Override
-                public void onBack() {
-                    dismissColorPickerPage();
-                }
-            });
-        }
+        colorPicker = new CalcFontColorPickerController(buildColorPickerHost());
 
         contentContainer.removeAllViews();
         contentContainer.addView(colorPicker.buildRootView(title));
         Log.i(TAG, "color_picker_show kind=" + kind.name() + " id=" + pickerId);
+    }
+
+    private CalcFontColorPickerController.Host buildColorPickerHost() {
+        return new CalcFontColorPickerController.Host() {
+            @Override
+            public android.content.Context getContext() {
+                return host.getContext();
+            }
+
+            @Override
+            public int dpToPx(int dp) {
+                return host.dpToPx(dp);
+            }
+
+            @Override
+            public Integer getSelectedIndex() {
+                return pickerColorIndex.get(activeColorPickerId);
+            }
+
+            @Override
+            public void onColorSelected(int index, int rgb) {
+                applyCalcColorSelection(activeColorPickerKind, rgb);
+                pickerColorRgb.put(activeColorPickerId, rgb);
+                pickerColorIndex.put(activeColorPickerId, index);
+                updateColorPreviewDot(activeColorPreviewDot, rgb, activeColorPreviewFallback);
+                Log.i(TAG, "calc_color_picked kind=" + activeColorPickerKind.name()
+                        + " id=" + activeColorPickerId
+                        + " index=" + index
+                        + " rgb=#" + Integer.toHexString(rgb).toUpperCase());
+            }
+
+            @Override
+            public void onBack() {
+                dismissColorPickerPage();
+            }
+        };
     }
 
     private View createSingleGridCell(PanelItem item) {
@@ -1688,29 +1997,16 @@ public class CalcFunctionPanelController {
             return;
         }
         if ("paper_orientation".equals(item.id)) {
-            showLabelPicker("纸张方向", ORIENTATION_LABELS, ORIENTATION_COMMANDS, "paper_orientation", valueView);
+            showOptionPickerPage("纸张方向", ORIENTATION_LABELS, ORIENTATION_COMMANDS,
+                    "paper_orientation", valueView);
             return;
         }
         if ("print_area".equals(item.id)) {
-            showLabelPicker("打印区域", PRINT_AREA_LABELS, PRINT_AREA_COMMANDS, "print_area", valueView);
+            showOptionPickerPage("打印区域", PRINT_AREA_LABELS, PRINT_AREA_COMMANDS,
+                    "print_area", valueView);
             return;
         }
         host.toastTodo(item.label + " 后续接入");
-    }
-
-    private void showLabelPicker(String title, String[] labels, String[] commands, String pickerId, TextView valueView) {
-        new AlertDialog.Builder(host.getContext())
-                .setTitle(title)
-                .setItems(labels, (d, which) -> {
-                    String label = labels[which];
-                    pickerValues.put(pickerId, label);
-                    valueView.setText(label);
-                    if (which < commands.length && commands[which] != null && !commands[which].isEmpty()) {
-                        host.executeUnoCommand(commands[which]);
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
     }
 
     private void applyCalcColorSelection(ColorPickerKind kind, int rgb) {
@@ -1730,9 +2026,8 @@ public class CalcFunctionPanelController {
         if (existingDot == null && fallbackIconRes != 0) {
             dot.setImageResource(fallbackIconRes);
         }
-        int size = host.dpToPx(24);
+        int size = host.dpToPx(20);
         LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(size, size);
-        dotLp.setMarginStart(host.dpToPx(8));
         dotLp.setMarginEnd(host.dpToPx(8));
         dot.setLayoutParams(dotLp);
         return dot;
@@ -1748,7 +2043,7 @@ public class CalcFunctionPanelController {
             return;
         }
         dot.setImageDrawable(null);
-        int size = host.dpToPx(24);
+        int size = host.dpToPx(20);
         GradientDrawable drawable = createCircleSwatchDrawable(rgb);
         dot.setBackground(drawable);
         dot.setMinimumWidth(size);
@@ -1845,18 +2140,80 @@ public class CalcFunctionPanelController {
         return o;
     }
 
-    private void showSizePicker(TextView valueView) {
-        new AlertDialog.Builder(host.getContext())
-                .setTitle("字号")
-                .setItems(SIZE_OPTIONS, (d, which) -> {
-                    String label = SIZE_OPTIONS[which];
-                    String value = SIZE_VALUES[which];
-                    pickerValues.put("font_size", label);
-                    valueView.setText(label);
-                    host.applyFontSize(value);
-                })
-                .setNegativeButton("取消", null)
-                .show();
+    // === 字号浮层：与 Writer 文档面板同款（PopupWindow 圆角卡片，锚定在字号框下方） ===
+
+    private void showFontSizePopup(TextView valueView, View anchor) {
+        dismissFontSizePopup();
+        LinearLayout rows = new LinearLayout(host.getContext());
+        rows.setOrientation(LinearLayout.VERTICAL);
+        rows.setPadding(host.dpToPx(8), host.dpToPx(8), host.dpToPx(8), host.dpToPx(8));
+
+        String selectedLabel = pickerValues.getOrDefault("font_size", "");
+        for (int i = 0; i < SIZE_OPTIONS.length; i++) {
+            final String label = SIZE_OPTIONS[i];
+            final String value = SIZE_VALUES[i];
+            rows.addView(createFontSizeRow(label, value, selectedLabel, valueView));
+            if (i < SIZE_OPTIONS.length - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x1F000000);
+                rows.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+
+        NestedScrollView scroll = new NestedScrollView(host.getContext());
+        scroll.setFillViewport(false);
+        scroll.setVerticalScrollBarEnabled(true);
+        scroll.setBackgroundResource(R.drawable.lolib_bg_font_size_popup);
+        scroll.setClipToOutline(true);
+        scroll.addView(rows);
+
+        int width = host.dpToPx(160);
+        int height = host.dpToPx(230);
+        fontSizePopup = new PopupWindow(scroll, width, height, true);
+        fontSizePopup.setElevation(host.dpToPx(16));
+        fontSizePopup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        fontSizePopup.setOutsideTouchable(true);
+        fontSizePopup.showAsDropDown(anchor, 0, -host.dpToPx(4));
+    }
+
+    private LinearLayout createFontSizeRow(String label, String value, String selectedLabel,
+            TextView valueView) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(host.dpToPx(12), host.dpToPx(10), host.dpToPx(12), host.dpToPx(10));
+        row.setMinimumHeight(host.dpToPx(40));
+        boolean selected = label.equals(selectedLabel) || value.equals(selectedLabel);
+
+        TextView text = new TextView(host.getContext());
+        text.setText(label);
+        text.setTextSize(14);
+        text.setTextColor(selected ? COLOR_TAB_ACTIVE : COLOR_TAB_INACTIVE);
+        row.addView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        ImageView check = new ImageView(host.getContext());
+        check.setImageResource(selected
+                ? R.drawable.lolib_ic_option_circle_checked
+                : R.drawable.lolib_ic_option_circle_unchecked);
+        int checkSize = host.dpToPx(16);
+        check.setLayoutParams(new LinearLayout.LayoutParams(checkSize, checkSize));
+        row.addView(check);
+
+        row.setOnClickListener(v -> {
+            pickerValues.put("font_size", label);
+            valueView.setText(label);
+            dismissFontSizePopup();
+            host.applyFontSize(value);
+        });
+        return row;
+    }
+
+    private void dismissFontSizePopup() {
+        if (fontSizePopup != null) {
+            fontSizePopup.dismiss();
+            fontSizePopup = null;
+        }
     }
 
     private void showFontPicker(TextView valueView) {
@@ -2000,6 +2357,10 @@ public class CalcFunctionPanelController {
             showDataValidationPage();
             return;
         }
+        if ("insert_comment".equals(item.id) || "review_comment".equals(item.id)) {
+            showCommentPickerPage();
+            return;
+        }
         Runnable action = () -> {
             if (item.hostAction != null) {
                 item.hostAction.run();
@@ -2083,7 +2444,7 @@ public class CalcFunctionPanelController {
         insert.add(new PanelItem(ItemType.ACTION, "insert_chart", "图表",
                 R.drawable.lolib_ic_calc_insert_chart, ""));
         insert.add(new PanelItem(ItemType.ACTION, "insert_comment", "批注",
-                R.drawable.lolib_ic_calc_insert_comment, ".uno:InsertAnnotation"));
+                R.drawable.lolib_ic_calc_insert_comment, ""));
         insert.add(new PanelItem(ItemType.ACTION, "insert_hyperlink", "超链接",
                 R.drawable.lolib_ic_calc_insert_hyperlink, ""));
         insert.add(new PanelItem(ItemType.ACTION, "insert_shape", "形状",
@@ -2096,9 +2457,12 @@ public class CalcFunctionPanelController {
         result.add(new PanelTab("insert", "插入", insert));
 
         List<PanelItem> layout = new ArrayList<>();
-        layout.add(new PanelItem(ItemType.PICKER_ROW, "paper_orientation", "纸张方向", "纵向"));
-        layout.add(new PanelItem(ItemType.PICKER_ROW, "print_area", "打印区域", "默认"));
-        layout.add(new PanelItem(ItemType.TOGGLE, "grid_lines", "显示网格线", ".uno:ToggleSheetGrid", true));
+        layout.add(new PanelItem(ItemType.ICON_VALUE_ROW, "paper_orientation", "纸张方向", "纵向",
+                R.drawable.lolib_ic_calc_paper_orientation));
+        layout.add(new PanelItem(ItemType.ICON_VALUE_ROW, "print_area", "打印区域", "A4",
+                R.drawable.lolib_ic_calc_print_area));
+        layout.add(new PanelItem(ItemType.TOGGLE, "grid_lines", "显示网格线", "", ".uno:ToggleSheetGrid",
+                null, R.drawable.lolib_ic_calc_grid_lines, null, null, null, 0, null, false, true, null));
         result.add(new PanelTab("layout", "布局", layout));
 
         List<PanelItem> data = new ArrayList<>();
@@ -2129,7 +2493,7 @@ public class CalcFunctionPanelController {
         review.add(new PanelItem(ItemType.ACTION, "spell_check", "拼写检查",
                 R.drawable.lolib_ic_calc_spell_check, ".uno:SpellDialog"));
         review.add(new PanelItem(ItemType.ACTION, "review_comment", "批注",
-                R.drawable.lolib_ic_calc_review_comment, (Runnable) host::insertComment));
+                R.drawable.lolib_ic_calc_review_comment, ""));
         Log.i(TAG, "buildTabs review_items=" + review.size() + " layout=list+icons");
         result.add(new PanelTab("review", "审阅", review));
 

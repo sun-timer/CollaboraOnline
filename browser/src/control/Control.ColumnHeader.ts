@@ -171,7 +171,7 @@ export class ColumnHeader extends Header {
 
 	getHeaderEntryBoundingClientRect (index: number): Partial<DOMRect> {
 		let entry = this._mouseOverEntry;
-		if (index) {
+		if (index !== undefined && index !== null) {
 			entry = this._headerInfo.getColData(index);
 		}
 
@@ -192,6 +192,12 @@ export class ColumnHeader extends Header {
 	}
 
 	onClick(point: cool.SimplePoint, e: MouseEvent): void {
+		if (!this._mouseOverEntry) {
+			const hit = this._entryAtPoint(point);
+			if (hit) {
+				this._mouseOverEntry = hit.entry;
+			}
+		}
 		if (!this._mouseOverEntry)
 			return;
 
@@ -209,6 +215,9 @@ export class ColumnHeader extends Header {
 		}
 
 		this._selectColumn(col, modifier);
+		if ((window as any).ThisIsTheAndroidApp) {
+			(window as any).AndroidCalcHeaderMenu.tryShow(this, e, col);
+		}
 	}
 
 	// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types

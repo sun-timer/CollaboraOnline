@@ -146,8 +146,12 @@ public class DocumentTabsSheetController {
         String currentUri = host.getCurrentDocumentUri();
 
         int openedCount = RecentDocumentsStore.getRecentUris(prefs).size();
+        int closedCount = RecentDocumentsStore.getRecentlyClosedUris(prefs).size();
         if (openedTabView != null) {
             openedTabView.setText("已打开 (" + Math.max(openedCount, 1) + ")");
+        }
+        if (closedTabView != null) {
+            closedTabView.setText("最近关闭 (" + closedCount + ")");
         }
         host.onOpenDocumentListChanged();
 

@@ -784,6 +784,7 @@ public class LOActivity extends AppCompatActivity {
     private SelectionMenuController selectionMenuController;
     private CalcHyperlinkCellPopupController calcHyperlinkCellPopupController;
     private CalcSheetTabPopupController calcSheetTabPopupController;
+    private CalcHeaderPopupController calcHeaderPopupController;
     private android.app.AlertDialog externalLinkConfirmDialog;
     private CalcObjectBarController calcObjectBarController;
     private Runnable pendingAfterEditMode;
@@ -1203,6 +1204,18 @@ public class LOActivity extends AppCompatActivity {
                         Toast.makeText(LOActivity.this, getString(R.string.cannot_open_file_chooser), Toast.LENGTH_LONG)
                                 .show();
                         return false;
+                    }
+                    return true;
+                }
+
+                @Override
+                public boolean onConsoleMessage(android.webkit.ConsoleMessage consoleMessage) {
+                    // Bridge JS console.log into logcat for our diagnostics only
+                    // (prefixed logs), so debugging doesn't depend on the embedded
+                    // server protocol (postMobileMessage) which errors on unknown cmds.
+                    String msg = consoleMessage == null ? "" : consoleMessage.message();
+                    if (msg != null && (msg.contains("[selection_menu]") || msg.contains("[kbprobe]"))) {
+                        Log.i(TAG, "js_console: " + msg);
                     }
                     return true;
                 }
@@ -2807,7 +2820,28 @@ public class LOActivity extends AppCompatActivity {
                 }
                 if (messageAndParam.length > 1 && messageAndParam[1].startsWith("show ")) {
                     final String json = messageAndParam[1].substring("show ".length());
-                    getMainHandler().post(() -> ensureCalcSheetTabPopupController().showFromJson(json));
+                    getMainHandler().post(() -> {
+                        ensureSelectionMenuController().hide();
+                        ensureCalcSheetTabPopupController().showFromJson(json);
+                    });
+                    return false;
+                }
+                return false;
+            }
+            case "CALC_HEADER_POPUP": {
+                if (messageAndParam.length > 1 && "hide".equals(messageAndParam[1])) {
+                    getMainHandler().post(() -> ensureCalcHeaderPopupController().hide());
+                    return false;
+                }
+                if (messageAndParam.length > 1 && messageAndParam[1].startsWith("show ")) {
+                    final String json = messageAndParam[1].substring("show ".length());
+                    Log.i(TAG, "calc_header_popup_show " + json);
+                    getMainHandler().post(() -> {
+                        ensureSelectionMenuController().hide();
+                        ensureCalcSheetTabPopupController().hide();
+                        closeMobileWizardFromAndroid("calc_header_popup");
+                        ensureCalcHeaderPopupController().showFromJson(json);
+                    });
                     return false;
                 }
                 return false;
@@ -2834,8 +2868,69 @@ public class LOActivity extends AppCompatActivity {
                 }
                 return false;
             }
+            case "CALC_HEADER_DISPATCH": {
+                Log.i(TAG, "calc_header_dispatch "
+                        + (messageAndParam.length > 1 ? messageAndParam[1] : ""));
+                return false;
+            }
+            case "CALC_CELL_DISPATCH": {
+                Log.i(TAG, "calc_cell_dispatch "
+                        + (messageAndParam.length > 1 ? messageAndParam[1] : ""));
+                return false;
+            }
             case "CALC_CELL_TAP": {
                 Log.i(TAG, "calc_cell_tap " + (messageAndParam.length > 1 ? messageAndParam[1] : ""));
+                if (messageAndParam.length > 1 && mIsCalcDocument) {
+                    String detail = messageAndParam[1];
+                    if (detail.startsWith("cursorAddr") || detail.startsWith("client=")
+                            || detail.startsWith("header_handled")) {
+                        scheduleCalcCellMenuTryShow();
+                    }
+                }
+                return false;
+            }
+            case "CALC_CELL_POPUP": {
+                if (messageAndParam.length > 1 && "hide".equals(messageAndParam[1])) {
+                    getMainHandler().post(() -> ensureSelectionMenuController().hide());
+                    return false;
+                }
+                if (messageAndParam.length > 1 && messageAndParam[1] != null
+                        && messageAndParam[1].startsWith("show ")) {
+                    try {
+                        String[] parts = messageAndParam[1].split(" ");
+                        if (parts.length >= 3) {
+                            final float anchorX = Float.parseFloat(parts[1]);
+                            final float anchorY = Float.parseFloat(parts[2]);
+                            final float anchorBottomY = parts.length >= 4
+                                    ? Float.parseFloat(parts[3])
+                                    : anchorY;
+                            Log.i(TAG, "calc_cell_popup_show anchor="
+                                    + anchorX + "," + anchorY + "," + anchorBottomY);
+                            getMainHandler().post(() -> {
+                                hideCalcObjectBar();
+                                ensureCalcHeaderPopupController().hide();
+                                SelectionMenuController menu = ensureSelectionMenuController();
+                                menu.setCalcMode(true);
+                                menu.showAtWindow(anchorX, anchorY, anchorBottomY);
+                                Log.i(TAG, "calc_cell_popup_shown anchor="
+                                        + anchorX + "," + anchorY + "," + anchorBottomY);
+                            });
+                        }
+                    } catch (NumberFormatException e) {
+                        Log.w(TAG, "calc_cell_popup_bad_anchor", e);
+                    }
+                    return false;
+                }
+                return false;
+            }
+            case "MOBILE_PHONE_PREVIEW": {
+                if (messageAndParam.length > 1 && "hide".equals(messageAndParam[1])) {
+                    getMainHandler().post(() -> {
+                        if (mobilePhonePreviewController != null && mobilePhonePreviewController.isShowing()) {
+                            mobilePhonePreviewController.hide();
+                        }
+                    });
+                }
                 return false;
             }
             case "EDITMODE": {
@@ -2920,6 +3015,7 @@ public class LOActivity extends AppCompatActivity {
                     getMainHandler().post(() -> {
                         if (mIsCalcDocument) {
                             hideCalcObjectBar();
+                            ensureSelectionMenuController().hide();
                         } else {
                             ensureSelectionMenuController().hide();
                         }
@@ -2934,6 +3030,7 @@ public class LOActivity extends AppCompatActivity {
                             final float anchorY = Float.parseFloat(parts[2]);
                             getMainHandler().post(() -> {
                                 if (mIsCalcDocument) {
+                                    ensureSelectionMenuController().hide();
                                     showCalcObjectBar();
                                 } else {
                                     SelectionMenuController smc = ensureSelectionMenuController();
@@ -4205,40 +4302,109 @@ public class LOActivity extends AppCompatActivity {
         return Math.max(min, Math.min(value, max));
     }
 
-    private void onDocumentLongPress(float viewX, float viewY) {
-        if (!documentLoaded || mWebView == null || mIsEditModeActive) {
+    private void scheduleCalcCellMenuTryShow() {
+        if (mWebView == null || !mIsCalcDocument) {
             return;
         }
+        getMainHandler().postDelayed(() -> {
+            if (mWebView == null) {
+                return;
+            }
+            mWebView.evaluateJavascript(
+                    "(function(){try{"
+                            + "if(window.AndroidCalcCellMenu"
+                            + "&&typeof window.AndroidCalcCellMenu.tryShow==='function'){"
+                            + "window.AndroidCalcCellMenu.tryShow(1);"
+                            + "}else if(window.postMobileMessage){"
+                            + "window.postMobileMessage('CALC_CELL_DISPATCH skip=no_bridge');"
+                            + "}"
+                            + "}catch(e){if(window.postMobileMessage){"
+                            + "window.postMobileMessage('CALC_CELL_DISPATCH skip=js '+((e&&e.message)?e.message:e));"
+                            + "}}})();",
+                    null);
+        }, 120);
+    }
+
+    private void tryCalcHeaderDispatch(
+            float viewX,
+            float viewY,
+            String mode,
+            Consumer<Boolean> onDone) {
         mWebView.evaluateJavascript(
-                "(function(){try{if(window.AndroidSelectionMenu){"
-                        + "window.AndroidSelectionMenu.markNativeLongPress();"
-                        + "window.AndroidSelectionMenu.onLongPressAt(" + viewX + "," + viewY + ");"
-                        + "}}catch(e){if(window.console&&console.warn){"
-                        + "console.warn('selection_menu_long_press_failed',e);}}"
-                        + "return true;})();",
-                null);
+                "(function(){try{"
+                        + "if(window.AndroidCalcHeaderMenu"
+                        + "&&typeof window.AndroidCalcHeaderMenu.dispatchAtClient==='function'"
+                        + "&&window.AndroidCalcHeaderMenu.dispatchAtClient("
+                        + viewX + "," + viewY + ",'" + mode + "')){return true;}"
+                        + "return false;"
+                        + "}catch(e){if(window.postMobileMessage){"
+                        + "window.postMobileMessage('CALC_HEADER_POPUP failed=js '+((e&&e.message)?e.message:e));}"
+                        + "return false;}})();",
+                value -> {
+                    boolean handled = "true".equals(value);
+                    if (onDone != null) {
+                        onDone.accept(handled);
+                    }
+                });
+    }
+
+    private void onDocumentLongPress(float viewX, float viewY) {
+        if (!documentLoaded || mWebView == null) {
+            return;
+        }
+        Log.i(TAG, "document_long_press nativeCalc=" + mIsCalcDocument
+                + " edit=" + mIsEditModeActive
+                + " view=" + Math.round(viewX) + "," + Math.round(viewY));
+        tryCalcHeaderDispatch(viewX, viewY, "longpress", handled -> {
+            if (handled) {
+                Log.i(TAG, "calc_header_long_press handled view="
+                        + Math.round(viewX) + "," + Math.round(viewY));
+                return;
+            }
+            mWebView.evaluateJavascript(
+                    "(function(){try{if(window.AndroidSelectionMenu){"
+                            + "window.AndroidSelectionMenu.markNativeLongPress();"
+                            + "window.AndroidSelectionMenu.onLongPressAt(" + viewX + "," + viewY + ");"
+                            + "}}catch(e){if(window.console&&console.warn){"
+                            + "console.warn('selection_menu_long_press_failed',e);}}"
+                            + "return true;})();",
+                    null);
+        });
     }
 
     private void onDocumentTap(float viewX, float viewY) {
-        if (!documentLoaded || mWebView == null || !mIsEditModeActive || !mIsCalcDocument) {
+        if (!documentLoaded || mWebView == null) {
             return;
         }
-        Log.i(TAG, "calc_cell_tap_native viewX=" + Math.round(viewX) + " viewY=" + Math.round(viewY));
-        mWebView.evaluateJavascript(
-                "(function(){try{"
-                        + "if(!window.AndroidCalcTap||typeof window.AndroidCalcTap.dispatchTapAt!=='function'){"
-                        + "if(window.postMobileMessage){window.postMobileMessage('CALC_CELL_TAP failed=no_bridge');}"
-                        + "return;}"
-                        + "window.AndroidCalcTap.dispatchTapAt(" + viewX + "," + viewY + ");"
-                        + "}catch(e){"
-                        + "var m=(e&&e.message)?e.message:String(e);"
-                        + "if(window.postMobileMessage){window.postMobileMessage('CALC_CELL_TAP failed=js '+m);}"
-                        + "}})();",
-                null);
+        Log.i(TAG, "document_tap nativeCalc=" + mIsCalcDocument
+                + " edit=" + mIsEditModeActive
+                + " viewX=" + Math.round(viewX) + " viewY=" + Math.round(viewY));
+        tryCalcHeaderDispatch(viewX, viewY, "tap", handled -> {
+            if (handled) {
+                Log.i(TAG, "calc_header_tap handled view="
+                        + Math.round(viewX) + "," + Math.round(viewY));
+                return;
+            }
+            if (!mIsEditModeActive || !mIsCalcDocument) {
+                return;
+            }
+            Log.i(TAG, "calc_cell_tap_native viewX=" + Math.round(viewX) + " viewY=" + Math.round(viewY));
+            mWebView.evaluateJavascript(
+                    "(function(){try{"
+                            + "if(!window.AndroidCalcTap||typeof window.AndroidCalcTap.dispatchTapAt!=='function'){"
+                            + "if(window.postMobileMessage){window.postMobileMessage('CALC_CELL_TAP failed=no_bridge');}"
+                            + "return;}"
+                            + "window.AndroidCalcTap.dispatchTapAt(" + viewX + "," + viewY + ");"
+                            + "}catch(e){"
+                            + "var m=(e&&e.message)?e.message:String(e);"
+                            + "if(window.postMobileMessage){window.postMobileMessage('CALC_CELL_TAP failed=js '+m);}"
+                            + "}})();",
+                    null);
+        });
     }
 
     private void onDocumentSelectionDrag(float viewX, float viewY) {
-        if (!documentLoaded || mWebView == null || mIsEditModeActive) {
+        if (!documentLoaded || mWebView == null) {
             return;
         }
         mWebView.evaluateJavascript(
@@ -4251,7 +4417,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void onDocumentSelectionDragEnd(float viewX, float viewY) {
-        if (!documentLoaded || mWebView == null || mIsEditModeActive) {
+        if (!documentLoaded || mWebView == null) {
             return;
         }
         mWebView.evaluateJavascript(
@@ -4264,7 +4430,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void onDocumentSelectionDragCancel() {
-        if (!documentLoaded || mWebView == null || mIsEditModeActive) {
+        if (!documentLoaded || mWebView == null) {
             return;
         }
         mWebView.evaluateJavascript(
@@ -4338,6 +4504,7 @@ public class LOActivity extends AppCompatActivity {
         selectionMenuController.setup();
         setupCalcHyperlinkCellPopup();
         setupCalcSheetTabPopup();
+        setupCalcHeaderPopup();
     }
 
     private void setupCalcHyperlinkCellPopup() {
@@ -4420,6 +4587,11 @@ public class LOActivity extends AppCompatActivity {
                     }
 
                     @Override
+                    public void deleteSheet(int tabIndex) {
+                        LOActivity.this.deleteCalcSheet(tabIndex);
+                    }
+
+                    @Override
                     public void ensureEditModeThen(Runnable action) {
                         LOActivity.this.ensureEditModeThen(action);
                     }
@@ -4434,10 +4606,60 @@ public class LOActivity extends AppCompatActivity {
         return calcSheetTabPopupController;
     }
 
+    private void setupCalcHeaderPopup() {
+        calcHeaderPopupController = new CalcHeaderPopupController(
+                new CalcHeaderPopupController.Host() {
+                    @Override
+                    public android.content.Context getContext() {
+                        return LOActivity.this;
+                    }
+
+                    @Override
+                    public View findViewById(int id) {
+                        return LOActivity.this.findViewById(id);
+                    }
+
+                    @Override
+                    public View getBrowserView() {
+                        return mWebView;
+                    }
+
+                    @Override
+                    public float dpToPx(float dp) {
+                        return LOActivity.this.dpToPx(Math.round(dp));
+                    }
+
+                    @Override
+                    public void evaluateJavascript(String script) {
+                        LOActivity.this.evaluateJavascript(script, null);
+                    }
+                });
+        calcHeaderPopupController.setup();
+    }
+
+    private CalcHeaderPopupController ensureCalcHeaderPopupController() {
+        if (calcHeaderPopupController == null) {
+            setupCalcHeaderPopup();
+        }
+        return calcHeaderPopupController;
+    }
+
     private void copyCalcSheet(int tabIndex) {
         executeUnoCommand(".uno:Move?Copy:bool=true&UseCurrentDocument:bool=true&FromContextMenu:bool=true&ContextMenuIndex="
                 + tabIndex + "&Index=" + (tabIndex + 2));
         Log.i(TAG, "copy_calc_sheet tabIndex=" + tabIndex);
+    }
+
+    private void deleteCalcSheet(int tabIndex) {
+        ensureEditModeThen(() -> {
+            String script = "(function(){"
+                    + "if(window.app&&app.map&&typeof app.map.deletePage==='function'){"
+                    + "app.map.deletePage(" + tabIndex + ");"
+                    + "}"
+                    + "return true;})();";
+            evaluateJavascript(script, null);
+            Log.i(TAG, "delete_calc_sheet tabIndex=" + tabIndex);
+        });
     }
 
     private CalcHyperlinkCellPopupController ensureCalcHyperlinkCellPopupController() {
@@ -4454,6 +4676,7 @@ public class LOActivity extends AppCompatActivity {
             String text = obj.optString("text", url);
             float anchorX = (float) obj.optDouble("anchorX", 0);
             float anchorY = (float) obj.optDouble("anchorY", 0);
+            ensureSelectionMenuController().hide();
             ensureCalcHyperlinkCellPopupController().show(url, text, anchorX, anchorY);
         } catch (org.json.JSONException e) {
             Log.w(TAG, "hyperlink_popup_parse_failed", e);
@@ -9473,6 +9696,10 @@ public class LOActivity extends AppCompatActivity {
     private void applyBottomToolbarImeState(boolean imeVisible, int imeInsetBottom, int navigationBarInsetBottom) {
         isImeVisibleForToolbar = imeVisible;
         bottomToolbarImeInsetPx = Math.max(0, imeInsetBottom);
+        Log.i(TAG, "keyboard_visibility imeVisible=" + imeVisible
+                + " insetBottom=" + imeInsetBottom
+                + " editMode=" + mIsEditModeActive
+                + " imeAllowed=" + (mWebView != null && mWebView.isImeAllowedByUser()));
         ensureBottomToolbarController().applyImeState(imeVisible, imeInsetBottom, navigationBarInsetBottom);
         if (mWebView == null) {
             return;
@@ -9659,6 +9886,10 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void saveDocument() {
                     postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1");
+                    Toast toast = Toast.makeText(LOActivity.this, "已保存", Toast.LENGTH_SHORT);
+                    // 功能面板 BottomSheet 占屏约 2/3，默认底部 Toast 会被面板挡住；改到顶部可见
+                    toast.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, dpToPx(120));
+                    toast.show();
                 }
 
                 @Override
@@ -9684,6 +9915,16 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void insertComment() {
                     LOActivity.this.insertCommentFromPanel();
+                }
+
+                @Override
+                public String getCommentAuthorName() {
+                    return LOActivity.this.getPrefs().getString(USER_NAME_KEY, "Guest User");
+                }
+
+                @Override
+                public void insertCommentWithText(String text) {
+                    LOActivity.this.insertCommentWithText(text);
                 }
 
                 @Override
@@ -9792,6 +10033,10 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void saveDocument() {
                     postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1");
+                    Toast toast = Toast.makeText(LOActivity.this, "已保存", Toast.LENGTH_SHORT);
+                    // 功能面板 BottomSheet 占屏约 2/3，默认底部 Toast 会被面板挡住；改到顶部可见
+                    toast.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, dpToPx(120));
+                    toast.show();
                 }
 
                 @Override
@@ -9976,6 +10221,10 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void saveDocument() {
                     postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1");
+                    Toast toast = Toast.makeText(LOActivity.this, "已保存", Toast.LENGTH_SHORT);
+                    // 功能面板 BottomSheet 占屏约 2/3，默认底部 Toast 会被面板挡住；改到顶部可见
+                    toast.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, dpToPx(120));
+                    toast.show();
                 }
 
                 @Override
@@ -11022,6 +11271,9 @@ public class LOActivity extends AppCompatActivity {
         }
         if (calcSheetTabPopupController != null) {
             calcSheetTabPopupController.hide();
+        }
+        if (calcHeaderPopupController != null) {
+            calcHeaderPopupController.hide();
         }
         pendingAfterEditMode = null;
         lastPreviewModeSwitchMs = android.os.SystemClock.uptimeMillis();

@@ -85,6 +85,10 @@
     <string name="ai_profile_avatar">Avatar</string>
     <string name="ai_profile_name_hint">Please enter nickname</string>
     <string name="ai_edit_nickname">Edit Nickname</string>
+    <string name="ai_set_avatar_title">Set Avatar</string>
+    <string name="ai_avatar_take_photo">Take Photo</string>
+    <string name="ai_avatar_pick_gallery">Select from Album</string>
+    <string name="ai_avatar_camera_failed">Unable to start camera</string>
     <string name="ai_connection">Connection</string>
     <string name="ai_config_name">Config name (e.g. Company API, Personal model)</string>
     <string name="ai_config_name_hint">Please enter config name</string>

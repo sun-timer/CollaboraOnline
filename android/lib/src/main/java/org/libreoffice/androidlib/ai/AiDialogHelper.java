@@ -1,13 +1,19 @@
 package org.libreoffice.androidlib.ai;
 
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.util.DisplayMetrics;
+import android.view.Gravity;
+import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+
 import com.google.android.material.bottomsheet.BottomSheetDialog;
+
+import org.libreoffice.androidlib.BottomSheetAnchorHelper;
 
 /**
  * AI 功能弹窗统一行为：仅右上角关闭按钮可 dismiss，点击外部不关闭。
@@ -156,5 +162,85 @@ public final class AiDialogHelper {
             lp.height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
         }
         root.setLayoutParams(lp);
+    }
+
+    /**
+     * 小型 Hug 弹窗：竖屏走 BottomSheet（贴底 + {@link BottomSheetAnchorHelper}），
+     * 横屏走居中 AlertDialog，避免 BottomSheet 在短屏横屏下只露一条。
+     */
+    public static CompactPanelSession showCompactPanel(Context context, View panel, String logTag) {
+        if (context == null || panel == null) {
+            return new CompactPanelSession(null, null);
+        }
+        if (panel.getParent() instanceof android.view.ViewGroup) {
+            ((android.view.ViewGroup) panel.getParent()).removeView(panel);
+        }
+        if (BottomSheetAnchorHelper.isLandscape(context)) {
+            AlertDialog dialog = new AlertDialog.Builder(context).create();
+            dialog.setView(panel);
+            applyCloseOnlyDismiss(dialog);
+            applyTransparentWindow(dialog);
+            dialog.show();
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setSoftInputMode(
+                        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                                | WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED);
+                WindowManager.LayoutParams params = dialog.getWindow().getAttributes();
+                params.gravity = Gravity.CENTER;
+                dialog.getWindow().setAttributes(params);
+            }
+            Resources res = context.getResources();
+            applyFlexibleWidth(panel, dialog,
+                    computeTargetWidthPx(res), computeMaxHeightHugPx(res));
+            return new CompactPanelSession(dialog, null);
+        }
+
+        BottomSheetDialog dialog = new BottomSheetDialog(context);
+        dialog.setContentView(panel);
+        applyCloseOnlyDismiss(dialog);
+        dialog.show();
+        applyNoDimScrim(dialog);
+        BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
+        options.draggable = false;
+        options.logTag = logTag != null ? logTag : "CompactPanel";
+        BottomSheetAnchorHelper.expandWrapContent(dialog, 0.92f, options);
+        return new CompactPanelSession(null, dialog);
+    }
+
+    /** 统一 dismiss 竖屏 BottomSheet / 横屏 AlertDialog。 */
+    public static final class CompactPanelSession {
+        private final AlertDialog alertDialog;
+        private final BottomSheetDialog bottomSheetDialog;
+
+        CompactPanelSession(AlertDialog alertDialog, BottomSheetDialog bottomSheetDialog) {
+            this.alertDialog = alertDialog;
+            this.bottomSheetDialog = bottomSheetDialog;
+        }
+
+        public boolean isShowing() {
+            return (alertDialog != null && alertDialog.isShowing())
+                    || (bottomSheetDialog != null && bottomSheetDialog.isShowing());
+        }
+
+        public void dismiss() {
+            if (alertDialog != null) {
+                alertDialog.dismiss();
+            }
+            if (bottomSheetDialog != null) {
+                bottomSheetDialog.dismiss();
+            }
+        }
+
+        public void setOnDismissListener(Runnable onDismiss) {
+            if (onDismiss == null) {
+                return;
+            }
+            if (alertDialog != null) {
+                alertDialog.setOnDismissListener(d -> onDismiss.run());
+            }
+            if (bottomSheetDialog != null) {
+                bottomSheetDialog.setOnDismissListener(d -> onDismiss.run());
+            }
+        }
     }
 }

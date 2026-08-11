@@ -43,6 +43,16 @@ class AndroidCalcTap {
 				// Best-effort: commit in-cell edit before switching cells.
 			}
 
+			// Prefer row/column header selection over single-cell tap (AndroidCalcTap regressed this).
+			if (
+				(window as any).AndroidCalcHeaderMenu &&
+				typeof (window as any).AndroidCalcHeaderMenu.dispatchAtClient === 'function' &&
+				(window as any).AndroidCalcHeaderMenu.dispatchAtClient(viewX, viewY, 'tap')
+			) {
+				AndroidCalcTap.report('header_handled');
+				return;
+			}
+
 			const twips = app.sectionContainer.dispatchCalcTapAtClient(viewX, viewY);
 			if (!twips) {
 				AndroidCalcTap.report('failed=no_pos');
@@ -59,6 +69,9 @@ class AndroidCalcTap {
 					',' +
 					twips.y,
 			);
+			window.setTimeout(() => {
+				(window as any).AndroidCalcCellMenu?.tryShow();
+			}, 150);
 		} catch (e: any) {
 			const msg = e && e.message ? e.message : String(e);
 			AndroidCalcTap.report('failed=' + msg);

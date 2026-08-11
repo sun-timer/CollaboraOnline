@@ -151,6 +151,10 @@ export class Header extends CanvasSectionObject {
 	}
 
 	onContextMenu(point: cool.SimplePoint, evt: MouseEvent): void {
+		if ((window as any).ThisIsTheAndroidApp && this._map.isEditMode()) {
+			(window as any).AndroidCalcHeaderMenu.tryShow(this, evt);
+			return;
+		}
 		if ((window as any).mode.isMobile() && this._map.isEditMode()) {
 			(window as any).contextMenuWizard = true;
 			this._map.fire('mobilewizard', {data: this._menuData});

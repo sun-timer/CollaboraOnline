@@ -80,6 +80,10 @@
     <string name="ai_profile_avatar">头像</string>
     <string name="ai_profile_name_hint">请输入昵称</string>
     <string name="ai_edit_nickname">修改昵称</string>
+    <string name="ai_set_avatar_title">设置头像</string>
+    <string name="ai_avatar_take_photo">拍照</string>
+    <string name="ai_avatar_pick_gallery">从相册选择</string>
+    <string name="ai_avatar_camera_failed">无法启动相机</string>
     <string name="ai_connection">连接</string>
     <string name="ai_config_name">配置名称 (如：公司 API、个人 DeepSeek)</string>
     <string name="ai_config_name_hint">请输入配置名称</string>
