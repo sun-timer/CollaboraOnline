@@ -92,6 +92,9 @@ public final class CalcHeaderPopupController {
     private LinearLayout itemsContainer;
     private String currentType = "";
     private int currentIndex = -1;
+    private float lastAnchorX;
+    private float lastAnchorY;
+    private float lastAnchorBottom;
 
     public CalcHeaderPopupController(Host host) {
         this.host = host;
@@ -114,6 +117,13 @@ public final class CalcHeaderPopupController {
 
     public boolean isVisible() {
         return popupView != null && popupView.getVisibility() == View.VISIBLE;
+    }
+
+    public void onConfigurationChanged() {
+        if (!isVisible() || popupView == null) {
+            return;
+        }
+        popupView.post(() -> positionPopup(lastAnchorX, lastAnchorY, lastAnchorBottom));
     }
 
     public void hide() {
@@ -156,6 +166,9 @@ public final class CalcHeaderPopupController {
 
         currentType = type;
         currentIndex = index;
+        lastAnchorX = anchorX;
+        lastAnchorY = anchorY;
+        lastAnchorBottom = anchorBottom > 0 ? anchorBottom : anchorY;
         populateItems("row".equals(type) ? ROW_ACTIONS : COLUMN_ACTIONS);
 
         if (overlayView != null) {

@@ -57,6 +57,20 @@ class HelperLineStyles {
 }
 
 class ShapeHandlesSection extends CanvasSectionObject {
+	/** AI Office Impress design accent — Figma 183:11281 selection frame. */
+	static impressSelectionStrokeColor = '#EC5D1F';
+
+	static usesImpressSelectionStyle(): boolean {
+		const docType = app.map._docLayer._docType;
+		return docType === 'presentation' || docType === 'drawing';
+	}
+
+	static getSelectionStrokeColor(): string {
+		return ShapeHandlesSection.usesImpressSelectionStyle()
+			? ShapeHandlesSection.impressSelectionStrokeColor
+			: 'black';
+	}
+
 	processingOrder: number = app.CSections.ShapeHandlesSection.processingOrder;
 	drawingOrder: number = app.CSections.ShapeHandlesSection.drawingOrder;
 	zIndex: number = app.CSections.ShapeHandlesSection.zIndex;
@@ -1246,8 +1260,14 @@ class ShapeHandlesSection extends CanvasSectionObject {
 
 	private drawSelectionFrame() {
 		this.context.beginPath();
-		this.context.strokeStyle = 'black';
-		this.context.setLineDash([3, 3]);
+		const impressStyle = ShapeHandlesSection.usesImpressSelectionStyle();
+		this.context.strokeStyle = ShapeHandlesSection.getSelectionStrokeColor();
+		if (impressStyle) {
+			this.context.setLineDash([]);
+			this.context.lineWidth = 2;
+		} else {
+			this.context.setLineDash([3, 3]);
+		}
 
 		if (this.containerObject.isDraggingSomething() && this.containerObject.targetSection === this.name)
 			this.context.strokeRect(this.sectionProperties.lastDragDistance[0], this.sectionProperties.lastDragDistance[1], this.size[0], this.size[1]);
@@ -1255,6 +1275,8 @@ class ShapeHandlesSection extends CanvasSectionObject {
 			this.context.strokeRect(0, 0, this.size[0], this.size[1]);
 
 		this.context.setLineDash([]);
+		if (impressStyle)
+			this.context.lineWidth = 1;
 		this.context.closePath();
 	}
 

@@ -165,6 +165,10 @@ window.L.ImpressTileLayer = window.L.CanvasTileLayer.extend({
 				if (mobileEditButton)
 					mobileEditButton.classList.remove('portrait');
 			}
+			if (this._addButton && this._map._permission === 'edit') {
+				this._addButton.detach();
+				this._addButton.attach(this._map);
+			}
 		}
 		else {
 			var container = window.L.DomUtil.get('main-document-content');// consider height of document area to calculate estimated height for slide-sorter

@@ -42,6 +42,8 @@ public class SelectionMenuController {
 
         void performPasteCommand();
 
+        void saveDocument();
+
         void hideQuickActionPanel();
 
         boolean onAiOperation(String taskType);
@@ -81,6 +83,8 @@ public class SelectionMenuController {
         host.findViewById(R.id.selection_op_paste).setOnClickListener(v -> onPaste());
         host.findViewById(R.id.selection_op_cut).setOnClickListener(v -> onCut());
         host.findViewById(R.id.selection_op_select_all).setOnClickListener(v -> onSelectAll());
+        host.findViewById(R.id.selection_op_image_edit).setOnClickListener(v -> onImageEdit());
+        host.findViewById(R.id.selection_op_save).setOnClickListener(v -> onSave());
 
         host.findViewById(R.id.selection_op_translate).setOnClickListener(v -> onAiOperation("translate"));
         host.findViewById(R.id.selection_op_outline).setOnClickListener(v -> onAiOperation("outline"));
@@ -145,6 +149,14 @@ public class SelectionMenuController {
 
     public boolean isVisible() {
         return visible;
+    }
+
+    /** 横竖屏切换后按当前选区坐标重新定位（WebView 布局更新后调用）。 */
+    public void onConfigurationChanged() {
+        if (!visible || menuView == null) {
+            return;
+        }
+        menuView.post(this::positionPopupNearAnchor);
     }
 
     /** Switch to graphic/image selection mode showing Delete/Copy/Cut. */
@@ -276,6 +288,20 @@ public class SelectionMenuController {
         host.ensureEditModeThen(() -> host.executeUnoCommand(".uno:Delete"));
     }
 
+    private void onImageEdit() {
+        hide();
+        if (!host.isDocEditable()) {
+            toastReadOnlyDocument();
+            return;
+        }
+        host.ensureEditModeThen(() -> host.executeUnoCommand(".uno:Crop"));
+    }
+
+    private void onSave() {
+        hide();
+        host.saveDocument();
+    }
+
     private void onAiOperation(String taskType) {
         hide();
         if (host.onAiOperation(taskType)) {
@@ -297,6 +323,8 @@ public class SelectionMenuController {
             setViewVisibility(R.id.selection_op_paste, docEditable ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_cut, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_delete, docEditable && editMode ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_image_edit, View.GONE);
+            setViewVisibility(R.id.selection_op_save, View.GONE);
             setViewVisibility(R.id.selection_op_translate, editMode ? View.VISIBLE : View.GONE);
             for (int sectionId : SELECTION_AI_SECTION_IDS) {
                 setViewVisibility(sectionId, View.GONE);
@@ -304,12 +332,14 @@ public class SelectionMenuController {
             updateActionLabel(R.id.selection_op_delete, "清除");
             updatePopupWidth(false);
         } else if (graphicMode) {
-            // Graphic mode: only show delete, copy, cut
-            setViewVisibility(R.id.selection_op_delete, View.VISIBLE);
-            updateActionLabel(R.id.selection_op_delete, "删除");
+            // Impress 图形选中：单行紧凑浮层（复制/剪切/粘贴/删除/图片编辑/保存）
             setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
             setViewVisibility(R.id.selection_op_cut, docEditable ? View.VISIBLE : View.GONE);
-            setViewVisibility(R.id.selection_op_paste, View.GONE);
+            setViewVisibility(R.id.selection_op_paste, docEditable ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_delete, docEditable ? View.VISIBLE : View.GONE);
+            updateActionLabel(R.id.selection_op_delete, "删除");
+            setViewVisibility(R.id.selection_op_image_edit, docEditable ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_save, View.VISIBLE);
             setViewVisibility(R.id.selection_op_select_all, View.GONE);
             setViewVisibility(R.id.selection_op_translate, View.GONE);
             for (int sectionId : SELECTION_AI_SECTION_IDS) {
@@ -319,6 +349,8 @@ public class SelectionMenuController {
         } else {
             updateActionLabel(R.id.selection_op_delete, "删除");
             setViewVisibility(R.id.selection_op_delete, View.GONE);
+            setViewVisibility(R.id.selection_op_image_edit, View.GONE);
+            setViewVisibility(R.id.selection_op_save, View.GONE);
             setViewVisibility(R.id.selection_op_select_all, View.VISIBLE);
             setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
             // Paste/cut: available whenever the document is editable (preview or edit mode).

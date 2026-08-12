@@ -88,7 +88,13 @@ public class TopToolbarController {
         resetUndoRedoState("toolbar_setup");
         applyDocumentThemeBackground();
         applyImpressSearchVisibility();
+        applyEditToolbarPadding();
         updateEditModeState(isEditModeActive, "toolbar_setup");
+    }
+
+    /** 横竖屏切换时由 LOActivity.onConfigurationChanged 调用。 */
+    public void onConfigurationChanged() {
+        applyEditToolbarPadding();
     }
 
     public void updateDocumentType(boolean isCalc, boolean isImpress) {
@@ -164,6 +170,7 @@ public class TopToolbarController {
             if (editToolbarView != null) {
                 editToolbarView.setVisibility(isEditMode ? View.VISIBLE : View.GONE);
             }
+            applyEditToolbarPadding();
             Log.i(TAG, "top_toolbar_mode edit=" + isEditMode + " reason=" + reason);
         };
         if (Looper.myLooper() == Looper.getMainLooper()) {
@@ -248,6 +255,17 @@ public class TopToolbarController {
             backgroundResId = R.drawable.lolib_bg_top_done_button_calc;
         }
         doneButton.setBackgroundResource(backgroundResId);
+    }
+
+    private void applyEditToolbarPadding() {
+        if (editToolbarView == null) {
+            return;
+        }
+        int padStart = editToolbarView.getResources().getDimensionPixelSize(
+                R.dimen.top_toolbar_edit_padding_start);
+        int padEnd = editToolbarView.getResources().getDimensionPixelSize(
+                R.dimen.top_toolbar_edit_padding_end);
+        editToolbarView.setPaddingRelative(padStart, 0, padEnd, 0);
     }
 
     private void runOnUi(Runnable task) {

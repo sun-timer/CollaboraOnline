@@ -65,7 +65,7 @@ class ShapeHandleRotationSubSection extends CanvasSectionObject {
 
 	onDraw(frameCount?: number, elapsedTime?: number): void {
 		this.context.fillStyle = 'white';
-		this.context.strokeStyle = 'black';
+		this.context.strokeStyle = ShapeHandlesSection.getSelectionStrokeColor();
 		this.context.beginPath();
 		this.context.arc(this.size[0] * 0.5, this.size[1] * 0.5, this.size[0] * 0.5, 0, Math.PI * 2);
 		this.context.closePath();

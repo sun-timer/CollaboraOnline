@@ -35,7 +35,8 @@ public class ImpressShapePickerController {
     private static final int GRID_H_PAD_DP = 8;
     private static final int GRID_V_PAD_DP = 8;
     private static final int GRID_ROW_GAP_DP = 4;
-    private static final int COLOR_SECTION = Color.parseColor("#80868B");
+    private static final int COLOR_SECTION = Color.parseColor("#101010");
+    private static final float SECTION_TITLE_SP = 16f;
 
     public interface Host {
         android.content.Context getContext();
@@ -91,6 +92,19 @@ public class ImpressShapePickerController {
         return dialog != null && dialog.isShowing();
     }
 
+    /** 横竖屏切换后重算 BottomSheet 高度比例。 */
+    public void onConfigurationChanged() {
+        if (dialog == null || !dialog.isShowing()) {
+            return;
+        }
+        FrameLayout bottomSheet = dialog.findViewById(
+                com.google.android.material.R.id.design_bottom_sheet);
+        if (bottomSheet != null && bottomSheet.getChildCount() > 0) {
+            View panel = bottomSheet.getChildAt(0);
+            bottomSheet.post(() -> expandSheet(panel));
+        }
+    }
+
     private void expandSheet(View panel) {
         FrameLayout bottomSheet = dialog.findViewById(
                 com.google.android.material.R.id.design_bottom_sheet);
@@ -116,10 +130,10 @@ public class ImpressShapePickerController {
         TextView label = new TextView(host.getContext());
         label.setText(title);
         label.setTextColor(COLOR_SECTION);
-        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, SECTION_TITLE_SP);
         label.setTypeface(null, Typeface.NORMAL);
         int hPad = host.dpToPx(16);
-        label.setPadding(hPad, host.dpToPx(14), hPad, host.dpToPx(6));
+        label.setPadding(hPad, host.dpToPx(16), hPad, host.dpToPx(8));
         return label;
     }
 
@@ -164,16 +178,18 @@ public class ImpressShapePickerController {
             FrameLayout cell = new FrameLayout(host.getContext());
             LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(0, rowHeight, 1f);
             cell.setLayoutParams(cellLp);
-            cell.setForeground(host.getContext().getDrawable(android.R.drawable.list_selector_background));
+            if (entry != null) {
+                cell.setForeground(host.getContext().getDrawable(android.R.drawable.list_selector_background));
 
-            ImageView icon = new ImageView(host.getContext());
-            icon.setImageResource(entry.iconResId);
-            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            FrameLayout.LayoutParams iconLp = new FrameLayout.LayoutParams(iconSize, iconSize);
-            iconLp.gravity = Gravity.CENTER;
-            cell.addView(icon, iconLp);
+                ImageView icon = new ImageView(host.getContext());
+                icon.setImageResource(entry.iconResId);
+                icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                FrameLayout.LayoutParams iconLp = new FrameLayout.LayoutParams(iconSize, iconSize);
+                iconLp.gravity = Gravity.CENTER;
+                cell.addView(icon, iconLp);
 
-            cell.setOnClickListener(v -> onShapeSelected(entry));
+                cell.setOnClickListener(v -> onShapeSelected(entry));
+            }
             if (row != null) {
                 row.addView(cell);
             }

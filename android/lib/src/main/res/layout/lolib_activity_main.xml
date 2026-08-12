@@ -405,6 +405,29 @@
             app:layout_constraintTop_toTopOf="parent" />
 
         <View
+            android:id="@+id/impress_slide_thumbnail_popup_overlay"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="@android:color/transparent"
+            android:clickable="true"
+            android:elevation="7dp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/doc_top_toolbar_include" />
+
+        <include
+            android:id="@+id/impress_slide_thumbnail_popup_panel"
+            layout="@layout/lolib_impress_slide_thumbnail_popup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:elevation="8dp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <View
             android:id="@+id/calc_header_popup_overlay"
             android:layout_width="0dp"
             android:layout_height="0dp"
@@ -596,23 +619,24 @@
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:background="#80000000"
+            android:clickable="true"
+            android:elevation="45dp"
+            android:focusable="true"
             android:visibility="gone"
             app:layout_constraintBottom_toBottomOf="@id/doc_main_content"
             app:layout_constraintEnd_toEndOf="@id/doc_main_content"
             app:layout_constraintStart_toStartOf="@id/doc_main_content"
             app:layout_constraintTop_toTopOf="@id/doc_main_content" />
 
-        <!-- AI生成PPT弹窗 -->
+        <!-- AI生成PPT弹窗（尺寸/位置由 LOActivity.positionImpressOutlineDialogCenter() 运行时设置） -->
         <include
             android:id="@+id/impress_outline_panel"
             layout="@layout/lolib_dialog_impress_outline"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:visibility="gone"
-            app:layout_constraintBottom_toBottomOf="@id/doc_main_content"
-            app:layout_constraintEnd_toEndOf="@id/doc_main_content"
-            app:layout_constraintStart_toStartOf="@id/doc_main_content"
-            app:layout_constraintTop_toTopOf="@id/doc_main_content" />
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
 
         <!-- Calc 新建表格 AI 生成进度浮层遮罩 -->
         <View

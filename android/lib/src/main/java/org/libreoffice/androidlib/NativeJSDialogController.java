@@ -122,6 +122,9 @@ public final class NativeJSDialogController {
     private void showDialog(JSONObject payload) {
         String dialogType = payload.optString("dialogType", "");
         if ("messagebox".equals(dialogType) && shouldSuppressMessageboxDuringSpellCheck(payload)) {
+            if (shouldAutoDismissSpellFinishMessagebox(payload)) {
+                host.showSpellCheckCompletedToast();
+            }
             int windowId = payload.optInt("windowId", -1);
             sendResponse(windowId, "ok", 1);
             return;
