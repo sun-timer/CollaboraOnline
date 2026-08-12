@@ -58,6 +58,7 @@
 		BE8D772C2136762500AC58EA /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = BE8D772B2136762500AC58EA /* AppDelegate.mm */; };
 		BE8D772F2136762500AC58EA /* DocumentBrowserViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = BE8D772E2136762500AC58EA /* DocumentBrowserViewController.mm */; };
 		BE8D77322136762500AC58EA /* DocumentViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = BE8D77312136762500AC58EA /* DocumentViewController.mm */; };
+		C0FFEE012026081200000001 /* NativeBridgeHandler.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE002026081200000001 /* NativeBridgeHandler.mm */; };
 		BE8D77352136762500AC58EA /* CODocument.mm in Sources */ = {isa = PBXBuildFile; fileRef = BE8D77342136762500AC58EA /* CODocument.mm */; };
 		BE8D77382136762500AC58EA /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BE8D77362136762500AC58EA /* Main.storyboard */; };
 		BE8D773A2136762600AC58EA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BE8D77392136762600AC58EA /* Assets.xcassets */; };
@@ -903,6 +904,8 @@
 		BE8D772E2136762500AC58EA /* DocumentBrowserViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DocumentBrowserViewController.mm; sourceTree = "<group>"; };
 		BE8D77302136762500AC58EA /* DocumentViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DocumentViewController.h; sourceTree = "<group>"; };
 		BE8D77312136762500AC58EA /* DocumentViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DocumentViewController.mm; sourceTree = "<group>"; };
+		C0FFEE002026081200000001 /* NativeBridgeHandler.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = NativeBridgeHandler.mm; sourceTree = "<group>"; };
+		C0FFEE022026081200000001 /* NativeBridgeHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NativeBridgeHandler.h; sourceTree = "<group>"; };
 		BE8D77332136762500AC58EA /* CODocument.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CODocument.h; sourceTree = "<group>"; };
 		BE8D77342136762500AC58EA /* CODocument.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objcpp; path = CODocument.mm; sourceTree = "<group>"; };
 		BE8D77372136762500AC58EA /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
@@ -2692,6 +2695,7 @@
 		BE8D77292136762500AC58EA /* Mobile */ = {
 			isa = PBXGroup;
 			children = (
+				C0FFEE032026081200000001 /* Bridge */,
 				ACCACA1E3019CCE0003D0280 /* MobileDebug.entitlements */,
 				C792822F2DF89BB2001EA43B /* MobileSocket.h */,
 				C79282302DF89BB2001EA43B /* MobileSocket.mm */,
@@ -2723,6 +2727,15 @@
 				BE8D773F2136762600AC58EA /* main.m */,
 			);
 			path = Mobile;
+			sourceTree = "<group>";
+		};
+		C0FFEE032026081200000001 /* Bridge */ = {
+			isa = PBXGroup;
+			children = (
+				C0FFEE022026081200000001 /* NativeBridgeHandler.h */,
+				C0FFEE002026081200000001 /* NativeBridgeHandler.mm */,
+			);
+			path = Bridge;
 			sourceTree = "<group>";
 		};
 		BE9273AD2372DC6B00ADB598 /* sidebar */ = {
@@ -3825,6 +3838,7 @@
 				BEA2835621467F0D00848631 /* KitWebSocket.cpp in Sources */,
 				BE980C532CE3499900FED7BC /* Util-unix.cpp in Sources */,
 				BE8D77322136762500AC58EA /* DocumentViewController.mm in Sources */,
+				C0FFEE012026081200000001 /* NativeBridgeHandler.mm in Sources */,
 				BE8D772C2136762500AC58EA /* AppDelegate.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

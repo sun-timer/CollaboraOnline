@@ -329,6 +329,9 @@ public class LOActivity extends AppCompatActivity {
     private final Map<String, String> aiRequestModeById = new ConcurrentHashMap<>();
     private final Map<String, Boolean> aiDocQaFirstTurnByRequestId = new ConcurrentHashMap<>();
     private final Map<String, TextView> aiStreamingViewByRequestId = new ConcurrentHashMap<>();
+    private final Map<String, String> nativeBridgeRequestSessions = new ConcurrentHashMap<>();
+    private final Set<String> legacyCompatRequestIds =
+            java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
     private boolean aiBridgeInjected = false;
     private String aiActiveRequestId = "";
     private BottomSheetDialog aiPanelDialog;
@@ -2764,6 +2767,9 @@ public class LOActivity extends AppCompatActivity {
                 });
                 return false;
             }
+            case "NATIVEBRIDGE":
+                handleNativeBridgeMessage(messageAndParam.length > 1 ? messageAndParam[1] : "");
+                return false;
             case "JSDIALOG": {
                 if (messageAndParam.length > 1) {
                     getMainHandler().post(() -> ensureNativeJSDialogController()
@@ -3093,7 +3099,9 @@ public class LOActivity extends AppCompatActivity {
                 return false;
             }
             case "ai.request": {
-                handleAiRequestFromWeb(messageAndParam.length > 1 ? messageAndParam[1] : "{}");
+                String requestJson = messageAndParam.length > 1 ? messageAndParam[1] : "{}";
+                rememberLegacyAiRequest(requestJson);
+                handleAiRequestFromWeb(requestJson);
                 return false;
             }
             case "ai.cancel": {
@@ -3106,6 +3114,186 @@ public class LOActivity extends AppCompatActivity {
             }
         }
         return true;
+    }
+
+    private void rememberLegacyAiRequest(String json) {
+        try {
+            JSONObject request = new JSONObject(json);
+            String requestId = request.optString("requestId", "");
+            if (requestId.isEmpty()) {
+                return;
+            }
+            legacyCompatRequestIds.add(requestId);
+            nativeBridgeRequestSessions.put(requestId,
+                    request.optString("documentSessionId", ""));
+        } catch (JSONException ignored) {
+            // Preserve the old path's behavior; the existing handler owns its error response.
+        }
+    }
+
+    private void handleNativeBridgeMessage(String json) {
+        try {
+            JSONObject envelope = new JSONObject(json);
+            if (envelope.optInt("protocolVersion", -1) != 1
+                    || !"native".equals(envelope.optString("channel", ""))) {
+                dispatchNativeBridgeError("", "", "invalid_envelope",
+                        "Invalid NativeBridge v1 envelope");
+                return;
+            }
+
+            String targetPlatform = envelope.optString("targetPlatform", "any");
+            if ("ios".equals(targetPlatform)) {
+                dispatchNativeBridgeError(
+                        envelope.optString("requestId", ""),
+                        envelope.optString("documentSessionId", ""),
+                        "target_platform_mismatch",
+                        "Message targets iOS");
+                return;
+            }
+            if (!"any".equals(targetPlatform) && !"android".equals(targetPlatform)) {
+                dispatchNativeBridgeError(
+                        envelope.optString("requestId", ""),
+                        envelope.optString("documentSessionId", ""),
+                        "invalid_target_platform",
+                        "Invalid NativeBridge target platform");
+                return;
+            }
+
+            String type = envelope.optString("type", "");
+            String requestId = envelope.optString("requestId", "");
+            String documentSessionId = envelope.optString("documentSessionId", "");
+            if (type.isEmpty()) {
+                dispatchNativeBridgeError(requestId, documentSessionId,
+                        "invalid_type", "NativeBridge type is required");
+                return;
+            }
+            if (("ai.request".equals(type) || "ai.cancel".equals(type)
+                    || "ai.accept".equals(type)) && requestId.isEmpty()) {
+                dispatchNativeBridgeError("", documentSessionId,
+                        "missing_request_id", "AI messages require requestId");
+                return;
+            }
+
+            JSONObject payload = envelope.optJSONObject("payload");
+            if (payload != null && containsNativeBridgeCredential(payload)) {
+                dispatchNativeBridgeError(requestId, documentSessionId,
+                        "sensitive_field",
+                        "API credentials must remain in the native secure store");
+                return;
+            }
+
+            switch (type) {
+                case "native.ready":
+                    dispatchNativeBridgeEvent("native.ready", "", documentSessionId,
+                            new JSONObject().put("state", "ready"));
+                    return;
+                case "ai.request": {
+                    if (payload == null) {
+                        dispatchNativeBridgeError(requestId, documentSessionId,
+                                "invalid_payload", "ai.request payload must be an object");
+                        return;
+                    }
+                    if (legacyCompatRequestIds.contains(requestId)) {
+                        return;
+                    }
+                    String effectiveSessionId = documentSessionId.isEmpty()
+                            ? "android-document-" + loadDocumentMillis
+                            : documentSessionId;
+                    String knownSessionId = nativeBridgeRequestSessions.get(requestId);
+                    if (knownSessionId != null && !knownSessionId.equals(effectiveSessionId)) {
+                        dispatchNativeBridgeError(requestId, effectiveSessionId,
+                                "session_mismatch",
+                                "The document session does not match the request");
+                        return;
+                    }
+                    nativeBridgeRequestSessions.put(requestId, effectiveSessionId);
+                    JSONObject request = new JSONObject(payload.toString());
+                    request.put("requestId", requestId);
+                    request.put("documentSessionId", effectiveSessionId);
+                    handleAiRequestFromWeb(request.toString());
+                    return;
+                }
+                case "ai.cancel": {
+                    if (legacyCompatRequestIds.contains(requestId)) {
+                        return;
+                    }
+                    String knownSessionId = nativeBridgeRequestSessions.get(requestId);
+                    if (knownSessionId == null
+                            || (!documentSessionId.isEmpty()
+                                && !knownSessionId.equals(documentSessionId))) {
+                        dispatchNativeBridgeError(requestId, documentSessionId,
+                                "session_mismatch",
+                                "The document session does not match the request");
+                        return;
+                    }
+                    handleAiCancelFromWeb(new JSONObject().put("requestId", requestId).toString());
+                    nativeBridgeRequestSessions.remove(requestId);
+                    return;
+                }
+                case "ai.accept": {
+                    if (legacyCompatRequestIds.contains(requestId)) {
+                        return;
+                    }
+                    String knownSessionId = nativeBridgeRequestSessions.get(requestId);
+                    if (knownSessionId == null
+                            || (!documentSessionId.isEmpty()
+                                && !knownSessionId.equals(documentSessionId))) {
+                        dispatchNativeBridgeError(requestId, documentSessionId,
+                                "session_mismatch",
+                                "The document session does not match the request");
+                        return;
+                    }
+                    JSONObject accept = payload == null
+                            ? new JSONObject()
+                            : new JSONObject(payload.toString());
+                    accept.put("requestId", requestId);
+                    handleAiAcceptFromWeb(accept.toString());
+                    nativeBridgeRequestSessions.remove(requestId);
+                    return;
+                }
+                default:
+                    dispatchNativeBridgeError(requestId, documentSessionId,
+                            "unsupported_type",
+                            "Unsupported NativeBridge message type");
+                    return;
+            }
+        } catch (JSONException e) {
+            dispatchNativeBridgeError("", "", "invalid_payload",
+                    "Invalid NativeBridge JSON payload");
+            Log.w(TAG, "native_bridge_parse_failed", e);
+        }
+    }
+
+    private boolean containsNativeBridgeCredential(Object value) {
+        if (value instanceof JSONObject) {
+            JSONObject object = (JSONObject) value;
+            Iterator<String> keys = object.keys();
+            while (keys.hasNext()) {
+                String originalKey = keys.next();
+                String key = originalKey.toLowerCase(Locale.ROOT);
+                if (key.contains("apikey") || key.contains("authorization")
+                        || key.contains("accesstoken")) {
+                    return true;
+                }
+                try {
+                    if (containsNativeBridgeCredential(object.get(originalKey))) {
+                        return true;
+                    }
+                } catch (JSONException ignored) {
+                }
+            }
+        } else if (value instanceof org.json.JSONArray) {
+            org.json.JSONArray array = (org.json.JSONArray) value;
+            for (int i = 0; i < array.length(); i++) {
+                try {
+                    if (containsNativeBridgeCredential(array.get(i))) {
+                        return true;
+                    }
+                } catch (JSONException ignored) {
+                }
+            }
+        }
+        return false;
     }
 
     private boolean shouldBlockUnexpectedMobileWizardUno(String command) {
@@ -3937,10 +4125,21 @@ public class LOActivity extends AppCompatActivity {
         }
 
         handleAiNativeEvent(event);
+        String requestId = event.optString("requestId", "");
+        String documentSessionId = nativeBridgeRequestSessions.get(requestId);
+        JSONObject nativePayload = new JSONObject(event.toString());
+        nativePayload.remove("type");
+        nativePayload.remove("requestId");
+        dispatchNativeBridgeEvent(type, requestId, documentSessionId, nativePayload);
+        if ("ai.done".equals(type) || "ai.error".equals(type)
+                || ("ai.state".equals(type)
+                    && AI_STATE_CANCELLED.equals(event.optString("state", "")))) {
+            scheduleLegacyCompatCleanup(requestId);
+        }
 
         final String script = "(function(){" +
                 "var data=JSON.parse(" + JSONObject.quote(event.toString()) + ");" +
-                "if(window.__coolAiBridge&&typeof window.__coolAiBridge.onNativeEvent==='function'){window.__coolAiBridge.onNativeEvent(data);}"
+                "if(!window.NativeBridge&&window.__coolAiBridge&&typeof window.__coolAiBridge.onNativeEvent==='function'){window.__coolAiBridge.onNativeEvent(data);}"
                 +
                 "window.dispatchEvent(new CustomEvent('cool.ai',{detail:data}));" +
                 "})();";
@@ -3950,6 +4149,57 @@ public class LOActivity extends AppCompatActivity {
                 mWebView.evaluateJavascript(script, null);
             }
         });
+    }
+
+    private void scheduleLegacyCompatCleanup(String requestId) {
+        if (requestId == null || requestId.isEmpty()) {
+            return;
+        }
+        getMainHandler().postDelayed(() -> {
+            nativeBridgeRequestSessions.remove(requestId);
+            legacyCompatRequestIds.remove(requestId);
+        }, 1500);
+    }
+
+    private void dispatchNativeBridgeError(String requestId, String documentSessionId,
+                                           String code, String message) {
+        try {
+            JSONObject payload = new JSONObject();
+            payload.put("code", code);
+            payload.put("message", message);
+            dispatchNativeBridgeEvent("native.error", requestId, documentSessionId, payload);
+        } catch (JSONException e) {
+            Log.e(TAG, "Failed to build NativeBridge error", e);
+        }
+    }
+
+    private void dispatchNativeBridgeEvent(String type, String requestId,
+                                           String documentSessionId, JSONObject payload) {
+        try {
+            JSONObject envelope = new JSONObject();
+            envelope.put("protocolVersion", 1);
+            envelope.put("channel", "native");
+            envelope.put("type", type);
+            envelope.put("targetPlatform", "android");
+            if (requestId != null && !requestId.isEmpty()) {
+                envelope.put("requestId", requestId);
+            }
+            if (documentSessionId != null && !documentSessionId.isEmpty()) {
+                envelope.put("documentSessionId", documentSessionId);
+            }
+            envelope.put("payload", payload == null ? new JSONObject() : payload);
+            final String script = "(function(){" +
+                    "var data=JSON.parse(" + JSONObject.quote(envelope.toString()) + ");" +
+                    "if(window.NativeBridge&&typeof window.NativeBridge.onMessage==='function'){window.NativeBridge.onMessage(data);}" +
+                    "})();";
+            runOnUiThread(() -> {
+                if (mWebView != null) {
+                    mWebView.evaluateJavascript(script, null);
+                }
+            });
+        } catch (JSONException e) {
+            Log.e(TAG, "Failed to build NativeBridge event", e);
+        }
     }
 
     private void setupAiFab() {
