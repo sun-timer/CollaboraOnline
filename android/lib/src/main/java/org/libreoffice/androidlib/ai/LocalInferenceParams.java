@@ -14,7 +14,7 @@ public final class LocalInferenceParams {
     }
 
     public static LocalInferenceParams defaults() {
-        return new LocalInferenceParams(4096, 512, 2);
+        return new LocalInferenceParams(4096, 512, 4);
     }
 
     public static LocalInferenceParams fromDevice(Context context) {
@@ -23,6 +23,6 @@ public final class LocalInferenceParams {
         return new LocalInferenceParams(
                 highRam ? 4096 : 2048,
                 highRam ? 512 : 256,
-                2);
+                4);
     }
 }

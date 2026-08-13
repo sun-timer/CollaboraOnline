@@ -41,6 +41,15 @@ android {
         disable 'MissingTranslation', 'ExtraTranslation'
     }
 
+    // Extract native libs to filesystem so llama.cpp's ggml_backend_load_all_from_path
+    // (DL backend variants) can find them at runtime. Default (false) keeps .so inside
+    // the APK and directory scanning finds nothing → local_load_fail.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     buildTypes {
         debug {
             resValue "string", "app_name", "${liboAppName}"

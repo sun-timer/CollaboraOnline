@@ -118,6 +118,7 @@ import org.libreoffice.androidlib.typeset.DocxTemplateFiller;
 import org.libreoffice.androidlib.typeset.TemplateSectionMap;
 import org.libreoffice.androidlib.typeset.TypesetImageEntry;
 
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader;
 import com.tom_roush.pdfbox.pdmodel.PDDocument;
 import com.tom_roush.pdfbox.text.PDFTextStripper;
 
@@ -340,6 +341,12 @@ public class LOActivity extends AppCompatActivity {
     private final Map<String, TextView> aiStreamingViewByRequestId = new ConcurrentHashMap<>();
     private boolean aiBridgeInjected = false;
     private String aiActiveRequestId = "";
+    // 流式分批：每 token 直接打主线程 + WebView（21 token/s 时每 token 一次 evaluateJavascript
+    // + 全量重渲染）会压垮 Choreographer/vsync，导致 dispatchVsync native 崩溃。攒 150ms flush 一次。
+    private final Object aiStreamLock = new Object();
+    private final Map<String, StringBuilder> aiStreamBuffers = new java.util.HashMap<>();
+    private final Handler aiStreamFlushHandler = new Handler(Looper.getMainLooper());
+    private boolean aiStreamFlushScheduled = false;
     private BottomSheetDialog aiPanelDialog;
     private AlertDialog aiModelRequiredDialog;
     private BottomSheetDialog functionPanelDialog;
@@ -765,7 +772,6 @@ public class LOActivity extends AppCompatActivity {
     private String generateActiveRequestId = "";
     private org.json.JSONArray impressOutlineSlidesJson; // saved from outline result
     private final Map<Integer, JSONObject> generateAccumulatedByOutlineIndex = new HashMap<>();
-    private File pendingGeneratedPptxFile;
     private android.app.AlertDialog impressGenerationSuccessDialog;
     private android.app.AlertDialog impressGenerationErrorDialog;
 
@@ -3769,14 +3775,12 @@ public class LOActivity extends AppCompatActivity {
 
                         @Override
                         public void onStreamDelta(String callbackRequestId, String delta) throws JSONException {
-                            JSONObject streamPayload = new JSONObject();
-                            streamPayload.put("requestId", callbackRequestId);
-                            streamPayload.put("delta", delta);
-                            dispatchAiEvent("ai.stream", streamPayload);
+                            enqueueAiStreamDelta(callbackRequestId, delta);
                         }
 
                         @Override
                         public void onDone(String callbackRequestId, String fullText) throws JSONException {
+                            flushAiStreamNow(callbackRequestId);
                             if (callbackRequestId.equals(continueActiveRequestId)) {
                                 // 续写弹窗请求：不自动粘贴，切到完成态（重写生成/插入文档）
                                 onContinueWriteDone(callbackRequestId, fullText);
@@ -3863,6 +3867,7 @@ public class LOActivity extends AppCompatActivity {
 
                         @Override
                         public void onError(String callbackRequestId, String code, String message) {
+                            flushAiStreamNow(callbackRequestId);
                             String safeMsg = message == null ? "" : (message.length() > 120 ? message.substring(0, 120) + "..." : message);
                             Log.i(TAG, "ai_operation_error requestId=" + callbackRequestId + " code=" + code + " msg=" + safeMsg);
                             if (continueWriteRequestIds.contains(callbackRequestId)) {
@@ -4107,6 +4112,68 @@ public class LOActivity extends AppCompatActivity {
                 mWebView.evaluateJavascript(script, null);
             }
         });
+    }
+
+    // —— AI 流式分批 ——
+    private void enqueueAiStreamDelta(String requestId, String delta) {
+        if (delta == null || delta.isEmpty()) {
+            return;
+        }
+        synchronized (aiStreamLock) {
+            StringBuilder buf = aiStreamBuffers.get(requestId);
+            if (buf == null) {
+                buf = new StringBuilder();
+                aiStreamBuffers.put(requestId, buf);
+            }
+            buf.append(delta);
+            scheduleAiStreamFlushLocked();
+        }
+    }
+
+    private void scheduleAiStreamFlushLocked() {
+        if (aiStreamFlushScheduled) {
+            return;
+        }
+        aiStreamFlushScheduled = true;
+        aiStreamFlushHandler.postDelayed(this::flushAiStreamBuffers, 150);
+    }
+
+    private void flushAiStreamBuffers() {
+        List<Map.Entry<String, StringBuilder>> toFlush;
+        synchronized (aiStreamLock) {
+            aiStreamFlushScheduled = false;
+            if (aiStreamBuffers.isEmpty()) {
+                return;
+            }
+            toFlush = new java.util.ArrayList<>(aiStreamBuffers.entrySet());
+            aiStreamBuffers.clear();
+        }
+        for (Map.Entry<String, StringBuilder> e : toFlush) {
+            dispatchAiStreamDelta(e.getKey(), e.getValue().toString());
+        }
+    }
+
+    private void flushAiStreamNow(String requestId) {
+        String accumulated;
+        synchronized (aiStreamLock) {
+            StringBuilder buf = aiStreamBuffers.remove(requestId);
+            accumulated = buf != null ? buf.toString() : "";
+        }
+        dispatchAiStreamDelta(requestId, accumulated);
+    }
+
+    private void dispatchAiStreamDelta(String requestId, String accumulated) {
+        if (accumulated == null || accumulated.isEmpty()) {
+            return;
+        }
+        try {
+            JSONObject streamPayload = new JSONObject();
+            streamPayload.put("requestId", requestId);
+            streamPayload.put("delta", accumulated);
+            dispatchAiEvent("ai.stream", streamPayload);
+        } catch (JSONException e) {
+            Log.w(TAG, "ai_stream_batch_fail requestId=" + requestId, e);
+        }
     }
 
     private void setupAiFab() {
@@ -7457,7 +7524,6 @@ public class LOActivity extends AppCompatActivity {
             generateActiveRequestId = "";
         }
         generateAccumulatedByOutlineIndex.clear();
-        pendingGeneratedPptxFile = null;
         pptGenerationTemplateId = "";
         dismissImpressOptionPopup();
         if (impressOutlineOverlay != null) impressOutlineOverlay.setVisibility(View.GONE);
@@ -7612,7 +7678,10 @@ public class LOActivity extends AppCompatActivity {
                 "text/plain",
                 "application/pdf",
                 "application/msword",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.oasis.opendocument.text",
+                "application/vnd.oasis.opendocument.spreadsheet",
+                "application/vnd.oasis.opendocument.presentation"
         };
         intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
         startActivityForResult(intent, REQUEST_CODE_IMPRESS_PICK_DOC);
@@ -7620,11 +7689,7 @@ public class LOActivity extends AppCompatActivity {
 
     private void handleImpressOutlineDocPicked(Uri uri) {
         String mimeType = getContentResolver().getType(uri);
-        String fileName = uri.getLastPathSegment();
-        if (fileName != null && fileName.contains("/")) {
-            fileName = fileName.substring(fileName.lastIndexOf("/") + 1);
-        }
-        impressOutlineDocDisplayName = fileName != null ? fileName : "未知文件";
+        impressOutlineDocDisplayName = resolveImpressOutlineDocDisplayName(uri);
         String ext = impressOutlineDocExtension(uri);
         if (mimeType != null) {
             mimeType = mimeType.toLowerCase(Locale.US);
@@ -7645,6 +7710,8 @@ public class LOActivity extends AppCompatActivity {
                 }
             } else if (isImpressOutlineDocx(mimeType, ext)) {
                 extractDocxTextFromUri(uri);
+            } else if (isImpressOutlineOdf(mimeType, ext)) {
+                extractOdfTextFromUri(uri);
             } else if ("application/pdf".equals(mimeType) || ".pdf".equals(ext)) {
                 extractPdfText(uri);
             } else if ("application/msword".equals(mimeType) || ".doc".equals(ext)) {
@@ -7663,6 +7730,13 @@ public class LOActivity extends AppCompatActivity {
             return true;
         }
         return "application/vnd.openxmlformats-officedocument.wordprocessingml.document".equals(mimeType);
+    }
+
+    private boolean isImpressOutlineOdf(String mimeType, String ext) {
+        return ".odt".equals(ext) || ".ods".equals(ext) || ".odp".equals(ext)
+                || "application/vnd.oasis.opendocument.text".equals(mimeType)
+                || "application/vnd.oasis.opendocument.spreadsheet".equals(mimeType)
+                || "application/vnd.oasis.opendocument.presentation".equals(mimeType);
     }
 
     private String impressOutlineDocExtension(Uri uri) {
@@ -7691,6 +7765,28 @@ public class LOActivity extends AppCompatActivity {
         return -1;
     }
 
+    /** content:// 的 lastPathSegment 常是文档 ID（如 1342）而非文件名，须查 DISPLAY_NAME。 */
+    private String resolveImpressOutlineDocDisplayName(Uri uri) {
+        try (android.database.Cursor c = getContentResolver().query(
+                uri, new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst()) {
+                int idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (idx >= 0 && !c.isNull(idx)) {
+                    String name = c.getString(idx);
+                    if (name != null && !name.isEmpty()) {
+                        return name;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        String fileName = uri.getLastPathSegment();
+        if (fileName != null && fileName.contains("/")) {
+            fileName = fileName.substring(fileName.lastIndexOf("/") + 1);
+        }
+        return fileName != null ? fileName : "未知文件";
+    }
+
     /** 必须在主线程调用。 */
     private void setImpressOutlineDocLoaded(String content) {
         impressOutlineDocFileContent = content;
@@ -7707,46 +7803,53 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void extractPdfText(Uri uri) {
-        long size = impressOutlineOpenableSize(uri);
-        if (size > 120L * 1024 * 1024) {
-            Toast.makeText(this, "文档超过120M，暂不支持", Toast.LENGTH_SHORT).show();
-            return;
-        }
         new Thread(() -> {
             File tmp = null;
-            try (InputStream is = getContentResolver().openInputStream(uri)) {
-                tmp = new File(getCacheDir(),
-                        "impress_outline_pick_" + System.currentTimeMillis() + ".pdf");
-                try (FileOutputStream fos = new FileOutputStream(tmp)) {
-                    byte[] buf = new byte[8192];
-                    int n;
-                    while ((n = is.read(buf)) > 0) {
-                        fos.write(buf, 0, n);
+            try {
+                // 必须先用 app assets 初始化，否则 GlyphList 走 classpath 回退 → IOException → ExceptionInInitializerError 闪退
+                PDFBoxResourceLoader.init(getApplicationContext());
+                long size = impressOutlineOpenableSize(uri);
+                Log.i(TAG, "impress_outline_pdf_start uri=" + uri + " size=" + size);
+                if (size > 120L * 1024 * 1024) {
+                    runOnUiThread(() -> Toast.makeText(this, "文档超过120M，暂不支持", Toast.LENGTH_SHORT).show());
+                    return;
+                }
+                try (InputStream is = getContentResolver().openInputStream(uri)) {
+                    tmp = new File(getCacheDir(),
+                            "impress_outline_pick_" + System.currentTimeMillis() + ".pdf");
+                    try (FileOutputStream fos = new FileOutputStream(tmp)) {
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = is.read(buf)) > 0) {
+                            fos.write(buf, 0, n);
+                        }
                     }
-                }
-                PDDocument pdf = PDDocument.load(tmp);
-                String text;
-                try {
-                    text = new PDFTextStripper().getText(pdf);
-                } finally {
-                    pdf.close();
-                }
-                String capped = text != null ? text : "";
-                if (capped.length() > 150000) {
-                    capped = capped.substring(0, 150000);
-                }
-                final String result = capped;
-                runOnUiThread(() -> {
-                    if (result.isEmpty()) {
-                        setImpressOutlineDocLoadFailed("未能从PDF提取文本（可能为扫描件）");
-                    } else {
-                        setImpressOutlineDocLoaded(result);
+                    Log.i(TAG, "impress_outline_pdf_tmp_size=" + tmp.length());
+                    PDDocument pdf = PDDocument.load(tmp);
+                    String text;
+                    try {
+                        text = new PDFTextStripper().getText(pdf);
+                    } finally {
+                        pdf.close();
                     }
-                });
-            } catch (Exception e) {
-                Log.e(TAG, "impress_outline_pdf_extract_error", e);
-                final String reason = "PDF解析失败：" + (e.getMessage() != null
-                        ? e.getMessage() : e.getClass().getSimpleName());
+                    String capped = text != null ? text : "";
+                    if (capped.length() > 150000) {
+                        capped = capped.substring(0, 150000);
+                    }
+                    final String result = capped;
+                    runOnUiThread(() -> {
+                        if (result.isEmpty()) {
+                            setImpressOutlineDocLoadFailed("未能从PDF提取文本（可能为扫描件）");
+                        } else {
+                            setImpressOutlineDocLoaded(result);
+                        }
+                    });
+                }
+            } catch (Throwable t) {
+                // OOM/LinkageError 等 Error 也必须接住，否则默认 handler 直接杀进程（闪退）
+                Log.e(TAG, "impress_outline_pdf_extract_fatal", t);
+                final String reason = "PDF解析失败：" + (t.getMessage() != null
+                        ? t.getMessage() : t.getClass().getSimpleName());
                 runOnUiThread(() -> setImpressOutlineDocLoadFailed(reason));
             } finally {
                 if (tmp != null) {
@@ -7802,10 +7905,11 @@ public class LOActivity extends AppCompatActivity {
                         setImpressOutlineDocLoaded(result);
                     }
                 });
-            } catch (Exception e) {
-                Log.e(TAG, "impress_outline_docx_extract_error", e);
-                final String reason = "Word文档解析失败：" + (e.getMessage() != null
-                        ? e.getMessage() : e.getClass().getSimpleName());
+            } catch (Throwable t) {
+                // 同 extractPdfText：Error 也必须接住，否则默认 handler 直接杀进程（闪退）
+                Log.e(TAG, "impress_outline_docx_extract_fatal", t);
+                final String reason = "Word文档解析失败：" + (t.getMessage() != null
+                        ? t.getMessage() : t.getClass().getSimpleName());
                 runOnUiThread(() -> setImpressOutlineDocLoadFailed(reason));
             }
         }).start();
@@ -7817,6 +7921,106 @@ public class LOActivity extends AppCompatActivity {
                 "http://schemas.openxmlformats.org/wordprocessingml/2006/main", "t");
         for (int i = 0; i < ts.getLength(); i++) {
             sb.append(ts.item(i).getTextContent());
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 提取 ODF（.odt/.ods/.odp）正文纯文本：ZIP 内的 content.xml，按 text:p 段落拼接。
+     * 三种类型正文都落在 text:p 上（ODS 在 table:table-cell 内、ODP 在 draw:page 文本框内）。
+     */
+    private void extractOdfTextFromUri(Uri uri) {
+        long size = impressOutlineOpenableSize(uri);
+        if (size > 120L * 1024 * 1024) {
+            Toast.makeText(this, "文档超过120M，暂不支持", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new Thread(() -> {
+            try (InputStream is = getContentResolver().openInputStream(uri)) {
+                StringBuilder text = new StringBuilder();
+                try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(is)) {
+                    java.util.zip.ZipEntry entry;
+                    byte[] buf = new byte[8192];
+                    DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+                    factory.setNamespaceAware(true);
+                    DocumentBuilder builder = factory.newDocumentBuilder();
+                    while ((entry = zis.getNextEntry()) != null) {
+                        if (entry.isDirectory() || !"content.xml".equals(entry.getName())) {
+                            continue;
+                        }
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        int n;
+                        while ((n = zis.read(buf)) > 0) {
+                            baos.write(buf, 0, n);
+                        }
+                        Document contentXml = builder.parse(new ByteArrayInputStream(baos.toByteArray()));
+                        final String TEXT_NS = "urn:oasis:names:tc:opendocument:xmlns:text:1.0";
+                        NodeList ps = contentXml.getElementsByTagNameNS(TEXT_NS, "p");
+                        for (int i = 0; i < ps.getLength() && text.length() < 150000; i++) {
+                            String para = extractOdfParagraphText((Element) ps.item(i), TEXT_NS);
+                            if (!para.isEmpty()) {
+                                if (text.length() > 0) {
+                                    text.append("\n");
+                                }
+                                text.append(para);
+                            }
+                        }
+                        break;
+                    }
+                }
+                String capped = text.length() > 150000 ? text.substring(0, 150000) : text.toString();
+                final String result = capped;
+                runOnUiThread(() -> {
+                    if (result.isEmpty()) {
+                        setImpressOutlineDocLoadFailed("未能从ODF文档提取文本");
+                    } else {
+                        setImpressOutlineDocLoaded(result);
+                    }
+                });
+            } catch (Throwable t) {
+                // 同 extractPdfText：Error 也必须接住，否则默认 handler 直接杀进程（闪退）
+                Log.e(TAG, "impress_outline_odf_extract_fatal", t);
+                final String reason = "ODF文档解析失败：" + (t.getMessage() != null
+                        ? t.getMessage() : t.getClass().getSimpleName());
+                runOnUiThread(() -> setImpressOutlineDocLoadFailed(reason));
+            }
+        }).start();
+    }
+
+    /**
+     * 拼接单个 text:p 段落文本：连续空格按 text:s text:c 展开，tab/换行还原，其余元素取文本内容。
+     */
+    private String extractOdfParagraphText(Element p, String textNs) {
+        StringBuilder sb = new StringBuilder();
+        NodeList children = p.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node c = children.item(i);
+            if (c.getNodeType() == Node.TEXT_NODE) {
+                sb.append(c.getTextContent());
+            } else if (c.getNodeType() == Node.ELEMENT_NODE) {
+                Element ce = (Element) c;
+                String ns = ce.getNamespaceURI();
+                String local = ce.getLocalName();
+                if (textNs.equals(ns) && "s".equals(local)) {
+                    int count = 1;
+                    String cAttr = ce.getAttributeNS(textNs, "c");
+                    if (cAttr != null && !cAttr.isEmpty()) {
+                        try {
+                            count = Integer.parseInt(cAttr);
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                    for (int k = 0; k < count; k++) {
+                        sb.append(' ');
+                    }
+                } else if (textNs.equals(ns) && "tab".equals(local)) {
+                    sb.append('\t');
+                } else if (textNs.equals(ns) && "line-break".equals(local)) {
+                    sb.append('\n');
+                } else {
+                    sb.append(ce.getTextContent());
+                }
+            }
         }
         return sb.toString();
     }
@@ -8045,7 +8249,6 @@ public class LOActivity extends AppCompatActivity {
         generateBatchAttempt = 0;
         generateFailedBatchCount = 0;
         generateAccumulatedByOutlineIndex.clear();
-        pendingGeneratedPptxFile = null;
 
         setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_GENERATING_PPT);
         updatePptGenerationProgress(0, generateTotalBatches, "");
@@ -8390,11 +8593,14 @@ public class LOActivity extends AppCompatActivity {
             setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
             return;
         }
-        pendingGeneratedPptxFile = pptxFile;
-
         if (impressGenerationSuccessDialog != null && impressGenerationSuccessDialog.isShowing()) {
             impressGenerationSuccessDialog.dismiss();
         }
+
+        // 写入最近文件：用户退出当前文档后从文件列表打开查看，避免原地换文档卡死
+        RecentDocumentsStore.prependRecent(
+                getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE),
+                FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", pptxFile).toString());
 
         View root = getLayoutInflater().inflate(R.layout.lolib_dialog_native_confirm, null, false);
         TextView titleView = root.findViewById(R.id.ai_dialog_header_title);
@@ -8408,24 +8614,15 @@ public class LOActivity extends AppCompatActivity {
         }
         View closeBtn = root.findViewById(R.id.ai_dialog_header_close);
         if (closeBtn != null) {
-            closeBtn.setOnClickListener(v -> dismissImpressGenerationSuccessDialog(false));
+            closeBtn.setOnClickListener(v -> dismissImpressGenerationSuccessDialog());
         }
         if (buttonRow != null) {
             buttonRow.removeAllViews();
-            TextView stayBtn = buildImpressDialogButton(getString(R.string.impress_ppt_stay), false);
-            TextView openBtn = buildImpressDialogButton(getString(R.string.impress_ppt_open), true);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dpToPx(52), 1f);
-            stayBtn.setLayoutParams(lp);
-            LinearLayout.LayoutParams openLp = new LinearLayout.LayoutParams(0, dpToPx(52), 1f);
-            openLp.setMarginStart(dpToPx(12));
-            openBtn.setLayoutParams(openLp);
-            stayBtn.setOnClickListener(v -> dismissImpressGenerationSuccessDialog(false));
-            openBtn.setOnClickListener(v -> {
-                dismissImpressGenerationSuccessDialog(true);
-                openImpressGeneratedDocument(pendingGeneratedPptxFile);
-            });
-            buttonRow.addView(stayBtn);
-            buttonRow.addView(openBtn);
+            TextView okBtn = buildImpressDialogButton(getString(R.string.impress_ppt_success_ok), true);
+            okBtn.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(52)));
+            okBtn.setOnClickListener(v -> dismissImpressGenerationSuccessDialog());
+            buttonRow.addView(okBtn);
         }
 
         impressGenerationSuccessDialog = new android.app.AlertDialog.Builder(this).create();
@@ -8483,40 +8680,12 @@ public class LOActivity extends AppCompatActivity {
         impressGenerationErrorDialog = null;
     }
 
-    private void dismissImpressGenerationSuccessDialog(boolean openingDocument) {
+    private void dismissImpressGenerationSuccessDialog() {
         if (impressGenerationSuccessDialog != null && impressGenerationSuccessDialog.isShowing()) {
             impressGenerationSuccessDialog.dismiss();
         }
         impressGenerationSuccessDialog = null;
-        if (!openingDocument) {
-            dismissImpressOutlineDialog();
-        }
-    }
-
-    private void openImpressGeneratedDocument(File pptxFile) {
-        if (pptxFile == null || !pptxFile.exists()) {
-            Log.e(TAG, "ppt_reload_failed reason=file_missing");
-            Toast.makeText(this, "生成的 PPT 文件不存在", Toast.LENGTH_SHORT).show();
-            setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
-            return;
-        }
-        try {
-            Uri pptxUri = FileProvider.getUriForFile(
-                    this, getPackageName() + ".fileprovider", pptxFile);
-            Log.i(TAG, "ppt_open_document uri=" + pptxUri + " path=" + pptxFile.getAbsolutePath());
-
-            dismissImpressOutlineDialog();
-            Toast.makeText(this, R.string.impress_ppt_generated, Toast.LENGTH_SHORT).show();
-
-            RecentDocumentsStore.prependRecent(
-                    getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE),
-                    pptxUri.toString());
-            startActivity(buildEditIntent(pptxUri));
-        } catch (Exception e) {
-            Log.e(TAG, "ppt_reload_failed reason=" + e.getMessage(), e);
-            Toast.makeText(this, "打开 PPT 失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-            setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
-        }
+        dismissImpressOutlineDialog();
     }
 
     private void advanceToNextBatch() {
@@ -12473,7 +12642,6 @@ public class LOActivity extends AppCompatActivity {
         bindAiOpButton(panel, R.id.ai_op_impress_rewrite, AiChatCoordinator.MODE_REWRITE);
         bindAiOpAction(panel, R.id.ai_op_impress_article_generate, this::showArticleGenerateDialog);
         bindAiOpAction(panel, R.id.ai_op_impress_text_extract, this::showTextExtractDialog);
-        bindAiOpAction(panel, R.id.ai_op_impress_typeset, this::showTypesetSelectSheet);
         bindAiOpAction(panel, R.id.ai_op_impress_image_generate, this::showAiImageDialog);
         bindAiOpFormatBatchButton(panel, R.id.ai_op_impress_format_batch);
 

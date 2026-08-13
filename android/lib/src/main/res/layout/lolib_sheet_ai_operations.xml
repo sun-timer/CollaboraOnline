@@ -472,33 +472,6 @@
                         android:textColor="#101010"
                         android:textSize="14sp" />
                 </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/ai_op_impress_typeset"
-                    android:layout_width="0dp"
-                    android:layout_height="@dimen/ai_function_card_height"
-                    android:layout_weight="1"
-                    android:background="@drawable/lolib_bg_ai_function_card_compact"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <ImageView
-                        android:layout_width="64dp"
-                        android:layout_height="64dp"
-                        android:contentDescription="AI排版"
-                        android:scaleType="centerInside"
-                        android:src="@drawable/lolib_ic_ai_impress_typeset" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="AI排版"
-                        android:textColor="#101010"
-                        android:textSize="14sp" />
-                </LinearLayout>
             </LinearLayout>
 
             <LinearLayout

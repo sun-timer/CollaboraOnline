@@ -184,12 +184,20 @@
         android:gravity="center"
         android:orientation="horizontal">
 
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:contentDescription="开始生成"
+            android:src="@drawable/lolib_ic_btn_generate" />
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
             android:text="开始生成"
-            android:textColor="#333333"
-            android:textSize="18sp" />
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <LinearLayout
@@ -205,15 +213,22 @@
             android:id="@+id/ai_image_regenerate_btn"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="@drawable/lolib_bg_gradient_button_outline"
+            android:background="@drawable/lolib_bg_outline_secondary_button"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
             android:orientation="horizontal">
 
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="重新生成"
+                android:src="@drawable/lolib_ic_btn_regenerate" />
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:text="重新生成"
                 android:textColor="#333333"
                 android:textSize="18sp" />

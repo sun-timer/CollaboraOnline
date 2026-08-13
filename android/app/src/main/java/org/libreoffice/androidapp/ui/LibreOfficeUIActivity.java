@@ -107,7 +107,6 @@ import static androidx.core.content.pm.ShortcutManagerCompat.getMaxShortcutCount
 
 public class LibreOfficeUIActivity extends AppCompatActivity implements SettingsListenerModel.OnSettingsPreferenceChangedListener {
     private String LOGTAG = LibreOfficeUIActivity.class.getSimpleName();
-    private static final int CREATE_DIALOG_LANDSCAPE_MAX_WIDTH_PX = 768;
     private SharedPreferences prefs;
     private int filterMode = FileUtilities.ALL;
     private int sortMode;
@@ -1575,7 +1574,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
         if (card != null) {
             card.setOnClickListener(v -> { /* keep dialog open when tapping card */ });
-            applyCreateDialogLandscapeWidthLimit(card);
         }
         closeButton.setOnClickListener(v -> dialog.dismiss());
         createButton.setOnClickListener(v -> {
@@ -1682,24 +1680,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
         dialog.setCanceledOnTouchOutside(true);
         dialog.show();
-    }
-
-    private void applyCreateDialogLandscapeWidthLimit(View card) {
-        if (card == null) {
-            return;
-        }
-        if (getResources().getConfiguration().orientation != Configuration.ORIENTATION_LANDSCAPE) {
-            return;
-        }
-        ViewGroup.LayoutParams layoutParams = card.getLayoutParams();
-        if (!(layoutParams instanceof FrameLayout.LayoutParams)) {
-            return;
-        }
-        FrameLayout.LayoutParams cardParams = (FrameLayout.LayoutParams) layoutParams;
-        int screenWidth = getResources().getDisplayMetrics().widthPixels;
-        cardParams.width = Math.min(CREATE_DIALOG_LANDSCAPE_MAX_WIDTH_PX, screenWidth);
-        cardParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        card.setLayoutParams(cardParams);
     }
 
     private void showLocalModelListDialog() {

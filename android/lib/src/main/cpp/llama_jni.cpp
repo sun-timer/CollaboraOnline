@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -24,9 +26,40 @@ static llama_pos g_n_past = 0;
 static bool g_batch_ready = false;
 static bool g_backend_inited = false;
 
+// Per-token decode timing, to separate native decode cost from JNI/Java streaming overhead.
+static long long g_gen_decode_us = 0;
+static int g_gen_decode_count = 0;
+
 static void log_fail(const char *reason, const char *detail) {
     __android_log_print(ANDROID_LOG_ERROR, LO_TAG, "local_core_fail reason=%s detail=%s", reason,
                         detail == nullptr ? "" : detail);
+}
+
+// Route llama.cpp internal logs (model load / backend init errors) to logcat,
+// otherwise llama_model_load_from_file returns null with no diagnostic at all.
+static void llama_android_log(enum ggml_log_level level, const char *text, void * /*user_data*/) {
+    if (text == nullptr || text[0] == '\0') {
+        return;
+    }
+    int prio = ANDROID_LOG_DEBUG;
+    switch (level) {
+        case GGML_LOG_LEVEL_ERROR:
+            prio = ANDROID_LOG_ERROR;
+            break;
+        case GGML_LOG_LEVEL_WARN:
+            prio = ANDROID_LOG_WARN;
+            break;
+        case GGML_LOG_LEVEL_INFO:
+            prio = ANDROID_LOG_INFO;
+            break;
+        default:
+            break;
+    }
+    std::string msg(text);
+    while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r')) {
+        msg.pop_back();
+    }
+    __android_log_print(prio, LO_TAG, "llama_internal %s", msg.c_str());
 }
 
 static int resolve_thread_count(int requested) {
@@ -61,6 +94,7 @@ static bool ensure_backend(JNIEnv *env, jstring jnativeLibDir) {
         log_fail("local_backend_fail", "null_lib_dir");
         return false;
     }
+    llama_log_set(llama_android_log, nullptr);
     const char *lib_dir = env->GetStringUTFChars(jnativeLibDir, nullptr);
     if (lib_dir == nullptr) {
         log_fail("local_backend_fail", "lib_dir_utf");
@@ -71,19 +105,26 @@ static bool ensure_backend(JNIEnv *env, jstring jnativeLibDir) {
     env->ReleaseStringUTFChars(jnativeLibDir, lib_dir);
     llama_backend_init();
     g_backend_inited = true;
-    __android_log_print(ANDROID_LOG_INFO, LO_TAG, "local_backend_ok reg_count=%zu",
-                        ggml_backend_reg_count());
+    const size_t reg_count = ggml_backend_reg_count();
+    __android_log_print(ANDROID_LOG_INFO, LO_TAG, "local_backend_ok reg_count=%zu", reg_count);
     log_backend_regs();
+    if (reg_count == 0) {
+        log_fail("local_backend_fail", "no_backend_registered");
+    }
     log_system_info();
     return true;
 }
 
 static int decode_with_heartbeat(const char *phase, int offset, int count) {
     std::atomic<bool> done{false};
+    std::mutex mtx;
+    std::condition_variable cv;
     std::thread heartbeat([&]() {
         int elapsed_s = 0;
+        std::unique_lock<std::mutex> lock(mtx);
         while (!done.load()) {
-            std::this_thread::sleep_for(std::chrono::seconds(5));
+            // 用 wait_for + 条件变量：done 时立即唤醒，避免 join() 死等满 5 秒
+            cv.wait_for(lock, std::chrono::seconds(5), [&] { return done.load(); });
             if (done.load()) {
                 break;
             }
@@ -96,6 +137,7 @@ static int decode_with_heartbeat(const char *phase, int offset, int count) {
 
     const int rc = llama_decode(g_ctx, g_batch);
     done.store(true);
+    cv.notify_all();
     if (heartbeat.joinable()) {
         heartbeat.join();
     }
@@ -286,6 +328,8 @@ Java_org_libreoffice_androidlib_ai_LocalInferenceEngine_nativeClearKvCache(JNIEn
         llama_memory_clear(llama_get_memory(g_ctx), false);
         g_n_past = 0;
     }
+    g_gen_decode_us = 0;
+    g_gen_decode_count = 0;
 }
 
 static bool prefill_prompt_text(const char *prompt) {
@@ -428,9 +472,21 @@ Java_org_libreoffice_androidlib_ai_LocalInferenceEngine_nativeSampleToken(JNIEnv
 
     batch_clear();
     batch_add(next, g_n_past, true);
+    const auto decode_t0 = std::chrono::steady_clock::now();
     if (llama_decode(g_ctx, g_batch) != 0) {
         log_fail("local_infer_fail", "gen_decode");
         return env->NewStringUTF("");
+    }
+    const auto decode_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                                   std::chrono::steady_clock::now() - decode_t0)
+                                   .count();
+    g_gen_decode_us += decode_us;
+    g_gen_decode_count++;
+    if (g_gen_decode_count % 32 == 0) {
+        __android_log_print(ANDROID_LOG_INFO, LO_TAG,
+                            "local_decode_perf count=%d avg_ms=%.1f last_ms=%.3f",
+                            g_gen_decode_count, (double) g_gen_decode_us / 1000.0 / g_gen_decode_count,
+                            decode_us / 1000.0);
     }
     g_n_past++;
 

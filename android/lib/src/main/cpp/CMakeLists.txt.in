@@ -162,8 +162,12 @@ target_link_libraries(androidapp
 
 # Local LLM (llama.cpp) — arm64-v8a only; requires git submodule at llama.cpp/
 if(${ANDROID_ABI} STREQUAL "arm64-v8a" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/CMakeLists.txt")
-    set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)
-    set(GGML_CPU_ALL_VARIANTS OFF CACHE BOOL "" FORCE)
+    # Build all ARM CPU variants (armv8.0 baseline / 8.2 dotprod / 8.6 i8mm / 9.x SVE+SME)
+    # and dispatch at runtime by CPUID — same config as llama.cpp examples/llama.android.
+    # A single baseline build omits DOTPROD/MATMUL_INT8 kernels (compile-time guarded),
+    # which makes Q4_K_M decode an order of magnitude slower on modern phones.
+    set(GGML_BACKEND_DL ON CACHE BOOL "" FORCE)
+    set(GGML_CPU_ALL_VARIANTS ON CACHE BOOL "" FORCE)
     set(GGML_SYSTEM_ARCH "ARM" CACHE STRING "" FORCE)
     set(GGML_CPU_KLEIDIAI ON CACHE BOOL "" FORCE)
     set(GGML_LLAMAFILE OFF CACHE BOOL "" FORCE)
@@ -173,7 +177,11 @@ if(${ANDROID_ABI} STREQUAL "arm64-v8a" AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/l
     set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp llama_build EXCLUDE_FROM_ALL)
+    # llama/ggml 必须优化编译：Debug(-O0) 下 ggml SIMD 内核失效，1.5B Q4 解码慢到 ~1 t/s。
+    # 只作用于此处之后 add_subdirectory 创建的 llama/ggml 目标；上方的 androidapp 不受影响。
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp llama_build)
 
     add_library(llama_jni SHARED llama_jni.cpp)
     target_compile_options(llama_jni PRIVATE -O3)
