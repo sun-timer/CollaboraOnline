@@ -55,8 +55,13 @@
     <string name="impress_ppt_input_hint">请输入PPT主题和要求</string>
     <string name="impress_ppt_paste_hint">粘贴已有大纲文本...</string>
     <string name="impress_ppt_select_file">选择文件</string>
+    <string name="impress_ppt_doc_upload_title">点击选择文件</string>
+    <string name="impress_ppt_doc_upload_hint">支持Doc、PDF文档导入\n文档&lt;120M，字数&lt;15万字</string>
+    <string name="impress_ppt_doc_reselect">重新选择</string>
     <string name="impress_ppt_start_generate">开始生成</string>
     <string name="impress_ppt_generating_outline">正在生成大纲...</string>
+    <string name="impress_ppt_generating_outline_status">大纲生成中</string>
+    <string name="impress_ppt_stop_generate">停止生成</string>
     <string name="impress_ppt_copy">复制</string>
     <string name="impress_ppt_regenerate">重新生成</string>
     <string name="impress_ppt_select_template">选择模板</string>

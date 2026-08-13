@@ -64,6 +64,7 @@
             android:textStyle="bold" />
 
         <ImageView
+            android:id="@+id/article_category_chevron"
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:contentDescription="选择分类"
@@ -98,6 +99,7 @@
             android:textStyle="bold" />
 
         <ImageView
+            android:id="@+id/article_subtype_chevron"
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:contentDescription="选择子类"
@@ -124,9 +126,12 @@
         android:visibility="gone">
 
         <androidx.core.widget.NestedScrollView
+            android:id="@+id/article_form_scroll"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:maxHeight="360dp">
+            android:fadeScrollbars="false"
+            android:fillViewport="false"
+            android:scrollbars="vertical">
 
             <LinearLayout
                 android:id="@+id/article_form_container"

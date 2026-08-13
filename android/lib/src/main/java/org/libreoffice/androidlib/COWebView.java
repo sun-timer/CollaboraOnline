@@ -47,6 +47,7 @@ public class COWebView extends WebView {
     private float touchDownX = 0f;
     private float touchDownY = 0f;
     private boolean magnifierShown = false;
+    private volatile boolean slideSorterGestureActive = false;
     private boolean nativeSelectionDragActive = false;
     private long lastNativeSelectionDragAt = 0L;
     /** When false, WebView is not treated as a text editor and IME won't auto-popup on tap.
@@ -100,6 +101,10 @@ public class COWebView extends WebView {
         return new GestureDetector(context, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public void onLongPress(MotionEvent e) {
+                if (slideSorterGestureActive) {
+                    Log.i(TAG, "native_long_press skipped slide_sorter_gesture");
+                    return;
+                }
                 if (consumeWebViewLongClick && documentLongPressListener != null) {
                     nativeSelectionDragActive = true;
                     lastNativeSelectionDragAt = 0L;
@@ -178,6 +183,21 @@ public class COWebView extends WebView {
 
     public boolean isDocumentGestureGuardEnabled() {
         return documentGestureGuardEnabled;
+    }
+
+    public void setSlideSorterGestureActive(boolean active) {
+        slideSorterGestureActive = active;
+        if (active) {
+            hideDocumentMagnifier();
+            if (nativeSelectionDragActive && documentLongPressListener != null) {
+                documentLongPressListener.onDocumentSelectionDragCancel();
+            }
+            nativeSelectionDragActive = false;
+        }
+    }
+
+    public boolean isSlideSorterGestureActive() {
+        return slideSorterGestureActive;
     }
 
     public void abortDocumentScroll() {
@@ -264,6 +284,14 @@ public class COWebView extends WebView {
         if (documentLongPressListener == null) {
             return false;
         }
+        if (slideSorterGestureActive) {
+            if (nativeSelectionDragActive) {
+                nativeSelectionDragActive = false;
+                documentLongPressListener.onDocumentSelectionDragCancel();
+                Log.i(TAG, "native_selection_drag cancel slide_sorter_gesture");
+            }
+            return false;
+        }
 
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
@@ -310,6 +338,10 @@ public class COWebView extends WebView {
     }
 
     private void updateDocumentMagnifier(MotionEvent event) {
+        if (slideSorterGestureActive) {
+            hideDocumentMagnifier();
+            return;
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || event.getPointerCount() != 1) {
             hideDocumentMagnifier();
             return;

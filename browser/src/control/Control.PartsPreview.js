@@ -70,6 +70,27 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 		map.on('beforerequestpreview', this._beforeRequestPreview, this);
 
 		window.addEventListener('resize', window.L.bind(this._resize, this));
+
+		if (window.ThisIsTheAndroidApp) {
+			this._bindAndroidSlideSorterGestures();
+		}
+	},
+
+	_bindAndroidSlideSorterGestures: function () {
+		if (this._slideSorterGesturesBound)
+			return;
+		var root = this._container || this._partsPreviewCont;
+		if (!root)
+			return;
+		this._slideSorterGesturesBound = true;
+		var notify = function (on) {
+			if (typeof window.postMobileMessage === 'function')
+				window.postMobileMessage('SLIDE_SORTER_GESTURE ' + (on ? 'on' : 'off'));
+		};
+		var end = function () { notify(false); };
+		root.addEventListener('touchstart', function () { notify(true); }, {passive: true, capture: true});
+		root.addEventListener('touchend', end, {passive: true, capture: true});
+		root.addEventListener('touchcancel', end, {passive: true, capture: true});
 	},
 
 	createScrollbar: function () {
@@ -109,6 +130,7 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 				if (!app.file.fileBasedView)
 					window.L.DomUtil.addClass(this._previewTiles[selectedPart], 'preview-img-currentpart');
 				this._onScroll(); // Load previews.
+				this._updatePageBadges();
 				this._previewInitialized = true;
 			}
 			else
@@ -198,28 +220,49 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 		img.hash = hashCode;
 		img.src = document.querySelector('meta[name="previewSmile"]').content;
 		img.fetched = false;
+		img.setAttribute('draggable', 'false');
+		window.L.DomEvent.on(img, 'contextmenu', window.L.DomEvent.preventDefault);
 		// Android 缩略图右下角页码角标(Figma:未选中黑40% / 选中橙底,白字)
 		if (window.ThisIsTheAndroidApp) {
 			window.L.DomUtil.create('span', 'preview-page-badge', frame).textContent = String(i + 1);
 		}
 		if (!window.mode.isDesktop()) {
-			(new Hammer(img, {recognizers: [[Hammer.Press]]}))
-				.on('press', function (e) {
-					if (this._map.isEditMode()) {
-						this._addDnDTouchHandlers(e);
-					}
-				}.bind(this));
+			if (window.ThisIsTheAndroidApp) {
+				this._bindAndroidLongPressDnD(img);
+			} else {
+				// touchAction 必须允许 pan,否则 Hammer 默认 touch-action:none 会阻止列表滚动
+				(new Hammer(img, {
+					touchAction: 'pan-x pan-y',
+					recognizers: [[Hammer.Press, {time: 450}]]
+				}))
+					.on('press', function (e) {
+						if (this._map.isEditMode()) {
+							this._addDnDTouchHandlers(e);
+						}
+					}.bind(this));
+			}
 		}
 		window.L.DomEvent.on(img, 'click', function (e) {
+			if (this._touchDnDJustEnded) {
+				this._touchDnDJustEnded = false;
+				return;
+			}
+			if (this._suppressSlideClick) {
+				this._suppressSlideClick = false;
+				return;
+			}
 			window.L.DomEvent.stopPropagation(e);
 			window.L.DomEvent.stop(e);
 			var part = this._findClickedPart(e.target.parentNode);
 			if (part !== null)
 				var partId = parseInt(part) - 1; // The first part is just a drop-site for reordering.
 			if (!window.mode.isDesktop() && partId === this._map._docLayer._selectedPart && !app.file.fileBasedView) {
-				// if mobile or tab then second tap will open the mobile wizard
 				if (this._map._permission === 'edit') {
-					// Remove selection to get the slide properties in mobile wizard.
+					if (window.ThisIsTheAndroidApp) {
+						this._showAndroidSlidePopup(img);
+						return;
+					}
+					// if mobile or tab then second tap will open the mobile wizard
 					app.socket.sendMessage('resetselection');
 					setTimeout(function () {
 						app.dispatcher.dispatch('mobile_wizard');
@@ -593,6 +636,53 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 				}
 			}
 		}
+		this._updatePageBadges();
+	},
+
+	_updatePageBadges: function () {
+		if (!window.ThisIsTheAndroidApp || !this._previewTiles)
+			return;
+		for (var i = 0; i < this._previewTiles.length; i++) {
+			var frame = this._previewTiles[i].parentNode;
+			if (!frame)
+				continue;
+			var badge = frame.querySelector('.preview-page-badge');
+			if (badge)
+				badge.textContent = String(i + 1);
+		}
+	},
+
+	_rebuildPreviewTilesFromDom: function () {
+		var tiles = [];
+		for (var i = 0; i < this._partsPreviewCont.children.length; i++) {
+			var child = this._partsPreviewCont.children[i];
+			if (child.id === 'first-drop-site')
+				continue;
+			var img = child.querySelector('.preview-img');
+			if (img)
+				tiles.push(img);
+		}
+		this._previewTiles = tiles;
+	},
+
+	_movePreviewInDom: function (sourceImg, targetFrame) {
+		var sourceFrame = sourceImg.parentNode;
+		if (!sourceFrame || !targetFrame || sourceFrame === targetFrame)
+			return false;
+
+		var sourceIdx = this._findClickedPart(sourceFrame);
+		var targetIdx = this._findClickedPart(targetFrame);
+		if (sourceIdx < 1 || targetIdx < 0 || sourceIdx === targetIdx)
+			return false;
+
+		if (sourceIdx < targetIdx)
+			targetFrame.parentNode.insertBefore(sourceFrame, targetFrame.nextSibling);
+		else
+			targetFrame.parentNode.insertBefore(sourceFrame, targetFrame);
+
+		this._rebuildPreviewTilesFromDom();
+		this._updatePageBadges();
+		return true;
 	},
 
 	_resize: function () {
@@ -646,6 +736,10 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 
 			// insert after selectedFrame
 			selectedFrame.parentNode.insertBefore(newFrame, selectedFrame.nextSibling);
+
+			this._ensureVisiblePreviews();
+			this._scrollToPart();
+			this._updatePageBadges();
 		}
 	},
 
@@ -656,6 +750,7 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 
 			this._previewTiles.splice(e.selectedPart, 1);
 			this.focusCurrentSlide();
+			this._updatePageBadges();
 		}
 	},
 
@@ -690,6 +785,10 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 		if (app.file.fileBasedView) // No drag & drop for pdf files and the like.
 			return;
 
+		// Android WebView 上 HTML5 drag 会抢占 touch,导致无法滚动/拖动
+		if (window.ThisIsTheAndroidApp)
+			return;
+
 		if (elem) {
 			elem.setAttribute('draggable', true);
 			elem.addEventListener('dragstart', this._handleDragStart, false);
@@ -702,10 +801,177 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 		}
 	},
 
+	_findDropFrame: function (node) {
+		while (node && node !== this._partsPreviewCont) {
+			if (node.classList && node.classList.contains('preview-frame'))
+				return node;
+			node = node.parentNode;
+		}
+		return null;
+	},
+
+	_showAndroidSlidePopup: function (img) {
+		if (!window.ThisIsTheAndroidApp || typeof window.postMobileMessage !== 'function')
+			return;
+		if (app.isReadOnly())
+			return;
+		var isMasterView = this._map['stateChangeHandler'].getItemValue('.uno:SlideMasterPage');
+		if (isMasterView === 'true')
+			return;
+
+		var part = this._findClickedPart(img.parentNode);
+		if (part === null || part < 1)
+			return;
+		var partIndex = parseInt(part) - 1;
+		var rect = img.getBoundingClientRect();
+		var canDelete = this._map._docLayer._parts > 1;
+		var hasOverview = app.impress.hasOverviewPage && partIndex === 0;
+
+		window.postMobileMessage('SLIDE_THUMBNAIL_POPUP show ' + JSON.stringify({
+			partIndex: partIndex,
+			slideNumber: partIndex + 1,
+			canCopy: !hasOverview,
+			canDelete: canDelete && !hasOverview,
+			anchorX: rect ? rect.left + rect.width * 0.5 : 0,
+			anchorY: rect ? rect.top : 0,
+			anchorBottom: rect ? rect.bottom : 0
+		}));
+	},
+
+	_bindAndroidLongPressDnD: function (img) {
+		var that = this;
+		var pressTimer = null;
+		var dragStarted = false;
+		var tracking = false;
+		var startX = 0;
+		var startY = 0;
+		var lastX = 0;
+		var lastY = 0;
+		var activeImg = null;
+
+		var clearPress = function () {
+			if (pressTimer) {
+				clearTimeout(pressTimer);
+				pressTimer = null;
+			}
+		};
+
+		var resetPress = function () {
+			clearPress();
+			dragStarted = false;
+		};
+
+		var stopTracking = function () {
+			document.removeEventListener('touchmove', onDocumentTouchMove, true);
+			document.removeEventListener('touchend', onDocumentTouchEnd, true);
+			document.removeEventListener('touchcancel', onDocumentTouchCancel, true);
+			tracking = false;
+			activeImg = null;
+		};
+
+		var beginDrag = function () {
+			if (dragStarted || that._touchDnDActive || !activeImg)
+				return;
+			var dragTarget = activeImg;
+			dragStarted = true;
+			stopTracking();
+			that._addDnDTouchHandlers({
+				target: dragTarget,
+				center: { x: lastX, y: lastY }
+			});
+		};
+
+		var onDocumentTouchMove = function (e) {
+			if (!tracking || that._touchDnDActive)
+				return;
+			var touch = e.touches[0];
+			if (!touch)
+				return;
+			lastX = touch.clientX;
+			lastY = touch.clientY;
+			var dx = Math.abs(touch.clientX - startX);
+			var dy = Math.abs(touch.clientY - startY);
+			if (pressTimer && (dx > 8 || dy > 8)) {
+				clearPress();
+				return;
+			}
+			if (dragStarted) {
+				if (e.cancelable)
+					e.preventDefault();
+				that._handleTouchMove(e);
+			}
+		};
+
+		var onDocumentTouchEnd = function () {
+			if (!tracking)
+				return;
+			resetPress();
+			stopTracking();
+		};
+
+		var onDocumentTouchCancel = function () {
+			resetPress();
+			stopTracking();
+		};
+
+		window.L.DomEvent.on(img, 'touchstart', function (e) {
+			if (!that._map.isEditMode() || that._touchDnDActive)
+				return;
+			var touch = e.touches[0];
+			if (!touch)
+				return;
+			stopTracking();
+			resetPress();
+			activeImg = img;
+			tracking = true;
+			startX = touch.clientX;
+			startY = touch.clientY;
+			lastX = startX;
+			lastY = startY;
+			document.addEventListener('touchmove', onDocumentTouchMove, {passive: false, capture: true});
+			document.addEventListener('touchend', onDocumentTouchEnd, true);
+			document.addEventListener('touchcancel', onDocumentTouchCancel, true);
+			pressTimer = setTimeout(function () {
+				pressTimer = null;
+				beginDrag();
+			}, 400);
+		}, this);
+	},
+
+	_cleanupTouchDnD: function () {
+		if (this._boundTouchMove) {
+			document.removeEventListener('touchmove', this._boundTouchMove);
+			document.removeEventListener('touchcancel', this._boundTouchCancel);
+			document.removeEventListener('touchend', this._boundTouchEnd);
+		}
+		$('.preview-frame').removeClass('preview-img-dropsite');
+		window.L.DomUtil.removeClass(document.body, 'slide-dnd-active');
+		if (this.draggedSlide) {
+			$(this.draggedSlide).remove();
+			this.draggedSlide = null;
+		}
+		this.currentNode = null;
+		this.previousNode = null;
+		this._touchDnDActive = false;
+		this._touchDnDJustEnded = true;
+		this._touchDnDImg = null;
+		if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function')
+			window.postMobileMessage('SLIDE_SORTER_GESTURE off');
+	},
+
 	_addDnDTouchHandlers: function (e) {
-		$(e.target).bind('touchmove', this._handleTouchMove.bind(this));
-		$(e.target).bind('touchcancel', this._handleTouchCancel.bind(this));
-		$(e.target).bind('touchend', this._handleTouchEnd.bind(this));
+		if (this._touchDnDActive)
+			return;
+		this._touchDnDActive = true;
+		this._touchDnDImg = e.target;
+		this._touchDnDWidth = e.target.width || e.target.offsetWidth;
+
+		this._boundTouchMove = this._handleTouchMove.bind(this);
+		this._boundTouchCancel = this._handleTouchCancel.bind(this);
+		this._boundTouchEnd = this._handleTouchEnd.bind(this);
+		document.addEventListener('touchmove', this._boundTouchMove, {passive: false});
+		document.addEventListener('touchcancel', this._boundTouchCancel, {passive: false});
+		document.addEventListener('touchend', this._boundTouchEnd, {passive: false});
 
 		// To avoid having to add a new message to move an arbitrary part, let's select the
 		// slide that is being dragged.
@@ -718,55 +984,60 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 		this.draggedSlide = window.L.DomUtil.create('img', '', document.body);
 		this.draggedSlide.setAttribute('src', e.target.currentSrc);
 		$(this.draggedSlide).css('position', 'absolute');
-		$(this.draggedSlide).css('height', e.target.height);
-		$(this.draggedSlide).css('width', e.target.width);
-		$(this.draggedSlide).css('left', e.center.x - (e.target.width/2));
-		$(this.draggedSlide).css('top', e.center.y - e.target.height);
-		$(this.draggedSlide).css('z-index', '10');
+		$(this.draggedSlide).css('height', e.target.height || e.target.offsetHeight);
+		$(this.draggedSlide).css('width', this._touchDnDWidth);
+		$(this.draggedSlide).css('left', e.center.x - (this._touchDnDWidth / 2));
+		$(this.draggedSlide).css('top', e.center.y - (e.target.height || e.target.offsetHeight));
+		$(this.draggedSlide).css('z-index', '10001');
 		$(this.draggedSlide).css('opacity', '75%');
 		$(this.draggedSlide).css('pointer-events', 'none');
-		$('.preview-img').css('pointer-events', 'none');
+		window.L.DomUtil.addClass(document.body, 'slide-dnd-active');
+		if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function')
+			window.postMobileMessage('SLIDE_SORTER_GESTURE on');
 
 		this.currentNode = null;
 		this.previousNode = null;
 	},
 
-	_removeDnDTouchHandlers: function (e) {
-		$(e.target).unbind('touchmove');
-		$(e.target).unbind('touchcancel');
-		$(e.target).unbind('touchend');
-		$('.preview-img').css('pointer-events', '');
-	},
-
 	_handleTouchMove: function (e) {
-		if (e.preventDefault) {
-			e.preventDefault();
-		}
+		if (!this._touchDnDActive)
+			return;
 
-		this.currentNode = document.elementFromPoint(e.originalEvent.touches[0].clientX, e.originalEvent.touches[0].clientY);
+		if (e.preventDefault)
+			e.preventDefault();
+
+		var touch = e.touches[0];
+		if (!touch)
+			return false;
+
+		this.currentNode = this._findDropFrame(document.elementFromPoint(touch.clientX, touch.clientY));
 
 		if (this.currentNode !== this.previousNode && this.previousNode !== null) {
 			$('.preview-frame').removeClass('preview-img-dropsite');
 		}
 
-		if (this.currentNode.draggable || this.currentNode.id === 'first-drop-site') {
+		if (this.currentNode &&
+		    (this.currentNode.classList.contains('preview-frame') || this.currentNode.id === 'first-drop-site')) {
 			this.currentNode.classList.add('preview-img-dropsite');
 		}
 
 		this.previousNode = this.currentNode;
 
-		$(this.draggedSlide).css('left', e.originalEvent.touches[0].clientX - (e.target.width/2));
-		$(this.draggedSlide).css('top', e.originalEvent.touches[0].clientY - e.target.height);
+		if (this.draggedSlide) {
+			$(this.draggedSlide).css('left', touch.clientX - (this._touchDnDWidth / 2));
+			$(this.draggedSlide).css('top', touch.clientY - (this._touchDnDImg ? this._touchDnDImg.offsetHeight : 0));
+		}
 		return false;
 	},
 
-	_handleTouchCancel: function(e) {
-		$('.preview-frame').removeClass('preview-img-dropsite');
-		$(this.draggedSlide).remove();
-		this._removeDnDTouchHandlers(e);
+	_handleTouchCancel: function() {
+		this._cleanupTouchDnD();
 	},
 
 	_handleTouchEnd: function (e) {
+		if (!this._touchDnDActive) {
+			return false;
+		}
 		if (e.stopPropagation) {
 			e.stopPropagation();
 		}
@@ -776,12 +1047,12 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 				var partId = parseInt(part) - 1; // First frame is a drop-site for reordering.
 				if (partId < 0)
 					partId = -1; // First item is -1.
+				if (this._touchDnDImg)
+					this._movePreviewInDom(this._touchDnDImg, this.currentNode);
 				app.socket.sendMessage('moveselectedclientparts position=' + partId);
 			}
 		}
-		$('.preview-frame').removeClass('preview-img-dropsite');
-		$(this.draggedSlide).remove();
-		this._removeDnDTouchHandlers(e);
+		this._cleanupTouchDnD();
 		return false;
 	},
 

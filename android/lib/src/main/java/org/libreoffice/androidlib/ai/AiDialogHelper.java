@@ -15,6 +15,8 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.BottomSheetAnchorHelper;
 
+import androidx.constraintlayout.widget.ConstraintLayout;
+
 /**
  * AI 功能弹窗统一行为：仅右上角关闭按钮可 dismiss，点击外部不关闭。
  * 尺寸规范（设计稿 Hug）：宽 min(670dp, 可用宽-48dp)，输入态高上限 637dp，内容/结果态上限 748dp。
@@ -35,6 +37,33 @@ public final class AiDialogHelper {
     public static final int MIN_HEIGHT_DP = 180;
 
     private AiDialogHelper() {
+    }
+
+    /**
+     * overlay 面板在 ConstraintLayout 父级内居中：四边约束 + bias，横竖屏切换时自动重算位置。
+     */
+    public static void applyOverlayCenterConstraints(ConstraintLayout.LayoutParams lp,
+            int widthPx, int heightPx) {
+        lp.width = widthPx;
+        lp.height = heightPx;
+        lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.horizontalBias = 0.5f;
+        lp.verticalBias = 0.5f;
+        lp.leftMargin = 0;
+        lp.topMargin = 0;
+        lp.rightMargin = 0;
+        lp.bottomMargin = 0;
+    }
+
+    public static void applyFlexibleDialogSizeOnConfigurationChange(AlertDialog dialog, View root) {
+        if (dialog == null || !dialog.isShowing() || dialog.getWindow() == null || root == null) {
+            return;
+        }
+        Resources res = root.getResources();
+        applyFlexibleWidth(root, dialog, computeTargetWidthPx(res), computeMaxHeightHugPx(res));
     }
 
     public static int dpToPx(Resources res, int dp) {
@@ -192,7 +221,10 @@ public final class AiDialogHelper {
             Resources res = context.getResources();
             applyFlexibleWidth(panel, dialog,
                     computeTargetWidthPx(res), computeMaxHeightHugPx(res));
-            return new CompactPanelSession(dialog, null);
+            CompactPanelSession session = new CompactPanelSession(dialog, null);
+            dialog.setOnDismissListener(d -> untrackCompactPanel(session));
+            trackCompactPanel(session);
+            return session;
         }
 
         BottomSheetDialog dialog = new BottomSheetDialog(context);
@@ -204,13 +236,37 @@ public final class AiDialogHelper {
         options.draggable = false;
         options.logTag = logTag != null ? logTag : "CompactPanel";
         BottomSheetAnchorHelper.expandWrapContent(dialog, 0.92f, options);
-        return new CompactPanelSession(null, dialog);
+        CompactPanelSession session = new CompactPanelSession(null, dialog);
+        dialog.setOnDismissListener(d -> untrackCompactPanel(session));
+        trackCompactPanel(session);
+        return session;
+    }
+
+    /** 横屏 AlertDialog / 竖屏 BottomSheet 统一 dismiss（配置变更时调用）。 */
+    private static final java.util.List<CompactPanelSession> ACTIVE_COMPACT_PANELS =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    public static void dismissCompactPanelsOnConfigurationChange() {
+        for (CompactPanelSession session : ACTIVE_COMPACT_PANELS) {
+            session.dismiss();
+        }
+        ACTIVE_COMPACT_PANELS.clear();
+    }
+
+    private static void trackCompactPanel(CompactPanelSession session) {
+        if (session != null && (session.alertDialog != null || session.bottomSheetDialog != null)) {
+            ACTIVE_COMPACT_PANELS.add(session);
+        }
+    }
+
+    private static void untrackCompactPanel(CompactPanelSession session) {
+        ACTIVE_COMPACT_PANELS.remove(session);
     }
 
     /** 统一 dismiss 竖屏 BottomSheet / 横屏 AlertDialog。 */
     public static final class CompactPanelSession {
-        private final AlertDialog alertDialog;
-        private final BottomSheetDialog bottomSheetDialog;
+        final AlertDialog alertDialog;
+        final BottomSheetDialog bottomSheetDialog;
 
         CompactPanelSession(AlertDialog alertDialog, BottomSheetDialog bottomSheetDialog) {
             this.alertDialog = alertDialog;

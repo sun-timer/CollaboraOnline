@@ -54,10 +54,10 @@ public final class ImpressShapeCatalog {
             new Entry(17, R.drawable.lolib_ic_impress_shape_017, ".uno:Polygon_Unfilled"),
             new Entry(18, R.drawable.lolib_ic_impress_shape_018, ".uno:Polygon_Diagonal_Unfilled"),
             new Entry(19, R.drawable.lolib_ic_impress_shape_019, ".uno:Freeline_Unfilled"),
-            new Entry(20, R.drawable.lolib_ic_impress_shape_020, ".uno:Ellipse"),
-            new Entry(21, R.drawable.lolib_ic_impress_shape_021, ".uno:Ellipse_Unfilled"),
-            new Entry(22, R.drawable.lolib_ic_impress_shape_022, ".uno:CircleCut"),
-            new Entry(23, R.drawable.lolib_ic_impress_shape_023, ".uno:Arc")
+            null,
+            null,
+            null,
+            null
         }),
         new Section("连接符", new Entry[] {
             new Entry(24, R.drawable.lolib_ic_impress_shape_024, ".uno:ConnectorArrowEnd"),
@@ -146,10 +146,10 @@ public final class ImpressShapeCatalog {
             new Entry(101, R.drawable.lolib_ic_impress_shape_101, ".uno:ArrowShapes.up-down-arrow-callout"),
             new Entry(102, R.drawable.lolib_ic_impress_shape_102, ".uno:ArrowShapes.quad-arrow-callout"),
             new Entry(103, R.drawable.lolib_ic_impress_shape_103, ".uno:ArrowShapes.up-right-arrow-callout"),
-            new Entry(104, R.drawable.lolib_ic_impress_shape_104, ".uno:ArrowShapes.up-right-down-arrow"),
-            new Entry(105, R.drawable.lolib_ic_impress_shape_105, ".uno:ArrowShapes.notched-right-arrow"),
-            new Entry(106, R.drawable.lolib_ic_impress_shape_106, ".uno:ArrowShapes.up-right-arrow"),
-            new Entry(107, R.drawable.lolib_ic_impress_shape_107, ".uno:ArrowShapes.striped-right-arrow")
+            null,
+            null,
+            null,
+            null
         }),
         new Section("流程图", new Entry[] {
             new Entry(108, R.drawable.lolib_ic_impress_shape_108, ".uno:FlowChartShapes.flowchart-process"),
@@ -180,40 +180,8 @@ public final class ImpressShapeCatalog {
             new Entry(133, R.drawable.lolib_ic_impress_shape_133, ".uno:FlowChartShapes.flowchart-magnetic-disk"),
             new Entry(134, R.drawable.lolib_ic_impress_shape_134, ".uno:FlowChartShapes.flowchart-direct-access-storage"),
             new Entry(135, R.drawable.lolib_ic_impress_shape_135, ".uno:FlowChartShapes.flowchart-display"),
-            new Entry(136, R.drawable.lolib_ic_impress_shape_136, ".uno:FlowChartShapes.flowchart-process"),
-            new Entry(137, R.drawable.lolib_ic_impress_shape_137, ".uno:FlowChartShapes.flowchart-alternate-process")
-        }),
-        new Section("流程图", new Entry[] {
-            new Entry(138, R.drawable.lolib_ic_impress_shape_138, ".uno:FlowChartShapes.flowchart-process"),
-            new Entry(139, R.drawable.lolib_ic_impress_shape_139, ".uno:FlowChartShapes.flowchart-alternate-process"),
-            new Entry(140, R.drawable.lolib_ic_impress_shape_140, ".uno:FlowChartShapes.flowchart-decision"),
-            new Entry(141, R.drawable.lolib_ic_impress_shape_141, ".uno:FlowChartShapes.flowchart-data"),
-            new Entry(142, R.drawable.lolib_ic_impress_shape_142, ".uno:FlowChartShapes.flowchart-predefined-process"),
-            new Entry(143, R.drawable.lolib_ic_impress_shape_143, ".uno:FlowChartShapes.flowchart-internal-storage"),
-            new Entry(144, R.drawable.lolib_ic_impress_shape_144, ".uno:FlowChartShapes.flowchart-document"),
-            new Entry(145, R.drawable.lolib_ic_impress_shape_145, ".uno:FlowChartShapes.flowchart-multidocument"),
-            new Entry(146, R.drawable.lolib_ic_impress_shape_146, ".uno:FlowChartShapes.flowchart-terminator"),
-            new Entry(147, R.drawable.lolib_ic_impress_shape_147, ".uno:FlowChartShapes.flowchart-preparation"),
-            new Entry(148, R.drawable.lolib_ic_impress_shape_148, ".uno:FlowChartShapes.flowchart-manual-input"),
-            new Entry(149, R.drawable.lolib_ic_impress_shape_149, ".uno:FlowChartShapes.flowchart-manual-operation"),
-            new Entry(150, R.drawable.lolib_ic_impress_shape_150, ".uno:FlowChartShapes.flowchart-connector"),
-            new Entry(151, R.drawable.lolib_ic_impress_shape_151, ".uno:FlowChartShapes.flowchart-off-page-connector"),
-            new Entry(152, R.drawable.lolib_ic_impress_shape_152, ".uno:FlowChartShapes.flowchart-card"),
-            new Entry(153, R.drawable.lolib_ic_impress_shape_153, ".uno:FlowChartShapes.flowchart-punched-tape"),
-            new Entry(154, R.drawable.lolib_ic_impress_shape_154, ".uno:FlowChartShapes.flowchart-summing-junction"),
-            new Entry(155, R.drawable.lolib_ic_impress_shape_155, ".uno:FlowChartShapes.flowchart-or"),
-            new Entry(156, R.drawable.lolib_ic_impress_shape_156, ".uno:FlowChartShapes.flowchart-collate"),
-            new Entry(157, R.drawable.lolib_ic_impress_shape_157, ".uno:FlowChartShapes.flowchart-sort"),
-            new Entry(158, R.drawable.lolib_ic_impress_shape_158, ".uno:FlowChartShapes.flowchart-extract"),
-            new Entry(159, R.drawable.lolib_ic_impress_shape_159, ".uno:FlowChartShapes.flowchart-merge"),
-            new Entry(160, R.drawable.lolib_ic_impress_shape_160, ".uno:FlowChartShapes.flowchart-stored-data"),
-            new Entry(161, R.drawable.lolib_ic_impress_shape_161, ".uno:FlowChartShapes.flowchart-delay"),
-            new Entry(162, R.drawable.lolib_ic_impress_shape_162, ".uno:FlowChartShapes.flowchart-sequential-access"),
-            new Entry(163, R.drawable.lolib_ic_impress_shape_163, ".uno:FlowChartShapes.flowchart-magnetic-disk"),
-            new Entry(164, R.drawable.lolib_ic_impress_shape_164, ".uno:FlowChartShapes.flowchart-direct-access-storage"),
-            new Entry(165, R.drawable.lolib_ic_impress_shape_165, ".uno:FlowChartShapes.flowchart-display"),
-            new Entry(166, R.drawable.lolib_ic_impress_shape_166, ".uno:FlowChartShapes.flowchart-process"),
-            new Entry(167, R.drawable.lolib_ic_impress_shape_167, ".uno:FlowChartShapes.flowchart-alternate-process")
+            null,
+            null
         }),
         new Section("标注", new Entry[] {
             new Entry(168, R.drawable.lolib_ic_impress_shape_168, ".uno:CalloutShapes.rectangular-callout"),
@@ -224,10 +192,10 @@ public final class ImpressShapeCatalog {
             new Entry(173, R.drawable.lolib_ic_impress_shape_173, ".uno:CalloutShapes.line-callout-2"),
             new Entry(174, R.drawable.lolib_ic_impress_shape_174, ".uno:CalloutShapes.line-callout-3"),
             new Entry(175, R.drawable.lolib_ic_impress_shape_175, ".uno:ArrowShapes.right-arrow-callout"),
-            new Entry(176, R.drawable.lolib_ic_impress_shape_176, ".uno:ArrowShapes.left-arrow-callout"),
-            new Entry(177, R.drawable.lolib_ic_impress_shape_177, ".uno:ArrowShapes.up-arrow-callout"),
-            new Entry(178, R.drawable.lolib_ic_impress_shape_178, ".uno:ArrowShapes.down-arrow-callout"),
-            new Entry(179, R.drawable.lolib_ic_impress_shape_179, ".uno:ArrowShapes.left-right-arrow-callout")
+            null,
+            null,
+            null,
+            null
         }),
         new Section("星形与旗帜", new Entry[] {
             new Entry(180, R.drawable.lolib_ic_impress_shape_180, ".uno:StarShapes.star4"),
@@ -243,11 +211,11 @@ public final class ImpressShapeCatalog {
             new Entry(190, R.drawable.lolib_ic_impress_shape_190, ".uno:StarShapes.doorplate"),
             new Entry(191, R.drawable.lolib_ic_impress_shape_191, ".uno:StarShapes.concave-star6"),
             new Entry(192, R.drawable.lolib_ic_impress_shape_192, ".uno:StarShapes.star5"),
-            new Entry(193, R.drawable.lolib_ic_impress_shape_193, ".uno:StarShapes.star6"),
-            new Entry(194, R.drawable.lolib_ic_impress_shape_194, ".uno:StarShapes.star8"),
-            new Entry(195, R.drawable.lolib_ic_impress_shape_195, ".uno:StarShapes.star12"),
-            new Entry(196, R.drawable.lolib_ic_impress_shape_196, ".uno:StarShapes.star24"),
-            new Entry(197, R.drawable.lolib_ic_impress_shape_197, ".uno:StarShapes.star4")
+            null,
+            null,
+            null,
+            null,
+            null
         })
     };
 }

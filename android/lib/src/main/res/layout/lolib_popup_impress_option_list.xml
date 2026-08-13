@@ -9,9 +9,18 @@
     android:paddingTop="6dp"
     android:paddingBottom="6dp">
 
-    <LinearLayout
-        android:id="@+id/impress_option_list"
+    <ScrollView
+        android:id="@+id/impress_option_scroll"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical" />
+        android:fadeScrollbars="false"
+        android:fillViewport="true"
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:id="@+id/impress_option_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
 </LinearLayout>

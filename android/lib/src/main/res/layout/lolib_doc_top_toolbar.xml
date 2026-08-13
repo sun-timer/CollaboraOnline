@@ -95,8 +95,8 @@
         android:id="@+id/top_toolbar_edit"
         android:layout_width="match_parent"
         android:layout_height="56dp"
-        android:paddingStart="8dp"
-        android:paddingEnd="4dp"
+        android:paddingStart="@dimen/top_toolbar_edit_padding_start"
+        android:paddingEnd="@dimen/top_toolbar_edit_padding_end"
         android:visibility="gone">
 
         <TextView

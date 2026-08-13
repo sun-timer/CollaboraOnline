@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Figma 64px → 32dp：横屏编辑顶栏完成按钮左边距 -->
+    <dimen name="top_toolbar_edit_padding_start">32dp</dimen>
+    <dimen name="top_toolbar_edit_padding_end">4dp</dimen>
+</resources>

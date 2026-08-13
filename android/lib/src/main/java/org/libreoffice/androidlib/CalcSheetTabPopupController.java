@@ -150,6 +150,14 @@ public final class CalcSheetTabPopupController {
                 || (deleteConfirmSession != null && deleteConfirmSession.isShowing());
     }
 
+    /** 横竖屏切换后重算 Sheet Tab 菜单位置（重命名/删除确认由 CompactPanel 统一处理）。 */
+    public void onConfigurationChanged() {
+        if (popupView == null || popupView.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        popupView.post(() -> positionPopup(lastAnchorX, lastAnchorY, lastAnchorBottom));
+    }
+
     public void hide() {
         hideRenameDialog();
         hideDeleteConfirmDialog();

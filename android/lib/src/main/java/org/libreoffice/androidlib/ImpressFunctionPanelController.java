@@ -3,6 +3,7 @@ package org.libreoffice.androidlib;
 import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.text.TextUtils;
 import android.util.Log;
@@ -15,6 +16,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.PopupWindow;
 import android.widget.TextView;
 
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
@@ -23,6 +25,7 @@ import androidx.core.widget.NestedScrollView;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.ai.AiDialogHelper;
+import org.libreoffice.androidlib.calc.CalcFontColorPickerController;
 import org.libreoffice.androidlib.impress.ImpressShapePickerController;
 import org.libreoffice.androidlib.impress.ImpressSlideLayoutCatalog;
 import org.libreoffice.androidlib.impress.ImpressSolidColorPickerController;
@@ -85,7 +88,6 @@ public class ImpressFunctionPanelController {
     private static final int INSERT_GRID_GAP_DP = 12;
     private static final int INSERT_ICON_SIZE_DP = 32;
     private static final int INSERT_CELL_MIN_H_DP = 88;
-    private static final int CHART_TYPE_MAX_COLUMNS = 3;
     private static final int LAYOUT_GRID_COLS = 3;
     private static final int LAYOUT_THUMB_W_DP = 100;
     private static final int LAYOUT_THUMB_H_DP = 56;
@@ -127,6 +129,18 @@ public class ImpressFunctionPanelController {
             new ColorSwatch("蓝色", 0x0073C7),
             new ColorSwatch("深蓝", 0x002164),
             new ColorSwatch("黑色", 0x000000),
+    };
+
+    /** 与 BottomToolbarController.HIGHLIGHT_COLOR_OPTIONS 保持一致。 */
+    private static final ColorSwatch[] HIGHLIGHT_COLOR_SWATCHES = new ColorSwatch[] {
+            new ColorSwatch("黄色", 0xFFFF00),
+            new ColorSwatch("浅绿", 0xC6EFCE),
+            new ColorSwatch("浅蓝", 0xBDD7EE),
+            new ColorSwatch("浅红", 0xFFC7CE),
+            new ColorSwatch("橙色", 0xF4B183),
+            new ColorSwatch("紫色", 0xD9E1F2),
+            new ColorSwatch("灰色", 0xD9D9D9),
+            new ColorSwatch("白色", 0xFFFFFF),
     };
 
     public interface Host {
@@ -294,6 +308,7 @@ public class ImpressFunctionPanelController {
     private TextView slideOptionValueView;
     private final Map<String, String> pickerValues = new HashMap<>();
     private final Map<String, Integer> pickerColorRgb = new HashMap<>();
+    private final Map<String, Integer> pickerColorIndex = new HashMap<>();
     private String[] cachedFontOptions = FALLBACK_FONT_OPTIONS;
     private String[] cachedFontValues = FALLBACK_FONT_VALUES;
     private ImpressSolidColorPickerController solidColorPickerController;
@@ -318,6 +333,10 @@ public class ImpressFunctionPanelController {
     private int selectedLayoutIndex = -1;
     private LinearLayout layoutGridRoot;
     private ImpressShapePickerController shapePickerController;
+    private PopupWindow fontSizePopup;
+    private boolean fontColorPickerVisible;
+    private CalcFontColorPickerController fontColorPicker;
+    private ImageView fontColorPreviewDot;
 
     public ImpressFunctionPanelController(Host host) {
         this.host = host;
@@ -396,6 +415,8 @@ public class ImpressFunctionPanelController {
 
     public void dismiss() {
         dismissSecondaryListPanel();
+        dismissFontSizePopup();
+        dismissFontColorPickerPage();
         dismissSolidColorPickerPage();
         chartPickerVisible = false;
         hyperlinkPickerVisible = false;
@@ -410,6 +431,27 @@ public class ImpressFunctionPanelController {
 
     public boolean isShowing() {
         return dialog != null && dialog.isShowing();
+    }
+
+    /** 横竖屏切换：关闭锚点浮层/二级页，并重算 BottomSheet 高度。 */
+    public void onConfigurationChanged() {
+        if (dialog == null || !dialog.isShowing()) {
+            return;
+        }
+        dismissSecondaryListPanel();
+        dismissFontSizePopup();
+        dismissFontColorPickerPage();
+        dismissSolidColorPickerPage();
+        dismissChartPickerPage();
+        dismissHyperlinkPickerPage();
+        dismissTablePickerPage();
+        dismissCommentPickerPage();
+        dismissReviewCommentPickerPage();
+        dismissSlideOptionPicker();
+        if (shapePickerController != null) {
+            shapePickerController.onConfigurationChanged();
+        }
+        applyFixedSheetHeight();
     }
 
     private void buildTabBar() {
@@ -441,6 +483,7 @@ public class ImpressFunctionPanelController {
 
     private void selectTab(int index) {
         dismissSecondaryListPanel();
+        dismissFontColorPickerPage();
         dismissSolidColorPickerPage();
         dismissChartPickerPage();
         dismissHyperlinkPickerPage();
@@ -685,7 +728,9 @@ public class ImpressFunctionPanelController {
             return;
         }
         if ("slide_master".equals(item.id)) {
-            showMasterSlidePicker(valueView);
+            slideMasterValueView = valueView;
+            showSlideOptionPickerPage("母版幻灯片", MASTER_SLIDE_LABELS, null, item.id, valueView,
+                    createMasterSlideActions());
             return;
         }
         host.toastTodo(item.label + " 后续接入");
@@ -693,24 +738,19 @@ public class ImpressFunctionPanelController {
 
     private static final String[] MASTER_SLIDE_LABELS = { "默认", "纯色" };
 
-    private void showMasterSlidePicker(TextView valueView) {
-        new AlertDialog.Builder(host.getContext())
-                .setTitle("母版幻灯片")
-                .setItems(MASTER_SLIDE_LABELS, (d, which) -> {
-                    String label = MASTER_SLIDE_LABELS[which];
-                    if ("纯色".equals(label)) {
-                        slideMasterValueView = valueView;
-                        showSolidColorPickerPage();
-                        return;
-                    }
-                    pickerValues.put("slide_master", label);
+    private Runnable[] createMasterSlideActions() {
+        return new Runnable[] {
+                () -> {
                     selectedMasterSolidRgb = null;
                     selectedMasterSolidIndex = null;
-                    valueView.setText(label);
-                    Log.i(TAG, "slide_master_picked label=" + label);
-                })
-                .setNegativeButton("取消", null)
-                .show();
+                },
+                this::showMasterSolidColorPicker,
+        };
+    }
+
+    private void showMasterSolidColorPicker() {
+        dismissSlideOptionPicker();
+        showSolidColorPickerPage();
     }
 
     private void setTabChromeVisible(boolean visible) {
@@ -749,6 +789,7 @@ public class ImpressFunctionPanelController {
 
     private void showSolidColorPickerPage(boolean forSlideBackground) {
         dismissSecondaryListPanel();
+        dismissFontColorPickerPage();
         solidColorPickerVisible = true;
         solidColorForSlideBackground = forSlideBackground;
         submenuReturnTabIndex = selectedTabIndex;
@@ -845,6 +886,7 @@ public class ImpressFunctionPanelController {
             return;
         }
         dismissSolidColorPickerPage();
+        dismissFontColorPickerPage();
         slideOptionPickerVisible = true;
         slideOptionValueView = valueView;
         if ("slide_background".equals(pickerId)) {
@@ -950,7 +992,7 @@ public class ImpressFunctionPanelController {
         sizeValue.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         left.addView(sizeValue, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         left.addView(createChevron());
-        left.setOnClickListener(v -> showSizePicker(sizeValue));
+        left.setOnClickListener(v -> showFontSizePopup(sizeValue, left));
 
         LinearLayout right = createCardRow();
         LinearLayout.LayoutParams rightLp = new LinearLayout.LayoutParams(
@@ -959,6 +1001,7 @@ public class ImpressFunctionPanelController {
         right.setLayoutParams(rightLp);
         ImageView colorDot = new ImageView(host.getContext());
         colorDot.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        fontColorPreviewDot = colorDot;
         updateColorPreviewDot(colorDot, pickerColorRgb.get("font_color"),
                 R.drawable.lolib_ic_calc_color_font_preview);
         LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(host.dpToPx(20), host.dpToPx(20));
@@ -970,7 +1013,7 @@ public class ImpressFunctionPanelController {
         right.addView(colorDot, dotLp);
         right.addView(colorLabel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         right.addView(createChevron());
-        right.setOnClickListener(v -> showFontColorPicker(colorLabel, colorDot));
+        right.setOnClickListener(v -> showFontColorPickerPage());
 
         row.addView(left);
         row.addView(right);
@@ -1031,10 +1074,18 @@ public class ImpressFunctionPanelController {
                 lp.setMarginEnd(gap);
             }
             btn.setLayoutParams(lp);
-            btn.setOnClickListener(v -> host.executeUnoCommand(command));
+            btn.setOnClickListener(v -> onCharToolClick(command));
             row.addView(btn);
         }
         return row;
+    }
+
+    private void onCharToolClick(String command) {
+        if (".uno:CharBackColor".equals(command)) {
+            showHighlightColorPicker();
+            return;
+        }
+        host.executeUnoCommand(command);
     }
 
     private View createParagraphGrid(String[] labels, String[] commands, int[] iconRes) {
@@ -1201,18 +1252,78 @@ public class ImpressFunctionPanelController {
         return arrow;
     }
 
-    private void showSizePicker(TextView valueView) {
-        new AlertDialog.Builder(host.getContext())
-                .setTitle("字号")
-                .setItems(SIZE_OPTIONS, (d, which) -> {
-                    String label = SIZE_OPTIONS[which];
-                    String value = SIZE_VALUES[which];
-                    pickerValues.put("font_size", label);
-                    valueView.setText(label);
-                    host.applyFontSize(value);
-                })
-                .setNegativeButton("取消", null)
-                .show();
+    private void showFontSizePopup(TextView valueView, View anchor) {
+        dismissFontSizePopup();
+        LinearLayout rows = new LinearLayout(host.getContext());
+        rows.setOrientation(LinearLayout.VERTICAL);
+        rows.setPadding(host.dpToPx(8), host.dpToPx(8), host.dpToPx(8), host.dpToPx(8));
+
+        String selectedLabel = pickerValues.getOrDefault("font_size", "");
+        for (int i = 0; i < SIZE_OPTIONS.length; i++) {
+            final String label = SIZE_OPTIONS[i];
+            final String value = SIZE_VALUES[i];
+            rows.addView(createFontSizeRow(label, value, selectedLabel, valueView));
+            if (i < SIZE_OPTIONS.length - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x1F000000);
+                rows.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+
+        NestedScrollView scroll = new NestedScrollView(host.getContext());
+        scroll.setFillViewport(false);
+        scroll.setVerticalScrollBarEnabled(true);
+        scroll.setBackgroundResource(R.drawable.lolib_bg_font_size_popup);
+        scroll.setClipToOutline(true);
+        scroll.addView(rows);
+
+        int width = host.dpToPx(160);
+        int height = host.dpToPx(230);
+        fontSizePopup = new PopupWindow(scroll, width, height, true);
+        fontSizePopup.setElevation(host.dpToPx(16));
+        fontSizePopup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        fontSizePopup.setOutsideTouchable(true);
+        fontSizePopup.showAsDropDown(anchor, 0, -host.dpToPx(4));
+    }
+
+    private LinearLayout createFontSizeRow(String label, String value, String selectedLabel,
+            TextView valueView) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(host.dpToPx(12), host.dpToPx(10), host.dpToPx(12), host.dpToPx(10));
+        row.setMinimumHeight(host.dpToPx(40));
+        boolean selected = label.equals(selectedLabel) || value.equals(selectedLabel);
+
+        TextView text = new TextView(host.getContext());
+        text.setText(label);
+        text.setTextSize(14);
+        text.setTextColor(selected ? COLOR_TAB_ACTIVE : COLOR_TAB_INACTIVE);
+        row.addView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        ImageView check = new ImageView(host.getContext());
+        check.setImageResource(selected
+                ? R.drawable.lolib_ic_option_circle_checked
+                : R.drawable.lolib_ic_option_circle_unchecked);
+        int checkSize = host.dpToPx(16);
+        check.setLayoutParams(new LinearLayout.LayoutParams(checkSize, checkSize));
+        row.addView(check);
+
+        row.setOnClickListener(v -> {
+            pickerValues.put("font_size", label);
+            valueView.setText(label);
+            dismissFontSizePopup();
+            host.applyFontSize(value);
+        });
+        return row;
+    }
+
+    private void dismissFontSizePopup() {
+        if (fontSizePopup != null) {
+            fontSizePopup.dismiss();
+            fontSizePopup = null;
+        }
     }
 
     private void showFontPicker(TextView valueView) {
@@ -1239,6 +1350,7 @@ public class ImpressFunctionPanelController {
             return;
         }
         dismissSlideOptionPicker();
+        dismissFontColorPickerPage();
         TextView titleView = fontPickerPanel.findViewById(R.id.font_picker_title);
         if (titleView != null) {
             titleView.setText("字体");
@@ -1317,15 +1429,86 @@ public class ImpressFunctionPanelController {
     private void dismissSecondaryListPanel() {
         dismissFontPicker();
         dismissSlideOptionPicker();
+        dismissFontSizePopup();
     }
 
-    private void showFontColorPicker(TextView labelView, ImageView previewDot) {
+    private void showFontColorPickerPage() {
+        dismissSecondaryListPanel();
+        dismissFontSizePopup();
+        if (solidColorPickerVisible) {
+            solidColorPickerVisible = false;
+            solidColorForSlideBackground = false;
+        }
+        fontColorPickerVisible = true;
+        submenuReturnTabIndex = selectedTabIndex;
+        setTabChromeVisible(false);
+
+        fontColorPicker = new CalcFontColorPickerController(buildFontColorPickerHost());
+        contentContainer.removeAllViews();
+        contentContainer.addView(fontColorPicker.buildRootView("字体颜色"));
+        Log.i(TAG, "font_color_picker_show");
+    }
+
+    private CalcFontColorPickerController.Host buildFontColorPickerHost() {
+        return new CalcFontColorPickerController.Host() {
+            @Override
+            public android.content.Context getContext() {
+                return host.getContext();
+            }
+
+            @Override
+            public int dpToPx(int dp) {
+                return host.dpToPx(dp);
+            }
+
+            @Override
+            public Integer getSelectedIndex() {
+                return pickerColorIndex.get("font_color");
+            }
+
+            @Override
+            public void onColorSelected(int index, int rgb) {
+                host.executeUnoCommand(buildFontColorUnoCommand(rgb));
+                pickerColorRgb.put("font_color", rgb);
+                pickerColorIndex.put("font_color", index);
+                updateColorPreviewDot(fontColorPreviewDot, rgb,
+                        R.drawable.lolib_ic_calc_color_font_preview);
+                Log.i(TAG, "font_color_picked index=" + index
+                        + " rgb=#" + Integer.toHexString(rgb).toUpperCase());
+            }
+
+            @Override
+            public void onBack() {
+                dismissFontColorPickerPage();
+            }
+        };
+    }
+
+    private void dismissFontColorPickerPage() {
+        if (!fontColorPickerVisible) {
+            return;
+        }
+        fontColorPickerVisible = false;
+        setTabChromeVisible(true);
+        int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
+                ? submenuReturnTabIndex : selectedTabIndex;
+        selectedTabIndex = returnIndex;
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(returnIndex));
+        }
+    }
+
+    private String buildFontColorUnoCommand(int rgb) {
+        return ".uno:Color {\"Color.Color\":{\"type\":\"long\",\"value\":" + rgb + "}}";
+    }
+
+    private void showHighlightColorPicker() {
         LinearLayout root = new LinearLayout(host.getContext());
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(host.dpToPx(16), host.dpToPx(8), host.dpToPx(16), host.dpToPx(12));
 
         TextView section = new TextView(host.getContext());
-        section.setText("标准色");
+        section.setText("荧光颜色");
         section.setTextColor(COLOR_SECTION);
         section.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         root.addView(section);
@@ -1340,13 +1523,13 @@ public class ImpressFunctionPanelController {
         cardLp.topMargin = host.dpToPx(8);
         root.addView(gridCard, cardLp);
 
-        Integer currentRgb = pickerColorRgb.get("font_color");
         final AlertDialog[] dialogRef = new AlertDialog[1];
         int swatchSize = host.dpToPx(COLOR_SWATCH_SIZE_DP);
         int gap = host.dpToPx(COLOR_SWATCH_GAP_DP);
+        final int cols = 4;
         LinearLayout row = null;
-        for (int i = 0; i < COMMON_COLOR_SWATCHES.length; i++) {
-            if (i % COLOR_SWATCH_COLS == 0) {
+        for (int i = 0; i < HIGHLIGHT_COLOR_SWATCHES.length; i++) {
+            if (i % cols == 0) {
                 row = new LinearLayout(host.getContext());
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 if (i > 0) {
@@ -1357,19 +1540,15 @@ public class ImpressFunctionPanelController {
                 }
                 gridCard.addView(row);
             }
-            ColorSwatch swatch = COMMON_COLOR_SWATCHES[i];
-            boolean selected = currentRgb != null && currentRgb == swatch.rgb;
-            FrameLayout chip = createColorSwatchChip(swatch, selected, swatchSize);
+            ColorSwatch swatch = HIGHLIGHT_COLOR_SWATCHES[i];
+            FrameLayout chip = createColorSwatchChip(swatch, false, swatchSize);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(swatchSize, swatchSize);
-            if (i % COLOR_SWATCH_COLS < COLOR_SWATCH_COLS - 1) {
+            if (i % cols < cols - 1) {
                 lp.setMarginEnd(gap);
             }
             chip.setLayoutParams(lp);
             chip.setOnClickListener(v -> {
-                int rgb = swatch.rgb;
-                host.executeUnoCommand(".uno:Color {\"Color.Color\":{\"type\":\"long\",\"value\":" + rgb + "}}");
-                pickerColorRgb.put("font_color", rgb);
-                updateColorPreviewDot(previewDot, rgb, R.drawable.lolib_ic_calc_color_font_preview);
+                host.executeUnoCommand(buildCharBackColorUnoCommand(swatch.rgb));
                 if (dialogRef[0] != null) {
                     dialogRef[0].dismiss();
                 }
@@ -1380,12 +1559,16 @@ public class ImpressFunctionPanelController {
         }
 
         AlertDialog colorDialog = new AlertDialog.Builder(host.getContext())
-                .setTitle("字体颜色")
+                .setTitle("荧光")
                 .setView(root)
                 .setNegativeButton("取消", null)
                 .create();
         dialogRef[0] = colorDialog;
         colorDialog.show();
+    }
+
+    private static String buildCharBackColorUnoCommand(int rgb) {
+        return ".uno:CharBackColor {\"CharBackColor.Color\":{\"type\":\"long\",\"value\":" + rgb + "}}";
     }
 
     private FrameLayout createColorSwatchChip(ColorSwatch swatch, boolean selected, int size) {
@@ -1698,36 +1881,6 @@ public class ImpressFunctionPanelController {
         host.runAfterFunctionPanelDismiss(() -> shapePickerController.show());
     }
 
-    private static final class ChartTypeOption {
-        final String label;
-        final int previewRes;
-        final String unoType;
-
-        ChartTypeOption(String label, int previewRes, String unoType) {
-            this.label = label;
-            this.previewRes = previewRes;
-            this.unoType = unoType;
-        }
-    }
-
-    private static final String[] CHART_CATEGORY_TITLES = {"饼图", "线图", "柱图"};
-    private static final ChartTypeOption[][] CHART_TYPE_ROWS = new ChartTypeOption[][] {
-            {
-                    new ChartTypeOption("基础饼图", R.drawable.lolib_chart_preview_pie_basic, "pie"),
-                    new ChartTypeOption("基础饼图(圆角)", R.drawable.lolib_chart_preview_pie_rounded, "pie-rounded"),
-                    new ChartTypeOption("变形饼图", R.drawable.lolib_chart_preview_pie_exploded, "pie-exploded"),
-            },
-            {
-                    new ChartTypeOption("折线图", R.drawable.lolib_chart_preview_line_basic, "line"),
-                    new ChartTypeOption("曲线折线图", R.drawable.lolib_chart_preview_line_curve, "line-curve"),
-            },
-            {
-                    new ChartTypeOption("基础柱状图", R.drawable.lolib_chart_preview_column_basic, "column"),
-                    new ChartTypeOption("基础条形图", R.drawable.lolib_chart_preview_bar_basic, "bar"),
-                    new ChartTypeOption("堆叠柱状图", R.drawable.lolib_chart_preview_column_stacked, "column-stacked"),
-            },
-    };
-
     private void showChartTypePickerPage() {
         dismissSecondaryListPanel();
         chartPickerVisible = true;
@@ -1743,24 +1896,12 @@ public class ImpressFunctionPanelController {
         root.addView(createChartPickerHeader());
         root.addView(ImpressSubpageHeader.createDivider(host.getContext()));
 
-        int sectionGap = host.dpToPx(16);
-        int rowGap = host.dpToPx(12);
-        for (int section = 0; section < CHART_TYPE_ROWS.length; section++) {
-            root.addView(createSectionLabel(CHART_CATEGORY_TITLES[section]));
-            LinearLayout row = createChartTypeRow(CHART_TYPE_ROWS[section]);
-            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            if (section > 0) {
-                rowLp.topMargin = rowGap;
-            }
-            row.setLayoutParams(rowLp);
-            root.addView(row);
-            if (section < CHART_TYPE_ROWS.length - 1) {
-                View spacer = new View(host.getContext());
-                root.addView(spacer, new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, sectionGap));
-            }
-        }
+        root.addView(ChartTypePickerUi.buildPickerBody(host.getContext(), host::dpToPx,
+                (unoType, label) -> {
+                    Log.i(TAG, "chart_type_selected type=" + unoType + " label=" + label);
+                    dismiss();
+                    host.runAfterFunctionPanelDismiss(() -> host.insertChartWithType(unoType));
+                }));
 
         contentContainer.addView(root);
         Log.i(TAG, "chart_type_picker_show");
@@ -1769,62 +1910,6 @@ public class ImpressFunctionPanelController {
     private View createChartPickerHeader() {
         return ImpressSubpageHeader.create(
                 host.getContext(), host::dpToPx, "图表", v -> dismissChartPickerPage());
-    }
-
-    private LinearLayout createChartTypeRow(ChartTypeOption[] options) {
-        LinearLayout row = new LinearLayout(host.getContext());
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        int gap = host.dpToPx(8);
-        for (int slot = 0; slot < CHART_TYPE_MAX_COLUMNS; slot++) {
-            LinearLayout.LayoutParams lp = createEqualWidthSlotParams(
-                    CHART_TYPE_MAX_COLUMNS, slot, gap, ViewGroup.LayoutParams.WRAP_CONTENT);
-            if (slot < options.length) {
-                row.addView(createChartTypeCard(options[slot]), lp);
-            } else {
-                row.addView(new View(host.getContext()), lp);
-            }
-        }
-        return row;
-    }
-
-    private View createChartTypeCard(ChartTypeOption option) {
-        LinearLayout card = new LinearLayout(host.getContext());
-        card.setOrientation(LinearLayout.VERTICAL);
-        GradientDrawable background = new GradientDrawable();
-        background.setCornerRadius(host.dpToPx(8));
-        background.setColor(Color.WHITE);
-        background.setStroke(host.dpToPx(1), Color.parseColor("#CCCCCC"));
-        card.setBackground(background);
-        card.setClipToOutline(true);
-
-        ImageView preview = new ImageView(host.getContext());
-        preview.setImageResource(option.previewRes);
-        preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        preview.setBackgroundColor(Color.WHITE);
-        preview.setPadding(host.dpToPx(4), host.dpToPx(4), host.dpToPx(4), host.dpToPx(4));
-        card.addView(preview, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(56)));
-
-        TextView label = new TextView(host.getContext());
-        label.setText(option.label);
-        label.setGravity(Gravity.CENTER);
-        label.setTextColor(COLOR_TITLE);
-        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        label.setMaxLines(2);
-        label.setBackgroundColor(Color.parseColor("#F2F3F5"));
-        label.setPadding(host.dpToPx(4), host.dpToPx(8), host.dpToPx(4), host.dpToPx(8));
-        card.addView(label, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        card.setOnClickListener(v -> {
-            final String unoType = option.unoType;
-            Log.i(TAG, "chart_type_selected type=" + unoType + " label=" + option.label);
-            dismiss();
-            host.runAfterFunctionPanelDismiss(() -> host.insertChartWithType(unoType));
-        });
-        return card;
     }
 
     private void dismissChartPickerPage() {
@@ -2141,18 +2226,26 @@ public class ImpressFunctionPanelController {
             showReviewCommentPickerPage();
             return;
         }
-        runAndDismiss(() -> {
-            if (item.hostAction != null) {
-                item.hostAction.run();
-            } else if (item.unoCommand != null && !item.unoCommand.isEmpty()) {
-                host.executeUnoCommand(item.unoCommand);
-            }
-        });
+        FunctionPanelSpellCheckHelper.runPanelActionAndDismiss(
+                this::dismiss,
+                item.unoCommand,
+                item.hostAction,
+                new FunctionPanelSpellCheckHelper.Host() {
+                    @Override
+                    public void executeUnoCommand(String command) {
+                        host.executeUnoCommand(command);
+                    }
+
+                    @Override
+                    public void runAfterFunctionPanelDismiss(Runnable action) {
+                        host.runAfterFunctionPanelDismiss(action);
+                    }
+                });
     }
 
     /**
-     * 与 Writer {@link FunctionPanelController} / Calc 面板一致：先 dismiss，再立即执行。
-     * 延迟执行会导致 Android 图片选择 Intent / WebView file input 无响应。
+     * 与 Writer {@link FunctionPanelController} 一致：图片选择等需立即执行；
+     * SpellDialog 走 {@link FunctionPanelSpellCheckHelper} 延迟 UNO。
      */
     private void runAndDismiss(Runnable action) {
         dismiss();

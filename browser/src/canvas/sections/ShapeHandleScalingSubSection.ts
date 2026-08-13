@@ -57,7 +57,7 @@ class ShapeHandleScalingSubSection extends CanvasSectionObject {
 
 	onDraw(frameCount?: number, elapsedTime?: number): void {
 		this.context.fillStyle = 'white';
-		this.context.strokeStyle = 'black';
+		this.context.strokeStyle = ShapeHandlesSection.getSelectionStrokeColor();
 		this.context.beginPath();
 		if (this.sectionProperties.cropModeEnabled)
 			this.drawCropHandles();

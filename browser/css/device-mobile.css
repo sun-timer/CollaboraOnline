@@ -898,6 +898,7 @@ body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter {
 
 body.android-native-bottom-toolbar[data-docType='presentation'] #presentation-controls-wrapper.portrait {
 	max-height: 87px;
+	overflow: hidden;
 }
 
 body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait {
@@ -905,6 +906,10 @@ body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.po
 	padding-top: 16px;
 	padding-bottom: 16px;
 	line-height: normal;
+	overflow-x: auto;
+	overflow-y: hidden;
+	-webkit-overflow-scrolling: touch;
+	touch-action: pan-x;
 }
 
 body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait .preview-frame {
@@ -983,6 +988,110 @@ body.android-native-bottom-toolbar[data-docType='presentation'] .mobile-slide-st
 	justify-content: center;
 	width: 40px;
 	height: 40px;
+}
+
+/* 横屏:左侧竖列缩略图 */
+body.android-native-bottom-toolbar[data-docType='presentation'] #presentation-controls-wrapper.landscape {
+	width: 106px;
+	min-width: 106px;
+	max-width: 106px;
+	flex-shrink: 0;
+	border-top: none;
+	border-right: 1px solid #CBD1D7;
+	overflow: hidden;
+	height: 100%;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.landscape {
+	overflow-x: hidden;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+	touch-action: pan-y;
+	height: 100%;
+	padding-top: 8px;
+	padding-bottom: 40px;
+	padding-right: 0;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #presentation-controls-wrapper.landscape .mobile-slide-strip {
+	right: 0;
+	left: 0;
+	top: auto;
+	bottom: 0;
+	width: auto;
+	height: 40px;
+	border-left: none;
+	border-top: 1px solid #CBD1D7;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.landscape .preview-frame {
+	display: block;
+	max-width: 100%;
+	margin: 0;
+	padding: 0;
+	position: relative;
+	text-align: center;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.landscape .preview-img {
+	min-width: 0;
+	max-width: 98px;
+	max-height: 55px;
+	margin: 4px auto;
+	border: 1px solid #CBD1D7 !important;
+	outline: none !important;
+	border-radius: 4px;
+	box-sizing: border-box;
+	display: block;
+	touch-action: pan-y;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.landscape .preview-img.preview-img-currentpart {
+	border: 4px solid #EC5D1F !important;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.landscape .preview-page-badge {
+	position: absolute;
+	right: 8px;
+	bottom: 8px;
+	min-width: 14px;
+	height: 14px;
+	padding: 0 3px;
+	border-radius: 2px;
+	background: rgba(0, 0, 0, 0.4);
+	color: #FFFFFF;
+	font-size: 10px;
+	line-height: 14px;
+	text-align: center;
+	box-sizing: border-box;
+	pointer-events: none;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.landscape .preview-img.preview-img-currentpart + .preview-page-badge {
+	background: #EC5D1F;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.landscape .preview-frame.preview-img-dropsite {
+	border-bottom: 10px solid #EC5D1F;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter .preview-img {
+	touch-action: pan-x pan-y;
+	-webkit-user-drag: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+}
+
+body.slide-dnd-active.android-native-bottom-toolbar .preview-img {
+	pointer-events: none;
+}
+
+body.slide-dnd-active.android-native-bottom-toolbar .preview-frame {
+	pointer-events: auto;
+}
+
+body.slide-dnd-active.android-native-bottom-toolbar #slide-sorter {
+	touch-action: none;
 }
 
 /* Android 手机预览：inline 定位 + box-shadow 外围暗化（见 MobilePhonePreviewController） */

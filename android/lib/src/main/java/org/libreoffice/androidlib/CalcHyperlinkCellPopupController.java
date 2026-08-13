@@ -40,6 +40,8 @@ public final class CalcHyperlinkCellPopupController {
     private View popupView;
     private TextView linkView;
     private String currentUrl = "";
+    private float lastAnchorX;
+    private float lastAnchorY;
 
     public CalcHyperlinkCellPopupController(Host host) {
         this.host = host;
@@ -70,6 +72,13 @@ public final class CalcHyperlinkCellPopupController {
         return popupView != null && popupView.getVisibility() == View.VISIBLE;
     }
 
+    public void onConfigurationChanged() {
+        if (!isVisible() || popupView == null) {
+            return;
+        }
+        popupView.post(() -> positionPopup(lastAnchorX, lastAnchorY));
+    }
+
     public void hide() {
         if (overlayView != null) {
             overlayView.setVisibility(View.GONE);
@@ -85,6 +94,8 @@ public final class CalcHyperlinkCellPopupController {
             return;
         }
         currentUrl = url != null ? url : "";
+        lastAnchorX = anchorX;
+        lastAnchorY = anchorY;
         String label = displayText != null && !displayText.isEmpty() ? displayText : currentUrl;
         linkView.setText(label);
 

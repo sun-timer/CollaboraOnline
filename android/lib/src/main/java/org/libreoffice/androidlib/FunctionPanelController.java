@@ -2,6 +2,7 @@ package org.libreoffice.androidlib;
 
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.util.TypedValue;
 import android.graphics.drawable.ColorDrawable;
 import android.util.Log;
 import android.view.Gravity;
@@ -92,6 +93,8 @@ public class FunctionPanelController {
         String getCommentAuthorName();
 
         void insertCommentWithText(String text);
+
+        void insertChartWithType(String unoChartType);
 
         void runAfterFunctionPanelDismiss(Runnable action);
 
@@ -196,6 +199,7 @@ public class FunctionPanelController {
     private ImpressShapePickerController shapePicker;
     private ImpressCommentPickerController commentPicker;
     private boolean commentPickerVisible;
+    private boolean chartPickerVisible;
     private WatermarkSettingsController watermarkPicker;
     private PaperSizePickerController paperSizePicker;
     private double customPaperWidthCm = 21.0;
@@ -273,6 +277,7 @@ public class FunctionPanelController {
         dismissOptionPicker();
         dismissFontSizePopup();
         dismissCommentPickerPage();
+        dismissChartPickerPage();
         dismissWatermarkSettingsPage();
         dismissPaperSizePickerPage();
         if (dialog != null) {
@@ -283,6 +288,25 @@ public class FunctionPanelController {
 
     public boolean isShowing() {
         return dialog != null && dialog.isShowing();
+    }
+
+    /** 横竖屏切换：关闭锚点浮层/二级页，并重算 BottomSheet 高度。 */
+    public void onConfigurationChanged() {
+        if (dialog == null || !dialog.isShowing()) {
+            return;
+        }
+        dismissFontPickerDialog();
+        dismissOptionPicker();
+        dismissFontSizePopup();
+        dismissCommentPickerPage();
+        dismissChartPickerPage();
+        dismissWatermarkSettingsPage();
+        dismissPaperSizePickerPage();
+        dismissTablePickerPage();
+        if (shapePicker != null) {
+            shapePicker.onConfigurationChanged();
+        }
+        applyFixedSheetHeight();
     }
 
     private void buildTabBar() {
@@ -1349,6 +1373,77 @@ public class FunctionPanelController {
         }
     }
 
+    private void showChartTypePickerPage() {
+        if (optionPickerVisible) {
+            dismissOptionPicker();
+        }
+        dismissFontPickerDialog();
+        dismissChartPickerPage();
+        chartPickerVisible = true;
+        setTabChromeVisible(false);
+
+        if (contentContainer != null) {
+            contentContainer.removeAllViews();
+            LinearLayout root = new LinearLayout(host.getContext());
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT));
+            root.addView(createChartPickerHeader());
+            root.addView(ChartTypePickerUi.buildPickerBody(host.getContext(), host::dpToPx,
+                    (unoType, label) -> {
+                        Log.i(TAG, "chart_type_selected type=" + unoType + " label=" + label);
+                        dismiss();
+                        host.runAfterFunctionPanelDismiss(() -> host.insertChartWithType(unoType));
+                    }));
+            contentContainer.addView(root);
+        }
+        Log.i(TAG, "chart_type_picker_show");
+    }
+
+    private View createChartPickerHeader() {
+        LinearLayout header = new LinearLayout(host.getContext());
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setMinimumHeight(host.dpToPx(48));
+        header.setPadding(host.dpToPx(4), 0, host.dpToPx(8), 0);
+
+        ImageButton back = new ImageButton(host.getContext());
+        TypedValue rippleAttr = new TypedValue();
+        if (host.getContext().getTheme().resolveAttribute(
+                android.R.attr.selectableItemBackgroundBorderless, rippleAttr, true)) {
+            back.setBackgroundResource(rippleAttr.resourceId);
+        }
+        back.setImageResource(R.drawable.lolib_ic_top_back);
+        back.setContentDescription("返回");
+        back.setPadding(host.dpToPx(12), host.dpToPx(12), host.dpToPx(12), host.dpToPx(12));
+        back.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        back.setOnClickListener(v -> dismissChartPickerPage());
+        header.addView(back, new LinearLayout.LayoutParams(host.dpToPx(48), host.dpToPx(48)));
+
+        TextView title = new TextView(host.getContext());
+        title.setText("图表");
+        title.setTextColor(COLOR_SECTION_TITLE);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        title.setTypeface(null, Typeface.BOLD);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleLp.setMarginStart(host.dpToPx(4));
+        header.addView(title, titleLp);
+        return header;
+    }
+
+    private void dismissChartPickerPage() {
+        if (!chartPickerVisible) {
+            return;
+        }
+        chartPickerVisible = false;
+        setTabChromeVisible(true);
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(selectedTabIndex));
+        }
+    }
+
     private void showWatermarkSettingsPage() {
         if (optionPickerVisible) {
             dismissOptionPicker();
@@ -1915,13 +2010,23 @@ public class FunctionPanelController {
             showCommentPickerPage();
             return;
         }
-        runAndDismiss(() -> {
+        if ("insert_chart".equals(item.id)) {
+            showChartTypePickerPage();
+            return;
+        }
+        Runnable action = () -> {
             if (item.hostAction != null) {
                 item.hostAction.run();
             } else if (item.unoCommand != null && !item.unoCommand.isEmpty()) {
                 host.executeUnoCommand(item.unoCommand);
             }
-        });
+        };
+        dismiss();
+        if (FunctionPanelSpellCheckHelper.needsDeferredUnoAfterPanelDismiss(item.unoCommand)) {
+            host.runAfterFunctionPanelDismiss(action);
+        } else {
+            action.run();
+        }
     }
 
     private void runAndDismiss(Runnable action) {
@@ -1971,6 +2076,8 @@ public class FunctionPanelController {
         List<FunctionItem> insertItems = new ArrayList<>();
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_image", "图片",
                 R.drawable.lolib_ic_insert_image, host::openLocalImagePickerFromWeb));
+        insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_chart", "图表",
+                R.drawable.lolib_ic_calc_insert_chart, ""));
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_table", "表格",
                 R.drawable.lolib_ic_insert_table, ".uno:InsertTable?Columns=2&Rows=2"));
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_shape", "形状",
@@ -1999,6 +2106,8 @@ public class FunctionPanelController {
         result.add(new FunctionTab("layout", "布局", layoutItems));
 
         List<FunctionItem> reviewItems = new ArrayList<>();
+        reviewItems.add(new FunctionItem(ItemType.ACTION, "spell_check", "拼写检查",
+                R.drawable.lolib_ic_calc_spell_check, ".uno:SpellDialog"));
         reviewItems.add(new FunctionItem(ItemType.TOGGLE, "track_changes", "追踪修订", "",
                 R.drawable.lolib_ic_review_track_changes, ".uno:TrackChanges",
                 null, null, null, false));

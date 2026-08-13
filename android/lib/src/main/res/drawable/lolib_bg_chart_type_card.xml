@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Figma 258:10319 chart type card: bg #F2F3F5, radius 12dp, no border -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#F2F3F5" />
+    <corners android:radius="12dp" />
+</shape>

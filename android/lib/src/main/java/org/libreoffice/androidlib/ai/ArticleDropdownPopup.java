@@ -2,12 +2,11 @@ package org.libreoffice.androidlib.ai;
 
 import android.app.Activity;
 import android.graphics.Color;
-import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
-import android.util.TypedValue;
-import android.view.Gravity;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.ScrollView;
@@ -16,15 +15,26 @@ import android.widget.TextView;
 import org.libreoffice.androidlib.R;
 
 /**
- * 文案生成 / 润色弹窗 — 自定义下拉列表（圆角白底 + 阴影 + 渐变选中态）。
+ * 文案生成 / 润色弹窗 — 锚点下拉列表（白底圆角 + 浅描边 + 橙色勾选中态，对齐 Figma 662:32009）。
  */
 public final class ArticleDropdownPopup {
+
+    private static PopupWindow activePopup;
 
     public interface Listener {
         void onItemSelected(int index, String label);
     }
 
     private ArticleDropdownPopup() {
+    }
+
+    public static void dismissIfShowing() {
+        if (activePopup != null) {
+            if (activePopup.isShowing()) {
+                activePopup.dismiss();
+            }
+            activePopup = null;
+        }
     }
 
     public static void show(Activity activity, View anchor, String[] labels,
@@ -37,115 +47,83 @@ public final class ArticleDropdownPopup {
         if (activity == null || anchor == null || labels == null || labels.length == 0) {
             return;
         }
-        int dp = (int) activity.getResources().getDisplayMetrics().density;
-        int panelPadH = 16 * dp;
-        int panelPadV = 12 * dp;
-        int itemPadH = 16 * dp;
-        int itemPadV = 20 * dp;
-        int itemGap = 4 * dp;
-        int itemMinH = 56 * dp;
-        int maxListHeight = 280 * dp;
+        dismissIfShowing();
 
-        LinearLayout listContainer = new LinearLayout(activity);
-        listContainer.setOrientation(LinearLayout.VERTICAL);
+        float density = activity.getResources().getDisplayMetrics().density;
+        int gapBelowAnchorPx = Math.round(4f * density);
+        int maxListHeightPx = Math.round(280f * density);
 
+        LayoutInflater inflater = LayoutInflater.from(activity);
+        View content = inflater.inflate(R.layout.lolib_popup_impress_option_list, null, false);
+        LinearLayout list = content.findViewById(R.id.impress_option_list);
         for (int i = 0; i < labels.length; i++) {
+            View row = inflater.inflate(R.layout.lolib_item_impress_option_row, list, false);
+            TextView labelView = row.findViewById(R.id.impress_option_item_label);
+            ImageView check = row.findViewById(R.id.impress_option_item_check);
+            labelView.setText(labels[i]);
+            check.setVisibility(i == selectedIndex ? View.VISIBLE : View.GONE);
             final int index = i;
             final String label = labels[i];
-            boolean selected = index == selectedIndex;
-
-            TextView row = new TextView(activity);
-            row.setText(label);
-            row.setTextColor(Color.parseColor("#333333"));
-            row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-            row.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setMinHeight(itemMinH);
-            row.setPadding(itemPadH, itemPadV, itemPadH, itemPadV);
-            row.setBackgroundResource(selected
-                    ? R.drawable.lolib_bg_article_dropdown_item_selected
-                    : android.R.color.transparent);
-
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT);
-            if (i > 0) {
-                lp.topMargin = itemGap;
-            }
-            row.setLayoutParams(lp);
-            listContainer.addView(row);
+            row.setOnClickListener(v -> {
+                if (activePopup != null) {
+                    activePopup.dismiss();
+                }
+                if (listener != null) {
+                    listener.onItemSelected(index, label);
+                }
+            });
+            list.addView(row);
         }
 
-        listContainer.measure(
+        list.measure(
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-        int listHeight = listContainer.getMeasuredHeight();
-
-        View scrollHost;
-        if (listHeight > maxListHeight) {
+        if (list.getMeasuredHeight() > maxListHeightPx) {
+            ViewGroup parent = (ViewGroup) list.getParent();
+            int childIndex = parent.indexOfChild(list);
+            parent.removeView(list);
             ScrollView scrollView = new ScrollView(activity);
             scrollView.setVerticalScrollBarEnabled(true);
             scrollView.setScrollbarFadingEnabled(false);
-            scrollView.addView(listContainer, new ViewGroup.LayoutParams(
+            scrollView.addView(list, new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT));
-            scrollHost = scrollView;
-        } else {
-            scrollHost = listContainer;
+            parent.addView(scrollView, childIndex, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, maxListHeightPx));
         }
 
-        LinearLayout panel = new LinearLayout(activity);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackgroundResource(R.drawable.lolib_bg_article_dropdown_panel);
-        panel.setPadding(panelPadH, panelPadV, panelPadH, panelPadV);
-        panel.setClipToOutline(true);
-        panel.addView(scrollHost, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                listHeight > maxListHeight ? maxListHeight : ViewGroup.LayoutParams.WRAP_CONTENT));
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            float elevationPx = 12f * activity.getResources().getDisplayMetrics().density;
-            panel.setElevation(elevationPx);
-        }
-
-        PopupWindow popup = new PopupWindow(panel,
+        PopupWindow popup = new PopupWindow(content,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 true);
         popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         popup.setOutsideTouchable(true);
+        popup.setFocusable(true);
         popup.setClippingEnabled(false);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            float elevationPx = 12f * activity.getResources().getDisplayMetrics().density;
-            popup.setElevation(elevationPx);
-        }
+        popup.setElevation(8f * density);
         popup.setOnDismissListener(() -> {
+            activePopup = null;
             if (onDismiss != null) {
                 onDismiss.run();
             }
         });
 
-        for (int i = 0; i < listContainer.getChildCount(); i++) {
-            View row = listContainer.getChildAt(i);
-            final int index = i;
-            final String label = labels[i];
-            row.setOnClickListener(v -> {
-                popup.dismiss();
-                if (listener != null) {
-                    listener.onItemSelected(index, label);
-                }
-            });
+        Runnable showPopup = () -> {
+            int anchorWidth = anchor.getWidth() > 0
+                    ? anchor.getWidth()
+                    : ViewGroup.LayoutParams.WRAP_CONTENT;
+            content.measure(
+                    View.MeasureSpec.makeMeasureSpec(anchorWidth, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            int popupWidth = Math.max(anchorWidth, content.getMeasuredWidth());
+            popup.setWidth(popupWidth);
+            activePopup = popup;
+            popup.showAsDropDown(anchor, 0, gapBelowAnchorPx);
+        };
+        if (anchor.getWidth() > 0) {
+            showPopup.run();
+        } else {
+            anchor.post(showPopup);
         }
-
-        int anchorWidth = anchor.getWidth() > 0
-                ? anchor.getWidth()
-                : ViewGroup.LayoutParams.MATCH_PARENT;
-
-        panel.measure(
-                View.MeasureSpec.makeMeasureSpec(anchorWidth, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-        int popupWidth = Math.max(anchorWidth, panel.getMeasuredWidth());
-
-        popup.setWidth(popupWidth);
-        popup.showAsDropDown(anchor, 0, 4 * dp);
     }
 }

@@ -51,12 +51,10 @@
             android:layout_height="28dp"
             android:layout_marginStart="8dp"
             android:background="@drawable/lolib_bg_impress_outline_type_tag"
-            android:drawableEnd="@drawable/lolib_ic_chevron_down"
-            android:drawablePadding="2dp"
-            android:gravity="center_vertical"
+            android:gravity="center"
             android:minWidth="52dp"
             android:paddingStart="10dp"
-            android:paddingEnd="6dp"
+            android:paddingEnd="10dp"
             android:textColor="#666666"
             android:textSize="12sp" />
     </LinearLayout>

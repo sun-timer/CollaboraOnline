@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 编辑模式顶栏：完成按钮左侧留白（竖屏默认 8dp） -->
+    <dimen name="top_toolbar_edit_padding_start">8dp</dimen>
+    <dimen name="top_toolbar_edit_padding_end">4dp</dimen>
+</resources>

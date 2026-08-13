@@ -89,6 +89,34 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/selection_op_image_edit"
+            style="@style/SelectionPopupButton"
+            android:visibility="gone">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_impress_insert_local_image" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="图片编辑" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/selection_op_save"
+            style="@style/SelectionPopupButton"
+            android:visibility="gone">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_impress_file_save_as" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="保存" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/selection_op_translate"
             style="@style/SelectionPopupButton">
 

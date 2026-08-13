@@ -60,8 +60,6 @@ public class CalcFunctionPanelController {
     private static final int ICON_SIZE_DP = 24;
     /** 对齐/边框等 icon 网格：单行内等分铺满时的单元格高度 */
     private static final int ICON_CELL_FILL_H_DP = 44;
-    /** 图表类型选择页每行固定 3 列槽位（末行不足 3 个时左对齐，不拉伸）。 */
-    private static final int CHART_TYPE_MAX_COLUMNS = 3;
     private static final int NUMFMT_CELL_W_DP = 62;
     private static final int NUMFMT_CELL_H_DP = 80;
     private static final int NUMFMT_CELL_VPAD_DP = 12;
@@ -420,6 +418,22 @@ public class CalcFunctionPanelController {
 
     public boolean isShowing() {
         return dialog != null && dialog.isShowing();
+    }
+
+    /** 横竖屏切换：关闭锚点浮层/二级页，并重算 BottomSheet 高度。 */
+    public void onConfigurationChanged() {
+        if (dialog == null || !dialog.isShowing()) {
+            return;
+        }
+        dismissFontPicker();
+        dismissSubmenuPage();
+        dismissChartPickerPage();
+        dismissHyperlinkPickerPage();
+        dismissColorPickerPage();
+        dismissOptionPickerPage();
+        dismissCommentPickerPage();
+        dismissFontSizePopup();
+        applyFixedSheetHeight();
     }
 
     private void buildTabBar() {
@@ -1568,36 +1582,6 @@ public class CalcFunctionPanelController {
         }
     }
 
-    private static final class ChartTypeOption {
-        final String label;
-        final int previewRes;
-        final String unoType;
-
-        ChartTypeOption(String label, int previewRes, String unoType) {
-            this.label = label;
-            this.previewRes = previewRes;
-            this.unoType = unoType;
-        }
-    }
-
-    private static final String[] CHART_CATEGORY_TITLES = {"饼图", "线图", "柱图"};
-    private static final ChartTypeOption[][] CHART_TYPE_ROWS = new ChartTypeOption[][] {
-            {
-                    new ChartTypeOption("基础饼图", R.drawable.lolib_chart_preview_pie_basic, "pie"),
-                    new ChartTypeOption("基础饼图(圆角)", R.drawable.lolib_chart_preview_pie_rounded, "pie-rounded"),
-                    new ChartTypeOption("变形饼图", R.drawable.lolib_chart_preview_pie_exploded, "pie-exploded"),
-            },
-            {
-                    new ChartTypeOption("折线图", R.drawable.lolib_chart_preview_line_basic, "line"),
-                    new ChartTypeOption("曲线折线图", R.drawable.lolib_chart_preview_line_curve, "line-curve"),
-            },
-            {
-                    new ChartTypeOption("基础柱状图", R.drawable.lolib_chart_preview_column_basic, "column"),
-                    new ChartTypeOption("基础条形图", R.drawable.lolib_chart_preview_bar_basic, "bar"),
-                    new ChartTypeOption("堆叠柱状图", R.drawable.lolib_chart_preview_column_stacked, "column-stacked"),
-            },
-    };
-
     private void showChartTypePickerPage() {
         dismissFontPicker();
         chartPickerVisible = true;
@@ -1612,24 +1596,12 @@ public class CalcFunctionPanelController {
                 ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(createChartPickerHeader());
 
-        int sectionGap = host.dpToPx(16);
-        int rowGap = host.dpToPx(12);
-        for (int section = 0; section < CHART_TYPE_ROWS.length; section++) {
-            root.addView(createSectionLabel(CHART_CATEGORY_TITLES[section]));
-            LinearLayout row = createChartTypeRow(CHART_TYPE_ROWS[section]);
-            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            if (section > 0) {
-                rowLp.topMargin = rowGap;
-            }
-            row.setLayoutParams(rowLp);
-            root.addView(row);
-            if (section < CHART_TYPE_ROWS.length - 1) {
-                View spacer = new View(host.getContext());
-                root.addView(spacer, new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, sectionGap));
-            }
-        }
+        root.addView(ChartTypePickerUi.buildPickerBody(host.getContext(), host::dpToPx,
+                (unoType, label) -> {
+                    Log.i(TAG, "chart_type_selected type=" + unoType + " label=" + label);
+                    dismiss();
+                    host.runAfterFunctionPanelDismiss(() -> host.insertChartWithType(unoType));
+                }));
 
         contentContainer.addView(root);
         Log.i(TAG, "chart_type_picker_show");
@@ -1665,62 +1637,6 @@ public class CalcFunctionPanelController {
         titleLp.setMarginStart(host.dpToPx(4));
         header.addView(title, titleLp);
         return header;
-    }
-
-    private LinearLayout createChartTypeRow(ChartTypeOption[] options) {
-        LinearLayout row = new LinearLayout(host.getContext());
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        int gap = host.dpToPx(8);
-        for (int slot = 0; slot < CHART_TYPE_MAX_COLUMNS; slot++) {
-            LinearLayout.LayoutParams lp = createEqualWidthSlotParams(
-                    CHART_TYPE_MAX_COLUMNS, slot, gap, ViewGroup.LayoutParams.WRAP_CONTENT);
-            if (slot < options.length) {
-                row.addView(createChartTypeCard(options[slot]), lp);
-            } else {
-                row.addView(new View(host.getContext()), lp);
-            }
-        }
-        return row;
-    }
-
-    private View createChartTypeCard(ChartTypeOption option) {
-        LinearLayout card = new LinearLayout(host.getContext());
-        card.setOrientation(LinearLayout.VERTICAL);
-        GradientDrawable background = new GradientDrawable();
-        background.setCornerRadius(host.dpToPx(8));
-        background.setColor(Color.WHITE);
-        background.setStroke(host.dpToPx(1), Color.parseColor("#CCCCCC"));
-        card.setBackground(background);
-        card.setClipToOutline(true);
-
-        ImageView preview = new ImageView(host.getContext());
-        preview.setImageResource(option.previewRes);
-        preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        preview.setBackgroundColor(Color.WHITE);
-        preview.setPadding(host.dpToPx(4), host.dpToPx(4), host.dpToPx(4), host.dpToPx(4));
-        card.addView(preview, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(56)));
-
-        TextView label = new TextView(host.getContext());
-        label.setText(option.label);
-        label.setGravity(Gravity.CENTER);
-        label.setTextColor(COLOR_TITLE);
-        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        label.setMaxLines(2);
-        label.setBackgroundColor(Color.parseColor("#F2F3F5"));
-        label.setPadding(host.dpToPx(4), host.dpToPx(8), host.dpToPx(4), host.dpToPx(8));
-        card.addView(label, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        card.setOnClickListener(v -> {
-            final String unoType = option.unoType;
-            Log.i(TAG, "chart_type_selected type=" + unoType + " label=" + option.label);
-            dismiss();
-            host.runAfterFunctionPanelDismiss(() -> host.insertChartWithType(unoType));
-        });
-        return card;
     }
 
     private void dismissChartPickerPage() {
@@ -2369,20 +2285,11 @@ public class CalcFunctionPanelController {
             }
         };
         dismiss();
-        if (needsDeferredUnoAfterPanelDismiss(item)) {
+        if (FunctionPanelSpellCheckHelper.needsDeferredUnoAfterPanelDismiss(item.unoCommand)) {
             host.runAfterFunctionPanelDismiss(action);
         } else {
             action.run();
         }
-    }
-
-    /** Core modal dialogs (SpellDialog etc.) lose the first UNO if sent during panel dismiss. */
-    private static boolean needsDeferredUnoAfterPanelDismiss(PanelItem item) {
-        if (item.unoCommand == null) {
-            return false;
-        }
-        return ".uno:SpellDialog".equals(item.unoCommand)
-                || ".uno:SpellingAndGrammarDialog".equals(item.unoCommand);
     }
 
     private void showShapePickerDialog() {
