@@ -17,6 +17,9 @@
 /// <reference path="./helper/util.ts"/>
 /// <reference path="./data/LOUtilTestData.ts"/>
 /// <reference path="./data/SheetGeometryTestData.ts" />
+/// <reference path="./data/NativeBridgeTestData.ts" />
+/// <reference path="../src/app/NativeBridge.ts" />
+/// <reference path="../src/app/MobileAiBridge.ts" />
 
 /// <reference path="./CanvasSectionContainer.test.ts" />
 /// <reference path="./CBounds.test.ts" />
@@ -28,4 +31,5 @@
 /// <reference path="./Util.test.ts" />
 /// <reference path="./ViewLayout.test.ts" />
 /// <reference path="./ServerCommand.test.ts" />
+/// <reference path="./MobileAiBridge.test.ts" />
 // NOTE: reference new tests here ...

@@ -480,6 +480,11 @@ class IOSAppInitializer extends MobileAppInitializer {
 		window.postMobileMessage = function(msg) { window.webkit.messageHandlers.lok.postMessage(msg); };
 		window.postMobileError   = function(msg) { window.webkit.messageHandlers.error.postMessage(msg); };
 		window.postMobileDebug   = function(msg) { window.webkit.messageHandlers.debug.postMessage(msg); };
+		window.NativeBridgeTransport = {
+			postMessage: function(message) {
+				window.webkit.messageHandlers.nativeBridge.postMessage(message);
+			}
+		};
 
 		// Related to issue #5841: the iOS app sets the base text direction via the "dir" parameter
 		document.dir = window.coolParams.get('dir');
@@ -509,6 +514,11 @@ class AndroidAppInitializer extends MobileAppInitializer {
 		window.postMobileMessage = function(msg) { window.COOLMessageHandler.postMobileMessage(msg); };
 		window.postMobileError   = function(msg) { window.COOLMessageHandler.postMobileError(msg); };
 		window.postMobileDebug   = function(msg) { window.COOLMessageHandler.postMobileDebug(msg); };
+		window.NativeBridgeTransport = {
+			postMessage: function(message) {
+				window.COOLMessageHandler.postMobileMessage('NATIVEBRIDGE ' + message);
+			}
+		};
 
 		window.userInterfaceMode = window.coolParams.get('userinterfacemode');
 	}

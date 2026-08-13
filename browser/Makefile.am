@@ -263,6 +263,8 @@ COOL_JS_LST =\
 	src/app/AndroidFindReplaceBridge.ts \
 	src/app/AndroidSelectionMenu.ts \
 	src/app/AndroidCalcTap.ts \
+	src/app/NativeBridge.ts \
+	src/app/MobileAiBridge.ts \
 	src/app/AndroidCalcCellMenu.ts \
 	src/app/AndroidCalcHeaderMenu.ts \
 	src/app/MobilePhonePreview.ts \

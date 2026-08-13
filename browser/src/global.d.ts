@@ -386,6 +386,11 @@ interface Window {
 	ThisIsAMobileApp: boolean;
 	ThisIsTheEmscriptenApp: boolean;
 	ThisIsTheGtkApp: boolean;
+	ThisIsTheAndroidApp: boolean;
+	ThisIsTheiOSApp: boolean;
+	NativeBridge?: NativeBridge;
+	MobileAiBridge?: MobileAiBridge;
+	NativeBridgeTransport?: NativeBridgeTransport;
 	wopiSrc: string;
 	zoteroEnabled: boolean;
 	accessToken: string;
@@ -428,6 +433,7 @@ interface Window {
 	getAccessibilityState(): boolean;
 	makeClientVisibleArea(): string;
 	postMobileDebug(msg: string): void;
+	postMobileMessage(msg: string): void;
 }
 
 // For localization

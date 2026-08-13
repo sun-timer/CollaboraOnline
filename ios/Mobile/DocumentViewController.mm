@@ -30,6 +30,7 @@
 #import "Util.hpp"
 #import "Clipboard.hpp"
 #import "CoolURLSchemeHandler.h"
+#import "Bridge/NativeBridgeHandler.h"
 
 #import "DocumentViewController.h"
 
@@ -39,6 +40,7 @@
 @interface DocumentViewController() <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, UIScrollViewDelegate, UIDocumentPickerDelegate, UIFontPickerViewControllerDelegate> {
     int closeNotificationPipeForForwardingThread[2];
     NSURL *downloadAsTmpURL;
+    NativeBridgeHandler *nativeBridgeHandler;
 }
 
 @end
@@ -92,6 +94,30 @@ static IMP standardImpOfInputAccessoryView = nil;
     [userContentController addScriptMessageHandler:self name:@"debug"];
     [userContentController addScriptMessageHandler:self name:@"lok"];
     [userContentController addScriptMessageHandler:self name:@"error"];
+    __weak DocumentViewController *weakSelf = self;
+    nativeBridgeHandler = [[NativeBridgeHandler alloc]
+        initWithSessionIdProvider:^NSString * {
+            DocumentViewController *strongSelf = weakSelf;
+            return strongSelf
+                ? [NSString stringWithFormat:@"ios-document-%u", strongSelf.document->appDocId]
+                : nil;
+        }
+        emitter:^(NSDictionary *message) {
+            DocumentViewController *strongSelf = weakSelf;
+            if (!strongSelf.webView) {
+                return;
+            }
+            NSData *data = [NSJSONSerialization dataWithJSONObject:message options:0 error:nil];
+            NSString *json = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+            if (!json) {
+                return;
+            }
+            NSString *script = [NSString stringWithFormat:
+                @"if(window.NativeBridge&&typeof window.NativeBridge.onMessage==='function'){window.NativeBridge.onMessage(%@);}",
+                json];
+            [strongSelf.webView evaluateJavaScript:script completionHandler:nil];
+        }];
+    [userContentController addScriptMessageHandler:nativeBridgeHandler name:@"nativeBridge"];
     [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"clipboard"];
 
     configuration.userContentController = userContentController;
@@ -225,6 +251,8 @@ static IMP standardImpOfInputAccessoryView = nil;
                     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"debug"];
                     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"lok"];
                     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"error"];
+                    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"nativeBridge"];
+                    self->nativeBridgeHandler = nil;
                     // Don't set webView.configuration.userContentController to
                     // nil as it generates a "nil not allowed" compiler warning
                     [self.webView removeFromSuperview];
