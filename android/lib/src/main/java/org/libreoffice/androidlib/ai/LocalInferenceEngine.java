@@ -157,11 +157,12 @@ public final class LocalInferenceEngine {
                     }
                     String piece = nativeSampleToken();
                     if (piece == null) {
-                        notifyError(callback, "local_sample_fail", "本地推理采样失败");
-                        return;
+                        // null = EOG 或采样失败（native 已打日志），正常结束
+                        break;
                     }
                     if (piece.isEmpty()) {
-                        break;
+                        // 多字节字符被 token 拆开，本次无完整字符，等下一个 token 补全
+                        continue;
                     }
                     if (tokenCount == 0) {
                         firstTokenMs = System.currentTimeMillis() - startMs;
