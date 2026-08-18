@@ -8,7 +8,6 @@
 package org.libreoffice.androidapp;
 
 import android.content.SharedPreferences;
-import android.content.res.Configuration;
 import android.graphics.Insets;
 import android.os.Build;
 import android.os.Bundle;
@@ -18,11 +17,11 @@ import android.widget.RadioGroup;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
-import androidx.core.view.WindowCompat;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
 import org.libreoffice.androidapp.ui.LibreOfficeUIActivity;
 import org.libreoffice.androidlib.LOActivity;
+import org.libreoffice.androidlib.SystemUiHelper;
 
 public class SettingsActivity extends AppCompatActivity {
 
@@ -39,6 +38,9 @@ public class SettingsActivity extends AppCompatActivity {
                 .commit();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            SystemUiHelper.enableEdgeToEdge(this);
+            SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
+
             findViewById(android.R.id.content).setOnApplyWindowInsetsListener((v, windowInsets) -> {
                 Insets insets = windowInsets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
 
@@ -46,10 +48,8 @@ public class SettingsActivity extends AppCompatActivity {
 
                 return WindowInsets.CONSUMED;
             });
-
-            boolean lightMode = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_YES) == 0;
-            WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView()).setAppearanceLightStatusBars(lightMode);
-            WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView()).setAppearanceLightNavigationBars(lightMode);
+        } else {
+            SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
         }
 
         prefs = getSharedPreferences(LibreOfficeUIActivity.EXPLORER_PREFS_KEY, MODE_PRIVATE);

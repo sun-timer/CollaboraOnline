@@ -294,10 +294,17 @@
                     android:src="@drawable/ic_chevron_right" />
             </LinearLayout>
 
-            <TextView
+            <LinearLayout
+                android:id="@+id/localModelSection"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
+                android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/localModelSectionTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:text="@string/ai_local_model"
                 android:textColor="#6A6A6A"
                 android:textSize="@dimen/drawer_ai_hint_text_size" />
@@ -331,13 +338,19 @@
 
                 <TextView
                     android:id="@+id/localInstallButton"
-                    android:layout_width="92dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="40dp"
+                    android:minWidth="72dp"
+                    android:maxWidth="112dp"
                     android:background="@drawable/bg_local_install_btn"
+                    android:ellipsize="end"
                     android:gravity="center"
+                    android:maxLines="1"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
                     android:text="@string/install"
                     android:textColor="@android:color/white"
-                    android:textSize="16sp"
+                    android:textSize="12sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
@@ -474,6 +487,7 @@
                         android:scaleType="centerInside"
                         android:src="@drawable/ic_local_model_copy" />
                 </LinearLayout>
+            </LinearLayout>
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>

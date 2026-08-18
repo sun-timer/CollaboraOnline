@@ -14,6 +14,7 @@ import android.view.WindowManager;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.BottomSheetAnchorHelper;
+import org.libreoffice.androidlib.SystemUiHelper;
 
 import androidx.constraintlayout.widget.ConstraintLayout;
 
@@ -50,6 +51,23 @@ public final class AiDialogHelper {
         lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
         lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
         lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.horizontalBias = 0.5f;
+        lp.verticalBias = 0.5f;
+        lp.leftMargin = 0;
+        lp.topMargin = 0;
+        lp.rightMargin = 0;
+        lp.bottomMargin = 0;
+    }
+
+    /** Center overlay between document top and bottom toolbars (avoids status / nav overlap). */
+    public static void applyOverlayCenterConstraintsInChromeArea(ConstraintLayout.LayoutParams lp,
+            int widthPx, int heightPx, int topToolbarId, int bottomToolbarId) {
+        lp.width = widthPx;
+        lp.height = heightPx;
+        lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
+        lp.topToBottom = topToolbarId;
+        lp.bottomToTop = bottomToolbarId;
         lp.horizontalBias = 0.5f;
         lp.verticalBias = 0.5f;
         lp.leftMargin = 0;
@@ -163,6 +181,7 @@ public final class AiDialogHelper {
             return;
         }
         dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        SystemUiHelper.applyCenteredDialogSafeInsets(dialog);
     }
 
     /**

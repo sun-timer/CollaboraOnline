@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tablet (sw >= 600dp) — Figma modal 670/750 of viewport -->
+    <dimen name="dialog_content_max_width">536dp</dimen>
+    <dimen name="dialog_shell_padding_horizontal">32dp</dimen>
+    <dimen name="bottom_sheet_max_width">560dp</dimen>
+    <dimen name="bottom_sheet_margin_horizontal">32dp</dimen>
+    <dimen name="content_max_width">840dp</dimen>
+    <dimen name="profile_nickname_max_width">400dp</dimen>
+    <dimen name="ai_drawer_panel_width">400dp</dimen>
+    <dimen name="local_model_list_dialog_margin_h">32dp</dimen>
+    <dimen name="local_model_list_max_height">600dp</dimen>
+    <dimen name="home_new_doc_menu_width">220dp</dimen>
+    <dimen name="home_recent_actions_popup_width">220dp</dimen>
+    <dimen name="home_fab_margin_end">72dp</dimen>
+</resources>

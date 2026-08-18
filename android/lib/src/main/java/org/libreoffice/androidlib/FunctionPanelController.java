@@ -107,6 +107,9 @@ public class FunctionPanelController {
         void showAiOperationSheet();
 
         void focusDocumentAndShowIme();
+
+        /** Bottom toolbar + nav spacer height; sheets anchor above this chrome. */
+        int getBottomChromeHeightPx();
     }
 
     private enum ItemType {
@@ -268,7 +271,7 @@ public class FunctionPanelController {
             BottomSheetAnchorHelper.clearAppliedHeight(dialog);
             dialog = null;
         });
-        dialog.setOnShowListener(d -> applyFixedSheetHeight());
+        dialog.setOnShowListener(d -> applyAdaptiveSheetHeight());
         dialog.show();
     }
 
@@ -306,7 +309,7 @@ public class FunctionPanelController {
         if (shapePicker != null) {
             shapePicker.onConfigurationChanged();
         }
-        applyFixedSheetHeight();
+        applyAdaptiveSheetHeight();
     }
 
     private void buildTabBar() {
@@ -347,17 +350,27 @@ public class FunctionPanelController {
             tabView.setTextColor(selected ? COLOR_TAB_ACTIVE_TEXT : COLOR_TAB_INACTIVE_TEXT);
         }
         // Update indicator position to center under the selected tab
-        updateTabIndicator(index);
         renderTabContent(tabs.get(index));
         if (contentContainer != null) {
             contentContainer.scrollTo(0, 0);
         }
+        if (dialog != null && dialog.isShowing()) {
+            final int tabIndex = index;
+            View anchor = contentContainer != null ? contentContainer : tabBar;
+            anchor.post(() -> {
+                applyAdaptiveSheetHeight();
+                updateTabIndicator(tabIndex);
+            });
+        } else {
+            updateTabIndicator(index);
+        }
     }
 
-    private void applyFixedSheetHeight() {
+    private void applyAdaptiveSheetHeight() {
         if (dialog == null) {
             return;
         }
+        BottomSheetAnchorHelper.clearAppliedHeight(dialog);
         AiDialogHelper.applyNoDimScrim(dialog);
         FrameLayout bottomSheet = dialog.findViewById(
                 com.google.android.material.R.id.design_bottom_sheet);
@@ -365,37 +378,16 @@ public class FunctionPanelController {
             bottomSheet.setBackgroundResource(R.drawable.lolib_bg_font_picker_sheet);
             bottomSheet.setElevation(host.dpToPx(28));
         }
-        int targetHeight = BottomSheetAnchorHelper.resolveTargetHeight(
-                host.getContext(), SHEET_HEIGHT_RATIO);
-        setSheetContentHeight(targetHeight);
         BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
         options.logTag = TAG;
-        BottomSheetAnchorHelper.expandRatio(dialog, SHEET_HEIGHT_RATIO, options);
+        BottomSheetAnchorHelper.expandFunctionPanel(dialog, SHEET_HEIGHT_RATIO, options);
     }
 
     private void updateTabIndicator(int index) {
-        if (tabIndicator == null || index < 0 || index >= tabViews.size()) return;
-        tabIndicator.setVisibility(View.VISIBLE);
-        TextView selectedTab = tabViews.get(index);
-        selectedTab.post(() -> {
-            if (tabIndicator == null || selectedTab.getWidth() == 0) return;
-            // Calculate tab center relative to the FrameLayout parent
-            int[] tabLoc = new int[2];
-            int[] parentLoc = new int[2];
-            selectedTab.getLocationInWindow(tabLoc);
-            View parent = (View) tabIndicator.getParent();
-            if (parent != null) {
-                parent.getLocationInWindow(parentLoc);
-                float tabCenterX = tabLoc[0] - parentLoc[0] + selectedTab.getWidth() / 2f;
-                int indicatorW = host.dpToPx(24);
-                int leftMargin = (int) (tabCenterX - indicatorW / 2f);
-                FrameLayout.LayoutParams lp =
-                        (FrameLayout.LayoutParams) tabIndicator.getLayoutParams();
-                lp.leftMargin = Math.max(0, leftMargin);
-                lp.width = indicatorW;
-                tabIndicator.setLayoutParams(lp);
-            }
-        });
+        if (tabIndicator == null || index < 0 || index >= tabViews.size()) {
+            return;
+        }
+        FunctionPanelTabIndicatorHelper.updateForSelectedTab(tabViews.get(index), tabBar, tabIndicator);
     }
 
     private void renderTabContent(FunctionTab tab) {
@@ -1017,16 +1009,8 @@ public class FunctionPanelController {
         }
         fontPickerPanel.setVisibility(View.VISIBLE);
         fontPickerVisible = true;
-    }
-
-    private void setSheetContentHeight(int height) {
-        if (sheetContentRoot == null) {
-            return;
-        }
-        ViewGroup.LayoutParams params = sheetContentRoot.getLayoutParams();
-        if (params != null) {
-            params.height = height;
-            sheetContentRoot.setLayoutParams(params);
+        if (dialog != null && dialog.isShowing()) {
+            fontPickerPanel.post(this::applyAdaptiveSheetHeight);
         }
     }
 
@@ -1249,6 +1233,11 @@ public class FunctionPanelController {
                 @Override
                 public int dpToPx(int dp) {
                     return host.dpToPx(dp);
+                }
+
+                @Override
+                public int getBottomChromeHeightPx() {
+                    return host.getBottomChromeHeightPx();
                 }
 
                 @Override
@@ -1706,6 +1695,9 @@ public class FunctionPanelController {
         }
         optionPickerPanel.setVisibility(View.VISIBLE);
         optionPickerVisible = true;
+        if (dialog != null && dialog.isShowing()) {
+            optionPickerPanel.post(this::applyAdaptiveSheetHeight);
+        }
     }
 
     private void showOptionPickerPage(String title, String[] labels, String[] values,

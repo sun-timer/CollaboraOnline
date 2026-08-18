@@ -9,6 +9,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
+        android:layout_marginStart="@dimen/bottom_sheet_margin_horizontal"
+        android:layout_marginEnd="@dimen/bottom_sheet_margin_horizontal"
         android:background="@drawable/bg_local_model_bottom_sheet"
         android:clickable="true"
         android:focusable="true"
@@ -69,6 +71,33 @@
                 android:textSize="12sp" />
 
             <TextView
+                android:id="@+id/localModelDeviceInfoTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/local_model_device_info_title"
+                android:textColor="#333333"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/localModelDeviceInfoText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:lineSpacingExtra="2dp"
+                android:textColor="#6A6A6A"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/localModelDeviceVerdictText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textColor="#333333"
+                android:textSize="13sp" />
+
+            <TextView
                 android:id="@+id/localModelStatusText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -111,6 +140,17 @@
                 android:enabled="false" />
 
             <TextView
+                android:id="@+id/localModelChooseButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp"
+                android:text="@string/local_model_choose"
+                android:textColor="#333333"
+                android:textSize="14sp" />
+
+            <TextView
                 android:id="@+id/localModelDownloadButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -120,6 +160,17 @@
                 android:text="@string/local_model_download"
                 android:textColor="#333333"
                 android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/localModelCancelButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp"
+                android:text="@string/local_model_cancel"
+                android:textColor="#FA6200"
+                android:textSize="14sp"
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/localModelDeleteButton"

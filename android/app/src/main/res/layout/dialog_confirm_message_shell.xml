@@ -3,12 +3,13 @@
     android:id="@+id/confirmDialogScroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:paddingStart="20dp"
-    android:paddingEnd="20dp">
+    android:paddingStart="@dimen/dialog_shell_padding_horizontal"
+    android:paddingEnd="@dimen/dialog_shell_padding_horizontal">
 
     <include
         layout="@layout/dialog_confirm_message"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center" />
+        android:layout_gravity="center"
+        android:maxWidth="@dimen/dialog_content_max_width" />
 </FrameLayout>

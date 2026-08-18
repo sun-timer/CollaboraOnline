@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="lolib_chrome_toolbar">#FFFFFF</color>
+    <!-- Figma Rectangle 3468920 / 标题栏2 状态栏+顶栏底板 -->
+    <color name="lolib_chrome_status_plate">#F2F2F2</color>
+    <color name="lolib_chrome_ime_nav">#F0F0F0</color>
+</resources>

@@ -33,6 +33,8 @@ public final class ImpressSlideThumbnailPopupController {
         void evaluateJavascript(String script);
 
         void ensureEditModeThen(Runnable action);
+
+        int getOverlayBottomReservedPx();
     }
 
     private final Host host;
@@ -194,7 +196,10 @@ public final class ImpressSlideThumbnailPopupController {
         if (left > maxLeft) {
             left = maxLeft;
         }
-        top = Math.max(margin, Math.min(top, parent.getHeight() - popupH - margin));
+        int bottomReserved = DocumentOverlayInsets.resolveBottomReservedPx(
+                parent, bottomToolbar, host.getOverlayBottomReservedPx());
+        top = DocumentOverlayInsets.clampTopInParent(
+                top, popupH, parent.getHeight(), margin, bottomReserved);
 
         ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) panel.getLayoutParams();
         lp.width = fixedWidthPx > 0 ? fixedWidthPx : ViewGroup.LayoutParams.WRAP_CONTENT;

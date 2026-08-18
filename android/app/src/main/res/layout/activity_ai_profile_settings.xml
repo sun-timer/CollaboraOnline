@@ -35,10 +35,12 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="20dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginStart="@dimen/dialog_shell_padding_horizontal"
         android:layout_marginTop="8dp"
-        android:layout_marginEnd="20dp"
+        android:layout_marginEnd="@dimen/dialog_shell_padding_horizontal"
         android:background="@drawable/bg_ai_profile_card"
+        android:maxWidth="@dimen/content_max_width"
         android:orientation="vertical">
 
         <LinearLayout
@@ -98,7 +100,7 @@
                 android:id="@+id/profileNicknameValue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:maxWidth="260dp"
+                android:maxWidth="@dimen/profile_nickname_max_width"
                 android:singleLine="true"
                 android:textColor="#6D7278"
                 android:textSize="14sp" />

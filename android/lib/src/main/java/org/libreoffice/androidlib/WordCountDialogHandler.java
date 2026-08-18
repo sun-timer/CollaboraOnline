@@ -27,6 +27,11 @@ final class WordCountDialogHandler implements NativeJSDialogController.DialogHan
             public int dpToPx(int dp) {
                 return host.dpToPx(dp);
             }
+
+            @Override
+            public int getBottomChromeHeightPx() {
+                return host.getDocumentBottomChromeHeightPx();
+            }
         });
     }
 

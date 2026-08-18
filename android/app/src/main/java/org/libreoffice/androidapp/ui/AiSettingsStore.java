@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
 
 import org.libreoffice.androidapp.R;
+import org.libreoffice.androidlib.ai.AiModelConfigStore;
 import org.libreoffice.androidlib.ai.LocalModelManager;
 
 public final class AiSettingsStore {
@@ -84,34 +85,9 @@ public final class AiSettingsStore {
     }
 
     public static void ensureDefaults(Context context, int modelType) {
-        SharedPreferences p = prefs(context);
-        SharedPreferences.Editor e = p.edit();
-        putIfMissing(e, p, modelType, FIELD_CONFIG_NAME, context.getString(modelTitleRes(modelType)) + "配置");
-        putIfMissing(e, p, modelType, FIELD_PROVIDER, "OpenAI");
-        putIfMissing(e, p, modelType, FIELD_URL, "https://api.openai.com/v1/chat/completions");
-        putIfMissing(e, p, modelType, FIELD_API_KEY, "");
-        putIfMissing(e, p, modelType, FIELD_MODEL_NAME, defaultModelName(modelType));
-        putIfMissingFloat(e, p, modelType, FIELD_TOP_P, 0.5f);
-        putIfMissingFloat(e, p, modelType, FIELD_TEMPERATURE, 0.9f);
-        putIfMissingFloat(e, p, modelType, FIELD_PRESENCE_PENALTY, 0.0f);
-        putIfMissingFloat(e, p, modelType, FIELD_FREQUENCY_PENALTY, 0.8f);
-        putIfMissingFloat(e, p, modelType, FIELD_MAX_TOKENS_RATIO, 0.8f);
-        putIfMissingFloat(e, p, modelType, FIELD_SEED_RATIO, 0.8f);
-        e.apply();
-    }
-
-    private static void putIfMissing(SharedPreferences.Editor e, SharedPreferences p, int modelType, String field, String value) {
-        String key = modelKey(modelType, field);
-        if (!p.contains(key)) {
-            e.putString(key, value);
-        }
-    }
-
-    private static void putIfMissingFloat(SharedPreferences.Editor e, SharedPreferences p, int modelType, String field, float value) {
-        String key = modelKey(modelType, field);
-        if (!p.contains(key)) {
-            e.putFloat(key, value);
-        }
+        AiModelConfigStore.ensureDefaults(context, modelType,
+                context.getString(modelTitleRes(modelType)) + "配置",
+                defaultModelName(modelType));
     }
 
     public static String defaultModelName(int modelType) {
@@ -161,6 +137,6 @@ public final class AiSettingsStore {
         if (model != null && !model.trim().isEmpty()) {
             e.putString(RUNTIME_AI_MODEL, model.trim());
         }
-        e.apply();
+        e.commit();
     }
 }

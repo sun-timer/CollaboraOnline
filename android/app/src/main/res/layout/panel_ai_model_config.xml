@@ -4,13 +4,15 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#FFFFFF"
-    android:clickable="true"
-    android:focusable="true"
+    android:clickable="false"
+    android:focusable="false"
     android:orientation="vertical">
 
     <LinearLayout
+        android:id="@+id/modelConfigHeaderRow"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/ai_model_config_header_height"
+        android:layout_height="wrap_content"
+        android:minHeight="@dimen/ai_model_config_header_height"
         android:background="#FFFFFF"
         android:gravity="center_vertical"
         android:paddingStart="@dimen/ai_model_config_footer_padding_h"
@@ -282,6 +284,7 @@
         android:background="@drawable/bg_drawer_model_divider" />
 
     <LinearLayout
+        android:id="@+id/modelConfigFooter"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="#FFFFFF"
@@ -290,29 +293,33 @@
         android:paddingStart="@dimen/ai_model_config_footer_padding_h"
         android:paddingTop="@dimen/ai_model_config_footer_padding_v"
         android:paddingEnd="@dimen/ai_model_config_footer_padding_h"
-        android:paddingBottom="@dimen/ai_model_config_footer_padding_v">
+        android:paddingBottom="0dp">
 
-        <TextView
+        <Button
             android:id="@+id/modelConfigCancelButton"
             android:layout_width="0dp"
             android:layout_height="@dimen/ai_model_config_footer_button_height"
             android:layout_weight="1"
             android:background="@drawable/bg_ai_btn_cancel"
-            android:gravity="center"
+            android:elevation="2dp"
+            android:stateListAnimator="@null"
             android:text="@string/action_cancel"
+            android:textAllCaps="false"
             android:textColor="#E6000000"
             android:textSize="@dimen/ai_model_config_footer_button_text_size" />
 
-        <TextView
+        <Button
             android:id="@+id/modelConfigSaveButton"
             android:layout_width="0dp"
             android:layout_height="@dimen/ai_model_config_footer_button_height"
             android:layout_marginStart="@dimen/ai_model_config_footer_button_gap"
             android:layout_weight="1"
-            android:background="@drawable/bg_ai_btn_save"
-            android:gravity="center"
+            android:background="@drawable/bg_local_install_btn"
+            android:elevation="4dp"
+            android:stateListAnimator="@null"
             android:text="@string/action_save"
-            android:textColor="#FFFFFF"
+            android:textAllCaps="false"
+            android:textColor="@android:color/white"
             android:textSize="@dimen/ai_model_config_footer_button_text_size" />
     </LinearLayout>
 </LinearLayout>

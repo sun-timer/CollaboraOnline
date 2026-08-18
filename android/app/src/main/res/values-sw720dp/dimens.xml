@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Large tablet (sw >= 720dp) — Figma modal 670/750 of viewport -->
+    <dimen name="dialog_content_max_width">643dp</dimen>
+    <dimen name="dialog_shell_padding_horizontal">38dp</dimen>
+    <dimen name="bottom_sheet_max_width">640dp</dimen>
+    <dimen name="content_max_width">960dp</dimen>
+    <dimen name="ai_drawer_panel_width">480dp</dimen>
+    <dimen name="local_model_list_max_height">680dp</dimen>
+</resources>

@@ -43,6 +43,8 @@ public class ImpressShapePickerController {
 
         int dpToPx(int dp);
 
+        int getBottomChromeHeightPx();
+
         void executeUnoCommand(String command);
 
         void runAfterDismiss(Runnable action);
@@ -114,6 +116,7 @@ public class ImpressShapePickerController {
         bottomSheet.setBackgroundResource(R.drawable.lolib_bg_calc_bottom_sheet);
         BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
         options.logTag = "ImpressShapePicker";
+        options.draggable = false;
         BottomSheetAnchorHelper.expandRatio(dialog, SHEET_HEIGHT_RATIO, options);
     }
 

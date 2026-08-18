@@ -13,6 +13,8 @@ class AndroidSelectionMenu {
 	private static lastSelectionStartAt = 0;
 	private static readonly ignoreEmptyAfterStartMs = 500;
 	private static selectionStartTwips: { x: number; y: number } | null = null;
+	/** True once core acknowledges `selecttext start` during the current gesture. */
+	private static selectionStartAcknowledged = false;
 	private static readonly minSelectionSpanTwips = 80;
 	private static tryShowRetryTimer = 0;
 	private static readonly tryShowRetryDelayMs = 100;
@@ -107,6 +109,7 @@ class AndroidSelectionMenu {
 		AndroidSelectionMenu.selectionGestureComplete = false;
 		AndroidSelectionMenu.nativeSelectionDragActive = false;
 		AndroidSelectionMenu.selectionStartTwips = null;
+		AndroidSelectionMenu.selectionStartAcknowledged = false;
 		AndroidSelectionMenu.lastDragSelectionUpdateAt = 0;
 		AndroidSelectionMenu.clearTryShowRetry();
 		AndroidSelectionMenu.hide();
@@ -117,18 +120,25 @@ class AndroidSelectionMenu {
 		AndroidSelectionMenu.clearLocalTextSelection();
 	}
 
-	/** WebView-local touch coords (viewX/viewY) → document twips. */
+	/** WebView-local touch coords (physical px) → document twips. */
 	private static viewPointToDocumentTwips(
 		viewX: number,
 		viewY: number,
 	): { x: number; y: number } | null {
-		const canvas = document.getElementById('canvas-container');
-		if (!canvas || !app.sectionContainer || !app.activeDocument || !app.map._docLayer) {
+		if (!app.sectionContainer) {
+			return null;
+		}
+		return app.sectionContainer.clientViewPointToDocumentTwips(viewX, viewY);
+	}
+
+	/** Tiles-section locale point → document twips (same math as MouseControl). */
+	private static sectionPointToDocumentTwips(
+		point: cool.SimplePoint,
+	): { x: number; y: number } | null {
+		if (!app.sectionContainer || !app.activeDocument || !app.map._docLayer) {
 			return null;
 		}
 
-		const canvasRect = canvas.getBoundingClientRect();
-		const point = new cool.SimplePoint(viewX - canvasRect.left, viewY - canvasRect.top);
 		let documentPoint = point.clone();
 		documentPoint.pX +=
 			-app.activeDocument.activeLayout.viewedRectangle.pX1 +
@@ -147,6 +157,70 @@ class AndroidSelectionMenu {
 			x: Math.round(documentPoint.x),
 			y: Math.round(documentPoint.y),
 		};
+	}
+
+	/**
+	 * Select word at document twips via selecttext start.
+	 * Shared by long-press and double-tap. Do NOT send selecttext reset here —
+	 * LOK reset collapses the caret to document start.
+	 */
+	private static selectWordAtTwips(pos: { x: number; y: number }): void {
+		AndroidSelectionMenu.lastSelectionStartAt = Date.now();
+		AndroidSelectionMenu.selectionStartTwips = { x: pos.x, y: pos.y };
+		AndroidSelectionMenu.selectionStartAcknowledged = false;
+		AndroidSelectionMenu.debugLog(
+			'word_select twips=' + pos.x + ',' + pos.y,
+		);
+		app.map._docLayer._postSelectTextEvent('start', pos.x, pos.y);
+	}
+
+	private static prepareWordSelectionGesture(): void {
+		AndroidSelectionMenu.resetForNewGesture();
+		const findBridge = (window as any).AndroidFindReplaceBridge;
+		if (
+			findBridge &&
+			typeof findBridge.clearSuppressSelectionMenu === 'function'
+		) {
+			findBridge.clearSuppressSelectionMenu();
+		}
+		AndroidSelectionMenu.pendingLongPressSelection = true;
+	}
+
+	/** Long-press: selecttext start at press point (word select); end on drag/up. */
+	static startTextSelectionAt(viewX: number, viewY: number): void {
+		const pos = AndroidSelectionMenu.viewPointToDocumentTwips(viewX, viewY);
+		if (!pos) {
+			AndroidSelectionMenu.cancelGesture();
+			return;
+		}
+
+		AndroidSelectionMenu.selectWordAtTwips(pos);
+	}
+
+	/**
+	 * Double-tap word select (tiles-section point from MouseControl).
+	 * Uses the same selecttext reset+start path as long-press.
+	 */
+	static onDoubleTapAtSectionPoint(point: cool.SimplePoint): void {
+		if (!window.ThisIsTheAndroidApp || !AndroidSelectionMenu.isWriterDoc()) {
+			return;
+		}
+
+		AndroidSelectionMenu.prepareWordSelectionGesture();
+		AndroidSelectionMenu.selectionGestureComplete = true;
+		AndroidSelectionMenu.nativeSelectionDragActive = false;
+
+		const pos = AndroidSelectionMenu.sectionPointToDocumentTwips(point);
+		if (!pos) {
+			AndroidSelectionMenu.cancelGesture();
+			return;
+		}
+
+		AndroidSelectionMenu.debugLog(
+			'double_tap word_select at ' + pos.x + ',' + pos.y,
+		);
+		AndroidSelectionMenu.selectWordAtTwips(pos);
+		AndroidSelectionMenu.scheduleTryShowAfterGesture();
 	}
 
 	private static isZeroWidthTwips(
@@ -178,19 +252,6 @@ class AndroidSelectionMenu {
 		);
 	}
 
-	/** Long-press: send selecttext start only; end is sent on finger up. */
-	static startTextSelectionAt(viewX: number, viewY: number): void {
-		const pos = AndroidSelectionMenu.viewPointToDocumentTwips(viewX, viewY);
-		if (!pos) {
-			AndroidSelectionMenu.cancelGesture();
-			return;
-		}
-
-		AndroidSelectionMenu.lastSelectionStartAt = Date.now();
-		AndroidSelectionMenu.selectionStartTwips = { x: pos.x, y: pos.y };
-		app.map._docLayer._postSelectTextEvent('start', pos.x, pos.y);
-	}
-
 	static updateTextSelectionEndAt(
 		viewX: number,
 		viewY: number,
@@ -198,6 +259,18 @@ class AndroidSelectionMenu {
 	): void {
 		if (!AndroidSelectionMenu.nativeSelectionDragActive) {
 			return;
+		}
+		// Do not extend before core has processed `selecttext start`; otherwise
+		// `end` may anchor from the old caret (often document start).
+		if (!AndroidSelectionMenu.selectionStartAcknowledged) {
+			if (!force) {
+				return;
+			}
+			const anchor = AndroidSelectionMenu.selectionStartTwips;
+			if (!anchor) {
+				return;
+			}
+			app.map._docLayer._postSelectTextEvent('start', anchor.x, anchor.y);
 		}
 		if (!AndroidSelectionMenu.isWriterDoc()) {
 			AndroidSelectionMenu.cancelGesture();
@@ -279,16 +352,8 @@ class AndroidSelectionMenu {
 			return;
 		}
 
-		AndroidSelectionMenu.resetForNewGesture();
-		const findBridge = (window as any).AndroidFindReplaceBridge;
-		if (
-			findBridge &&
-			typeof findBridge.clearSuppressSelectionMenu === 'function'
-		) {
-			findBridge.clearSuppressSelectionMenu();
-		}
+		AndroidSelectionMenu.prepareWordSelectionGesture();
 		AndroidSelectionMenu.markNativeLongPress();
-		AndroidSelectionMenu.pendingLongPressSelection = true;
 		AndroidSelectionMenu.selectionGestureComplete = false;
 		AndroidSelectionMenu.nativeSelectionDragActive = true;
 		AndroidSelectionMenu.lastDragSelectionUpdateAt = 0;
@@ -540,6 +605,87 @@ class AndroidSelectionMenu {
 				}
 				return originalOnContextMenu.call(this, point, e);
 			};
+
+			const originalOnClick = MouseControl.prototype.onClick;
+			MouseControl.prototype.onClick = function (
+				point: cool.SimplePoint,
+				e: MouseEvent,
+			): void {
+				if (
+					!window.ThisIsTheAndroidApp ||
+					!app.map ||
+					app.map.getDocType() !== 'text'
+				) {
+					return originalOnClick.call(this, point, e);
+				}
+
+				app.map.fire('closepopups');
+				app.map.fire('editorgotfocus');
+
+				(<any>this).refreshPosition(point);
+				this.clickCount++;
+
+				if (!(<any>window).mode.isDesktop()) {
+					const isCalcEdit =
+						app.map.isEditMode() &&
+						app.map._docLayer &&
+						app.map._docLayer._docType === 'spreadsheet';
+					if (!isCalcEdit) {
+						app.map.fire('closemobilewizard');
+					}
+				}
+
+				let buttons = app.LOButtons.left;
+				let modifier = MouseControl.readModifier(e);
+				const sendingPosition = this.currentPosition.clone();
+
+				if (window.L.Browser.mac) {
+					if (
+						modifier == app.UNOModifier.CTRL &&
+						buttons == app.LOButtons.left
+					) {
+						modifier = 0;
+						buttons = app.LOButtons.right;
+					}
+				}
+
+				const clickInfo = {
+					sendingPosition: sendingPosition,
+					buttons: buttons,
+					modifier: modifier,
+				};
+
+				if (this.clickTimer) {
+					app.timerRegistry.clearTimeout(this.clickTimer);
+				} else {
+					(<any>this).sendClick(clickInfo, 1);
+					app.map.focus(
+						(<any>window).mode.isDesktop()
+							? undefined
+							: this.getMobileKeyboardVisibility(),
+					);
+				}
+
+				this.clickTimer = app.timerRegistry.setTimeout(
+					'clicktimer',
+					() => {
+						if (this.clickCount === 2) {
+							AndroidSelectionMenu.onDoubleTapAtSectionPoint(
+								clickInfo.sendingPosition,
+							);
+						} else if (this.clickCount > 1) {
+							(<any>this).sendClick(
+								clickInfo,
+								this.clickCount,
+							);
+						}
+
+						this.clickTimer = null;
+						this.clickCount = 0;
+					},
+					250,
+				);
+			};
 		};
 		installMouseControlHook();
 
@@ -559,6 +705,14 @@ class AndroidSelectionMenu {
 				original(textMsg);
 				const payload = textMsg.replace('textselection:', '').trim();
 
+				if (
+					AndroidSelectionMenu.pendingLongPressSelection &&
+					payload &&
+					payload !== 'EMPTY'
+				) {
+					AndroidSelectionMenu.selectionStartAcknowledged = true;
+				}
+
 				AndroidSelectionMenu.debugLog(
 					'textselection payload=' +
 						(payload === 'EMPTY' || payload === ''
@@ -568,7 +722,8 @@ class AndroidSelectionMenu {
 						' edit=' + AndroidSelectionMenu.isEditMode() +
 						' pending=' + AndroidSelectionMenu.pendingLongPressSelection +
 						' gestureComplete=' + AndroidSelectionMenu.selectionGestureComplete +
-						' dragActive=' + AndroidSelectionMenu.nativeSelectionDragActive);
+						' dragActive=' + AndroidSelectionMenu.nativeSelectionDragActive +
+						' startAck=' + AndroidSelectionMenu.selectionStartAcknowledged);
 
 				// Preview (read-only) Writer mode: original gesture-driven logic.
 				if (AndroidSelectionMenu.isPreviewWriterMode()) {
@@ -596,24 +751,36 @@ class AndroidSelectionMenu {
 					return;
 				}
 
-				// Edit mode (Writer): show popup when a non-degenerate selection exists,
-				// hide when selection is cleared.
+				// Edit mode (Writer): same gesture-driven rules as preview — do not
+				// pop the menu on every core textselection (e.g. leftover SelectAll).
 				if (
 					AndroidSelectionMenu.isWriterDoc() &&
 					AndroidSelectionMenu.isEditMode()
 				) {
 					if (payload && payload !== 'EMPTY') {
+						const findBridge = (window as any).AndroidFindReplaceBridge;
+						if (
+							findBridge &&
+							typeof findBridge.consumeSuppressSelectionMenu === 'function' &&
+							findBridge.consumeSuppressSelectionMenu()
+						) {
+							AndroidSelectionMenu.hide();
+							return;
+						}
 						// Native long-press gesture still in flight: do NOT show the
 						// menu overlay now — it would intercept the finger-up and break
 						// the gesture (selection flash-away). finishTextSelectionDrag →
-						// scheduleTryShowAfterGesture shows it after finger-up. (The
-						// preview branch has the same nativeSelectionDragActive guard.)
+						// scheduleTryShowAfterGesture shows it after finger-up.
 						if (AndroidSelectionMenu.nativeSelectionDragActive) {
 							return;
 						}
-						AndroidSelectionMenu.scheduleTryShowFromCoreSelection();
+						if (AndroidSelectionMenu.shouldUseGestureTryShow()) {
+							AndroidSelectionMenu.scheduleTryShowAfterGesture();
+						} else if (!AndroidSelectionMenu.pendingLongPressSelection) {
+							AndroidSelectionMenu.scheduleTryShowFromCoreSelection();
+						}
 					} else {
-						AndroidSelectionMenu.hide();
+						AndroidSelectionMenu.onEmptyTextSelection();
 					}
 				}
 			};

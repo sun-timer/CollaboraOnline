@@ -34,6 +34,8 @@ public final class CalcHeaderPopupController {
         float dpToPx(float dp);
 
         void evaluateJavascript(String script);
+
+        int getOverlayBottomReservedPx();
     }
 
     private static final class MenuAction {
@@ -326,7 +328,11 @@ public final class CalcHeaderPopupController {
         if (left > maxLeft) {
             left = maxLeft;
         }
-        top = Math.max(margin, Math.min(top, parent.getHeight() - popupH - margin));
+        View bottomToolbar = host.findViewById(R.id.doc_bottom_toolbar);
+        int bottomReserved = DocumentOverlayInsets.resolveBottomReservedPx(
+                parent, bottomToolbar, host.getOverlayBottomReservedPx());
+        top = DocumentOverlayInsets.clampTopInParent(
+                top, popupH, parent.getHeight(), margin, bottomReserved);
 
         ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) panel.getLayoutParams();
         lp.width = fixedWidthPx > 0 ? fixedWidthPx : ViewGroup.LayoutParams.WRAP_CONTENT;

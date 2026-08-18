@@ -1,8 +1,10 @@
 package org.libreoffice.androidlib.ai;
 
 public final class AiBackendRouter {
-    public static final boolean LOCAL_DOC_QA_ENABLED = false;
-    public static final int LOCAL_DOC_QA_MAX_CHARS = 8000;
+    public static final boolean LOCAL_DOC_QA_ENABLED = true;
+    // 首轮文档全文上限：使全文能进 4096 context 预算（estimateTokens≈chars/2），
+    // 避免"路由放行但 prefill 被 LocalPromptBuilder 截断"。
+    public static final int LOCAL_DOC_QA_MAX_CHARS = 5000;
 
     public static final class ResolvedRoute {
         public final int backend;

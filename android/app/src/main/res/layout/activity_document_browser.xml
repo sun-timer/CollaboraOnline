@@ -25,51 +25,63 @@
         <LinearLayout
             android:id="@+id/homeTopBar"
             android:layout_width="0dp"
-            android:layout_height="88dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="16dp"
-            android:paddingTop="8dp"
-            android:paddingEnd="16dp"
-            android:paddingBottom="8dp"
+            android:layout_height="wrap_content"
+            android:background="@color/lolib_chrome_status_plate"
+            android:orientation="vertical"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent">
 
+            <!-- Figma 556:21271：状态栏与顶栏共用 #F2F2F2 底板 -->
+            <View
+                android:id="@+id/home_top_status_plate"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:background="@color/lolib_chrome_status_plate"
+                android:importantForAccessibility="no" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/lolib_top_toolbar_content_height"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/home_top_bar_padding_start"
+                android:paddingEnd="@dimen/home_top_bar_padding_end">
+
             <ImageView
                 android:id="@+id/homeLeftIcon"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:background="@android:color/transparent"
+                android:layout_width="@dimen/home_top_avatar_size"
+                android:layout_height="@dimen/home_top_avatar_size"
+                android:background="@drawable/bg_avatar_circle"
                 android:contentDescription="@string/ai_profile_name"
-                android:padding="2dp"
                 android:scaleType="centerCrop"
                 android:src="@drawable/drawer_header" />
 
             <LinearLayout
                 android:id="@+id/homeSearchContainer"
                 android:layout_width="0dp"
-                android:layout_height="52dp"
-                android:layout_marginStart="12dp"
-                android:layout_marginEnd="12dp"
+                android:layout_height="@dimen/home_top_search_height"
+                android:layout_marginStart="@dimen/home_top_avatar_search_gap"
+                android:layout_marginEnd="@dimen/home_top_search_open_gap"
                 android:layout_weight="1"
                 android:background="@drawable/bg_home_search"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp">
+                android:paddingStart="@dimen/home_top_search_padding_h"
+                android:paddingEnd="@dimen/home_top_search_padding_h">
 
                 <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
+                    android:layout_width="@dimen/home_top_search_icon_size"
+                    android:layout_height="@dimen/home_top_search_icon_size"
                     android:contentDescription="@string/search_label"
-                    android:src="@drawable/ic_home_search" />
+                    android:src="@drawable/ic_home_search"
+                    app:tint="#999999" />
 
                 <EditText
                     android:id="@+id/homeSearchInput"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
+                    android:layout_marginStart="@dimen/home_top_search_icon_text_gap"
                     android:layout_weight="1"
                     android:background="@android:color/transparent"
                     android:hint="@string/home_search_hint"
@@ -77,17 +89,21 @@
                     android:inputType="text"
                     android:maxLines="1"
                     android:padding="0dp"
-                    android:textColor="#202124"
-                    android:textColorHint="#9AA0A6"
-                    android:textSize="18sp" />
+                    android:textColor="#333333"
+                    android:textColorHint="#999999"
+                    android:textSize="16sp" />
             </LinearLayout>
 
             <ImageView
                 android:id="@+id/homeOpenFileButton"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="@dimen/home_top_open_file_touch_size"
+                android:layout_height="@dimen/home_top_open_file_touch_size"
                 android:contentDescription="@string/open"
-                android:src="@drawable/ic_home_folder" />
+                android:padding="12dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_home_folder"
+                app:tint="#434343" />
+            </LinearLayout>
         </LinearLayout>
 
         <LinearLayout

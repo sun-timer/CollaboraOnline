@@ -28,6 +28,11 @@ public class FindReplaceSheetController {
         /** 顶部栏实际像素高度（横屏悬浮弹窗定位用）。 */
         int getTopToolbarHeightPx();
 
+        /** 文档底栏 + 三键导航占位（竖屏 BottomSheet 锚点用）。 */
+        int getBottomChromeHeightPx();
+
+        void hideKeyboardForBottomSheet();
+
         void runFindBridge(String js);
 
         void ensureEditModeThen(Runnable action);
@@ -64,6 +69,7 @@ public class FindReplaceSheetController {
 
     public void show() {
         dismiss();
+        host.hideKeyboardForBottomSheet();
         View panel = LayoutInflater.from(host.getContext()).inflate(R.layout.lolib_sheet_find_replace, null);
         bindMainPanel(panel);
         if (BottomSheetAnchorHelper.isLandscape(host.getContext())) {
@@ -73,9 +79,9 @@ public class FindReplaceSheetController {
             mainDialog.setContentView(panel);
             AiDialogHelper.applyCloseOnlyDismiss(mainDialog);
             mainDialog.setOnDismissListener(dialog -> mainDialog = null);
+            mainDialog.setOnShowListener(d -> expandSheet(mainDialog, panel));
             mainDialog.show();
             AiDialogHelper.applyNoDimScrim(mainDialog);
-            expandSheet(mainDialog, panel);
         }
     }
 
@@ -340,9 +346,9 @@ public class FindReplaceSheetController {
             settingsDialog.setContentView(panel);
             AiDialogHelper.applyCloseOnlyDismiss(settingsDialog);
             settingsDialog.setOnDismissListener(dialog -> settingsDialog = null);
+            settingsDialog.setOnShowListener(d -> expandSheet(settingsDialog, panel));
             settingsDialog.show();
             AiDialogHelper.applyNoDimScrim(settingsDialog);
-            expandSheet(settingsDialog, panel);
         }
     }
 
@@ -491,6 +497,7 @@ public class FindReplaceSheetController {
         BottomSheetStyleHelper.applyFigmaPanel(dialog, contentRoot, host.dpToPx(28));
         BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
         options.logTag = "FindReplaceSheet";
+        options.draggable = false;
         BottomSheetAnchorHelper.expandWrapContent(dialog, 0.92f, options);
     }
 

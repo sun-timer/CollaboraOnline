@@ -125,7 +125,8 @@ public final class LocalInferenceEngine {
             Log.i(TAG, "local_infer_start requestId=" + requestId + " nativePss=" + pssBefore[0]);
 
             try {
-                nativeClearKvCache();
+                // KV 保留/清理由 native 自动判断：新输入以旧输入为前缀（doc_qa 多轮）→ 增量，
+                // 否则全量。不再无条件清 KV，否则破坏增量复用。
                 JSONArray promptMessages = LocalPromptBuilder.buildPrompt(
                         messages, params.contextSize, params.maxTokens, multiTurn);
                 String[] roles = new String[promptMessages.length()];

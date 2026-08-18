@@ -1,17 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Figma 125:12715 预览态功能弹窗：750×696@2x，行高 128px=64dp，底 padding 68px=34dp -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="#FFFFFF"
     android:orientation="vertical"
     android:paddingStart="16dp"
-    android:paddingTop="16dp"
     android:paddingEnd="16dp"
-    android:paddingBottom="24dp">
+    android:paddingBottom="@dimen/lolib_function_sheet_bottom_pad">
 
+    <!-- Figma 标题栏2：124px@2x = 62dp -->
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="48dp">
+        android:layout_height="@dimen/ai_sheet_header_height"
+        android:paddingStart="@dimen/ai_sheet_header_padding_h"
+        android:paddingEnd="@dimen/ai_sheet_header_padding_h">
 
         <TextView
             android:layout_width="match_parent"
@@ -20,7 +23,6 @@
             android:text="功能"
             android:textColor="#15171A"
             android:textSize="18sp"
-            android:textStyle="normal"
             android:fontFamily="sans-serif-medium" />
 
         <ImageButton
@@ -35,11 +37,11 @@
             android:src="@drawable/lolib_ic_dialog_close" />
     </FrameLayout>
 
-    <!-- Figma 125:12715：大框高 76px(38dp) 圆角 12dp，内含两个小框高 60px(30dp) 圆角 8dp -->
+    <!-- Figma tab 区：外框 76px=38dp，内 tab 60px=30dp，圆角 12/8dp -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="38dp"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="11dp"
         android:background="@drawable/lolib_bg_function_tab_track"
         android:orientation="horizontal"
         android:padding="4dp">
@@ -53,8 +55,7 @@
             android:gravity="center"
             android:text="文件操作"
             android:textColor="#101010"
-            android:textSize="16sp"
-            android:textStyle="normal" />
+            android:textSize="16sp" />
 
         <TextView
             android:id="@+id/function_tab_review"
@@ -66,25 +67,24 @@
             android:gravity="center"
             android:text="审阅"
             android:textColor="#6A6A6A"
-            android:textSize="16sp"
-            android:textStyle="normal" />
+            android:textSize="16sp" />
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/function_file_list"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="11dp"
         android:orientation="vertical">
 
         <LinearLayout
             android:id="@+id/function_action_save"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="@dimen/lolib_function_sheet_row_height"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
 
             <ImageView
                 android:layout_width="32dp"
@@ -95,26 +95,25 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
+                android:layout_marginStart="12dp"
                 android:text="保存"
-                android:textColor="#202124"
-                android:textSize="18sp"
-                android:textStyle="normal" />
+                android:textColor="#333333"
+                android:textSize="18sp" />
         </LinearLayout>
 
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="#E3E3E3" />
+            android:background="#14000000" />
 
         <LinearLayout
             android:id="@+id/function_action_download"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="@dimen/lolib_function_sheet_row_height"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
 
             <ImageView
                 android:layout_width="32dp"
@@ -125,26 +124,25 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
+                android:layout_marginStart="12dp"
                 android:text="下载"
-                android:textColor="#202124"
-                android:textSize="18sp"
-                android:textStyle="normal" />
+                android:textColor="#333333"
+                android:textSize="18sp" />
         </LinearLayout>
 
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="#E3E3E3" />
+            android:background="#14000000" />
 
         <LinearLayout
             android:id="@+id/function_action_print"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="@dimen/lolib_function_sheet_row_height"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
 
             <ImageView
                 android:layout_width="32dp"
@@ -155,11 +153,10 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
+                android:layout_marginStart="12dp"
                 android:text="打印"
-                android:textColor="#202124"
-                android:textSize="18sp"
-                android:textStyle="normal" />
+                android:textColor="#333333"
+                android:textSize="18sp" />
         </LinearLayout>
     </LinearLayout>
 
@@ -167,18 +164,18 @@
         android:id="@+id/function_review_list"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="11dp"
         android:orientation="vertical"
         android:visibility="gone">
 
         <LinearLayout
             android:id="@+id/function_action_find_replace"
             android:layout_width="match_parent"
-            android:layout_height="76dp"
+            android:layout_height="@dimen/lolib_function_sheet_row_height"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
 
             <ImageView
                 android:layout_width="32dp"
@@ -189,27 +186,25 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
+                android:layout_marginStart="12dp"
                 android:text="查找替换"
-                android:textColor="#202124"
-                android:textSize="18sp"
-                android:textStyle="normal" />
+                android:textColor="#333333"
+                android:textSize="18sp" />
         </LinearLayout>
 
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="#E3E3E3" />
+            android:background="#14000000" />
 
-        <!-- 字数统计：仅 Writer 文档显示（表格无此功能） -->
         <LinearLayout
             android:id="@+id/function_action_word_count"
             android:layout_width="match_parent"
-            android:layout_height="76dp"
+            android:layout_height="@dimen/lolib_function_sheet_row_height"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
 
             <ImageView
                 android:layout_width="32dp"
@@ -220,11 +215,10 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
+                android:layout_marginStart="12dp"
                 android:text="字数统计"
-                android:textColor="#202124"
-                android:textSize="18sp"
-                android:textStyle="normal" />
+                android:textColor="#333333"
+                android:textSize="18sp" />
         </LinearLayout>
     </LinearLayout>
 

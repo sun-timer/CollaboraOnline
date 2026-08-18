@@ -40,6 +40,11 @@ public class AiRequestManager {
 
     public void execute(String requestId, String endpoint, String apiKey, String model, JSONArray messages,
             AiRequestSession session, Callback callback) {
+        execute(requestId, endpoint, apiKey, model, messages, null, session, callback);
+    }
+
+    public void execute(String requestId, String endpoint, String apiKey, String model, JSONArray messages,
+            AiModelConfigStore.SamplingParams sampling, AiRequestSession session, Callback callback) {
         HttpURLConnection connection = null;
         StringBuilder fullText = new StringBuilder();
         try {
@@ -58,6 +63,9 @@ public class AiRequestManager {
             body.put("model", model);
             body.put("stream", true);
             body.put("messages", messages);
+            if (sampling != null) {
+                AiModelConfigStore.applySamplingToBody(body, sampling);
+            }
 
             byte[] requestBody = body.toString().getBytes(StandardCharsets.UTF_8);
             connection.getOutputStream().write(requestBody);

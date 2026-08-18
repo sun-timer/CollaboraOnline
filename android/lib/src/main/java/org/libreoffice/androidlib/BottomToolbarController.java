@@ -148,6 +148,8 @@ public class BottomToolbarController {
 
     private final Host host;
     private LinearLayout bottomToolbarView;
+    private View bottomToolbarContentHost;
+    private View bottomNavSpacerView;
     private LinearLayout bottomToolbarItemsRow;
     private View quickActionOverlayView;
     private LinearLayout quickActionPanelView;
@@ -169,6 +171,8 @@ public class BottomToolbarController {
 
     public void setup() {
         bottomToolbarView = asLinearLayout(host.findViewById(R.id.doc_bottom_toolbar));
+        bottomToolbarContentHost = resolveBottomToolbarContentHost();
+        bottomNavSpacerView = host.findViewById(R.id.doc_bottom_nav_spacer);
         bottomToolbarItemsRow = asLinearLayout(host.findViewById(R.id.doc_bottom_toolbar_items_row));
         quickActionOverlayView = host.findViewById(R.id.toolbar_quick_overlay);
         quickActionPanelView = asLinearLayout(host.findViewById(R.id.toolbar_quick_panel));
@@ -298,9 +302,30 @@ public class BottomToolbarController {
         int bottomMargin = imeVisible
                 ? Math.max(bottomToolbarImeInsetPx, navigationBarInsetPx)
                         + host.dpToPx(TOOLBAR_IME_EXTRA_GAP_DP)
-                : navigationBarInsetPx;
+                : 0;
         setBottomToolbarBottomMargin(bottomMargin);
+        applyBottomNavSpacer();
+        setBottomToolbarBottomPadding(0);
         applyBottomToolbarCompactMode(imeVisible && isEditModeActive);
+    }
+
+    private void applyBottomNavSpacer() {
+        int spacerHeight = isImeVisibleForToolbar ? 0
+                : navigationBarInsetPx + SystemUiHelper.getBottomSafeExtraPx(host.getContext());
+        SystemUiHelper.applyBottomNavSpacer(bottomNavSpacerView, spacerHeight);
+    }
+
+    private int getBottomNavSpacerHeightPx() {
+        if (isImeVisibleForToolbar) {
+            return 0;
+        }
+        if (bottomNavSpacerView != null && bottomNavSpacerView.getVisibility() == View.VISIBLE) {
+            int measured = bottomNavSpacerView.getHeight();
+            if (measured > 0) {
+                return measured;
+            }
+        }
+        return navigationBarInsetPx + SystemUiHelper.getBottomSafeExtraPx(host.getContext());
     }
 
     public void hideQuickActionPanel() {
@@ -315,10 +340,25 @@ public class BottomToolbarController {
     }
 
     public int getReservedBottomHeightPx() {
-        if (bottomToolbarView != null && bottomToolbarView.getVisibility() == View.VISIBLE) {
-            return bottomToolbarView.getHeight() + host.dpToPx(16);
+        return getReservedBottomHeightPx(host.dpToPx(16));
+    }
+
+    /** Vertical space reserved from parent bottom for FAB / overlays above the bottom toolbar. */
+    public int getReservedBottomHeightPx(int clearancePx) {
+        int clearance = Math.max(0, clearancePx);
+        if (bottomToolbarView == null || bottomToolbarView.getVisibility() != View.VISIBLE) {
+            return clearance + getBottomNavSpacerHeightPx();
         }
-        return 0;
+        int toolbarHeight = bottomToolbarView.getHeight();
+        if (toolbarHeight <= 0) {
+            toolbarHeight = host.dpToPx(TOOLBAR_DEFAULT_HEIGHT_DP) + getBottomNavSpacerHeightPx();
+        }
+        int bottomMargin = 0;
+        ViewGroup.LayoutParams params = bottomToolbarView.getLayoutParams();
+        if (params instanceof ViewGroup.MarginLayoutParams) {
+            bottomMargin = ((ViewGroup.MarginLayoutParams) params).bottomMargin;
+        }
+        return bottomMargin + toolbarHeight + clearance;
     }
 
     private void bindToolbarClick(int viewId, View.OnClickListener listener) {
@@ -558,25 +598,27 @@ public class BottomToolbarController {
     }
 
     private void updateLandscapeToolbarHeight() {
-        if (bottomToolbarView == null || bottomToolbarCompactMode) {
+        View contentHost = resolveBottomToolbarContentHost();
+        if (contentHost == null || bottomToolbarCompactMode) {
             return;
         }
-        ViewGroup.LayoutParams toolbarLp = bottomToolbarView.getLayoutParams();
+        ViewGroup.LayoutParams toolbarLp = contentHost.getLayoutParams();
         if (toolbarLp == null) {
             return;
         }
         int targetHeight = host.dpToPx(TOOLBAR_LANDSCAPE_HEIGHT_DP);
         if (toolbarLp.height != targetHeight) {
             toolbarLp.height = targetHeight;
-            bottomToolbarView.setLayoutParams(toolbarLp);
+            contentHost.setLayoutParams(toolbarLp);
         }
     }
 
     private void updatePortraitToolbarHeight() {
-        if (bottomToolbarView == null || bottomToolbarCompactMode) {
+        View contentHost = resolveBottomToolbarContentHost();
+        if (contentHost == null || bottomToolbarCompactMode) {
             return;
         }
-        ViewGroup.LayoutParams toolbarLp = bottomToolbarView.getLayoutParams();
+        ViewGroup.LayoutParams toolbarLp = contentHost.getLayoutParams();
         if (toolbarLp == null) {
             return;
         }
@@ -585,7 +627,7 @@ public class BottomToolbarController {
                 : host.dpToPx(TOOLBAR_DEFAULT_HEIGHT_DP);
         if (toolbarLp.height != targetHeight) {
             toolbarLp.height = targetHeight;
-            bottomToolbarView.setLayoutParams(toolbarLp);
+            contentHost.setLayoutParams(toolbarLp);
         }
     }
 
@@ -1039,9 +1081,24 @@ public class BottomToolbarController {
         bottomToolbarView.setLayoutParams(mlp);
     }
 
+    private void setBottomToolbarBottomPadding(int bottomPaddingPx) {
+        if (bottomToolbarView == null) {
+            return;
+        }
+        if (bottomToolbarView.getPaddingBottom() == bottomPaddingPx) {
+            return;
+        }
+        bottomToolbarView.setPadding(
+                bottomToolbarView.getPaddingLeft(),
+                bottomToolbarView.getPaddingTop(),
+                bottomToolbarView.getPaddingRight(),
+                bottomPaddingPx);
+    }
+
     private void applyBottomToolbarCompactMode(boolean compactMode) {
         cacheToolbarBaseMetricsIfNeeded();
-        if (bottomToolbarView == null) {
+        View contentHost = resolveBottomToolbarContentHost();
+        if (contentHost == null) {
             return;
         }
         if (bottomToolbarCompactMode == compactMode && toolbarBaseItemWidths.size() == ALL_TOOLBAR_ITEM_IDS.length) {
@@ -1049,12 +1106,12 @@ public class BottomToolbarController {
         }
         bottomToolbarCompactMode = compactMode;
 
-        ViewGroup.LayoutParams toolbarLp = bottomToolbarView.getLayoutParams();
+        ViewGroup.LayoutParams toolbarLp = contentHost.getLayoutParams();
         int targetToolbarHeight = compactMode ? host.dpToPx(TOOLBAR_COMPACT_HEIGHT_DP)
                 : (bottomToolbarBaseHeightPx > 0 ? bottomToolbarBaseHeightPx : host.dpToPx(TOOLBAR_DEFAULT_HEIGHT_DP));
         if (toolbarLp.height != targetToolbarHeight) {
             toolbarLp.height = targetToolbarHeight;
-            bottomToolbarView.setLayoutParams(toolbarLp);
+            contentHost.setLayoutParams(toolbarLp);
         }
 
         for (int itemId : ALL_TOOLBAR_ITEM_IDS) {
@@ -1081,8 +1138,9 @@ public class BottomToolbarController {
     }
 
     private void cacheToolbarBaseMetricsIfNeeded() {
-        if (bottomToolbarView != null && bottomToolbarBaseHeightPx <= 0) {
-            int configured = bottomToolbarView.getLayoutParams() != null ? bottomToolbarView.getLayoutParams().height : 0;
+        View contentHost = resolveBottomToolbarContentHost();
+        if (contentHost != null && bottomToolbarBaseHeightPx <= 0) {
+            int configured = contentHost.getLayoutParams() != null ? contentHost.getLayoutParams().height : 0;
             bottomToolbarBaseHeightPx = configured > 0 ? configured : host.dpToPx(TOOLBAR_DEFAULT_HEIGHT_DP);
         }
         for (int itemId : ALL_TOOLBAR_ITEM_IDS) {
@@ -1162,6 +1220,16 @@ public class BottomToolbarController {
                 child.setVisibility(labelVisibility);
             }
         }
+    }
+
+    private View resolveBottomToolbarContentHost() {
+        if (bottomToolbarContentHost != null) {
+            return bottomToolbarContentHost;
+        }
+        if (bottomToolbarView != null && bottomToolbarView.getChildCount() > 0) {
+            bottomToolbarContentHost = bottomToolbarView.getChildAt(0);
+        }
+        return bottomToolbarContentHost;
     }
 
     private LinearLayout asLinearLayout(View view) {

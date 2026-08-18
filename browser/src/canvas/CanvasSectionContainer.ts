@@ -629,6 +629,57 @@ class CanvasSectionContainer {
 		return mouseSection.dispatchNativeCalcCellTap(point);
 	}
 
+	/**
+	 * Android native MotionEvent coords (physical px, WebView-local) → document twips
+	 * for Writer selecttext. Same client→canvas path as dispatchCalcTapAtClient.
+	 */
+	public clientViewPointToDocumentTwips(
+		clientX: number,
+		clientY: number,
+	): { x: number; y: number } | null {
+		const mouseSection = this.getSectionWithName(
+			app.CSections.MouseControl.name,
+		) as MouseControl;
+		if (!mouseSection || !app.activeDocument) {
+			return null;
+		}
+
+		const syntheticClick = new MouseEvent('click', {
+			bubbles: true,
+			cancelable: true,
+			view: window,
+			clientX: clientX / app.dpiScale,
+			clientY: clientY / app.dpiScale,
+			button: 0,
+			buttons: 0,
+		});
+		const canvasPos = this.convertPositionToCanvasLocale(syntheticClick);
+		const sectionPos = this.convertPositionToSectionLocale(
+			mouseSection,
+			canvasPos,
+		);
+		const point = cool.SimplePoint.fromCorePixels(sectionPos);
+
+		let documentPoint = point.clone();
+		documentPoint.pX +=
+			-app.activeDocument.activeLayout.viewedRectangle.pX1 +
+			this.getDocumentAnchor()[0];
+		documentPoint.pY +=
+			-app.activeDocument.activeLayout.viewedRectangle.pY1 +
+			this.getDocumentAnchor()[1];
+		documentPoint =
+			app.activeDocument.activeLayout.canvasToDocumentPoint(documentPoint);
+
+		if (Number.isNaN(documentPoint.x) || Number.isNaN(documentPoint.y)) {
+			return null;
+		}
+
+		return {
+			x: Math.round(documentPoint.x),
+			y: Math.round(documentPoint.y),
+		};
+	}
+
 	public getWidth(): number {
 		return this.width;
 	}

@@ -36,6 +36,10 @@ static int g_gen_decode_count = 0;
 // 累积字节、按完整 UTF-8 序列切分，完整序列转 UTF-16 后用 NewString（不要求 Modified UTF-8）。
 static std::string g_utf8_pending;
 
+// 上次 prefill 的输入 token 序列，用于 doc_qa 多轮 KV 增量复用：
+// 新输入以旧输入为前缀时，截断 KV 到公共前缀、只 prefill 新增 token，避免每轮全量重算。
+static std::vector<llama_token> g_last_prompt_tokens;
+
 // 返回 s 头部完整 UTF-8 序列占用的字节数；尾部不完整序列不计入（等后续 token 补全）。
 static size_t utf8_complete_bytes(const char *s, size_t n) {
     size_t i = 0;
@@ -278,6 +282,51 @@ static bool decode_prompt_tokens(const std::vector<llama_token> &tokens) {
     return true;
 }
 
+// 带 KV 增量复用的 prefill：新输入以旧输入为前缀时（doc_qa 多轮），截断 KV 到公共前缀、
+// 只 prefill 新增 token；否则清 KV 全量。token 序列确定性由 llama_chat_apply_template 保证。
+static bool prefill_tokens_with_kv_reuse(const std::vector<llama_token> &tokens) {
+    bool reuse = false;
+    size_t prefix = 0;
+    if (!g_last_prompt_tokens.empty() && tokens.size() >= g_last_prompt_tokens.size()) {
+        bool match = true;
+        for (size_t i = 0; i < g_last_prompt_tokens.size(); i++) {
+            if (tokens[i] != g_last_prompt_tokens[i]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            prefix = g_last_prompt_tokens.size();
+            reuse = true;
+        }
+    }
+
+    if (reuse && prefix > 0) {
+        llama_memory_t mem = llama_get_memory(g_ctx);
+        llama_memory_seq_rm(mem, 0, (llama_pos) prefix, -1);
+        g_n_past = (llama_pos) prefix;
+        __android_log_print(ANDROID_LOG_INFO, LO_TAG,
+                            "local_kv_reuse prefix=%zu total=%zu delta=%zu",
+                            prefix, tokens.size(), tokens.size() - prefix);
+        std::vector<llama_token> delta(tokens.begin() + (long) prefix, tokens.end());
+        if (!decode_prompt_tokens(delta)) {
+            return false;
+        }
+    } else {
+        if (reuse && prefix == 0) {
+            __android_log_print(ANDROID_LOG_INFO, LO_TAG, "local_kv_reuse skip_zero_prefix");
+        }
+        llama_memory_clear(llama_get_memory(g_ctx), false);
+        g_n_past = 0;
+        if (!decode_prompt_tokens(tokens)) {
+            return false;
+        }
+    }
+
+    g_last_prompt_tokens = tokens;
+    return true;
+}
+
 static bool smoke_decode_test() {
     const llama_vocab *vocab = llama_model_get_vocab(g_model);
     std::vector<llama_token> tokens(32);
@@ -382,6 +431,7 @@ Java_org_libreoffice_androidlib_ai_LocalInferenceEngine_nativeLoadModel(JNIEnv *
 
     __android_log_print(ANDROID_LOG_INFO, LO_TAG, "local_load_ok ctx=%u batch=%u threads=%d",
                         cparams.n_ctx, cparams.n_batch, n_threads);
+    g_last_prompt_tokens.clear(); // 新模型：首次 prefill 全量
     return JNI_TRUE;
 }
 
@@ -406,6 +456,7 @@ Java_org_libreoffice_androidlib_ai_LocalInferenceEngine_nativeUnloadModel(JNIEnv
     }
     g_n_past = 0;
     g_utf8_pending.clear();
+    g_last_prompt_tokens.clear();
     if (g_backend_inited) {
         llama_backend_free();
         g_backend_inited = false;
@@ -448,7 +499,7 @@ static bool prefill_prompt_text(const char *prompt) {
 
     __android_log_print(ANDROID_LOG_INFO, LO_TAG, "local_prefill_tokens n=%d promptChars=%zu",
                         n_tokens, strlen(prompt));
-    const bool ok = decode_prompt_tokens(tokens);
+    const bool ok = prefill_tokens_with_kv_reuse(tokens);
     if (ok) {
         __android_log_print(ANDROID_LOG_INFO, LO_TAG, "local_prefill_native_ok n_past=%d", (int) g_n_past);
     }

@@ -45,18 +45,19 @@
         <LinearLayout
             android:id="@+id/doc_bottom_toolbar"
             android:layout_width="0dp"
-            android:layout_height="82dp"
-            android:background="#FFFFFF"
+            android:layout_height="wrap_content"
+            android:background="@color/lolib_chrome_toolbar"
             android:elevation="12dp"
-            android:gravity="center_vertical"
+            android:gravity="bottom"
             android:orientation="vertical"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent">
 
+            <!-- Figma 底栏内容区 82dp（164px@2x） -->
             <HorizontalScrollView
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="@dimen/lolib_bottom_toolbar_content_height"
                 android:fillViewport="true"
                 android:overScrollMode="never"
                 android:scrollbars="none">
@@ -319,6 +320,14 @@
                     </LinearLayout>
                 </LinearLayout>
             </HorizontalScrollView>
+
+            <!-- 三键/手势导航预留区：白底延伸，高度由 BottomToolbarController 注入 -->
+            <View
+                android:id="@+id/doc_bottom_nav_spacer"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:background="@color/lolib_chrome_toolbar"
+                android:importantForAccessibility="no" />
         </LinearLayout>
 
         <View
@@ -350,13 +359,14 @@
         <include
             android:id="@+id/selection_popup_panel"
             layout="@layout/lolib_selection_popup"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:elevation="14dp"
             android:visibility="gone"
             app:layout_constraintBottom_toTopOf="@id/doc_bottom_toolbar"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintWidth_max="301dp" />
 
         <View
             android:id="@+id/hyperlink_cell_popup_overlay"
@@ -825,13 +835,14 @@
         </ScrollView>
 
         <LinearLayout
+            android:id="@+id/doc_settings_drawer_footer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingStart="20dp"
             android:paddingTop="10dp"
             android:paddingEnd="20dp"
-            android:paddingBottom="20dp">
+            android:paddingBottom="0dp">
 
             <TextView
                 android:id="@+id/doc_settings_clear_cache"
