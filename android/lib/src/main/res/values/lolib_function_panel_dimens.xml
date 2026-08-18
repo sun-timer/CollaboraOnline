@@ -1,6 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 功能面板顶栏：Figma 750 画布 px ÷2 → dp -->
+    <!-- Figma 125:12715 / 125:12974 预览态功能弹窗（750@2x → ÷2 dp） -->
+    <dimen name="function_sheet_header_height">62dp</dimen>
+    <dimen name="function_sheet_header_padding_h">12dp</dimen>
+    <dimen name="function_sheet_header_padding_v">15dp</dimen>
+    <dimen name="function_sheet_close_size">40dp</dimen>
+    <dimen name="function_sheet_close_icon_padding">8dp</dimen>
+    <dimen name="function_sheet_title_text_size">18sp</dimen>
+    <dimen name="function_sheet_content_margin_h">16dp</dimen>
+    <dimen name="function_sheet_section_gap">11dp</dimen>
+    <dimen name="function_sheet_tab_track_height">38dp</dimen>
+    <dimen name="function_sheet_tab_item_height">30dp</dimen>
+    <dimen name="function_sheet_tab_track_padding_h">4dp</dimen>
+    <dimen name="function_sheet_tab_track_padding_v">2dp</dimen>
+    <dimen name="function_sheet_tab_gap">4dp</dimen>
+    <dimen name="function_sheet_tab_text_size">16sp</dimen>
+    <dimen name="function_sheet_row_height">64dp</dimen>
+    <dimen name="function_sheet_row_padding_v">16dp</dimen>
+    <dimen name="function_sheet_row_padding_h">16dp</dimen>
+    <!-- Figma 125:12715 / 125:12974 预览态弹窗固定总高（750@2x ÷2） -->
+    <dimen name="function_sheet_preview_height_file">348dp</dimen>
+    <dimen name="function_sheet_preview_height_review">284dp</dimen>
+    <dimen name="function_sheet_row_icon_size">32dp</dimen>
+    <dimen name="function_sheet_row_icon_text_gap">12dp</dimen>
+    <dimen name="function_sheet_row_text_size">18sp</dimen>
+    <dimen name="function_sheet_divider_height">1dp</dimen>
+
+    <!-- 编辑态功能面板顶栏 -->
     <dimen name="function_panel_header_action_btn_size">40dp</dimen>
     <dimen name="function_panel_icon_ai_width">17dp</dimen>
     <dimen name="function_panel_icon_ai_height">18.22dp</dimen>
@@ -8,4 +34,11 @@
     <dimen name="function_panel_icon_collapse_size">24dp</dimen>
     <dimen name="function_panel_header_divider_width">1dp</dimen>
     <dimen name="function_panel_header_divider_height">26.5dp</dimen>
+
+    <!-- 文档顶栏：关闭按钮（Figma 80×80@2x 触控区） -->
+    <dimen name="doc_top_toolbar_close_size">40dp</dimen>
+    <dimen name="doc_top_toolbar_close_icon_padding">8dp</dimen>
+    <dimen name="doc_top_toolbar_content_padding_h">12dp</dimen>
+    <!-- inset 应用前占位，避免标题/按钮先画进状态栏 -->
+    <dimen name="lolib_status_plate_min_height">24dp</dimen>
 </resources>

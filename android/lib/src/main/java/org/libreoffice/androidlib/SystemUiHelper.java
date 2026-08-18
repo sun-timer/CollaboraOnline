@@ -225,6 +225,32 @@ public final class SystemUiHelper {
         } else {
             topToolbar.setPadding(0, statusBarInsetPx(topToolbar.getContext(), insets), 0, 0);
         }
+        applyTopToolbarContentHorizontalInsets(topToolbar, insets);
+    }
+
+    /** Keep toolbar buttons out of cutout / waterfall side regions (landscape camera hole, curved edges). */
+    public static void applyTopToolbarContentHorizontalInsets(View topToolbar, SafeAreaInsets insets) {
+        if (topToolbar == null || insets == null) {
+            return;
+        }
+        int previewBasePad = topToolbar.getResources().getDimensionPixelSize(
+                R.dimen.doc_top_toolbar_content_padding_h);
+        int editStartPad = topToolbar.getResources().getDimensionPixelSize(
+                R.dimen.top_toolbar_edit_padding_start);
+        int editEndPad = topToolbar.getResources().getDimensionPixelSize(
+                R.dimen.top_toolbar_edit_padding_end);
+        applyHorizontalContentPadding(topToolbar.findViewById(R.id.top_toolbar_preview),
+                insets.left + previewBasePad, insets.right + previewBasePad);
+        applyHorizontalContentPadding(topToolbar.findViewById(R.id.top_toolbar_edit),
+                insets.left + editStartPad, insets.right + editEndPad);
+    }
+
+    public static void applyHorizontalContentPadding(View view, int leftPx, int rightPx) {
+        if (view == null) {
+            return;
+        }
+        view.setPaddingRelative(Math.max(0, leftPx), view.getPaddingTop(),
+                Math.max(0, rightPx), view.getPaddingBottom());
     }
 
     /** Explicit bottom nav reservation strip (三键导航区) below the 82dp toolbar band. */
@@ -313,6 +339,10 @@ public final class SystemUiHelper {
         return resolveNavigationBottomInset(context, insets);
     }
 
+    /**
+     * Bottom navigation / gesture obstruction. Prefers {@link WindowInsetsCompat} (incl.
+     * {@code tappableElement}); static fallbacks apply only when the system reports 0.
+     */
     public static int resolveNavigationBottomInset(Context context, WindowInsetsCompat insets) {
         if (insets == null) {
             return context != null ? getGestureMinInsetPx(context) : 0;
@@ -323,12 +353,41 @@ public final class SystemUiHelper {
         Insets cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout());
         int resolved = Math.max(nav.bottom,
                 Math.max(gesture.bottom, Math.max(tappable.bottom, cutout.bottom)));
-        if (context != null && isThreeButtonNavigation(context)) {
-            resolved = Math.max(resolved, getNavBarMinInsetPx(context));
-        } else if (resolved <= 0 && context != null) {
-            resolved = getGestureMinInsetPx(context);
+        if (resolved > 0) {
+            return resolved;
         }
-        return resolved;
+        if (context == null) {
+            return 0;
+        }
+        if (isThreeButtonNavigation(context)) {
+            return getNavBarMinInsetPx(context);
+        }
+        return getGestureMinInsetPx(context);
+    }
+
+    /** Left edge: systemBars + displayCutout + waterfall (curved / waterfall displays). */
+    public static int resolveHorizontalSafeInsetLeft(WindowInsetsCompat insets) {
+        return resolveSideObstructionInsets(insets).left;
+    }
+
+    /** Right edge: systemBars + displayCutout + waterfall. */
+    public static int resolveHorizontalSafeInsetRight(WindowInsetsCompat insets) {
+        return resolveSideObstructionInsets(insets).right;
+    }
+
+    private static Insets resolveSideObstructionInsets(WindowInsetsCompat insets) {
+        if (insets == null) {
+            return Insets.NONE;
+        }
+        // Waterfall edges are reported as part of displayCutout since API 30,
+        // so max(systemBars, cutout) already covers them.
+        Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+        Insets cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout());
+        return Insets.of(
+                Math.max(systemBars.left, cutout.left),
+                Math.max(systemBars.top, cutout.top),
+                Math.max(systemBars.right, cutout.right),
+                Math.max(systemBars.bottom, cutout.bottom));
     }
 
     private static boolean isThreeButtonNavigation(Context context) {

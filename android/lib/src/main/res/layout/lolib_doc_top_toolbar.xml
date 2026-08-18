@@ -12,10 +12,11 @@
         android:id="@+id/doc_top_status_plate"
         android:layout_width="match_parent"
         android:layout_height="0dp"
+        android:minHeight="@dimen/lolib_status_plate_min_height"
         android:background="@color/lolib_chrome_status_plate"
         android:importantForAccessibility="no" />
 
-    <!-- Preview / Viewing mode — Figma 标题栏2 内容区 56dp -->
+    <!-- Preview / Viewing mode — Figma 标题栏2 内容区 56dp（在 status plate 下方，不在状态栏内） -->
     <LinearLayout
         android:id="@+id/top_toolbar_preview"
         android:layout_width="match_parent"
@@ -23,8 +24,8 @@
         android:background="@color/lolib_chrome_status_plate"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="4dp"
-        android:paddingEnd="8dp">
+        android:paddingStart="@dimen/doc_top_toolbar_content_padding_h"
+        android:paddingEnd="@dimen/doc_top_toolbar_content_padding_h">
 
         <ImageButton
             android:id="@+id/top_btn_back"
@@ -192,12 +193,12 @@
 
             <ImageButton
                 android:id="@+id/top_btn_close_edit"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="@dimen/doc_top_toolbar_close_size"
+                android:layout_height="@dimen/doc_top_toolbar_close_size"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="关闭编辑"
-                android:padding="12dp"
-                android:scaleType="fitCenter"
+                android:padding="@dimen/doc_top_toolbar_close_icon_padding"
+                android:scaleType="centerInside"
                 android:src="@drawable/lolib_ic_top_close_edit" />
         </LinearLayout>
     </FrameLayout>

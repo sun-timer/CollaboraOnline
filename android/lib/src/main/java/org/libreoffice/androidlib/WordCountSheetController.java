@@ -181,6 +181,8 @@ public class WordCountSheetController {
         BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
         options.logTag = "WordCountSheet";
         options.draggable = false;
+        options.applyNavBarPadding = false;
+        BottomSheetAnchorHelper.clearAppliedHeight(dialog);
         BottomSheetAnchorHelper.expandWrapContent(dialog, 0.92f, options);
     }
 }

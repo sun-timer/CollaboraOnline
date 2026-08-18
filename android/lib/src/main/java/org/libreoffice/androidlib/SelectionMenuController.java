@@ -42,7 +42,11 @@ public class SelectionMenuController {
 
         void executeUnoCommand(String command);
 
-        void performPasteCommand();
+        void copySelectionToSystemClipboard();
+
+        void cutSelectionToSystemClipboard();
+
+        void pasteFromSystemClipboard();
 
         void saveDocument();
 
@@ -84,25 +88,45 @@ public class SelectionMenuController {
         overlayView.setOnClickListener(v -> hide());
         menuView.setClickable(true);
 
-        host.findViewById(R.id.selection_op_copy).setOnClickListener(v -> onCopy());
-        host.findViewById(R.id.selection_op_delete).setOnClickListener(v -> onDelete());
-        host.findViewById(R.id.selection_op_paste).setOnClickListener(v -> onPaste());
-        host.findViewById(R.id.selection_op_cut).setOnClickListener(v -> onCut());
-        host.findViewById(R.id.selection_op_select_all).setOnClickListener(v -> onSelectAll());
-        host.findViewById(R.id.selection_op_image_edit).setOnClickListener(v -> onImageEdit());
-        host.findViewById(R.id.selection_op_save).setOnClickListener(v -> onSave());
+        bindOp(R.id.selection_op_copy, "copy", this::onCopy);
+        bindOp(R.id.selection_op_delete, "delete", this::onDelete);
+        bindOp(R.id.selection_op_paste, "paste", this::onPaste);
+        bindOp(R.id.selection_op_cut, "cut", this::onCut);
+        bindOp(R.id.selection_op_select_all, "select_all", this::onSelectAll);
+        bindOp(R.id.selection_op_image_edit, "image_edit", this::onImageEdit);
+        bindOp(R.id.selection_op_save, "save", this::onSave);
 
-        host.findViewById(R.id.selection_op_translate).setOnClickListener(v -> onAiOperation("translate"));
-        host.findViewById(R.id.selection_op_outline).setOnClickListener(v -> onAiOperation("outline"));
-        host.findViewById(R.id.selection_op_continue_write).setOnClickListener(v -> onAiOperation("continue_write"));
-        host.findViewById(R.id.selection_op_article_generate).setOnClickListener(v -> onAiOperation("article_generate"));
-        host.findViewById(R.id.selection_op_expand).setOnClickListener(v -> onAiOperation("expand"));
-        host.findViewById(R.id.selection_op_polish).setOnClickListener(v -> onAiOperation("polish"));
-        host.findViewById(R.id.selection_op_condense).setOnClickListener(v -> onAiOperation("condense"));
-        host.findViewById(R.id.selection_op_rewrite).setOnClickListener(v -> onAiOperation("rewrite"));
+        bindOp(R.id.selection_op_translate, "translate", () -> onAiOperation("translate"));
+        bindOp(R.id.selection_op_outline, "outline", () -> onAiOperation("outline"));
+        bindOp(R.id.selection_op_continue_write, "continue_write", () -> onAiOperation("continue_write"));
+        bindOp(R.id.selection_op_article_generate, "article_generate", () -> onAiOperation("article_generate"));
+        bindOp(R.id.selection_op_expand, "expand", () -> onAiOperation("expand"));
+        bindOp(R.id.selection_op_polish, "polish", () -> onAiOperation("polish"));
+        bindOp(R.id.selection_op_condense, "condense", () -> onAiOperation("condense"));
+        bindOp(R.id.selection_op_rewrite, "rewrite", () -> onAiOperation("rewrite"));
 
         updateEditActionVisibility();
         hide();
+    }
+
+    private interface OpAction {
+        void run();
+    }
+
+    /** Prefer menuView subtree lookup (include layout); fall back to activity root. */
+    private void bindOp(int viewId, String opName, OpAction action) {
+        View target = menuView != null ? menuView.findViewById(viewId) : null;
+        if (target == null) {
+            target = host.findViewById(viewId);
+        }
+        if (target == null) {
+            Log.e(TAG, "selection_op_missing id=" + opName + " viewId=" + viewId);
+            return;
+        }
+        target.setOnClickListener(v -> {
+            Log.i(TAG, "selection_op_click op=" + opName);
+            action.run();
+        });
     }
 
     /** @param windowX anchor X in document-area coordinates (from JS). */
@@ -126,6 +150,9 @@ public class SelectionMenuController {
 
         menuView.setVisibility(View.VISIBLE);
         overlayView.setVisibility(View.VISIBLE);
+        // 保证浮层在 WebView/底栏之上接收触摸（部分机型 elevation 不足会点透）
+        overlayView.setElevation(58f);
+        menuView.setElevation(60f);
         menuView.bringToFront();
         overlayView.bringToFront();
         ViewGroup parent = (ViewGroup) menuView.getParent();
@@ -259,12 +286,12 @@ public class SelectionMenuController {
     }
 
     private void onSelectAll() {
-        hide();
         host.executeUnoCommand(".uno:SelectAll");
+        hide();
     }
 
     private void onCopy() {
-        host.executeUnoCommand(".uno:Copy");
+        host.copySelectionToSystemClipboard();
         hide();
     }
 
@@ -273,8 +300,8 @@ public class SelectionMenuController {
             toastReadOnlyDocument();
             return;
         }
-        host.ensureEditModeThen(() -> {
-            host.performPasteCommand();
+        runEditSensitiveClipboardAction(() -> {
+            host.pasteFromSystemClipboard();
             hide();
         });
     }
@@ -284,10 +311,19 @@ public class SelectionMenuController {
             toastReadOnlyDocument();
             return;
         }
-        host.ensureEditModeThen(() -> {
-            host.executeUnoCommand(".uno:Cut");
+        runEditSensitiveClipboardAction(() -> {
+            host.cutSelectionToSystemClipboard();
             hide();
         });
+    }
+
+    /** Run immediately in edit mode; otherwise switch to edit first (keeps UNO after mode ready). */
+    private void runEditSensitiveClipboardAction(Runnable action) {
+        if (host.isEditModeActive()) {
+            action.run();
+        } else {
+            host.ensureEditModeThen(action);
+        }
     }
 
     private void onDelete() {

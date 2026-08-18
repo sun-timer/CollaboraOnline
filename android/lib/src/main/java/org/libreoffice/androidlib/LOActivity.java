@@ -275,6 +275,9 @@ public class LOActivity extends AppCompatActivity {
 
     private ClipboardManager clipboardManager;
     private ClipData clipData;
+    private static final long[] CLIPBOARD_POPULATE_RETRY_DELAYS_MS = {150L, 350L, 650L};
+    private int clipboardPopulateAttempt = 0;
+    private Runnable clipboardPopulateRetryRunnable;
     private Thread nativeMsgThread;
     private Handler nativeHandler;
     private Looper nativeLooper;
@@ -354,6 +357,7 @@ public class LOActivity extends AppCompatActivity {
     private BottomSheetDialog aiPanelDialog;
     private AlertDialog aiModelRequiredDialog;
     private BottomSheetDialog functionPanelDialog;
+    private View previewFunctionPanel;
     private EditText aiPromptInput;
     private TextView aiStatusText;
     private TextView aiOutputText;
@@ -1136,9 +1140,11 @@ public class LOActivity extends AppCompatActivity {
                     }
 
                     ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
-                    mlp.leftMargin = insets.left;
+                    WindowInsetsCompat compatInsets =
+                            WindowInsetsCompat.toWindowInsetsCompat(windowInsets, v);
+                    mlp.leftMargin = SystemUiHelper.resolveHorizontalSafeInsetLeft(compatInsets);
                     mlp.topMargin = 0;
-                    mlp.rightMargin = insets.right;
+                    mlp.rightMargin = SystemUiHelper.resolveHorizontalSafeInsetRight(compatInsets);
                     // Navigation bar inset is applied as bottom-toolbar padding so the white
                     // background extends into the gesture area; keep WebView flush above the toolbar.
                     mlp.bottomMargin = 0;
@@ -1393,10 +1399,11 @@ public class LOActivity extends AppCompatActivity {
                 SystemUiHelper.findDocumentTopToolbar(findViewById(R.id.doc_main_content)), insets);
         View docDrawer = findViewById(R.id.doc_settings_drawer);
         if (docDrawer != null) {
-            docDrawer.setPadding(0, insets.top, 0, 0);
+            docDrawer.setPadding(insets.left, insets.top, insets.right, 0);
         }
         SystemUiHelper.applyDrawerFooterInsets(
                 findViewById(R.id.doc_settings_drawer_footer), insets, dpToPx(12));
+        ensureBottomToolbarController().applyHorizontalSafeInsets(insets.left, insets.right);
         ensureBottomToolbarController().applyImeState(
                 insets.imeVisible, insets.imeBottom, insets.navigationBottom);
         if (functionPanelDialog != null && functionPanelDialog.isShowing()) {
@@ -4608,9 +4615,10 @@ public class LOActivity extends AppCompatActivity {
         if (parent == null) {
             return;
         }
-        float maxX = Math.max(0f, parent.getWidth() - fab.getWidth());
+        float minX = Math.max(0f, lastSafeAreaInsets.left);
+        float maxX = Math.max(minX, parent.getWidth() - fab.getWidth() - lastSafeAreaInsets.right);
         float maxY = getFabMaxY(parent, fab);
-        float clampedX = clamp(fab.getX(), 0f, maxX);
+        float clampedX = clamp(fab.getX(), minX, maxX);
         float clampedY = clamp(fab.getY(), 0f, maxY);
         if (clampedX != fab.getX() || clampedY != fab.getY()) {
             fab.setX(clampedX);
@@ -5046,8 +5054,18 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
-                public void performPasteCommand() {
-                    LOActivity.this.performPasteCommand();
+                public void copySelectionToSystemClipboard() {
+                    LOActivity.this.copySelectionToSystemClipboard();
+                }
+
+                @Override
+                public void cutSelectionToSystemClipboard() {
+                    LOActivity.this.cutSelectionToSystemClipboard();
+                }
+
+                @Override
+                public void pasteFromSystemClipboard() {
+                    LOActivity.this.pasteFromSystemClipboard();
                 }
 
                 @Override
@@ -9717,10 +9735,25 @@ public class LOActivity extends AppCompatActivity {
      * 使 AI 按钮点击时能立即拿到选中文本（编辑模式 JNI getTextSelection 主路径）。
      */
     /*package*/ void preReadSelectionForPopup() {
-        getSelectedTextFromJs(selection -> {
-            aiOpPendingSelection = selection == null ? "" : selection;
-            Log.i(TAG, "selection_popup_preread chars=" + aiOpPendingSelection.length());
-        });
+        new Thread(() -> {
+            String nativeText = getTextSelection("text/plain;charset=utf-8");
+            if (nativeText != null && !nativeText.isEmpty()) {
+                final String plain = nativeText;
+                runOnUiThread(() -> {
+                    aiOpPendingSelection = plain;
+                    Log.i(TAG, "selection_popup_preread_native chars=" + plain.length());
+                });
+            }
+            getSelectedTextFromJs(selection -> {
+                if (selection != null && !selection.isEmpty()) {
+                    aiOpPendingSelection = selection;
+                    Log.i(TAG, "selection_popup_preread_js chars=" + selection.length());
+                } else if (aiOpPendingSelection == null) {
+                    aiOpPendingSelection = "";
+                    Log.i(TAG, "selection_popup_preread_empty");
+                }
+            });
+        }, "selection-popup-preread").start();
     }
 
     private static final String JS_CALC_RANGE_FROM_LAYER =
@@ -10097,8 +10130,75 @@ public class LOActivity extends AppCompatActivity {
         getMainHandler().postDelayed(action, 120L);
     }
 
-    private void performPasteCommand() {
-        postMobileMessage("uno .uno:Paste");
+    /** Copy current LOK selection to the Android system clipboard (Writer selection menu). */
+    private void copySelectionToSystemClipboard() {
+        primeSystemClipboardFromSelection("copy");
+        dispatchClipboardUnoCommand(".uno:Copy");
+    }
+
+    /** Cut current LOK selection: system clipboard + core Cut. */
+    private void cutSelectionToSystemClipboard() {
+        primeSystemClipboardFromSelection("cut");
+        dispatchClipboardUnoCommand(".uno:Cut");
+    }
+
+    /**
+     * Paste from Android system clipboard into the document.
+     * In-app copy leaves content in LOK internal clipboard — still need .uno:Paste.
+     */
+    private void pasteFromSystemClipboard() {
+        requestWebViewFocusForPanelAction("paste");
+        boolean lokInternal = performPaste();
+        if (lokInternal) {
+            Log.i(TAG, "paste_from_clipboard lok_internal");
+        }
+        // JNI postUnoCommand：绕过 postMobileMessage → beforeMessageFromWebView，
+        // 避免 blocked_mobile_wizard_uno 在编辑模式切换后 4s 内拦截 .uno:Paste。
+        dispatchClipboardUnoCommand(".uno:Paste");
+        nudgeSocketIfStalled("paste");
+    }
+
+    /**
+     * 选区菜单 Copy/Cut/Paste：直接 JNI → LOK，不经过 WebView fake socket。
+     * populateClipboard 由 schedulePopulateClipboardWithRetry 在 Copy/Cut 后单独调度。
+     */
+    private void dispatchClipboardUnoCommand(String command) {
+        if (command == null || command.trim().isEmpty()) {
+            return;
+        }
+        String normalized = command.trim();
+        Log.i(TAG, "dispatch_clipboard_uno command=" + normalized);
+        postUnoCommand(normalized, "{}", false);
+        if (".uno:Copy".equals(normalized) || ".uno:Cut".equals(normalized)) {
+            schedulePopulateClipboardWithRetry();
+        }
+    }
+
+    /** Seed system clipboard from cached/JNI selection before UNO Copy/Cut (selection still active). */
+    private void primeSystemClipboardFromSelection(String reason) {
+        if (aiOpPendingSelection != null && !aiOpPendingSelection.isEmpty()) {
+            setSystemClipboardPlainText(aiOpPendingSelection);
+            Log.i(TAG, "selection_" + reason + "_plain chars=" + aiOpPendingSelection.length());
+            return;
+        }
+        new Thread(() -> {
+            String text = getTextSelection("text/plain;charset=utf-8");
+            if (text != null && !text.isEmpty()) {
+                final String plain = text;
+                runOnUiThread(() -> {
+                    setSystemClipboardPlainText(plain);
+                    Log.i(TAG, "selection_" + reason + "_plain_jni chars=" + plain.length());
+                });
+            }
+        }, "selection-" + reason + "-prime").start();
+    }
+
+    private void setSystemClipboardPlainText(String text) {
+        if (clipboardManager == null || text == null || text.isEmpty()) {
+            return;
+        }
+        clipData = ClipData.newPlainText(ClipDescription.MIMETYPE_TEXT_PLAIN, text);
+        clipboardManager.setPrimaryClip(clipData);
     }
 
     private void setupTopToolbar() {
@@ -10761,6 +10861,7 @@ public class LOActivity extends AppCompatActivity {
             tabReview.setTextColor(Color.parseColor("#6A6A6A"));
             fileList.setVisibility(View.VISIBLE);
             reviewList.setVisibility(View.GONE);
+            schedulePreviewFunctionPanelHeightUpdate();
         };
         View.OnClickListener showReviewTab = v -> {
             tabReview.setBackgroundResource(R.drawable.lolib_bg_function_tab_active);
@@ -10769,6 +10870,7 @@ public class LOActivity extends AppCompatActivity {
             tabFile.setTextColor(Color.parseColor("#6A6A6A"));
             reviewList.setVisibility(View.VISIBLE);
             fileList.setVisibility(View.GONE);
+            schedulePreviewFunctionPanelHeightUpdate();
         };
         tabFile.setOnClickListener(showFileTab);
         tabReview.setOnClickListener(showReviewTab);
@@ -10795,15 +10897,45 @@ public class LOActivity extends AppCompatActivity {
                     executeUnoCommand(".uno:WordCountDialog")));
         }
 
+        previewFunctionPanel = panel;
         functionPanelDialog = new BottomSheetDialog(this);
         functionPanelDialog.setContentView(panel);
-        functionPanelDialog.setOnDismissListener(dialog -> functionPanelDialog = null);
+        functionPanelDialog.setOnDismissListener(dialog -> {
+            functionPanelDialog = null;
+            previewFunctionPanel = null;
+        });
         functionPanelDialog.setOnShowListener(d -> expandFunctionPanelSheet());
         functionPanelDialog.show();
     }
 
     int getDocumentBottomChromeHeightPx() {
         return ensureBottomToolbarController().getReservedBottomHeightPx(0);
+    }
+
+    private void schedulePreviewFunctionPanelHeightUpdate() {
+        if (functionPanelDialog == null || !functionPanelDialog.isShowing()) {
+            return;
+        }
+        View anchor = previewFunctionPanel != null
+                ? previewFunctionPanel
+                : functionPanelDialog.getWindow().getDecorView();
+        anchor.post(this::expandFunctionPanelSheet);
+    }
+
+    private int resolvePreviewFunctionPanelHeightPx() {
+        if (previewFunctionPanel == null) {
+            return getResources().getDimensionPixelSize(R.dimen.function_sheet_preview_height_file);
+        }
+        View reviewList = previewFunctionPanel.findViewById(R.id.function_review_list);
+        if (reviewList != null && reviewList.getVisibility() == View.VISIBLE) {
+            int height = getResources().getDimensionPixelSize(R.dimen.function_sheet_preview_height_review);
+            View wordCountAction = previewFunctionPanel.findViewById(R.id.function_action_word_count);
+            if (wordCountAction != null && wordCountAction.getVisibility() != View.VISIBLE) {
+                height -= getResources().getDimensionPixelSize(R.dimen.function_sheet_row_height);
+            }
+            return height;
+        }
+        return getResources().getDimensionPixelSize(R.dimen.function_sheet_preview_height_file);
     }
 
     private void expandFunctionPanelSheet() {
@@ -10819,9 +10951,19 @@ public class LOActivity extends AppCompatActivity {
         BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
         options.draggable = false;
         options.hideable = false;
+        options.applyNavBarPadding = false;
         options.logTag = TAG;
-        BottomSheetAnchorHelper.expandFunctionPanel(
-                functionPanelDialog, BottomSheetAnchorHelper.PREVIEW_FUNCTION_PANEL_HEIGHT_RATIO, options);
+        BottomSheetAnchorHelper.clearAppliedHeight(functionPanelDialog);
+        int targetHeight = resolvePreviewFunctionPanelHeightPx();
+        BottomSheetAnchorHelper.expandFixed(functionPanelDialog, targetHeight, options);
+        if (bottomSheet.getChildCount() > 0) {
+            View contentRoot = bottomSheet.getChildAt(0);
+            ViewGroup.LayoutParams contentParams = contentRoot.getLayoutParams();
+            if (contentParams != null) {
+                contentParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                contentRoot.setLayoutParams(contentParams);
+            }
+        }
     }
 
     private void runFunctionAction(Runnable action) {
@@ -12499,17 +12641,31 @@ public class LOActivity extends AppCompatActivity {
             Log.i(TAG, "focus_ime_hide_selection_menu");
             menuController.hide();
         }
+        requestDocumentFocusAndShowIme(false);
+        // 功能面板/BottomSheet 关闭后 IME 可能被窗口焦点切换打断，短延迟重试一次。
+        getMainHandler().postDelayed(() -> requestDocumentFocusAndShowIme(true), 150L);
+        nudgeSocketIfStalled("show_ime_focus_doc");
+    }
+
+    private void requestDocumentFocusAndShowIme(boolean retry) {
+        if (mWebView == null) {
+            return;
+        }
+        cancelImeClearDeferredRunnable();
+        cancelImeAllowResetRunnable();
         setImeAllowedByUserSustained(true);
         mWebView.requestFocus();
         mWebView.evaluateJavascript(
                 "(function(){if(window.app&&app.map){app.map.focus(true);}return true;})();",
                 null);
-        // Explicitly show the soft keyboard.
         InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
         if (imm != null) {
             imm.showSoftInput(mWebView, InputMethodManager.SHOW_IMPLICIT);
         }
-        nudgeSocketIfStalled("show_ime_focus_doc");
+        if (retry) {
+            Log.d(TAG, "focus_ime_retry webViewFocused=" + mWebView.isFocused()
+                    + " imeAllowed=" + mWebView.isImeAllowedByUser());
+        }
     }
 
     /** Hide the soft keyboard and reset IME state on the WebView. */
@@ -18772,7 +18928,7 @@ public class LOActivity extends AppCompatActivity {
                 switch (messageAndParameterArray[1]) {
                     case ".uno:Copy":
                     case ".uno:Cut":
-                        schedulePopulateClipboard();
+                        schedulePopulateClipboardWithRetry();
                         break;
                     default:
                         break;
@@ -18813,51 +18969,102 @@ public class LOActivity extends AppCompatActivity {
         return CLIPBOARD_COOL_SIGNATURE + Long.toString(loadDocumentMillis);
     }
 
-    /// Needs to be executed after the .uno:Copy / Paste has executed
-    private static final long CLIPBOARD_POPULATE_DELAY_MS = 150L;
-
-    private void schedulePopulateClipboard() {
-        getMainHandler().postDelayed(this::populateClipboard, CLIPBOARD_POPULATE_DELAY_MS);
+    private void schedulePopulateClipboardWithRetry() {
+        clipboardPopulateAttempt = 0;
+        if (clipboardPopulateRetryRunnable != null) {
+            getMainHandler().removeCallbacks(clipboardPopulateRetryRunnable);
+        }
+        clipboardPopulateRetryRunnable = () -> {
+            if (populateClipboard()) {
+                return;
+            }
+            clipboardPopulateAttempt++;
+            if (clipboardPopulateAttempt < CLIPBOARD_POPULATE_RETRY_DELAYS_MS.length) {
+                getMainHandler().postDelayed(
+                        clipboardPopulateRetryRunnable,
+                        CLIPBOARD_POPULATE_RETRY_DELAYS_MS[clipboardPopulateAttempt]);
+            } else {
+                tryPlainTextSelectionFallback();
+            }
+        };
+        getMainHandler().postDelayed(
+                clipboardPopulateRetryRunnable,
+                CLIPBOARD_POPULATE_RETRY_DELAYS_MS[0]);
     }
 
-    /// Needs to be executed after the .uno:Copy / Paste has executed
-    public final void populateClipboard() {
+    /** After .uno:Copy / Cut: export LOK clipboard to Android; return true if non-empty. */
+    public final boolean populateClipboard() {
         File clipboardFile = new File(getApplicationContext().getCacheDir(), CLIPBOARD_FILE_PATH);
-        if (clipboardFile.exists())
+        if (clipboardFile.exists()) {
             clipboardFile.delete();
+        }
 
         LokClipboardData clipboardData = new LokClipboardData();
-        if (!LOActivity.this.getClipboardContent(clipboardData))
-            Log.e(TAG, "no clipboard to copy");
-        else {
-            clipboardData.writeToFile(clipboardFile);
+        if (!LOActivity.this.getClipboardContent(clipboardData)) {
+            Log.w(TAG, "populate_clipboard_no_lok_content attempt=" + clipboardPopulateAttempt);
+            return false;
+        }
+        clipboardData.writeToFile(clipboardFile);
 
-            String text = clipboardData.getText();
-            String html = clipboardData.getHtml();
+        String text = clipboardData.getText();
+        String html = clipboardData.getHtml();
 
-            if (html != null) {
-                int idx = html.indexOf("<meta name=\"generator\" content=\"");
+        if (html != null) {
+            int idx = html.indexOf("<meta name=\"generator\" content=\"");
 
-                if (idx < 0)
-                    idx = html.indexOf("<meta http-equiv=\"content-type\" content=\"text/html;");
+            if (idx < 0) {
+                idx = html.indexOf("<meta http-equiv=\"content-type\" content=\"text/html;");
+            }
 
-                if (idx >= 0) { // inject our magic
-                    StringBuffer newHtml = new StringBuffer(html);
-                    newHtml.insert(idx, "<meta name=\"origin\" content=\"" + getClipboardMagic() + "\"/>\n");
-                    html = newHtml.toString();
-                }
+            if (idx >= 0) {
+                StringBuffer newHtml = new StringBuffer(html);
+                newHtml.insert(idx, "<meta name=\"origin\" content=\"" + getClipboardMagic() + "\"/>\n");
+                html = newHtml.toString();
+            }
 
-                if (text == null || text.length() == 0)
-                    Log.i(TAG, "set text to clipoard with: text '" + text + "' and html '" + html + "'");
+            clipData = ClipData.newHtmlText(ClipDescription.MIMETYPE_TEXT_HTML, text, html);
+            clipboardManager.setPrimaryClip(clipData);
+            Log.i(TAG, "populate_clipboard_html chars="
+                    + (text == null ? 0 : text.length()));
+            return true;
+        }
+        if (text != null && !text.isEmpty()) {
+            clipData = ClipData.newPlainText(ClipDescription.MIMETYPE_TEXT_PLAIN, text);
+            clipboardManager.setPrimaryClip(clipData);
+            Log.i(TAG, "populate_clipboard_plain chars=" + text.length());
+            return true;
+        }
+        return false;
+    }
 
-                clipData = ClipData.newHtmlText(ClipDescription.MIMETYPE_TEXT_HTML, text, html);
-                clipboardManager.setPrimaryClip(clipData);
-            } else if (text != null && !text.isEmpty()) {
-                clipData = ClipData.newPlainText(ClipDescription.MIMETYPE_TEXT_PLAIN, text);
-                clipboardManager.setPrimaryClip(clipData);
-                Log.i(TAG, "set plain text to clipboard chars=" + text.length());
+    /** Last resort when LOK clipboard export is empty but a text selection still exists. */
+    private void tryPlainTextSelectionFallback() {
+        if (clipboardManager == null) {
+            return;
+        }
+        ClipData current = clipboardManager.getPrimaryClip();
+        if (current != null && current.getItemCount() > 0) {
+            CharSequence existing = current.getItemAt(0).getText();
+            if (existing != null && existing.length() > 0) {
+                return;
             }
         }
+        new Thread(() -> {
+            String text = getTextSelection("text/plain;charset=utf-8");
+            if (text == null || text.isEmpty()) {
+                String cached = aiOpPendingSelection;
+                if (cached != null && !cached.isEmpty()) {
+                    text = cached;
+                }
+            }
+            if (text != null && !text.isEmpty()) {
+                final String plain = text;
+                runOnUiThread(() -> {
+                    setSystemClipboardPlainText(plain);
+                    Log.i(TAG, "clipboard_fallback_plain chars=" + plain.length());
+                });
+            }
+        }, "clipboard-fallback").start();
     }
 
     /// Do the paste, and return true if we should short-circuit the paste locally

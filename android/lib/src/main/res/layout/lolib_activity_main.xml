@@ -56,6 +56,7 @@
 
             <!-- Figma 底栏内容区 82dp（164px@2x） -->
             <HorizontalScrollView
+                android:id="@+id/doc_bottom_toolbar_content"
                 android:layout_width="match_parent"
                 android:layout_height="@dimen/lolib_bottom_toolbar_content_height"
                 android:fillViewport="true"

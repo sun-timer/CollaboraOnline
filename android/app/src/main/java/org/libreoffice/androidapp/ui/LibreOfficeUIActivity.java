@@ -1068,6 +1068,11 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             applyHomeDrawerSafeArea(insets);
             SystemUiHelper.applyStatusBarPlateHeight(
                     findViewById(R.id.home_top_status_plate), insets);
+            int homeStartPad = getResources().getDimensionPixelSize(R.dimen.home_top_bar_padding_start);
+            int homeEndPad = getResources().getDimensionPixelSize(R.dimen.home_top_bar_padding_end);
+            SystemUiHelper.applyHorizontalContentPadding(
+                    findViewById(R.id.home_top_content_row),
+                    insets.left + homeStartPad, insets.right + homeEndPad);
         });
 
         homeLeftIcon.setOnClickListener(v -> drawerLayout.openDrawer(GravityCompat.START));
@@ -1204,7 +1209,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     private void applyHomeDrawerSafeArea(SafeAreaInsets insets) {
         View drawerPanel = findViewById(R.id.navigation_drawer_panel);
         if (drawerPanel != null) {
-            drawerPanel.setPadding(0, insets.top, 0, 0);
+            drawerPanel.setPadding(insets.left, insets.top, insets.right, 0);
         }
         SystemUiHelper.applyDrawerFooterInsets(
                 findViewById(R.id.navigation_drawer_footer), insets, dpToPx(12));

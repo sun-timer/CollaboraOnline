@@ -37,10 +37,12 @@
                 android:id="@+id/home_top_status_plate"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
+                android:minHeight="@dimen/lolib_status_plate_min_height"
                 android:background="@color/lolib_chrome_status_plate"
                 android:importantForAccessibility="no" />
 
             <LinearLayout
+                android:id="@+id/home_top_content_row"
                 android:layout_width="match_parent"
                 android:layout_height="@dimen/lolib_top_toolbar_content_height"
                 android:gravity="center_vertical"

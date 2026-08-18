@@ -39,7 +39,6 @@ public final class SafeAreaInsets {
         }
         Insets statusCutout = insets.getInsets(
                 WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.displayCutout());
-        Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
         boolean imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime());
         int imeBottom = imeVisible ? insets.getInsets(WindowInsetsCompat.Type.ime()).bottom : 0;
         int navigationBottom = SystemUiHelper.resolveNavigationBottomInset(context, insets);
@@ -47,7 +46,9 @@ public final class SafeAreaInsets {
                 ? imeBottom
                 : navigationBottom + SystemUiHelper.getBottomSafeExtraPx(context);
         int top = statusCutout.top + SystemUiHelper.getTopSafeExtraPx(context);
-        return new SafeAreaInsets(top, systemBars.left, systemBars.right, bottom,
+        int left = SystemUiHelper.resolveHorizontalSafeInsetLeft(insets);
+        int right = SystemUiHelper.resolveHorizontalSafeInsetRight(insets);
+        return new SafeAreaInsets(top, left, right, bottom,
                 imeVisible, imeBottom, navigationBottom);
     }
 

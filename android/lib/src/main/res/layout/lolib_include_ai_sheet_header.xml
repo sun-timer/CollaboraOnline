@@ -5,9 +5,7 @@
     android:layout_height="@dimen/ai_sheet_header_height"
     android:background="@drawable/lolib_bg_ai_sheet_header"
     android:paddingStart="@dimen/ai_sheet_header_padding_h"
-    android:paddingTop="@dimen/ai_sheet_header_padding_v"
-    android:paddingEnd="@dimen/ai_sheet_header_padding_h"
-    android:paddingBottom="@dimen/ai_sheet_header_padding_v">
+    android:paddingEnd="@dimen/ai_sheet_header_padding_h">
 
     <LinearLayout
         android:id="@+id/ai_sheet_header_center"
@@ -37,8 +35,8 @@
 
     <ImageButton
         android:id="@+id/ai_sheet_header_close"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="@dimen/ai_sheet_header_close_size"
+        android:layout_height="@dimen/ai_sheet_header_close_size"
         android:layout_gravity="end|center_vertical"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="关闭"

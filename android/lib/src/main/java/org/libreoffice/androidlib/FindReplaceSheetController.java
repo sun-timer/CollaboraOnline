@@ -45,6 +45,7 @@ public class FindReplaceSheetController {
     private final Host host;
     private BottomSheetDialog mainDialog;
     private BottomSheetDialog settingsDialog;
+    private View mainPanel;
     private AlertDialog floatingDialog;
     private AlertDialog floatingSettingsDialog;
     private boolean replaceTabActive = false;
@@ -71,6 +72,7 @@ public class FindReplaceSheetController {
         dismiss();
         host.hideKeyboardForBottomSheet();
         View panel = LayoutInflater.from(host.getContext()).inflate(R.layout.lolib_sheet_find_replace, null);
+        mainPanel = panel;
         bindMainPanel(panel);
         if (BottomSheetAnchorHelper.isLandscape(host.getContext())) {
             floatingDialog = showFloatingDialog(panel);
@@ -78,7 +80,10 @@ public class FindReplaceSheetController {
             mainDialog = new BottomSheetDialog(host.getContext());
             mainDialog.setContentView(panel);
             AiDialogHelper.applyCloseOnlyDismiss(mainDialog);
-            mainDialog.setOnDismissListener(dialog -> mainDialog = null);
+            mainDialog.setOnDismissListener(dialog -> {
+                mainDialog = null;
+                mainPanel = null;
+            });
             mainDialog.setOnShowListener(d -> expandSheet(mainDialog, panel));
             mainDialog.show();
             AiDialogHelper.applyNoDimScrim(mainDialog);
@@ -237,6 +242,7 @@ public class FindReplaceSheetController {
             findPanel.setVisibility(View.VISIBLE);
             replacePanel.setVisibility(View.GONE);
             refreshStateColors();
+            scheduleMainSheetHeightUpdate();
         };
         Runnable showReplaceTab = () -> {
             replaceTabActive = true;
@@ -250,6 +256,7 @@ public class FindReplaceSheetController {
             replacePanel.setVisibility(View.VISIBLE);
             mirrorQueryField(findQuery, replaceQuery);
             refreshStateColors();
+            scheduleMainSheetHeightUpdate();
         };
 
         if (findTab != null) {
@@ -490,6 +497,13 @@ public class FindReplaceSheetController {
         }
     }
 
+    private void scheduleMainSheetHeightUpdate() {
+        if (mainDialog == null || !mainDialog.isShowing() || mainPanel == null) {
+            return;
+        }
+        mainPanel.post(() -> expandSheet(mainDialog, mainPanel));
+    }
+
     private void expandSheet(BottomSheetDialog dialog, View contentRoot) {
         if (dialog == null) {
             return;
@@ -498,6 +512,8 @@ public class FindReplaceSheetController {
         BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
         options.logTag = "FindReplaceSheet";
         options.draggable = false;
+        options.applyNavBarPadding = false;
+        BottomSheetAnchorHelper.clearAppliedHeight(dialog);
         BottomSheetAnchorHelper.expandWrapContent(dialog, 0.92f, options);
     }
 

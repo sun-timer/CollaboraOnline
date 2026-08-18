@@ -5,7 +5,7 @@
     android:layout_height="wrap_content"
     android:background="@android:color/transparent"
     android:orientation="vertical"
-    android:paddingBottom="34dp">
+    android:paddingBottom="@dimen/lolib_function_sheet_bottom_pad">
 
     <LinearLayout
         android:layout_width="match_parent"

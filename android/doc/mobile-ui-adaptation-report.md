@@ -101,21 +101,35 @@ DrawerLayout
 | AI Panel | ✅ 部分 | `AiPanelController.installSheetInsets` | 已对齐 SystemUiHelper |
 | 居中 AlertDialog | ⚪ 一般无问题 | 居中布局 | 不贴底 |
 
-**底栏逻辑（当前代码，2026-08-18）：**
+**底栏逻辑（当前代码，2026-08-18 晚）：**
 
 ```text
 无键盘：
   bottomMargin = 0
-  bottomPadding = navigationBarInset + 8dp(safe)
-  → 工具栏 82dp 内容区不变，白底延伸到系统导航区
+  spacer.height = navigationBarInset + 8dp(safe)
+  content = 82dp（@id/doc_bottom_toolbar_content）
+  → 白底经 spacer 延伸到导航区，按钮在 82dp 带内
 
 有键盘：
   bottomMargin = max(IME, nav) + 4dp
-  bottomPadding = 0
+  spacer = 0
   → 整栏顶到键盘上方
 ```
 
-> **注意：** 早期分析文档写「无键盘时 bottomMargin = navInset」已过时；当前为 **padding 延伸** 方案，更接近「内容区 + 系统区分层」。
+**横向安全区（2026-08-18 补丁）：**
+
+```text
+left/right = max(systemBars, displayCutout, waterfall[API35+])
+应用于：SafeAreaInsets、顶栏 56dp 行、底栏 content、WebView margin、抽屉、FAB clamp
+```
+
+**导航 bottom 解析：**
+
+```text
+Primary: max(navigationBars, systemGestures, tappableElement, cutout).bottom
+Fallback（仅 resolved==0）: 三键 → 48dp；手势 → 20dp
+不再：三键模式下强制 max(resolved, 48dp)
+```
 
 ### 3.3 首页
 
@@ -369,17 +383,16 @@ env(safe-area-inset-*) / padding-bottom on mobile-wizard
 | 2026-08-18 | 初版：结构分析、现状盘点、问题列表、P0–P5 路线图 |
 | 2026-08-18 | 已实施：`SystemUiHelper`、首页顶栏 wrap_content、底栏 padding 策略、BottomSheet/抽屉部分 inset |
 | 2026-08-18 | P0-c：`DocumentOverlayInsets`、Selection/Calc/Impress 浮层 clamp、Dialog safe inset、AI overlay 约束到工具栏之间、首页 FAB 接 `SafeAreaInsets` |
+| 2026-08-18 | GPT 二次评审：waterfall 横向 safe、三键 fallback 收紧、spacer 接线、`doc_bottom_toolbar_content`；详见 [ui-adaptation-tracker.md](./ui-adaptation-tracker.md) §0.1 |
 
 ---
 
 ## 10. 下一步行动
 
-按路线图 **从 P0 继续**，建议顺序：
-
-1. ~~**P0-b** — 修复 AI FAB Safe Area~~ ✅  
-2. ~~**P0-a** — 抽出 `SafeAreaInsets` 统一 API~~ ✅  
-3. ~~**P0-c** — 贴底 UI 审计（Quick Action、Selection Menu、原生 Dialog）~~ ✅  
-4. **P0-e** — 真机回归矩阵  
-5. 再进入 **P1** 全覆盖（Web reserved height 等）  
-
-本文档随每次 P 级任务完成更新「§3 现状盘点」与「§9 变更记录」。
+1. ~~P0-b FAB Safe Area~~ ✅  
+2. ~~P0-i waterfall / 横向 cutout~~ ✅ 代码已合，**待真机**  
+3. ~~P0-j 三键 48dp fallback~~ ✅ 代码已合，**待真机**  
+4. **P0-e** — 真机矩阵（含横屏侧 inset、华为曲面）  
+5. **P1** — Dialog/BottomSheet/Popup 全局 Safe Area 审计  
+6. **P4** — lib 文档页平板 content_maxWidth（app 已有 sw600）  
+7. **P5** — WebView inset → Collabora CSS（Native 稳定后）

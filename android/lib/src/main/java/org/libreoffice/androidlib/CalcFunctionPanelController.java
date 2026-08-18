@@ -362,7 +362,7 @@ public class CalcFunctionPanelController {
         if (keyboardBtn != null) {
             keyboardBtn.setOnClickListener(v -> {
                 dismiss();
-                host.focusDocumentAndShowIme();
+                host.runAfterFunctionPanelDismiss(() -> host.focusDocumentAndShowIme());
             });
         }
         if (collapseBtn != null) {

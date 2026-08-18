@@ -309,6 +309,15 @@ public class BottomToolbarController {
         applyBottomToolbarCompactMode(imeVisible && isEditModeActive);
     }
 
+    /** Side safe area for toolbar buttons (cutout / waterfall in landscape). */
+    public void applyHorizontalSafeInsets(int leftPx, int rightPx) {
+        View contentHost = resolveBottomToolbarContentHost();
+        if (contentHost == null) {
+            return;
+        }
+        SystemUiHelper.applyHorizontalContentPadding(contentHost, leftPx, rightPx);
+    }
+
     private void applyBottomNavSpacer() {
         int spacerHeight = isImeVisibleForToolbar ? 0
                 : navigationBarInsetPx + SystemUiHelper.getBottomSafeExtraPx(host.getContext());
@@ -1226,7 +1235,9 @@ public class BottomToolbarController {
         if (bottomToolbarContentHost != null) {
             return bottomToolbarContentHost;
         }
-        if (bottomToolbarView != null && bottomToolbarView.getChildCount() > 0) {
+        bottomToolbarContentHost = host.findViewById(R.id.doc_bottom_toolbar_content);
+        if (bottomToolbarContentHost == null && bottomToolbarView != null
+                && bottomToolbarView.getChildCount() > 0) {
             bottomToolbarContentHost = bottomToolbarView.getChildAt(0);
         }
         return bottomToolbarContentHost;
