@@ -47,6 +47,12 @@ public final class BottomSheetAnchorHelper {
         public boolean applyNavBarPadding = true;
         /** Overlay sheets leave 0; only inset-layout panels use a non-zero anchor. */
         public int anchorAboveBottomPx = 0;
+        /**
+         * When {@code applyNavBarPadding} is false: keep sheet flush to screen bottom and only
+         * grow bottom padding inside the white panel (no external margin / expandedOffset lift).
+         * 0 = disabled.
+         */
+        public int internalBottomDesignPadPx = 0;
         public String logTag = TAG;
     }
 
@@ -298,13 +304,11 @@ public final class BottomSheetAnchorHelper {
             int safePad = SystemUiHelper.bottomContentSafePaddingPx(context);
             contentRoot.setPadding(contentRoot.getPaddingLeft(), contentRoot.getPaddingTop(),
                     contentRoot.getPaddingRight(), safePad);
-        } else if (contentRoot != null) {
-            contentRoot.setPadding(contentRoot.getPaddingLeft(), contentRoot.getPaddingTop(),
-                    contentRoot.getPaddingRight(), 0);
         }
 
         AnchorState state = new AnchorState(targetHeight, screenHeight, options.logTag,
-                options.applyNavBarPadding, options.anchorAboveBottomPx);
+                options.applyNavBarPadding, options.anchorAboveBottomPx,
+                options.internalBottomDesignPadPx);
         bottomSheet.post(() -> {
             state.apply(bottomSheet, behavior, false, 0, 0, true);
             bottomSheet.postDelayed(() -> {
@@ -343,13 +347,6 @@ public final class BottomSheetAnchorHelper {
         bottomSheet.setLayoutParams(layoutParams);
     }
 
-    private static int resolveBottomInset(WindowInsetsCompat insets, Context context, boolean applyNavBarPadding) {
-        if (!applyNavBarPadding) {
-            return 0;
-        }
-        return SystemUiHelper.bottomInsetForSheet(context, insets);
-    }
-
     private static int getNavigationBarHeightPx(Context context) {
         int id = context.getResources().getIdentifier("navigation_bar_height", "dimen", "android");
         if (id > 0) {
@@ -379,23 +376,84 @@ public final class BottomSheetAnchorHelper {
             AnchorState state) {
         View contentRoot = bottomSheet.getChildCount() > 0 ? bottomSheet.getChildAt(0) : bottomSheet;
         Context context = bottomSheet.getContext();
-        ViewCompat.setOnApplyWindowInsetsListener(contentRoot, (v, insets) -> {
+        androidx.core.view.OnApplyWindowInsetsListener insetListener = (v, insets) -> {
             boolean imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime());
             int imeBottom = imeVisible
                     ? insets.getInsets(WindowInsetsCompat.Type.ime()).bottom : 0;
-            int navInset = resolveBottomInset(insets, context, state.applyNavBarPadding);
-            state.apply(bottomSheet, behavior, imeVisible, imeBottom, navInset, false);
+            int anchorBottomInset = resolveAnchorBottomInset(
+                    insets, context, state.applyNavBarPadding, imeVisible, imeBottom);
+            state.apply(bottomSheet, behavior, imeVisible, imeBottom, anchorBottomInset, false);
+            applyInternalBottomSafePadding(v, insets, state.internalBottomDesignPadPx);
             return insets;
-        });
+        };
+        ViewCompat.setOnApplyWindowInsetsListener(contentRoot, insetListener);
         if (dialog.getWindow() != null) {
             View decor = dialog.getWindow().getDecorView();
-            ViewCompat.setOnApplyWindowInsetsListener(decor, (v, insets) -> {
-                ViewCompat.requestApplyInsets(contentRoot);
-                return insets;
-            });
+            ViewCompat.setOnApplyWindowInsetsListener(decor, insetListener);
             ViewCompat.requestApplyInsets(decor);
         }
         ViewCompat.requestApplyInsets(contentRoot);
+    }
+
+    /**
+     * Sheet stays flush to the screen bottom (no expandedOffset nav lift).
+     * Only increases bottom padding inside the panel so buttons clear nav/gesture area.
+     * Padding is applied inside the white sheet — no external white margin strip.
+     */
+    public static void installInternalBottomSafePadding(View contentRoot, int designBottomPadPx) {
+        if (contentRoot == null || designBottomPadPx <= 0) {
+            return;
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(contentRoot, (v, insets) -> {
+            applyInternalBottomSafePadding(v, insets, designBottomPadPx);
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(contentRoot);
+    }
+
+    private static int resolveAnchorBottomInset(WindowInsetsCompat insets, Context context,
+            boolean applyNavBarPadding, boolean imeVisible, int imeBottomPx) {
+        if (imeVisible && imeBottomPx > 0) {
+            return imeBottomPx;
+        }
+        if (!applyNavBarPadding) {
+            return 0;
+        }
+        return SystemUiHelper.bottomInsetForSheet(context, insets);
+    }
+
+    private static void applyInternalBottomSafePadding(View view, WindowInsetsCompat insets,
+            int designBottomPadPx) {
+        if (view == null || designBottomPadPx <= 0) {
+            return;
+        }
+        Context ctx = view.getContext();
+        boolean imeVisible = insets != null && insets.isVisible(WindowInsetsCompat.Type.ime());
+        int imeBottom = imeVisible && insets != null
+                ? insets.getInsets(WindowInsetsCompat.Type.ime()).bottom : 0;
+        int bottomPad;
+        if (imeVisible && imeBottom > 0) {
+            bottomPad = designBottomPadPx;
+        } else {
+            int navInset = SystemUiHelper.resolveNavigationBottomInset(ctx, insets);
+            int safeExtra = SystemUiHelper.getBottomSafeExtraPx(ctx);
+            bottomPad = Math.max(designBottomPadPx, navInset + safeExtra);
+        }
+        view.setPadding(view.getPaddingLeft(), view.getPaddingTop(), view.getPaddingRight(), bottomPad);
+    }
+
+    /** Re-request window insets after an input field gains focus (IME lift). */
+    public static void requestInsetsRefresh(BottomSheetDialog dialog) {
+        if (dialog == null || dialog.getWindow() == null) {
+            return;
+        }
+        View decor = dialog.getWindow().getDecorView();
+        ViewCompat.requestApplyInsets(decor);
+        FrameLayout bottomSheet = dialog.findViewById(
+                com.google.android.material.R.id.design_bottom_sheet);
+        if (bottomSheet != null && bottomSheet.getChildCount() > 0) {
+            ViewCompat.requestApplyInsets(bottomSheet.getChildAt(0));
+        }
     }
 
     private static final class AnchorState {
@@ -404,15 +462,17 @@ public final class BottomSheetAnchorHelper {
         private final String logTag;
         private final boolean applyNavBarPadding;
         private final int anchorAboveBottomPx;
+        private final int internalBottomDesignPadPx;
         private boolean expandedOnce;
 
         AnchorState(int targetHeight, int screenHeight, String logTag,
-                boolean applyNavBarPadding, int anchorAboveBottomPx) {
+                boolean applyNavBarPadding, int anchorAboveBottomPx, int internalBottomDesignPadPx) {
             this.targetHeight = targetHeight;
             this.screenHeight = screenHeight;
             this.logTag = logTag != null ? logTag : TAG;
             this.applyNavBarPadding = applyNavBarPadding;
             this.anchorAboveBottomPx = Math.max(0, anchorAboveBottomPx);
+            this.internalBottomDesignPadPx = Math.max(0, internalBottomDesignPadPx);
         }
 
         void apply(FrameLayout bottomSheet, BottomSheetBehavior<View> behavior,

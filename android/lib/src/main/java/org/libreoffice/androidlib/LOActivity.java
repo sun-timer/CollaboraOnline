@@ -396,6 +396,7 @@ public class LOActivity extends AppCompatActivity {
     // AI排版相关
     private boolean typesetInProgress = false;  // 排版进行中，抑制选区弹窗
     private BottomSheetDialog typesetSelectSheet;
+    private String selectedTypesetType = "paper";
     private BottomSheetDialog typesetPreviewSheet;
     private String pendingTypesetType;  // "paper" | "gov" | "contract" | "general"
     private String pendingTypesetHtml;  // AI 返回的排版结果（旧 HTML 路径，fallback）
@@ -3176,6 +3177,19 @@ public class LOActivity extends AppCompatActivity {
                 }
                 return false;
             }
+            case "CLIPBOARD": {
+                if (messageAndParam.length > 1 && "paste".equals(messageAndParam[1])) {
+                    getMainHandler().post(() -> {
+                        Log.i(TAG, "clipboard_paste_from_js");
+                        if (mIsEditModeActive) {
+                            pasteFromSystemClipboard();
+                        } else {
+                            ensureEditModeThen(() -> pasteFromSystemClipboard());
+                        }
+                    });
+                }
+                return false;
+            }
             case "EDITMODE": {
                 switch (messageAndParam[1]) {
                     case "on":
@@ -3543,8 +3557,7 @@ public class LOActivity extends AppCompatActivity {
         }
         return command.startsWith(".uno:ResetAttributes")
                 || command.startsWith(".uno:FormatPaintbrush")
-                || command.startsWith(".uno:InsertAnnotation")
-                || command.startsWith(".uno:Paste");
+                || command.startsWith(".uno:InsertAnnotation");
     }
 
     void closeMobileWizardFromNative(String reason) {
@@ -5065,7 +5078,12 @@ public class LOActivity extends AppCompatActivity {
 
                 @Override
                 public void pasteFromSystemClipboard() {
-                    LOActivity.this.pasteFromSystemClipboard();
+                    LOActivity.this.pasteFromSystemClipboard(null);
+                }
+
+                @Override
+                public void pasteFromSystemClipboard(Runnable onComplete) {
+                    LOActivity.this.pasteFromSystemClipboard(onComplete);
                 }
 
                 @Override
@@ -10101,13 +10119,7 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         pendingAfterEditMode = action;
-        if (mWebView != null) {
-            mWebView.evaluateJavascript(
-                    "(function(){try{if(window.app&&app.map&&typeof app.map._switchToEditMode==='function')"
-                            + "{app.map._switchToEditMode();}}catch(e){}"
-                            + "return true;})();",
-                    null);
-        }
+        switchToEditMode();
         getMainHandler().postDelayed(() -> {
             if (pendingAfterEditMode != action) {
                 return;
@@ -10142,20 +10154,40 @@ public class LOActivity extends AppCompatActivity {
         dispatchClipboardUnoCommand(".uno:Cut");
     }
 
+    private void pasteFromSystemClipboard() {
+        pasteFromSystemClipboard(null);
+    }
+
     /**
      * Paste from Android system clipboard into the document.
-     * In-app copy leaves content in LOK internal clipboard — still need .uno:Paste.
+     * In-app copy: LOK internal clipboard → .uno:Paste.
+     * External clipboard: native paste() loads content; Writer/Impress also need .uno:Paste to insert.
+     * @param onComplete optional callback on UI thread after paste (e.g. hide selection menu).
      */
-    private void pasteFromSystemClipboard() {
+    private void pasteFromSystemClipboard(Runnable onComplete) {
+        Log.i(TAG, "paste_from_clipboard_start editMode=" + mIsEditModeActive
+                + " calc=" + mIsCalcDocument);
         requestWebViewFocusForPanelAction("paste");
-        boolean lokInternal = performPaste();
-        if (lokInternal) {
-            Log.i(TAG, "paste_from_clipboard lok_internal");
-        }
-        // JNI postUnoCommand：绕过 postMobileMessage → beforeMessageFromWebView，
-        // 避免 blocked_mobile_wizard_uno 在编辑模式切换后 4s 内拦截 .uno:Paste。
-        dispatchClipboardUnoCommand(".uno:Paste");
-        nudgeSocketIfStalled("paste");
+        postUnoCommand(".uno:EditDoc?Editable:bool=true", "{}", false);
+        long editDelayMs = mIsEditModeActive ? 80L : 280L;
+        getMainHandler().postDelayed(() -> {
+            boolean lokInternal = performPaste();
+            if (lokInternal) {
+                Log.i(TAG, "paste_from_clipboard lok_internal");
+                dispatchClipboardUnoCommand(".uno:Paste");
+            } else {
+                Log.i(TAG, "paste_from_clipboard native_injected");
+                if (!mIsCalcDocument) {
+                    postUnoCommand(".uno:Paste", "{}", false);
+                    Log.i(TAG, "paste_from_clipboard writer_paste_uno");
+                }
+            }
+            forceVisibleTileRedrawFromAndroid("paste");
+            nudgeSocketIfStalled("paste");
+            if (onComplete != null) {
+                onComplete.run();
+            }
+        }, editDelayMs);
     }
 
     /**
@@ -10952,6 +10984,8 @@ public class LOActivity extends AppCompatActivity {
         options.draggable = false;
         options.hideable = false;
         options.applyNavBarPadding = false;
+        options.internalBottomDesignPadPx = getResources()
+                .getDimensionPixelSize(R.dimen.lolib_function_sheet_bottom_pad);
         options.logTag = TAG;
         BottomSheetAnchorHelper.clearAppliedHeight(functionPanelDialog);
         int targetHeight = resolvePreviewFunctionPanelHeightPx();
@@ -13662,29 +13696,32 @@ public class LOActivity extends AppCompatActivity {
         if (isFinishing()) {
             return;
         }
+        selectedTypesetType = "paper";
         typesetSelectSheet = new BottomSheetDialog(this);
         View sheetView = getLayoutInflater().inflate(R.layout.lolib_sheet_typeset_select, null);
         typesetSelectSheet.setContentView(sheetView);
 
-        // 配置 BottomSheet
         int screenHeight = getResources().getDisplayMetrics().heightPixels;
         int screenWidth = getResources().getDisplayMetrics().widthPixels;
-        aiPanelController.configureBottomSheet(typesetSelectSheet, sheetView,
+        aiPanelController.configureBottomSheetFitContent(typesetSelectSheet, sheetView,
                 screenHeight, screenWidth,
-                getResources().getConfiguration().orientation, null,
-                0);
+                getResources().getConfiguration().orientation, 0.85f);
 
-        // 关闭按钮
         sheetView.findViewById(R.id.typeset_select_close).setOnClickListener(v -> {
             Log.i(TAG, "ai_typeset_select_dismissed");
             typesetSelectSheet.dismiss();
         });
 
-        // 4 个类型选项
-        sheetView.findViewById(R.id.typeset_type_paper).setOnClickListener(v -> startTypeset("paper"));
-        sheetView.findViewById(R.id.typeset_type_gov).setOnClickListener(v -> startTypeset("gov"));
-        sheetView.findViewById(R.id.typeset_type_contract).setOnClickListener(v -> startTypeset("contract"));
-        sheetView.findViewById(R.id.typeset_type_general).setOnClickListener(v -> startTypeset("general"));
+        bindTypesetTypeCard(sheetView, R.id.typeset_type_paper, "paper");
+        bindTypesetTypeCard(sheetView, R.id.typeset_type_gov, "gov");
+        bindTypesetTypeCard(sheetView, R.id.typeset_type_contract, "contract");
+        bindTypesetTypeCard(sheetView, R.id.typeset_type_general, "general");
+        updateTypesetTypeSelection(sheetView);
+
+        sheetView.findViewById(R.id.typeset_select_start).setOnClickListener(v -> {
+            Log.i(TAG, "ai_typeset_select_start type=" + selectedTypesetType);
+            startTypeset(selectedTypesetType);
+        });
 
         typesetSelectSheet.setOnDismissListener(dialog -> {
             Log.i(TAG, "ai_typeset_select_dismissed");
@@ -13693,6 +13730,34 @@ public class LOActivity extends AppCompatActivity {
 
         typesetSelectSheet.show();
         Log.i(TAG, "ai_typeset_select_shown");
+    }
+
+    private void bindTypesetTypeCard(View sheetView, int cardId, String type) {
+        sheetView.findViewById(cardId).setOnClickListener(v -> {
+            selectedTypesetType = type;
+            updateTypesetTypeSelection(sheetView);
+        });
+    }
+
+    private void updateTypesetTypeSelection(View sheetView) {
+        applyTypesetCardBackground(sheetView, R.id.typeset_type_paper, "paper",
+                R.drawable.lolib_bg_typeset_card_paper_selected,
+                R.drawable.lolib_bg_typeset_card_paper);
+        applyTypesetCardBackground(sheetView, R.id.typeset_type_gov, "gov",
+                R.drawable.lolib_bg_typeset_card_gov_selected,
+                R.drawable.lolib_bg_typeset_card_gov);
+        applyTypesetCardBackground(sheetView, R.id.typeset_type_contract, "contract",
+                R.drawable.lolib_bg_typeset_card_contract_selected,
+                R.drawable.lolib_bg_typeset_card_contract);
+        applyTypesetCardBackground(sheetView, R.id.typeset_type_general, "general",
+                R.drawable.lolib_bg_typeset_card_general_selected,
+                R.drawable.lolib_bg_typeset_card_general);
+    }
+
+    private void applyTypesetCardBackground(View sheetView, int cardId, String type,
+            int selectedBg, int normalBg) {
+        View card = sheetView.findViewById(cardId);
+        card.setBackgroundResource(type.equals(selectedTypesetType) ? selectedBg : normalBg);
     }
 
     /**
@@ -17993,9 +18058,9 @@ public class LOActivity extends AppCompatActivity {
         aiModelRequiredDialog.show();
         if (aiModelRequiredDialog.getWindow() != null) {
             WindowManager.LayoutParams params = aiModelRequiredDialog.getWindow().getAttributes();
-            params.dimAmount = 0.3f;
+            params.dimAmount = 0f;
             aiModelRequiredDialog.getWindow().setAttributes(params);
-            aiModelRequiredDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            aiModelRequiredDialog.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             int widthPx = getResources().getDimensionPixelSize(R.dimen.ai_model_required_dialog_width);
             AiDialogHelper.applyFlexibleWidth(root, aiModelRequiredDialog, widthPx,
                     AiDialogHelper.computeMaxHeightHugPx(getResources()));
@@ -19083,6 +19148,9 @@ public class LOActivity extends AppCompatActivity {
 
             if (clipDesc.getMimeType(i).equals(ClipDescription.MIMETYPE_TEXT_HTML)) {
                 final String html = clipData.getItemAt(i).getHtmlText();
+                if (html == null || html.isEmpty()) {
+                    continue;
+                }
                 // Check if the clipboard content was made with the app
                 if (html.contains(CLIPBOARD_COOL_SIGNATURE)) {
                     // Check if the clipboard content is from the same app instance
@@ -19140,9 +19208,14 @@ public class LOActivity extends AppCompatActivity {
 
             if (clipDesc.getMimeType(i).equals(ClipDescription.MIMETYPE_TEXT_PLAIN)) {
                 final ClipData.Item clipItem = clipData.getItemAt(i);
-                String text = clipItem.getText().toString();
+                CharSequence textSeq = clipItem.getText();
+                if (textSeq == null || textSeq.length() == 0) {
+                    continue;
+                }
+                String text = textSeq.toString();
                 byte[] textByteArray = text.getBytes(Charset.forName("UTF-8"));
                 LOActivity.this.paste("text/plain;charset=utf-8", textByteArray);
+                Log.i(TAG, "paste_plain chars=" + text.length());
             }
         }
 

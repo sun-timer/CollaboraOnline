@@ -10,7 +10,7 @@
     <!-- 标题栏：设置 / 查找替换 / 关闭 -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="62dp"
+        android:layout_height="@dimen/find_sheet_header_height"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="12dp"
@@ -51,12 +51,16 @@
     <LinearLayout
         android:id="@+id/find_tab_bar"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
+        android:layout_height="@dimen/find_sheet_tab_track_height"
+        android:layout_marginStart="@dimen/find_sheet_content_margin_h"
+        android:layout_marginTop="@dimen/find_sheet_section_gap"
+        android:layout_marginEnd="@dimen/find_sheet_content_margin_h"
         android:background="@drawable/lolib_bg_find_segment_track"
         android:orientation="horizontal"
-        android:padding="4dp">
+        android:paddingStart="@dimen/find_sheet_tab_track_padding_h"
+        android:paddingTop="@dimen/find_sheet_tab_track_padding_v"
+        android:paddingEnd="@dimen/find_sheet_tab_track_padding_h"
+        android:paddingBottom="@dimen/find_sheet_tab_track_padding_v">
 
         <TextView
             android:id="@+id/find_tab_find"
@@ -73,7 +77,7 @@
             android:id="@+id/find_tab_replace"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_marginStart="6dp"
+            android:layout_marginStart="@dimen/find_sheet_tab_gap"
             android:layout_weight="1"
             android:background="@drawable/lolib_bg_find_segment_inactive"
             android:gravity="center"
@@ -87,16 +91,16 @@
         android:id="@+id/find_panel_find"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
+        android:layout_marginStart="@dimen/find_sheet_content_margin_h"
+        android:layout_marginEnd="@dimen/find_sheet_content_margin_h"
         android:orientation="vertical">
 
         <!-- 查找输入框（Figma 边框 #D8D8D8，有输入变 #101010） -->
         <EditText
             android:id="@+id/find_query_input"
             android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:layout_marginTop="16dp"
+            android:layout_height="@dimen/find_sheet_field_height"
+            android:layout_marginTop="@dimen/find_sheet_section_gap"
             android:background="@drawable/lolib_bg_find_search_field"
             android:hint="请输入查找内容"
             android:imeOptions="actionSearch"
@@ -111,13 +115,13 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="@dimen/find_sheet_section_gap"
             android:orientation="horizontal">
 
             <TextView
                 android:id="@+id/find_btn_prev"
                 android:layout_width="0dp"
-                android:layout_height="35dp"
+                android:layout_height="@dimen/find_sheet_action_row_height"
                 android:layout_marginEnd="8dp"
                 android:layout_weight="1"
                 android:background="@drawable/lolib_bg_find_nav_button"
@@ -129,7 +133,7 @@
             <TextView
                 android:id="@+id/find_btn_next"
                 android:layout_width="0dp"
-                android:layout_height="35dp"
+                android:layout_height="@dimen/find_sheet_action_row_height"
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:background="@drawable/lolib_bg_find_nav_button"
@@ -145,16 +149,16 @@
         android:id="@+id/find_panel_replace"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
+        android:layout_marginStart="@dimen/find_sheet_content_margin_h"
+        android:layout_marginEnd="@dimen/find_sheet_content_margin_h"
         android:orientation="vertical"
         android:visibility="gone">
 
         <EditText
             android:id="@+id/find_replace_query_input"
             android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:layout_marginTop="16dp"
+            android:layout_height="@dimen/find_sheet_field_height"
+            android:layout_marginTop="@dimen/find_sheet_section_gap"
             android:background="@drawable/lolib_bg_find_search_field"
             android:hint="请输入查找内容"
             android:inputType="text"
@@ -167,8 +171,8 @@
         <EditText
             android:id="@+id/find_replace_with_input"
             android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:layout_marginTop="10dp"
+            android:layout_height="@dimen/find_sheet_field_height"
+            android:layout_marginTop="@dimen/find_sheet_replace_field_gap"
             android:background="@drawable/lolib_bg_find_search_field"
             android:hint="请输入替换内容"
             android:inputType="text"
@@ -182,14 +186,14 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="@dimen/find_sheet_section_gap"
             android:orientation="horizontal">
 
             <TextView
                 android:id="@+id/find_replace_btn_prev"
                 android:layout_width="0dp"
-                android:layout_height="35dp"
-                android:layout_marginEnd="4dp"
+                android:layout_height="@dimen/find_sheet_action_row_height"
+                android:layout_marginEnd="@dimen/find_sheet_action_button_gap"
                 android:layout_weight="1"
                 android:background="@drawable/lolib_bg_find_nav_button"
                 android:gravity="center"
@@ -200,8 +204,8 @@
             <TextView
                 android:id="@+id/find_replace_btn_next"
                 android:layout_width="0dp"
-                android:layout_height="35dp"
-                android:layout_marginEnd="4dp"
+                android:layout_height="@dimen/find_sheet_action_row_height"
+                android:layout_marginEnd="@dimen/find_sheet_action_button_gap"
                 android:layout_weight="1"
                 android:background="@drawable/lolib_bg_find_nav_button"
                 android:gravity="center"
@@ -212,8 +216,8 @@
             <TextView
                 android:id="@+id/find_replace_btn_all"
                 android:layout_width="0dp"
-                android:layout_height="35dp"
-                android:layout_marginEnd="4dp"
+                android:layout_height="@dimen/find_sheet_action_row_height"
+                android:layout_marginEnd="@dimen/find_sheet_action_button_gap"
                 android:layout_weight="1"
                 android:background="@drawable/lolib_bg_find_nav_button"
                 android:gravity="center"
@@ -224,7 +228,7 @@
             <TextView
                 android:id="@+id/find_replace_btn_one"
                 android:layout_width="0dp"
-                android:layout_height="35dp"
+                android:layout_height="@dimen/find_sheet_action_row_height"
                 android:layout_weight="1"
                 android:background="@drawable/lolib_bg_find_replace_primary"
                 android:gravity="center"

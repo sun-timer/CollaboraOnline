@@ -60,6 +60,10 @@ public class LocalModelActivity extends AppCompatActivity {
         View confirmButton = findViewById(R.id.localModelConfirmButton);
 
         ResponsiveUiHelper.applyAdaptiveBottomSheetLayout(this, sheet);
+        if (sheet != null && ResponsiveUiHelper.useBottomSheetPresentation(this)) {
+            ResponsiveUiHelper.applyBottomSheetContentSafePadding(sheet,
+                    getResources().getDimensionPixelSize(R.dimen.local_model_sheet_bottom_pad));
+        }
 
         if (root != null) {
             root.setOnClickListener(v -> finish());

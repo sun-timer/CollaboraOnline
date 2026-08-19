@@ -46,7 +46,6 @@ final class LocalModelListUiHelper {
             actionViews.clear();
 
             final int orange = Color.parseColor("#FA6200");
-            final int textDark = Color.parseColor("#333333");
             final int textMuted = Color.parseColor("#999999");
             final LocalDeviceCapability capability = LocalDeviceCapability.assess(context);
 
@@ -60,39 +59,43 @@ final class LocalModelListUiHelper {
 
                 actionView.setOnClickListener(null);
                 if (modelManager.isEntryDownloading(entry)) {
-                    actionView.setText(context.getString(R.string.local_model_downloading_progress,
-                            modelManager.getLastProgressPercent()));
-                    actionView.setTextColor(orange);
-                    actionView.setBackgroundResource(R.drawable.bg_local_model_action_btn_downloading);
-                    actionView.setEnabled(false);
+                    bindActionPill(actionView, context.getString(R.string.local_model_downloading_progress,
+                            modelManager.getLastProgressPercent()), orange,
+                            R.drawable.bg_local_model_action_btn_downloading, false);
                 } else if (modelManager.isEntryActive(entry)) {
-                    actionView.setText(R.string.local_model_in_use);
-                    actionView.setTextColor(orange);
-                    actionView.setBackgroundResource(R.drawable.bg_local_model_action_btn);
-                    actionView.setEnabled(false);
+                    bindActionText(actionView, context.getString(R.string.local_model_in_use), orange, false);
                 } else if (modelManager.isEntryDownloaded(entry)) {
-                    actionView.setText(R.string.local_model_available);
-                    actionView.setTextColor(orange);
-                    actionView.setBackgroundResource(R.drawable.bg_local_model_action_btn);
-                    actionView.setEnabled(true);
+                    bindActionText(actionView, context.getString(R.string.local_model_available), orange, true);
                     actionView.setOnClickListener(v -> rowListener.onSelectRequested(entry));
                 } else if (!capability.canDownloadModel(entry)) {
-                    actionView.setText(R.string.local_model_config_low);
-                    actionView.setTextColor(textMuted);
-                    actionView.setBackgroundResource(R.drawable.bg_local_model_action_btn);
-                    actionView.setEnabled(true);
+                    bindActionPill(actionView, context.getString(R.string.local_model_config_low),
+                            textMuted, R.drawable.bg_local_model_action_btn, true);
                     actionView.setOnClickListener(v -> Toast.makeText(context,
                             LocalModelManager.getModelCapabilityMessage(capability, entry),
                             Toast.LENGTH_LONG).show());
                 } else {
-                    actionView.setText(R.string.local_model_download_btn);
-                    actionView.setTextColor(textDark);
-                    actionView.setBackgroundResource(R.drawable.bg_local_model_action_btn);
-                    actionView.setEnabled(true);
+                    bindActionPill(actionView, context.getString(R.string.local_model_download_btn),
+                            orange, R.drawable.bg_local_model_action_btn, true);
                     actionView.setOnClickListener(v -> rowListener.onDownloadRequested(entry));
                 }
                 container.addView(row);
             }
+        }
+
+        private static void bindActionPill(TextView actionView, CharSequence text, int textColor,
+                int backgroundResId, boolean enabled) {
+            actionView.setText(text);
+            actionView.setTextColor(textColor);
+            actionView.setBackgroundResource(backgroundResId);
+            actionView.setEnabled(enabled);
+        }
+
+        private static void bindActionText(TextView actionView, CharSequence text, int textColor,
+                boolean enabled) {
+            actionView.setText(text);
+            actionView.setTextColor(textColor);
+            actionView.setBackgroundResource(android.R.color.transparent);
+            actionView.setEnabled(enabled);
         }
 
         void updateProgress(int percent) {
@@ -102,6 +105,8 @@ final class LocalModelListUiHelper {
             TextView actionView = actionViews.get(modelManager.getDownloadingModelId());
             if (actionView != null) {
                 actionView.setText(context.getString(R.string.local_model_downloading_progress, percent));
+                actionView.setTextColor(Color.parseColor("#FA6200"));
+                actionView.setBackgroundResource(R.drawable.bg_local_model_action_btn_downloading);
             }
         }
     }

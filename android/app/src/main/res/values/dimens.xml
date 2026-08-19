@@ -108,6 +108,11 @@
     <dimen name="ai_model_config_footer_padding_h">20dp</dimen>
     <dimen name="ai_model_config_footer_padding_v">24dp</dimen>
     <dimen name="ai_model_config_footer_button_gap">20dp</dimen>
+    <dimen name="clear_cache_bottom_bar_padding_v">24dp</dimen>
+    <dimen name="about_footer_padding_bottom">32dp</dimen>
+    <dimen name="bottom_sheet_content_bottom_pad">24dp</dimen>
+    <dimen name="local_model_sheet_bottom_pad">20dp</dimen>
+
     <!-- Figma 417:22812 — drawer profile + AI config -->
     <dimen name="drawer_profile_avatar_size">40dp</dimen>
     <dimen name="drawer_profile_header_padding_h">20dp</dimen>
@@ -141,15 +146,32 @@
     <dimen name="drawer_model_divider_margin_h">12dp</dimen>
     <dimen name="drawer_model_copy_button_size">30dp</dimen>
     <dimen name="drawer_model_indented_text_start">48dp</dimen>
+    <!-- Figma 692:30584 / 692:30991 — drawer local model card -->
+    <dimen name="drawer_local_model_card_padding">12dp</dimen>
+    <dimen name="drawer_local_model_row_icon_frame">28dp</dimen>
+    <dimen name="drawer_local_model_row_icon_inner">16dp</dimen>
+    <dimen name="drawer_local_install_btn_margin_start">12dp</dimen>
+    <dimen name="drawer_local_install_btn_min_width">48dp</dimen>
+    <dimen name="drawer_local_install_btn_padding_h">16dp</dimen>
+    <dimen name="drawer_local_install_btn_padding_v">6dp</dimen>
+    <dimen name="drawer_local_install_btn_text_size">14sp</dimen>
     <dimen name="local_model_list_dialog_margin_h">20dp</dimen>
+    <!-- Figma 417:23948 — local model list dialog (670×928 @2x) -->
+    <dimen name="local_model_list_dialog_radius">12dp</dimen>
     <dimen name="local_model_list_header_height">60dp</dimen>
+    <dimen name="local_model_list_header_padding_h">16dp</dimen>
+    <dimen name="local_model_list_content_padding">12dp</dimen>
     <dimen name="local_model_list_title_size">20sp</dimen>
     <dimen name="local_model_list_row_height">59dp</dimen>
+    <dimen name="local_model_list_row_padding_v">14dp</dimen>
     <dimen name="local_model_list_row_padding_h">10dp</dimen>
+    <dimen name="local_model_list_row_action_gap">16dp</dimen>
     <dimen name="local_model_list_row_title_size">16sp</dimen>
     <dimen name="local_model_list_action_height">31dp</dimen>
     <dimen name="local_model_list_action_min_width">72dp</dimen>
     <dimen name="local_model_list_action_text_size">14sp</dimen>
     <dimen name="local_model_list_confirm_height">35dp</dimen>
+    <dimen name="local_model_list_confirm_margin_h">20dp</dimen>
+    <dimen name="local_model_list_confirm_margin_v">12dp</dimen>
     <dimen name="local_model_list_max_height">464dp</dimen>
 </resources>

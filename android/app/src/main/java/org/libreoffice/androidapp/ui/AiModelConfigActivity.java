@@ -53,8 +53,7 @@ public class AiModelConfigActivity extends AppCompatActivity {
 
         SystemUiHelper.enableEdgeToEdge(this);
         SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
-        View configPanel = findViewById(R.id.aiModelConfigActivityPanel);
-        SystemUiHelper.applyStatusBarPadding(configPanel, 0);
+        SystemUiHelper.applyStatusBarPadding(findViewById(R.id.modelConfigHeader), 0);
         View configFooter = findViewById(R.id.modelConfigFooter);
         SystemUiHelper.applyNavigationBarPadding(configFooter,
                 getResources().getDimensionPixelSize(R.dimen.ai_model_config_footer_padding_v));

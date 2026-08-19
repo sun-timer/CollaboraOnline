@@ -30,6 +30,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 
 import org.libreoffice.androidapp.R;
+import org.libreoffice.androidlib.SystemUiHelper;
 
 import java.io.File;
 
@@ -51,6 +52,7 @@ public class AiProfileSettingsActivity extends AppCompatActivity {
         if (getSupportActionBar() != null) {
             getSupportActionBar().hide();
         }
+        SystemUiHelper.applySecondaryActivityChrome(this, findViewById(R.id.profileSettingsRoot), 0, 0);
 
         prefs = AiSettingsStore.prefs(this);
         avatarView = findViewById(R.id.profileAvatarValue);

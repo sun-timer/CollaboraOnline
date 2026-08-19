@@ -145,6 +145,39 @@ public final class SystemUiHelper {
         ViewCompat.requestApplyInsets(view);
     }
 
+    /**
+     * Top + bottom (+ horizontal waterfall/cutout) padding on one root — for full-screen secondary
+     * pages without a dedicated status plate (Settings, profile edit, HTML viewer, etc.).
+     */
+    public static void applyVerticalSystemBarPadding(View view, int extraTopPx, int extraBottomPx) {
+        if (view == null) {
+            return;
+        }
+        final int extraTop = Math.max(0, extraTopPx);
+        final int extraBottom = Math.max(0, extraBottomPx);
+        ViewCompat.setOnApplyWindowInsetsListener(view, (v, windowInsets) -> {
+            Context ctx = v.getContext();
+            v.setPadding(
+                    resolveHorizontalSafeInsetLeft(windowInsets),
+                    topPaddingForView(ctx, windowInsets, extraTop),
+                    resolveHorizontalSafeInsetRight(windowInsets),
+                    bottomPaddingForView(ctx, windowInsets, extraBottom));
+            return WindowInsetsCompat.CONSUMED;
+        });
+        ViewCompat.requestApplyInsets(view);
+    }
+
+    /** Edge-to-edge chrome + {@link #applyVerticalSystemBarPadding} for secondary Activities. */
+    public static void applySecondaryActivityChrome(Activity activity, View contentRoot,
+            int extraTopPx, int extraBottomPx) {
+        if (activity == null) {
+            return;
+        }
+        enableEdgeToEdge(activity);
+        applyDocumentChrome(activity, isLightMode(activity));
+        applyVerticalSystemBarPadding(contentRoot, extraTopPx, extraBottomPx);
+    }
+
     /** Track safe-area changes on a root content view (e.g. for FAB clamping). */
     public static void trackSafeAreaChanges(View root, SafeAreaListener listener) {
         if (root == null || listener == null) {
@@ -174,6 +207,18 @@ public final class SystemUiHelper {
             return ViewCompat.onApplyWindowInsets(v, insets);
         });
         ViewCompat.requestApplyInsets(drawerLayout);
+    }
+
+    /** Top padding for a drawer header row (model config overlay, etc.). */
+    public static void applyDrawerHeaderInsets(View header, SafeAreaInsets insets) {
+        if (header == null || insets == null) {
+            return;
+        }
+        header.setPadding(
+                header.getPaddingLeft(),
+                insets.top,
+                header.getPaddingRight(),
+                header.getPaddingBottom());
     }
 
     /** Bottom padding for a drawer footer row (about / save / clear cache). */

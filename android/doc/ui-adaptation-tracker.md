@@ -1,7 +1,7 @@
 # UI 适配跟踪清单
 
 > **用途**：排查回归、真机验收、记录 open issue。详细背景见 [`mobile-ui-adaptation-report.md`](./mobile-ui-adaptation-report.md)。  
-> **最后更新**：2026-08-18（GPT 二次评审 + P0 补丁）  
+> **最后更新**：2026-08-19（文档页 Sheet 浮层 anchor/padding 补丁）  
 > **维护约定**：修完一项把 `[ ]` 改 `[x]`，新增问题写在 §6，并在 §9 变更记录留一行。
 
 ---
@@ -90,7 +90,7 @@
 
 | 级别 | 主题 | 进度 | 下一步 |
 |------|------|------|--------|
-| P1 | Safe Area 全覆盖 | ~75% | 浮层全局审计（O-3）；Quick Action |
+| P1 | Safe Area 全覆盖 | ~78% | 文档页 wrap-content Sheet 已对齐（O-8）；编辑态大面板/AI 系待审计（O-3） |
 | P2 | Design Tokens | ~20% | spacing/icon 命名 |
 | P3 | XML 约束布局 | ~40% | 去固定屏宽 |
 | P4 | Window Size Class | ~45% | app 有 sw600；lib 文档页可补 content_maxWidth |
@@ -116,7 +116,10 @@
 | 首页顶栏 | [ ] | [ ] | [ ] | [ ] | [ ] |
 | 文档顶/底栏 | [ ] | [ ] | [ ] | [ ] | [ ] |
 | 抽屉 footer | [ ] | [ ] | — | — | [ ] |
-| 功能面板 Sheet | [ ] | [ ] | — | [ ] | [ ] |
+| 功能面板 Sheet（编辑态大面板） | [ ] | [ ] | — | [ ] | [ ] |
+| 预览功能 Sheet | [ ] | [ ] | — | — | [ ] |
+| 查找替换 Sheet | [ ] | [ ] | — | [ ] | [ ] |
+| 字数统计 Sheet | [ ] | [ ] | — | — | [ ] |
 | Dialog | [ ] | [ ] | — | [ ] | [ ] |
 
 ---
@@ -132,6 +135,8 @@
 | O-5 | Web 层无 safe-area CSS | 低 | P5 |
 | O-6 | lib 模块无 `layout-sw600dp`（GPT 指出的 adaptive 缺口） | 中 | open |
 | O-7 | WebView / LOActivity 双路径更新底栏 inset | 低 | open |
+| O-8 | 文档页 wrap-content Sheet 缺 `anchorAboveBottomPx` | 中 | **closed** — overlay sheet 应 anchor=0 + XML 34dp；勿叠文档底栏高度 |
+| O-9 | BottomSheet 多 tab 测高（双 panel 叠测） | 低 | **closed** — 查找替换已分 tab 测高取 max |
 
 ---
 
@@ -142,6 +147,11 @@
 | 2026-08-18 | 平板 | 一行两个文件 | Grid 双列 | Linear | [ ] |
 | 2026-08-18 | 平板 | 基础模型灰屏 | drawer overlay | Activity | [ ] |
 | 2026-08-18 | — | GPT：waterfall/三键 fallback | 见 P0-i/j | 已改代码 | [ ] |
+| 2026-08-19 | — | 预览功能 Sheet 高度/tab/底 padding 重复 | `expandFixed` + tab 重测 + `applyNavBarPadding=false` | LOActivity | [x] 用户已确认 |
+| 2026-08-19 | — | 查找替换替换 tab 按钮截断 | 只测查找 tab；双 panel 叠测 | 分 tab 测高 + Figma dimens | [ ] |
+| 2026-08-19 | — | `expandFixed` 清零 XML 34dp 底 padding | `applyNavBarPadding=false` 时仍改 padding | BottomSheetAnchorHelper | [ ] |
+| 2026-08-19 | — | 字数统计 Sheet 未锚在文档底栏上方 | 误用 `anchorAboveBottomPx` | 改回 anchor=0 | [ ] |
+| 2026-08-19 | — | 查找替换底部多段空白 + 键盘不跟随 | anchor 叠 34dp；decor 未接 IME inset | 去 anchor；BottomSheetAnchorHelper decor 监听 | [ ] |
 
 ---
 
@@ -173,3 +183,4 @@ adb logcat -s BottomToolbarController LOActivity SystemUiHelper
 |------|------|
 | 2026-08-18 | 初版 tracker |
 | 2026-08-18 | GPT 二次评审落盘；P0-i waterfall 横向；P0-j nav fallback；P0-f spacer 完成；`doc_bottom_toolbar_content` id |
+| 2026-08-19 | 二级页 status bar：头像昵称/清缓存/ShowHTML/Settings + 抽屉模型配置 overlay；`applySecondaryActivityChrome` |

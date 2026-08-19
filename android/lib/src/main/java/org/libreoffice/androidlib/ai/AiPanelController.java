@@ -99,7 +99,7 @@ public class AiPanelController {
         applyBottomSheetLayout(bottomSheet, layoutParams, targetHeight);
         bottomSheet.setBackgroundResource(android.R.color.transparent);
         bottomSheet.setClipToPadding(false);
-        applySheetScrim(dialog);
+        applySheetPresentation(dialog);
         if (contentRoot != null) {
             contentRoot.setElevation(dpToPx(contentRoot, 8));
             if (contentRoot instanceof ViewGroup) {
@@ -260,7 +260,7 @@ public class AiPanelController {
         BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
         anchoredBehavior = behavior;
         bottomSheet.setBackgroundResource(android.R.color.transparent);
-        applySheetScrim(dialog);
+        applySheetPresentation(dialog);
 
         behavior.setFitToContents(false);
         behavior.setSkipCollapsed(true);
@@ -437,14 +437,9 @@ public class AiPanelController {
                 + " contentPadBottom=" + (contentRoot != null ? contentRoot.getPaddingBottom() : -1));
     }
 
-    private static void applySheetScrim(BottomSheetDialog dialog) {
-        if (dialog == null || dialog.getWindow() == null) {
-            return;
-        }
-        WindowManager.LayoutParams params = dialog.getWindow().getAttributes();
-        params.dimAmount = 0.28f;
-        dialog.getWindow().setAttributes(params);
-        dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+    /** 与功能面板一致：无窗口遮罩，避免三键导航区被 dim 成灰条。 */
+    private static void applySheetPresentation(BottomSheetDialog dialog) {
+        AiDialogHelper.applyNoDimScrim(dialog);
     }
 
     private static int dpToPx(View view, int dp) {

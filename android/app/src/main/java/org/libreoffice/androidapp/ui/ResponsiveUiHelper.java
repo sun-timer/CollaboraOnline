@@ -12,6 +12,7 @@ import android.view.WindowManager;
 import android.widget.FrameLayout;
 
 import org.libreoffice.androidapp.R;
+import org.libreoffice.androidlib.BottomSheetAnchorHelper;
 
 /**
  * Window size class helpers for phone / tablet layouts.
@@ -60,10 +61,24 @@ public final class ResponsiveUiHelper {
     }
 
     public static void applyBottomSheetWindow(Window window) {
-        applyOverlayDialogWindow(window);
-        if (window != null) {
-            window.setGravity(Gravity.BOTTOM);
+        if (window == null) {
+            return;
         }
+        window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        window.setGravity(Gravity.BOTTOM);
+        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        WindowManager.LayoutParams params = window.getAttributes();
+        params.dimAmount = 0.3f;
+        window.setAttributes(params);
+    }
+
+    /**
+     * Sheet stays flush to screen bottom; only the white card gains internal bottom padding
+     * so action buttons clear nav / gesture area (no external white strip).
+     */
+    public static void applyBottomSheetContentSafePadding(View sheetContent, int designBottomPadPx) {
+        BottomSheetAnchorHelper.installInternalBottomSafePadding(sheetContent, designBottomPadPx);
     }
 
     public static void applyAdaptiveSheetWindow(Context context, Window window) {

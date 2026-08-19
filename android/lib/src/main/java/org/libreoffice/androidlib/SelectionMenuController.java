@@ -48,6 +48,9 @@ public class SelectionMenuController {
 
         void pasteFromSystemClipboard();
 
+        /** Same as paste; {@code onComplete} runs after async paste finishes (e.g. hide menu). */
+        void pasteFromSystemClipboard(Runnable onComplete);
+
         void saveDocument();
 
         void hideQuickActionPanel();
@@ -300,10 +303,8 @@ public class SelectionMenuController {
             toastReadOnlyDocument();
             return;
         }
-        runEditSensitiveClipboardAction(() -> {
-            host.pasteFromSystemClipboard();
-            hide();
-        });
+        runEditSensitiveClipboardAction(() ->
+                host.pasteFromSystemClipboard(this::hide));
     }
 
     private void onCut() {

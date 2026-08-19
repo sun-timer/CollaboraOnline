@@ -182,6 +182,8 @@ public class WordCountSheetController {
         options.logTag = "WordCountSheet";
         options.draggable = false;
         options.applyNavBarPadding = false;
+        options.internalBottomDesignPadPx = contentRoot.getResources()
+                .getDimensionPixelSize(org.libreoffice.androidlib.R.dimen.lolib_function_sheet_bottom_pad);
         BottomSheetAnchorHelper.clearAppliedHeight(dialog);
         BottomSheetAnchorHelper.expandWrapContent(dialog, 0.92f, options);
     }
