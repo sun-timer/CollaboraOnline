@@ -10,7 +10,7 @@
     <dimen name="ai_drawer_panel_width">400dp</dimen>
     <dimen name="local_model_list_dialog_margin_h">32dp</dimen>
     <dimen name="local_model_list_max_height">600dp</dimen>
-    <dimen name="home_new_doc_menu_width">220dp</dimen>
+    <dimen name="home_new_doc_menu_width">216dp</dimen>
     <dimen name="home_recent_actions_popup_width">220dp</dimen>
     <dimen name="home_fab_margin_end">72dp</dimen>
 </resources>

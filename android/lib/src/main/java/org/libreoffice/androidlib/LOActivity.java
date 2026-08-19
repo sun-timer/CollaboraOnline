@@ -395,7 +395,7 @@ public class LOActivity extends AppCompatActivity {
     private String aiOpPendingSelection = "";
     // AI排版相关
     private boolean typesetInProgress = false;  // 排版进行中，抑制选区弹窗
-    private BottomSheetDialog typesetSelectSheet;
+    private AlertDialog typesetSelectDialog;
     private String selectedTypesetType = "paper";
     private BottomSheetDialog typesetPreviewSheet;
     private String pendingTypesetType;  // "paper" | "gov" | "contract" | "general"
@@ -13689,47 +13689,75 @@ public class LOActivity extends AppCompatActivity {
     // ==================== AI排版相关方法 ====================
 
     /**
-     * 显示AI排版类型选择 BottomSheet
+     * 显示 AI 排版类型选择弹窗（Figma 330:32962 居中 Dialog，非 BottomSheet）。
      */
     private void showTypesetSelectSheet() {
         Log.i(TAG, "ai_typeset_select_show");
         if (isFinishing()) {
             return;
         }
+        if (typesetSelectDialog != null && typesetSelectDialog.isShowing()) {
+            return;
+        }
         selectedTypesetType = "paper";
-        typesetSelectSheet = new BottomSheetDialog(this);
-        View sheetView = getLayoutInflater().inflate(R.layout.lolib_sheet_typeset_select, null);
-        typesetSelectSheet.setContentView(sheetView);
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_typeset_select, null, false);
+        typesetSelectDialog = new AlertDialog.Builder(this).create();
+        typesetSelectDialog.setView(root);
+        typesetSelectDialog.setCancelable(true);
+        typesetSelectDialog.setCanceledOnTouchOutside(true);
 
-        int screenHeight = getResources().getDisplayMetrics().heightPixels;
-        int screenWidth = getResources().getDisplayMetrics().widthPixels;
-        aiPanelController.configureBottomSheetFitContent(typesetSelectSheet, sheetView,
-                screenHeight, screenWidth,
-                getResources().getConfiguration().orientation, 0.85f);
-
-        sheetView.findViewById(R.id.typeset_select_close).setOnClickListener(v -> {
+        root.findViewById(R.id.typeset_select_close).setOnClickListener(v -> {
             Log.i(TAG, "ai_typeset_select_dismissed");
-            typesetSelectSheet.dismiss();
+            typesetSelectDialog.dismiss();
         });
 
-        bindTypesetTypeCard(sheetView, R.id.typeset_type_paper, "paper");
-        bindTypesetTypeCard(sheetView, R.id.typeset_type_gov, "gov");
-        bindTypesetTypeCard(sheetView, R.id.typeset_type_contract, "contract");
-        bindTypesetTypeCard(sheetView, R.id.typeset_type_general, "general");
-        updateTypesetTypeSelection(sheetView);
+        bindTypesetTypeCard(root, R.id.typeset_type_paper, "paper");
+        bindTypesetTypeCard(root, R.id.typeset_type_gov, "gov");
+        bindTypesetTypeCard(root, R.id.typeset_type_contract, "contract");
+        bindTypesetTypeCard(root, R.id.typeset_type_general, "general");
+        updateTypesetTypeSelection(root);
 
-        sheetView.findViewById(R.id.typeset_select_start).setOnClickListener(v -> {
+        root.findViewById(R.id.typeset_select_start).setOnClickListener(v -> {
             Log.i(TAG, "ai_typeset_select_start type=" + selectedTypesetType);
             startTypeset(selectedTypesetType);
         });
 
-        typesetSelectSheet.setOnDismissListener(dialog -> {
+        typesetSelectDialog.setOnDismissListener(dialog -> {
             Log.i(TAG, "ai_typeset_select_dismissed");
-            typesetSelectSheet = null;
+            typesetSelectDialog = null;
         });
 
-        typesetSelectSheet.show();
+        typesetSelectDialog.show();
+        if (typesetSelectDialog.getWindow() != null) {
+            typesetSelectDialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            WindowManager.LayoutParams params = typesetSelectDialog.getWindow().getAttributes();
+            params.gravity = Gravity.CENTER;
+            typesetSelectDialog.getWindow().setAttributes(params);
+            root.post(() -> applyTypesetSelectDialogSize(root));
+        }
         Log.i(TAG, "ai_typeset_select_shown");
+    }
+
+    /** Figma 330:32962：固定 335×510dp，避免 AlertDialog 量高偏小裁切底栏。 */
+    private void applyTypesetSelectDialogSize(View root) {
+        if (typesetSelectDialog == null || !typesetSelectDialog.isShowing()
+                || typesetSelectDialog.getWindow() == null || root == null) {
+            return;
+        }
+        int widthPx = getResources().getDimensionPixelSize(R.dimen.ai_typeset_dialog_width);
+        int heightPx = getResources().getDimensionPixelSize(R.dimen.ai_typeset_dialog_height);
+        int maxHeightPx = AiDialogHelper.computeMaxHeightHugPx(getResources());
+        heightPx = Math.min(heightPx, maxHeightPx);
+
+        typesetSelectDialog.getWindow().setLayout(widthPx, heightPx);
+        ViewGroup.LayoutParams rootLp = root.getLayoutParams();
+        if (rootLp == null) {
+            rootLp = new ViewGroup.LayoutParams(widthPx, heightPx);
+        } else {
+            rootLp.width = widthPx;
+            rootLp.height = heightPx;
+        }
+        root.setLayoutParams(rootLp);
     }
 
     private void bindTypesetTypeCard(View sheetView, int cardId, String type) {
@@ -14329,8 +14357,8 @@ public class LOActivity extends AppCompatActivity {
      */
     private void startTypeset(String typesetType) {
         Log.i(TAG, "ai_typeset_start type=" + typesetType);
-        if (typesetSelectSheet != null) {
-            typesetSelectSheet.dismiss();
+        if (typesetSelectDialog != null) {
+            typesetSelectDialog.dismiss();
         }
         pendingTypesetType = typesetType;
         typesetInProgress = true;

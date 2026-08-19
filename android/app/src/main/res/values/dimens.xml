@@ -19,7 +19,7 @@
     <dimen name="home_fab_icon_size">17dp</dimen>
     <dimen name="home_fab_margin_end">54dp</dimen>
     <dimen name="home_fab_margin_bottom">78dp</dimen>
-    <dimen name="home_new_doc_menu_above_fab_gap">18dp</dimen>
+    <dimen name="home_new_doc_menu_above_fab_gap">20dp</dimen>
     <dimen name="home_fab_menu_panel_bottom_padding">156dp</dimen>
     <dimen name="home_recent_list_bottom_padding">140dp</dimen>
     <!-- Figma 111:3580 / 822:29729 / 111:3584 / 111:3593 — home top bar (750×200 plate @2x) -->
@@ -46,16 +46,16 @@
     <dimen name="home_recent_actions_text_size">12sp</dimen>
     <dimen name="home_recent_actions_icon_size">24dp</dimen>
     <dimen name="home_recent_actions_text_margin_start">8dp</dimen>
-    <!-- Figma 117:5343 — new document menu -->
+    <!-- Figma 117:5343 / 117:5200 — new document menu (360×288 @750 canvas) -->
     <dimen name="home_new_doc_menu_width">180dp</dimen>
     <dimen name="home_new_doc_menu_row_height">48dp</dimen>
-    <dimen name="home_new_doc_menu_icon_width">32dp</dimen>
-    <dimen name="home_new_doc_menu_icon_height">27dp</dimen>
+    <dimen name="home_new_doc_menu_icon_size">32dp</dimen>
     <dimen name="home_new_doc_menu_text_size">14sp</dimen>
     <dimen name="home_new_doc_menu_row_padding">8dp</dimen>
     <dimen name="home_new_doc_menu_row_gap">8dp</dimen>
     <dimen name="home_new_doc_menu_card_padding_horizontal">7dp</dimen>
     <dimen name="home_new_doc_menu_card_radius">12dp</dimen>
+    <dimen name="home_new_doc_menu_elevation">10dp</dimen>
     <!-- Responsive content widths (Figma 750 canvas: modal 670, shell padding 40) -->
     <dimen name="dialog_content_max_width">335dp</dimen>
     <dimen name="dialog_shell_padding_horizontal">20dp</dimen>

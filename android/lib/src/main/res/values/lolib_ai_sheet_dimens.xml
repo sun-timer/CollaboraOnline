@@ -46,6 +46,7 @@
 
     <!-- Figma 330:32962 AI排版弹窗 670×1020px → 335×510dp -->
     <dimen name="ai_typeset_dialog_width">335dp</dimen>
+    <dimen name="ai_typeset_dialog_height">510dp</dimen>
     <dimen name="ai_typeset_title_height">60dp</dimen>
     <dimen name="ai_typeset_header_padding_h">16dp</dimen>
     <dimen name="ai_typeset_content_padding">24dp</dimen>

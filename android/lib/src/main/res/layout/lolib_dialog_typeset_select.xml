@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Figma 330:32962 AI排版类型选择 AlertDialog -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/typeset_select_root"
     android:layout_width="@dimen/ai_typeset_dialog_width"
-    android:layout_height="wrap_content"
+    android:layout_height="@dimen/ai_typeset_dialog_height"
     android:background="@drawable/lolib_bg_dialog_outline"
     android:orientation="vertical">
 
@@ -28,16 +29,24 @@
             android:textSize="20sp"
             android:fontFamily="sans-serif-medium" />
 
-        <ImageButton
+        <FrameLayout
             android:id="@+id/typeset_select_close"
             android:layout_width="@dimen/ai_sheet_header_close_size"
             android:layout_height="@dimen/ai_sheet_header_close_size"
             android:layout_gravity="center_vertical|end"
             android:background="@drawable/lolib_bg_typeset_close_circle"
+            android:clickable="true"
             android:contentDescription="关闭"
-            android:padding="10dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/lolib_ic_dialog_close" />
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:scaleType="centerInside"
+                android:src="@drawable/lolib_ic_dialog_close" />
+        </FrameLayout>
     </FrameLayout>
 
     <LinearLayout
@@ -207,7 +216,13 @@
         </LinearLayout>
     </LinearLayout>
 
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
     <FrameLayout
+        android:id="@+id/typeset_select_footer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingStart="@dimen/ai_typeset_button_padding_h"

@@ -241,57 +241,15 @@
         </FrameLayout>
 
         <androidx.constraintlayout.widget.ConstraintLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:id="@+id/homeFabLayer"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
             android:clipChildren="false"
-            android:clipToPadding="false">
-
-            <FrameLayout
-                android:id="@+id/editFAB"
-                android:layout_width="@dimen/home_fab_size"
-                android:layout_height="@dimen/home_fab_size"
-                android:background="@android:color/transparent"
-                android:clickable="true"
-                android:clipChildren="false"
-                android:clipToPadding="false"
-                android:elevation="10dp"
-                android:focusable="true"
-                android:layout_marginEnd="@dimen/home_fab_margin_end"
-                android:layout_marginBottom="@dimen/home_fab_margin_bottom"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toEndOf="parent">
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:contentDescription="@string/create_new_document_title"
-                    android:scaleType="fitXY"
-                    android:src="@drawable/ic_home_fab" />
-            </FrameLayout>
-
-            <FrameLayout
-                android:id="@+id/newDocCloseButton"
-                android:layout_width="@dimen/home_fab_size"
-                android:layout_height="@dimen/home_fab_size"
-                android:background="@android:color/transparent"
-                android:clickable="true"
-                android:clipChildren="false"
-                android:clipToPadding="false"
-                android:elevation="10dp"
-                android:focusable="true"
-                android:visibility="gone"
-                android:layout_marginEnd="@dimen/home_fab_margin_end"
-                android:layout_marginBottom="@dimen/home_fab_margin_bottom"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toEndOf="parent">
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:contentDescription="@string/action_cancel"
-                    android:scaleType="fitXY"
-                    android:src="@drawable/ic_new_doc_close_fab" />
-            </FrameLayout>
+            android:clipToPadding="false"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
 
             <FrameLayout
                 android:id="@+id/newDocOverlay"
@@ -306,34 +264,87 @@
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent">
+                app:layout_constraintTop_toTopOf="parent" />
 
-                <LinearLayout
-                    android:id="@+id/newDocMenuPanel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="bottom|end"
-                    android:clickable="true"
-                    android:clipChildren="false"
-                    android:clipToPadding="false"
-                    android:focusable="true"
-                    android:orientation="vertical"
-                    android:paddingEnd="@dimen/home_fab_margin_end"
-                    android:paddingBottom="@dimen/home_fab_menu_panel_bottom_padding">
+            <!-- Figma 117:5343 — menu above FAB anchor, right edge aligned (extends left) -->
+            <View
+                android:id="@+id/homeFabAnchor"
+                android:layout_width="@dimen/home_fab_size"
+                android:layout_height="@dimen/home_fab_size"
+                android:importantForAccessibility="no"
+                android:visibility="invisible"
+                android:layout_marginEnd="@dimen/home_fab_margin_end"
+                android:layout_marginBottom="@dimen/home_fab_margin_bottom"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
 
-                    <LinearLayout
-                        android:id="@+id/newDocMenuCard"
-                        android:layout_width="@dimen/home_new_doc_menu_width"
-                        android:layout_height="wrap_content"
-                        android:background="@drawable/bg_new_doc_menu_card"
-                        android:elevation="12dp"
-                        android:orientation="vertical"
-                        android:paddingStart="@dimen/home_new_doc_menu_card_padding_horizontal"
-                        android:paddingEnd="@dimen/home_new_doc_menu_card_padding_horizontal">
+            <LinearLayout
+                android:id="@+id/newDocMenuCard"
+                android:layout_width="@dimen/home_new_doc_menu_width"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_new_doc_menu_card"
+                android:clickable="true"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:elevation="@dimen/home_new_doc_menu_elevation"
+                android:focusable="true"
+                android:orientation="vertical"
+                android:outlineProvider="background"
+                android:paddingStart="@dimen/home_new_doc_menu_card_padding_horizontal"
+                android:paddingEnd="@dimen/home_new_doc_menu_card_padding_horizontal"
+                android:visibility="gone"
+                android:layout_marginBottom="@dimen/home_new_doc_menu_above_fab_gap"
+                app:layout_constraintBottom_toTopOf="@id/homeFabAnchor"
+                app:layout_constraintEnd_toEndOf="@id/homeFabAnchor">
 
-                        <include layout="@layout/include_new_doc_menu_rows" />
-                    </LinearLayout>
-                </LinearLayout>
+                <include layout="@layout/include_new_doc_menu_rows" />
+            </LinearLayout>
+
+            <FrameLayout
+                android:id="@+id/editFAB"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:background="@android:color/transparent"
+                android:clickable="true"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:elevation="10dp"
+                android:focusable="true"
+                app:layout_constraintBottom_toBottomOf="@id/homeFabAnchor"
+                app:layout_constraintEnd_toEndOf="@id/homeFabAnchor"
+                app:layout_constraintStart_toStartOf="@id/homeFabAnchor"
+                app:layout_constraintTop_toTopOf="@id/homeFabAnchor">
+
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@string/create_new_document_title"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/ic_home_fab" />
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/newDocCloseButton"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:background="@android:color/transparent"
+                android:clickable="true"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:elevation="11dp"
+                android:focusable="true"
+                android:visibility="gone"
+                app:layout_constraintBottom_toBottomOf="@id/homeFabAnchor"
+                app:layout_constraintEnd_toEndOf="@id/homeFabAnchor"
+                app:layout_constraintStart_toStartOf="@id/homeFabAnchor"
+                app:layout_constraintTop_toTopOf="@id/homeFabAnchor">
+
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@string/action_cancel"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/ic_new_doc_close_fab" />
             </FrameLayout>
 
         </androidx.constraintlayout.widget.ConstraintLayout>

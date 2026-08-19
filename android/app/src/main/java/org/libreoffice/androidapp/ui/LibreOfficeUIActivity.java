@@ -157,7 +157,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
     private boolean isFabMenuOpen = false;
     private View editFAB;
+    private View homeFabAnchor;
     private View newDocOverlay;
+    private View newDocMenuCard;
     private View newDocCloseButton;
 
     /** Recent files list vs. grid switch. */
@@ -992,7 +994,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         setContentView(R.layout.activity_document_browser);
         setupNavigationDrawer();
 
-        View topBar = findViewById(R.id.homeTopBar);
         homeLeftIcon = findViewById(R.id.homeLeftIcon);
         homeOpenFileButton = findViewById(R.id.homeOpenFileButton);
         homeSearchInput = findViewById(R.id.homeSearchInput);
@@ -1079,7 +1080,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     /** Initialize the home new-document FAB. */
     private void setupFloatingActionButton() {
         editFAB = findViewById(R.id.editFAB);
+        homeFabAnchor = findViewById(R.id.homeFabAnchor);
         newDocOverlay = findViewById(R.id.newDocOverlay);
+        newDocMenuCard = findViewById(R.id.newDocMenuCard);
         newDocCloseButton = findViewById(R.id.newDocCloseButton);
         View writerRow = findViewById(R.id.newDocMenuRowWriter);
         View calcRow = findViewById(R.id.newDocMenuRowCalc);
@@ -1087,8 +1090,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
         if (LOActivity.isChromeOS(this)) {
             int dp = (int) getResources().getDisplayMetrics().density;
-            applyChromeOsFabLayout(editFAB, dp);
-            applyChromeOsFabLayout(newDocCloseButton, dp);
+            applyChromeOsFabLayout(homeFabAnchor, dp);
         }
 
         editFAB.setOnClickListener(v -> {
@@ -1102,10 +1104,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         if (newDocOverlay != null) {
             newDocOverlay.setOnClickListener(v -> collapseFabMenu());
         }
-        View newDocMenuPanel = findViewById(R.id.newDocMenuPanel);
-        if (newDocMenuPanel != null) {
-            newDocMenuPanel.setOnClickListener(v -> {
-                // Consume clicks on the menu panel so the transparent overlay does not dismiss.
+        if (newDocMenuCard != null) {
+            newDocMenuCard.setOnClickListener(v -> {
+                // Consume clicks on the menu so the transparent overlay does not dismiss.
             });
         }
         if (newDocCloseButton != null) {
@@ -1145,8 +1146,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     }
 
     private void applyHomeFabSafeArea(SafeAreaInsets insets) {
-        applyHomeFabMargins(editFAB, insets);
-        applyHomeFabMargins(newDocCloseButton, insets);
+        applyHomeFabMargins(homeFabAnchor, insets);
     }
 
     private void applyHomeDrawerSafeArea(SafeAreaInsets insets) {
@@ -1202,6 +1202,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             return;
         }
         newDocOverlay.setVisibility(View.VISIBLE);
+        if (newDocMenuCard != null) {
+            newDocMenuCard.setVisibility(View.VISIBLE);
+        }
         editFAB.setVisibility(View.GONE);
         if (newDocCloseButton != null) {
             newDocCloseButton.setVisibility(View.VISIBLE);
@@ -1215,6 +1218,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             return;
         }
         newDocOverlay.setVisibility(View.GONE);
+        if (newDocMenuCard != null) {
+            newDocMenuCard.setVisibility(View.GONE);
+        }
         editFAB.setVisibility(View.VISIBLE);
         if (newDocCloseButton != null) {
             newDocCloseButton.setVisibility(View.GONE);

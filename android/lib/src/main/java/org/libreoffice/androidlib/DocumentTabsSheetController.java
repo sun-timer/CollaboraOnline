@@ -41,6 +41,8 @@ public class DocumentTabsSheetController {
     private final Host host;
     private View overlayView;
     private View scrimView;
+    private View topToolbarView;
+    private View statusPlateView;
     private boolean showingOpened = true;
     private LinearLayout listContainer;
     private TextView openedTabView;
@@ -53,13 +55,16 @@ public class DocumentTabsSheetController {
     public void bindOverlayViews() {
         overlayView = host.findViewById(R.id.document_tabs_overlay);
         scrimView = host.findViewById(R.id.document_tabs_scrim);
+        topToolbarView = host.findViewById(R.id.doc_top_toolbar_include);
         View panel = host.findViewById(R.id.document_tabs_panel_include);
         if (panel != null) {
+            statusPlateView = panel.findViewById(R.id.document_tabs_status_plate);
             bindPanel(panel);
         }
         if (scrimView != null) {
             scrimView.setOnClickListener(v -> dismiss());
         }
+        applyStatusBarPlate();
     }
 
     public void show() {
@@ -68,6 +73,10 @@ public class DocumentTabsSheetController {
         }
         if (overlayView == null) {
             return;
+        }
+        applyStatusBarPlate();
+        if (topToolbarView != null) {
+            topToolbarView.setVisibility(View.GONE);
         }
         showingOpened = true;
         if (openedTabView != null && closedTabView != null) {
@@ -82,7 +91,18 @@ public class DocumentTabsSheetController {
         if (overlayView != null) {
             overlayView.setVisibility(View.GONE);
         }
+        if (topToolbarView != null) {
+            topToolbarView.setVisibility(View.VISIBLE);
+        }
         host.onOpenDocumentListChanged();
+    }
+
+    private void applyStatusBarPlate() {
+        if (statusPlateView == null || overlayView == null) {
+            return;
+        }
+        SystemUiHelper.applyStatusBarPlateHeight(
+                statusPlateView, SystemUiHelper.readSafeAreaInsets(overlayView));
     }
 
     public boolean isVisible() {
@@ -328,7 +348,7 @@ public class DocumentTabsSheetController {
         tab.setBackgroundResource(active
                 ? R.drawable.lolib_bg_document_tabs_tab_active
                 : android.R.color.transparent);
-        tab.setTextColor(active ? 0xFF101010 : 0xFFCCCCCC);
+        tab.setTextColor(active ? 0xFF101010 : 0xFF999999);
         tab.setTypeface(tab.getTypeface(), android.graphics.Typeface.NORMAL);
     }
 }
