@@ -1381,6 +1381,14 @@ window.L.Control.NotebookbarWriter = window.L.Control.Notebookbar.extend({
 				'accessibility': { focusBack: true, combination: 'RL', de: null }
 			} : {},
 			(this.map['wopi'].EnableRemoteAIContent) ? {
+				'id': 'insert-insert-remote-ai-features',
+				'class': 'unoremoteaifeatures',
+				'type': 'bigcustomtoolitem',
+				'text': _('AI Features'),
+				'command': 'remoteaifeatures',
+				'accessibility': { focusBack: true, combination: 'RF', de: null }
+			} : {},
+			(this.map['wopi'].EnableRemoteAIContent) ? {
 				'type': 'separator',
 				'id': 'insert-remoteaicontent-break',
 				'orientation': 'vertical'

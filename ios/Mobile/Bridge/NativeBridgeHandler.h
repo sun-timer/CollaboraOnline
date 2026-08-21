@@ -7,6 +7,8 @@
 
 #import <WebKit/WebKit.h>
 
+@class AIService;
+
 typedef NSString * (^NativeBridgeSessionIdProvider)(void);
 typedef void (^NativeBridgeMessageEmitter)(NSDictionary *message);
 
@@ -14,6 +16,12 @@ typedef void (^NativeBridgeMessageEmitter)(NSDictionary *message);
 
 - (instancetype)initWithSessionIdProvider:(NativeBridgeSessionIdProvider)sessionIdProvider
                                   emitter:(NativeBridgeMessageEmitter)emitter;
+
+- (instancetype)initWithSessionIdProvider:(NativeBridgeSessionIdProvider)sessionIdProvider
+                                  emitter:(NativeBridgeMessageEmitter)emitter
+                               aiService:(AIService *)aiService;
+
+- (void)cancelAllRequests;
 
 @end
 

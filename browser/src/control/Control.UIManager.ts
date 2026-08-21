@@ -162,12 +162,20 @@ class UIManager extends window.L.Control {
 		return !shouldUseClassic;
 	}
 
-	private shouldUseAndroidNativeBottomToolbar(): boolean {
-		return !!window.ThisIsTheAndroidApp && window.mode.isMobile();
+	private shouldUseNativeMobileBottomToolbar(): boolean {
+		return shouldUseNativeMobileToolbar({
+			android: !!window.ThisIsTheAndroidApp,
+			ios: !!window.ThisIsTheiOSApp,
+			mobile: window.mode.isMobile(),
+		});
 	}
 
-	private shouldUseAndroidNativeTopToolbar(): boolean {
-		return !!window.ThisIsTheAndroidApp && window.mode.isMobile();
+	private shouldUseNativeMobileTopToolbar(): boolean {
+		return shouldUseNativeMobileToolbar({
+			android: !!window.ThisIsTheAndroidApp,
+			ios: !!window.ThisIsTheiOSApp,
+			mobile: window.mode.isMobile(),
+		});
 	}
 
 	// Dark mode toggle
@@ -511,8 +519,12 @@ class UIManager extends window.L.Control {
 		var currentMode = this.getCurrentMode();
 		var enableNotebookbar = currentMode === 'notebookbar' && !app.isReadOnly();
 		var hasShare = this.map.wopi.EnableShare;
-		var useAndroidNativeBottomToolbar = this.shouldUseAndroidNativeBottomToolbar();
-		var useAndroidNativeTopToolbar = this.shouldUseAndroidNativeTopToolbar();
+		var useNativeMobileBottomToolbar = this.shouldUseNativeMobileBottomToolbar();
+		var useNativeMobileTopToolbar = this.shouldUseNativeMobileTopToolbar();
+		var useAndroidNativeBottomToolbar = !!window.ThisIsTheAndroidApp && useNativeMobileBottomToolbar;
+		var useAndroidNativeTopToolbar = !!window.ThisIsTheAndroidApp && useNativeMobileTopToolbar;
+		var useIOSNativeBottomToolbar = !!window.ThisIsTheiOSApp && useNativeMobileBottomToolbar;
+		var useIOSNativeTopToolbar = !!window.ThisIsTheiOSApp && useNativeMobileTopToolbar;
 
 		document.body.setAttribute('data-userInterfaceMode', currentMode);
 		document.body.setAttribute('data-docType', docType);
@@ -524,18 +536,34 @@ class UIManager extends window.L.Control {
 			'android-native-top-toolbar',
 			useAndroidNativeTopToolbar,
 		);
+		document.body.classList.toggle(
+			'native-mobile-bottom-toolbar',
+			useNativeMobileBottomToolbar,
+		);
+		document.body.classList.toggle(
+			'native-mobile-top-toolbar',
+			useNativeMobileTopToolbar,
+		);
+		document.body.classList.toggle(
+			'ios-native-bottom-toolbar',
+			useIOSNativeBottomToolbar,
+		);
+		document.body.classList.toggle(
+			'ios-native-top-toolbar',
+			useIOSNativeTopToolbar,
+		);
 
 		if (hasShare)
 			document.body.setAttribute('data-integratorSidebar', 'true');
 
 		if (window.mode.isMobile()) {
 			$('#mobile-edit-button').css('display', 'flex');
-			if (useAndroidNativeBottomToolbar) {
+			if (useNativeMobileBottomToolbar) {
 				this.map.mobileBottomBar = null;
 			} else {
 				this.map.mobileBottomBar = JSDialog.MobileBottomBar(this.map);
 			}
-			if (useAndroidNativeTopToolbar) {
+			if (useNativeMobileTopToolbar) {
 				this.map.mobileTopBar = null;
 			} else {
 				this.map.mobileTopBar = JSDialog.MobileTopBar(this.map);

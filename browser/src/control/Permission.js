@@ -383,7 +383,7 @@ window.L.Map.include({
 		if (window.ThisIsTheiOSApp && window.mode.isTablet() && this._docLayer._docType === 'spreadsheet')
 			this.showCalcInputBar();
 
-		if (window.ThisIsTheAndroidApp)
+		if (window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp)
 			window.postMobileMessage('EDITMODE on');
 	},
 
@@ -403,7 +403,7 @@ window.L.Map.include({
 		this.fire('closemobilewizard');
 		this.fire('closealldialogs');
 
-		if (window.ThisIsTheAndroidApp && !transientReconnect)
+		if ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) && !transientReconnect)
 			window.postMobileMessage('EDITMODE off');
 	},
 

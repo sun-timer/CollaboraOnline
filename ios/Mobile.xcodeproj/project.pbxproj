@@ -59,6 +59,12 @@
 		BE8D772F2136762500AC58EA /* DocumentBrowserViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = BE8D772E2136762500AC58EA /* DocumentBrowserViewController.mm */; };
 		BE8D77322136762500AC58EA /* DocumentViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = BE8D77312136762500AC58EA /* DocumentViewController.mm */; };
 		C0FFEE012026081200000001 /* NativeBridgeHandler.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE002026081200000001 /* NativeBridgeHandler.mm */; };
+		C0FFEE122026081200000001 /* KeychainStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE102026081200000001 /* KeychainStore.mm */; };
+		C0FFEE132026081200000001 /* AIConfigurationStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE112026081200000001 /* AIConfigurationStore.mm */; };
+		C0FFEE142026081200000001 /* AIRequestSession.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE152026081200000001 /* AIRequestSession.mm */; };
+		C0FFEE162026081200000001 /* AIService.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE172026081200000001 /* AIService.mm */; };
+		D0A020260814000000000001 /* TopToolbarController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000012 /* TopToolbarController.mm */; };
+		D0A020260814000000000002 /* BottomToolbarController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000014 /* BottomToolbarController.mm */; };
 		BE8D77352136762500AC58EA /* CODocument.mm in Sources */ = {isa = PBXBuildFile; fileRef = BE8D77342136762500AC58EA /* CODocument.mm */; };
 		BE8D77382136762500AC58EA /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BE8D77362136762500AC58EA /* Main.storyboard */; };
 		BE8D773A2136762600AC58EA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BE8D77392136762600AC58EA /* Assets.xcassets */; };
@@ -906,6 +912,18 @@
 		BE8D77312136762500AC58EA /* DocumentViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DocumentViewController.mm; sourceTree = "<group>"; };
 		C0FFEE002026081200000001 /* NativeBridgeHandler.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = NativeBridgeHandler.mm; sourceTree = "<group>"; };
 		C0FFEE022026081200000001 /* NativeBridgeHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NativeBridgeHandler.h; sourceTree = "<group>"; };
+		C0FFEE102026081200000001 /* KeychainStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = KeychainStore.mm; sourceTree = "<group>"; };
+		C0FFEE112026081200000001 /* AIConfigurationStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AIConfigurationStore.mm; sourceTree = "<group>"; };
+		C0FFEE152026081200000001 /* AIRequestSession.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AIRequestSession.mm; sourceTree = "<group>"; };
+		C0FFEE172026081200000001 /* AIService.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AIService.mm; sourceTree = "<group>"; };
+		C0FFEE182026081200000001 /* KeychainStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeychainStore.h; sourceTree = "<group>"; };
+		C0FFEE192026081200000001 /* AIConfigurationStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIConfigurationStore.h; sourceTree = "<group>"; };
+		C0FFEE1A2026081200000001 /* AIRequestSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIRequestSession.h; sourceTree = "<group>"; };
+		C0FFEE1B2026081200000001 /* AIService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIService.h; sourceTree = "<group>"; };
+		D0A020260814000000000011 /* TopToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TopToolbarController.h; sourceTree = "<group>"; };
+		D0A020260814000000000012 /* TopToolbarController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = TopToolbarController.mm; sourceTree = "<group>"; };
+		D0A020260814000000000013 /* BottomToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BottomToolbarController.h; sourceTree = "<group>"; };
+		D0A020260814000000000014 /* BottomToolbarController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = BottomToolbarController.mm; sourceTree = "<group>"; };
 		BE8D77332136762500AC58EA /* CODocument.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CODocument.h; sourceTree = "<group>"; };
 		BE8D77342136762500AC58EA /* CODocument.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objcpp; path = CODocument.mm; sourceTree = "<group>"; };
 		BE8D77372136762500AC58EA /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
@@ -2695,7 +2713,9 @@
 		BE8D77292136762500AC58EA /* Mobile */ = {
 			isa = PBXGroup;
 			children = (
+				C0FFEE1C2026081200000001 /* AI */,
 				C0FFEE032026081200000001 /* Bridge */,
+				D0A020260814000000000021 /* Toolbar */,
 				ACCACA1E3019CCE0003D0280 /* MobileDebug.entitlements */,
 				C792822F2DF89BB2001EA43B /* MobileSocket.h */,
 				C79282302DF89BB2001EA43B /* MobileSocket.mm */,
@@ -2729,6 +2749,21 @@
 			path = Mobile;
 			sourceTree = "<group>";
 		};
+		C0FFEE1C2026081200000001 /* AI */ = {
+			isa = PBXGroup;
+			children = (
+				C0FFEE182026081200000001 /* KeychainStore.h */,
+				C0FFEE102026081200000001 /* KeychainStore.mm */,
+				C0FFEE192026081200000001 /* AIConfigurationStore.h */,
+				C0FFEE112026081200000001 /* AIConfigurationStore.mm */,
+				C0FFEE1A2026081200000001 /* AIRequestSession.h */,
+				C0FFEE152026081200000001 /* AIRequestSession.mm */,
+				C0FFEE1B2026081200000001 /* AIService.h */,
+				C0FFEE172026081200000001 /* AIService.mm */,
+			);
+			path = AI;
+			sourceTree = "<group>";
+		};
 		C0FFEE032026081200000001 /* Bridge */ = {
 			isa = PBXGroup;
 			children = (
@@ -2736,6 +2771,17 @@
 				C0FFEE002026081200000001 /* NativeBridgeHandler.mm */,
 			);
 			path = Bridge;
+			sourceTree = "<group>";
+		};
+		D0A020260814000000000021 /* Toolbar */ = {
+			isa = PBXGroup;
+			children = (
+				D0A020260814000000000011 /* TopToolbarController.h */,
+				D0A020260814000000000012 /* TopToolbarController.mm */,
+				D0A020260814000000000013 /* BottomToolbarController.h */,
+				D0A020260814000000000014 /* BottomToolbarController.mm */,
+			);
+			path = Toolbar;
 			sourceTree = "<group>";
 		};
 		BE9273AD2372DC6B00ADB598 /* sidebar */ = {
@@ -3839,6 +3885,12 @@
 				BE980C532CE3499900FED7BC /* Util-unix.cpp in Sources */,
 				BE8D77322136762500AC58EA /* DocumentViewController.mm in Sources */,
 				C0FFEE012026081200000001 /* NativeBridgeHandler.mm in Sources */,
+				C0FFEE122026081200000001 /* KeychainStore.mm in Sources */,
+				C0FFEE132026081200000001 /* AIConfigurationStore.mm in Sources */,
+				C0FFEE142026081200000001 /* AIRequestSession.mm in Sources */,
+				C0FFEE162026081200000001 /* AIService.mm in Sources */,
+				D0A020260814000000000001 /* TopToolbarController.mm in Sources */,
+				D0A020260814000000000002 /* BottomToolbarController.mm in Sources */,
 				BE8D772C2136762500AC58EA /* AppDelegate.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

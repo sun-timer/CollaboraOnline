@@ -7,6 +7,8 @@
 
 #import "NativeBridgeHandler.h"
 
+#import "../AI/AIService.h"
+
 static const NSInteger kNativeBridgeProtocolVersion = 1;
 
 @interface NativeBridgeHandler ()
@@ -14,16 +16,26 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
 @property (copy, nonatomic) NativeBridgeMessageEmitter emitter;
 @property (copy, nonatomic) NSString *nativeSessionId;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSString *> *requestSessions;
+@property (strong, nonatomic) AIService *aiService;
 @end
 
 @implementation NativeBridgeHandler
 
 - (instancetype)initWithSessionIdProvider:(NativeBridgeSessionIdProvider)sessionIdProvider
                                   emitter:(NativeBridgeMessageEmitter)emitter {
+    return [self initWithSessionIdProvider:sessionIdProvider
+                                  emitter:emitter
+                               aiService:[[AIService alloc] init]];
+}
+
+- (instancetype)initWithSessionIdProvider:(NativeBridgeSessionIdProvider)sessionIdProvider
+                                  emitter:(NativeBridgeMessageEmitter)emitter
+                               aiService:(AIService *)aiService {
     self = [super init];
     if (self) {
         _sessionIdProvider = [sessionIdProvider copy];
         _emitter = [emitter copy];
+        _aiService = aiService ?: [[AIService alloc] init];
         _nativeSessionId = _sessionIdProvider ? [_sessionIdProvider() copy] : nil;
         if (_nativeSessionId.length == 0) {
             _nativeSessionId = [[NSUUID UUID] UUIDString];
@@ -161,21 +173,26 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
             return;
         }
         self.requestSessions[requestId] = effectiveSessionId;
-        [self emitEnvelopeType:@"ai.state"
-                      requestId:requestId
-                documentSessionId:effectiveSessionId
-                           payload:@{@"state": @"loading"}];
-        [self emitEnvelopeType:@"ai.stream"
-                      requestId:requestId
-                documentSessionId:effectiveSessionId
-                           payload:@{@"state": @"streaming",
-                                     @"delta": @"[iOS NativeBridge stub]"}];
-        [self emitEnvelopeType:@"ai.done"
-                      requestId:requestId
-                documentSessionId:effectiveSessionId
-                           payload:@{@"state": @"ready",
-                                     @"fullText": @"[iOS NativeBridge stub]"}];
-        [self.requestSessions removeObjectForKey:requestId];
+        __weak NativeBridgeHandler *weakSelf = self;
+        [self.aiService startRequest:envelope[@"payload"]
+                           requestId:requestId
+                  documentSessionId:effectiveSessionId
+                               emit:^(NSString *type,
+                                      NSString *callbackRequestId,
+                                      NSString *callbackSessionId,
+                                      NSDictionary *payload) {
+            NativeBridgeHandler *strongSelf = weakSelf;
+            if (strongSelf == nil) {
+                return;
+            }
+            [strongSelf emitEnvelopeType:type
+                              requestId:callbackRequestId
+                        documentSessionId:callbackSessionId
+                                   payload:payload];
+            if ([type isEqualToString:@"ai.error"]) {
+                [strongSelf.requestSessions removeObjectForKey:callbackRequestId];
+            }
+        }];
         return;
     }
     if ([type isEqualToString:@"ai.cancel"] || [type isEqualToString:@"ai.accept"]) {
@@ -193,10 +210,7 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
             return;
         }
         if ([type isEqualToString:@"ai.cancel"]) {
-            [self emitEnvelopeType:@"ai.state"
-                          requestId:requestId
-                    documentSessionId:effectiveSessionId
-                               payload:@{@"state": @"cancelled"}];
+            [self.aiService cancelRequest:requestId documentSessionId:effectiveSessionId];
         } else {
             [self emitEnvelopeType:@"ai.state"
                           requestId:requestId
@@ -212,6 +226,14 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
         documentSessionId:documentSessionId
                    code:@"unsupported_request_type"
                 message:@"This NativeBridge endpoint only accepts AI requests"];
+}
+
+- (void)cancelAllRequests {
+    NSString *sessionId = self.sessionIdProvider ? self.sessionIdProvider() : self.nativeSessionId;
+    if (sessionId.length > 0) {
+        [self.aiService cancelRequestsForDocumentSession:sessionId];
+    }
+    [self.requestSessions removeAllObjects];
 }
 
 - (NSDictionary *)dictionaryFromMessageBody:(id)body {

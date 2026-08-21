@@ -233,22 +233,22 @@ window.L.Map = window.L.Evented.extend({
 
 		//Last modified time of document saved state
 		this._lastModDateValue = '';
-		this._androidUndoRedoState = { undo: false, redo: false };
+		this._nativeUndoRedoState = { undo: false, redo: false };
 
 		this.on('commandstatechanged', function(e) {
-			if (window.ThisIsTheAndroidApp &&
+			if ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) &&
 					(e.commandName === '.uno:Undo' || e.commandName === '.uno:Redo')) {
 				var enabled = e.state === 'enabled';
 				if (e.commandName === '.uno:Undo') {
-					this._androidUndoRedoState.undo = enabled;
+					this._nativeUndoRedoState.undo = enabled;
 				}
 				else {
-					this._androidUndoRedoState.redo = enabled;
+					this._nativeUndoRedoState.redo = enabled;
 				}
 				if (typeof window.postMobileMessage === 'function') {
 					window.postMobileMessage('UNDOREDO undo=' +
-						(this._androidUndoRedoState.undo ? '1' : '0') +
-						' redo=' + (this._androidUndoRedoState.redo ? '1' : '0'));
+						(this._nativeUndoRedoState.undo ? '1' : '0') +
+						' redo=' + (this._nativeUndoRedoState.redo ? '1' : '0'));
 				}
 			}
 			if (e.commandName === '.uno:ModifiedStatus') {

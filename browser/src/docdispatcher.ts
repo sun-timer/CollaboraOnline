@@ -94,7 +94,20 @@ class Dispatcher {
 			app.map.fire('postMessage', { msgId: 'UI_PickLink' });
 		};
 		this.actionsMap['remoteaicontent'] = function () {
-			app.map.fire('postMessage', { msgId: 'UI_InsertAIContent' });
+			const panel = (window as any).__coolWriterAiPanel;
+			if (window.ThisIsTheiOSApp && panel) {
+				panel.openAssistant();
+			} else {
+				app.map.fire('postMessage', { msgId: 'UI_InsertAIContent' });
+			}
+		};
+		this.actionsMap['remoteaifeatures'] = function () {
+			const panel = (window as any).__coolWriterAiPanel;
+			if (window.ThisIsTheiOSApp && panel) {
+				panel.openOperationSheet();
+			} else {
+				app.map.fire('postMessage', { msgId: 'UI_InsertAIFeatures' });
+			}
 		};
 		// TODO: deduplicate
 		this.actionsMap['hyperlinkdialog'] = function () {

@@ -23,15 +23,7 @@ interface MobileAiEventListener {
 }
 
 class MobileAiBridge {
-	static readonly WRITER_P0_TASK_TYPES = [
-		'polish',
-		'translate',
-		'expand',
-		'condense',
-		'rewrite',
-		'continue',
-		'summarize',
-	];
+	static readonly WRITER_P0_TASK_TYPES = WriterAiCatalog.P0_TASK_TYPES;
 
 	private static instance: MobileAiBridge | null = null;
 	private readonly nativeBridge: NativeBridge;
@@ -80,8 +72,9 @@ class MobileAiBridge {
 			targetPlatform: 'any',
 			payload: requestPayload as { [key: string]: any },
 		};
+		const legacyRequestPayload = this.legacyRequestPayload(requestPayload);
 		const legacyPosted = this.isAndroid()
-			? this.postLegacy('ai.request', requestPayload, requestId)
+			? this.postLegacy('ai.request', legacyRequestPayload, requestId)
 			: false;
 		const nativePosted = this.nativeBridge.postMessage(envelope);
 		if (!legacyPosted && !nativePosted) {
@@ -139,6 +132,10 @@ class MobileAiBridge {
 			return true;
 		}
 		return legacyPosted;
+	}
+
+	isAvailable(): boolean {
+		return this.nativeBridge.isAvailable() || this.isAndroid();
 	}
 
 	subscribe(listener: MobileAiEventListener): () => void {
@@ -264,6 +261,22 @@ class MobileAiBridge {
 		return (
 			typeof window !== 'undefined' && !!(window as any).ThisIsTheAndroidApp
 		);
+	}
+
+	private legacyRequestPayload(
+		payload: MobileAiRequestPayload,
+	): MobileAiRequestPayload {
+		if (!this.isAndroid() || typeof payload.taskType !== 'string') {
+			return payload;
+		}
+		const task = WriterAiCatalog.getTask(payload.taskType);
+		if (!task || task.androidTaskType === task.taskType) {
+			return payload;
+		}
+		return {
+			...payload,
+			taskType: task.androidTaskType,
+		};
 	}
 }
 

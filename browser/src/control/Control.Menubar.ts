@@ -221,6 +221,7 @@ class Menubar extends window.L.Control {
 				{name: _UNO('.uno:HyperlinkDialog'), unoid: '.uno:HyperlinkDialog', id: 'inserthyperlink', type: 'action'},
 				{name: _('Smart Picker'), id: 'remotelink', type: 'action'},
 				{name: _('AI Assistant'), id: 'remoteaicontent', type: 'action'},
+				{name: _('AI Features'), id: 'remoteaifeatures', type: 'action'},
 				{type: 'separator'},
 				{uno: '.uno:InsertQrCode'},
 				{uno: '.uno:InsertSymbol'},
@@ -523,6 +524,7 @@ class Menubar extends window.L.Control {
 				{name: _UNO('.uno:HyperlinkDialog'), unoid: '.uno:HyperlinkDialog', id: 'inserthyperlink', type: 'action'},
 				{name: _('Smart Picker'), id: 'remotelink', type: 'action'},
 				{name: _('AI Assistant'), id: 'remoteaicontent', type: 'action'},
+				{name: _('AI Features'), id: 'remoteaifeatures', type: 'action'},
 				{type: 'separator'},
 				{uno: '.uno:InsertSymbol'},
 				{type: 'separator'},
@@ -677,6 +679,7 @@ class Menubar extends window.L.Control {
 				{name: _UNO('.uno:HyperlinkDialog'), unoid: '.uno:HyperlinkDialog', id: 'inserthyperlink', type: 'action'},
 				{name: _('Smart Picker'), id: 'remotelink', type: 'action'},
 				{name: _('AI Assistant'), id: 'remoteaicontent', type: 'action'},
+				{name: _('AI Features'), id: 'remoteaifeatures', type: 'action'},
 				{type: 'separator'},
 				{uno: '.uno:InsertSymbol'},
 				{type: 'separator'},
@@ -837,6 +840,7 @@ class Menubar extends window.L.Control {
 				{name: _UNO('.uno:HyperlinkDialog'), uno: '.uno:HyperlinkDialog'},
 				{name: _('Smart Picker'), id: 'remotelink', type: 'action'},
 				{name: _('AI Assistant'), id: 'remoteaicontent', type: 'action'},
+				{name: _('AI Features'), id: 'remoteaifeatures', type: 'action'},
 				{uno: '.uno:InsertSymbol'},
 				{type: 'separator'},
 				{name: _UNO('.uno:InsertField', 'text'), type: 'menu', menu: [
@@ -2127,6 +2131,13 @@ class Menubar extends window.L.Control {
 			}
 
 			if (id === 'remoteaicontent') {
+				if (this._map['wopi'].EnableRemoteAIContent)
+					$(aItem).show();
+				else
+					$(aItem).hide();
+			}
+
+			if (id === 'remoteaifeatures') {
 				if (this._map['wopi'].EnableRemoteAIContent)
 					$(aItem).show();
 				else

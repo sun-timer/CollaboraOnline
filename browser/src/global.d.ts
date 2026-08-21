@@ -390,6 +390,8 @@ interface Window {
 	ThisIsTheiOSApp: boolean;
 	NativeBridge?: NativeBridge;
 	MobileAiBridge?: MobileAiBridge;
+	WriterAiController?: WriterAiController;
+	WriterAiPanel?: WriterAiPanel;
 	NativeBridgeTransport?: NativeBridgeTransport;
 	wopiSrc: string;
 	zoteroEnabled: boolean;

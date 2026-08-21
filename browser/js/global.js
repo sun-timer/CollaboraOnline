@@ -175,9 +175,9 @@ class BrowserProperties {
 					return true;
 				}
 
-				// Android WebView on tablets may not contain "mobile" in UA.
-				// Force Android app to use mobile UI style consistently.
-				if (global.ThisIsTheAndroidApp)
+				// Native Android and iOS shells use the mobile UI on every device size.
+				// This keeps iPad aligned with the iPhone/Android document shell.
+				if (global.ThisIsTheAndroidApp || global.ThisIsTheiOSApp)
 					return true;
 
 				return global.L.Browser.mobile && (screen.width < 768 || screen.height < 768);
@@ -187,7 +187,7 @@ class BrowserProperties {
 				if (global.mode.isChromebook())
 					return false;
 
-				if (global.ThisIsTheAndroidApp)
+				if (global.ThisIsTheAndroidApp || global.ThisIsTheiOSApp)
 					return false;
 
 				return global.L.Browser.mobile && !global.mode.isMobile();

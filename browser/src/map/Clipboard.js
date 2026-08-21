@@ -392,6 +392,24 @@ window.L.Clipboard = window.L.Class.extend({
 		app.socket.sendMessage(blob);
 	},
 
+	// Inserts plain text through the existing internal clipboard protocol.
+	pastePlainText: function(text) {
+		if (typeof text !== 'string' || text.length === 0 || !app.socket) {
+			return false;
+		}
+		this._pasteTypedBlob('text/plain;charset=utf-8', text);
+		return true;
+	},
+
+	// Inserts sanitized AI HTML through the existing internal clipboard protocol.
+	pasteAiTextAsHtml: function(html) {
+		if (typeof html !== 'string' || html.length === 0 || !app.socket) {
+			return false;
+		}
+		this._pasteTypedBlob('text/html;charset=utf-8', html);
+		return true;
+	},
+
 	_asyncReadPasteFile: function (file) {
 		if (file.type.match(/image.*/)) {
 			return this._asyncReadPasteImage(file);

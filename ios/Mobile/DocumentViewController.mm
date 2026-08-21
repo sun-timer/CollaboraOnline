@@ -30,17 +30,30 @@
 #import "Util.hpp"
 #import "Clipboard.hpp"
 #import "CoolURLSchemeHandler.h"
+#import "AI/AIConfigurationStore.h"
+#import "AI/AIService.h"
 #import "Bridge/NativeBridgeHandler.h"
+#import "Toolbar/BottomToolbarController.h"
+#import "Toolbar/TopToolbarController.h"
 
 #import "DocumentViewController.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <Poco/MemoryStream.h>
 
-@interface DocumentViewController() <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, UIScrollViewDelegate, UIDocumentPickerDelegate, UIFontPickerViewControllerDelegate> {
+@interface DocumentViewController() <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, UIScrollViewDelegate, UIDocumentPickerDelegate, UIFontPickerViewControllerDelegate, IOSTopToolbarControllerDelegate, IOSBottomToolbarControllerDelegate> {
     int closeNotificationPipeForForwardingThread[2];
     NSURL *downloadAsTmpURL;
     NativeBridgeHandler *nativeBridgeHandler;
+    AIService *aiService;
+    IOSTopToolbarController *topToolbarController;
+    IOSBottomToolbarController *bottomToolbarController;
+    NSLayoutConstraint *webViewTopConstraint;
+    NSLayoutConstraint *webViewBottomConstraint;
+    NSLayoutConstraint *bottomToolbarBottomConstraint;
+    NSLayoutConstraint *bottomToolbarHeightConstraint;
+    BOOL nativeEditMode;
+    NSString *nativeDocumentType;
 }
 
 @end
@@ -95,6 +108,7 @@ static IMP standardImpOfInputAccessoryView = nil;
     [userContentController addScriptMessageHandler:self name:@"lok"];
     [userContentController addScriptMessageHandler:self name:@"error"];
     __weak DocumentViewController *weakSelf = self;
+    aiService = [[AIService alloc] init];
     nativeBridgeHandler = [[NativeBridgeHandler alloc]
         initWithSessionIdProvider:^NSString * {
             DocumentViewController *strongSelf = weakSelf;
@@ -116,9 +130,11 @@ static IMP standardImpOfInputAccessoryView = nil;
                 @"if(window.NativeBridge&&typeof window.NativeBridge.onMessage==='function'){window.NativeBridge.onMessage(%@);}",
                 json];
             [strongSelf.webView evaluateJavaScript:script completionHandler:nil];
-        }];
+        }
+        aiService:aiService];
     [userContentController addScriptMessageHandler:nativeBridgeHandler name:@"nativeBridge"];
     [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"clipboard"];
+    [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"aiConfiguration"];
 
     configuration.userContentController = userContentController;
     
@@ -151,7 +167,67 @@ static IMP standardImpOfInputAccessoryView = nil;
     // contents is handled fully in JavaScript, the WebView has no knowledge of that.)
     self.webView.scrollView.delegate = self;
 
+    self.view.backgroundColor = UIColor.whiteColor;
     [self.view addSubview:self.webView];
+
+    UIView *topToolbarContainer = [[UIView alloc] init];
+    topToolbarContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    topToolbarContainer.backgroundColor = UIColor.whiteColor;
+    [self.view addSubview:topToolbarContainer];
+
+    UIView *bottomToolbarContainer = [[UIView alloc] init];
+    bottomToolbarContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    bottomToolbarContainer.backgroundColor = UIColor.whiteColor;
+    [self.view addSubview:bottomToolbarContainer];
+
+    nativeEditMode = NO;
+    NSURL *documentURL = self.document->copyFileURL;
+    NSString *extension = documentURL.pathExtension.lowercaseString;
+    if ([extension isEqualToString:@"xls"] || [extension isEqualToString:@"xlsx"]
+        || [extension isEqualToString:@"ods"] || [extension isEqualToString:@"csv"]) {
+        nativeDocumentType = @"spreadsheet";
+    } else if ([extension isEqualToString:@"ppt"] || [extension isEqualToString:@"pptx"]
+               || [extension isEqualToString:@"odp"]) {
+        nativeDocumentType = @"presentation";
+    } else {
+        nativeDocumentType = @"text";
+    }
+    topToolbarController = [[IOSTopToolbarController alloc] initWithDelegate:self];
+    bottomToolbarController = [[IOSBottomToolbarController alloc] initWithDelegate:self];
+    [topToolbarController setDocumentTitle:
+        [[documentURL.lastPathComponent stringByDeletingPathExtension] copy]];
+    [topToolbarController setDocumentType:nativeDocumentType];
+    [bottomToolbarController setDocumentType:nativeDocumentType];
+    [topToolbarContainer addSubview:topToolbarController.view];
+    [bottomToolbarContainer addSubview:bottomToolbarController.view];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [topToolbarContainer.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [topToolbarContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [topToolbarContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [topToolbarContainer.heightAnchor constraintEqualToConstant:56.0],
+        [topToolbarController.view.topAnchor constraintEqualToAnchor:topToolbarContainer.topAnchor],
+        [topToolbarController.view.leadingAnchor constraintEqualToAnchor:topToolbarContainer.leadingAnchor],
+        [topToolbarController.view.trailingAnchor constraintEqualToAnchor:topToolbarContainer.trailingAnchor],
+        [topToolbarController.view.bottomAnchor constraintEqualToAnchor:topToolbarContainer.bottomAnchor],
+        [bottomToolbarContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [bottomToolbarContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [bottomToolbarController.view.topAnchor constraintEqualToAnchor:bottomToolbarContainer.topAnchor],
+        [bottomToolbarController.view.leadingAnchor constraintEqualToAnchor:bottomToolbarContainer.leadingAnchor],
+        [bottomToolbarController.view.trailingAnchor constraintEqualToAnchor:bottomToolbarContainer.trailingAnchor],
+        [bottomToolbarController.view.bottomAnchor constraintEqualToAnchor:bottomToolbarContainer.bottomAnchor],
+    ]];
+    bottomToolbarBottomConstraint = [bottomToolbarContainer.bottomAnchor
+        constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor];
+    bottomToolbarBottomConstraint.active = YES;
+    bottomToolbarHeightConstraint = [bottomToolbarContainer.heightAnchor
+        constraintEqualToConstant:bottomToolbarController.preferredHeight];
+    bottomToolbarHeightConstraint.active = YES;
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillChangeFrame:)
+                                                 name:UIKeyboardWillChangeFrameNotification
+                                               object:nil];
 
     self.webView.navigationDelegate = self;
     self.webView.UIDelegate = self;
@@ -212,16 +288,14 @@ static IMP standardImpOfInputAccessoryView = nil;
         }
     }
 
-    WKWebView *webViewP = self.webView;
-    NSDictionary *views = NSDictionaryOfVariableBindings(webViewP);
-    [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|-0-[webViewP(>=0)]-0-|"
-                                                                      options:0
-                                                                      metrics:nil
-                                                                        views:views]];
-    [self.view addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|-0-[webViewP(>=0)]-0-|"
-                                                                      options:0
-                                                                      metrics:nil
-                                                                        views:views]];
+    webViewTopConstraint = [self.webView.topAnchor constraintEqualToAnchor:topToolbarContainer.bottomAnchor];
+    webViewBottomConstraint = [self.webView.bottomAnchor constraintEqualToAnchor:bottomToolbarContainer.topAnchor];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.webView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        webViewTopConstraint,
+        webViewBottomConstraint,
+    ]];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -245,6 +319,10 @@ static IMP standardImpOfInputAccessoryView = nil;
 }
 
 - (IBAction)dismissDocumentViewController {
+    [nativeBridgeHandler cancelAllRequests];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIKeyboardWillChangeFrameNotification
+                                                  object:nil];
     [self dismissViewControllerAnimated:YES completion:^ {
             [self.document closeWithCompletionHandler:^(BOOL success){
                     LOG_TRC("close completion handler gets " << (success?"YES":"NO"));
@@ -252,7 +330,9 @@ static IMP standardImpOfInputAccessoryView = nil;
                     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"lok"];
                     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"error"];
                     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"nativeBridge"];
+                    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"aiConfiguration"];
                     self->nativeBridgeHandler = nil;
+                    self->aiService = nil;
                     // Don't set webView.configuration.userContentController to
                     // nil as it generates a "nil not allowed" compiler warning
                     [self.webView removeFromSuperview];
@@ -454,7 +534,36 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message replyHandler:(nonnull void (^)(id _Nullable, NSString * _Nullable))replyHandler {
 
-    if ([message.name isEqualToString:@"clipboard"]) {
+    if ([message.name isEqualToString:@"aiConfiguration"]) {
+        AIConfigurationStore *store = [[AIConfigurationStore alloc] init];
+        NSDictionary *body = [message.body isKindOfClass:[NSDictionary class]]
+            ? message.body : @{};
+        NSString *action = [body[@"action"] isKindOfClass:[NSString class]]
+            ? body[@"action"] : @"";
+        if ([action isEqualToString:@"get"]) {
+            NSError *error = nil;
+            AIConfiguration *configuration = [store configurationWithError:&error];
+            replyHandler(@{
+                @"configured": @(configuration != nil && store.isConfigured),
+                @"endpoint": configuration.endpoint ?: @"",
+                @"model": configuration.model ?: @"",
+            }, nil);
+        } else if ([action isEqualToString:@"save"]) {
+            NSString *endpoint = [body[@"endpoint"] isKindOfClass:[NSString class]]
+                ? body[@"endpoint"] : @"";
+            NSString *model = [body[@"model"] isKindOfClass:[NSString class]]
+                ? body[@"model"] : @"";
+            NSString *apiKey = [body[@"apiKey"] isKindOfClass:[NSString class]]
+                ? body[@"apiKey"] : @"";
+            NSError *error = nil;
+            BOOL saved = [store saveEndpoint:endpoint model:model apiKey:apiKey error:&error];
+            replyHandler(@{
+                @"configured": @(saved && store.isConfigured),
+            }, saved ? nil : (error.localizedDescription ?: @"Failed to save AI configuration"));
+        } else {
+            replyHandler(nil, @"Unsupported AI configuration action");
+        }
+    } else if ([message.name isEqualToString:@"clipboard"]) {
         if ([message.body isEqualToString:@"read"]) {
             UIPasteboard * pasteboard = [UIPasteboard generalPasteboard];
             
@@ -679,6 +788,12 @@ static IMP standardImpOfInputAccessoryView = nil;
             }
 
             return;
+        } else if ([message.body hasPrefix:@"EDITMODE "]) {
+            [self applyNativeEditMode:[message.body isEqualToString:@"EDITMODE on"]];
+            return;
+        } else if ([message.body hasPrefix:@"UNDOREDO "]) {
+            [self applyNativeUndoRedoState:message.body];
+            return;
         } else if ([message.body hasPrefix:@"CALC_CELL_TAP"]) {
             // Android-only diagnostic/gesture bridge message.  Older shared
             // Browser bundles may still emit it; never send it to Core.
@@ -777,6 +892,52 @@ static IMP standardImpOfInputAccessoryView = nil;
     scrollView.pinchGestureRecognizer.enabled = NO;
 }
 
+- (void)keyboardWillChangeFrame:(NSNotification *)notification
+{
+    CGRect keyboardFrame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    CGRect localKeyboardFrame = [self.view convertRect:keyboardFrame fromView:nil];
+    CGFloat safeBottom = CGRectGetMaxY(self.view.bounds) - self.view.safeAreaInsets.bottom;
+    BOOL keyboardVisible = CGRectGetMinY(localKeyboardFrame) < CGRectGetMaxY(self.view.bounds);
+    CGFloat bottomOffset = keyboardVisible ? MIN(0.0, CGRectGetMinY(localKeyboardFrame) - safeBottom) : 0.0;
+    NSTimeInterval duration = [notification.userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+    UIViewAnimationOptions options =
+        ([notification.userInfo[UIKeyboardAnimationCurveUserInfoKey] integerValue] << 16)
+        | UIViewAnimationOptionBeginFromCurrentState;
+
+    bottomToolbarController.compact = keyboardVisible;
+    bottomToolbarHeightConstraint.constant = bottomToolbarController.preferredHeight;
+    bottomToolbarBottomConstraint.constant = bottomOffset;
+    [UIView animateWithDuration:duration
+                          delay:0.0
+                        options:options
+                     animations:^{
+        [self.view layoutIfNeeded];
+    }
+                     completion:nil];
+}
+
+- (void)viewSafeAreaInsetsDidChange
+{
+    [super viewSafeAreaInsetsDidChange];
+    [topToolbarController relayout];
+    [bottomToolbarController relayout];
+    [self sendToolbarJavaScript:@"if(window.app&&app.map&&typeof app.map.invalidateSize==='function'){app.map.invalidateSize();}"];
+}
+
+- (void)viewWillTransitionToSize:(CGSize)size
+       withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator
+{
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        [topToolbarController relayout];
+        [bottomToolbarController relayout];
+    } completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        [self sendToolbarJavaScript:
+            @"window.dispatchEvent(new Event('resize'));"
+             "if(window.app&&app.map&&typeof app.map.invalidateSize==='function'){app.map.invalidateSize();}"];
+    }];
+}
+
 - (void)fontPickerViewControllerDidPickFont:(UIFontPickerViewController *)viewController {
     // Partial fix #5885 Close the font picker when a font is tapped
     // This matches the behavior of Apple apps such as Pages and Mail.
@@ -799,6 +960,170 @@ static IMP standardImpOfInputAccessoryView = nil;
              }
          ];
     }
+}
+
+- (void)sendToolbarJavaScript:(NSString *)script
+{
+    [self.webView evaluateJavaScript:script
+                   completionHandler:^(id _Nullable obj, NSError * _Nullable error) {
+        if (error) {
+            LOG_ERR("Toolbar JavaScript failed: " << [[error localizedDescription] UTF8String]);
+        }
+    }];
+}
+
+- (void)applyNativeEditMode:(BOOL)editMode
+{
+    nativeEditMode = editMode;
+    [topToolbarController setEditMode:editMode];
+    [bottomToolbarController setEditMode:editMode];
+    [bottomToolbarController setCompact:NO];
+}
+
+- (void)applyNativeUndoRedoState:(NSString *)message
+{
+    BOOL undoEnabled = NO;
+    BOOL redoEnabled = NO;
+    for (NSString *part in [message componentsSeparatedByString:@" "]) {
+        if ([part hasPrefix:@"undo="]) {
+            undoEnabled = [[part substringFromIndex:5] boolValue];
+        } else if ([part hasPrefix:@"redo="]) {
+            redoEnabled = [[part substringFromIndex:5] boolValue];
+        }
+    }
+    topToolbarController.undoEnabled = undoEnabled;
+    topToolbarController.redoEnabled = redoEnabled;
+}
+
+- (void)saveAfterReadOnlyTransition
+{
+    if (self.document->fakeClientFd < 0) {
+        return;
+    }
+    const char *saveMessage = "save dontTerminateEdit=1 dontSaveIfUnmodified=0";
+    fakeSocketWriteQueue(self.document->fakeClientFd, saveMessage, strlen(saveMessage));
+}
+
+- (void)finishNativeEditing
+{
+    NSString *script = @"(function(){"
+                        "if(window.app&&app.map){"
+                        "if(typeof app.map.setPermission==='function'){"
+                        "app.map.setPermission('readonly');"
+                        "}else if(typeof app.map.fire==='function'){"
+                        "app.map.fire('readonlymode');"
+                        "}"
+                        "}"
+                        "})();";
+    [self sendToolbarJavaScript:script];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [self saveAfterReadOnlyTransition];
+    });
+}
+
+- (void)showToolbarPlaceholder:(NSString *)message
+{
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示"
+                                                                     message:message
+                                                              preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定"
+                                               style:UIAlertActionStyleDefault
+                                             handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)topToolbarDidPressBack
+{
+    if (nativeEditMode) {
+        [self finishNativeEditing];
+    } else {
+        [self dismissDocumentViewController];
+    }
+}
+
+- (void)topToolbarDidPressDone
+{
+    [self finishNativeEditing];
+}
+
+- (void)topToolbarDidPressUndo
+{
+    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:Undo');}"];
+}
+
+- (void)topToolbarDidPressRedo
+{
+    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:Redo');}"];
+}
+
+- (void)topToolbarDidPressSearch
+{
+    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SearchDialog');}"];
+}
+
+- (void)topToolbarDidPressShare
+{
+    NSURL *fileURL = self.document->copyFileURL;
+    if (!fileURL) {
+        return;
+    }
+    UIActivityViewController *activity = [[UIActivityViewController alloc] initWithActivityItems:@[fileURL]
+                                                                            applicationActivities:nil];
+    UIPopoverPresentationController *popover = activity.popoverPresentationController;
+    popover.sourceView = self.view;
+    popover.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), 56.0, 1.0, 1.0);
+    [self presentViewController:activity animated:YES completion:nil];
+}
+
+- (void)topToolbarDidPressDocuments
+{
+    [self showToolbarPlaceholder:@"已打开文档列表将在后续阶段接入。"];
+}
+
+- (void)topToolbarDidPressClose
+{
+    [self dismissDocumentViewController];
+}
+
+- (void)bottomToolbarDidPressMobilePreview
+{
+    [self showToolbarPlaceholder:@"手机预览将在后续阶段接入。"];
+}
+
+- (void)bottomToolbarDidPressFunction
+{
+    [self showToolbarPlaceholder:@"功能面板将在后续阶段接入。"];
+}
+
+- (void)bottomToolbarDidPressAIAssistant
+{
+    [self sendToolbarJavaScript:@"if(window.__coolWriterAiPanel){window.__coolWriterAiPanel.openAssistant();}"];
+}
+
+- (void)bottomToolbarDidPressAIFeatures
+{
+    [self sendToolbarJavaScript:@"if(window.__coolWriterAiPanel){window.__coolWriterAiPanel.openOperationSheet();}"];
+}
+
+- (void)bottomToolbarDidPressKeyboard
+{
+    [self sendToolbarJavaScript:@"if(window.app&&app.map&&typeof app.map.focus==='function'){app.map.focus(true);}"];
+}
+
+- (void)bottomToolbarDidPressCharacter
+{
+    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:Bold');}"];
+}
+
+- (void)bottomToolbarDidPressParagraph
+{
+    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:LeftPara');}"];
+}
+
+- (void)bottomToolbarDidPressInsertImage
+{
+    [self showToolbarPlaceholder:@"插入图片将在后续阶段接入。"];
 }
 
 - (void)bye {
