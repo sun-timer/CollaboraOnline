@@ -193,6 +193,16 @@ class WriterEditorController {
 		return { dispatched: 'unocmd', command: cmdLR };
 	}
 
+	/** Inserts a basic shape via the BasicShapes UNO command. */
+	insertShape(name: string): WriterEditorRunResult {
+		if (!name) {
+			return { dispatched: 'none', reason: 'empty_shape' };
+		}
+		const command = '.uno:BasicShapes.' + name;
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
 	static buildSearchCmd(
 		text: string,
 		replaceString: string,

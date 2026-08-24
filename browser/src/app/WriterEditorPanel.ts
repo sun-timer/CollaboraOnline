@@ -20,6 +20,7 @@ class WriterEditorPanel {
 		'fontSize',
 		'table',
 		'margins',
+		'shape',
 	];
 
 	private constructor() {
@@ -147,6 +148,8 @@ class WriterEditorPanel {
 				this.openTableDialog();
 			} else if (dialog === 'margins') {
 				this.openMarginsDialog();
+			} else if (dialog === 'shape') {
+				this.openShapeDialog();
 			}
 			return;
 		}
@@ -221,6 +224,19 @@ class WriterEditorPanel {
 			if (parts.length === 4 && parts.every((part) => !isNaN(part))) {
 				this.controller.applyMargins(parts[0], parts[1], parts[2], parts[3]);
 			}
+		}).open();
+	}
+
+	private openShapeDialog(): void {
+		const options: WriterChooseOption[] = [
+			{ label: '矩形', value: 'rectangle' },
+			{ label: '圆形', value: 'circle' },
+			{ label: '菱形', value: 'diamond' },
+			{ label: '五边形', value: 'pentagon' },
+		];
+		this.sheet.close();
+		new WriterEditorChooseDialog('插入形状', options, (option) => {
+			this.controller.insertShape(option.value);
 		}).open();
 	}
 

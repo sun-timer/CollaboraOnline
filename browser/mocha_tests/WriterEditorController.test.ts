@@ -268,6 +268,27 @@ describe('WriterEditorController', function () {
 		assert.deepEqual(result, { dispatched: 'none', reason: 'invalid_table' });
 		assert.equal(adapter.calls.sendUnoCommand.length, 0);
 	});
+	it('inserts a basic shape via the BasicShapes command', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertShape('rectangle');
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command, '.uno:BasicShapes.rectangle');
+		assert.equal(adapter.calls.sendUnoCommand[0], command);
+	});
+
+	it('rejects an empty shape name without dispatching', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertShape('');
+
+		assert.deepEqual(result, { dispatched: 'none', reason: 'empty_shape' });
+		assert.equal(adapter.calls.sendUnoCommand.length, 0);
+	});
 	it('runs a forward find over the adapter with CMD_FIND', function () {
 		const adapter = createFakeAdapter('text');
 		const controller = new WriterEditorController(adapter);
