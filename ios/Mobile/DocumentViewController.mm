@@ -1093,7 +1093,7 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)bottomToolbarDidPressFunction
 {
-    [self showToolbarPlaceholder:@"功能面板将在后续阶段接入。"];
+    [self sendToolbarJavaScript:@"if(window.__coolWriterEditorPanel){window.__coolWriterEditorPanel.open();}"];
 }
 
 - (void)bottomToolbarDidPressAIAssistant

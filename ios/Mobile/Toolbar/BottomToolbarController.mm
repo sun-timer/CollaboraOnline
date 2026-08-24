@@ -158,6 +158,7 @@ static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger t
         ];
     } else {
         NSMutableArray<NSArray<NSString *> *> *editItems = [NSMutableArray arrayWithArray:@[
+            @[@"square.grid.2x2", @"功能", [NSString stringWithFormat:@"%ld", kFunctionTag]],
             @[@"wand.and.stars", @"AI 功能", [NSString stringWithFormat:@"%ld", kAIFeaturesTag]],
             @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", kKeyboardTag]],
             @[@"bold", @"字符", [NSString stringWithFormat:@"%ld", kCharacterTag]],

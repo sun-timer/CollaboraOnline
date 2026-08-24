@@ -280,6 +280,11 @@ COOL_JS_LST =\
 	src/app/MobileAiResultRenderer.ts \
 	src/app/MobileAiConfiguration.ts \
 	src/app/WriterAiPanel.ts \
+	src/app/WriterEditorCatalog.ts \
+	src/app/WriterEditorController.ts \
+	src/app/WriterEditorPanel.ts \
+	src/app/WriterEditorChooseDialog.ts \
+	src/app/WriterFindReplaceDialog.ts \
 	src/app/AndroidCalcCellMenu.ts \
 	src/app/AndroidCalcHeaderMenu.ts \
 	src/app/MobilePhonePreview.ts \
