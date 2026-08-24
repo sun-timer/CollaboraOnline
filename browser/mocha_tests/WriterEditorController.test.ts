@@ -207,7 +207,7 @@ describe('WriterEditorController', function () {
 
 		const result = controller.applyFontName('Arial');
 
-		assert.		assert.equal(result.dispatched, 'unocmd');
+		assert.equal(result.dispatched, 'unocmd');
 		const command = result.dispatched === 'unocmd' ? result.command : '';
 		assert.equal(command, '.uno:CharFontName {"CharFontName.FamilyName":{"type":"string","value":"Arial"}}');
 		assert.equal(adapter.calls.sendUnoCommand[0], command);
@@ -219,7 +219,7 @@ describe('WriterEditorController', function () {
 
 		const result = controller.applyFontSize('12');
 
-		assert.		assert.equal(result.dispatched, 'unocmd');
+		assert.equal(result.dispatched, 'unocmd');
 		const command = result.dispatched === 'unocmd' ? result.command : '';
 		assert.equal(command, '.uno:FontHeight {"FontHeight.Height":{"type":"float","value":"12"}}');
 		assert.equal(adapter.calls.sendUnoCommand[0], command);
