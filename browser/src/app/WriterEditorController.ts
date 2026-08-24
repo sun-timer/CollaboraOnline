@@ -122,6 +122,29 @@ class WriterEditorController {
 		return { executed: true, command };
 	}
 
+	/** Dispatches a forward/backward find over ExecuteSearch (CMD_FIND). */
+	runFind(
+		query: string,
+		backward: boolean,
+		options?: WriterFindReplaceOptions,
+	): WriterEditorSearchResult {
+		if (!query) {
+			return { executed: false, reason: 'empty_query' };
+		}
+		if (!this.isWriterDocument()) {
+			return { executed: false, reason: 'not_writer_document' };
+		}
+		const searchCmd = WriterEditorController.buildSearchCmd(
+			query,
+			'',
+			backward,
+			WriterEditorSearch.CMD_FIND,
+			options,
+		);
+		this.adapter.sendExecuteSearch(searchCmd);
+		return { executed: true, command: WriterEditorSearch.CMD_FIND };
+	}
+
 	/** Pure SearchItem payload builder (test seam). */
 	/** Applies a font-family by dispatching the CharFontName UNO command. */
 	applyFontName(fontName: string): WriterEditorRunResult {

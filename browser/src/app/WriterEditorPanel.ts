@@ -123,7 +123,7 @@ class WriterEditorPanel {
 			const dialogReady =
 				isDialog &&
 				WriterEditorPanel.SUPPORTED_DIALOGS.indexOf(feature.dialog || '') >= 0;
-			const gated = feature.kind === 'findReplace' || (isDialog && !dialogReady);
+			const gated = isDialog && !dialogReady;
 			const needsSelection = !!feature.needsSelection && !selection;
 			button.disabled = gated || needsSelection;
 			if (gated) {
@@ -151,7 +151,8 @@ class WriterEditorPanel {
 			return;
 		}
 		if (feature.kind === 'findReplace') {
-			return; // gated; the find/replace dialog opens in a later phase
+			this.openFindReplaceDialog();
+			return;
 		}
 		const result = this.controller.run(feature);
 		if (
@@ -183,6 +184,11 @@ class WriterEditorPanel {
 		new WriterEditorChooseDialog('字号', options, (option) => {
 			this.controller.applyFontSize(option.value);
 		}).open();
+	}
+
+	private openFindReplaceDialog(): void {
+		this.sheet.close();
+		new WriterFindReplaceDialog(this.controller).open();
 	}
 
 	private openTableDialog(): void {

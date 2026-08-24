@@ -268,4 +268,38 @@ describe('WriterEditorController', function () {
 		assert.deepEqual(result, { dispatched: 'none', reason: 'invalid_table' });
 		assert.equal(adapter.calls.sendUnoCommand.length, 0);
 	});
+	it('runs a forward find over the adapter with CMD_FIND', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.runFind('abc', false);
+
+		assert.equal(result.executed, true);
+		assert.equal(result.command, 0);
+		assert.equal(adapter.calls.sendExecuteSearch.length, 1);
+		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.SearchString'].value, 'abc');
+		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.Command'].value, 0);
+		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.Backward'].value, false);
+	});
+
+	it('runs a backward find with the backward flag', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.runFind('abc', true);
+
+		assert.equal(result.executed, true);
+		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.Backward'].value, true);
+	});
+
+	it('rejects an empty find query without dispatching', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.runFind('', false);
+
+		assert.equal(result.executed, false);
+		assert.equal(result.reason, 'empty_query');
+		assert.equal(adapter.calls.sendExecuteSearch.length, 0);
+	});
 });
