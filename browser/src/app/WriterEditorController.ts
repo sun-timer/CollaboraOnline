@@ -145,7 +145,31 @@ class WriterEditorController {
 			JSON.stringify(sizePt) + '}}';
 		this.adapter.sendUnoCommand(command);
 		return { dispatched: 'unocmd', command };
+		}
+
+	/** Inserts a table (columns x rows) via the InsertTable UNO command. */
+	insertTable(columns: number, rows: number): WriterEditorRunResult {
+		if (!columns || !rows || columns < 1 || rows < 1) {
+			return { dispatched: 'none', reason: 'invalid_table' };
+		}
+		const command =
+			'.uno:InsertTable {"Columns":{"type":"long","value":' + columns +
+			'},"Rows":{"type":"long","value":' + rows + '}}';
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
 	}
+
+	/** Applies page margins (HMM) via PageLRMargin + PageULMargin. */
+	applyMargins(left: number, right: number, top: number, bottom: number): WriterEditorRunResult {
+		const cmdLR =
+			'.uno:PageLRMargin?Page.Left:long=' + left + '&Page.Right:long=' + right;
+		const cmdUL =
+			'.uno:PageULMargin?Page.Upper:long=' + top + '&Page.Lower:long=' + bottom;
+		this.adapter.sendUnoCommand(cmdLR);
+		this.adapter.sendUnoCommand(cmdUL);
+		return { dispatched: 'unocmd', command: cmdLR };
+	}
+
 	static buildSearchCmd(
 		text: string,
 		replaceString: string,

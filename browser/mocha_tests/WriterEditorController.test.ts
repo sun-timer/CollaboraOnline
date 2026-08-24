@@ -234,4 +234,38 @@ describe('WriterEditorController', function () {
 		assert.deepEqual(result, { dispatched: 'none', reason: 'empty_font' });
 		assert.equal(adapter.calls.sendUnoCommand.length, 0);
 	});
+	it('inserts a table via the InsertTable command', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertTable(3, 4);
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command, '.uno:InsertTable {"Columns":{"type":"long","value":3},"Rows":{"type":"long","value":4}}');
+		assert.equal(adapter.calls.sendUnoCommand[0], command);
+	});
+
+	it('applies page margins via PageLRMargin and PageULMargin', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.applyMargins(2540, 2540, 2540, 2540);
+
+		assert.equal(result.dispatched, 'unocmd');
+		assert.deepEqual(adapter.calls.sendUnoCommand, [
+			'.uno:PageLRMargin?Page.Left:long=2540&Page.Right:long=2540',
+			'.uno:PageULMargin?Page.Upper:long=2540&Page.Lower:long=2540',
+		]);
+	});
+
+	it('rejects an invalid table size without dispatching', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertTable(0, 3);
+
+		assert.deepEqual(result, { dispatched: 'none', reason: 'invalid_table' });
+		assert.equal(adapter.calls.sendUnoCommand.length, 0);
+	});
 });

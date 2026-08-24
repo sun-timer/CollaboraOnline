@@ -15,7 +15,12 @@ class WriterEditorPanel {
 	private readonly grid: HTMLDivElement;
 	private readonly controller: WriterEditorController;
 	private activeTab: WriterEditorTab = 'default';
-	private static readonly SUPPORTED_DIALOGS: WriterEditorDialogType[] = ['fontName', 'fontSize'];
+	private static readonly SUPPORTED_DIALOGS: WriterEditorDialogType[] = [
+		'fontName',
+		'fontSize',
+		'table',
+		'margins',
+	];
 
 	private constructor() {
 		this.controller = WriterEditorController.getInstance();
@@ -138,6 +143,10 @@ class WriterEditorPanel {
 				this.openFontNameDialog();
 			} else if (dialog === 'fontSize') {
 				this.openFontSizeDialog();
+			} else if (dialog === 'table') {
+				this.openTableDialog();
+			} else if (dialog === 'margins') {
+				this.openMarginsDialog();
 			}
 			return;
 		}
@@ -173,6 +182,39 @@ class WriterEditorPanel {
 		this.sheet.close();
 		new WriterEditorChooseDialog('字号', options, (option) => {
 			this.controller.applyFontSize(option.value);
+		}).open();
+	}
+
+	private openTableDialog(): void {
+		const options: WriterChooseOption[] = [
+			{ label: '2 × 2', value: '2:2' },
+			{ label: '3 × 3', value: '3:3' },
+			{ label: '4 × 3', value: '4:3' },
+			{ label: '4 × 5', value: '4:5' },
+		];
+		this.sheet.close();
+		new WriterEditorChooseDialog('插入表格', options, (option) => {
+			const parts = option.value.split(':');
+			const columns = parseInt(parts[0], 10);
+			const rows = parseInt(parts[1], 10);
+			if (!isNaN(columns) && !isNaN(rows)) {
+				this.controller.insertTable(columns, rows);
+			}
+		}).open();
+	}
+
+	private openMarginsDialog(): void {
+		const options: WriterChooseOption[] = [
+			{ label: '常规', value: '2540:2540:2540:2540' },
+			{ label: '较窄', value: '1270:1270:1270:1270' },
+			{ label: '较宽', value: '4191:4191:2540:2540' },
+		];
+		this.sheet.close();
+		new WriterEditorChooseDialog('页边距', options, (option) => {
+			const parts = option.value.split(':').map((part) => parseInt(part, 10));
+			if (parts.length === 4 && parts.every((part) => !isNaN(part))) {
+				this.controller.applyMargins(parts[0], parts[1], parts[2], parts[3]);
+			}
 		}).open();
 	}
 
