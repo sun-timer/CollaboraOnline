@@ -424,7 +424,7 @@ class WriterEditorCatalog {
 		const duplicates = WriterEditorCatalog.FEATURES.filter(
 			(candidate) => candidate.id === feature.id,
 		);
-		if (duplicates.length > 1) {
+		if (duplicates.length > 0) {
 			return { valid: false, errorCode: 'duplicate_id' };
 		}
 		return { valid: true };
