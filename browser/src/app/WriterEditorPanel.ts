@@ -9,7 +9,7 @@
  */
 
 class WriterEditorPanel {
-	private readonly sheet: MobileAiSheet;
+	private readonly sheet: WriterEditorSheet;
 	private readonly tabBar: HTMLDivElement;
 	private readonly hint: HTMLDivElement;
 	private readonly grid: HTMLDivElement;
@@ -30,7 +30,7 @@ class WriterEditorPanel {
 
 	private constructor() {
 		this.controller = WriterEditorController.getInstance();
-		this.sheet = new MobileAiSheet({ title: '功能' });
+		this.sheet = new WriterEditorSheet('功能');
 
 		const content = document.createElement('div');
 		content.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
@@ -80,16 +80,40 @@ class WriterEditorPanel {
 			button.type = 'button';
 			button.textContent = tab.label;
 			button.setAttribute('aria-label', tab.label);
+			const active = tab.id === this.activeTab;
 			button.style.cssText =
-				'flex:1;padding:8px 4px;background:none;border:none;border-bottom:2px solid ' +
-				(tab.id === this.activeTab ? '#1a73e8' : 'transparent') +
-				';color:' + (tab.id === this.activeTab ? '#1a73e8' : '#5f6368') +
+				'flex:1;padding:10px 4px;background:none;border:none;border-bottom:4px solid ' +
+				(active ? '#1278D9' : 'transparent') +
+				';color:' + (active ? '#1278D9' : '#5f6368') +
 				';font:inherit;font-size:15px;cursor:pointer;';
 			button.onclick = () => {
 				this.activeTab = tab.id;
 				this.renderTabs();
 				this.renderGrid();
 			};
+			this.tabBar.appendChild(button);
+		});
+
+		const divider = document.createElement('div');
+		divider.style.cssText = 'width:1px;align-self:flex-end;height:28px;background:#d8dde3;';
+		this.tabBar.appendChild(divider);
+
+		const actionButtons: Array<{ icon: string; aria: string; handler: () => void }> = [
+			{ icon: 'find-replace', aria: '查找', handler: () => this.openFindReplaceDialog() },
+			{ icon: 'arrow-down', aria: '收起', handler: () => this.sheet.close() },
+		];
+		actionButtons.forEach((action) => {
+			const button = document.createElement('button');
+			button.type = 'button';
+			button.setAttribute('aria-label', action.aria);
+			button.style.cssText =
+				'width:44px;height:44px;display:flex;align-items:center;justify-content:center;' +
+				'background:none;border:none;cursor:pointer;flex-shrink:0;';
+			const icon = WriterEditorIcons.get(action.icon);
+			if (icon) {
+				button.innerHTML = icon;
+			}
+			button.onclick = action.handler;
 			this.tabBar.appendChild(button);
 		});
 	}
@@ -119,11 +143,23 @@ class WriterEditorPanel {
 			}
 			const button = document.createElement('button');
 			button.type = 'button';
-			button.textContent = feature.label;
 			button.setAttribute('aria-label', feature.label);
 			button.style.cssText =
-				'min-height:72px;padding:8px;border:1px solid #d8dde3;border-radius:10px;' +
-				'background:#fff;font:inherit;';
+				'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+				'gap:8px;min-height:96px;padding:12px 8px;border:none;border-radius:24px;' +
+				'background:#f2f3f5;font:inherit;cursor:pointer;';
+			const icon = WriterEditorIcons.get(feature.icon);
+			if (icon) {
+				const iconWrap = document.createElement('span');
+				iconWrap.style.cssText =
+					'width:24px;height:24px;display:flex;align-items:center;justify-content:center;color:#1278D9;';
+				iconWrap.innerHTML = icon;
+				button.appendChild(iconWrap);
+			}
+			const tileLabel = document.createElement('span');
+			tileLabel.textContent = feature.label;
+			tileLabel.style.cssText = 'font-size:14px;color:#101010;text-align:center;';
+			button.appendChild(tileLabel);
 
 			const isDialog = feature.kind === 'dialog';
 			const dialogReady =
@@ -245,9 +281,11 @@ class WriterEditorPanel {
 	private openShapeDialog(): void {
 		const options: WriterChooseOption[] = [
 			{ label: '矩形', value: 'rectangle' },
-			{ label: '圆形', value: 'circle' },
-			{ label: '菱形', value: 'diamond' },
-			{ label: '五边形', value: 'pentagon' },
+			{ label: '椭圆', value: 'ellipse' },
+			{ label: '圆角矩形', value: 'round-rectangle' },
+			{ label: '等腰三角形', value: 'isosceles-triangle' },
+			{ label: '直线', value: 'line' },
+			{ label: '箭头', value: 'arrow' },
 		];
 		this.sheet.close();
 		new WriterEditorChooseDialog('插入形状', options, (option) => {

@@ -12,6 +12,7 @@ class WriterFindReplaceDialog {
 	private mode: 'find' | 'replace' = 'find';
 	private readonly searchInput: HTMLInputElement;
 	private readonly replaceInput: HTMLInputElement;
+	private readonly ignoreCheckbox: HTMLInputElement;
 	private readonly caseCheckbox: HTMLInputElement;
 	private readonly wholeCheckbox: HTMLInputElement;
 	private readonly replaceRow: HTMLDivElement;
@@ -68,9 +69,20 @@ class WriterFindReplaceDialog {
 
 		// Settings
 		this.settingsRow = document.createElement('div');
-		this.settingsRow.style.cssText = 'display:flex;gap:16px;align-items:center;';
+		this.settingsRow.style.cssText = 'display:flex;gap:16px;align-items:center;flex-wrap:wrap;';
+		this.ignoreCheckbox = this.makeCheckbox('忽略大小写', true);
 		this.caseCheckbox = this.makeCheckbox('区分大小写', false);
 		this.wholeCheckbox = this.makeCheckbox('全字匹配', false);
+		this.caseCheckbox.addEventListener('change', () => {
+			if (this.caseCheckbox.checked) {
+				this.ignoreCheckbox.checked = false;
+			}
+		});
+		this.ignoreCheckbox.addEventListener('change', () => {
+			if (this.ignoreCheckbox.checked) {
+				this.caseCheckbox.checked = false;
+			}
+		});
 		content.appendChild(this.settingsRow);
 
 		this.sheet.setBody(content);

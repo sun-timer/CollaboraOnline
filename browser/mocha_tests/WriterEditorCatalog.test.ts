@@ -100,4 +100,12 @@ describe('WriterEditorCatalog', function () {
 			'duplicate_id',
 		);
 	});
+	it('every feature icon has a rendered icon asset', function () {
+		WriterEditorCatalog.FEATURES.forEach((feature) => {
+			assert.ok(
+				WriterEditorIcons.has(feature.icon),
+				'missing icon asset for ' + feature.id,
+			);
+		});
+	});
 });

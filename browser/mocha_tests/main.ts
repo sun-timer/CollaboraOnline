@@ -38,6 +38,8 @@
 /// <reference path="../src/app/WriterEditorCatalog.ts" />
 /// <reference path="../src/app/WriterEditorController.ts" />
 /// <reference path="../src/app/WriterEditorWatermarkDialog.ts" />
+/// <reference path="../src/app/WriterEditorSheet.ts" />
+/// <reference path="../src/app/WriterEditorIcons.ts" />
 
 /// <reference path="./CanvasSectionContainer.test.ts" />
 /// <reference path="./CBounds.test.ts" />
