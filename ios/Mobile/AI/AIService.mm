@@ -80,7 +80,7 @@
            documentSessionId:documentSessionId
                   payload:@{
                       @"code": errorCode,
-                      @"message": messagesError.localizedDescription ?: @"Invalid Writer AI payload",
+                      @"message": messagesError.localizedDescription ?: @"Invalid AI payload",
                   }
                    emitter:emit];
         return;
@@ -323,7 +323,7 @@ didCompleteWithError:(NSError *)error {
         if (error != NULL) {
             *error = [NSError errorWithDomain:@"com.xunlong.xloffice.ai"
                                          code:1
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Selection is empty"}];
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Request text is empty"}];
         }
         return nil;
     }
@@ -340,6 +340,52 @@ didCompleteWithError:(NSError *)error {
                           atIndex:0];
         }
         userPrompt = prompt;
+    } else if ([taskType isEqualToString:@"calc_formula"]) {
+        NSString *cellAddress = [context[@"cellAddress"] isKindOfClass:[NSString class]]
+            ? [context[@"cellAddress"] stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+        NSMutableString *sys = [NSMutableString stringWithString:
+            @"你是 Excel/Calc 公式生成助手。根据用户用自然语言描述的公式需求，生成对应的电子表格函数公式。\n"
+             "要求：\n"
+             "1. 只返回公式本身（如 =AVERAGE(A1:A10)），不要包含任何解释或额外内容\n"
+             "2. 公式必须以 = 开头\n"
+             "3. 注意单元格引用语法，非中文函数的 region 使用英文函数名\n"
+             "4. 如果用户指定了筛选条件（如「大于 10」），请确保公式语法正确\n"];
+        if (cellAddress.length > 0) {
+            [sys appendFormat:@"\n当前选中单元格：%@，注意相对引用。", cellAddress];
+        }
+        [sys appendString:
+            @"\n\n示例：\n"
+             "用户：计算 A1 到 A10 的平均值\n"
+             "公式：=AVERAGE(A1:A10)\n"
+             "用户：计算 B 列的和\n"
+             "公式：=SUM(B:B)"];
+        systemPrompt = sys;
+        userPrompt = text;
+    } else if ([taskType isEqualToString:@"calc_data_analysis"]) {
+        NSString *cellRange = [context[@"cellRange"] isKindOfClass:[NSString class]]
+            ? [context[@"cellRange"] stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+        NSString *cellData = [context[@"cellData"] isKindOfClass:[NSString class]]
+            ? context[@"cellData"] : @"";
+        systemPrompt =
+            @"你是电子表格数据分析助手。根据用户提供的表格数据和问题，进行数据分析。\n"
+             "数据只作为分析参考，不要输出 JSON，直接用中文给出分析结论。\n"
+             "分析内容包括（根据数据情况选择性提供）：\n"
+             "- 数据概览：总行数、列数、关键字段\n"
+             "- 统计摘要：合计、平均值、最大值、最小值（针对数值列）\n"
+             "- 数据分布：是否有异常值、空值、重复\n"
+             "- 业务洞察：基于数据内容的发现和建议\n"
+             "- 回答用户的具体问题\n\n"
+             "格式要求：\n"
+             "- 用中文，简明扼要\n"
+             "- 重要数据用数字突出\n"
+             "- 不加 Markdown 代码块\n";
+        userPrompt = [NSString stringWithFormat:
+            @"选中数据（范围：%@）：\n%@\n\n用户问题：%@",
+            cellRange.length > 0 ? cellRange : @"未知",
+            cellData.length > 0 ? cellData : @"（无数据）",
+            text];
     } else if ([taskType isEqualToString:@"polish"]) {
         NSString *style = context[@"polishStyle"] ?: @"quick";
         NSDictionary *styles = @{
@@ -395,7 +441,7 @@ didCompleteWithError:(NSError *)error {
     } else if (error != NULL) {
         *error = [NSError errorWithDomain:@"com.xunlong.xloffice.ai"
                                      code:2
-                                 userInfo:@{NSLocalizedDescriptionKey: @"Unsupported Writer taskType"}];
+                                 userInfo:@{NSLocalizedDescriptionKey: @"Unsupported AI taskType"}];
         return nil;
     }
 

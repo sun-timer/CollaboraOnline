@@ -31,7 +31,9 @@
 #import "Clipboard.hpp"
 #import "CoolURLSchemeHandler.h"
 #import "AI/AIConfigurationStore.h"
+#import "AI/AIModelConfigStore.h"
 #import "AI/AIService.h"
+#import "AI/AISettingsDrawerController.h"
 #import "Bridge/NativeBridgeHandler.h"
 #import "Toolbar/BottomToolbarController.h"
 #import "Toolbar/TopToolbarController.h"
@@ -54,6 +56,7 @@
     NSLayoutConstraint *bottomToolbarHeightConstraint;
     BOOL nativeEditMode;
     NSString *nativeDocumentType;
+    AISettingsDrawerController *aiDrawer;
 }
 
 @end
@@ -296,6 +299,7 @@ static IMP standardImpOfInputAccessoryView = nil;
         webViewTopConstraint,
         webViewBottomConstraint,
     ]];
+    aiDrawer = [AISettingsDrawerController attachToHost:self];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -556,7 +560,12 @@ static IMP standardImpOfInputAccessoryView = nil;
             NSString *apiKey = [body[@"apiKey"] isKindOfClass:[NSString class]]
                 ? body[@"apiKey"] : @"";
             NSError *error = nil;
-            BOOL saved = [store saveEndpoint:endpoint model:model apiKey:apiKey error:&error];
+            AIModelConfigStore *modelStore = [[AIModelConfigStore alloc] init];
+            AIModelConfigForm *form = [modelStore loadForm:AIModelTypeBase];
+            form.url = endpoint;
+            form.modelName = model;
+            form.apiKey = apiKey;
+            BOOL saved = [modelStore saveForm:form modelType:AIModelTypeBase error:&error];
             replyHandler(@{
                 @"configured": @(saved && store.isConfigured),
             }, saved ? nil : (error.localizedDescription ?: @"Failed to save AI configuration"));

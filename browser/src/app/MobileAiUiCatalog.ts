@@ -25,6 +25,7 @@ type MobileAiUiDialog =
 	| 'continue'
 	| 'outline'
 	| 'article'
+	| 'calc'
 	| 'unavailable';
 
 interface MobileAiUiEntry {
@@ -246,8 +247,8 @@ class MobileAiUiCatalog {
 			documentTypes: ['spreadsheet'],
 			requiredInput: 'prompt',
 			resultMode: 'replaceSelection',
-			dialog: 'unavailable',
-			iosSupport: false,
+			dialog: 'calc',
+			iosSupport: true,
 			selectionRequired: false,
 			includeInOperationSheet: true,
 		},
@@ -298,8 +299,8 @@ class MobileAiUiCatalog {
 			documentTypes: ['spreadsheet'],
 			requiredInput: 'prompt',
 			resultMode: 'conversation',
-			dialog: 'unavailable',
-			iosSupport: false,
+			dialog: 'calc',
+			iosSupport: true,
 			selectionRequired: false,
 			includeInOperationSheet: true,
 		},

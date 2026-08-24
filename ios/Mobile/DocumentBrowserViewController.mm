@@ -12,9 +12,8 @@
 #import "config.h"
 
 #import "AppDelegate.h"
-#import "CODocument.h"
 #import "DocumentBrowserViewController.h"
-#import "DocumentViewController.h"
+#import "DocumentPresentation.h"
 #import "TemplateCollectionViewController.h"
 
 @interface DocumentBrowserViewController () <UIDocumentBrowserViewControllerDelegate>
@@ -95,13 +94,7 @@
 }
 
 - (void)presentDocumentAtURL:(NSURL *)documentURL {
-    UIStoryboard *storyBoard = [UIStoryboard storyboardWithName:@"Main" bundle:nil];
-    DocumentViewController *documentViewController = [storyBoard instantiateViewControllerWithIdentifier:@"DocumentViewController"];
-    documentViewController.document = [[CODocument alloc] initWithFileURL:documentURL];
-    documentViewController.document->fakeClientFd = -1;
-    documentViewController.document->readOnly = false;
-    documentViewController.document.viewController = documentViewController;
-    [self presentViewController:documentViewController animated:YES completion:nil];
+    [DocumentPresentation presentDocumentAtURL:documentURL from:self];
 }
 
 @end

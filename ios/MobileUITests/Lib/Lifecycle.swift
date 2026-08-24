@@ -24,7 +24,7 @@ final class Lifecycle {
             XCTAssert(closeButton.exists, "Didn't find close button when trying to close file")
             closeButton.tap()
             
-            XCTAssert(app.buttons["Search"].waitForExistence(timeout: 5), "Document browser did not appear after closing file")
+            XCTAssert(app.textFields["homeSearchField"].waitForExistence(timeout: 5), "Home did not appear after closing file")
         } else {
             // There's no close indicator on iPhone, so we have to blindly tap coordinates...
             let webview = app.webViews.containing(.other, identifier: "Online Editor").firstMatch;
@@ -33,7 +33,7 @@ final class Lifecycle {
             
             webview.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 10, dy: 10)).tap()
             
-            XCTAssert(app.buttons["Recents"].waitForExistence(timeout: 5), "Document browser did not appear after closing file")
+            XCTAssert(app.textFields["homeSearchField"].waitForExistence(timeout: 5), "Home did not appear after closing file")
         }
     }
 }

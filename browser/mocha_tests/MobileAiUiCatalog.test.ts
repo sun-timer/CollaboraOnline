@@ -43,12 +43,28 @@ describe('Mobile AI UI Catalog', function () {
 		);
 		assert.ok(
 			MobileAiUiCatalog.getEntries('spreadsheet').some(function (entry) {
-				return entry.taskType === 'calc_formula';
+				return entry.taskType === 'calc_formula' && entry.iosSupport;
+			}),
+		);
+		assert.ok(
+			MobileAiUiCatalog.getEntries('spreadsheet').some(function (entry) {
+				return entry.taskType === 'calc_data_analysis' && entry.iosSupport;
+			}),
+		);
+		assert.ok(
+			MobileAiUiCatalog.getEntries('spreadsheet').some(function (entry) {
+				return entry.taskType === 'calc_chart' && !entry.iosSupport;
 			}),
 		);
 		assert.equal(MobileAiUiCatalog.canRun('article_generate', 'text'), false);
 		assert.equal(MobileAiUiCatalog.canRun('polish', 'text'), true);
 		assert.equal(MobileAiUiCatalog.canRun('polish', 'spreadsheet'), false);
+		assert.equal(MobileAiUiCatalog.canRun('calc_formula', 'spreadsheet'), true);
+		assert.equal(
+			MobileAiUiCatalog.canRun('calc_data_analysis', 'spreadsheet'),
+			true,
+		);
+		assert.equal(MobileAiUiCatalog.canRun('calc_chart', 'spreadsheet'), false);
 	});
 
 	it('keeps summarize available without making it an Android operation card', function () {
