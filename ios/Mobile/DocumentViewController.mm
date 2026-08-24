@@ -1086,6 +1086,11 @@ static IMP standardImpOfInputAccessoryView = nil;
     [self dismissDocumentViewController];
 }
 
+- (void)topToolbarDidPressComment
+{
+    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:InsertAnnotation');}"];
+}
+
 - (void)bottomToolbarDidPressMobilePreview
 {
     [self showToolbarPlaceholder:@"手机预览将在后续阶段接入。"];

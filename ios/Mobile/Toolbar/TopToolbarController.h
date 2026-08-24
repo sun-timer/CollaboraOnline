@@ -20,6 +20,7 @@ typedef NS_ENUM(NSInteger, IOSTopToolbarMode) {
 - (void)topToolbarDidPressSearch;
 - (void)topToolbarDidPressShare;
 - (void)topToolbarDidPressDocuments;
+- (void)topToolbarDidPressComment;
 - (void)topToolbarDidPressClose;
 @end
 

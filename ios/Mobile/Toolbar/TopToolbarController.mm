@@ -16,6 +16,8 @@
 @property (nonatomic, strong) UIButton *doneButton;
 @property (nonatomic, strong) UIButton *undoButton;
 @property (nonatomic, strong) UIButton *redoButton;
+@property (nonatomic, strong) UIButton *commentButton;
+@property (nonatomic, strong) UIView *commentBadge;
 @property (nonatomic, copy) NSString *documentType;
 @end
 
@@ -100,7 +102,7 @@ static UIView *toolbarSpacer(void)
     [_doneButton setTitle:@"完成" forState:UIControlStateNormal];
     [_doneButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     _doneButton.titleLabel.font = [UIFont boldSystemFontOfSize:16.0];
-    _doneButton.layer.cornerRadius = 6.0;
+    _doneButton.layer.cornerRadius = 15.5;
     [_doneButton addTarget:self action:@selector(donePressed:) forControlEvents:UIControlEventTouchUpInside];
     [_editRow addSubview:_doneButton];
 
@@ -112,10 +114,16 @@ static UIView *toolbarSpacer(void)
     [_redoButton addTarget:self action:@selector(redoPressed:) forControlEvents:UIControlEventTouchUpInside];
     [_editRow addSubview:_redoButton];
 
-    UIButton *editDocumentsButton = toolbarButton(@"rectangle.stack", @"已打开文档");
-    [editDocumentsButton addTarget:self action:@selector(documentsPressed:)
-                  forControlEvents:UIControlEventTouchUpInside];
-    [_editRow addSubview:editDocumentsButton];
+    _commentButton = toolbarButton(@"bubble.left", @"批注");
+    [_commentButton addTarget:self action:@selector(commentPressed:) forControlEvents:UIControlEventTouchUpInside];
+    [_editRow addSubview:_commentButton];
+
+    _commentBadge = [[UIView alloc] init];
+    _commentBadge.translatesAutoresizingMaskIntoConstraints = NO;
+    _commentBadge.backgroundColor = [UIColor systemRedColor];
+    _commentBadge.layer.cornerRadius = 4.0;
+    _commentBadge.hidden = YES;
+    [_editRow addSubview:_commentBadge];
 
     UIButton *closeButton = toolbarButton(@"xmark", @"关闭编辑");
     [closeButton addTarget:self action:@selector(closePressed:) forControlEvents:UIControlEventTouchUpInside];
@@ -125,7 +133,7 @@ static UIView *toolbarSpacer(void)
                                     search:searchButton
                                      share:shareButton
                                  documents:previewDocumentsButton];
-    [self installConstraintsForEditRow:editDocumentsButton close:closeButton];
+    [self installConstraintsForEditRow:closeButton];
     [self setDocumentType:@"text"];
     [self updateVisibleRow];
     return self;
@@ -155,7 +163,7 @@ static UIView *toolbarSpacer(void)
     ]];
 }
 
-- (void)installConstraintsForEditRow:(UIButton *)documentsButton close:(UIButton *)closeButton
+- (void)installConstraintsForEditRow:(UIButton *)closeButton
 {
     UIView *leftSpacer = toolbarSpacer();
     UIView *rightSpacer = toolbarSpacer();
@@ -170,7 +178,7 @@ static UIView *toolbarSpacer(void)
         [_doneButton.leadingAnchor constraintEqualToAnchor:_editRow.leadingAnchor constant:12.0],
         [_doneButton.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
         [_doneButton.widthAnchor constraintGreaterThanOrEqualToConstant:72.0],
-        [_doneButton.heightAnchor constraintEqualToConstant:36.0],
+        [_doneButton.heightAnchor constraintEqualToConstant:31.0],
         [leftSpacer.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
         [leftSpacer.heightAnchor constraintEqualToConstant:1.0],
         [rightSpacer.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
@@ -180,13 +188,17 @@ static UIView *toolbarSpacer(void)
         [_redoButton.leadingAnchor constraintEqualToAnchor:_undoButton.trailingAnchor],
         [_redoButton.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
         [rightSpacer.leadingAnchor constraintEqualToAnchor:_redoButton.trailingAnchor],
-        [documentsButton.leadingAnchor constraintEqualToAnchor:rightSpacer.trailingAnchor],
-        [documentsButton.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
-        [closeButton.leadingAnchor constraintEqualToAnchor:documentsButton.trailingAnchor],
+        [_commentButton.leadingAnchor constraintEqualToAnchor:rightSpacer.trailingAnchor],
+        [_commentButton.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
+        [closeButton.leadingAnchor constraintEqualToAnchor:_commentButton.trailingAnchor],
         [closeButton.trailingAnchor constraintEqualToAnchor:_editRow.trailingAnchor constant:-4.0],
         [closeButton.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
         [leftSpacer.leadingAnchor constraintEqualToAnchor:_doneButton.trailingAnchor],
         [rightSpacer.widthAnchor constraintEqualToAnchor:leftSpacer.widthAnchor],
+        [_commentBadge.topAnchor constraintEqualToAnchor:_commentButton.topAnchor constant:4.0],
+        [_commentBadge.trailingAnchor constraintEqualToAnchor:_commentButton.trailingAnchor constant:-4.0],
+        [_commentBadge.widthAnchor constraintEqualToConstant:8.0],
+        [_commentBadge.heightAnchor constraintEqualToConstant:8.0],
     ]];
 }
 
@@ -283,6 +295,11 @@ static UIView *toolbarSpacer(void)
 - (void)closePressed:(id)sender
 {
     [self.delegate topToolbarDidPressClose];
+}
+
+- (void)commentPressed:(id)sender
+{
+    [self.delegate topToolbarDidPressComment];
 }
 
 @end
