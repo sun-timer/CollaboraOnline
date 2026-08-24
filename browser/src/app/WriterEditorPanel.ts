@@ -15,6 +15,7 @@ class WriterEditorPanel {
 	private readonly grid: HTMLDivElement;
 	private readonly controller: WriterEditorController;
 	private activeTab: WriterEditorTab = 'default';
+	private static readonly SUPPORTED_DIALOGS: WriterEditorDialogType[] = ['fontName', 'fontSize'];
 
 	private constructor() {
 		this.controller = WriterEditorController.getInstance();
@@ -113,7 +114,11 @@ class WriterEditorPanel {
 				'min-height:72px;padding:8px;border:1px solid #d8dde3;border-radius:10px;' +
 				'background:#fff;font:inherit;';
 
-			const gated = feature.kind === 'dialog' || feature.kind === 'findReplace';
+			const isDialog = feature.kind === 'dialog';
+			const dialogReady =
+				isDialog &&
+				WriterEditorPanel.SUPPORTED_DIALOGS.indexOf(feature.dialog || '') >= 0;
+			const gated = feature.kind === 'findReplace' || (isDialog && !dialogReady);
 			const needsSelection = !!feature.needsSelection && !selection;
 			button.disabled = gated || needsSelection;
 			if (gated) {
@@ -127,8 +132,17 @@ class WriterEditorPanel {
 	}
 
 	private onFeature(feature: WriterEditorFeature): void {
-		if (feature.kind === 'dialog' || feature.kind === 'findReplace') {
-			return; // gated; the native/web dialog opens in a later phase
+		if (feature.kind === 'dialog') {
+			const dialog = feature.dialog || '';
+			if (dialog === 'fontName') {
+				this.openFontNameDialog();
+			} else if (dialog === 'fontSize') {
+				this.openFontSizeDialog();
+			}
+			return;
+		}
+		if (feature.kind === 'findReplace') {
+			return; // gated; the find/replace dialog opens in a later phase
 		}
 		const result = this.controller.run(feature);
 		if (
@@ -138,6 +152,28 @@ class WriterEditorPanel {
 		) {
 			this.sheet.close();
 		}
+	}
+
+	private openFontNameDialog(): void {
+		const values = this.controller.getCommandValues('.uno:CharFontName');
+		const names = values ? Object.keys(values).filter((name) => !!name) : [];
+		if (!names.length) {
+			return;
+		}
+		const options = names.map((name) => ({ label: name, value: name }));
+		this.sheet.close();
+		new WriterEditorChooseDialog('字体', options, (option) => {
+			this.controller.applyFontName(option.value);
+		}).open();
+	}
+
+	private openFontSizeDialog(): void {
+		const table = WriterEditorCatalog.CHAR_HEIGHT_CN;
+		const options = Object.keys(table).map((label) => ({ label, value: table[label] }));
+		this.sheet.close();
+		new WriterEditorChooseDialog('字号', options, (option) => {
+			this.controller.applyFontSize(option.value);
+		}).open();
 	}
 
 	private groupLabel(group: string): string {

@@ -37,7 +37,7 @@
 /// <reference path="../src/app/WriterAiPanel.ts" />
 /// <reference path="../src/app/WriterEditorCatalog.ts" />
 /// <reference path="../src/app/WriterEditorController.ts" />
-/// <reference path="../src/app/WriterEditorPanel.ts" />
+/// <reference path="../src/app/WriterEditorChooseDialog.ts" />
 
 /// <reference path="./CanvasSectionContainer.test.ts" />
 /// <reference path="./CBounds.test.ts" />

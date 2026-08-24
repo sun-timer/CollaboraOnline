@@ -201,4 +201,37 @@ describe('WriterEditorController', function () {
 		assert.equal(result.reason, 'not_writer_document');
 		assert.equal(adapter.calls.sendExecuteSearch.length, 0);
 	});
+	it('applies a font name via the CharFontName command', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.applyFontName('Arial');
+
+		assert.		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command, '.uno:CharFontName {"CharFontName.FamilyName":{"type":"string","value":"Arial"}}');
+		assert.equal(adapter.calls.sendUnoCommand[0], command);
+	});
+
+	it('applies a font size via the FontHeight command', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.applyFontSize('12');
+
+		assert.		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command, '.uno:FontHeight {"FontHeight.Height":{"type":"float","value":"12"}}');
+		assert.equal(adapter.calls.sendUnoCommand[0], command);
+	});
+
+	it('rejects an empty font name without dispatching', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.applyFontName('');
+
+		assert.deepEqual(result, { dispatched: 'none', reason: 'empty_font' });
+		assert.equal(adapter.calls.sendUnoCommand.length, 0);
+	});
 });

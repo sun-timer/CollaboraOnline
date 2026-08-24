@@ -123,6 +123,29 @@ class WriterEditorController {
 	}
 
 	/** Pure SearchItem payload builder (test seam). */
+	/** Applies a font-family by dispatching the CharFontName UNO command. */
+	applyFontName(fontName: string): WriterEditorRunResult {
+		if (!fontName) {
+			return { dispatched: 'none', reason: 'empty_font' };
+		}
+		const command =
+			'.uno:CharFontName {"CharFontName.FamilyName":{"type":"string","value":' +
+			JSON.stringify(fontName) + '}}';
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
+	/** Applies a font size (pt) by dispatching the FontHeight UNO command. */
+	applyFontSize(sizePt: string): WriterEditorRunResult {
+		if (!sizePt) {
+			return { dispatched: 'none', reason: 'empty_size' };
+		}
+		const command =
+			'.uno:FontHeight {"FontHeight.Height":{"type":"float","value":' +
+			JSON.stringify(sizePt) + '}}';
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
 	static buildSearchCmd(
 		text: string,
 		replaceString: string,
