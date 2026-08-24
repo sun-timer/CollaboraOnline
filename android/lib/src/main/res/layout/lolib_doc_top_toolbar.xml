@@ -3,20 +3,29 @@
     android:id="@+id/doc_top_toolbar"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#FFFFFF"
+    android:background="@color/lolib_chrome_status_plate"
     android:elevation="8dp"
-    android:fitsSystemWindows="true"
     android:orientation="vertical">
 
-    <!-- Preview / Viewing mode -->
+    <!-- Figma 556:21271：状态栏区域与顶栏共用 #F2F2F2 底板，高度由 SystemUiHelper 注入 -->
+    <View
+        android:id="@+id/doc_top_status_plate"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:minHeight="@dimen/lolib_status_plate_min_height"
+        android:background="@color/lolib_chrome_status_plate"
+        android:importantForAccessibility="no" />
+
+    <!-- Preview / Viewing mode — Figma 标题栏2 内容区 56dp（在 status plate 下方，不在状态栏内） -->
     <LinearLayout
         android:id="@+id/top_toolbar_preview"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="@dimen/lolib_top_toolbar_content_height"
+        android:background="@color/lolib_chrome_status_plate"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="4dp"
-        android:paddingEnd="8dp">
+        android:paddingStart="@dimen/doc_top_toolbar_content_padding_h"
+        android:paddingEnd="@dimen/doc_top_toolbar_content_padding_h">
 
         <ImageButton
             android:id="@+id/top_btn_back"
@@ -90,11 +99,12 @@
         </FrameLayout>
     </LinearLayout>
 
-    <!-- Edit mode -->
+    <!-- Edit mode — 56dp 内容区 -->
     <FrameLayout
         android:id="@+id/top_toolbar_edit"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="@dimen/lolib_top_toolbar_content_height"
+        android:background="@color/lolib_chrome_status_plate"
         android:paddingStart="@dimen/top_toolbar_edit_padding_start"
         android:paddingEnd="@dimen/top_toolbar_edit_padding_end"
         android:visibility="gone">
@@ -183,12 +193,12 @@
 
             <ImageButton
                 android:id="@+id/top_btn_close_edit"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="@dimen/doc_top_toolbar_close_size"
+                android:layout_height="@dimen/doc_top_toolbar_close_size"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="关闭编辑"
-                android:padding="12dp"
-                android:scaleType="fitCenter"
+                android:padding="@dimen/doc_top_toolbar_close_icon_padding"
+                android:scaleType="centerInside"
                 android:src="@drawable/lolib_ic_top_close_edit" />
         </LinearLayout>
     </FrameLayout>

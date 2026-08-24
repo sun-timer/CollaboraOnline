@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Plumb: 127:6212 / 129:6909 / 129:6554 / 5632:26327（750@2x → ÷2 dp） -->
+    <dimen name="find_sheet_header_height">62dp</dimen>
+    <dimen name="find_sheet_tab_track_height">52dp</dimen>
+    <dimen name="find_sheet_tab_track_padding_v">2dp</dimen>
+    <dimen name="find_sheet_tab_track_padding_h">6dp</dimen>
+    <dimen name="find_sheet_tab_gap">4dp</dimen>
+    <dimen name="find_sheet_field_height">52dp</dimen>
+    <dimen name="find_sheet_action_row_height">35dp</dimen>
+    <dimen name="find_sheet_action_button_gap">8dp</dimen>
+    <dimen name="find_sheet_content_margin_h">16dp</dimen>
+    <!-- Figma $l1 gap 32px -->
+    <dimen name="find_sheet_section_gap">16dp</dimen>
+    <!-- 替换 tab 两输入框间距：与 section gap 一致（Figma col gap 32px） -->
+    <dimen name="find_sheet_replace_field_gap">16dp</dimen>
+    <!-- Figma 129:6554 行容器 130px；设置弹窗总高 614px -->
+    <dimen name="find_sheet_settings_row_height">65dp</dimen>
+    <dimen name="find_sheet_settings_height">307dp</dimen>
+</resources>

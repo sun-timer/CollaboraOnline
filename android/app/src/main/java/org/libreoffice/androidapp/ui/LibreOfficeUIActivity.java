@@ -51,8 +51,6 @@ import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.ViewGroup;
 import android.view.Window;
-import android.view.animation.Animation;
-import android.view.animation.AnimationUtils;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
@@ -68,12 +66,15 @@ import android.widget.PopupWindow;
 import android.widget.Toast;
 
 
-import org.libreoffice.androidapp.AboutDialogFragment;
+import org.libreoffice.androidapp.ui.AboutActivity;
 import org.libreoffice.androidapp.R;
 import org.libreoffice.androidapp.SettingsActivity;
 import org.libreoffice.androidapp.SettingsListenerModel;
 import org.libreoffice.androidlib.LOActivity;
+import org.libreoffice.androidlib.SafeAreaInsets;
+import org.libreoffice.androidlib.SystemUiHelper;
 import org.libreoffice.androidlib.ExitDiagHelper;
+import org.libreoffice.androidlib.ai.AiModelConfigStore;
 import org.libreoffice.androidlib.ai.LocalModelManager;
 
 import java.io.File;
@@ -150,14 +151,15 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     private View emptySearchState;
     private View retrySearchButton;
     private String currentSearchQuery = "";
-    private boolean searchModeActive = false;
 
     //kept package-private to use these in recyclerView's adapter
     TextView noRecentItemsTextView;
 
     private boolean isFabMenuOpen = false;
     private View editFAB;
+    private View homeFabAnchor;
     private View newDocOverlay;
+    private View newDocMenuCard;
     private View newDocCloseButton;
 
     /** Recent files list vs. grid switch. */
@@ -190,10 +192,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     private String pendingAutoUserDescription = "";
     private AlertDialog aiGeneratingDialog;
 
-    // 抽屉内二级面板：基础模型配置（activity_ai_model_config.xml 完整静态布局，addView 到 navigationDrawer）
+    // 抽屉内二级面板：activity_ai_model_config.xml overlay（勿用 panel_ai_model_config，真机 ScrollView 灰屏）
     private View modelConfigPanel;
     private int modelConfigModelType = AiSettingsStore.MODEL_BASE;
-    private SharedPreferences modelConfigPrefs;
     private EditText modelConfigNameInput;
     private EditText modelProviderInput;
     private EditText modelUrlInput;
@@ -266,16 +267,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         }
         final ArrayList<Uri> filteredUris = filterRecentUris(recentUris, currentSearchQuery);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            recentRecyclerView.setOnApplyWindowInsetsListener((v, windowInsets) -> {
-                Insets insets = windowInsets.getInsets(WindowInsets.Type.systemBars());
-
-                v.setPadding(insets.left, 0, insets.right, insets.bottom);
-
-                return WindowInsets.CONSUMED;
-            });
-        }
-
         recentRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         recentRecyclerView.setAdapter(new RecentFilesAdapter(this, filteredUris));
         updateEmptyState(recentUris.size(), filteredUris.size());
@@ -309,33 +300,24 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         }
     }
 
-    private void updateSearchUiMode() {
-        boolean hasQuery = !TextUtils.isEmpty(currentSearchQuery);
-        boolean showMenu = searchModeActive || hasQuery;
+    private void updateHomeLeftAvatar() {
         if (homeLeftIcon == null) {
             return;
         }
-        if (showMenu) {
-            homeLeftIcon.setImageResource(R.drawable.ic_home_menu);
-            homeLeftIcon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            homeLeftIcon.setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8));
-            homeLeftIcon.setContentDescription(getString(R.string.document_locations));
+        SharedPreferences p = AiSettingsStore.prefs(this);
+        String avatarUri = p.getString(AiSettingsStore.KEY_PROFILE_AVATAR_URI, "");
+        if (avatarUri == null || avatarUri.isEmpty()) {
+            homeLeftIcon.setImageResource(R.drawable.drawer_header);
         } else {
-            SharedPreferences p = AiSettingsStore.prefs(this);
-            String avatarUri = p.getString(AiSettingsStore.KEY_PROFILE_AVATAR_URI, "");
-            if (avatarUri == null || avatarUri.isEmpty()) {
+            try {
+                homeLeftIcon.setImageURI(Uri.parse(avatarUri));
+            } catch (Exception ignored) {
                 homeLeftIcon.setImageResource(R.drawable.drawer_header);
-            } else {
-                try {
-                    homeLeftIcon.setImageURI(Uri.parse(avatarUri));
-                } catch (Exception ignored) {
-                    homeLeftIcon.setImageResource(R.drawable.drawer_header);
-                }
             }
-            homeLeftIcon.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            homeLeftIcon.setPadding(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2));
-            homeLeftIcon.setContentDescription(getString(R.string.ai_profile_name));
         }
+        homeLeftIcon.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        homeLeftIcon.setPadding(0, 0, 0, 0);
+        homeLeftIcon.setContentDescription(getString(R.string.ai_profile_name));
     }
 
     /** access shared preferences from the activity instance */
@@ -356,8 +338,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         View localModelInstalledPrimaryRow = navigationDrawer.findViewById(R.id.localModelInstalledPrimaryRow);
         if (localModelRow != null) {
             if (org.libreoffice.androidlib.ai.LocalModelManager.isDeviceSupported(this)) {
-                localModelRow.setOnClickListener(v ->
-                        startActivity(new Intent(this, LocalModelActivity.class)));
+                localModelRow.setOnClickListener(v -> openDrawerLocalModelEntry());
             }
         }
         if (localModelInstalledPrimaryRow != null) {
@@ -373,90 +354,29 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         View localInstallButton = navigationDrawer.findViewById(R.id.localInstallButton);
         if (localInstallButton != null) {
             if (org.libreoffice.androidlib.ai.LocalModelManager.isDeviceSupported(this)) {
-                localInstallButton.setOnClickListener(v ->
-                        startActivity(new Intent(this, LocalModelActivity.class)));
+                localInstallButton.setOnClickListener(v -> showLocalModelListDialog());
             }
         }
 
         View clearCacheAction = navigationDrawer.findViewById(R.id.action_clear_cache);
         if (clearCacheAction != null) {
-            clearCacheAction.setOnClickListener(v -> clearAppCache());
+            clearCacheAction.setOnClickListener(v -> {
+                drawerLayout.closeDrawer(androidx.core.view.GravityCompat.START);
+                startActivity(new android.content.Intent(this, ClearCacheActivity.class));
+            });
         }
         View aboutAction = navigationDrawer.findViewById(R.id.action_about);
         if (aboutAction != null) {
             aboutAction.setOnClickListener(v -> {
-                AboutDialogFragment aboutDialogFragment = new AboutDialogFragment();
-                aboutDialogFragment.show(getSupportFragmentManager(), "AboutDialogFragment");
+                drawerLayout.closeDrawer(GravityCompat.START);
+                startActivity(new android.content.Intent(this, AboutActivity.class));
             });
         }
         setupDrawerToggle();
     }
 
-    private void clearAppCache() {
-        new AlertDialog.Builder(this)
-                .setTitle("清理缓存")
-                .setMessage("将清除应用缓存文件，不会删除您的文档。确定继续吗？")
-                .setPositiveButton("清理", (dialog, which) -> {
-                    new Thread(() -> {
-                        long freed = 0;
-                        try {
-                            File cacheDir = getCacheDir();
-                            freed = deleteDir(cacheDir);
-                            // Also clear tmp files in external cache
-                            File extCacheDir = getExternalCacheDir();
-                            if (extCacheDir != null) {
-                                freed += deleteDir(extCacheDir);
-                            }
-                        } catch (Exception e) {
-                            android.util.Log.w("LibreOfficeUI", "clear_cache_failed", e);
-                        }
-                        final long bytesFreed = freed;
-                        runOnUiThread(() -> {
-                            String msg;
-                            if (bytesFreed > 0) {
-                                double mb = bytesFreed / (1024.0 * 1024.0);
-                                msg = String.format("缓存已清理（释放 %.1f MB）", mb);
-                            } else {
-                                msg = "缓存已清理";
-                            }
-                            Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
-                        });
-                    }).start();
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
-    private long deleteDir(File dir) {
-        if (dir == null || !dir.exists()) {
-            return 0;
-        }
-        long size = 0;
-        File[] files = dir.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isDirectory()) {
-                    size += deleteDir(file);
-                } else {
-                    size += file.length();
-                    file.delete();
-                }
-            }
-        }
-        return size;
-    }
-
     private void setupDrawerToggle() {
         drawerToggle = new ActionBarDrawerToggle(this, drawerLayout, R.string.document_locations, R.string.close_document_locations) {
-            @Override
-            public void onDrawerSlide(View drawerView, float slideOffset) {
-                boolean lightMode = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_YES) == 0;
-
-                if (lightMode) { // Even in light mode, the status bar still has a dark background when opened... the navigation bar is unaffected
-                    boolean lightStatusBar = slideOffset < 0.5;
-                    WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView()).setAppearanceLightStatusBars(lightStatusBar);
-                }
-            }
             @Override
             public void onDrawerOpened(View drawerView) {
                 super.onDrawerOpened(drawerView);
@@ -510,6 +430,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 supportInvalidateOptionsMenu();
                 navigationDrawer.requestFocus(); // Make keypad navigation easier
                 collapseFabMenu();
+                // 打开抽屉时刷新本地模型状态，避免显示过期的「下载中」
+                refreshAiDrawerHeader();
+                ensureLocalModelSectionVisible();
             }
 
             @Override
@@ -596,20 +519,50 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         }
         Log.i("LOActivity", "ai_model_config_open_panel modelType=" + modelType + " via=drawer-panel");
         modelConfigModelType = modelType;
-        modelConfigPrefs = AiSettingsStore.prefs(this);
+
+        setDrawerShellInteractive(false);
 
         View panel = LayoutInflater.from(this).inflate(R.layout.activity_ai_model_config, navigationDrawer, false);
-        panel.setClickable(true); // 吞掉面板空白处点击，防止穿透到下方抽屉菜单
-        panel.setFocusable(true);
-        bindModelConfigPanel(panel);
+        panel.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        View configColumn = panel.findViewById(R.id.aiModelConfigActivityPanel);
+        if (configColumn != null) {
+            configColumn.setClickable(true);
+            configColumn.setFocusable(true);
+        }
+        bindModelConfigPanel(panel, false);
+        final int slideWidth = getResources().getDimensionPixelSize(R.dimen.ai_drawer_panel_width);
+        // 首帧即在屏外，避免 addView 后、动画开始前闪一下
+        panel.setTranslationX(-slideWidth);
         navigationDrawer.addView(panel, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        panel.bringToFront();
         modelConfigPanel = panel;
-        // 从左滑入（-100%p 相对 drawer 宽度=356dp，正好从抽屉左缘滑入）
-        panel.startAnimation(AnimationUtils.loadAnimation(this, R.anim.slide_in_left));
+
+        View root = findViewById(R.id.overview_coordinator_layout);
+        applyHomeDrawerSafeArea(SystemUiHelper.readSafeAreaInsets(root));
+        loadModelConfigValues();
+        if (modelConfigNameInput == null) {
+            Log.e("LOActivity", "ai_model_config_bind_fail reason=modelConfigNameInput_null");
+        }
+        panel.post(() -> panel.animate()
+                .translationX(0f)
+                .setDuration(300)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                .start());
     }
 
-    private void bindModelConfigPanel(View panel) {
+    private void setDrawerShellInteractive(boolean interactive) {
+        if (navigationDrawer == null) {
+            return;
+        }
+        View shell = navigationDrawer.findViewById(R.id.navigation_drawer_panel);
+        if (shell != null) {
+            shell.setEnabled(interactive);
+            shell.setClickable(interactive);
+        }
+    }
+
+    private void bindModelConfigPanel(View panel, boolean loadValues) {
         modelConfigNameInput = panel.findViewById(R.id.modelConfigNameInput);
         modelProviderInput = panel.findViewById(R.id.modelProviderInput);
         modelUrlInput = panel.findViewById(R.id.modelUrlInput);
@@ -631,13 +584,21 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         TextView title = panel.findViewById(R.id.modelConfigTitle);
         ImageView icon = panel.findViewById(R.id.modelConnectionIcon);
         ImageButton backButton = panel.findViewById(R.id.modelConfigBackButton);
-        title.setText(AiSettingsStore.modelTitleRes(modelConfigModelType));
-        icon.setImageResource(R.drawable.ic_ai_connection);
-        backButton.setOnClickListener(v -> closeModelConfigPanel());
+        if (title != null) {
+            title.setText(AiSettingsStore.modelTitleRes(modelConfigModelType));
+        }
+        if (icon != null) {
+            icon.setImageResource(R.drawable.ic_ai_connection);
+        }
+        if (backButton != null) {
+            backButton.setOnClickListener(v -> closeModelConfigPanel());
+        }
 
-        loadModelConfigValues();
         bindModelConfigSliders();
-        bindModelConfigActions();
+        if (loadValues) {
+            loadModelConfigValues();
+        }
+        bindModelConfigActions(panel);
 
         View scrim = panel.findViewById(R.id.modelConfigScrim);
         if (scrim != null) {
@@ -648,19 +609,21 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     }
 
     private void loadModelConfigValues() {
-        modelConfigNameInput.setText(getModelConfigString(AiSettingsStore.FIELD_CONFIG_NAME,
-                getString(AiSettingsStore.modelTitleRes(modelConfigModelType)) + "配置"));
-        modelProviderInput.setText(getModelConfigString(AiSettingsStore.FIELD_PROVIDER, "OpenAI"));
-        modelUrlInput.setText(getModelConfigString(AiSettingsStore.FIELD_URL, "https://api.openai.com/v1/chat/completions"));
-        modelApiKeyInput.setText(getModelConfigString(AiSettingsStore.FIELD_API_KEY, ""));
-        modelNameInput.setText(getModelConfigString(AiSettingsStore.FIELD_MODEL_NAME, AiSettingsStore.defaultModelName(modelConfigModelType)));
+        AiModelConfigStore.Form form = AiModelConfigStore.loadForm(this, modelConfigModelType,
+                getString(AiSettingsStore.modelTitleRes(modelConfigModelType)) + "配置",
+                AiSettingsStore.defaultModelName(modelConfigModelType));
+        modelConfigNameInput.setText(form.configName);
+        modelProviderInput.setText(form.provider);
+        modelUrlInput.setText(form.url);
+        modelApiKeyInput.setText(form.apiKey);
+        modelNameInput.setText(form.modelName);
 
-        setModelConfigSlider(topPBar, getModelConfigFloat(AiSettingsStore.FIELD_TOP_P, 0.5f), topPValue);
-        setModelConfigSlider(temperatureBar, getModelConfigFloat(AiSettingsStore.FIELD_TEMPERATURE, 0.9f), temperatureValue);
-        setModelConfigSlider(presencePenaltyBar, getModelConfigFloat(AiSettingsStore.FIELD_PRESENCE_PENALTY, 0f), presencePenaltyValue);
-        setModelConfigSlider(frequencyPenaltyBar, getModelConfigFloat(AiSettingsStore.FIELD_FREQUENCY_PENALTY, 0.8f), frequencyPenaltyValue);
-        setModelConfigSlider(maxTokensBar, getModelConfigFloat(AiSettingsStore.FIELD_MAX_TOKENS_RATIO, 0.8f), maxTokensValue);
-        setModelConfigSlider(seedBar, getModelConfigFloat(AiSettingsStore.FIELD_SEED_RATIO, 0.8f), seedValue);
+        setModelConfigSlider(topPBar, form.topP, topPValue);
+        setModelConfigSlider(temperatureBar, form.temperature, temperatureValue);
+        setModelConfigSlider(presencePenaltyBar, form.presencePenalty, presencePenaltyValue);
+        setModelConfigSlider(frequencyPenaltyBar, form.frequencyPenalty, frequencyPenaltyValue);
+        setModelConfigSlider(maxTokensBar, form.maxTokensRatio, maxTokensValue);
+        setModelConfigSlider(seedBar, form.seedRatio, seedValue);
     }
 
     private void bindModelConfigSliders() {
@@ -673,6 +636,12 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     }
 
     private void bindModelConfigSlider(SeekBar seekBar, TextView valueView) {
+        if (seekBar == null || valueView == null) {
+            return;
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            seekBar.setMin(0);
+        }
         seekBar.setMax(100);
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -686,46 +655,83 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
             @Override
             public void onStopTrackingTouch(SeekBar bar) {
+                persistModelConfig(false);
             }
         });
     }
 
-    private void bindModelConfigActions() {
-        View cancelButton = panelFind(R.id.modelConfigCancelButton);
-        View saveButton = panelFind(R.id.modelConfigSaveButton);
+    private void bindModelConfigActions(View panel) {
+        View cancelButton = panel.findViewById(R.id.modelConfigCancelButton);
+        View saveButton = panel.findViewById(R.id.modelConfigSaveButton);
         if (cancelButton != null) {
+            cancelButton.setClickable(true);
+            cancelButton.setFocusable(true);
             cancelButton.setOnClickListener(v -> closeModelConfigPanel());
+        } else {
+            Log.w("LOActivity", "ai_model_config_bind_fail reason=missing_cancel_button");
         }
         if (saveButton != null) {
-            saveButton.setOnClickListener(v -> saveModelConfigAndClose());
+            saveButton.setClickable(true);
+            saveButton.setFocusable(true);
+            saveButton.setOnClickListener(v -> {
+                Log.i("LOActivity", "ai_model_config_save_click modelType=" + modelConfigModelType);
+                View focus = getCurrentFocus();
+                if (focus != null) {
+                    focus.clearFocus();
+                }
+                saveModelConfigAndClose();
+            });
+        } else {
+            Log.w("LOActivity", "ai_model_config_bind_fail reason=missing_save_button");
         }
     }
 
     private void saveModelConfigAndClose() {
-        SharedPreferences.Editor editor = modelConfigPrefs.edit();
-        editor.putString(modelConfigKey(AiSettingsStore.FIELD_CONFIG_NAME), readModelConfigInput(modelConfigNameInput));
-        editor.putString(modelConfigKey(AiSettingsStore.FIELD_PROVIDER), readModelConfigInput(modelProviderInput));
-        editor.putString(modelConfigKey(AiSettingsStore.FIELD_URL), readModelConfigInput(modelUrlInput));
-        editor.putString(modelConfigKey(AiSettingsStore.FIELD_API_KEY), readModelConfigInput(modelApiKeyInput));
-        editor.putString(modelConfigKey(AiSettingsStore.FIELD_MODEL_NAME), readModelConfigInput(modelNameInput));
+        if (persistModelConfig(true)) {
+            closeModelConfigPanel();
+        }
+    }
 
-        editor.putFloat(modelConfigKey(AiSettingsStore.FIELD_TOP_P), toModelConfigRatio(topPBar.getProgress()));
-        editor.putFloat(modelConfigKey(AiSettingsStore.FIELD_TEMPERATURE), toModelConfigRatio(temperatureBar.getProgress()));
-        editor.putFloat(modelConfigKey(AiSettingsStore.FIELD_PRESENCE_PENALTY), toModelConfigRatio(presencePenaltyBar.getProgress()));
-        editor.putFloat(modelConfigKey(AiSettingsStore.FIELD_FREQUENCY_PENALTY), toModelConfigRatio(frequencyPenaltyBar.getProgress()));
-        editor.putFloat(modelConfigKey(AiSettingsStore.FIELD_MAX_TOKENS_RATIO), toModelConfigRatio(maxTokensBar.getProgress()));
-        editor.putFloat(modelConfigKey(AiSettingsStore.FIELD_SEED_RATIO), toModelConfigRatio(seedBar.getProgress()));
-        editor.apply();
+    /** @return true if persisted successfully */
+    private boolean persistModelConfig(boolean showToast) {
+        AiModelConfigStore.Form form = readModelConfigForm();
+        if (!AiModelConfigStore.saveForm(this, modelConfigModelType, form)) {
+            if (showToast) {
+                Toast.makeText(this, R.string.ai_model_config_save_failed, Toast.LENGTH_SHORT).show();
+            }
+            return false;
+        }
+        Log.i("LOActivity", "ai_model_config_saved modelType=" + modelConfigModelType
+                + " topP=" + form.topP + " temperature=" + form.temperature);
 
         if (modelConfigModelType == AiSettingsStore.MODEL_BASE) {
             AiSettingsStore.syncBaseModelToRuntime(this);
         }
 
-        closeModelConfigPanel();
+        if (showToast) {
+            Toast.makeText(this, R.string.ai_model_config_saved, Toast.LENGTH_SHORT).show();
+        }
+        return true;
     }
 
-    private View panelFind(int id) {
-        return modelConfigPanel == null ? null : modelConfigPanel.findViewById(id);
+    private AiModelConfigStore.Form readModelConfigForm() {
+        AiModelConfigStore.Form form = new AiModelConfigStore.Form();
+        form.configName = readModelConfigInput(modelConfigNameInput);
+        form.provider = readModelConfigInput(modelProviderInput);
+        form.url = readModelConfigInput(modelUrlInput);
+        form.apiKey = readModelConfigInput(modelApiKeyInput);
+        form.modelName = readModelConfigInput(modelNameInput);
+        form.topP = toModelConfigRatio(safeSeekBarProgress(topPBar));
+        form.temperature = toModelConfigRatio(safeSeekBarProgress(temperatureBar));
+        form.presencePenalty = toModelConfigRatio(safeSeekBarProgress(presencePenaltyBar));
+        form.frequencyPenalty = toModelConfigRatio(safeSeekBarProgress(frequencyPenaltyBar));
+        form.maxTokensRatio = toModelConfigRatio(safeSeekBarProgress(maxTokensBar));
+        form.seedRatio = toModelConfigRatio(safeSeekBarProgress(seedBar));
+        return form;
+    }
+
+    private int safeSeekBarProgress(SeekBar seekBar) {
+        return seekBar == null ? 0 : seekBar.getProgress();
     }
 
     private String readModelConfigInput(EditText editText) {
@@ -733,6 +739,13 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     }
 
     private void setModelConfigSlider(SeekBar seekBar, float value, TextView valueView) {
+        if (seekBar == null || valueView == null) {
+            return;
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            seekBar.setMin(0);
+        }
+        seekBar.setMax(100);
         int progress = Math.max(0, Math.min(100, Math.round(value * 100f)));
         seekBar.setProgress(progress);
         valueView.setText(formatModelConfigRatio(progress / 100f));
@@ -749,41 +762,25 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         return String.format(Locale.getDefault(), "%.1f", value);
     }
 
-    private String modelConfigKey(String field) {
-        return AiSettingsStore.modelKey(modelConfigModelType, field);
-    }
-
-    private String getModelConfigString(String field, String defaultValue) {
-        return modelConfigPrefs.getString(modelConfigKey(field), defaultValue);
-    }
-
-    private float getModelConfigFloat(String field, float defaultValue) {
-        return modelConfigPrefs.getFloat(modelConfigKey(field), defaultValue);
-    }
-
     private void closeModelConfigPanel() {
         if (modelConfigPanel == null) {
             return;
         }
         View panel = modelConfigPanel;
         modelConfigPanel = null;
-        Animation out = AnimationUtils.loadAnimation(this, R.anim.slide_out_left);
-        out.setFillAfter(true); // 动画结束保持 -100%（在左缘外），removeView 前不闪回
-        out.setAnimationListener(new Animation.AnimationListener() {
-            @Override
-            public void onAnimationStart(Animation animation) {
-            }
-
-            @Override
-            public void onAnimationEnd(Animation animation) {
-                navigationDrawer.removeView(panel);
-            }
-
-            @Override
-            public void onAnimationRepeat(Animation animation) {
-            }
-        });
-        panel.startAnimation(out);
+        panel.animate().cancel();
+        final int slideWidth = getResources().getDimensionPixelSize(R.dimen.ai_drawer_panel_width);
+        panel.animate()
+                .translationX(-slideWidth)
+                .setDuration(300)
+                .setInterpolator(new android.view.animation.AccelerateInterpolator())
+                .withEndAction(() -> {
+                    if (panel.getParent() == navigationDrawer) {
+                        navigationDrawer.removeView(panel);
+                    }
+                })
+                .start();
+        setDrawerShellInteractive(true);
         refreshAiDrawerHeader();
     }
 
@@ -793,6 +790,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             navigationDrawer.removeView(modelConfigPanel);
             modelConfigPanel = null;
         }
+        setDrawerShellInteractive(true);
     }
 
     private void refreshAiDrawerHeader() {
@@ -828,17 +826,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 }
             }
         }
-        if (homeLeftIcon != null && !(searchModeActive || !TextUtils.isEmpty(currentSearchQuery))) {
-            if (avatarUri == null || avatarUri.isEmpty()) {
-                homeLeftIcon.setImageResource(R.drawable.drawer_header);
-            } else {
-                try {
-                    homeLeftIcon.setImageURI(Uri.parse(avatarUri));
-                } catch (Exception ignored) {
-                    homeLeftIcon.setImageResource(R.drawable.drawer_header);
-                }
-            }
-        }
+        updateHomeLeftAvatar();
 
         String unsetText = getString(R.string.ai_model_unset);
         if (baseValue != null) {
@@ -855,70 +843,157 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         }
 
         TextView localInstallButton = headerView.findViewById(R.id.localInstallButton);
+        View localModelSection = headerView.findViewById(R.id.localModelSection);
         View localModelRow = headerView.findViewById(R.id.localModelRow);
         View localModelInstalledCard = headerView.findViewById(R.id.localModelInstalledCard);
+        TextView localInstalledBadge = headerView.findViewById(R.id.localInstalledBadge);
         TextView localModelDetailSubtitle = headerView.findViewById(R.id.localModelDetailSubtitle);
         TextView localModelDetailTitle = headerView.findViewById(R.id.localModelDetailTitle);
-        if (localInstallButton != null) {
-            if (!org.libreoffice.androidlib.ai.LocalModelManager.isDeviceSupported(this)) {
-                if (localModelRow != null) {
-                    localModelRow.setVisibility(View.GONE);
-                }
-                if (localModelInstalledCard != null) {
-                    localModelInstalledCard.setVisibility(View.GONE);
-                }
+        View localModelDetailRow = headerView.findViewById(R.id.localModelDetailRow);
+        View localModelCopyButton = headerView.findViewById(R.id.localModelCopyButton);
+
+        if (!org.libreoffice.androidlib.ai.LocalModelManager.isDeviceSupported(this)) {
+            if (localModelSection != null) {
+                localModelSection.setVisibility(View.GONE);
+            }
+            return;
+        }
+        if (localModelSection != null) {
+            localModelSection.setVisibility(View.VISIBLE);
+        }
+        if (localInstallButton == null) {
+            return;
+        }
+
+        org.libreoffice.androidlib.ai.LocalModelManager manager =
+                org.libreoffice.androidlib.ai.LocalModelManager.getInstance(this);
+        String state = manager.getDownloadState();
+        org.libreoffice.androidlib.ai.LocalModelManager.CatalogEntry activeEntry =
+                manager.getInstalledCatalogEntry();
+        org.libreoffice.androidlib.ai.LocalModelManager.CatalogEntry displayEntry = activeEntry;
+        if (displayEntry == null) {
+            displayEntry = findFirstDownloadedCatalogEntry(manager);
+        }
+
+        localInstallButton.setEnabled(true);
+        localInstallButton.setAlpha(1f);
+
+        if (org.libreoffice.androidlib.ai.LocalModelManager.STATE_DOWNLOADING.equals(state)) {
+            showDrawerLocalModelInstallRow(localModelRow, localModelInstalledCard);
+            localInstallButton.setVisibility(View.VISIBLE);
+            if (manager.isDownloadActive()) {
+                localInstallButton.setText(getString(R.string.local_model_downloading_progress,
+                        manager.getLastProgressPercent()));
             } else {
-                org.libreoffice.androidlib.ai.LocalModelManager manager =
-                        org.libreoffice.androidlib.ai.LocalModelManager.getInstance(this);
-                String state = manager.getDownloadState();
-                org.libreoffice.androidlib.ai.LocalModelManager.CatalogEntry catalogEntry =
-                        manager.getInstalledCatalogEntry();
-                if (catalogEntry == null) {
-                    catalogEntry = org.libreoffice.androidlib.ai.LocalModelManager.getDefaultCatalogEntry();
-                }
-                if (localModelDetailTitle != null) {
-                    localModelDetailTitle.setText(R.string.local_model_url_label);
-                }
-                if (localModelDetailSubtitle != null && catalogEntry != null) {
-                    localModelDetailSubtitle.setText(catalogEntry.url);
-                }
-                if (org.libreoffice.androidlib.ai.LocalModelManager.STATE_DOWNLOADING.equals(state)) {
-                    if (localModelRow != null) {
-                        localModelRow.setVisibility(View.VISIBLE);
-                    }
-                    if (localModelInstalledCard != null) {
-                        localModelInstalledCard.setVisibility(View.GONE);
-                    }
-                    localInstallButton.setVisibility(View.VISIBLE);
-                    localInstallButton.setText(R.string.local_model_downloading_short);
-                    localInstallButton.setEnabled(false);
-                } else if (manager.isInstalled()) {
-                    if (localModelRow != null) {
-                        localModelRow.setVisibility(View.GONE);
-                    }
-                    if (localModelInstalledCard != null) {
-                        localModelInstalledCard.setVisibility(View.VISIBLE);
-                    }
-                } else {
-                    if (localModelRow != null) {
-                        localModelRow.setVisibility(View.VISIBLE);
-                    }
-                    if (localModelInstalledCard != null) {
-                        localModelInstalledCard.setVisibility(View.GONE);
-                    }
-                    localInstallButton.setVisibility(View.VISIBLE);
-                    localInstallButton.setText(R.string.install);
-                    localInstallButton.setEnabled(true);
-                }
+                localInstallButton.setText(R.string.local_model_interrupted);
+            }
+            return;
+        }
+
+        if (manager.isInstalled()) {
+            showDrawerLocalModelInstalledCard(localModelRow, localModelInstalledCard);
+            if (localInstalledBadge != null) {
+                localInstalledBadge.setText(R.string.local_model_installed_short);
+            }
+            bindDrawerLocalModelUrlRow(localModelDetailTitle, localModelDetailSubtitle,
+                    localModelDetailRow, localModelCopyButton, displayEntry);
+            return;
+        }
+
+        if (manager.hasAnyDownloadedModel()) {
+            showDrawerLocalModelInstalledCard(localModelRow, localModelInstalledCard);
+            if (localInstalledBadge != null) {
+                localInstalledBadge.setText(R.string.local_model_pending_select);
+            }
+            bindDrawerLocalModelUrlRow(localModelDetailTitle, localModelDetailSubtitle,
+                    localModelDetailRow, localModelCopyButton, displayEntry);
+            return;
+        }
+
+        showDrawerLocalModelInstallRow(localModelRow, localModelInstalledCard);
+        localInstallButton.setVisibility(View.VISIBLE);
+        localInstallButton.setText(R.string.install);
+    }
+
+    private void openDrawerLocalModelEntry() {
+        org.libreoffice.androidlib.ai.LocalModelManager manager =
+                org.libreoffice.androidlib.ai.LocalModelManager.getInstance(this);
+        if (manager.isInstalled() || manager.hasAnyDownloadedModel()) {
+            startActivity(new Intent(this, LocalModelActivity.class));
+        } else {
+            showLocalModelListDialog();
+        }
+    }
+
+    private static org.libreoffice.androidlib.ai.LocalModelManager.CatalogEntry findFirstDownloadedCatalogEntry(
+            org.libreoffice.androidlib.ai.LocalModelManager manager) {
+        for (org.libreoffice.androidlib.ai.LocalModelManager.CatalogEntry entry
+                : org.libreoffice.androidlib.ai.LocalModelManager.getCatalogEntries()) {
+            if (manager.isEntryDownloaded(entry)) {
+                return entry;
             }
         }
+        return null;
+    }
+
+    private static void showDrawerLocalModelInstallRow(View localModelRow, View localModelInstalledCard) {
+        if (localModelRow != null) {
+            localModelRow.setVisibility(View.VISIBLE);
+        }
+        if (localModelInstalledCard != null) {
+            localModelInstalledCard.setVisibility(View.GONE);
+        }
+    }
+
+    private static void showDrawerLocalModelInstalledCard(View localModelRow, View localModelInstalledCard) {
+        if (localModelRow != null) {
+            localModelRow.setVisibility(View.GONE);
+        }
+        if (localModelInstalledCard != null) {
+            localModelInstalledCard.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void bindDrawerLocalModelUrlRow(TextView titleView, TextView subtitleView, View detailRow,
+            View copyButton, org.libreoffice.androidlib.ai.LocalModelManager.CatalogEntry entry) {
+        boolean hasUrl = entry != null && !TextUtils.isEmpty(entry.url);
+        if (detailRow != null) {
+            detailRow.setVisibility(hasUrl ? View.VISIBLE : View.GONE);
+        }
+        if (titleView != null) {
+            titleView.setText(R.string.local_model_url_label);
+        }
+        if (subtitleView != null) {
+            subtitleView.setText(hasUrl ? entry.url : "");
+        }
+        if (copyButton != null) {
+            copyButton.setVisibility(hasUrl ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void ensureLocalModelSectionVisible() {
+        if (navigationDrawer == null) {
+            return;
+        }
+        android.widget.ScrollView scroll = navigationDrawer.findViewById(R.id.drawer_ai_config_scroll);
+        View section = navigationDrawer.findViewById(R.id.localModelSection);
+        if (scroll == null || section == null || section.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        scroll.post(() -> {
+            int sectionBottom = section.getBottom();
+            int scrollHeight = scroll.getHeight();
+            int scrollY = scroll.getScrollY();
+            if (sectionBottom - scrollY > scrollHeight - dpToPx(8)) {
+                scroll.smoothScrollTo(0, Math.max(0, sectionBottom - scrollHeight + dpToPx(16)));
+            }
+        });
     }
 
     public void createUI() {
         setContentView(R.layout.activity_document_browser);
         setupNavigationDrawer();
 
-        View topBar = findViewById(R.id.homeTopBar);
         homeLeftIcon = findViewById(R.id.homeLeftIcon);
         homeOpenFileButton = findViewById(R.id.homeOpenFileButton);
         homeSearchInput = findViewById(R.id.homeSearchInput);
@@ -927,26 +1002,26 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         emptySearchState = findViewById(R.id.emptySearchState);
         retrySearchButton = findViewById(R.id.retrySearchButton);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            WindowCompat.enableEdgeToEdge(getWindow());
-            boolean lightMode = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_YES) == 0;
-            WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView()).setAppearanceLightStatusBars(lightMode);
-            WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView()).setAppearanceLightNavigationBars(lightMode);
+        SystemUiHelper.enableEdgeToEdge(this);
+        SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
+        SystemUiHelper.installDrawerInsetDispatch(drawerLayout, navigationDrawer);
 
-            topBar.setOnApplyWindowInsetsListener((v, windowInsets) -> {
-                Insets insets = windowInsets.getInsets(WindowInsets.Type.systemBars());
-                v.setPadding(v.getPaddingLeft(), insets.top + dpToPx(8), v.getPaddingRight(), v.getPaddingBottom());
-                return WindowInsets.CONSUMED;
-            });
-        }
+        View coordinator = findViewById(R.id.overview_coordinator_layout);
+        SystemUiHelper.trackSafeAreaChanges(coordinator, insets -> {
+            applyHomeFabSafeArea(insets);
+            applyHomeDrawerSafeArea(insets);
+            SystemUiHelper.applyStatusBarPlateHeight(
+                    findViewById(R.id.home_top_status_plate), insets);
+            int homeStartPad = getResources().getDimensionPixelSize(R.dimen.home_top_bar_padding_start);
+            int homeEndPad = getResources().getDimensionPixelSize(R.dimen.home_top_bar_padding_end);
+            SystemUiHelper.applyHorizontalContentPadding(
+                    findViewById(R.id.home_top_content_row),
+                    insets.left + homeStartPad, insets.right + homeEndPad);
+        });
 
         homeLeftIcon.setOnClickListener(v -> drawerLayout.openDrawer(GravityCompat.START));
         homeOpenFileButton.setOnClickListener(v -> openDocument());
 
-        homeSearchInput.setOnFocusChangeListener((v, hasFocus) -> {
-            searchModeActive = hasFocus;
-            updateSearchUiMode();
-        });
         homeSearchInput.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -959,7 +1034,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             @Override
             public void afterTextChanged(Editable s) {
                 currentSearchQuery = s == null ? "" : s.toString().trim();
-                updateSearchUiMode();
                 updateRecentFiles();
             }
         });
@@ -974,11 +1048,12 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 }
             });
         }
-        updateSearchUiMode();
+        updateHomeLeftAvatar();
 
         setupFloatingActionButton();
 
         recentRecyclerView = findViewById(R.id.list_recent);
+        setupHomeContentInsets();
         noRecentItemsTextView = findViewById(R.id.no_recent_items_msg);
 
         // Icon to switch showing the recent files as list vs. as grid
@@ -990,10 +1065,24 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         updateRecentFiles();
     }
 
+    private void setupHomeContentInsets() {
+        if (recentRecyclerView != null) {
+            androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(recentRecyclerView, (v, windowInsets) -> {
+                androidx.core.graphics.Insets insets = windowInsets.getInsets(
+                        androidx.core.view.WindowInsetsCompat.Type.systemBars());
+                v.setPadding(insets.left, 0, insets.right, insets.bottom);
+                return windowInsets;
+            });
+            androidx.core.view.ViewCompat.requestApplyInsets(recentRecyclerView);
+        }
+    }
+
     /** Initialize the home new-document FAB. */
     private void setupFloatingActionButton() {
         editFAB = findViewById(R.id.editFAB);
+        homeFabAnchor = findViewById(R.id.homeFabAnchor);
         newDocOverlay = findViewById(R.id.newDocOverlay);
+        newDocMenuCard = findViewById(R.id.newDocMenuCard);
         newDocCloseButton = findViewById(R.id.newDocCloseButton);
         View writerRow = findViewById(R.id.newDocMenuRowWriter);
         View calcRow = findViewById(R.id.newDocMenuRowCalc);
@@ -1001,22 +1090,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
         if (LOActivity.isChromeOS(this)) {
             int dp = (int) getResources().getDisplayMetrics().density;
-            applyChromeOsFabLayout(editFAB, dp);
-            applyChromeOsFabLayout(newDocCloseButton, dp);
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            View.OnApplyWindowInsetsListener fabInsetsListener = (v, windowInsets) -> {
-                Insets insets = windowInsets.getInsets(WindowInsets.Type.systemBars()
-                        | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
-                        ? WindowInsets.Type.systemOverlays() : 0));
-                applyHomeFabWindowInsets(insets);
-                return WindowInsets.CONSUMED;
-            };
-            editFAB.setOnApplyWindowInsetsListener(fabInsetsListener);
-            if (newDocCloseButton != null) {
-                newDocCloseButton.setOnApplyWindowInsetsListener(fabInsetsListener);
-            }
+            applyChromeOsFabLayout(homeFabAnchor, dp);
         }
 
         editFAB.setOnClickListener(v -> {
@@ -1030,10 +1104,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         if (newDocOverlay != null) {
             newDocOverlay.setOnClickListener(v -> collapseFabMenu());
         }
-        View newDocMenuPanel = findViewById(R.id.newDocMenuPanel);
-        if (newDocMenuPanel != null) {
-            newDocMenuPanel.setOnClickListener(v -> {
-                // Consume clicks on the menu panel so the transparent overlay does not dismiss.
+        if (newDocMenuCard != null) {
+            newDocMenuCard.setOnClickListener(v -> {
+                // Consume clicks on the menu so the transparent overlay does not dismiss.
             });
         }
         if (newDocCloseButton != null) {
@@ -1072,12 +1145,28 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         fab.setLayoutParams(layoutParams);
     }
 
-    private void applyHomeFabWindowInsets(Insets insets) {
-        applyHomeFabMargins(editFAB, insets);
-        applyHomeFabMargins(newDocCloseButton, insets);
+    private void applyHomeFabSafeArea(SafeAreaInsets insets) {
+        applyHomeFabMargins(homeFabAnchor, insets);
     }
 
-    private void applyHomeFabMargins(View fab, Insets insets) {
+    private void applyHomeDrawerSafeArea(SafeAreaInsets insets) {
+        View drawerPanel = findViewById(R.id.navigation_drawer_panel);
+        if (drawerPanel != null) {
+            drawerPanel.setPadding(insets.left, insets.top, insets.right, 0);
+        }
+        SystemUiHelper.applyDrawerFooterInsets(
+                findViewById(R.id.navigation_drawer_footer), insets, dpToPx(12));
+        if (modelConfigPanel != null) {
+            View configHeader = modelConfigPanel.findViewById(R.id.modelConfigHeader);
+            SystemUiHelper.applyDrawerHeaderInsets(configHeader, insets);
+            View configFooter = modelConfigPanel.findViewById(R.id.modelConfigFooter);
+            SystemUiHelper.applyDrawerFooterInsets(configFooter, insets,
+                    getResources().getDimensionPixelSize(
+                            org.libreoffice.androidapp.R.dimen.ai_model_config_footer_padding_v));
+        }
+    }
+
+    private void applyHomeFabMargins(View fab, SafeAreaInsets insets) {
         if (fab == null) {
             return;
         }
@@ -1113,6 +1202,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             return;
         }
         newDocOverlay.setVisibility(View.VISIBLE);
+        if (newDocMenuCard != null) {
+            newDocMenuCard.setVisibility(View.VISIBLE);
+        }
         editFAB.setVisibility(View.GONE);
         if (newDocCloseButton != null) {
             newDocCloseButton.setVisibility(View.VISIBLE);
@@ -1126,6 +1218,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             return;
         }
         newDocOverlay.setVisibility(View.GONE);
+        if (newDocMenuCard != null) {
+            newDocMenuCard.setVisibility(View.GONE);
+        }
         editFAB.setVisibility(View.VISIBLE);
         if (newDocCloseButton != null) {
             newDocCloseButton.setVisibility(View.GONE);
@@ -1329,19 +1424,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             renameRecentFile(uri, newName);
         });
 
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setGravity(Gravity.CENTER);
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            WindowManager.LayoutParams params = window.getAttributes();
-            params.dimAmount = 0.3f;
-            window.setAttributes(params);
-            window.setSoftInputMode(
-                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-                            | WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
-        }
+        ResponsiveUiHelper.applyKeyboardFriendlyDialogWindow(dialog);
 
         dialog.setCanceledOnTouchOutside(true);
         dialog.setOnShowListener(d -> {
@@ -1573,6 +1656,11 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         overwriteWarning.setVisibility(View.GONE);
 
         if (card != null) {
+            ResponsiveUiHelper.applyAdaptiveSheetCardLayout(this, card);
+            if (ResponsiveUiHelper.useBottomSheetPresentation(this)) {
+                ResponsiveUiHelper.applyBottomSheetContentSafePadding(card,
+                        getResources().getDimensionPixelSize(R.dimen.bottom_sheet_content_bottom_pad));
+            }
             card.setOnClickListener(v -> { /* keep dialog open when tapping card */ });
         }
         closeButton.setOnClickListener(v -> dialog.dismiss());
@@ -1603,15 +1691,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             LOActivity.createNewFileInputDialog(this, finalFileName, mimeType, requestCode);
         });
 
+        ResponsiveUiHelper.applyAdaptiveSheetWindow(this, dialog);
         Window window = dialog.getWindow();
         if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setGravity(android.view.Gravity.BOTTOM);
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            WindowManager.LayoutParams params = window.getAttributes();
-            params.dimAmount = 0.3f;
-            window.setAttributes(params);
             window.setSoftInputMode(
                     WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
                             | WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
@@ -1667,16 +1749,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             removeFromList(uri);
         });
 
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setGravity(Gravity.CENTER);
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            WindowManager.LayoutParams params = window.getAttributes();
-            params.dimAmount = 0.3f;
-            window.setAttributes(params);
-        }
+        ResponsiveUiHelper.applyOverlayDialogWindow(dialog);
 
         dialog.setCanceledOnTouchOutside(true);
         dialog.show();
@@ -1686,6 +1759,10 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         if (!LocalModelManager.isDeviceSupported(this)) {
             Toast.makeText(this, R.string.local_model_device_unsupported, Toast.LENGTH_SHORT).show();
             return;
+        }
+        if (drawerLayout != null && navigationDrawer != null
+                && drawerLayout.isDrawerOpen(navigationDrawer)) {
+            drawerLayout.closeDrawer(navigationDrawer);
         }
 
         final Dialog dialog = new Dialog(this);
@@ -1699,55 +1776,34 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         View confirmButton = dialog.findViewById(R.id.localModelListConfirmButton);
 
         final LocalModelManager modelManager = LocalModelManager.getInstance(this);
-        final int orange = Color.parseColor("#FA6200");
-        final int textDark = Color.parseColor("#333333");
 
-        final Runnable[] refreshRows = { null };
-        refreshRows[0] = () -> {
-            if (container == null) {
-                return;
-            }
-            container.removeAllViews();
-            for (LocalModelManager.CatalogEntry entry : LocalModelManager.getCatalogEntries()) {
-                View row = LayoutInflater.from(this).inflate(R.layout.item_local_model_list_row, container, false);
-                TextView nameView = row.findViewById(R.id.localModelRowName);
-                TextView actionView = row.findViewById(R.id.localModelRowAction);
-                nameView.setText(entry.displayName);
+        final LocalModelListUiHelper.Controller[] listController = { null };
+        listController[0] = new LocalModelListUiHelper.Controller(
+                container, this, modelManager,
+                new LocalModelListUiHelper.ModelRowListener() {
+                    @Override
+                    public void onDownloadRequested(LocalModelManager.CatalogEntry entry) {
+                        startLocalModelDownloadFromDialog(modelManager, entry, listController[0]);
+                    }
 
-                actionView.setOnClickListener(null);
-                if (modelManager.isEntryDownloading(entry)) {
-                    actionView.setText(R.string.local_model_downloading_btn);
-                    actionView.setTextColor(orange);
-                    actionView.setBackgroundResource(R.drawable.bg_local_model_action_btn_downloading);
-                    actionView.setEnabled(false);
-                } else if (modelManager.isEntryInstalled(entry)) {
-                    actionView.setText(R.string.local_model_available);
-                    actionView.setTextColor(orange);
-                    actionView.setBackgroundResource(R.drawable.bg_local_model_action_btn);
-                    actionView.setEnabled(false);
-                } else {
-                    actionView.setText(R.string.local_model_download_btn);
-                    actionView.setTextColor(textDark);
-                    actionView.setBackgroundResource(R.drawable.bg_local_model_action_btn);
-                    actionView.setEnabled(true);
-                    actionView.setOnClickListener(v ->
-                            startLocalModelDownloadFromDialog(modelManager, entry, refreshRows[0]));
-                }
-                container.addView(row);
-            }
-        };
+                    @Override
+                    public void onSelectRequested(LocalModelManager.CatalogEntry entry) {
+                        selectLocalModelFromDialog(modelManager, entry, listController[0]);
+                    }
+                });
 
         Runnable dismissDialog = () -> {
             dialog.dismiss();
             refreshAiDrawerHeader();
         };
 
-        refreshRows[0].run();
+        listController[0].refreshAll();
 
         if (root != null) {
             root.setOnClickListener(v -> dismissDialog.run());
         }
         if (card != null) {
+            ResponsiveUiHelper.applyDialogCardMaxWidth(this, card);
             card.setOnClickListener(v -> { /* keep dialog open when tapping card */ });
         }
         if (closeButton != null) {
@@ -1757,33 +1813,54 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             confirmButton.setOnClickListener(v -> dismissDialog.run());
         }
 
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            window.setGravity(Gravity.CENTER);
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            WindowManager.LayoutParams params = window.getAttributes();
-            params.dimAmount = 0.3f;
-            window.setAttributes(params);
-        }
+        ResponsiveUiHelper.applyOverlayDialogWindow(dialog);
         dialog.setCanceledOnTouchOutside(true);
         dialog.show();
     }
 
+    private void selectLocalModelFromDialog(LocalModelManager modelManager,
+            LocalModelManager.CatalogEntry entry, LocalModelListUiHelper.Controller listController) {
+        modelManager.selectActiveModel(entry);
+        if (listController != null) {
+            listController.refreshAll();
+        }
+        refreshAiDrawerHeader();
+        Toast.makeText(this, getString(R.string.local_model_switched, entry.displayName),
+                Toast.LENGTH_SHORT).show();
+    }
+
     private void startLocalModelDownloadFromDialog(LocalModelManager modelManager,
-            LocalModelManager.CatalogEntry entry, Runnable refreshRows) {
-        refreshRows.run();
+            LocalModelManager.CatalogEntry entry, LocalModelListUiHelper.Controller listController) {
+        if (listController != null) {
+            listController.refreshAll();
+        }
         modelManager.downloadModel(entry, new LocalModelManager.DownloadProgressCallback() {
             @Override
             public void onProgress(int percent, long downloadedBytes, long totalBytes) {
-                runOnUiThread(refreshRows);
+                if (isFinishing()) {
+                    return;
+                }
+                runOnUiThread(() -> {
+                    if (isFinishing() || listController == null) {
+                        return;
+                    }
+                    listController.updateProgress(percent);
+                    refreshAiDrawerHeader();
+                });
             }
 
             @Override
             public void onComplete(boolean success, String message) {
+                if (isFinishing()) {
+                    return;
+                }
                 runOnUiThread(() -> {
-                    refreshRows.run();
+                    if (isFinishing()) {
+                        return;
+                    }
+                    if (listController != null) {
+                        listController.refreshAll();
+                    }
                     refreshAiDrawerHeader();
                     if (success) {
                         Toast.makeText(LibreOfficeUIActivity.this, R.string.local_model_download_done,
@@ -1794,9 +1871,20 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
             @Override
             public void onError(String code, String message) {
+                if (isFinishing()) {
+                    return;
+                }
                 runOnUiThread(() -> {
-                    refreshRows.run();
+                    if (isFinishing()) {
+                        return;
+                    }
+                    if (listController != null) {
+                        listController.refreshAll();
+                    }
                     refreshAiDrawerHeader();
+                    if ("cancelled".equals(code) || "download_busy".equals(code)) {
+                        return;
+                    }
                     Toast.makeText(LibreOfficeUIActivity.this,
                             getString(R.string.local_model_download_failed, message),
                             Toast.LENGTH_LONG).show();
@@ -2267,8 +2355,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             case AI_PROFILE_SETTINGS_REQUEST_CODE:
             case AI_MODEL_SETTINGS_REQUEST_CODE: {
                 refreshAiDrawerHeader();
-                if (requestCode == AI_MODEL_SETTINGS_REQUEST_CODE
-                        && resultCode == AiSettingsStore.RESULT_BACK_TO_DRAWER
+                if (resultCode == AiSettingsStore.RESULT_BACK_TO_DRAWER
                         && drawerLayout != null) {
                     drawerLayout.post(() -> drawerLayout.openDrawer(GravityCompat.START));
                 }
@@ -2296,7 +2383,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             Log.i(LOGTAG, "home_resume incremental=true");
             updateRecentFiles();
             refreshAiDrawerHeader();
-            updateSearchUiMode();
         } else {
             Log.i(LOGTAG, "home_resume full_createUI");
             createUI();

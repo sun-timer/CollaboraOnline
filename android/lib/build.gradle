@@ -77,6 +77,9 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation 'com.google.android.material:material:1.13.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    // WindowCompat.enableEdgeToEdge (SystemUiHelper) needs core >= 1.12; pin explicitly
+    // so the compile classpath doesn't fall back to an older transitive core.
+    implementation 'androidx.core:core:1.17.0'
     // PDF text extraction for 生成PPT document input (Apache-2.0, pure Java).
     // Note: groupId is com.tom-roush (not com.tom-richey) on Maven Central/Aliyun mirror.
     implementation 'com.tom-roush:pdfbox-android:2.0.27.0'

@@ -19,9 +19,22 @@
     <dimen name="home_fab_icon_size">17dp</dimen>
     <dimen name="home_fab_margin_end">54dp</dimen>
     <dimen name="home_fab_margin_bottom">78dp</dimen>
-    <dimen name="home_new_doc_menu_above_fab_gap">18dp</dimen>
+    <dimen name="home_new_doc_menu_above_fab_gap">20dp</dimen>
     <dimen name="home_fab_menu_panel_bottom_padding">156dp</dimen>
     <dimen name="home_recent_list_bottom_padding">140dp</dimen>
+    <!-- Figma 111:3580 / 822:29729 / 111:3584 / 111:3593 — home top bar (750×200 plate @2x) -->
+    <dimen name="home_top_bar_padding_start">18dp</dimen>
+    <dimen name="home_top_bar_padding_end">20dp</dimen>
+    <dimen name="home_top_avatar_size">32dp</dimen>
+    <dimen name="home_top_avatar_search_gap">8dp</dimen>
+    <dimen name="home_top_search_height">32dp</dimen>
+    <dimen name="home_top_search_corner_radius">16dp</dimen>
+    <dimen name="home_top_search_icon_size">20dp</dimen>
+    <dimen name="home_top_search_padding_h">12dp</dimen>
+    <dimen name="home_top_search_icon_text_gap">8dp</dimen>
+    <dimen name="home_top_search_open_gap">10dp</dimen>
+    <dimen name="home_top_open_file_icon_size">24dp</dimen>
+    <dimen name="home_top_open_file_touch_size">48dp</dimen>
     <dimen name="home_recent_actions_popup_screen_margin">8dp</dimen>
     <!-- Figma frame-3469172 — recent file actions popup -->
     <dimen name="home_recent_actions_popup_width">180dp</dimen>
@@ -33,18 +46,25 @@
     <dimen name="home_recent_actions_text_size">12sp</dimen>
     <dimen name="home_recent_actions_icon_size">24dp</dimen>
     <dimen name="home_recent_actions_text_margin_start">8dp</dimen>
-    <!-- Figma 117:5343 — new document menu -->
+    <!-- Figma 117:5343 / 117:5200 — new document menu (360×288 @750 canvas) -->
     <dimen name="home_new_doc_menu_width">180dp</dimen>
     <dimen name="home_new_doc_menu_row_height">48dp</dimen>
-    <dimen name="home_new_doc_menu_icon_width">32dp</dimen>
-    <dimen name="home_new_doc_menu_icon_height">27dp</dimen>
+    <dimen name="home_new_doc_menu_icon_size">32dp</dimen>
     <dimen name="home_new_doc_menu_text_size">14sp</dimen>
     <dimen name="home_new_doc_menu_row_padding">8dp</dimen>
     <dimen name="home_new_doc_menu_row_gap">8dp</dimen>
     <dimen name="home_new_doc_menu_card_padding_horizontal">7dp</dimen>
     <dimen name="home_new_doc_menu_card_radius">12dp</dimen>
-    <!-- Figma 2352:52171 — rename file dialog -->
-    <dimen name="rename_dialog_width">335dp</dimen>
+    <dimen name="home_new_doc_menu_elevation">10dp</dimen>
+    <!-- Responsive content widths (Figma 750 canvas: modal 670, shell padding 40) -->
+    <dimen name="dialog_content_max_width">335dp</dimen>
+    <dimen name="dialog_shell_padding_horizontal">20dp</dimen>
+    <dimen name="bottom_sheet_max_width">560dp</dimen>
+    <dimen name="bottom_sheet_margin_horizontal">0dp</dimen>
+    <dimen name="content_max_width">720dp</dimen>
+    <dimen name="profile_nickname_max_width">260dp</dimen>
+    <!-- Figma 403:20557 / 2352:52171 — rename & nickname dialog -->
+    <dimen name="rename_dialog_width">@dimen/dialog_content_max_width</dimen>
     <dimen name="rename_dialog_radius">12dp</dimen>
     <dimen name="rename_dialog_bottom_padding">12dp</dimen>
     <dimen name="rename_dialog_header_height">60dp</dimen>
@@ -54,10 +74,12 @@
     <dimen name="rename_dialog_close_padding">8dp</dimen>
     <dimen name="rename_dialog_content_padding">12dp</dimen>
     <dimen name="rename_dialog_input_height">43dp</dimen>
-    <dimen name="rename_dialog_input_padding_horizontal">12dp</dimen>
+    <dimen name="rename_dialog_input_padding_horizontal">10dp</dimen>
+    <dimen name="rename_dialog_input_padding_vertical">12dp</dimen>
+    <dimen name="rename_dialog_input_cursor_width">1dp</dimen>
+    <dimen name="rename_dialog_input_cursor_height">19dp</dimen>
     <dimen name="rename_dialog_input_label_size">16sp</dimen>
-    <dimen name="rename_dialog_input_divider_margin">10dp</dimen>
-    <dimen name="rename_dialog_buttons_margin_top">8dp</dimen>
+    <dimen name="rename_dialog_buttons_margin_top">0dp</dimen>
     <dimen name="rename_dialog_buttons_padding_horizontal">20dp</dimen>
     <dimen name="rename_dialog_buttons_padding_vertical">12dp</dimen>
     <dimen name="rename_dialog_btn_height">35dp</dimen>
@@ -86,6 +108,11 @@
     <dimen name="ai_model_config_footer_padding_h">20dp</dimen>
     <dimen name="ai_model_config_footer_padding_v">24dp</dimen>
     <dimen name="ai_model_config_footer_button_gap">20dp</dimen>
+    <dimen name="clear_cache_bottom_bar_padding_v">24dp</dimen>
+    <dimen name="about_footer_padding_bottom">32dp</dimen>
+    <dimen name="bottom_sheet_content_bottom_pad">24dp</dimen>
+    <dimen name="local_model_sheet_bottom_pad">20dp</dimen>
+
     <!-- Figma 417:22812 — drawer profile + AI config -->
     <dimen name="drawer_profile_avatar_size">40dp</dimen>
     <dimen name="drawer_profile_header_padding_h">20dp</dimen>
@@ -119,15 +146,32 @@
     <dimen name="drawer_model_divider_margin_h">12dp</dimen>
     <dimen name="drawer_model_copy_button_size">30dp</dimen>
     <dimen name="drawer_model_indented_text_start">48dp</dimen>
+    <!-- Figma 692:30584 / 692:30991 — drawer local model card -->
+    <dimen name="drawer_local_model_card_padding">12dp</dimen>
+    <dimen name="drawer_local_model_row_icon_frame">28dp</dimen>
+    <dimen name="drawer_local_model_row_icon_inner">16dp</dimen>
+    <dimen name="drawer_local_install_btn_margin_start">12dp</dimen>
+    <dimen name="drawer_local_install_btn_min_width">48dp</dimen>
+    <dimen name="drawer_local_install_btn_padding_h">16dp</dimen>
+    <dimen name="drawer_local_install_btn_padding_v">6dp</dimen>
+    <dimen name="drawer_local_install_btn_text_size">14sp</dimen>
     <dimen name="local_model_list_dialog_margin_h">20dp</dimen>
+    <!-- Figma 417:23948 — local model list dialog (670×928 @2x) -->
+    <dimen name="local_model_list_dialog_radius">12dp</dimen>
     <dimen name="local_model_list_header_height">60dp</dimen>
+    <dimen name="local_model_list_header_padding_h">16dp</dimen>
+    <dimen name="local_model_list_content_padding">12dp</dimen>
     <dimen name="local_model_list_title_size">20sp</dimen>
     <dimen name="local_model_list_row_height">59dp</dimen>
+    <dimen name="local_model_list_row_padding_v">14dp</dimen>
     <dimen name="local_model_list_row_padding_h">10dp</dimen>
+    <dimen name="local_model_list_row_action_gap">16dp</dimen>
     <dimen name="local_model_list_row_title_size">16sp</dimen>
     <dimen name="local_model_list_action_height">31dp</dimen>
     <dimen name="local_model_list_action_min_width">72dp</dimen>
     <dimen name="local_model_list_action_text_size">14sp</dimen>
     <dimen name="local_model_list_confirm_height">35dp</dimen>
+    <dimen name="local_model_list_confirm_margin_h">20dp</dimen>
+    <dimen name="local_model_list_confirm_margin_v">12dp</dimen>
     <dimen name="local_model_list_max_height">464dp</dimen>
 </resources>

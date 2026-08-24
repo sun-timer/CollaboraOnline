@@ -9,6 +9,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
+        android:layout_marginStart="@dimen/bottom_sheet_margin_horizontal"
+        android:layout_marginEnd="@dimen/bottom_sheet_margin_horizontal"
         android:background="@drawable/bg_create_file_bottom_sheet"
         android:clickable="true"
         android:focusable="true"

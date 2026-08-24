@@ -13,7 +13,7 @@ public final class CloudAiBackend implements AiBackend {
     public void execute(String requestId, JSONArray messages, AiCloudParams cloudParams, boolean multiTurn,
             AiRequestSession session, AiRequestManager.Callback callback) {
         requestManager.execute(requestId, cloudParams.endpoint, cloudParams.apiKey, cloudParams.model,
-                messages, session, callback);
+                messages, cloudParams.sampling, session, callback);
     }
 
     @Override

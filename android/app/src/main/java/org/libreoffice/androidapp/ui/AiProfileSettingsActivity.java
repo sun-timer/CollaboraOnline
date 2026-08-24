@@ -30,6 +30,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 
 import org.libreoffice.androidapp.R;
+import org.libreoffice.androidlib.SystemUiHelper;
 
 import java.io.File;
 
@@ -51,6 +52,7 @@ public class AiProfileSettingsActivity extends AppCompatActivity {
         if (getSupportActionBar() != null) {
             getSupportActionBar().hide();
         }
+        SystemUiHelper.applySecondaryActivityChrome(this, findViewById(R.id.profileSettingsRoot), 0, 0);
 
         prefs = AiSettingsStore.prefs(this);
         avatarView = findViewById(R.id.profileAvatarValue);
@@ -189,21 +191,10 @@ public class AiProfileSettingsActivity extends AppCompatActivity {
     }
 
     private void applyStyledDialogWindow(Dialog dialog, boolean showKeyboard) {
-        Window window = dialog.getWindow();
-        if (window == null) {
-            return;
-        }
-        window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        window.setGravity(Gravity.CENTER);
-        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-        WindowManager.LayoutParams params = window.getAttributes();
-        params.dimAmount = 0.3f;
-        window.setAttributes(params);
         if (showKeyboard) {
-            window.setSoftInputMode(
-                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-                            | WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+            ResponsiveUiHelper.applyKeyboardFriendlyDialogWindow(dialog);
+        } else {
+            ResponsiveUiHelper.applyOverlayDialogWindow(dialog);
         }
     }
 

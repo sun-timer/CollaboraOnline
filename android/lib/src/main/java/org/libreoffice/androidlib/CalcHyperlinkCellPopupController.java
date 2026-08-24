@@ -33,6 +33,8 @@ public final class CalcHyperlinkCellPopupController {
         void executeUnoCommand(String command);
 
         void showExternalLinkConfirm(String url);
+
+        int getOverlayBottomReservedPx();
     }
 
     private final Host host;
@@ -135,6 +137,9 @@ public final class CalcHyperlinkCellPopupController {
         if (top < browserLoc[1] + margin) {
             top = browserLoc[1] + anchorY + gap;
         }
+        View bottomToolbar = host.findViewById(R.id.doc_bottom_toolbar);
+        top = DocumentOverlayInsets.clampTopInWindow(
+                top, popupH, bottomToolbar, gap, browserLoc[1] + margin);
 
         ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) popupView.getLayoutParams();
         lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;

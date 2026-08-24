@@ -7,13 +7,17 @@ import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.appcompat.widget.SwitchCompat;
+
+import androidx.core.view.ViewCompat;
 
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
@@ -28,6 +32,11 @@ public class FindReplaceSheetController {
         /** 顶部栏实际像素高度（横屏悬浮弹窗定位用）。 */
         int getTopToolbarHeightPx();
 
+        /** 文档底栏 + 三键导航占位（竖屏 BottomSheet 锚点用）。 */
+        int getBottomChromeHeightPx();
+
+        void hideKeyboardForBottomSheet();
+
         void runFindBridge(String js);
 
         void ensureEditModeThen(Runnable action);
@@ -40,6 +49,8 @@ public class FindReplaceSheetController {
     private final Host host;
     private BottomSheetDialog mainDialog;
     private BottomSheetDialog settingsDialog;
+    private View mainPanel;
+    private View settingsPanel;
     private AlertDialog floatingDialog;
     private AlertDialog floatingSettingsDialog;
     private boolean replaceTabActive = false;
@@ -57,6 +68,8 @@ public class FindReplaceSheetController {
     private TextView replaceNextView;
     private TextView replaceAllView;
     private TextView replaceOneView;
+    /** 竖屏主弹窗锚定高度，设置页与之对齐避免高度跳变。 */
+    private int portraitSheetTargetHeightPx;
 
     public FindReplaceSheetController(Host host) {
         this.host = host;
@@ -64,7 +77,9 @@ public class FindReplaceSheetController {
 
     public void show() {
         dismiss();
+        host.hideKeyboardForBottomSheet();
         View panel = LayoutInflater.from(host.getContext()).inflate(R.layout.lolib_sheet_find_replace, null);
+        mainPanel = panel;
         bindMainPanel(panel);
         if (BottomSheetAnchorHelper.isLandscape(host.getContext())) {
             floatingDialog = showFloatingDialog(panel);
@@ -72,15 +87,19 @@ public class FindReplaceSheetController {
             mainDialog = new BottomSheetDialog(host.getContext());
             mainDialog.setContentView(panel);
             AiDialogHelper.applyCloseOnlyDismiss(mainDialog);
-            mainDialog.setOnDismissListener(dialog -> mainDialog = null);
+            mainDialog.setOnDismissListener(dialog -> {
+                mainDialog = null;
+                mainPanel = null;
+            });
+            mainDialog.setOnShowListener(d -> expandMainSheet(mainDialog, panel));
             mainDialog.show();
             AiDialogHelper.applyNoDimScrim(mainDialog);
-            expandSheet(mainDialog, panel);
         }
     }
 
     public void dismiss() {
         dismissSettings();
+        portraitSheetTargetHeightPx = 0;
         if (floatingDialog != null) {
             floatingDialog.dismiss();
             floatingDialog = null;
@@ -273,6 +292,7 @@ public class FindReplaceSheetController {
             refreshStateColors();
             pushOptionsToBridge();
         }));
+        installKeyboardLift(findQuery, replaceQuery, replaceWith);
 
         findPrev.setOnClickListener(v -> runFindAction(
                 "AndroidFindReplaceBridge.findPrevious()"));
@@ -333,16 +353,20 @@ public class FindReplaceSheetController {
         });
         back.setOnClickListener(v -> dismissSettings());
 
+        settingsPanel = panel;
         if (BottomSheetAnchorHelper.isLandscape(host.getContext())) {
             floatingSettingsDialog = showFloatingDialog(panel);
         } else {
             settingsDialog = new BottomSheetDialog(host.getContext());
             settingsDialog.setContentView(panel);
             AiDialogHelper.applyCloseOnlyDismiss(settingsDialog);
-            settingsDialog.setOnDismissListener(dialog -> settingsDialog = null);
+            settingsDialog.setOnDismissListener(dialog -> {
+                settingsDialog = null;
+                settingsPanel = null;
+            });
+            settingsDialog.setOnShowListener(d -> expandSettingsSheet(settingsDialog, panel));
             settingsDialog.show();
             AiDialogHelper.applyNoDimScrim(settingsDialog);
-            expandSheet(settingsDialog, panel);
         }
     }
 
@@ -484,14 +508,102 @@ public class FindReplaceSheetController {
         }
     }
 
-    private void expandSheet(BottomSheetDialog dialog, View contentRoot) {
-        if (dialog == null) {
+    /**
+     * 主弹窗高度取「查找 / 替换」两 tab 各自测量后的较大值（避免双 panel 叠测偏高）。
+     */
+    private int measureMainPanelHeightPx(View panel) {
+        int findHeight = measureWithTabVisibility(panel, View.VISIBLE, View.GONE);
+        int replaceHeight = measureWithTabVisibility(panel, View.GONE, View.VISIBLE);
+        return Math.max(findHeight, replaceHeight);
+    }
+
+    private int measureWithTabVisibility(View panel, int findVisibility, int replaceVisibility) {
+        View findPanel = panel.findViewById(R.id.find_panel_find);
+        View replacePanel = panel.findViewById(R.id.find_panel_replace);
+        int findVis = findPanel != null ? findPanel.getVisibility() : View.VISIBLE;
+        int replaceVis = replacePanel != null ? replacePanel.getVisibility() : View.GONE;
+        if (findPanel != null) {
+            findPanel.setVisibility(findVisibility);
+        }
+        if (replacePanel != null) {
+            replacePanel.setVisibility(replaceVisibility);
+        }
+        try {
+            return measurePanelHeightPx(panel);
+        } finally {
+            if (findPanel != null) {
+                findPanel.setVisibility(findVis);
+            }
+            if (replacePanel != null) {
+                replacePanel.setVisibility(replaceVis);
+            }
+        }
+    }
+
+    private int measurePanelHeightPx(View panel) {
+        int screenWidth = host.getContext().getResources().getDisplayMetrics().widthPixels;
+        int widthSpec = View.MeasureSpec.makeMeasureSpec(screenWidth, View.MeasureSpec.EXACTLY);
+        int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+        panel.measure(widthSpec, heightSpec);
+        return Math.max(panel.getMeasuredHeight(), 1);
+    }
+
+    private void installKeyboardLift(EditText... fields) {
+        View.OnFocusChangeListener listener = (v, hasFocus) -> {
+            if (!hasFocus) {
+                return;
+            }
+            BottomSheetDialog dialog = mainDialog != null ? mainDialog : settingsDialog;
+            if (dialog != null) {
+                BottomSheetAnchorHelper.requestInsetsRefresh(dialog);
+            }
+        };
+        for (EditText field : fields) {
+            if (field != null) {
+                field.setOnFocusChangeListener(listener);
+            }
+        }
+    }
+
+    private void expandMainSheet(BottomSheetDialog dialog, View contentRoot) {
+        int measured = measureMainPanelHeightPx(contentRoot);
+        portraitSheetTargetHeightPx = measured;
+        expandPortraitSheet(dialog, contentRoot, measured);
+    }
+
+    private void expandSettingsSheet(BottomSheetDialog dialog, View contentRoot) {
+        int measured = measurePanelHeightPx(contentRoot);
+        int target = portraitSheetTargetHeightPx > 0 ? portraitSheetTargetHeightPx : measured;
+        expandPortraitSheet(dialog, contentRoot, target);
+    }
+
+    private void expandPortraitSheet(BottomSheetDialog dialog, View contentRoot, int measuredHeight) {
+        if (dialog == null || contentRoot == null) {
             return;
         }
         BottomSheetStyleHelper.applyFigmaPanel(dialog, contentRoot, host.dpToPx(28));
+        int screenHeight = host.getContext().getResources().getDisplayMetrics().heightPixels;
+        int maxHeight = Math.round(screenHeight * 0.92f);
+        int targetHeight = Math.min(Math.max(measuredHeight, 1), maxHeight);
+
         BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
         options.logTag = "FindReplaceSheet";
-        BottomSheetAnchorHelper.expandWrapContent(dialog, 0.92f, options);
+        options.draggable = false;
+        options.applyNavBarPadding = false;
+        options.internalBottomDesignPadPx = contentRoot.getResources()
+                .getDimensionPixelSize(org.libreoffice.androidlib.R.dimen.lolib_function_sheet_bottom_pad);
+        BottomSheetAnchorHelper.clearAppliedHeight(dialog);
+        BottomSheetAnchorHelper.expandFixed(dialog, targetHeight, options);
+
+        FrameLayout bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+        if (bottomSheet != null && bottomSheet.getChildCount() > 0) {
+            View root = bottomSheet.getChildAt(0);
+            ViewGroup.LayoutParams params = root.getLayoutParams();
+            if (params != null) {
+                params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                root.setLayoutParams(params);
+            }
+        }
     }
 
     private static class SimpleTextWatcher implements TextWatcher {

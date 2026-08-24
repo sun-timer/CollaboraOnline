@@ -57,7 +57,10 @@ public class TopToolbarController {
     }
 
     public void setup() {
-        topToolbarView = asLinearLayout(host.findViewById(R.id.doc_top_toolbar));
+        topToolbarView = asLinearLayout(host.findViewById(R.id.doc_top_toolbar_include));
+        if (topToolbarView == null) {
+            topToolbarView = asLinearLayout(host.findViewById(R.id.doc_top_toolbar));
+        }
         if (topToolbarView != null) {
             topToolbarView.setVisibility(View.VISIBLE);
         }

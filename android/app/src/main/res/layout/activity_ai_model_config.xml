@@ -2,18 +2,21 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FFFFFF"
+    android:background="@android:color/transparent"
     android:orientation="horizontal">
 
     <LinearLayout
+        android:id="@+id/aiModelConfigActivityPanel"
         android:layout_width="@dimen/ai_drawer_panel_width"
         android:layout_height="match_parent"
         android:background="#F3F3F3"
         android:orientation="vertical">
 
         <LinearLayout
+            android:id="@+id/modelConfigHeader"
             android:layout_width="match_parent"
-            android:layout_height="80dp"
+            android:layout_height="wrap_content"
+            android:minHeight="80dp"
             android:background="#FFFFFF"
             android:gravity="center_vertical"
             android:paddingStart="20dp"
@@ -48,7 +51,6 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:fillViewport="true"
             android:scrollbars="vertical">
 
             <LinearLayout
@@ -254,6 +256,7 @@
             android:background="#D9DCE0" />
 
         <LinearLayout
+            android:id="@+id/modelConfigFooter"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="#F3F3F3"
@@ -262,7 +265,7 @@
             android:paddingStart="16dp"
             android:paddingTop="14dp"
             android:paddingEnd="16dp"
-            android:paddingBottom="16dp">
+            android:paddingBottom="0dp">
 
             <Button
                 android:id="@+id/modelConfigCancelButton"

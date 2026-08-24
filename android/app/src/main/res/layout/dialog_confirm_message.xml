@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/confirmDialogCard"
-    android:layout_width="@dimen/rename_dialog_width"
+    android:layout_width="match_parent"
+    android:maxWidth="@dimen/dialog_content_max_width"
     android:layout_height="wrap_content"
     android:background="@drawable/bg_rename_dialog_card"
     android:elevation="8dp"

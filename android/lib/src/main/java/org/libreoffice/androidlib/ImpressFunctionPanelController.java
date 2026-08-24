@@ -196,6 +196,9 @@ public class ImpressFunctionPanelController {
 
         void fetchReviewComments(ImpressReviewCommentController.ReviewCommentsCallback callback);
 
+        /** Bottom toolbar + nav spacer height; sheets anchor above this chrome. */
+        int getBottomChromeHeightPx();
+
         void editCommentWithText(String id, String author, String text);
 
         void deleteCommentWithId(String id);
@@ -376,7 +379,7 @@ public class ImpressFunctionPanelController {
         if (keyboardBtn != null) {
             keyboardBtn.setOnClickListener(v -> {
                 dismiss();
-                host.focusDocumentAndShowIme();
+                host.runAfterFunctionPanelDismiss(() -> host.focusDocumentAndShowIme());
             });
         }
         if (collapseBtn != null) {
@@ -394,14 +397,15 @@ public class ImpressFunctionPanelController {
             BottomSheetAnchorHelper.clearAppliedHeight(dialog);
             dialog = null;
         });
-        dialog.setOnShowListener(d -> applyFixedSheetHeight());
+        dialog.setOnShowListener(d -> applyAdaptiveSheetHeight());
         dialog.show();
     }
 
-    private void applyFixedSheetHeight() {
+    private void applyAdaptiveSheetHeight() {
         if (dialog == null) {
             return;
         }
+        BottomSheetAnchorHelper.clearAppliedHeight(dialog);
         AiDialogHelper.applyNoDimScrim(dialog);
         FrameLayout bottomSheet = dialog.findViewById(
                 com.google.android.material.R.id.design_bottom_sheet);
@@ -410,7 +414,7 @@ public class ImpressFunctionPanelController {
         }
         BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
         options.logTag = TAG;
-        BottomSheetAnchorHelper.expandRatio(dialog, SHEET_HEIGHT_RATIO, options);
+        BottomSheetAnchorHelper.expandFunctionPanel(dialog, SHEET_HEIGHT_RATIO, options);
     }
 
     public void dismiss() {
@@ -451,7 +455,7 @@ public class ImpressFunctionPanelController {
         if (shapePickerController != null) {
             shapePickerController.onConfigurationChanged();
         }
-        applyFixedSheetHeight();
+        applyAdaptiveSheetHeight();
     }
 
     private void buildTabBar() {
@@ -496,10 +500,19 @@ public class ImpressFunctionPanelController {
             tabView.setTextColor(i == index ? COLOR_TAB_ACTIVE : COLOR_TAB_INACTIVE);
             tabView.setTypeface(null, i == index ? Typeface.BOLD : Typeface.NORMAL);
         }
-        updateTabIndicator(index);
         renderTabContent(tabs.get(index));
         if (contentContainer != null) {
             contentContainer.scrollTo(0, 0);
+        }
+        if (dialog != null && dialog.isShowing()) {
+            final int tabIndex = index;
+            View anchor = contentContainer != null ? contentContainer : tabBar;
+            anchor.post(() -> {
+                applyAdaptiveSheetHeight();
+                updateTabIndicator(tabIndex);
+            });
+        } else {
+            updateTabIndicator(index);
         }
     }
 
@@ -507,27 +520,7 @@ public class ImpressFunctionPanelController {
         if (tabIndicator == null || index < 0 || index >= tabViews.size()) {
             return;
         }
-        tabIndicator.setVisibility(View.VISIBLE);
-        TextView selectedTab = tabViews.get(index);
-        selectedTab.post(() -> {
-            if (tabIndicator == null || selectedTab.getWidth() == 0) {
-                return;
-            }
-            int[] tabLoc = new int[2];
-            int[] parentLoc = new int[2];
-            selectedTab.getLocationInWindow(tabLoc);
-            View parent = (View) tabIndicator.getParent();
-            if (parent == null) {
-                return;
-            }
-            parent.getLocationInWindow(parentLoc);
-            float tabCenterX = tabLoc[0] - parentLoc[0] + selectedTab.getWidth() / 2f;
-            int indicatorW = host.dpToPx(24);
-            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) tabIndicator.getLayoutParams();
-            lp.leftMargin = Math.max(0, (int) (tabCenterX - indicatorW / 2f));
-            lp.width = indicatorW;
-            tabIndicator.setLayoutParams(lp);
-        });
+        FunctionPanelTabIndicatorHelper.updateForSelectedTab(tabViews.get(index), tabBar, tabIndicator);
     }
 
     private void renderTabContent(PanelTab tab) {
@@ -1865,6 +1858,11 @@ public class ImpressFunctionPanelController {
                 @Override
                 public int dpToPx(int dp) {
                     return host.dpToPx(dp);
+                }
+
+                @Override
+                public int getBottomChromeHeightPx() {
+                    return host.getBottomChromeHeightPx();
                 }
 
                 @Override

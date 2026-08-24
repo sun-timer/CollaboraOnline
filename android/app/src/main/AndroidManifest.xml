@@ -176,8 +176,14 @@
 
         <!-- The Activity to show license or notice -->
         <activity
+            android:name=".ui.AboutActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:exported="false" />
+
+        <activity
             android:name=".ShowHTMLActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:exported="false"
             android:label="@string/title_activity_show_html" />
 
         <!-- The Settings Activity -->
@@ -202,6 +208,11 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:exported="false"
             android:theme="@style/LocalModelBottomSheet" />
+
+        <activity
+            android:name=".ui.ClearCacheActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:exported="false" />
 
         <service
             android:name="org.libreoffice.androidlib.ai.LocalInferenceService"

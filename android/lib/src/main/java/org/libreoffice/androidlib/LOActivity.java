@@ -150,7 +150,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.core.view.GravityCompat;
-import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.constraintlayout.widget.ConstraintLayout;
 
 import org.libreoffice.androidlib.ai.AiDialogHelper;
@@ -168,6 +168,7 @@ import org.libreoffice.androidlib.ai.AiBackend;
 import org.libreoffice.androidlib.ai.AiBackendRouter;
 import org.libreoffice.androidlib.ai.AiChatCoordinator;
 import org.libreoffice.androidlib.ai.AiCloudParams;
+import org.libreoffice.androidlib.ai.AiModelConfigStore;
 import org.libreoffice.androidlib.ai.AiDocumentContextProvider;
 import org.libreoffice.androidlib.ai.AiMarkdownRenderer;
 import org.libreoffice.androidlib.ai.AiPanelController;
@@ -274,6 +275,9 @@ public class LOActivity extends AppCompatActivity {
 
     private ClipboardManager clipboardManager;
     private ClipData clipData;
+    private static final long[] CLIPBOARD_POPULATE_RETRY_DELAYS_MS = {150L, 350L, 650L};
+    private int clipboardPopulateAttempt = 0;
+    private Runnable clipboardPopulateRetryRunnable;
     private Thread nativeMsgThread;
     private Handler nativeHandler;
     private Looper nativeLooper;
@@ -353,6 +357,7 @@ public class LOActivity extends AppCompatActivity {
     private BottomSheetDialog aiPanelDialog;
     private AlertDialog aiModelRequiredDialog;
     private BottomSheetDialog functionPanelDialog;
+    private View previewFunctionPanel;
     private EditText aiPromptInput;
     private TextView aiStatusText;
     private TextView aiOutputText;
@@ -390,7 +395,8 @@ public class LOActivity extends AppCompatActivity {
     private String aiOpPendingSelection = "";
     // AI排版相关
     private boolean typesetInProgress = false;  // 排版进行中，抑制选区弹窗
-    private BottomSheetDialog typesetSelectSheet;
+    private AlertDialog typesetSelectDialog;
+    private String selectedTypesetType = "paper";
     private BottomSheetDialog typesetPreviewSheet;
     private String pendingTypesetType;  // "paper" | "gov" | "contract" | "general"
     private String pendingTypesetHtml;  // AI 返回的排版结果（旧 HTML 路径，fallback）
@@ -806,6 +812,7 @@ public class LOActivity extends AppCompatActivity {
     private long lastBlockedMobileWizardAt = 0L;
     private int bottomToolbarImeInsetPx = 0;
     private boolean isImeVisibleForToolbar = false;
+    private SafeAreaInsets lastSafeAreaInsets = SafeAreaInsets.EMPTY;
     private BottomToolbarController bottomToolbarController;
     private MobilePhonePreviewController mobilePhonePreviewController;
     private FunctionPanelController functionPanelController;
@@ -948,6 +955,7 @@ public class LOActivity extends AppCompatActivity {
         sPrefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
 
         setContentView(R.layout.lolib_activity_main);
+        setupSystemChrome();
         initDocumentSettingsDrawer();
         mProgressDialog = new ProgressDialog(this);
         if (BuildConfig.GOOGLE_PLAY_ENABLED)
@@ -1114,7 +1122,6 @@ public class LOActivity extends AppCompatActivity {
                             | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
                                     ? WindowInsets.Type.systemOverlays()
                                     : 0));
-                    Insets navInsets = windowInsets.getInsets(WindowInsets.Type.navigationBars());
                     Insets imeInsets = windowInsets.getInsets(WindowInsets.Type.ime());
                     boolean imeVisible = windowInsets.isVisible(WindowInsets.Type.ime());
                     int imeInsetBottom = imeVisible ? imeInsets.bottom : 0;
@@ -1122,25 +1129,32 @@ public class LOActivity extends AppCompatActivity {
                         imeVisible = false;
                         imeInsetBottom = 0;
                     }
-                    applyBottomToolbarImeState(imeVisible, imeInsetBottom, navInsets.bottom);
+                    applyBottomToolbarImeState(imeVisible, imeInsetBottom,
+                            SystemUiHelper.resolveNavigationBottomInset(LOActivity.this,
+                                    WindowInsetsCompat.toWindowInsetsCompat(windowInsets, v)));
+                    lastSafeAreaInsets = SystemUiHelper.computeSafeAreaInsets(LOActivity.this,
+                            WindowInsetsCompat.toWindowInsetsCompat(windowInsets, v));
+                    updateSystemChromeForIme(imeVisible);
+                    View aiFab = findViewById(R.id.ai_fab);
+                    if (aiFab != null && aiFab.getVisibility() == View.VISIBLE) {
+                        clampAiFabPosition(aiFab);
+                    }
 
                     ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
-                    mlp.leftMargin = insets.left;
+                    WindowInsetsCompat compatInsets =
+                            WindowInsetsCompat.toWindowInsetsCompat(windowInsets, v);
+                    mlp.leftMargin = SystemUiHelper.resolveHorizontalSafeInsetLeft(compatInsets);
                     mlp.topMargin = 0;
-                    mlp.rightMargin = insets.right;
-                    // Navigation bar inset is applied to the native bottom toolbar margin;
-                    // keep WebView flush against the toolbar to avoid a blank strip above it.
+                    mlp.rightMargin = SystemUiHelper.resolveHorizontalSafeInsetRight(compatInsets);
+                    // Navigation bar inset is applied as bottom-toolbar padding so the white
+                    // background extends into the gesture area; keep WebView flush above the toolbar.
                     mlp.bottomMargin = 0;
                     v.setLayoutParams(mlp);
 
                     return WindowInsets.CONSUMED;
                 });
-
-                boolean lightMode = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_YES) == 0;
-                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
-                        .setAppearanceLightStatusBars(lightMode);
-                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
-                        .setAppearanceLightNavigationBars(lightMode);
+            } else {
+                SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
             }
 
             mMobileSocket = mWebView.getWebViewClient().getMobileSocket();
@@ -1362,12 +1376,63 @@ public class LOActivity extends AppCompatActivity {
         pendingAutoIsCalcNewTable = intent.getBooleanExtra(EXTRA_AUTO_IS_CALC_NEW_TABLE, false);
     }
 
+    private void setupSystemChrome() {
+        SystemUiHelper.enableEdgeToEdge(this);
+        SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
+
+        View drawerLayout = findViewById(R.id.doc_drawer_layout);
+        View docDrawer = findViewById(R.id.doc_settings_drawer);
+        SystemUiHelper.installDrawerInsetDispatch(drawerLayout, docDrawer);
+
+        View mainContent = findViewById(R.id.doc_main_content);
+        SystemUiHelper.trackSafeAreaChanges(mainContent, insets -> {
+            lastSafeAreaInsets = insets;
+            applyDocumentPageSafeArea(insets);
+            View aiFab = findViewById(R.id.ai_fab);
+            if (aiFab != null && aiFab.getVisibility() == View.VISIBLE) {
+                clampAiFabPosition(aiFab);
+            }
+        });
+    }
+
+    private void applyDocumentPageSafeArea(SafeAreaInsets insets) {
+        SystemUiHelper.applyTopToolbarInsets(
+                SystemUiHelper.findDocumentTopToolbar(findViewById(R.id.doc_main_content)), insets);
+        View docDrawer = findViewById(R.id.doc_settings_drawer);
+        if (docDrawer != null) {
+            docDrawer.setPadding(insets.left, insets.top, insets.right, 0);
+        }
+        SystemUiHelper.applyDrawerFooterInsets(
+                findViewById(R.id.doc_settings_drawer_footer), insets, dpToPx(12));
+        ensureBottomToolbarController().applyHorizontalSafeInsets(insets.left, insets.right);
+        ensureBottomToolbarController().applyImeState(
+                insets.imeVisible, insets.imeBottom, insets.navigationBottom);
+        if (functionPanelDialog != null && functionPanelDialog.isShowing()) {
+            expandFunctionPanelSheet();
+        }
+    }
+
+    private void updateSystemChromeForIme(boolean imeVisible) {
+        boolean lightMode = SystemUiHelper.isLightMode(this);
+        if (imeVisible) {
+            SystemUiHelper.applyImeChrome(this, lightMode);
+        } else {
+            SystemUiHelper.applyDocumentChrome(this, lightMode);
+        }
+    }
+
     private void initDocumentSettingsDrawer() {
         docDrawerLayout = findViewById(R.id.doc_drawer_layout);
         if (docDrawerLayout == null) {
             return;
         }
         docDrawerLayout.setScrimColor(0x99000000);
+        docDrawerLayout.addDrawerListener(new DrawerLayout.SimpleDrawerListener() {
+            @Override
+            public void onDrawerClosed(View drawerView) {
+                SystemUiHelper.applyDocumentChrome(LOActivity.this, SystemUiHelper.isLightMode(LOActivity.this));
+            }
+        });
 
         FrameLayout profileContainer = findViewById(R.id.doc_settings_drawer_profile);
         FrameLayout drawerContent = findViewById(R.id.doc_settings_drawer_content);
@@ -1864,6 +1929,9 @@ public class LOActivity extends AppCompatActivity {
     @Override
     public void onConfigurationChanged(android.content.res.Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        if (!isImeVisibleForToolbar) {
+            SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
+        }
         ensureBottomToolbarController().onConfigurationChanged();
         ensureTopToolbarController().onConfigurationChanged();
         notifyWebViewOrientationChanged();
@@ -1957,23 +2025,34 @@ public class LOActivity extends AppCompatActivity {
 
     /** 横竖屏切换后重算仍显示的 BottomSheet 高度/位置。 */
     private void refreshBottomSheetsOnConfigurationChanged() {
+        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int orientation = getResources().getConfiguration().orientation;
         if (aiPanelDialog != null && aiPanelDialog.isShowing()) {
-            aiPanelController.syncSheetPosition(aiPanelDialog);
+            FrameLayout bottomSheet = aiPanelDialog.findViewById(
+                    com.google.android.material.R.id.design_bottom_sheet);
+            View contentRoot = bottomSheet != null && bottomSheet.getChildCount() > 0
+                    ? bottomSheet.getChildAt(0) : null;
+            if (contentRoot != null) {
+                contentRoot.post(() ->                 aiPanelController.configureBottomSheet(
+                        aiPanelDialog, contentRoot, screenHeight, screenWidth, orientation,
+                        this::scheduleAiPanelChromeRefresh, 0));
+            } else {
+                aiPanelController.syncSheetPosition(aiPanelDialog);
+            }
         }
         if (functionPanelDialog != null && functionPanelDialog.isShowing()) {
             expandFunctionPanelSheet();
         }
         if (aiOperationSheet != null && aiOperationSheet.isShowing() && aiOperationSheetPanel != null) {
-            int screenHeight = getResources().getDisplayMetrics().heightPixels;
-            int screenWidth = getResources().getDisplayMetrics().widthPixels;
-            int orientation = getResources().getConfiguration().orientation;
             aiOperationSheetPanel.post(() -> aiPanelController.configureBottomSheetFitContent(
                     aiOperationSheet,
                     aiOperationSheetPanel,
                     screenHeight,
                     screenWidth,
                     orientation,
-                    0.85f));
+                    0.85f,
+                    0));
         }
     }
 
@@ -3098,6 +3177,19 @@ public class LOActivity extends AppCompatActivity {
                 }
                 return false;
             }
+            case "CLIPBOARD": {
+                if (messageAndParam.length > 1 && "paste".equals(messageAndParam[1])) {
+                    getMainHandler().post(() -> {
+                        Log.i(TAG, "clipboard_paste_from_js");
+                        if (mIsEditModeActive) {
+                            pasteFromSystemClipboard();
+                        } else {
+                            ensureEditModeThen(() -> pasteFromSystemClipboard());
+                        }
+                    });
+                }
+                return false;
+            }
             case "EDITMODE": {
                 switch (messageAndParam[1]) {
                     case "on":
@@ -3465,8 +3557,7 @@ public class LOActivity extends AppCompatActivity {
         }
         return command.startsWith(".uno:ResetAttributes")
                 || command.startsWith(".uno:FormatPaintbrush")
-                || command.startsWith(".uno:InsertAnnotation")
-                || command.startsWith(".uno:Paste");
+                || command.startsWith(".uno:InsertAnnotation");
     }
 
     void closeMobileWizardFromNative(String reason) {
@@ -3666,11 +3757,9 @@ public class LOActivity extends AppCompatActivity {
             if (firstDocQaTurn) {
                 cachedDocTextForQa = extractDocumentTextForDocQaFirstTurn(requestId);
                 docCharCount = cachedDocTextForQa.length();
-            } else if (history != null) {
-                for (int i = 0; i < history.length(); i++) {
-                    docCharCount += history.optJSONObject(i).optString("content", "").length();
-                }
             }
+            // 二轮起 history 含首轮全文（为 KV 增量复用），不能按历史总长判"doc 太长"回退云端；
+            // 上下文是否装得下由 LocalPromptBuilder 截断处理。docCharCount 保持 0 → 本地放行。
         }
         AiBackendRouter.ResolvedRoute route = aiBackendRouter.resolve(
                 taskType, modelMode, docCharCount, localModelManager.getState());
@@ -3701,6 +3790,14 @@ public class LOActivity extends AppCompatActivity {
             endpoint = modelPrefs.getString("AI_MODEL_VISION_url", endpoint);
             apiKey = modelPrefs.getString("AI_MODEL_VISION_api_key", apiKey);
             model = modelPrefs.getString("AI_MODEL_VISION_model_name", model);
+            endpoint = endpoint == null ? "" : endpoint.trim();
+            apiKey = apiKey == null ? "" : apiKey.trim();
+            model = model == null ? "" : model.trim();
+        } else if ("think".equalsIgnoreCase(modelMode)) {
+            SharedPreferences modelPrefs = getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
+            endpoint = modelPrefs.getString("AI_MODEL_THINK_url", endpoint);
+            apiKey = modelPrefs.getString("AI_MODEL_THINK_api_key", apiKey);
+            model = modelPrefs.getString("AI_MODEL_THINK_model_name", model);
             endpoint = endpoint == null ? "" : endpoint.trim();
             apiKey = apiKey == null ? "" : apiKey.trim();
             model = model == null ? "" : model.trim();
@@ -3768,11 +3865,17 @@ public class LOActivity extends AppCompatActivity {
                         return;
                     }
                     String question = extractLatestUserQuestion(history, context, request);
+                    if (question != null) {
+                        question = question.trim();
+                    }
                     String combinedPrompt = "你是文档问答助手，请只基于以下文档内容回答问题；若文档未包含答案，请明确说明。\n\n"
                             + "【全文内容】\n" + docText + "\n\n"
-                            + "【用户问题】\n" + question;
+                            + "【用户问题】\n" + (question == null ? "" : question);
                     Log.i(TAG, "doc_qa_first_turn_context_chars requestId=" + requestId + " chars=" + docText.length());
                     messages.put(new JSONObject().put("role", "user").put("content", combinedPrompt));
+                    // 首轮 user 消息（含全文）存入 history：后续轮 messages 以首轮为前缀，
+                    // 使本地 KV 增量复用生效，且多轮模型持续可见全文。
+                    appendAiHistoryMessage(AI_MODE_DOC_QA, "user", combinedPrompt);
                 } else {
                     JSONArray historyMessages = buildAiMessagesFromHistory(history);
                     if (historyMessages.length() == 0) {
@@ -4130,8 +4233,11 @@ public class LOActivity extends AppCompatActivity {
                 startLocalInferenceService();
                 localLlamaBackend.execute(requestId, messages, null, multiTurn, session, aiCallback);
             } else {
-                cloudAiBackend.execute(requestId, messages, new AiCloudParams(endpoint, apiKey, model),
-                        multiTurn, session, aiCallback);
+                int samplingModelType = AiModelConfigStore.resolveModelTypeFromMode(modelMode);
+                AiModelConfigStore.SamplingParams sampling =
+                        AiModelConfigStore.loadSamplingParams(this, samplingModelType);
+                cloudAiBackend.execute(requestId, messages,
+                        new AiCloudParams(endpoint, apiKey, model, sampling), multiTurn, session, aiCallback);
             }
         } catch (Exception e) {
             if (!session.isCancelled()) {
@@ -4289,7 +4395,13 @@ public class LOActivity extends AppCompatActivity {
         handleAiNativeEvent(event);
         String requestId = event.optString("requestId", "");
         String documentSessionId = nativeBridgeRequestSessions.get(requestId);
-        JSONObject nativePayload = new JSONObject(event.toString());
+        JSONObject nativePayload;
+        try {
+            nativePayload = new JSONObject(event.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "Failed to copy AI event payload", e);
+            return;
+        }
         nativePayload.remove("type");
         nativePayload.remove("requestId");
         dispatchNativeBridgeEvent(type, requestId, documentSessionId, nativePayload);
@@ -4502,8 +4614,30 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private float getFabMaxY(View parent, View fab) {
-        int reservedBottom = ensureBottomToolbarController().getReservedBottomHeightPx();
+        int reservedBottom = ensureBottomToolbarController().getReservedBottomHeightPx(dpToPx(16));
         return Math.max(0f, parent.getHeight() - fab.getHeight() - reservedBottom);
+    }
+
+    /** Bottom reserved space for selection / calc / impress floating overlays. */
+    private int getDocumentOverlayBottomReservedPx() {
+        return ensureBottomToolbarController().getReservedBottomHeightPx(0);
+    }
+
+    private void clampAiFabPosition(View fab) {
+        View parent = fab.getParent() instanceof View ? (View) fab.getParent() : null;
+        if (parent == null) {
+            return;
+        }
+        float minX = Math.max(0f, lastSafeAreaInsets.left);
+        float maxX = Math.max(minX, parent.getWidth() - fab.getWidth() - lastSafeAreaInsets.right);
+        float maxY = getFabMaxY(parent, fab);
+        float clampedX = clamp(fab.getX(), minX, maxX);
+        float clampedY = clamp(fab.getY(), 0f, maxY);
+        if (clampedX != fab.getX() || clampedY != fab.getY()) {
+            fab.setX(clampedX);
+            fab.setY(clampedY);
+            persistAiFabPosition(fab);
+        }
     }
 
     /**
@@ -4685,7 +4819,8 @@ public class LOActivity extends AppCompatActivity {
         ViewGroup.LayoutParams rawLp = panel.getLayoutParams();
         if (rawLp instanceof ConstraintLayout.LayoutParams) {
             ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) rawLp;
-            AiDialogHelper.applyOverlayCenterConstraints(lp, targetWidth, targetHeight);
+            AiDialogHelper.applyOverlayCenterConstraintsInChromeArea(lp, targetWidth, targetHeight,
+                    R.id.doc_top_toolbar_include, R.id.doc_bottom_toolbar);
             panel.setLayoutParams(lp);
         } else if (rawLp instanceof ViewGroup.MarginLayoutParams) {
             int x = Math.max(0, (parentWidth - targetWidth) / 2);
@@ -4733,7 +4868,8 @@ public class LOActivity extends AppCompatActivity {
         ViewGroup.LayoutParams rawLp = panel.getLayoutParams();
         if (rawLp instanceof ConstraintLayout.LayoutParams) {
             ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) rawLp;
-            AiDialogHelper.applyOverlayCenterConstraints(lp, targetWidth, layoutHeight);
+            AiDialogHelper.applyOverlayCenterConstraintsInChromeArea(lp, targetWidth, layoutHeight,
+                    R.id.doc_top_toolbar_include, R.id.doc_bottom_toolbar);
             panel.setLayoutParams(lp);
         } else if (rawLp instanceof ViewGroup.MarginLayoutParams) {
             int x = Math.max(0, (parentWidth - targetWidth) / 2);
@@ -4931,8 +5067,23 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
-                public void performPasteCommand() {
-                    LOActivity.this.performPasteCommand();
+                public void copySelectionToSystemClipboard() {
+                    LOActivity.this.copySelectionToSystemClipboard();
+                }
+
+                @Override
+                public void cutSelectionToSystemClipboard() {
+                    LOActivity.this.cutSelectionToSystemClipboard();
+                }
+
+                @Override
+                public void pasteFromSystemClipboard() {
+                    LOActivity.this.pasteFromSystemClipboard(null);
+                }
+
+                @Override
+                public void pasteFromSystemClipboard(Runnable onComplete) {
+                    LOActivity.this.pasteFromSystemClipboard(onComplete);
                 }
 
                 @Override
@@ -4961,6 +5112,11 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public View getBrowserView() {
                     return LOActivity.this.mWebView;
+                }
+
+                @Override
+                public int getOverlayBottomReservedPx() {
+                    return LOActivity.this.getDocumentOverlayBottomReservedPx();
                 }
             });
         }
@@ -5002,6 +5158,11 @@ public class LOActivity extends AppCompatActivity {
                     @Override
                     public void showExternalLinkConfirm(String url) {
                         LOActivity.this.showExternalLinkConfirm(url);
+                    }
+
+                    @Override
+                    public int getOverlayBottomReservedPx() {
+                        return LOActivity.this.getDocumentOverlayBottomReservedPx();
                     }
                 });
         calcHyperlinkCellPopupController.setup();
@@ -5059,6 +5220,11 @@ public class LOActivity extends AppCompatActivity {
                     public void ensureEditModeThen(Runnable action) {
                         LOActivity.this.ensureEditModeThen(action);
                     }
+
+                    @Override
+                    public int getOverlayBottomReservedPx() {
+                        return LOActivity.this.getDocumentOverlayBottomReservedPx();
+                    }
                 });
         calcSheetTabPopupController.setup();
     }
@@ -5102,6 +5268,11 @@ public class LOActivity extends AppCompatActivity {
                     public void ensureEditModeThen(Runnable action) {
                         LOActivity.this.ensureEditModeThen(action);
                     }
+
+                    @Override
+                    public int getOverlayBottomReservedPx() {
+                        return LOActivity.this.getDocumentOverlayBottomReservedPx();
+                    }
                 });
         impressSlideThumbnailPopupController.setup();
     }
@@ -5139,6 +5310,11 @@ public class LOActivity extends AppCompatActivity {
                     @Override
                     public void evaluateJavascript(String script) {
                         LOActivity.this.evaluateJavascript(script, null);
+                    }
+
+                    @Override
+                    public int getOverlayBottomReservedPx() {
+                        return LOActivity.this.getDocumentOverlayBottomReservedPx();
                     }
                 });
         calcHeaderPopupController.setup();
@@ -7712,7 +7888,8 @@ public class LOActivity extends AppCompatActivity {
                     impressOutlinePanel.getMeasuredHeight(),
                     AiDialogHelper.computeMaxHeightHugPx(getResources()));
         }
-        AiDialogHelper.applyOverlayCenterConstraints(lp, targetWidth, targetHeight);
+        AiDialogHelper.applyOverlayCenterConstraintsInChromeArea(lp, targetWidth, targetHeight,
+                R.id.doc_top_toolbar_include, R.id.doc_bottom_toolbar);
         impressOutlinePanel.setLayoutParams(lp);
         updateImpressOutlineScrollMaxHeights();
     }
@@ -9576,10 +9753,25 @@ public class LOActivity extends AppCompatActivity {
      * 使 AI 按钮点击时能立即拿到选中文本（编辑模式 JNI getTextSelection 主路径）。
      */
     /*package*/ void preReadSelectionForPopup() {
-        getSelectedTextFromJs(selection -> {
-            aiOpPendingSelection = selection == null ? "" : selection;
-            Log.i(TAG, "selection_popup_preread chars=" + aiOpPendingSelection.length());
-        });
+        new Thread(() -> {
+            String nativeText = getTextSelection("text/plain;charset=utf-8");
+            if (nativeText != null && !nativeText.isEmpty()) {
+                final String plain = nativeText;
+                runOnUiThread(() -> {
+                    aiOpPendingSelection = plain;
+                    Log.i(TAG, "selection_popup_preread_native chars=" + plain.length());
+                });
+            }
+            getSelectedTextFromJs(selection -> {
+                if (selection != null && !selection.isEmpty()) {
+                    aiOpPendingSelection = selection;
+                    Log.i(TAG, "selection_popup_preread_js chars=" + selection.length());
+                } else if (aiOpPendingSelection == null) {
+                    aiOpPendingSelection = "";
+                    Log.i(TAG, "selection_popup_preread_empty");
+                }
+            });
+        }, "selection-popup-preread").start();
     }
 
     private static final String JS_CALC_RANGE_FROM_LAYER =
@@ -9927,13 +10119,7 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         pendingAfterEditMode = action;
-        if (mWebView != null) {
-            mWebView.evaluateJavascript(
-                    "(function(){try{if(window.app&&app.map&&typeof app.map._switchToEditMode==='function')"
-                            + "{app.map._switchToEditMode();}}catch(e){}"
-                            + "return true;})();",
-                    null);
-        }
+        switchToEditMode();
         getMainHandler().postDelayed(() -> {
             if (pendingAfterEditMode != action) {
                 return;
@@ -9956,8 +10142,95 @@ public class LOActivity extends AppCompatActivity {
         getMainHandler().postDelayed(action, 120L);
     }
 
-    private void performPasteCommand() {
-        postMobileMessage("uno .uno:Paste");
+    /** Copy current LOK selection to the Android system clipboard (Writer selection menu). */
+    private void copySelectionToSystemClipboard() {
+        primeSystemClipboardFromSelection("copy");
+        dispatchClipboardUnoCommand(".uno:Copy");
+    }
+
+    /** Cut current LOK selection: system clipboard + core Cut. */
+    private void cutSelectionToSystemClipboard() {
+        primeSystemClipboardFromSelection("cut");
+        dispatchClipboardUnoCommand(".uno:Cut");
+    }
+
+    private void pasteFromSystemClipboard() {
+        pasteFromSystemClipboard(null);
+    }
+
+    /**
+     * Paste from Android system clipboard into the document.
+     * In-app copy: LOK internal clipboard → .uno:Paste.
+     * External clipboard: native paste() loads content; Writer/Impress also need .uno:Paste to insert.
+     * @param onComplete optional callback on UI thread after paste (e.g. hide selection menu).
+     */
+    private void pasteFromSystemClipboard(Runnable onComplete) {
+        Log.i(TAG, "paste_from_clipboard_start editMode=" + mIsEditModeActive
+                + " calc=" + mIsCalcDocument);
+        requestWebViewFocusForPanelAction("paste");
+        postUnoCommand(".uno:EditDoc?Editable:bool=true", "{}", false);
+        long editDelayMs = mIsEditModeActive ? 80L : 280L;
+        getMainHandler().postDelayed(() -> {
+            boolean lokInternal = performPaste();
+            if (lokInternal) {
+                Log.i(TAG, "paste_from_clipboard lok_internal");
+                dispatchClipboardUnoCommand(".uno:Paste");
+            } else {
+                Log.i(TAG, "paste_from_clipboard native_injected");
+                if (!mIsCalcDocument) {
+                    postUnoCommand(".uno:Paste", "{}", false);
+                    Log.i(TAG, "paste_from_clipboard writer_paste_uno");
+                }
+            }
+            forceVisibleTileRedrawFromAndroid("paste");
+            nudgeSocketIfStalled("paste");
+            if (onComplete != null) {
+                onComplete.run();
+            }
+        }, editDelayMs);
+    }
+
+    /**
+     * 选区菜单 Copy/Cut/Paste：直接 JNI → LOK，不经过 WebView fake socket。
+     * populateClipboard 由 schedulePopulateClipboardWithRetry 在 Copy/Cut 后单独调度。
+     */
+    private void dispatchClipboardUnoCommand(String command) {
+        if (command == null || command.trim().isEmpty()) {
+            return;
+        }
+        String normalized = command.trim();
+        Log.i(TAG, "dispatch_clipboard_uno command=" + normalized);
+        postUnoCommand(normalized, "{}", false);
+        if (".uno:Copy".equals(normalized) || ".uno:Cut".equals(normalized)) {
+            schedulePopulateClipboardWithRetry();
+        }
+    }
+
+    /** Seed system clipboard from cached/JNI selection before UNO Copy/Cut (selection still active). */
+    private void primeSystemClipboardFromSelection(String reason) {
+        if (aiOpPendingSelection != null && !aiOpPendingSelection.isEmpty()) {
+            setSystemClipboardPlainText(aiOpPendingSelection);
+            Log.i(TAG, "selection_" + reason + "_plain chars=" + aiOpPendingSelection.length());
+            return;
+        }
+        new Thread(() -> {
+            String text = getTextSelection("text/plain;charset=utf-8");
+            if (text != null && !text.isEmpty()) {
+                final String plain = text;
+                runOnUiThread(() -> {
+                    setSystemClipboardPlainText(plain);
+                    Log.i(TAG, "selection_" + reason + "_plain_jni chars=" + plain.length());
+                });
+            }
+        }, "selection-" + reason + "-prime").start();
+    }
+
+    private void setSystemClipboardPlainText(String text) {
+        if (clipboardManager == null || text == null || text.isEmpty()) {
+            return;
+        }
+        clipData = ClipData.newPlainText(ClipDescription.MIMETYPE_TEXT_PLAIN, text);
+        clipboardManager.setPrimaryClip(clipData);
     }
 
     private void setupTopToolbar() {
@@ -10055,6 +10328,16 @@ public class LOActivity extends AppCompatActivity {
                         height = dpToPx(56);
                     }
                     return height;
+                }
+
+                @Override
+                public int getBottomChromeHeightPx() {
+                    return LOActivity.this.getDocumentBottomChromeHeightPx();
+                }
+
+                @Override
+                public void hideKeyboardForBottomSheet() {
+                    LOActivity.this.hideKeyboardForBottomSheet();
                 }
 
                 @Override
@@ -10539,6 +10822,7 @@ public class LOActivity extends AppCompatActivity {
                 + " editMode=" + mIsEditModeActive
                 + " imeAllowed=" + (mWebView != null && mWebView.isImeAllowedByUser()));
         ensureBottomToolbarController().applyImeState(imeVisible, imeInsetBottom, navigationBarInsetBottom);
+        updateSystemChromeForIme(imeVisible);
         if (mWebView == null) {
             return;
         }
@@ -10557,6 +10841,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void showFunctionPanelResolved() {
+        hideKeyboardForBottomSheet();
         if (mIsEditModeActive && mIsCalcDocument) {
             if (calcFunctionPanelController != null) {
                 calcFunctionPanelController.dismiss();
@@ -10608,6 +10893,7 @@ public class LOActivity extends AppCompatActivity {
             tabReview.setTextColor(Color.parseColor("#6A6A6A"));
             fileList.setVisibility(View.VISIBLE);
             reviewList.setVisibility(View.GONE);
+            schedulePreviewFunctionPanelHeightUpdate();
         };
         View.OnClickListener showReviewTab = v -> {
             tabReview.setBackgroundResource(R.drawable.lolib_bg_function_tab_active);
@@ -10616,6 +10902,7 @@ public class LOActivity extends AppCompatActivity {
             tabFile.setTextColor(Color.parseColor("#6A6A6A"));
             reviewList.setVisibility(View.VISIBLE);
             fileList.setVisibility(View.GONE);
+            schedulePreviewFunctionPanelHeightUpdate();
         };
         tabFile.setOnClickListener(showFileTab);
         tabReview.setOnClickListener(showReviewTab);
@@ -10642,11 +10929,45 @@ public class LOActivity extends AppCompatActivity {
                     executeUnoCommand(".uno:WordCountDialog")));
         }
 
+        previewFunctionPanel = panel;
         functionPanelDialog = new BottomSheetDialog(this);
         functionPanelDialog.setContentView(panel);
-        functionPanelDialog.setOnDismissListener(dialog -> functionPanelDialog = null);
+        functionPanelDialog.setOnDismissListener(dialog -> {
+            functionPanelDialog = null;
+            previewFunctionPanel = null;
+        });
+        functionPanelDialog.setOnShowListener(d -> expandFunctionPanelSheet());
         functionPanelDialog.show();
-        expandFunctionPanelSheet();
+    }
+
+    int getDocumentBottomChromeHeightPx() {
+        return ensureBottomToolbarController().getReservedBottomHeightPx(0);
+    }
+
+    private void schedulePreviewFunctionPanelHeightUpdate() {
+        if (functionPanelDialog == null || !functionPanelDialog.isShowing()) {
+            return;
+        }
+        View anchor = previewFunctionPanel != null
+                ? previewFunctionPanel
+                : functionPanelDialog.getWindow().getDecorView();
+        anchor.post(this::expandFunctionPanelSheet);
+    }
+
+    private int resolvePreviewFunctionPanelHeightPx() {
+        if (previewFunctionPanel == null) {
+            return getResources().getDimensionPixelSize(R.dimen.function_sheet_preview_height_file);
+        }
+        View reviewList = previewFunctionPanel.findViewById(R.id.function_review_list);
+        if (reviewList != null && reviewList.getVisibility() == View.VISIBLE) {
+            int height = getResources().getDimensionPixelSize(R.dimen.function_sheet_preview_height_review);
+            View wordCountAction = previewFunctionPanel.findViewById(R.id.function_action_word_count);
+            if (wordCountAction != null && wordCountAction.getVisibility() != View.VISIBLE) {
+                height -= getResources().getDimensionPixelSize(R.dimen.function_sheet_row_height);
+            }
+            return height;
+        }
+        return getResources().getDimensionPixelSize(R.dimen.function_sheet_preview_height_file);
     }
 
     private void expandFunctionPanelSheet() {
@@ -10662,9 +10983,21 @@ public class LOActivity extends AppCompatActivity {
         BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
         options.draggable = false;
         options.hideable = false;
+        options.applyNavBarPadding = false;
+        options.internalBottomDesignPadPx = getResources()
+                .getDimensionPixelSize(R.dimen.lolib_function_sheet_bottom_pad);
         options.logTag = TAG;
-        BottomSheetAnchorHelper.expandRatio(
-                functionPanelDialog, BottomSheetAnchorHelper.FUNCTION_PANEL_HEIGHT_RATIO, options);
+        BottomSheetAnchorHelper.clearAppliedHeight(functionPanelDialog);
+        int targetHeight = resolvePreviewFunctionPanelHeightPx();
+        BottomSheetAnchorHelper.expandFixed(functionPanelDialog, targetHeight, options);
+        if (bottomSheet.getChildCount() > 0) {
+            View contentRoot = bottomSheet.getChildAt(0);
+            ViewGroup.LayoutParams contentParams = contentRoot.getLayoutParams();
+            if (contentParams != null) {
+                contentParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                contentRoot.setLayoutParams(contentParams);
+            }
+        }
     }
 
     private void runFunctionAction(Runnable action) {
@@ -10803,6 +11136,11 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void focusDocumentAndShowIme() {
                     LOActivity.this.focusDocumentAndShowIme();
+                }
+
+                @Override
+                public int getBottomChromeHeightPx() {
+                    return LOActivity.this.getDocumentBottomChromeHeightPx();
                 }
 
                 @Override
@@ -10968,6 +11306,11 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public int getBottomChromeHeightPx() {
+                    return LOActivity.this.getDocumentBottomChromeHeightPx();
+                }
+
+                @Override
                 public void insertChartWithType(String unoChartType) {
                     LOActivity.this.insertChartWithType(unoChartType);
                 }
@@ -11028,6 +11371,11 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void focusDocumentAndShowIme() {
                     LOActivity.this.focusDocumentAndShowIme();
+                }
+
+                @Override
+                public int getBottomChromeHeightPx() {
+                    return LOActivity.this.getDocumentBottomChromeHeightPx();
                 }
 
                 @Override
@@ -12327,17 +12675,31 @@ public class LOActivity extends AppCompatActivity {
             Log.i(TAG, "focus_ime_hide_selection_menu");
             menuController.hide();
         }
+        requestDocumentFocusAndShowIme(false);
+        // 功能面板/BottomSheet 关闭后 IME 可能被窗口焦点切换打断，短延迟重试一次。
+        getMainHandler().postDelayed(() -> requestDocumentFocusAndShowIme(true), 150L);
+        nudgeSocketIfStalled("show_ime_focus_doc");
+    }
+
+    private void requestDocumentFocusAndShowIme(boolean retry) {
+        if (mWebView == null) {
+            return;
+        }
+        cancelImeClearDeferredRunnable();
+        cancelImeAllowResetRunnable();
         setImeAllowedByUserSustained(true);
         mWebView.requestFocus();
         mWebView.evaluateJavascript(
                 "(function(){if(window.app&&app.map){app.map.focus(true);}return true;})();",
                 null);
-        // Explicitly show the soft keyboard.
         InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
         if (imm != null) {
             imm.showSoftInput(mWebView, InputMethodManager.SHOW_IMPLICIT);
         }
-        nudgeSocketIfStalled("show_ime_focus_doc");
+        if (retry) {
+            Log.d(TAG, "focus_ime_retry webViewFocused=" + mWebView.isFocused()
+                    + " imeAllowed=" + mWebView.isImeAllowedByUser());
+        }
     }
 
     /** Hide the soft keyboard and reset IME state on the WebView. */
@@ -12349,6 +12711,22 @@ public class LOActivity extends AppCompatActivity {
         InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
         if (imm != null) {
             imm.hideSoftInputFromWindow(mWebView.getWindowToken(), 0);
+        }
+    }
+
+    /** Dismiss activity IME before opening a bottom sheet (avoids stale IME in anchor math). */
+    private void hideKeyboardForBottomSheet() {
+        hideKeyboard();
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm == null) {
+            return;
+        }
+        View focus = getCurrentFocus();
+        if (focus != null) {
+            imm.hideSoftInputFromWindow(focus.getWindowToken(), 0);
+        }
+        if (mWebView != null) {
+            mWebView.clearFocus();
         }
     }
 
@@ -12591,6 +12969,7 @@ public class LOActivity extends AppCompatActivity {
         if (aiPanelDialog != null && aiPanelDialog.isShowing()) {
             return;
         }
+        hideKeyboardForBottomSheet();
 
         View panel = LayoutInflater.from(this).inflate(R.layout.lolib_dialog_ai_panel, null, false);
         aiPromptInput = panel.findViewById(R.id.ai_prompt);
@@ -12695,7 +13074,8 @@ public class LOActivity extends AppCompatActivity {
         aiPanelDialog.setOnShowListener(dialog -> aiPanelContent.post(() ->
                 aiPanelController.configureBottomSheet(
                         aiPanelDialog, aiPanelContent, screenHeight, screenWidth, orientation,
-                        this::scheduleAiPanelChromeRefresh)));
+                        this::scheduleAiPanelChromeRefresh,
+                        0)));
         aiPanelDialog.show();
 
         aiPanelController.installMessageScrollTouchPolicy(aiMessagesScroll, new AiPanelController.ScrollCallbacks() {
@@ -12729,6 +13109,7 @@ public class LOActivity extends AppCompatActivity {
         if (aiOperationSheet != null && aiOperationSheet.isShowing()) {
             return;
         }
+        hideKeyboardForBottomSheet();
         View panel = getLayoutInflater().inflate(R.layout.lolib_sheet_ai_operations, null);
         aiOperationSheetPanel = panel;
         View closeButton = panel.findViewById(R.id.ai_sheet_header_close);
@@ -13013,28 +13394,16 @@ public class LOActivity extends AppCompatActivity {
                         screenHeight,
                         screenWidth,
                         orientation,
-                        0.85f));
+                        0.85f,
+                        0));
             }
             if (mIsCalcDocument) {
                 getMainHandler().postDelayed(() -> preReadCalcSelectionForSheet(), 200);
             }
         });
-        aiPanelController.configureBottomSheetFitContent(
-                aiOperationSheet, panel, screenHeight, screenWidth, orientation, 0.85f);
 
         aiOperationSheet.show();
         Log.i(TAG, "ai_op_sheet_shown");
-
-        // 隐藏 IME：BottomSheet 弹起时 IME 可能仍处于显示态（编辑模式下尤其）。
-        // 注意：不能 requestFocus() —— 那会反过来触发 IME 弹起。直接 hide 即可。
-        android.view.inputmethod.InputMethodManager imm =
-                (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
-        if (imm != null) {
-            View currentFocus = getCurrentFocus();
-            if (currentFocus != null) {
-                imm.hideSoftInputFromWindow(currentFocus.getWindowToken(), 0);
-            }
-        }
 
         // Read selection from JS and update hint
         getSelectedTextFromJs(selection -> {
@@ -13320,43 +13689,103 @@ public class LOActivity extends AppCompatActivity {
     // ==================== AI排版相关方法 ====================
 
     /**
-     * 显示AI排版类型选择 BottomSheet
+     * 显示 AI 排版类型选择弹窗（Figma 330:32962 居中 Dialog，非 BottomSheet）。
      */
     private void showTypesetSelectSheet() {
         Log.i(TAG, "ai_typeset_select_show");
         if (isFinishing()) {
             return;
         }
-        typesetSelectSheet = new BottomSheetDialog(this);
-        View sheetView = getLayoutInflater().inflate(R.layout.lolib_sheet_typeset_select, null);
-        typesetSelectSheet.setContentView(sheetView);
+        if (typesetSelectDialog != null && typesetSelectDialog.isShowing()) {
+            return;
+        }
+        selectedTypesetType = "paper";
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_typeset_select, null, false);
+        typesetSelectDialog = new AlertDialog.Builder(this).create();
+        typesetSelectDialog.setView(root);
+        typesetSelectDialog.setCancelable(true);
+        typesetSelectDialog.setCanceledOnTouchOutside(true);
 
-        // 配置 BottomSheet
-        int screenHeight = getResources().getDisplayMetrics().heightPixels;
-        int screenWidth = getResources().getDisplayMetrics().widthPixels;
-        aiPanelController.configureBottomSheet(typesetSelectSheet, sheetView,
-                screenHeight, screenWidth,
-                getResources().getConfiguration().orientation);
-
-        // 关闭按钮
-        sheetView.findViewById(R.id.typeset_select_close).setOnClickListener(v -> {
+        root.findViewById(R.id.typeset_select_close).setOnClickListener(v -> {
             Log.i(TAG, "ai_typeset_select_dismissed");
-            typesetSelectSheet.dismiss();
+            typesetSelectDialog.dismiss();
         });
 
-        // 4 个类型选项
-        sheetView.findViewById(R.id.typeset_type_paper).setOnClickListener(v -> startTypeset("paper"));
-        sheetView.findViewById(R.id.typeset_type_gov).setOnClickListener(v -> startTypeset("gov"));
-        sheetView.findViewById(R.id.typeset_type_contract).setOnClickListener(v -> startTypeset("contract"));
-        sheetView.findViewById(R.id.typeset_type_general).setOnClickListener(v -> startTypeset("general"));
+        bindTypesetTypeCard(root, R.id.typeset_type_paper, "paper");
+        bindTypesetTypeCard(root, R.id.typeset_type_gov, "gov");
+        bindTypesetTypeCard(root, R.id.typeset_type_contract, "contract");
+        bindTypesetTypeCard(root, R.id.typeset_type_general, "general");
+        updateTypesetTypeSelection(root);
 
-        typesetSelectSheet.setOnDismissListener(dialog -> {
-            Log.i(TAG, "ai_typeset_select_dismissed");
-            typesetSelectSheet = null;
+        root.findViewById(R.id.typeset_select_start).setOnClickListener(v -> {
+            Log.i(TAG, "ai_typeset_select_start type=" + selectedTypesetType);
+            startTypeset(selectedTypesetType);
         });
 
-        typesetSelectSheet.show();
+        typesetSelectDialog.setOnDismissListener(dialog -> {
+            Log.i(TAG, "ai_typeset_select_dismissed");
+            typesetSelectDialog = null;
+        });
+
+        typesetSelectDialog.show();
+        if (typesetSelectDialog.getWindow() != null) {
+            typesetSelectDialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            WindowManager.LayoutParams params = typesetSelectDialog.getWindow().getAttributes();
+            params.gravity = Gravity.CENTER;
+            typesetSelectDialog.getWindow().setAttributes(params);
+            root.post(() -> applyTypesetSelectDialogSize(root));
+        }
         Log.i(TAG, "ai_typeset_select_shown");
+    }
+
+    /** Figma 330:32962：固定 335×510dp，避免 AlertDialog 量高偏小裁切底栏。 */
+    private void applyTypesetSelectDialogSize(View root) {
+        if (typesetSelectDialog == null || !typesetSelectDialog.isShowing()
+                || typesetSelectDialog.getWindow() == null || root == null) {
+            return;
+        }
+        int widthPx = getResources().getDimensionPixelSize(R.dimen.ai_typeset_dialog_width);
+        int heightPx = getResources().getDimensionPixelSize(R.dimen.ai_typeset_dialog_height);
+        int maxHeightPx = AiDialogHelper.computeMaxHeightHugPx(getResources());
+        heightPx = Math.min(heightPx, maxHeightPx);
+
+        typesetSelectDialog.getWindow().setLayout(widthPx, heightPx);
+        ViewGroup.LayoutParams rootLp = root.getLayoutParams();
+        if (rootLp == null) {
+            rootLp = new ViewGroup.LayoutParams(widthPx, heightPx);
+        } else {
+            rootLp.width = widthPx;
+            rootLp.height = heightPx;
+        }
+        root.setLayoutParams(rootLp);
+    }
+
+    private void bindTypesetTypeCard(View sheetView, int cardId, String type) {
+        sheetView.findViewById(cardId).setOnClickListener(v -> {
+            selectedTypesetType = type;
+            updateTypesetTypeSelection(sheetView);
+        });
+    }
+
+    private void updateTypesetTypeSelection(View sheetView) {
+        applyTypesetCardBackground(sheetView, R.id.typeset_type_paper, "paper",
+                R.drawable.lolib_bg_typeset_card_paper_selected,
+                R.drawable.lolib_bg_typeset_card_paper);
+        applyTypesetCardBackground(sheetView, R.id.typeset_type_gov, "gov",
+                R.drawable.lolib_bg_typeset_card_gov_selected,
+                R.drawable.lolib_bg_typeset_card_gov);
+        applyTypesetCardBackground(sheetView, R.id.typeset_type_contract, "contract",
+                R.drawable.lolib_bg_typeset_card_contract_selected,
+                R.drawable.lolib_bg_typeset_card_contract);
+        applyTypesetCardBackground(sheetView, R.id.typeset_type_general, "general",
+                R.drawable.lolib_bg_typeset_card_general_selected,
+                R.drawable.lolib_bg_typeset_card_general);
+    }
+
+    private void applyTypesetCardBackground(View sheetView, int cardId, String type,
+            int selectedBg, int normalBg) {
+        View card = sheetView.findViewById(cardId);
+        card.setBackgroundResource(type.equals(selectedTypesetType) ? selectedBg : normalBg);
     }
 
     /**
@@ -13390,9 +13819,15 @@ public class LOActivity extends AppCompatActivity {
                     prev = cur;
                 }
             }
+            postUnoCommand(".uno:Deselect", "{}", false);
             return prev;
         } catch (Exception e) {
             Log.w(TAG, "extractFullTextNative_failed tag=" + tag, e);
+            try {
+                postUnoCommand(".uno:Deselect", "{}", false);
+            } catch (Exception ignored) {
+                // Best-effort cleanup of SelectAll residue.
+            }
             return null;
         }
     }
@@ -13922,8 +14357,8 @@ public class LOActivity extends AppCompatActivity {
      */
     private void startTypeset(String typesetType) {
         Log.i(TAG, "ai_typeset_start type=" + typesetType);
-        if (typesetSelectSheet != null) {
-            typesetSelectSheet.dismiss();
+        if (typesetSelectDialog != null) {
+            typesetSelectDialog.dismiss();
         }
         pendingTypesetType = typesetType;
         typesetInProgress = true;
@@ -14062,7 +14497,8 @@ public class LOActivity extends AppCompatActivity {
         int screenWidth = getResources().getDisplayMetrics().widthPixels;
         aiPanelController.configureBottomSheet(typesetPreviewSheet, sheetView,
                 screenHeight, screenWidth,
-                getResources().getConfiguration().orientation);
+                getResources().getConfiguration().orientation, null,
+                0);
 
         WebView webView = sheetView.findViewById(R.id.typeset_preview_webview);
         if (webView != null) {
@@ -17297,7 +17733,10 @@ public class LOActivity extends AppCompatActivity {
 
                 JSONArray messages = AiChatCoordinator.buildNewCalcTableMessages(userDescription);
 
-                aiRequestManager.execute(requestId, endpoint, apiKey, model, messages, session,
+                AiModelConfigStore.SamplingParams sampling =
+                        AiModelConfigStore.loadSamplingParams(this, AiModelConfigStore.MODEL_BASE);
+
+                aiRequestManager.execute(requestId, endpoint, apiKey, model, messages, sampling, session,
                         new AiRequestManager.Callback() {
                             @Override
                             public String sanitizePayload(String callbackRequestId, Object raw, String stage) {
@@ -17523,7 +17962,13 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         appendAiMessage(prompt, true, false);
-        appendAiHistoryMessage(mode, "user", prompt);
+        if (aiDocQaMode && firstDocQaTurn) {
+            // doc_qa 首轮：user 消息（含全文）在 startNativeAiRequest 构造 combinedPrompt 后
+            // 统一存入 history，保证后续轮 messages 以首轮为前缀 → KV 增量复用 + 模型持续可见全文。
+            Log.i(TAG, "ai_docqa_first_turn_skip_user_history promptChars=" + prompt.length());
+        } else {
+            appendAiHistoryMessage(mode, "user", prompt);
+        }
         aiPromptInput.setText("");
         setNativeAiPanelState(AI_STATE_LOADING, "AI request queued");
         String taskType = aiDocQaMode ? AI_MODE_DOC_QA : AI_MODE_CHAT;
@@ -17641,9 +18086,9 @@ public class LOActivity extends AppCompatActivity {
         aiModelRequiredDialog.show();
         if (aiModelRequiredDialog.getWindow() != null) {
             WindowManager.LayoutParams params = aiModelRequiredDialog.getWindow().getAttributes();
-            params.dimAmount = 0.3f;
+            params.dimAmount = 0f;
             aiModelRequiredDialog.getWindow().setAttributes(params);
-            aiModelRequiredDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            aiModelRequiredDialog.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             int widthPx = getResources().getDimensionPixelSize(R.dimen.ai_model_required_dialog_width);
             AiDialogHelper.applyFlexibleWidth(root, aiModelRequiredDialog, widthPx,
                     AiDialogHelper.computeMaxHeightHugPx(getResources()));
@@ -18576,7 +19021,7 @@ public class LOActivity extends AppCompatActivity {
                 switch (messageAndParameterArray[1]) {
                     case ".uno:Copy":
                     case ".uno:Cut":
-                        populateClipboard();
+                        schedulePopulateClipboardWithRetry();
                         break;
                     default:
                         break;
@@ -18617,40 +19062,102 @@ public class LOActivity extends AppCompatActivity {
         return CLIPBOARD_COOL_SIGNATURE + Long.toString(loadDocumentMillis);
     }
 
-    /// Needs to be executed after the .uno:Copy / Paste has executed
-    public final void populateClipboard() {
+    private void schedulePopulateClipboardWithRetry() {
+        clipboardPopulateAttempt = 0;
+        if (clipboardPopulateRetryRunnable != null) {
+            getMainHandler().removeCallbacks(clipboardPopulateRetryRunnable);
+        }
+        clipboardPopulateRetryRunnable = () -> {
+            if (populateClipboard()) {
+                return;
+            }
+            clipboardPopulateAttempt++;
+            if (clipboardPopulateAttempt < CLIPBOARD_POPULATE_RETRY_DELAYS_MS.length) {
+                getMainHandler().postDelayed(
+                        clipboardPopulateRetryRunnable,
+                        CLIPBOARD_POPULATE_RETRY_DELAYS_MS[clipboardPopulateAttempt]);
+            } else {
+                tryPlainTextSelectionFallback();
+            }
+        };
+        getMainHandler().postDelayed(
+                clipboardPopulateRetryRunnable,
+                CLIPBOARD_POPULATE_RETRY_DELAYS_MS[0]);
+    }
+
+    /** After .uno:Copy / Cut: export LOK clipboard to Android; return true if non-empty. */
+    public final boolean populateClipboard() {
         File clipboardFile = new File(getApplicationContext().getCacheDir(), CLIPBOARD_FILE_PATH);
-        if (clipboardFile.exists())
+        if (clipboardFile.exists()) {
             clipboardFile.delete();
+        }
 
         LokClipboardData clipboardData = new LokClipboardData();
-        if (!LOActivity.this.getClipboardContent(clipboardData))
-            Log.e(TAG, "no clipboard to copy");
-        else {
-            clipboardData.writeToFile(clipboardFile);
+        if (!LOActivity.this.getClipboardContent(clipboardData)) {
+            Log.w(TAG, "populate_clipboard_no_lok_content attempt=" + clipboardPopulateAttempt);
+            return false;
+        }
+        clipboardData.writeToFile(clipboardFile);
 
-            String text = clipboardData.getText();
-            String html = clipboardData.getHtml();
+        String text = clipboardData.getText();
+        String html = clipboardData.getHtml();
 
-            if (html != null) {
-                int idx = html.indexOf("<meta name=\"generator\" content=\"");
+        if (html != null) {
+            int idx = html.indexOf("<meta name=\"generator\" content=\"");
 
-                if (idx < 0)
-                    idx = html.indexOf("<meta http-equiv=\"content-type\" content=\"text/html;");
+            if (idx < 0) {
+                idx = html.indexOf("<meta http-equiv=\"content-type\" content=\"text/html;");
+            }
 
-                if (idx >= 0) { // inject our magic
-                    StringBuffer newHtml = new StringBuffer(html);
-                    newHtml.insert(idx, "<meta name=\"origin\" content=\"" + getClipboardMagic() + "\"/>\n");
-                    html = newHtml.toString();
-                }
+            if (idx >= 0) {
+                StringBuffer newHtml = new StringBuffer(html);
+                newHtml.insert(idx, "<meta name=\"origin\" content=\"" + getClipboardMagic() + "\"/>\n");
+                html = newHtml.toString();
+            }
 
-                if (text == null || text.length() == 0)
-                    Log.i(TAG, "set text to clipoard with: text '" + text + "' and html '" + html + "'");
+            clipData = ClipData.newHtmlText(ClipDescription.MIMETYPE_TEXT_HTML, text, html);
+            clipboardManager.setPrimaryClip(clipData);
+            Log.i(TAG, "populate_clipboard_html chars="
+                    + (text == null ? 0 : text.length()));
+            return true;
+        }
+        if (text != null && !text.isEmpty()) {
+            clipData = ClipData.newPlainText(ClipDescription.MIMETYPE_TEXT_PLAIN, text);
+            clipboardManager.setPrimaryClip(clipData);
+            Log.i(TAG, "populate_clipboard_plain chars=" + text.length());
+            return true;
+        }
+        return false;
+    }
 
-                clipData = ClipData.newHtmlText(ClipDescription.MIMETYPE_TEXT_HTML, text, html);
-                clipboardManager.setPrimaryClip(clipData);
+    /** Last resort when LOK clipboard export is empty but a text selection still exists. */
+    private void tryPlainTextSelectionFallback() {
+        if (clipboardManager == null) {
+            return;
+        }
+        ClipData current = clipboardManager.getPrimaryClip();
+        if (current != null && current.getItemCount() > 0) {
+            CharSequence existing = current.getItemAt(0).getText();
+            if (existing != null && existing.length() > 0) {
+                return;
             }
         }
+        new Thread(() -> {
+            String text = getTextSelection("text/plain;charset=utf-8");
+            if (text == null || text.isEmpty()) {
+                String cached = aiOpPendingSelection;
+                if (cached != null && !cached.isEmpty()) {
+                    text = cached;
+                }
+            }
+            if (text != null && !text.isEmpty()) {
+                final String plain = text;
+                runOnUiThread(() -> {
+                    setSystemClipboardPlainText(plain);
+                    Log.i(TAG, "clipboard_fallback_plain chars=" + plain.length());
+                });
+            }
+        }, "clipboard-fallback").start();
     }
 
     /// Do the paste, and return true if we should short-circuit the paste locally
@@ -18669,6 +19176,9 @@ public class LOActivity extends AppCompatActivity {
 
             if (clipDesc.getMimeType(i).equals(ClipDescription.MIMETYPE_TEXT_HTML)) {
                 final String html = clipData.getItemAt(i).getHtmlText();
+                if (html == null || html.isEmpty()) {
+                    continue;
+                }
                 // Check if the clipboard content was made with the app
                 if (html.contains(CLIPBOARD_COOL_SIGNATURE)) {
                     // Check if the clipboard content is from the same app instance
@@ -18726,9 +19236,14 @@ public class LOActivity extends AppCompatActivity {
 
             if (clipDesc.getMimeType(i).equals(ClipDescription.MIMETYPE_TEXT_PLAIN)) {
                 final ClipData.Item clipItem = clipData.getItemAt(i);
-                String text = clipItem.getText().toString();
+                CharSequence textSeq = clipItem.getText();
+                if (textSeq == null || textSeq.length() == 0) {
+                    continue;
+                }
+                String text = textSeq.toString();
                 byte[] textByteArray = text.getBytes(Charset.forName("UTF-8"));
                 LOActivity.this.paste("text/plain;charset=utf-8", textByteArray);
+                Log.i(TAG, "paste_plain chars=" + text.length());
             }
         }
 

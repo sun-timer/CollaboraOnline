@@ -1,7 +1,6 @@
 package org.libreoffice.androidapp.ui;
 
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.EditText;
@@ -9,18 +8,20 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 import org.libreoffice.androidapp.R;
+import org.libreoffice.androidlib.SystemUiHelper;
+import org.libreoffice.androidlib.ai.AiModelConfigStore;
 
 import java.util.Locale;
 
 public class AiModelConfigActivity extends AppCompatActivity {
     private int modelType = AiSettingsStore.MODEL_BASE;
     private boolean fromDrawer = false;
-    private SharedPreferences prefs;
 
     private EditText configNameInput;
     private EditText providerInput;
@@ -50,14 +51,20 @@ public class AiModelConfigActivity extends AppCompatActivity {
             getSupportActionBar().hide();
         }
 
+        SystemUiHelper.enableEdgeToEdge(this);
+        SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
+        SystemUiHelper.applyStatusBarPadding(findViewById(R.id.modelConfigHeader), 0);
+        View configFooter = findViewById(R.id.modelConfigFooter);
+        SystemUiHelper.applyNavigationBarPadding(configFooter,
+                getResources().getDimensionPixelSize(R.dimen.ai_model_config_footer_padding_v));
+
         modelType = getIntent().getIntExtra(AiSettingsStore.EXTRA_MODEL_TYPE, AiSettingsStore.MODEL_BASE);
         fromDrawer = getIntent().getBooleanExtra(AiSettingsStore.EXTRA_FROM_DRAWER, false);
-        prefs = AiSettingsStore.prefs(this);
 
         bindViews();
         bindHeader();
-        loadValues();
         bindSliders();
+        loadValues();
         bindActions();
         View scrim = findViewById(R.id.modelConfigScrim);
         if (scrim != null) {
@@ -112,27 +119,30 @@ public class AiModelConfigActivity extends AppCompatActivity {
 
         title.setText(AiSettingsStore.modelTitleRes(modelType));
         icon.setImageResource(R.drawable.ic_ai_connection);
-        backButton.setOnClickListener(v -> navigateBack());
+        backButton.setOnClickListener(v -> saveAndClose());
     }
 
     @Override
     public void onBackPressed() {
-        navigateBack();
+        saveAndClose();
     }
 
     private void loadValues() {
-        configNameInput.setText(getStringValue(AiSettingsStore.FIELD_CONFIG_NAME, getString(AiSettingsStore.modelTitleRes(modelType)) + "配置"));
-        providerInput.setText(getStringValue(AiSettingsStore.FIELD_PROVIDER, "OpenAI"));
-        urlInput.setText(getStringValue(AiSettingsStore.FIELD_URL, "https://api.openai.com/v1/chat/completions"));
-        apiKeyInput.setText(getStringValue(AiSettingsStore.FIELD_API_KEY, ""));
-        modelNameInput.setText(getStringValue(AiSettingsStore.FIELD_MODEL_NAME, AiSettingsStore.defaultModelName(modelType)));
+        AiModelConfigStore.Form form = AiModelConfigStore.loadForm(this, modelType,
+                getString(AiSettingsStore.modelTitleRes(modelType)) + "配置",
+                AiSettingsStore.defaultModelName(modelType));
+        configNameInput.setText(form.configName);
+        providerInput.setText(form.provider);
+        urlInput.setText(form.url);
+        apiKeyInput.setText(form.apiKey);
+        modelNameInput.setText(form.modelName);
 
-        setSliderValue(topPBar, getFloatValue(AiSettingsStore.FIELD_TOP_P, 0.5f), topPValue);
-        setSliderValue(temperatureBar, getFloatValue(AiSettingsStore.FIELD_TEMPERATURE, 0.9f), temperatureValue);
-        setSliderValue(presencePenaltyBar, getFloatValue(AiSettingsStore.FIELD_PRESENCE_PENALTY, 0f), presencePenaltyValue);
-        setSliderValue(frequencyPenaltyBar, getFloatValue(AiSettingsStore.FIELD_FREQUENCY_PENALTY, 0.8f), frequencyPenaltyValue);
-        setSliderValue(maxTokensBar, getFloatValue(AiSettingsStore.FIELD_MAX_TOKENS_RATIO, 0.8f), maxTokensValue);
-        setSliderValue(seedBar, getFloatValue(AiSettingsStore.FIELD_SEED_RATIO, 0.8f), seedValue);
+        setSliderValue(topPBar, form.topP, topPValue);
+        setSliderValue(temperatureBar, form.temperature, temperatureValue);
+        setSliderValue(presencePenaltyBar, form.presencePenalty, presencePenaltyValue);
+        setSliderValue(frequencyPenaltyBar, form.frequencyPenalty, frequencyPenaltyValue);
+        setSliderValue(maxTokensBar, form.maxTokensRatio, maxTokensValue);
+        setSliderValue(seedBar, form.seedRatio, seedValue);
     }
 
     private void bindSliders() {
@@ -145,6 +155,9 @@ public class AiModelConfigActivity extends AppCompatActivity {
     }
 
     private void bindSlider(SeekBar seekBar, TextView valueView) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            seekBar.setMin(0);
+        }
         seekBar.setMax(100);
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -158,6 +171,7 @@ public class AiModelConfigActivity extends AppCompatActivity {
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
+                persistForm(false);
             }
         });
     }
@@ -166,32 +180,57 @@ public class AiModelConfigActivity extends AppCompatActivity {
         View cancelButton = findViewById(R.id.modelConfigCancelButton);
         View saveButton = findViewById(R.id.modelConfigSaveButton);
 
-        cancelButton.setOnClickListener(v -> navigateBack());
-        saveButton.setOnClickListener(v -> saveAndClose());
+        if (cancelButton != null) {
+            cancelButton.setClickable(true);
+            cancelButton.setOnClickListener(v -> navigateBack());
+        }
+        if (saveButton != null) {
+            saveButton.setClickable(true);
+            saveButton.setOnClickListener(v -> saveAndClose());
+        }
     }
 
     private void saveAndClose() {
-        SharedPreferences.Editor editor = prefs.edit();
-        editor.putString(modelKey(AiSettingsStore.FIELD_CONFIG_NAME), readInput(configNameInput));
-        editor.putString(modelKey(AiSettingsStore.FIELD_PROVIDER), readInput(providerInput));
-        editor.putString(modelKey(AiSettingsStore.FIELD_URL), readInput(urlInput));
-        editor.putString(modelKey(AiSettingsStore.FIELD_API_KEY), readInput(apiKeyInput));
-        editor.putString(modelKey(AiSettingsStore.FIELD_MODEL_NAME), readInput(modelNameInput));
+        if (!persistForm(true)) {
+            return;
+        }
+        setResult(RESULT_OK);
+        finish();
+    }
 
-        editor.putFloat(modelKey(AiSettingsStore.FIELD_TOP_P), toRatio(topPBar.getProgress()));
-        editor.putFloat(modelKey(AiSettingsStore.FIELD_TEMPERATURE), toRatio(temperatureBar.getProgress()));
-        editor.putFloat(modelKey(AiSettingsStore.FIELD_PRESENCE_PENALTY), toRatio(presencePenaltyBar.getProgress()));
-        editor.putFloat(modelKey(AiSettingsStore.FIELD_FREQUENCY_PENALTY), toRatio(frequencyPenaltyBar.getProgress()));
-        editor.putFloat(modelKey(AiSettingsStore.FIELD_MAX_TOKENS_RATIO), toRatio(maxTokensBar.getProgress()));
-        editor.putFloat(modelKey(AiSettingsStore.FIELD_SEED_RATIO), toRatio(seedBar.getProgress()));
-        editor.apply();
+    private boolean persistForm(boolean showToast) {
+        AiModelConfigStore.Form form = readForm();
+        if (!AiModelConfigStore.saveForm(this, modelType, form)) {
+            if (showToast) {
+                Toast.makeText(this, R.string.ai_model_config_save_failed, Toast.LENGTH_SHORT).show();
+            }
+            return false;
+        }
 
         if (modelType == AiSettingsStore.MODEL_BASE) {
             AiSettingsStore.syncBaseModelToRuntime(this);
         }
 
-        setResult(RESULT_OK);
-        finish();
+        if (showToast) {
+            Toast.makeText(this, R.string.ai_model_config_saved, Toast.LENGTH_SHORT).show();
+        }
+        return true;
+    }
+
+    private AiModelConfigStore.Form readForm() {
+        AiModelConfigStore.Form form = new AiModelConfigStore.Form();
+        form.configName = readInput(configNameInput);
+        form.provider = readInput(providerInput);
+        form.url = readInput(urlInput);
+        form.apiKey = readInput(apiKeyInput);
+        form.modelName = readInput(modelNameInput);
+        form.topP = toRatio(topPBar.getProgress());
+        form.temperature = toRatio(temperatureBar.getProgress());
+        form.presencePenalty = toRatio(presencePenaltyBar.getProgress());
+        form.frequencyPenalty = toRatio(frequencyPenaltyBar.getProgress());
+        form.maxTokensRatio = toRatio(maxTokensBar.getProgress());
+        form.seedRatio = toRatio(seedBar.getProgress());
+        return form;
     }
 
     private String readInput(EditText editText) {
@@ -199,6 +238,10 @@ public class AiModelConfigActivity extends AppCompatActivity {
     }
 
     private void setSliderValue(SeekBar seekBar, float value, TextView valueView) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            seekBar.setMin(0);
+        }
+        seekBar.setMax(100);
         int progress = Math.max(0, Math.min(100, Math.round(value * 100f)));
         seekBar.setProgress(progress);
         valueView.setText(formatRatio(progress / 100f));
@@ -213,17 +256,5 @@ public class AiModelConfigActivity extends AppCompatActivity {
             return String.format(Locale.getDefault(), "%.0f", value);
         }
         return String.format(Locale.getDefault(), "%.1f", value);
-    }
-
-    private String modelKey(String field) {
-        return AiSettingsStore.modelKey(modelType, field);
-    }
-
-    private String getStringValue(String field, String defaultValue) {
-        return prefs.getString(modelKey(field), defaultValue);
-    }
-
-    private float getFloatValue(String field, float defaultValue) {
-        return prefs.getFloat(modelKey(field), defaultValue);
     }
 }

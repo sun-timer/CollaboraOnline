@@ -1108,7 +1108,10 @@ window.L.Clipboard = window.L.Class.extend({
 	// We try to massage and re-emit these, to get good security event / credentials.
 	filterExecCopyPaste: function(cmd, params) {
 		if (window.ThisIsTheAndroidApp) {
-			// perform internal operations
+			if (cmd === '.uno:Paste' || cmd === '.uno:PasteSpecial') {
+				window.postMobileMessage('CLIPBOARD paste');
+				return true;
+			}
 			app.socket.sendMessage('uno ' + cmd);
 			return true;
 		}
@@ -1196,6 +1199,19 @@ window.L.Clipboard = window.L.Class.extend({
 	copy: function(ev) { return this._doCopyCut(ev, 'Copy'); },
 
 	paste: function(ev) {
+		// Android：键盘/系统粘贴走原生系统剪贴板（Web POST 路径在离线 App 不可用）。
+		if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function'
+			&& !app.isReadOnly()) {
+			if (this._map.isSearching())
+				return;
+			if (this._isAnyInputFieldSelected() && !this._isFormulabarSelected())
+				return;
+			window.postMobileMessage('CLIPBOARD paste');
+			if (ev && ev.preventDefault)
+				ev.preventDefault();
+			return false;
+		}
+
 		if (this._map.isReadOnlyMode())
 			return;
 

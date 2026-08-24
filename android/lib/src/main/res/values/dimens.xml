@@ -3,4 +3,19 @@
     <!-- 编辑模式顶栏：完成按钮左侧留白（竖屏默认 8dp） -->
     <dimen name="top_toolbar_edit_padding_start">8dp</dimen>
     <dimen name="top_toolbar_edit_padding_end">4dp</dimen>
+
+    <!-- Edge-to-edge safe area: extra breathing room beyond system insets -->
+    <dimen name="lolib_inset_top_safe_extra">4dp</dimen>
+    <dimen name="lolib_inset_bottom_safe_extra">8dp</dimen>
+    <!-- When gesture nav reports 0 inset (common on curved / full-screen phones) -->
+    <dimen name="lolib_inset_gesture_min">20dp</dimen>
+    <!-- 3-button navigation bar fallback when system reports 0 inset -->
+    <dimen name="lolib_inset_nav_bar_min">48dp</dimen>
+
+    <!-- Figma @2x → dp：顶栏内容 112px=56dp，底栏内容 164px=82dp -->
+    <dimen name="lolib_top_toolbar_content_height">56dp</dimen>
+    <dimen name="lolib_bottom_toolbar_content_height">82dp</dimen>
+    <!-- Figma 125:12715 功能弹窗 -->
+    <dimen name="lolib_function_sheet_row_height">64dp</dimen>
+    <dimen name="lolib_function_sheet_bottom_pad">34dp</dimen>
 </resources>

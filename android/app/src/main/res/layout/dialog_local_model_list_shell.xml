@@ -15,6 +15,7 @@
         android:clickable="true"
         android:elevation="8dp"
         android:focusable="true"
+        android:maxWidth="@dimen/dialog_content_max_width"
         android:maxHeight="@dimen/local_model_list_max_height"
         android:orientation="vertical">
 

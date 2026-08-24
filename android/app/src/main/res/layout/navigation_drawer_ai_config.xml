@@ -294,10 +294,19 @@
                     android:src="@drawable/ic_chevron_right" />
             </LinearLayout>
 
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/localModelSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical">
+
             <TextView
+                android:id="@+id/localModelSectionTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
                 android:text="@string/ai_local_model"
                 android:textColor="#6A6A6A"
                 android:textSize="@dimen/drawer_ai_hint_text_size" />
@@ -310,8 +319,8 @@
                 android:background="@drawable/bg_model_item"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingStart="@dimen/drawer_model_row_padding_h"
-                android:paddingEnd="@dimen/drawer_model_row_padding_h">
+                android:paddingStart="@dimen/drawer_local_model_card_padding"
+                android:paddingEnd="@dimen/drawer_local_model_card_padding">
 
                 <ImageView
                     android:layout_width="@dimen/drawer_model_icon_size"
@@ -331,14 +340,21 @@
 
                 <TextView
                     android:id="@+id/localInstallButton"
-                    android:layout_width="92dp"
-                    android:layout_height="40dp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/drawer_local_install_btn_margin_start"
+                    android:minWidth="@dimen/drawer_local_install_btn_min_width"
                     android:background="@drawable/bg_local_install_btn"
+                    android:ellipsize="end"
                     android:gravity="center"
+                    android:maxLines="1"
+                    android:paddingStart="@dimen/drawer_local_install_btn_padding_h"
+                    android:paddingTop="@dimen/drawer_local_install_btn_padding_v"
+                    android:paddingEnd="@dimen/drawer_local_install_btn_padding_h"
+                    android:paddingBottom="@dimen/drawer_local_install_btn_padding_v"
                     android:text="@string/install"
                     android:textColor="@android:color/white"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+                    android:textSize="@dimen/drawer_local_install_btn_text_size" />
             </LinearLayout>
 
             <LinearLayout
@@ -356,8 +372,8 @@
                     android:layout_height="@dimen/drawer_model_row_height"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
-                    android:paddingStart="@dimen/drawer_model_row_padding_h"
-                    android:paddingEnd="@dimen/drawer_model_row_padding_h">
+                    android:paddingStart="@dimen/drawer_local_model_card_padding"
+                    android:paddingEnd="@dimen/drawer_local_model_card_padding">
 
                     <ImageView
                         android:layout_width="@dimen/drawer_model_icon_size"
@@ -379,10 +395,6 @@
                         android:id="@+id/localInstalledBadge"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:paddingStart="12dp"
-                        android:paddingTop="6dp"
-                        android:paddingEnd="12dp"
-                        android:paddingBottom="6dp"
                         android:text="@string/local_model_installed_short"
                         android:textColor="#FA6200"
                         android:textSize="@dimen/drawer_model_title_text_size" />
@@ -401,12 +413,18 @@
                     android:layout_height="@dimen/drawer_model_row_height"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
-                    android:paddingStart="@dimen/drawer_model_indented_text_start"
-                    android:paddingEnd="@dimen/drawer_model_row_padding_h">
+                    android:paddingStart="@dimen/drawer_local_model_card_padding"
+                    android:paddingEnd="@dimen/drawer_local_model_card_padding">
+
+                    <View
+                        android:layout_width="@dimen/drawer_local_model_row_icon_frame"
+                        android:layout_height="@dimen/drawer_local_model_row_icon_frame"
+                        android:importantForAccessibility="no" />
 
                     <TextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/drawer_model_row_text_indent_gap"
                         android:layout_weight="1"
                         android:text="@string/ai_local_model_list"
                         android:textColor="#333333"
@@ -434,14 +452,20 @@
                     android:gravity="center_vertical"
                     android:minHeight="@dimen/drawer_model_row_height"
                     android:orientation="horizontal"
-                    android:paddingStart="@dimen/drawer_model_indented_text_start"
+                    android:paddingStart="@dimen/drawer_local_model_card_padding"
                     android:paddingTop="10dp"
-                    android:paddingEnd="@dimen/drawer_model_row_padding_h"
+                    android:paddingEnd="@dimen/drawer_local_model_card_padding"
                     android:paddingBottom="10dp">
+
+                    <View
+                        android:layout_width="@dimen/drawer_local_model_row_icon_frame"
+                        android:layout_height="@dimen/drawer_local_model_row_icon_frame"
+                        android:importantForAccessibility="no" />
 
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/drawer_model_row_text_indent_gap"
                         android:layout_weight="1"
                         android:orientation="vertical">
 

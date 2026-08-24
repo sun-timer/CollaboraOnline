@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -29,6 +30,99 @@ static bool g_backend_inited = false;
 // Per-token decode timing, to separate native decode cost from JNI/Java streaming overhead.
 static long long g_gen_decode_us = 0;
 static int g_gen_decode_count = 0;
+
+// UTF-8 piece 累积缓冲：token 可能切在多字节字符中间，piece 是孤立字节（非法 UTF-8），
+// 直接 NewStringUTF 会触发 ART "input is not valid Modified UTF-8" abort。
+// 累积字节、按完整 UTF-8 序列切分，完整序列转 UTF-16 后用 NewString（不要求 Modified UTF-8）。
+static std::string g_utf8_pending;
+
+// 上次 prefill 的输入 token 序列，用于 doc_qa 多轮 KV 增量复用：
+// 新输入以旧输入为前缀时，截断 KV 到公共前缀、只 prefill 新增 token，避免每轮全量重算。
+static std::vector<llama_token> g_last_prompt_tokens;
+
+// 返回 s 头部完整 UTF-8 序列占用的字节数；尾部不完整序列不计入（等后续 token 补全）。
+static size_t utf8_complete_bytes(const char *s, size_t n) {
+    size_t i = 0;
+    while (i < n) {
+        unsigned char c = (unsigned char) s[i];
+        size_t len;
+        if (c < 0x80) {
+            len = 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            len = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            len = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            len = 4;
+        } else {
+            len = 1; // 孤立 continuation byte 等非法首字节：容错为单字节
+        }
+        if (i + len > n) {
+            break; // 尾部不完整，等更多字节
+        }
+        bool ok = true;
+        for (size_t k = 1; k < len; k++) {
+            if (((unsigned char) s[i + k] & 0xC0) != 0x80) {
+                ok = false;
+                break;
+            }
+        }
+        if (!ok) {
+            len = 1; // continuation 缺失：容错为单字节
+        }
+        i += len;
+    }
+    return i;
+}
+
+// UTF-8 → UTF-16（容忍非法序列，替换为 U+FFFD），供 env->NewString 使用。
+static void utf8_to_utf16(const char *s, size_t n, std::vector<jchar> &out) {
+    out.clear();
+    size_t i = 0;
+    while (i < n) {
+        unsigned char c = (unsigned char) s[i];
+        uint32_t cp;
+        size_t len;
+        if (c < 0x80) {
+            cp = c;
+            len = 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            cp = c & 0x1F;
+            len = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            cp = c & 0x0F;
+            len = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            cp = c & 0x07;
+            len = 4;
+        } else {
+            cp = 0xFFFD;
+            len = 1;
+        }
+        bool valid = (i + len <= n);
+        for (size_t k = 1; valid && k < len; k++) {
+            if (((unsigned char) s[i + k] & 0xC0) != 0x80) {
+                valid = false;
+            }
+        }
+        if (valid) {
+            for (size_t k = 1; k < len; k++) {
+                cp = (cp << 6) | ((unsigned char) s[i + k] & 0x3F);
+            }
+        } else {
+            cp = 0xFFFD;
+            len = 1;
+        }
+        if (cp > 0xFFFF) {
+            cp -= 0x10000;
+            out.push_back((jchar) (0xD800 + (cp >> 10)));
+            out.push_back((jchar) (0xDC00 + (cp & 0x3FF)));
+        } else {
+            out.push_back((jchar) cp);
+        }
+        i += len;
+    }
+}
 
 static void log_fail(const char *reason, const char *detail) {
     __android_log_print(ANDROID_LOG_ERROR, LO_TAG, "local_core_fail reason=%s detail=%s", reason,
@@ -188,6 +282,51 @@ static bool decode_prompt_tokens(const std::vector<llama_token> &tokens) {
     return true;
 }
 
+// 带 KV 增量复用的 prefill：新输入以旧输入为前缀时（doc_qa 多轮），截断 KV 到公共前缀、
+// 只 prefill 新增 token；否则清 KV 全量。token 序列确定性由 llama_chat_apply_template 保证。
+static bool prefill_tokens_with_kv_reuse(const std::vector<llama_token> &tokens) {
+    bool reuse = false;
+    size_t prefix = 0;
+    if (!g_last_prompt_tokens.empty() && tokens.size() >= g_last_prompt_tokens.size()) {
+        bool match = true;
+        for (size_t i = 0; i < g_last_prompt_tokens.size(); i++) {
+            if (tokens[i] != g_last_prompt_tokens[i]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            prefix = g_last_prompt_tokens.size();
+            reuse = true;
+        }
+    }
+
+    if (reuse && prefix > 0) {
+        llama_memory_t mem = llama_get_memory(g_ctx);
+        llama_memory_seq_rm(mem, 0, (llama_pos) prefix, -1);
+        g_n_past = (llama_pos) prefix;
+        __android_log_print(ANDROID_LOG_INFO, LO_TAG,
+                            "local_kv_reuse prefix=%zu total=%zu delta=%zu",
+                            prefix, tokens.size(), tokens.size() - prefix);
+        std::vector<llama_token> delta(tokens.begin() + (long) prefix, tokens.end());
+        if (!decode_prompt_tokens(delta)) {
+            return false;
+        }
+    } else {
+        if (reuse && prefix == 0) {
+            __android_log_print(ANDROID_LOG_INFO, LO_TAG, "local_kv_reuse skip_zero_prefix");
+        }
+        llama_memory_clear(llama_get_memory(g_ctx), false);
+        g_n_past = 0;
+        if (!decode_prompt_tokens(tokens)) {
+            return false;
+        }
+    }
+
+    g_last_prompt_tokens = tokens;
+    return true;
+}
+
 static bool smoke_decode_test() {
     const llama_vocab *vocab = llama_model_get_vocab(g_model);
     std::vector<llama_token> tokens(32);
@@ -292,6 +431,7 @@ Java_org_libreoffice_androidlib_ai_LocalInferenceEngine_nativeLoadModel(JNIEnv *
 
     __android_log_print(ANDROID_LOG_INFO, LO_TAG, "local_load_ok ctx=%u batch=%u threads=%d",
                         cparams.n_ctx, cparams.n_batch, n_threads);
+    g_last_prompt_tokens.clear(); // 新模型：首次 prefill 全量
     return JNI_TRUE;
 }
 
@@ -315,6 +455,8 @@ Java_org_libreoffice_androidlib_ai_LocalInferenceEngine_nativeUnloadModel(JNIEnv
         g_model = nullptr;
     }
     g_n_past = 0;
+    g_utf8_pending.clear();
+    g_last_prompt_tokens.clear();
     if (g_backend_inited) {
         llama_backend_free();
         g_backend_inited = false;
@@ -330,6 +472,7 @@ Java_org_libreoffice_androidlib_ai_LocalInferenceEngine_nativeClearKvCache(JNIEn
     }
     g_gen_decode_us = 0;
     g_gen_decode_count = 0;
+    g_utf8_pending.clear();
 }
 
 static bool prefill_prompt_text(const char *prompt) {
@@ -356,7 +499,7 @@ static bool prefill_prompt_text(const char *prompt) {
 
     __android_log_print(ANDROID_LOG_INFO, LO_TAG, "local_prefill_tokens n=%d promptChars=%zu",
                         n_tokens, strlen(prompt));
-    const bool ok = decode_prompt_tokens(tokens);
+    const bool ok = prefill_tokens_with_kv_reuse(tokens);
     if (ok) {
         __android_log_print(ANDROID_LOG_INFO, LO_TAG, "local_prefill_native_ok n_past=%d", (int) g_n_past);
     }
@@ -461,13 +604,14 @@ Java_org_libreoffice_androidlib_ai_LocalInferenceEngine_nativeSampleToken(JNIEnv
     llama_sampler_accept(g_sampler, next);
 
     if (llama_vocab_is_eog(vocab, next)) {
-        return env->NewStringUTF("");
+        g_utf8_pending.clear();
+        return nullptr; // EOG → Java 侧 break
     }
 
     char piece[512];
     int piece_len = llama_token_to_piece(vocab, next, piece, sizeof(piece), 0, true);
     if (piece_len <= 0) {
-        return env->NewStringUTF("");
+        return nullptr; // 采样失败 → Java 侧停止
     }
 
     batch_clear();
@@ -475,7 +619,7 @@ Java_org_libreoffice_androidlib_ai_LocalInferenceEngine_nativeSampleToken(JNIEnv
     const auto decode_t0 = std::chrono::steady_clock::now();
     if (llama_decode(g_ctx, g_batch) != 0) {
         log_fail("local_infer_fail", "gen_decode");
-        return env->NewStringUTF("");
+        return nullptr;
     }
     const auto decode_us = std::chrono::duration_cast<std::chrono::microseconds>(
                                    std::chrono::steady_clock::now() - decode_t0)
@@ -490,7 +634,16 @@ Java_org_libreoffice_androidlib_ai_LocalInferenceEngine_nativeSampleToken(JNIEnv
     }
     g_n_past++;
 
-    return env->NewStringUTF(std::string(piece, (size_t) piece_len).c_str());
+    // piece 可能只是多字节 UTF-8 字符的一部分：累积字节，只返回完整序列。
+    g_utf8_pending.append(piece, (size_t) piece_len);
+    const size_t complete = utf8_complete_bytes(g_utf8_pending.data(), g_utf8_pending.size());
+    if (complete == 0) {
+        return env->NewStringUTF(""); // 无完整字符 → Java 侧 continue（不是 EOG）
+    }
+    std::vector<jchar> utf16;
+    utf8_to_utf16(g_utf8_pending.data(), complete, utf16);
+    g_utf8_pending.erase(0, complete);
+    return env->NewString(utf16.data(), (jsize) utf16.size());
 }
 
 } // extern "C"

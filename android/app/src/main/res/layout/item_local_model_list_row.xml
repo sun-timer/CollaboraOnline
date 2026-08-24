@@ -10,7 +10,9 @@
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="@dimen/local_model_list_row_padding_h"
-        android:paddingEnd="@dimen/local_model_list_row_padding_h">
+        android:paddingTop="@dimen/local_model_list_row_padding_v"
+        android:paddingEnd="@dimen/local_model_list_row_padding_h"
+        android:paddingBottom="@dimen/local_model_list_row_padding_v">
 
         <TextView
             android:id="@+id/localModelRowName"
@@ -26,17 +28,18 @@
             android:id="@+id/localModelRowAction"
             android:layout_width="wrap_content"
             android:layout_height="@dimen/local_model_list_action_height"
+            android:layout_marginStart="@dimen/local_model_list_row_action_gap"
             android:background="@drawable/bg_local_model_action_btn"
             android:gravity="center"
             android:minWidth="@dimen/local_model_list_action_min_width"
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
-            android:textColor="#333333"
+            android:textColor="#FA6200"
             android:textSize="@dimen/local_model_list_action_text_size" />
     </LinearLayout>
 
     <View
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@drawable/bg_drawer_model_divider" />
+        android:layout_height="1dp"
+        android:background="#D8D8D8" />
 </LinearLayout>

@@ -1,104 +1,94 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- AI排版类型选择 BottomSheet：2×2 网格卡片，每张卡片含文档预览缩略图 -->
-<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Figma 330:32962 AI排版类型选择弹窗 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#F4F6FA"
-    android:descendantFocusability="blocksDescendants"
-    android:focusable="true"
-    android:focusableInTouchMode="true"
-    android:fillViewport="true">
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="16dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingStart="16dp"
-        android:paddingTop="14dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="20dp">
+        android:layout_gravity="center_horizontal"
+        android:background="@drawable/lolib_bg_dialog_outline"
+        android:maxWidth="@dimen/ai_typeset_dialog_width"
+        android:orientation="vertical">
 
-        <!-- ============== Header ============== -->
-        <LinearLayout
+        <!-- 标题栏：60dp，居中标题 + 右侧关闭 -->
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/lolib_bg_ai_panel_header"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="20dp"
-            android:paddingTop="14dp"
-            android:paddingEnd="12dp"
-            android:paddingBottom="14dp">
+            android:layout_height="@dimen/ai_typeset_title_height"
+            android:paddingStart="@dimen/ai_typeset_header_padding_h"
+            android:paddingEnd="@dimen/ai_typeset_header_padding_h">
 
-            <ImageView
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:contentDescription="AI排版"
-                android:src="@drawable/lolib_ic_ai_typeset" />
+            <View
+                android:layout_width="@dimen/ai_sheet_header_close_size"
+                android:layout_height="@dimen/ai_sheet_header_close_size"
+                android:layout_gravity="center_vertical|start"
+                android:importantForAccessibility="no" />
 
             <TextView
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:layout_weight="1"
-                android:text="AI排版"
-                android:textColor="#15171A"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:text="AI 排版"
+                android:textColor="#1F1F1F"
                 android:textSize="20sp"
-                android:textStyle="bold" />
+                android:fontFamily="sans-serif-medium" />
 
-            <ImageButton
+            <FrameLayout
                 android:id="@+id/typeset_select_close"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:layout_width="@dimen/ai_sheet_header_close_size"
+                android:layout_height="@dimen/ai_sheet_header_close_size"
+                android:layout_gravity="center_vertical|end"
+                android:background="@drawable/lolib_bg_typeset_close_circle"
+                android:clickable="true"
                 android:contentDescription="关闭"
-                android:padding="12dp"
-                android:scaleType="centerInside"
-                android:src="@drawable/lolib_ic_dialog_close" />
-        </LinearLayout>
+                android:focusable="true">
 
-        <!-- ============== 提示文字 ============== -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:gravity="center"
-            android:text="选择排版类型，将对文档全文进行智能格式化"
-            android:textColor="#5F6368"
-            android:textSize="14sp" />
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center"
+                    android:importantForAccessibility="no"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/lolib_ic_dialog_close" />
+            </FrameLayout>
+        </FrameLayout>
 
-        <!-- ============== 第一行：论文 + 党政公文 ============== -->
+        <!-- 第一行：论文 + 党政公文 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
             android:baselineAligned="false"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/ai_typeset_content_padding"
+            android:paddingEnd="@dimen/ai_typeset_content_padding">
 
-            <!-- 论文 -->
             <LinearLayout
                 android:id="@+id/typeset_type_paper"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
                 android:layout_weight="1"
-                android:layout_marginEnd="7dp"
-                android:background="@drawable/lolib_bg_typeset_card"
+                android:background="@drawable/lolib_bg_typeset_card_paper_selected"
                 android:clickable="true"
                 android:focusable="true"
+                android:minHeight="@dimen/ai_typeset_card_min_height"
                 android:orientation="vertical"
-                android:padding="10dp">
+                android:padding="@dimen/ai_typeset_card_padding">
 
                 <FrameLayout
                     android:layout_width="match_parent"
-                    android:layout_height="140dp"
-                    android:background="#FFFFFF"
-                    android:padding="10dp">
+                    android:layout_height="@dimen/ai_typeset_card_preview_height"
+                    android:background="@drawable/lolib_bg_typeset_preview_thumb"
+                    android:padding="8dp">
 
                     <ImageView
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:layout_gravity="center"
-                        android:adjustViewBounds="true"
                         android:contentDescription="论文预览"
                         android:scaleType="fitCenter"
                         android:src="@drawable/lolib_preview_paper" />
@@ -107,39 +97,36 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="@dimen/ai_typeset_card_label_margin_top"
                     android:gravity="center"
                     android:text="论文"
                     android:textColor="#101010"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
+                    android:textSize="14sp" />
             </LinearLayout>
 
-            <!-- 党政公文 -->
             <LinearLayout
                 android:id="@+id/typeset_type_gov"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:layout_marginStart="7dp"
-                android:background="@drawable/lolib_bg_typeset_card"
+                android:background="@drawable/lolib_bg_typeset_card_gov"
                 android:clickable="true"
                 android:focusable="true"
+                android:minHeight="@dimen/ai_typeset_card_min_height"
                 android:orientation="vertical"
-                android:padding="10dp">
+                android:padding="@dimen/ai_typeset_card_padding">
 
                 <FrameLayout
                     android:layout_width="match_parent"
-                    android:layout_height="140dp"
-                    android:background="#FFFFFF"
-                    android:padding="10dp">
+                    android:layout_height="@dimen/ai_typeset_card_preview_height"
+                    android:background="@drawable/lolib_bg_typeset_preview_thumb"
+                    android:padding="8dp">
 
                     <ImageView
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:layout_gravity="center"
-                        android:adjustViewBounds="true"
-                        android:contentDescription="公文预览"
+                        android:contentDescription="党政公文预览"
                         android:scaleType="fitCenter"
                         android:src="@drawable/lolib_preview_gov" />
                 </FrameLayout>
@@ -147,47 +134,46 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="@dimen/ai_typeset_card_label_margin_top"
                     android:gravity="center"
                     android:text="党政公文"
                     android:textColor="#101010"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
+                    android:textSize="14sp" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- ============== 第二行：合同协议 + 通用文档 ============== -->
+        <!-- 第二行：合同协议 + 通用文档 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
+            android:layout_marginTop="@dimen/ai_typeset_card_gap"
             android:baselineAligned="false"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/ai_typeset_content_padding"
+            android:paddingEnd="@dimen/ai_typeset_content_padding">
 
-            <!-- 合同协议 -->
             <LinearLayout
                 android:id="@+id/typeset_type_contract"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
                 android:layout_weight="1"
-                android:layout_marginEnd="7dp"
-                android:background="@drawable/lolib_bg_typeset_card"
+                android:background="@drawable/lolib_bg_typeset_card_contract"
                 android:clickable="true"
                 android:focusable="true"
+                android:minHeight="@dimen/ai_typeset_card_min_height"
                 android:orientation="vertical"
-                android:padding="10dp">
+                android:padding="@dimen/ai_typeset_card_padding">
 
                 <FrameLayout
                     android:layout_width="match_parent"
-                    android:layout_height="140dp"
-                    android:background="#FFFFFF"
-                    android:padding="10dp">
+                    android:layout_height="@dimen/ai_typeset_card_preview_height"
+                    android:background="@drawable/lolib_bg_typeset_preview_thumb"
+                    android:padding="8dp">
 
                     <ImageView
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:layout_gravity="center"
-                        android:adjustViewBounds="true"
                         android:contentDescription="合同预览"
                         android:scaleType="fitCenter"
                         android:src="@drawable/lolib_preview_contract" />
@@ -196,38 +182,35 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="@dimen/ai_typeset_card_label_margin_top"
                     android:gravity="center"
                     android:text="合同协议"
                     android:textColor="#101010"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
+                    android:textSize="14sp" />
             </LinearLayout>
 
-            <!-- 通用文档 -->
             <LinearLayout
                 android:id="@+id/typeset_type_general"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:layout_marginStart="7dp"
-                android:background="@drawable/lolib_bg_typeset_card"
+                android:background="@drawable/lolib_bg_typeset_card_general"
                 android:clickable="true"
                 android:focusable="true"
+                android:minHeight="@dimen/ai_typeset_card_min_height"
                 android:orientation="vertical"
-                android:padding="10dp">
+                android:padding="@dimen/ai_typeset_card_padding">
 
                 <FrameLayout
                     android:layout_width="match_parent"
-                    android:layout_height="140dp"
-                    android:background="#FFFFFF"
-                    android:padding="10dp">
+                    android:layout_height="@dimen/ai_typeset_card_preview_height"
+                    android:background="@drawable/lolib_bg_typeset_preview_thumb"
+                    android:padding="8dp">
 
                     <ImageView
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:layout_gravity="center"
-                        android:adjustViewBounds="true"
                         android:contentDescription="通用文档预览"
                         android:scaleType="fitCenter"
                         android:src="@drawable/lolib_preview_general" />
@@ -236,14 +219,35 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="@dimen/ai_typeset_card_label_margin_top"
                     android:gravity="center"
                     android:text="通用文档"
                     android:textColor="#101010"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
+                    android:textSize="14sp" />
             </LinearLayout>
         </LinearLayout>
 
+        <!-- 底部：开始排版 -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="@dimen/ai_typeset_button_padding_h"
+            android:paddingTop="@dimen/ai_typeset_button_padding_v"
+            android:paddingEnd="@dimen/ai_typeset_button_padding_h"
+            android:paddingBottom="@dimen/ai_typeset_button_padding_v">
+
+            <TextView
+                android:id="@+id/typeset_select_start"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/ai_typeset_button_height"
+                android:background="@drawable/lolib_bg_gradient_button_outline"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="开始排版"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp" />
+        </FrameLayout>
+
     </LinearLayout>
-</androidx.core.widget.NestedScrollView>
+</FrameLayout>

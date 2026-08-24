@@ -1,43 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Selection popup: compact 5+5+2 layout per design spec.
-     Row 1: copy/cut/paste/select_all/translate
-     Row 2: outline/continue_write/article_generate/expand/polish
-     Row 3: condense/rewrite (left-aligned) -->
+<!-- Selection popup — Figma 245:7964 (AI Office 平板 2026/8/10)
+     Row1: 复制/剪切/粘贴/全选/翻译
+     Row2: AI 操作 ×5
+     Row3: AI 操作 ×2 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/selection_popup_root"
-    android:layout_width="wrap_content"
+    android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/lolib_bg_selection_popup"
-    android:elevation="6dp"
+    android:clickable="true"
+    android:elevation="8dp"
     android:orientation="vertical"
-    android:paddingStart="10dp"
-    android:paddingTop="6dp"
-    android:paddingEnd="10dp"
-    android:paddingBottom="6dp">
+    android:padding="8dp">
 
-    <!-- Row 1: 全选 / 复制 / 粘贴 / 剪切（Figma 121:8030） + 翻译（编辑模式） -->
+    <!-- Row 1: 基础操作（Figma frame-3468910, h≈56dp） -->
     <LinearLayout
         android:id="@+id/selection_basic_row"
-        android:layout_width="wrap_content"
-        android:layout_height="36dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:minHeight="56dp"
         android:orientation="horizontal">
 
         <LinearLayout
-            android:id="@+id/selection_op_select_all"
-            style="@style/SelectionPopupButton">
-
-            <ImageView
-                style="@style/SelectionPopupButtonIcon"
-                android:src="@drawable/lolib_ic_selection_select_all" />
-
-            <TextView
-                style="@style/SelectionPopupButtonText"
-                android:text="全选" />
-        </LinearLayout>
-
-        <LinearLayout
             android:id="@+id/selection_op_copy"
-            style="@style/SelectionPopupButton">
+            style="@style/SelectionPopupButtonWeighted">
 
             <ImageView
                 style="@style/SelectionPopupButtonIcon"
@@ -49,8 +36,21 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/selection_op_cut"
+            style="@style/SelectionPopupButtonWeighted">
+
+            <ImageView
+                style="@style/SelectionPopupButtonIcon"
+                android:src="@drawable/lolib_ic_selection_cut" />
+
+            <TextView
+                style="@style/SelectionPopupButtonText"
+                android:text="剪切" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/selection_op_paste"
-            style="@style/SelectionPopupButton">
+            style="@style/SelectionPopupButtonWeighted">
 
             <ImageView
                 style="@style/SelectionPopupButtonIcon"
@@ -62,16 +62,16 @@
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/selection_op_cut"
-            style="@style/SelectionPopupButton">
+            android:id="@+id/selection_op_select_all"
+            style="@style/SelectionPopupButtonWeighted">
 
             <ImageView
                 style="@style/SelectionPopupButtonIcon"
-                android:src="@drawable/lolib_ic_selection_cut" />
+                android:src="@drawable/lolib_ic_selection_select_all" />
 
             <TextView
                 style="@style/SelectionPopupButtonText"
-                android:text="剪切" />
+                android:text="全选" />
         </LinearLayout>
 
         <LinearLayout
@@ -118,7 +118,7 @@
 
         <LinearLayout
             android:id="@+id/selection_op_translate"
-            style="@style/SelectionPopupButton">
+            style="@style/SelectionPopupButtonWeighted">
 
             <ImageView
                 style="@style/SelectionPopupButtonIcon"
@@ -130,23 +130,26 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Divider 1 -->
     <View
         android:id="@+id/selection_divider_1"
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="#D8D8D8" />
+        android:layout_marginTop="2dp"
+        android:background="@drawable/lolib_bg_selection_popup_row_divider" />
 
-    <!-- Row 2: AI 操作 (1) -->
+    <!-- Row 2: AI 操作 (Figma frame-3468911, h≈60dp) -->
     <LinearLayout
         android:id="@+id/selection_ai_row_1"
-        android:layout_width="wrap_content"
-        android:layout_height="52dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:gravity="center_vertical"
+        android:minHeight="60dp"
         android:orientation="horizontal">
 
         <LinearLayout
             android:id="@+id/selection_op_outline"
-            style="@style/SelectionPopupButton">
+            style="@style/SelectionPopupButtonWeighted">
 
             <ImageView
                 style="@style/SelectionPopupButtonIcon"
@@ -159,7 +162,7 @@
 
         <LinearLayout
             android:id="@+id/selection_op_continue_write"
-            style="@style/SelectionPopupButton">
+            style="@style/SelectionPopupButtonWeighted">
 
             <ImageView
                 style="@style/SelectionPopupButtonIcon"
@@ -172,7 +175,7 @@
 
         <LinearLayout
             android:id="@+id/selection_op_article_generate"
-            style="@style/SelectionPopupButton">
+            style="@style/SelectionPopupButtonWeighted">
 
             <ImageView
                 style="@style/SelectionPopupButtonIcon"
@@ -185,7 +188,7 @@
 
         <LinearLayout
             android:id="@+id/selection_op_expand"
-            style="@style/SelectionPopupButton">
+            style="@style/SelectionPopupButtonWeighted">
 
             <ImageView
                 style="@style/SelectionPopupButtonIcon"
@@ -198,7 +201,7 @@
 
         <LinearLayout
             android:id="@+id/selection_op_polish"
-            style="@style/SelectionPopupButton">
+            style="@style/SelectionPopupButtonWeighted">
 
             <ImageView
                 style="@style/SelectionPopupButtonIcon"
@@ -210,23 +213,26 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Divider 2 -->
     <View
         android:id="@+id/selection_divider_2"
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="#D8D8D8" />
+        android:layout_marginTop="2dp"
+        android:background="@drawable/lolib_bg_selection_popup_row_divider" />
 
-    <!-- Row 3: AI 操作 (2), left-aligned -->
+    <!-- Row 3: AI 操作 (Figma frame-3468912, h≈56dp) -->
     <LinearLayout
         android:id="@+id/selection_ai_row_2"
-        android:layout_width="wrap_content"
-        android:layout_height="52dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:gravity="center_vertical"
+        android:minHeight="56dp"
         android:orientation="horizontal">
 
         <LinearLayout
             android:id="@+id/selection_op_condense"
-            style="@style/SelectionPopupButtonCompact">
+            style="@style/SelectionPopupButtonWeighted">
 
             <ImageView
                 style="@style/SelectionPopupButtonIcon"
@@ -239,7 +245,7 @@
 
         <LinearLayout
             android:id="@+id/selection_op_rewrite"
-            style="@style/SelectionPopupButtonCompact">
+            style="@style/SelectionPopupButtonWeighted">
 
             <ImageView
                 style="@style/SelectionPopupButtonIcon"
@@ -249,5 +255,13 @@
                 style="@style/SelectionPopupButtonText"
                 android:text="文案重写" />
         </LinearLayout>
+
+        <!-- 占位：与上行五列对齐，右侧空出 3 格 -->
+        <View
+            android:id="@+id/selection_ai_row_2_spacer"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="3"
+            android:importantForAccessibility="no" />
     </LinearLayout>
 </LinearLayout>

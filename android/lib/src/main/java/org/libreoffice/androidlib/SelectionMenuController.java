@@ -4,7 +4,7 @@ import android.content.Context;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewGroup;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -19,7 +19,9 @@ public class SelectionMenuController {
     private static final float POPUP_MARGIN_DP = 16f;
     private static final float POPUP_ANCHOR_GAP_DP = 12f;
     private static final float POPUP_SELECTION_GAP_DP = 24f;
-    private static final float POPUP_MAX_WIDTH_DP = 260f; // 4 × 62dp + padding (Figma 520px)
+    /** Figma 245:7964 outer frame 602px @2x → 301dp max content width. */
+    private static final float POPUP_MAX_WIDTH_DP = 301f;
+    private static final float POPUP_MIN_WIDTH_DP = 220f;
     private static final int[] SELECTION_AI_SECTION_IDS = new int[] {
             R.id.selection_divider_1,
             R.id.selection_ai_row_1,
@@ -40,7 +42,14 @@ public class SelectionMenuController {
 
         void executeUnoCommand(String command);
 
-        void performPasteCommand();
+        void copySelectionToSystemClipboard();
+
+        void cutSelectionToSystemClipboard();
+
+        void pasteFromSystemClipboard();
+
+        /** Same as paste; {@code onComplete} runs after async paste finishes (e.g. hide menu). */
+        void pasteFromSystemClipboard(Runnable onComplete);
 
         void saveDocument();
 
@@ -51,6 +60,9 @@ public class SelectionMenuController {
         void onSelectionPopupShown();
 
         View getBrowserView();
+
+        /** Fallback when bottom toolbar is not laid out yet. */
+        int getOverlayBottomReservedPx();
     }
 
     private final Host host;
@@ -77,26 +89,47 @@ public class SelectionMenuController {
         }
 
         overlayView.setOnClickListener(v -> hide());
+        menuView.setClickable(true);
 
-        host.findViewById(R.id.selection_op_copy).setOnClickListener(v -> onCopy());
-        host.findViewById(R.id.selection_op_delete).setOnClickListener(v -> onDelete());
-        host.findViewById(R.id.selection_op_paste).setOnClickListener(v -> onPaste());
-        host.findViewById(R.id.selection_op_cut).setOnClickListener(v -> onCut());
-        host.findViewById(R.id.selection_op_select_all).setOnClickListener(v -> onSelectAll());
-        host.findViewById(R.id.selection_op_image_edit).setOnClickListener(v -> onImageEdit());
-        host.findViewById(R.id.selection_op_save).setOnClickListener(v -> onSave());
+        bindOp(R.id.selection_op_copy, "copy", this::onCopy);
+        bindOp(R.id.selection_op_delete, "delete", this::onDelete);
+        bindOp(R.id.selection_op_paste, "paste", this::onPaste);
+        bindOp(R.id.selection_op_cut, "cut", this::onCut);
+        bindOp(R.id.selection_op_select_all, "select_all", this::onSelectAll);
+        bindOp(R.id.selection_op_image_edit, "image_edit", this::onImageEdit);
+        bindOp(R.id.selection_op_save, "save", this::onSave);
 
-        host.findViewById(R.id.selection_op_translate).setOnClickListener(v -> onAiOperation("translate"));
-        host.findViewById(R.id.selection_op_outline).setOnClickListener(v -> onAiOperation("outline"));
-        host.findViewById(R.id.selection_op_continue_write).setOnClickListener(v -> onAiOperation("continue_write"));
-        host.findViewById(R.id.selection_op_article_generate).setOnClickListener(v -> onAiOperation("article_generate"));
-        host.findViewById(R.id.selection_op_expand).setOnClickListener(v -> onAiOperation("expand"));
-        host.findViewById(R.id.selection_op_polish).setOnClickListener(v -> onAiOperation("polish"));
-        host.findViewById(R.id.selection_op_condense).setOnClickListener(v -> onAiOperation("condense"));
-        host.findViewById(R.id.selection_op_rewrite).setOnClickListener(v -> onAiOperation("rewrite"));
+        bindOp(R.id.selection_op_translate, "translate", () -> onAiOperation("translate"));
+        bindOp(R.id.selection_op_outline, "outline", () -> onAiOperation("outline"));
+        bindOp(R.id.selection_op_continue_write, "continue_write", () -> onAiOperation("continue_write"));
+        bindOp(R.id.selection_op_article_generate, "article_generate", () -> onAiOperation("article_generate"));
+        bindOp(R.id.selection_op_expand, "expand", () -> onAiOperation("expand"));
+        bindOp(R.id.selection_op_polish, "polish", () -> onAiOperation("polish"));
+        bindOp(R.id.selection_op_condense, "condense", () -> onAiOperation("condense"));
+        bindOp(R.id.selection_op_rewrite, "rewrite", () -> onAiOperation("rewrite"));
 
         updateEditActionVisibility();
         hide();
+    }
+
+    private interface OpAction {
+        void run();
+    }
+
+    /** Prefer menuView subtree lookup (include layout); fall back to activity root. */
+    private void bindOp(int viewId, String opName, OpAction action) {
+        View target = menuView != null ? menuView.findViewById(viewId) : null;
+        if (target == null) {
+            target = host.findViewById(viewId);
+        }
+        if (target == null) {
+            Log.e(TAG, "selection_op_missing id=" + opName + " viewId=" + viewId);
+            return;
+        }
+        target.setOnClickListener(v -> {
+            Log.i(TAG, "selection_op_click op=" + opName);
+            action.run();
+        });
     }
 
     /** @param windowX anchor X in document-area coordinates (from JS). */
@@ -120,6 +153,9 @@ public class SelectionMenuController {
 
         menuView.setVisibility(View.VISIBLE);
         overlayView.setVisibility(View.VISIBLE);
+        // 保证浮层在 WebView/底栏之上接收触摸（部分机型 elevation 不足会点透）
+        overlayView.setElevation(58f);
+        menuView.setElevation(60f);
         menuView.bringToFront();
         overlayView.bringToFront();
         ViewGroup parent = (ViewGroup) menuView.getParent();
@@ -194,6 +230,10 @@ public class SelectionMenuController {
         float margin = dpToPx(POPUP_MARGIN_DP);
         float anchorGap = dpToPx(POPUP_ANCHOR_GAP_DP);
         float selectionGap = dpToPx(POPUP_SELECTION_GAP_DP);
+        View bottomToolbar = host.findViewById(R.id.doc_bottom_toolbar);
+        int bottomReserved = DocumentOverlayInsets.resolveBottomReservedPx(
+                (View) parent, bottomToolbar, host.getOverlayBottomReservedPx());
+        float maxContentBottom = parentHeight - bottomReserved - margin;
 
         float x;
         float y;
@@ -201,7 +241,7 @@ public class SelectionMenuController {
         if (pendingAnchorX == 0f && pendingAnchorY == 0f) {
             // Fallback for legacy bundle without coordinates.
             x = (parentWidth - menuWidth) / 2f;
-            y = Math.max(margin, (parentHeight - menuHeight) / 2f - dpToPx(40));
+            y = Math.max(margin, (maxContentBottom - menuHeight) / 2f);
         } else {
             View browser = host.getBrowserView();
             float baseX = browser != null ? browser.getLeft() : 0f;
@@ -215,12 +255,12 @@ public class SelectionMenuController {
 
             float selectionCenterY = (anchorY + anchorBottomY) / 2f;
             float spaceAbove = selectionCenterY - margin;
-            float spaceBelow = parentHeight - selectionCenterY - margin;
+            float spaceBelow = maxContentBottom - selectionCenterY;
             float aboveTop = anchorY - menuHeight - anchorGap;
             float belowTop = anchorBottomY + selectionGap;
 
             boolean canPlaceAbove = aboveTop >= margin;
-            boolean canPlaceBelow = belowTop + menuHeight <= parentHeight - margin;
+            boolean canPlaceBelow = belowTop + menuHeight <= maxContentBottom;
             boolean preferAbove = spaceAbove >= spaceBelow;
 
             if (preferAbove && canPlaceAbove) {
@@ -230,9 +270,10 @@ public class SelectionMenuController {
             } else if (canPlaceAbove) {
                 y = aboveTop;
             } else {
-                y = Math.max(margin, Math.min(belowTop, parentHeight - menuHeight - margin));
+                y = Math.max(margin, Math.min(belowTop, maxContentBottom - menuHeight));
             }
-            y = Math.max(margin, Math.min(y, parentHeight - menuHeight - margin));
+            y = DocumentOverlayInsets.clampTopInParent(
+                    y, menuHeight, parentHeight, margin, bottomReserved);
         }
 
         ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) menuView.getLayoutParams();
@@ -248,31 +289,42 @@ public class SelectionMenuController {
     }
 
     private void onSelectAll() {
-        hide();
         host.executeUnoCommand(".uno:SelectAll");
+        hide();
     }
 
     private void onCopy() {
+        host.copySelectionToSystemClipboard();
         hide();
-        host.executeUnoCommand(".uno:Copy");
     }
 
     private void onPaste() {
-        hide();
         if (!host.isDocEditable()) {
             toastReadOnlyDocument();
             return;
         }
-        host.ensureEditModeThen(host::performPasteCommand);
+        runEditSensitiveClipboardAction(() ->
+                host.pasteFromSystemClipboard(this::hide));
     }
 
     private void onCut() {
-        hide();
         if (!host.isDocEditable()) {
             toastReadOnlyDocument();
             return;
         }
-        host.ensureEditModeThen(() -> host.executeUnoCommand(".uno:Cut"));
+        runEditSensitiveClipboardAction(() -> {
+            host.cutSelectionToSystemClipboard();
+            hide();
+        });
+    }
+
+    /** Run immediately in edit mode; otherwise switch to edit first (keeps UNO after mode ready). */
+    private void runEditSensitiveClipboardAction(Runnable action) {
+        if (host.isEditModeActive()) {
+            action.run();
+        } else {
+            host.ensureEditModeThen(action);
+        }
     }
 
     private void onDelete() {
@@ -331,6 +383,7 @@ public class SelectionMenuController {
             }
             updateActionLabel(R.id.selection_op_delete, "清除");
             updatePopupWidth(false);
+            applyPopupButtonLayout(false);
         } else if (graphicMode) {
             // Impress 图形选中：单行紧凑浮层（复制/剪切/粘贴/删除/图片编辑/保存）
             setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
@@ -346,6 +399,7 @@ public class SelectionMenuController {
                 setViewVisibility(sectionId, View.GONE);
             }
             updatePopupWidthForGraphic();
+            applyPopupButtonLayout(false);
         } else {
             updateActionLabel(R.id.selection_op_delete, "删除");
             setViewVisibility(R.id.selection_op_delete, View.GONE);
@@ -360,7 +414,50 @@ public class SelectionMenuController {
             for (int sectionId : SELECTION_AI_SECTION_IDS) {
                 setViewVisibility(sectionId, editMode ? View.VISIBLE : View.GONE);
             }
-            updatePopupWidth(editMode);
+            updatePopupWidth(true);
+            applyPopupButtonLayout(true);
+        }
+    }
+
+    /** Weighted equal cells (Writer) vs fixed-width chips (graphic/calc). */
+    private void applyPopupButtonLayout(boolean weighted) {
+        int[] actionIds = new int[] {
+                R.id.selection_op_copy,
+                R.id.selection_op_cut,
+                R.id.selection_op_paste,
+                R.id.selection_op_select_all,
+                R.id.selection_op_delete,
+                R.id.selection_op_image_edit,
+                R.id.selection_op_save,
+                R.id.selection_op_translate,
+                R.id.selection_op_outline,
+                R.id.selection_op_continue_write,
+                R.id.selection_op_article_generate,
+                R.id.selection_op_expand,
+                R.id.selection_op_polish,
+                R.id.selection_op_condense,
+                R.id.selection_op_rewrite,
+        };
+        for (int actionId : actionIds) {
+            View action = host.findViewById(actionId);
+            if (!(action instanceof ViewGroup)) {
+                continue;
+            }
+            ViewGroup.LayoutParams lp = action.getLayoutParams();
+            if (!(lp instanceof LinearLayout.LayoutParams)) {
+                continue;
+            }
+            LinearLayout.LayoutParams rowLp = (LinearLayout.LayoutParams) lp;
+            if (weighted) {
+                rowLp.width = 0;
+                rowLp.weight = 1f;
+                rowLp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            } else {
+                rowLp.width = Math.round(dpToPx(62f));
+                rowLp.weight = 0f;
+                rowLp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+            }
+            action.setLayoutParams(rowLp);
         }
     }
 
@@ -395,7 +492,7 @@ public class SelectionMenuController {
         }
     }
 
-    private void updatePopupWidth(boolean showEditActions) {
+    private void updatePopupWidth(boolean fillAvailable) {
         if (menuView == null) {
             return;
         }
@@ -403,23 +500,33 @@ public class SelectionMenuController {
         if (lp == null) {
             return;
         }
-        if (showEditActions) {
-            View parent = (View) menuView.getParent();
-            int parentWidth = parent != null ? parent.getWidth() : 0;
-            int maxWidth = Math.round(dpToPx(POPUP_MAX_WIDTH_DP));
-            if (parentWidth > 0) {
-                maxWidth = Math.min(maxWidth, parentWidth - Math.round(dpToPx(32)));
-            }
-            if (lp.width != maxWidth) {
-                lp.width = maxWidth;
-                menuView.setLayoutParams(lp);
-            }
+        int targetWidth;
+        if (fillAvailable) {
+            targetWidth = computePopupTargetWidth();
+        } else if (calcMode || graphicMode) {
+            lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+            menuView.setLayoutParams(lp);
+            return;
         } else {
-            if (lp.width != ViewGroup.LayoutParams.WRAP_CONTENT) {
-                lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
-                menuView.setLayoutParams(lp);
-            }
+            targetWidth = computePopupTargetWidth();
         }
+        if (lp.width != targetWidth) {
+            lp.width = targetWidth;
+            menuView.setLayoutParams(lp);
+        }
+    }
+
+    /** Available document width capped at Figma max (245:7964). */
+    private int computePopupTargetWidth() {
+        View parent = menuView != null ? (View) menuView.getParent() : null;
+        int parentWidth = parent != null ? parent.getWidth() : 0;
+        int maxWidth = Math.round(dpToPx(POPUP_MAX_WIDTH_DP));
+        int minWidth = Math.round(dpToPx(POPUP_MIN_WIDTH_DP));
+        if (parentWidth > 0) {
+            int available = parentWidth - Math.round(dpToPx(32f));
+            return Math.max(minWidth, Math.min(maxWidth, available));
+        }
+        return maxWidth;
     }
 
     private float dpToPx(float dp) {

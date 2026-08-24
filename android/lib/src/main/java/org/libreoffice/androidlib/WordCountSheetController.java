@@ -33,6 +33,8 @@ public class WordCountSheetController {
         android.content.Context getContext();
 
         int dpToPx(int dp);
+
+        int getBottomChromeHeightPx();
     }
 
     private final Host host;
@@ -73,8 +75,8 @@ public class WordCountSheetController {
                 onDismiss.run();
             }
         });
+        dialog.setOnShowListener(d -> expandSheet(panel));
         dialog.show();
-        expandSheet(panel);
     }
 
     public void update(JSONObject payload) {
@@ -178,6 +180,11 @@ public class WordCountSheetController {
         BottomSheetStyleHelper.applyFigmaPanel(dialog, contentRoot, host.dpToPx(28));
         BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
         options.logTag = "WordCountSheet";
+        options.draggable = false;
+        options.applyNavBarPadding = false;
+        options.internalBottomDesignPadPx = contentRoot.getResources()
+                .getDimensionPixelSize(org.libreoffice.androidlib.R.dimen.lolib_function_sheet_bottom_pad);
+        BottomSheetAnchorHelper.clearAppliedHeight(dialog);
         BottomSheetAnchorHelper.expandWrapContent(dialog, 0.92f, options);
     }
 }

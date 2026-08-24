@@ -1,5 +1,6 @@
 package org.libreoffice.androidlib.ai;
 
+import android.content.Context;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.util.Log;
@@ -20,11 +21,14 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.R;
+import org.libreoffice.androidlib.SystemUiHelper;
 
 public class AiPanelController {
     private static final String TAG = "AiPanelController";
     /** Figma 129:7199：750×960 面板在 1624 屏上 y=664 → 960/1624。 */
     private static final float SHEET_HEIGHT_RATIO = 960f / 1624f;
+    /** Re-anchor after activity IME dismisses (BottomSheet opens while keyboard may still be visible). */
+    private static final long SHEET_IME_SETTLE_MS = 200L;
 
     public interface ScrollCallbacks {
         boolean canMessagesScrollConsume(float deltaY);
@@ -40,6 +44,7 @@ public class AiPanelController {
     private int lastScreenHeight = 0;
     private int lastScreenWidth = 0;
     private int lastNavBarHeight = 0;
+    private int lastAnchorAboveBottomPx = 0;
     private int lastImeBottom = 0;
     private boolean lastImeVisible = false;
     private int baseExpandedOffset = 0;
@@ -55,6 +60,13 @@ public class AiPanelController {
 
     public void configureBottomSheet(BottomSheetDialog dialog, View contentRoot,
             int screenHeight, int screenWidth, int orientation, Runnable onExpanded) {
+        configureBottomSheet(dialog, contentRoot, screenHeight, screenWidth, orientation,
+                onExpanded, 0);
+    }
+
+    public void configureBottomSheet(BottomSheetDialog dialog, View contentRoot,
+            int screenHeight, int screenWidth, int orientation, Runnable onExpanded,
+            int anchorAboveBottomPx) {
         if (dialog == null) {
             return;
         }
@@ -66,8 +78,9 @@ public class AiPanelController {
         sheetExpandedOnce = false;
         lastScreenHeight = screenHeight;
         lastScreenWidth = screenWidth;
+        lastAnchorAboveBottomPx = Math.max(0, anchorAboveBottomPx);
         ensureBottomSheetContentMatchParent(contentRoot);
-        prepareDialogWindow(dialog, screenWidth, screenHeight);
+        prepareDialogWindow(dialog, screenWidth, screenHeight, contentRoot);
 
         BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
         anchoredBehavior = behavior;
@@ -75,8 +88,9 @@ public class AiPanelController {
         float targetRatio = isLandscape ? 0.52f : SHEET_HEIGHT_RATIO;
         int ratioHeight = Math.round(screenHeight * targetRatio);
         Resources res = contentRoot != null ? contentRoot.getResources() : bottomSheet.getResources();
+        Context context = contentRoot != null ? contentRoot.getContext() : bottomSheet.getContext();
         int minHeight = computeMinPanelHeightPx(res);
-        int navBarHeight = getNavigationBarHeightPx(res);
+        int navBarHeight = resolveInitialBottomInset(context, contentRoot);
         int targetHeight = Math.max(ratioHeight, minHeight);
         lastTargetHeight = targetHeight;
         lastNavBarHeight = navBarHeight;
@@ -85,13 +99,14 @@ public class AiPanelController {
         applyBottomSheetLayout(bottomSheet, layoutParams, targetHeight);
         bottomSheet.setBackgroundResource(android.R.color.transparent);
         bottomSheet.setClipToPadding(false);
-        applySheetScrim(dialog);
+        applySheetPresentation(dialog);
         if (contentRoot != null) {
             contentRoot.setElevation(dpToPx(contentRoot, 8));
             if (contentRoot instanceof ViewGroup) {
                 ((ViewGroup) contentRoot).setClipToPadding(false);
             }
-            applyContentBottomPadding(contentRoot, navBarHeight);
+            applyContentBottomPadding(contentRoot,
+                    SystemUiHelper.bottomContentSafePaddingPx(context));
         }
 
         behavior.setFitToContents(false);
@@ -100,14 +115,26 @@ public class AiPanelController {
         behavior.setDraggable(false);
         installSheetInsets(dialog, contentRoot);
 
-        bottomSheet.post(() -> {
+        bottomSheet.post(() -> postSheetAnchorWithImeSettle(() -> {
             refreshExpandedOffset(bottomSheet, "configure");
             applySheetAnchor(bottomSheet, behavior, "ai_sheet_expanded", true);
             logLayoutMetrics("ai_sheet_expanded", bottomSheet, contentRoot);
             if (onExpanded != null) {
                 onExpanded.run();
             }
-        });
+        }));
+    }
+
+    private void postSheetAnchorWithImeSettle(Runnable anchorTask) {
+        if (anchorTask == null) {
+            return;
+        }
+        anchorTask.run();
+        View anchor = insetContentRoot;
+        if (anchor == null) {
+            return;
+        }
+        anchor.postDelayed(anchorTask, SHEET_IME_SETTLE_MS);
     }
 
     /** Tab 切换后仅同步 offset/peek，不触发 setState 动画。 */
@@ -123,7 +150,8 @@ public class AiPanelController {
         applySheetAnchor(bottomSheet, anchoredBehavior, "ai_sheet_sync", false);
         View contentRoot = bottomSheet.getChildCount() > 0 ? bottomSheet.getChildAt(0) : null;
         if (contentRoot != null) {
-            applyContentBottomPadding(contentRoot, lastNavBarHeight);
+            applyContentBottomPadding(contentRoot,
+                    SystemUiHelper.bottomContentSafePaddingPx(contentRoot.getContext()));
         }
         logLayoutMetrics("ai_sheet_sync", bottomSheet, contentRoot);
     }
@@ -136,8 +164,12 @@ public class AiPanelController {
         }
         // 可见区域以 screen 为准；parent 可能比 screen 更高（日志 sheetBottom=3858 > screen 2880）
         int visibleBottom = Math.min(coordinatorHeight, lastScreenHeight);
-        int bottomInset = lastImeVisible && lastImeBottom > 0 ? lastImeBottom : lastNavBarHeight;
-        baseExpandedOffset = Math.max(0, visibleBottom - lastTargetHeight - bottomInset);
+        int effectiveAnchor = SystemUiHelper.resolveSheetAnchorAboveBottomPx(
+                lastAnchorAboveBottomPx, lastImeVisible, lastImeBottom);
+        int bottomInset = SystemUiHelper.resolveSheetAnchorBottomInset(
+                lastImeVisible, lastImeBottom, lastNavBarHeight, effectiveAnchor);
+        baseExpandedOffset = Math.max(0, visibleBottom - lastTargetHeight - bottomInset
+                - effectiveAnchor);
         if (anchoredBehavior != null) {
             anchoredBehavior.setExpandedOffset(baseExpandedOffset);
         }
@@ -146,6 +178,8 @@ public class AiPanelController {
                 + " visibleBottom=" + visibleBottom
                 + " target=" + lastTargetHeight
                 + " navBar=" + lastNavBarHeight
+                + " anchorAbove=" + lastAnchorAboveBottomPx
+                + " effectiveAnchor=" + effectiveAnchor
                 + " imeVisible=" + lastImeVisible
                 + " imeBottom=" + lastImeBottom
                 + " bottomInset=" + bottomInset
@@ -200,6 +234,13 @@ public class AiPanelController {
 
     public void configureBottomSheetFitContent(BottomSheetDialog dialog, View contentRoot,
             int screenHeight, int screenWidth, int orientation, float maxScreenRatio) {
+        configureBottomSheetFitContent(dialog, contentRoot, screenHeight, screenWidth, orientation,
+                maxScreenRatio, 0);
+    }
+
+    public void configureBottomSheetFitContent(BottomSheetDialog dialog, View contentRoot,
+            int screenHeight, int screenWidth, int orientation, float maxScreenRatio,
+            int anchorAboveBottomPx) {
         if (dialog == null || contentRoot == null) {
             return;
         }
@@ -211,9 +252,35 @@ public class AiPanelController {
         sheetExpandedOnce = false;
         lastScreenHeight = screenHeight;
         lastScreenWidth = screenWidth;
+        lastAnchorAboveBottomPx = Math.max(0, anchorAboveBottomPx);
         ensureBottomSheetContentWrapHeight(contentRoot);
-        prepareDialogWindow(dialog, screenWidth, screenHeight);
-        boolean isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE || screenWidth > screenHeight;
+        prepareDialogWindow(dialog, screenWidth, screenHeight, contentRoot);
+        Context context = contentRoot.getContext();
+
+        BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
+        anchoredBehavior = behavior;
+        bottomSheet.setBackgroundResource(android.R.color.transparent);
+        applySheetPresentation(dialog);
+
+        behavior.setFitToContents(false);
+        behavior.setSkipCollapsed(true);
+        behavior.setHideable(false);
+        behavior.setDraggable(false);
+        installSheetInsets(dialog, contentRoot);
+
+        bottomSheet.post(() -> postSheetAnchorWithImeSettle(() -> applyFitContentAnchor(
+                bottomSheet, behavior, contentRoot, context, screenWidth, screenHeight,
+                orientation, maxScreenRatio, "fit_content", true)));
+    }
+
+    private void applyFitContentAnchor(FrameLayout bottomSheet, BottomSheetBehavior<View> behavior,
+            View contentRoot, Context context, int screenWidth, int screenHeight,
+            int orientation, float maxScreenRatio, String reason, boolean allowExpandState) {
+        if (bottomSheet == null || behavior == null || contentRoot == null || context == null) {
+            return;
+        }
+        boolean isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
+                || screenWidth > screenHeight;
         float ratioCap = maxScreenRatio > 0f ? maxScreenRatio : (isLandscape ? 0.52f : 0.55f);
         int maxHeight = (int) (screenHeight * ratioCap);
 
@@ -227,40 +294,43 @@ public class AiPanelController {
             minHeight = Math.max(minHeight,
                     contentRoot.getResources().getDimensionPixelSize(R.dimen.ai_sheet_calc_min_height));
         }
-        int navBarHeight = getNavigationBarHeightPx(contentRoot.getResources());
         int targetHeight = Math.min(Math.max(Math.max(contentHeight, minHeight), 1), maxHeight);
 
         lastTargetHeight = targetHeight;
-        lastNavBarHeight = navBarHeight;
-
-        BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
-        anchoredBehavior = behavior;
+        lastNavBarHeight = resolveInitialBottomInset(context, contentRoot);
         ensureBottomSheetContentMatchParent(contentRoot);
         applyBottomSheetLayout(bottomSheet, bottomSheet.getLayoutParams(), targetHeight);
-        bottomSheet.setBackgroundResource(android.R.color.transparent);
-        applySheetScrim(dialog);
-        applyContentBottomPadding(contentRoot, navBarHeight);
+        applyContentBottomPadding(contentRoot, SystemUiHelper.bottomContentSafePaddingPx(context));
 
-        behavior.setFitToContents(false);
-        behavior.setSkipCollapsed(true);
-        behavior.setHideable(false);
-        behavior.setDraggable(false);
-        installSheetInsets(dialog, contentRoot);
-
-        bottomSheet.post(() -> {
-            refreshExpandedOffset(bottomSheet, "fit_content");
-            applySheetAnchor(bottomSheet, behavior, "ai_sheet_fit_content", true);
-            logLayoutMetrics("ai_sheet_fit_content", bottomSheet, contentRoot);
-        });
+        refreshExpandedOffset(bottomSheet, reason);
+        applySheetAnchor(bottomSheet, behavior, "ai_sheet_" + reason, allowExpandState);
+        logLayoutMetrics("ai_sheet_" + reason, bottomSheet, contentRoot);
     }
 
-    private static void prepareDialogWindow(BottomSheetDialog dialog, int screenWidth, int screenHeight) {
+    private static void prepareDialogWindow(BottomSheetDialog dialog, int screenWidth, int screenHeight,
+            View contentRoot) {
         if (dialog == null || dialog.getWindow() == null) {
             return;
         }
         WindowCompat.setDecorFitsSystemWindows(dialog.getWindow(), false);
         dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
         dialog.getWindow().setLayout(screenWidth, screenHeight);
+        Context context = contentRoot != null ? contentRoot.getContext() : dialog.getContext();
+        SystemUiHelper.applyBottomSheetChrome(context, dialog.getWindow());
+    }
+
+    private static int resolveInitialBottomInset(Context context, View anchor) {
+        WindowInsetsCompat insets = anchor != null
+                ? ViewCompat.getRootWindowInsets(anchor) : null;
+        if (insets != null && context != null) {
+            return SystemUiHelper.bottomInsetForSheet(context, insets);
+        }
+        if (context != null) {
+            Resources res = context.getResources();
+            return getNavigationBarHeightPx(res)
+                    + SystemUiHelper.getBottomSafeExtraPx(context);
+        }
+        return 0;
     }
 
     private static void applyContentBottomPadding(View contentRoot, int navBarHeight) {
@@ -277,14 +347,14 @@ public class AiPanelController {
         insetDialog = dialog;
         insetContentRoot = contentRoot;
         Resources res = contentRoot.getResources();
-        final int navFallback = getNavigationBarHeightPx(res);
+        Context context = contentRoot.getContext();
         androidx.core.view.OnApplyWindowInsetsListener insetListener = (v, insets) -> {
-            int navBottom = Math.max(
-                    insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom, navFallback);
-            lastNavBarHeight = navBottom;
             lastImeVisible = insets.isVisible(WindowInsetsCompat.Type.ime());
             lastImeBottom = lastImeVisible
                     ? insets.getInsets(WindowInsetsCompat.Type.ime()).bottom : 0;
+            lastNavBarHeight = lastImeVisible && lastImeBottom > 0
+                    ? lastImeBottom
+                    : SystemUiHelper.bottomInsetForSheet(context, insets);
             FrameLayout bottomSheet = insetDialog != null
                     ? insetDialog.findViewById(com.google.android.material.R.id.design_bottom_sheet) : null;
             if (bottomSheet != null) {
@@ -292,11 +362,13 @@ public class AiPanelController {
                 applySheetAnchor(bottomSheet, anchoredBehavior, "ai_sheet_insets", false);
             }
             if (insetContentRoot != null) {
-                applyContentBottomPadding(insetContentRoot, lastImeVisible ? 0 : navBottom);
+                applyContentBottomPadding(insetContentRoot, lastImeVisible
+                        ? 0
+                        : SystemUiHelper.bottomContentSafePaddingPx(context));
             }
             Log.i(TAG, "ai_sheet_insets imeVisible=" + lastImeVisible
                     + " imeBottom=" + lastImeBottom
-                    + " navBottom=" + navBottom
+                    + " navBar=" + lastNavBarHeight
                     + " expandedOffset=" + baseExpandedOffset
                     + " contentPadBottom=" + (insetContentRoot != null
                             ? insetContentRoot.getPaddingBottom() : -1));
@@ -365,14 +437,9 @@ public class AiPanelController {
                 + " contentPadBottom=" + (contentRoot != null ? contentRoot.getPaddingBottom() : -1));
     }
 
-    private static void applySheetScrim(BottomSheetDialog dialog) {
-        if (dialog == null || dialog.getWindow() == null) {
-            return;
-        }
-        WindowManager.LayoutParams params = dialog.getWindow().getAttributes();
-        params.dimAmount = 0.28f;
-        dialog.getWindow().setAttributes(params);
-        dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+    /** 与功能面板一致：无窗口遮罩，避免三键导航区被 dim 成灰条。 */
+    private static void applySheetPresentation(BottomSheetDialog dialog) {
+        AiDialogHelper.applyNoDimScrim(dialog);
     }
 
     private static int dpToPx(View view, int dp) {
@@ -451,6 +518,7 @@ public class AiPanelController {
         lastScreenHeight = 0;
         lastScreenWidth = 0;
         lastNavBarHeight = 0;
+        lastAnchorAboveBottomPx = 0;
         lastImeBottom = 0;
         lastImeVisible = false;
         baseExpandedOffset = 0;

@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Figma 125:12715 / 125:12974 预览态功能弹窗：750×696@2x，行 128px=64dp，底 pad 68px=34dp -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="#FFFFFF"
     android:orientation="vertical"
-    android:paddingStart="16dp"
-    android:paddingTop="16dp"
-    android:paddingEnd="16dp"
-    android:paddingBottom="24dp">
+    android:paddingBottom="@dimen/lolib_function_sheet_bottom_pad">
 
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="48dp">
+        android:layout_height="@dimen/function_sheet_header_height"
+        android:paddingStart="@dimen/function_sheet_header_padding_h"
+        android:paddingEnd="@dimen/function_sheet_header_padding_h">
 
         <TextView
             android:layout_width="match_parent"
@@ -19,147 +19,145 @@
             android:gravity="center"
             android:text="功能"
             android:textColor="#15171A"
-            android:textSize="18sp"
-            android:textStyle="normal"
+            android:textSize="@dimen/function_sheet_title_text_size"
             android:fontFamily="sans-serif-medium" />
 
         <ImageButton
             android:id="@+id/function_sheet_close"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="@dimen/function_sheet_close_size"
+            android:layout_height="@dimen/function_sheet_close_size"
             android:layout_gravity="end|center_vertical"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="关闭"
-            android:padding="12dp"
+            android:padding="@dimen/function_sheet_close_icon_padding"
             android:scaleType="centerInside"
             android:src="@drawable/lolib_ic_dialog_close" />
     </FrameLayout>
 
-    <!-- Figma 125:12715：大框高 76px(38dp) 圆角 12dp，内含两个小框高 60px(30dp) 圆角 8dp -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="38dp"
-        android:layout_marginTop="16dp"
+        android:layout_height="@dimen/function_sheet_tab_track_height"
+        android:layout_marginStart="@dimen/function_sheet_content_margin_h"
+        android:layout_marginTop="@dimen/function_sheet_section_gap"
+        android:layout_marginEnd="@dimen/function_sheet_content_margin_h"
         android:background="@drawable/lolib_bg_function_tab_track"
         android:orientation="horizontal"
-        android:padding="4dp">
+        android:paddingStart="@dimen/function_sheet_tab_track_padding_h"
+        android:paddingTop="@dimen/function_sheet_tab_track_padding_v"
+        android:paddingEnd="@dimen/function_sheet_tab_track_padding_h"
+        android:paddingBottom="@dimen/function_sheet_tab_track_padding_v">
 
         <TextView
             android:id="@+id/function_tab_file"
             android:layout_width="0dp"
-            android:layout_height="30dp"
+            android:layout_height="@dimen/function_sheet_tab_item_height"
             android:layout_weight="1"
             android:background="@drawable/lolib_bg_function_tab_active"
             android:gravity="center"
             android:text="文件操作"
             android:textColor="#101010"
-            android:textSize="16sp"
-            android:textStyle="normal" />
+            android:textSize="@dimen/function_sheet_tab_text_size" />
 
         <TextView
             android:id="@+id/function_tab_review"
             android:layout_width="0dp"
-            android:layout_height="30dp"
-            android:layout_marginStart="4dp"
+            android:layout_height="@dimen/function_sheet_tab_item_height"
+            android:layout_marginStart="@dimen/function_sheet_tab_gap"
             android:layout_weight="1"
             android:background="@drawable/lolib_bg_function_tab_inactive"
             android:gravity="center"
             android:text="审阅"
             android:textColor="#6A6A6A"
-            android:textSize="16sp"
-            android:textStyle="normal" />
+            android:textSize="@dimen/function_sheet_tab_text_size" />
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/function_file_list"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginStart="@dimen/function_sheet_content_margin_h"
+        android:layout_marginTop="@dimen/function_sheet_section_gap"
+        android:layout_marginEnd="@dimen/function_sheet_content_margin_h"
         android:orientation="vertical">
 
         <LinearLayout
             android:id="@+id/function_action_save"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="@dimen/function_sheet_row_height"
+            android:background="@drawable/lolib_bg_function_sheet_row_bottom_border"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
+            android:paddingStart="@dimen/function_sheet_row_padding_h"
+            android:paddingTop="@dimen/function_sheet_row_padding_v"
+            android:paddingEnd="@dimen/function_sheet_row_padding_h"
+            android:paddingBottom="@dimen/function_sheet_row_padding_v">
 
             <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="@dimen/function_sheet_row_icon_size"
+                android:layout_height="@dimen/function_sheet_row_icon_size"
                 android:contentDescription="保存"
                 android:src="@drawable/lolib_ic_function_save" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
+                android:layout_marginStart="@dimen/function_sheet_row_icon_text_gap"
                 android:text="保存"
-                android:textColor="#202124"
-                android:textSize="18sp"
-                android:textStyle="normal" />
+                android:textColor="#333333"
+                android:textSize="@dimen/function_sheet_row_text_size" />
         </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#E3E3E3" />
 
         <LinearLayout
             android:id="@+id/function_action_download"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="@dimen/function_sheet_row_height"
+            android:background="@drawable/lolib_bg_function_sheet_row_bottom_border"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
+            android:paddingStart="@dimen/function_sheet_row_padding_h"
+            android:paddingTop="@dimen/function_sheet_row_padding_v"
+            android:paddingEnd="@dimen/function_sheet_row_padding_h"
+            android:paddingBottom="@dimen/function_sheet_row_padding_v">
 
             <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="@dimen/function_sheet_row_icon_size"
+                android:layout_height="@dimen/function_sheet_row_icon_size"
                 android:contentDescription="下载"
                 android:src="@drawable/lolib_ic_function_download" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
+                android:layout_marginStart="@dimen/function_sheet_row_icon_text_gap"
                 android:text="下载"
-                android:textColor="#202124"
-                android:textSize="18sp"
-                android:textStyle="normal" />
+                android:textColor="#333333"
+                android:textSize="@dimen/function_sheet_row_text_size" />
         </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#E3E3E3" />
 
         <LinearLayout
             android:id="@+id/function_action_print"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="@dimen/function_sheet_row_height"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
+            android:paddingStart="@dimen/function_sheet_row_padding_h"
+            android:paddingTop="@dimen/function_sheet_row_padding_v"
+            android:paddingEnd="@dimen/function_sheet_row_padding_h"
+            android:paddingBottom="@dimen/function_sheet_row_padding_v">
 
             <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="@dimen/function_sheet_row_icon_size"
+                android:layout_height="@dimen/function_sheet_row_icon_size"
                 android:contentDescription="打印"
                 android:src="@drawable/lolib_ic_function_print" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
+                android:layout_marginStart="@dimen/function_sheet_row_icon_text_gap"
                 android:text="打印"
-                android:textColor="#202124"
-                android:textSize="18sp"
-                android:textStyle="normal" />
+                android:textColor="#333333"
+                android:textSize="@dimen/function_sheet_row_text_size" />
         </LinearLayout>
     </LinearLayout>
 
@@ -167,64 +165,63 @@
         android:id="@+id/function_review_list"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginStart="@dimen/function_sheet_content_margin_h"
+        android:layout_marginTop="@dimen/function_sheet_section_gap"
+        android:layout_marginEnd="@dimen/function_sheet_content_margin_h"
         android:orientation="vertical"
         android:visibility="gone">
 
         <LinearLayout
-            android:id="@+id/function_action_find_replace"
-            android:layout_width="match_parent"
-            android:layout_height="76dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
-
-            <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:contentDescription="查找替换"
-                android:src="@drawable/lolib_ic_function_find_replace" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
-                android:text="查找替换"
-                android:textColor="#202124"
-                android:textSize="18sp"
-                android:textStyle="normal" />
-        </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#E3E3E3" />
-
-        <!-- 字数统计：仅 Writer 文档显示（表格无此功能） -->
-        <LinearLayout
             android:id="@+id/function_action_word_count"
             android:layout_width="match_parent"
-            android:layout_height="76dp"
+            android:layout_height="@dimen/function_sheet_row_height"
+            android:background="@drawable/lolib_bg_function_sheet_row_bottom_border"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
+            android:paddingStart="@dimen/function_sheet_row_padding_h"
+            android:paddingTop="@dimen/function_sheet_row_padding_v"
+            android:paddingEnd="@dimen/function_sheet_row_padding_h"
+            android:paddingBottom="@dimen/function_sheet_row_padding_v">
 
             <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="@dimen/function_sheet_row_icon_size"
+                android:layout_height="@dimen/function_sheet_row_icon_size"
                 android:contentDescription="字数统计"
                 android:src="@drawable/lolib_ic_function_word_count" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
+                android:layout_marginStart="@dimen/function_sheet_row_icon_text_gap"
                 android:text="字数统计"
-                android:textColor="#202124"
-                android:textSize="18sp"
-                android:textStyle="normal" />
+                android:textColor="#333333"
+                android:textSize="@dimen/function_sheet_row_text_size" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/function_action_find_replace"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/function_sheet_row_height"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/function_sheet_row_padding_h"
+            android:paddingTop="@dimen/function_sheet_row_padding_v"
+            android:paddingEnd="@dimen/function_sheet_row_padding_h"
+            android:paddingBottom="@dimen/function_sheet_row_padding_v">
+
+            <ImageView
+                android:layout_width="@dimen/function_sheet_row_icon_size"
+                android:layout_height="@dimen/function_sheet_row_icon_size"
+                android:contentDescription="查找替换"
+                android:src="@drawable/lolib_ic_function_find_replace" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/function_sheet_row_icon_text_gap"
+                android:text="查找替换"
+                android:textColor="#333333"
+                android:textSize="@dimen/function_sheet_row_text_size" />
         </LinearLayout>
     </LinearLayout>
 

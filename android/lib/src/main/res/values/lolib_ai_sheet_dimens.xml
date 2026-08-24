@@ -43,4 +43,19 @@
     <dimen name="ai_model_required_button_padding_v">12dp</dimen>
     <dimen name="ai_model_required_button_height">35dp</dimen>
     <dimen name="ai_model_required_button_gap">28dp</dimen>
+
+    <!-- Figma 330:32962 AI排版弹窗 670×1020px → 335×510dp -->
+    <dimen name="ai_typeset_dialog_width">335dp</dimen>
+    <dimen name="ai_typeset_dialog_height">510dp</dimen>
+    <dimen name="ai_typeset_title_height">60dp</dimen>
+    <dimen name="ai_typeset_header_padding_h">16dp</dimen>
+    <dimen name="ai_typeset_content_padding">24dp</dimen>
+    <dimen name="ai_typeset_card_gap">16dp</dimen>
+    <dimen name="ai_typeset_card_preview_height">119dp</dimen>
+    <dimen name="ai_typeset_card_min_height">166dp</dimen>
+    <dimen name="ai_typeset_card_padding">12dp</dimen>
+    <dimen name="ai_typeset_card_label_margin_top">12dp</dimen>
+    <dimen name="ai_typeset_button_height">35dp</dimen>
+    <dimen name="ai_typeset_button_padding_h">20dp</dimen>
+    <dimen name="ai_typeset_button_padding_v">12dp</dimen>
 </resources>
