@@ -40,8 +40,9 @@
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <Poco/MemoryStream.h>
+#import <PhotosUI/PhotosUI.h>
 
-@interface DocumentViewController() <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, UIScrollViewDelegate, UIDocumentPickerDelegate, UIFontPickerViewControllerDelegate, IOSTopToolbarControllerDelegate, IOSBottomToolbarControllerDelegate> {
+@interface DocumentViewController() <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, UIScrollViewDelegate, UIDocumentPickerDelegate, UIFontPickerViewControllerDelegate, PHPickerViewControllerDelegate, IOSTopToolbarControllerDelegate, IOSBottomToolbarControllerDelegate> {
     int closeNotificationPipeForForwardingThread[2];
     NSURL *downloadAsTmpURL;
     NativeBridgeHandler *nativeBridgeHandler;
@@ -1128,7 +1129,33 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)bottomToolbarDidPressInsertImage
 {
-    [self showToolbarPlaceholder:@"插入图片将在后续阶段接入。"];
+    PHPickerConfiguration *config = [[PHPickerConfiguration alloc] init];
+    config.filter = [PHPickerFilter imagesFilter];
+    config.selectionLimit = 1;
+    PHPickerViewController *picker = [[PHPickerViewController alloc] initWithConfiguration:config];
+    picker.delegate = self;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results
+{
+    [picker dismissViewControllerAnimated:YES completion:nil];
+    PHPickerResult *result = results.firstObject;
+    if (!result) {
+        return;
+    }
+    [result.itemProvider loadDataRepresentationForTypeIdentifier:UTTypeImage.identifier
+                                              completionHandler:^(NSData *data, NSError *error) {
+        if (!data) {
+            return;
+        }
+        NSString *base64 = [data base64EncodedStringWithOptions:0];
+        NSString *name = [NSString stringWithFormat:@"image_%ld.png", (long)[[NSDate date] timeIntervalSince1970]];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSString *js = [NSString stringWithFormat:@"if(window.postMobileMessage){window.postMobileMessage('insertfile name=%@ type=graphic data=%@');}", name, base64];
+            [self sendToolbarJavaScript:js];
+        });
+    }];
 }
 
 - (void)bye {

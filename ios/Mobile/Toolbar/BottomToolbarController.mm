@@ -50,7 +50,7 @@ static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger t
     label.translatesAutoresizingMaskIntoConstraints = NO;
     label.text = title;
     label.textColor = [UIColor colorWithRed:0.12 green:0.12 blue:0.13 alpha:1.0];
-    label.font = [UIFont systemFontOfSize:12.0];
+    label.font = [UIFont systemFontOfSize:14.0];
     label.textAlignment = NSTextAlignmentCenter;
 
     [content addArrangedSubview:icon];
@@ -59,8 +59,8 @@ static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger t
     [NSLayoutConstraint activateConstraints:@[
         [content.centerXAnchor constraintEqualToAnchor:item.centerXAnchor],
         [content.centerYAnchor constraintEqualToAnchor:item.centerYAnchor],
-        [item.widthAnchor constraintGreaterThanOrEqualToConstant:64.0],
-        [item.heightAnchor constraintEqualToConstant:74.0],
+        [item.widthAnchor constraintGreaterThanOrEqualToConstant:92.0],
+        [item.heightAnchor constraintEqualToConstant:82.0],
     ]];
     return item;
 }
@@ -77,7 +77,7 @@ static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger t
     _delegate = delegate;
     _mode = IOSBottomToolbarModePreview;
     _documentType = @"text";
-    _preferredHeight = 74.0;
+    _preferredHeight = 82.0;
 
     _view = [[UIView alloc] init];
     _view.translatesAutoresizingMaskIntoConstraints = NO;
@@ -131,7 +131,7 @@ static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger t
 - (void)setCompact:(BOOL)compact
 {
     _compact = compact;
-    self.preferredHeight = compact ? 48.0 : 74.0;
+    self.preferredHeight = compact ? 48.0 : 82.0;
     [self applyCompactState];
     [self relayout];
 }
@@ -152,18 +152,23 @@ static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger t
     NSArray<NSArray<NSString *> *> *items = nil;
     if (self.mode == IOSBottomToolbarModePreview) {
         items = @[
-            @[@"iphone", @"手机预览", [NSString stringWithFormat:@"%ld", kMobilePreviewTag]],
-            @[@"square.grid.2x2", @"功能", [NSString stringWithFormat:@"%ld", kFunctionTag]],
-            @[@"wand.and.stars", @"AI 助手", [NSString stringWithFormat:@"%ld", kAIAssistantTag]],
-        ];
-    } else {
-        NSMutableArray<NSArray<NSString *> *> *editItems = [NSMutableArray arrayWithArray:@[
             @[@"iphone", @"适配手机", [NSString stringWithFormat:@"%ld", kMobilePreviewTag]],
             @[@"square.grid.2x2", @"功能", [NSString stringWithFormat:@"%ld", kFunctionTag]],
             @[@"wand.and.stars", @"AI 助手", [NSString stringWithFormat:@"%ld", kAIAssistantTag]],
             @[@"wand.and.stars", @"AI 功能", [NSString stringWithFormat:@"%ld", kAIFeaturesTag]],
             @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", kKeyboardTag]],
+        ];
+    } else {
+        NSMutableArray<NSArray<NSString *> *> *editItems = [NSMutableArray arrayWithArray:@[
+            @[@"square.grid.2x2", @"功能", [NSString stringWithFormat:@"%ld", kFunctionTag]],
+            @[@"wand.and.stars", @"AI 功能", [NSString stringWithFormat:@"%ld", kAIFeaturesTag]],
+            @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", kKeyboardTag]],
+            @[@"bold", @"字符", [NSString stringWithFormat:@"%ld", kCharacterTag]],
         ]];
+        if (![self.documentType isEqualToString:@"spreadsheet"]) {
+            [editItems addObject:@[@"text.alignleft", @"段落", [NSString stringWithFormat:@"%ld", kParagraphTag]]];
+            [editItems addObject:@[@"photo", @"插入图片", [NSString stringWithFormat:@"%ld", kInsertImageTag]]];
+        }
         items = editItems;
     }
 
