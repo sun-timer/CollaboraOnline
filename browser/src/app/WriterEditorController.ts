@@ -12,6 +12,7 @@ interface WriterEditorAdapterLike {
 	getDocType(): string;
 	getSelectedText(): string;
 	sendExecuteSearch(searchCmd: { [key: string]: any }): void;
+	postMobileMessage(message: string): void;
 	downloadAs(name: string, format: string, options?: string, id?: string): void;
 }
 
@@ -26,6 +27,7 @@ type WriterEditorRunResult =
 	| { dispatched: 'export'; kind: 'pdf' | 'print' }
 	| { dispatched: 'dialog'; dialog: WriterEditorDialogType }
 	| { dispatched: 'findReplace' }
+	| { dispatched: 'message'; message: string }
 	| { dispatched: 'none'; reason: string };
 
 interface WriterEditorSearchResult {
@@ -203,6 +205,62 @@ class WriterEditorController {
 		return { dispatched: 'unocmd', command };
 	}
 
+	/** Applies a Writer paragraph style via StyleApply (FamilyName ParagraphStyles). */
+	applyStyle(styleName: string): WriterEditorRunResult {
+		if (!styleName) {
+			return { dispatched: 'none', reason: 'empty_style' };
+		}
+		const command =
+			'.uno:StyleApply {"Style":{"type":"string","value":' + JSON.stringify(styleName) +
+			'},"FamilyName":{"type":"string","value":"ParagraphStyles"}}';
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
+	/** Applies a page watermark. Empty text removes it (matches Android). */
+	applyWatermark(text: string, angle: number, transparency: number): WriterEditorRunResult {
+		const safeText = text || '';
+		const safeAngle = Math.max(0, Math.min(360, angle | 0));
+		const safeTransparency = Math.max(0, Math.min(100, transparency | 0));
+		const command =
+			'.uno:Watermark {"Text":{"type":"string","value":' + JSON.stringify(safeText) +
+			'},"Font":{"type":"string","value":"Noto Serif CJK SC"},"Angle":{"type":"long","value":' +
+			safeAngle + '},"Transparency":{"type":"long","value":' + safeTransparency +
+			'},"Color":{"type":"long","value":12632256}}';
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
+	/** Applies a paper format preset via AttributePageSize PaperFormat:short. */
+	applyPaperFormat(formatShort: string): WriterEditorRunResult {
+		if (!formatShort) {
+			return { dispatched: 'none', reason: 'empty_paper' };
+		}
+		const command = '.uno:AttributePageSize?PaperFormat:short=' + formatShort;
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
+	/** Inserts an image as base64 over the mobile insertfile channel. */
+	insertImage(fileName: string, dataBase64: string): WriterEditorRunResult {
+		if (!dataBase64) {
+			return { dispatched: 'none', reason: 'empty_image' };
+		}
+		const message = 'insertfile name=' + fileName + ' type=graphic data=' + dataBase64;
+		this.adapter.postMobileMessage(message);
+		return { dispatched: 'message', message };
+	}
+
+	/** Saves-as by dispatching a downloadas message (iOS picks the destination). */
+	saveAs(format: string): WriterEditorRunResult {
+		if (!format) {
+			return { dispatched: 'none', reason: 'empty_format' };
+		}
+		const message = 'downloadas name=document.' + format + ' format=' + format + ' id=saveas';
+		this.adapter.postMobileMessage(message);
+		return { dispatched: 'message', message };
+	}
+
 	static buildSearchCmd(
 		text: string,
 		replaceString: string,
@@ -308,6 +366,12 @@ class WriterEditorController {
 					socket.sendMessage(
 						'uno .uno:ExecuteSearch ' + JSON.stringify(searchCmd),
 					);
+				}
+			},
+			postMobileMessage(message: string): void {
+				const poster = (window as any).postMobileMessage;
+				if (typeof poster === 'function') {
+					poster(message);
 				}
 			},
 			downloadAs(name: string, format: string, options?: string, id?: string): void {

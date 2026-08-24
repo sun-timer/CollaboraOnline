@@ -86,6 +86,18 @@ class WriterEditorCatalog {
 
 	static readonly CHAR_HEIGHT_CN: { [label: string]: string } =
 		WriterEditorCharHeightCN;
+	/**
+	 * Paper-format presets for `.uno:AttributePageSize?PaperFormat:short=N`.
+	 * The numeric values match the browser Paper enum (WriterLayoutCatalog
+	 * PAPER_SIZES offsets), as used by Android.
+	 */
+	static readonly PAPER_FORMATS: { label: string; value: string }[] = [
+		{ label: 'A4', value: '4' },
+		{ label: 'A3', value: '3' },
+		{ label: 'A5', value: '5' },
+		{ label: 'Letter', value: '8' },
+		{ label: 'Legal', value: '9' },
+	];
 
 	static readonly FEATURES: WriterEditorFeature[] = [
 		// ---- 常用 (default) ----

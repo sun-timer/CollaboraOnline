@@ -12,6 +12,7 @@ describe('WriterEditorController', function () {
 		calls: {
 			sendUnoCommand: string[];
 			sendExecuteSearch: { [key: string]: any }[];
+			postMobileMessage: string[];
 			downloadAs: { name: string; format: string; options?: string; id?: string }[];
 		};
 	}
@@ -20,6 +21,7 @@ describe('WriterEditorController', function () {
 		const calls: FakeWriterEditorAdapter['calls'] = {
 			sendUnoCommand: [],
 			sendExecuteSearch: [],
+			postMobileMessage: [],
 			downloadAs: [],
 		};
 		return {
@@ -38,6 +40,9 @@ describe('WriterEditorController', function () {
 			},
 			sendExecuteSearch(searchCmd: { [key: string]: any }): void {
 				calls.sendExecuteSearch.push(searchCmd);
+			},
+			postMobileMessage(message: string): void {
+				calls.postMobileMessage.push(message);
 			},
 			downloadAs(name: string, format: string, options?: string, id?: string): void {
 				calls.downloadAs.push({ name, format, options, id });
@@ -288,6 +293,70 @@ describe('WriterEditorController', function () {
 
 		assert.deepEqual(result, { dispatched: 'none', reason: 'empty_shape' });
 		assert.equal(adapter.calls.sendUnoCommand.length, 0);
+	});
+	it('applies a paragraph style via StyleApply', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.applyStyle('Heading 1');
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command, '.uno:StyleApply {"Style":{"type":"string","value":"Heading 1"},"FamilyName":{"type":"string","value":"ParagraphStyles"}}');
+	});
+
+	it('applies a watermark with clamped angle and transparency', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.applyWatermark('内部', 400, 120);
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command, '.uno:Watermark {"Text":{"type":"string","value":"内部"},"Font":{"type":"string","value":"Noto Serif CJK SC"},"Angle":{"type":"long","value":360},"Transparency":{"type":"long","value":100},"Color":{"type":"long","value":12632256}}');
+	});
+
+	it('applies a paper format via AttributePageSize', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.applyPaperFormat('4');
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command, '.uno:AttributePageSize?PaperFormat:short=4');
+	});
+
+	it('inserts an image over the mobile insertfile channel', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertImage('pic.png', 'AAAA');
+
+		assert.deepEqual(result, {
+			dispatched: 'message',
+			message: 'insertfile name=pic.png type=graphic data=AAAA',
+		});
+		assert.deepEqual(adapter.calls.postMobileMessage, ['insertfile name=pic.png type=graphic data=AAAA']);
+	});
+
+	it('saves as via a downloadas message', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.saveAs('pdf');
+
+		assert.equal(result.dispatched, 'message');
+		assert.equal(adapter.calls.postMobileMessage[0], 'downloadas name=document.pdf format=pdf id=saveas');
+	});
+
+	it('rejects an empty image or format without dispatching', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		assert.deepEqual(controller.insertImage('a.png', ''), { dispatched: 'none', reason: 'empty_image' });
+		assert.deepEqual(controller.saveAs(''), { dispatched: 'none', reason: 'empty_format' });
+		assert.equal(adapter.calls.postMobileMessage.length, 0);
 	});
 	it('runs a forward find over the adapter with CMD_FIND', function () {
 		const adapter = createFakeAdapter('text');

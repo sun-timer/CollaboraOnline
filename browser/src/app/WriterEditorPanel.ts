@@ -21,6 +21,11 @@ class WriterEditorPanel {
 		'table',
 		'margins',
 		'shape',
+		'style',
+		'watermark',
+		'paperSize',
+		'image',
+		'saveAs',
 	];
 
 	private constructor() {
@@ -150,6 +155,16 @@ class WriterEditorPanel {
 				this.openMarginsDialog();
 			} else if (dialog === 'shape') {
 				this.openShapeDialog();
+			} else if (dialog === 'style') {
+				this.openStyleDialog();
+			} else if (dialog === 'watermark') {
+				this.openWatermarkDialog();
+			} else if (dialog === 'paperSize') {
+				this.openPaperSizeDialog();
+			} else if (dialog === 'image') {
+				this.openImageDialog();
+			} else if (dialog === 'saveAs') {
+				this.openSaveAsDialog();
 			}
 			return;
 		}
@@ -237,6 +252,75 @@ class WriterEditorPanel {
 		this.sheet.close();
 		new WriterEditorChooseDialog('插入形状', options, (option) => {
 			this.controller.insertShape(option.value);
+		}).open();
+	}
+
+	private openStyleDialog(): void {
+		const values = this.controller.getCommandValues('.uno:StyleApply');
+		const styles = values && Array.isArray(values.ParagraphStyles)
+			? (values.ParagraphStyles as string[])
+			: [];
+		if (!styles.length) {
+			return;
+		}
+		const options: WriterChooseOption[] = styles.map((name) => ({ label: name, value: name }));
+		this.sheet.close();
+		new WriterEditorChooseDialog('样式', options, (option) => {
+			this.controller.applyStyle(option.value);
+		}).open();
+	}
+
+	private openWatermarkDialog(): void {
+		this.sheet.close();
+		new WriterEditorWatermarkDialog(this.controller).open();
+	}
+
+	private openPaperSizeDialog(): void {
+		const options = WriterEditorCatalog.PAPER_FORMATS.map((preset) => ({
+			label: preset.label,
+			value: preset.value,
+		}));
+		this.sheet.close();
+		new WriterEditorChooseDialog('纸张大小', options, (option) => {
+			this.controller.applyPaperFormat(option.value);
+		}).open();
+	}
+
+	private openImageDialog(): void {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = 'image/*';
+		const onImageSelected = () => {
+			const file = input.files && input.files[0];
+			if (!file) {
+				return;
+			}
+			const reader = new FileReader();
+			reader.onload = () => {
+				const bytes = new Uint8Array(reader.result as ArrayBuffer);
+				let str = '';
+				for (let i = 0; i < bytes.length; i++) {
+					str += String.fromCharCode(bytes[i]);
+				}
+				this.controller.insertImage(file.name, window.btoa(str));
+			};
+			reader.readAsArrayBuffer(file);
+		};
+		input.onchange = onImageSelected;
+		this.sheet.close();
+		input.click();
+	}
+
+	private openSaveAsDialog(): void {
+		const options: WriterChooseOption[] = [
+			{ label: 'ODF 文本文档 (.odt)', value: 'odt' },
+			{ label: 'Word 文档 (.docx)', value: 'docx' },
+			{ label: 'PDF (.pdf)', value: 'pdf' },
+			{ label: '纯文本 (.txt)', value: 'txt' },
+		];
+		this.sheet.close();
+		new WriterEditorChooseDialog('另存为', options, (option) => {
+			this.controller.saveAs(option.value);
 		}).open();
 	}
 
