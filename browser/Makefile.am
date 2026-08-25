@@ -265,15 +265,19 @@ COOL_JS_LST =\
 	src/app/AndroidCalcTap.ts \
 	src/app/MobileNativeToolbar.ts \
 	src/app/WriterAiCatalog.ts \
+	src/app/CalcAiCatalog.ts \
+	src/app/CalcAiContext.ts \
 	src/app/MobileAiUiCatalog.ts \
 	src/app/NativeBridge.ts \
 	src/app/MobileAiBridge.ts \
 	src/app/WriterAiController.ts \
+	src/app/CalcAiController.ts \
 	src/app/MobileAiConversationController.ts \
 	src/app/MobileAiSheet.ts \
 	src/app/MobileAiAssistantPanel.ts \
 	src/app/MobileAiOperationSheet.ts \
 	src/app/MobileAiOperationDialog.ts \
+	src/app/MobileAiCalcDialog.ts \
 	src/app/MobileAiTranslateDialog.ts \
 	src/app/MobileAiArticleDialog.ts \
 	src/app/MobileAiOutlineDialog.ts \

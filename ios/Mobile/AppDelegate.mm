@@ -23,9 +23,8 @@
 
 #import "ios.h"
 #import "AppDelegate.h"
-#import "DocumentBrowserViewController.h"
-#import "CODocument.h"
-#import "DocumentViewController.h"
+#import "HomeViewController.h"
+#import "DocumentPresentation.h"
 
 #import "FakeSocket.hpp"
 #import "Kit.hpp"
@@ -199,16 +198,12 @@ NSString *app_text_direction;
     }
 
     // Reveal / import the document at the URL
-    DocumentBrowserViewController *documentBrowserViewController = (DocumentBrowserViewController *)self.window.rootViewController;
-    [documentBrowserViewController revealDocumentAtURL:inputURL importIfNeeded:YES completion:^(NSURL * _Nullable revealedDocumentURL, NSError * _Nullable error) {
-        if (error) {
-            LOG_ERR("Failed to reveal the document at URL " << [[inputURL description] UTF8String] << " with error: " << [[error description] UTF8String]);
-            return;
-        }
-
-        // Present the Document View Controller for the revealed URL
-        [documentBrowserViewController presentDocumentAtURL:revealedDocumentURL];
-    }];
+    UIViewController *root = self.window.rootViewController;
+    if ([root isKindOfClass:[HomeViewController class]]) {
+        [(HomeViewController *)root presentDocumentAtURL:inputURL];
+        return YES;
+    }
+    [DocumentPresentation presentDocumentAtURL:inputURL from:root];
     return YES;
 }
 

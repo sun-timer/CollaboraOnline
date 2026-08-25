@@ -14,6 +14,7 @@ class WriterAiPanel {
 		| MobileAiTranslateDialog
 		| MobileAiArticleDialog
 		| MobileAiOutlineDialog
+		| MobileAiCalcDialog
 		| null = null;
 
 	private constructor() {
@@ -61,6 +62,8 @@ class WriterAiPanel {
 		}
 		if (entry.dialog === 'translate') {
 			this.activeDialog = new MobileAiTranslateDialog();
+		} else if (entry.dialog === 'calc') {
+			this.activeDialog = new MobileAiCalcDialog(taskType);
 		} else {
 			this.activeDialog = new MobileAiOperationDialog(taskType);
 		}
@@ -71,6 +74,10 @@ class WriterAiPanel {
 		const controller = (window as any).__coolWriterAiController;
 		if (controller instanceof WriterAiController) {
 			controller.dispose();
+		}
+		const calcController = (window as any).__coolCalcAiController;
+		if (calcController instanceof CalcAiController) {
+			calcController.dispose();
 		}
 		const conversationController = (window as any).__coolMobileAiConversationController;
 		if (conversationController instanceof MobileAiConversationController) {

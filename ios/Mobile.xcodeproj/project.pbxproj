@@ -63,6 +63,11 @@
 		C0FFEE132026081200000001 /* AIConfigurationStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE112026081200000001 /* AIConfigurationStore.mm */; };
 		C0FFEE142026081200000001 /* AIRequestSession.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE152026081200000001 /* AIRequestSession.mm */; };
 		C0FFEE162026081200000001 /* AIService.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE172026081200000001 /* AIService.mm */; };
+		C0FFEE202026082400000001 /* HomeViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE212026082400000001 /* HomeViewController.mm */; };
+		C0FFEE232026082400000001 /* DocumentPresentation.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE242026082400000001 /* DocumentPresentation.mm */; };
+		C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE272026082400000001 /* RecentDocumentsStore.mm */; };
+		C0FFEE292026082400000001 /* AIModelConfigStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */; };
+		C0FFEE2C2026082400000001 /* AISettingsDrawerController.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */; };
 		D0A020260814000000000001 /* TopToolbarController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000012 /* TopToolbarController.mm */; };
 		D0A020260814000000000002 /* BottomToolbarController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000014 /* BottomToolbarController.mm */; };
 		BE8D77352136762500AC58EA /* CODocument.mm in Sources */ = {isa = PBXBuildFile; fileRef = BE8D77342136762500AC58EA /* CODocument.mm */; };
@@ -104,6 +109,7 @@
 		C78C8ED62E90027E0011B574 /* data in Resources */ = {isa = PBXBuildFile; fileRef = C78C8ED32E9001F00011B574 /* data */; };
 		C79282312DF89BB2001EA43B /* MobileSocket.mm in Sources */ = {isa = PBXBuildFile; fileRef = C79282302DF89BB2001EA43B /* MobileSocket.mm */; };
 		D49B580F2D1077F700E0E607 /* UniformTypeIdentifiers.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D49B580E2D1077F700E0E607 /* UniformTypeIdentifiers.framework */; };
+		C0FFEE2F2026082400000001 /* PhotosUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE302026082400000001 /* PhotosUI.framework */; };
 		D4A0F3D72D64E86C00472DEE /* CoolURLSchemeHandler.mm in Sources */ = {isa = PBXBuildFile; fileRef = D4A0F3D62D64E86C00472DEE /* CoolURLSchemeHandler.mm */; };
 /* End PBXBuildFile section */
 
@@ -920,6 +926,16 @@
 		C0FFEE192026081200000001 /* AIConfigurationStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIConfigurationStore.h; sourceTree = "<group>"; };
 		C0FFEE1A2026081200000001 /* AIRequestSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIRequestSession.h; sourceTree = "<group>"; };
 		C0FFEE1B2026081200000001 /* AIService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIService.h; sourceTree = "<group>"; };
+		C0FFEE212026082400000001 /* HomeViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = HomeViewController.mm; sourceTree = "<group>"; };
+		C0FFEE222026082400000001 /* HomeViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HomeViewController.h; sourceTree = "<group>"; };
+		C0FFEE242026082400000001 /* DocumentPresentation.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DocumentPresentation.mm; sourceTree = "<group>"; };
+		C0FFEE252026082400000001 /* DocumentPresentation.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DocumentPresentation.h; sourceTree = "<group>"; };
+		C0FFEE272026082400000001 /* RecentDocumentsStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RecentDocumentsStore.mm; sourceTree = "<group>"; };
+		C0FFEE282026082400000001 /* RecentDocumentsStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RecentDocumentsStore.h; sourceTree = "<group>"; };
+		C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AIModelConfigStore.mm; sourceTree = "<group>"; };
+		C0FFEE2B2026082400000001 /* AIModelConfigStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIModelConfigStore.h; sourceTree = "<group>"; };
+		C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AISettingsDrawerController.mm; sourceTree = "<group>"; };
+		C0FFEE2E2026082400000001 /* AISettingsDrawerController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AISettingsDrawerController.h; sourceTree = "<group>"; };
 		D0A020260814000000000011 /* TopToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TopToolbarController.h; sourceTree = "<group>"; };
 		D0A020260814000000000012 /* TopToolbarController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = TopToolbarController.mm; sourceTree = "<group>"; };
 		D0A020260814000000000013 /* BottomToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BottomToolbarController.h; sourceTree = "<group>"; };
@@ -1531,6 +1547,7 @@
 		C792822F2DF89BB2001EA43B /* MobileSocket.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MobileSocket.h; sourceTree = "<group>"; };
 		C79282302DF89BB2001EA43B /* MobileSocket.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = MobileSocket.mm; sourceTree = "<group>"; };
 		D49B580E2D1077F700E0E607 /* UniformTypeIdentifiers.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UniformTypeIdentifiers.framework; path = System/Library/Frameworks/UniformTypeIdentifiers.framework; sourceTree = SDKROOT; };
+		C0FFEE302026082400000001 /* PhotosUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PhotosUI.framework; path = System/Library/Frameworks/PhotosUI.framework; sourceTree = SDKROOT; };
 		D4A0F3D62D64E86C00472DEE /* CoolURLSchemeHandler.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CoolURLSchemeHandler.mm; sourceTree = "<group>"; };
 		D4A0F3D82D663A0000472DEE /* CoolURLSchemeHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CoolURLSchemeHandler.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -1544,6 +1561,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C0FFEE2F2026082400000001 /* PhotosUI.framework in Frameworks */,
 				D49B580F2D1077F700E0E607 /* UniformTypeIdentifiers.framework in Frameworks */,
 				BE512CBA2518DE6E00921C15 /* libsqlite3.tbd in Frameworks */,
 				BE6362C22153B5B500F4237E /* CoreServices.framework in Frameworks */,
@@ -1598,6 +1616,7 @@
 		BE00F8B3213ED542001CE2D4 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				C0FFEE302026082400000001 /* PhotosUI.framework */,
 				D49B580E2D1077F700E0E607 /* UniformTypeIdentifiers.framework */,
 				BE512CB92518DE6400921C15 /* libsqlite3.tbd */,
 				BE6362C12153B5B500F4237E /* CoreServices.framework */,
@@ -2730,6 +2749,12 @@
 				BE8D77342136762500AC58EA /* CODocument.mm */,
 				BE8D772D2136762500AC58EA /* DocumentBrowserViewController.h */,
 				BE8D772E2136762500AC58EA /* DocumentBrowserViewController.mm */,
+				C0FFEE222026082400000001 /* HomeViewController.h */,
+				C0FFEE212026082400000001 /* HomeViewController.mm */,
+				C0FFEE252026082400000001 /* DocumentPresentation.h */,
+				C0FFEE242026082400000001 /* DocumentPresentation.mm */,
+				C0FFEE282026082400000001 /* RecentDocumentsStore.h */,
+				C0FFEE272026082400000001 /* RecentDocumentsStore.mm */,
 				BE8D77302136762500AC58EA /* DocumentViewController.h */,
 				BE8D77312136762500AC58EA /* DocumentViewController.mm */,
 				BEFB1EDF21C29CC70081D757 /* L10n.h */,
@@ -2760,6 +2785,10 @@
 				C0FFEE152026081200000001 /* AIRequestSession.mm */,
 				C0FFEE1B2026081200000001 /* AIService.h */,
 				C0FFEE172026081200000001 /* AIService.mm */,
+				C0FFEE2B2026082400000001 /* AIModelConfigStore.h */,
+				C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */,
+				C0FFEE2E2026082400000001 /* AISettingsDrawerController.h */,
+				C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */,
 			);
 			path = AI;
 			sourceTree = "<group>";
@@ -3889,6 +3918,11 @@
 				C0FFEE132026081200000001 /* AIConfigurationStore.mm in Sources */,
 				C0FFEE142026081200000001 /* AIRequestSession.mm in Sources */,
 				C0FFEE162026081200000001 /* AIService.mm in Sources */,
+				C0FFEE202026082400000001 /* HomeViewController.mm in Sources */,
+				C0FFEE232026082400000001 /* DocumentPresentation.mm in Sources */,
+				C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */,
+				C0FFEE292026082400000001 /* AIModelConfigStore.mm in Sources */,
+				C0FFEE2C2026082400000001 /* AISettingsDrawerController.mm in Sources */,
 				D0A020260814000000000001 /* TopToolbarController.mm in Sources */,
 				D0A020260814000000000002 /* BottomToolbarController.mm in Sources */,
 				BE8D772C2136762500AC58EA /* AppDelegate.mm in Sources */,

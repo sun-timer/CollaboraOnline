@@ -11,8 +11,7 @@
 
 #import <UIKit/UIKit.h>
 
-#import "DocumentBrowserViewController.h"
-#import "DocumentViewController.h"
+#import "DocumentPresentation.h"
 #import "SceneDelegate.h"
 
 static UIViewController *bottomPresentedViewController(UIViewController *vc) {
@@ -20,17 +19,6 @@ static UIViewController *bottomPresentedViewController(UIViewController *vc) {
         return vc;
     return bottomPresentedViewController([vc presentedViewController]);
 }
-
-static DocumentViewController *newDocumentViewControllerFor(NSURL *url, bool readOnly) {
-    UIStoryboard *storyBoard = [UIStoryboard storyboardWithName:@"Main" bundle:nil];
-    DocumentViewController *documentViewController = [storyBoard instantiateViewControllerWithIdentifier:@"DocumentViewController"];
-    documentViewController.document = [[CODocument alloc] initWithFileURL:url];
-    documentViewController.document->fakeClientFd = -1;
-    documentViewController.document->readOnly = readOnly;
-    documentViewController.document.viewController = documentViewController;
-
-    return documentViewController;
- }
 
 @implementation SceneDelegate
 
@@ -43,8 +31,7 @@ static DocumentViewController *newDocumentViewControllerFor(NSURL *url, bool rea
         return;
 
     for (UIOpenURLContext* context in connectionOptions.URLContexts) {
-        DocumentViewController *documentViewController = newDocumentViewControllerFor(context.URL, !context.options.openInPlace);
-        [windowScene.windows[0].rootViewController presentViewController:documentViewController animated:NO completion:nil];
+        [DocumentPresentation presentDocumentAtURL:context.URL from:windowScene.windows[0].rootViewController];
     }
     if ([connectionOptions.URLContexts count] > 0)
         [windowScene.windows[0] makeKeyAndVisible];
@@ -58,8 +45,7 @@ static DocumentViewController *newDocumentViewControllerFor(NSURL *url, bool rea
         return;
 
     for (UIOpenURLContext* context in URLContexts) {
-        DocumentViewController *documentViewController = newDocumentViewControllerFor(context.URL, !context.options.openInPlace);
-        [bottomPresentedViewController(windowScene.windows[0].rootViewController) presentViewController:documentViewController animated:NO completion:nil];
+        [DocumentPresentation presentDocumentAtURL:context.URL from:bottomPresentedViewController(windowScene.windows[0].rootViewController)];
     }
     if ([URLContexts count] > 0)
         [windowScene.windows[0] makeKeyAndVisible];

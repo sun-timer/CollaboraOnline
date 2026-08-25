@@ -38,15 +38,32 @@ class MobileAiOperationSheet {
 		const documentType = this.getDocumentType();
 		const entries = MobileAiUiCatalog.getEntries(documentType);
 		const selection = MobileAiBridge.getInstance().getSelectedText().trim();
+		const calcRange =
+			documentType === 'spreadsheet' ? CalcAiContext.getSelectedRange() : '';
+		const calcCell =
+			documentType === 'spreadsheet' ? CalcAiContext.getActiveCellAddress() : '';
 		const viewportWidth = document.documentElement.clientWidth;
 		this.grid.style.gridTemplateColumns =
 			viewportWidth < 420
 				? 'repeat(2,minmax(0,1fr))'
 				: 'repeat(3,minmax(0,1fr))';
-		this.hint.textContent = selection
-			? `已选中 ${selection.length} 字`
-			: '请先在文档中选择文本';
-		this.hint.style.color = selection ? '#188038' : '#5f6368';
+		if (documentType === 'spreadsheet') {
+			if (calcRange) {
+				this.hint.textContent = `已选范围：${calcRange}`;
+				this.hint.style.color = '#188038';
+			} else if (calcCell) {
+				this.hint.textContent = `当前单元格：${calcCell}`;
+				this.hint.style.color = '#188038';
+			} else {
+				this.hint.textContent = '请选择单元格或区域后使用 Calc AI';
+				this.hint.style.color = '#5f6368';
+			}
+		} else {
+			this.hint.textContent = selection
+				? `已选中 ${selection.length} 字`
+				: '请先在文档中选择文本';
+			this.hint.style.color = selection ? '#188038' : '#5f6368';
+		}
 		this.grid.replaceChildren();
 
 		let currentGroup = '';
