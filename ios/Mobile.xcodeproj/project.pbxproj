@@ -7,6 +7,23 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AB1200022F000000000000B1 /* AIPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200022F000000000000A1 /* AIPanelView.swift */; };
+		AB1200032F000000000000B1 /* AIResultModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200032F000000000000A1 /* AIResultModal.swift */; };
+		AB1200042F000000000000B1 /* AIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200042F000000000000A1 /* AIService.swift */; };
+		AB1200052F000000000000B1 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200052F000000000000A1 /* Components.swift */; };
+		AB1200062F000000000000B1 /* LanguagePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200062F000000000000A1 /* LanguagePicker.swift */; };
+		AB1200072F000000000000B1 /* SelectionMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200072F000000000000A1 /* SelectionMenuView.swift */; };
+		AB1200082F000000000000B1 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200082F000000000000A1 /* Theme.swift */; };
+		AB1200092F000000000000B1 /* WriterBottomBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200092F000000000000A1 /* WriterBottomBarView.swift */; };
+		AB12000A2F000000000000B1 /* WriterCommonTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12000A2F000000000000A1 /* WriterCommonTabView.swift */; };
+		AB12000B2F000000000000B1 /* WriterFileTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12000B2F000000000000A1 /* WriterFileTabView.swift */; };
+		AB12000C2F000000000000B1 /* WriterFindReplaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12000C2F000000000000A1 /* WriterFindReplaceView.swift */; };
+		AB12000D2F000000000000B1 /* WriterFontPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12000D2F000000000000A1 /* WriterFontPickerView.swift */; };
+		AB12000E2F000000000000B1 /* WriterInsertTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12000E2F000000000000A1 /* WriterInsertTabView.swift */; };
+		AB12000F2F000000000000B1 /* WriterLayoutTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12000F2F000000000000A1 /* WriterLayoutTabView.swift */; };
+		AB1200102F000000000000B1 /* WriterPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200102F000000000000A1 /* WriterPanelView.swift */; };
+		AB1200112F000000000000B1 /* WriterReviewTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200112F000000000000A1 /* WriterReviewTabView.swift */; };
+		AB1200122F000000000000B1 /* WriterTopBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200122F000000000000A1 /* WriterTopBarView.swift */; };
 		1F957DC22BA8229A006C9E78 /* Util-mobile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1F957DC12BA82296006C9E78 /* Util-mobile.cpp */; };
 		1FCFA28A2B2AF13F007EE2DF /* coolwsd-fork.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1FCFA2892B2AF13C007EE2DF /* coolwsd-fork.cpp */; };
 		3F3A77D22C59B04000947249 /* global.js in Resources */ = {isa = PBXBuildFile; fileRef = 3F3A77D12C59B04000947249 /* global.js */; };
@@ -124,6 +141,23 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		AB1200022F000000000000A1 /* AIPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/AIPanelView.swift; sourceTree = "<group>"; };
+		AB1200032F000000000000A1 /* AIResultModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/AIResultModal.swift; sourceTree = "<group>"; };
+		AB1200042F000000000000A1 /* AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/AIService.swift; sourceTree = "<group>"; };
+		AB1200052F000000000000A1 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/Components.swift; sourceTree = "<group>"; };
+		AB1200062F000000000000A1 /* LanguagePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/LanguagePicker.swift; sourceTree = "<group>"; };
+		AB1200072F000000000000A1 /* SelectionMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/SelectionMenuView.swift; sourceTree = "<group>"; };
+		AB1200082F000000000000A1 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/Theme.swift; sourceTree = "<group>"; };
+		AB1200092F000000000000A1 /* WriterBottomBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/WriterBottomBarView.swift; sourceTree = "<group>"; };
+		AB12000A2F000000000000A1 /* WriterCommonTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/WriterCommonTabView.swift; sourceTree = "<group>"; };
+		AB12000B2F000000000000A1 /* WriterFileTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/WriterFileTabView.swift; sourceTree = "<group>"; };
+		AB12000C2F000000000000A1 /* WriterFindReplaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/WriterFindReplaceView.swift; sourceTree = "<group>"; };
+		AB12000D2F000000000000A1 /* WriterFontPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/WriterFontPickerView.swift; sourceTree = "<group>"; };
+		AB12000E2F000000000000A1 /* WriterInsertTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/WriterInsertTabView.swift; sourceTree = "<group>"; };
+		AB12000F2F000000000000A1 /* WriterLayoutTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/WriterLayoutTabView.swift; sourceTree = "<group>"; };
+		AB1200102F000000000000A1 /* WriterPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/WriterPanelView.swift; sourceTree = "<group>"; };
+		AB1200112F000000000000A1 /* WriterReviewTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/WriterReviewTabView.swift; sourceTree = "<group>"; };
+		AB1200122F000000000000A1 /* WriterTopBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileWriterAI/WriterTopBarView.swift; sourceTree = "<group>"; };
 		1F957DC12BA82296006C9E78 /* Util-mobile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = "Util-mobile.cpp"; sourceTree = "<group>"; };
 		1FCFA2892B2AF13C007EE2DF /* coolwsd-fork.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = "coolwsd-fork.cpp"; sourceTree = "<group>"; };
 		3F3A77D12C59B04000947249 /* global.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = global.js; path = ../../../browser/dist/global.js; sourceTree = "<group>"; };
@@ -1554,7 +1588,6 @@
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C73BEA622E8429C4009E12D3 /* MobileUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = MobileUITests; sourceTree = "<group>"; };
-		AB1200012F000000000000A1 /* MobileWriterAI */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Mobile/MobileWriterAI; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -2716,7 +2749,23 @@
 				BE5EB5B5213FE1F900E0826C /* Online */,
 				BE8D77292136762500AC58EA /* Mobile */,
 				C73BEA622E8429C4009E12D3 /* MobileUITests */,
-				AB1200012F000000000000A1 /* MobileWriterAI */,
+				AB1200022F000000000000A1 /* AIPanelView.swift */,
+				AB1200032F000000000000A1 /* AIResultModal.swift */,
+				AB1200042F000000000000A1 /* AIService.swift */,
+				AB1200052F000000000000A1 /* Components.swift */,
+				AB1200062F000000000000A1 /* LanguagePicker.swift */,
+				AB1200072F000000000000A1 /* SelectionMenuView.swift */,
+				AB1200082F000000000000A1 /* Theme.swift */,
+				AB1200092F000000000000A1 /* WriterBottomBarView.swift */,
+				AB12000A2F000000000000A1 /* WriterCommonTabView.swift */,
+				AB12000B2F000000000000A1 /* WriterFileTabView.swift */,
+				AB12000C2F000000000000A1 /* WriterFindReplaceView.swift */,
+				AB12000D2F000000000000A1 /* WriterFontPickerView.swift */,
+				AB12000E2F000000000000A1 /* WriterInsertTabView.swift */,
+				AB12000F2F000000000000A1 /* WriterLayoutTabView.swift */,
+				AB1200102F000000000000A1 /* WriterPanelView.swift */,
+				AB1200112F000000000000A1 /* WriterReviewTabView.swift */,
+				AB1200122F000000000000A1 /* WriterTopBarView.swift */,
 				BE8D77282136762500AC58EA /* Products */,
 				BE00F8B3213ED542001CE2D4 /* Frameworks */,
 			);
@@ -3717,7 +3766,6 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				AB1200012F000000000000A1 /* MobileWriterAI */,
 			);
 			name = Mobile;
 			productName = Mobile;
@@ -3931,6 +3979,23 @@
 				D0A020260814000000000001 /* TopToolbarController.mm in Sources */,
 				D0A020260814000000000002 /* BottomToolbarController.mm in Sources */,
 				BE8D772C2136762500AC58EA /* AppDelegate.mm in Sources */,
+				AB1200022F000000000000B1 /* AIPanelView.swift in Sources */,
+				AB1200032F000000000000B1 /* AIResultModal.swift in Sources */,
+				AB1200042F000000000000B1 /* AIService.swift in Sources */,
+				AB1200052F000000000000B1 /* Components.swift in Sources */,
+				AB1200062F000000000000B1 /* LanguagePicker.swift in Sources */,
+				AB1200072F000000000000B1 /* SelectionMenuView.swift in Sources */,
+				AB1200082F000000000000B1 /* Theme.swift in Sources */,
+				AB1200092F000000000000B1 /* WriterBottomBarView.swift in Sources */,
+				AB12000A2F000000000000B1 /* WriterCommonTabView.swift in Sources */,
+				AB12000B2F000000000000B1 /* WriterFileTabView.swift in Sources */,
+				AB12000C2F000000000000B1 /* WriterFindReplaceView.swift in Sources */,
+				AB12000D2F000000000000B1 /* WriterFontPickerView.swift in Sources */,
+				AB12000E2F000000000000B1 /* WriterInsertTabView.swift in Sources */,
+				AB12000F2F000000000000B1 /* WriterLayoutTabView.swift in Sources */,
+				AB1200102F000000000000B1 /* WriterPanelView.swift in Sources */,
+				AB1200112F000000000000B1 /* WriterReviewTabView.swift in Sources */,
+				AB1200122F000000000000B1 /* WriterTopBarView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
