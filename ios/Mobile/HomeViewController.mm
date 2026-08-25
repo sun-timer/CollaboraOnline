@@ -695,11 +695,40 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
 }
 
 - (void)moreMenuAction:(UIButton *)sender {
-    NSString *title = [sender.titleLabel.text copy];
+    NSInteger index = sender.tag;
     RecentDocumentItem *item = self.activeMoreItem;
     [self dismissMoreMenu];
-    // 重命名/分享/删除动作由票 10/11/12 绑定；此票只交付菜单入口。
-    NSLog(@"more menu: %@ item=%@", title, item.title);
+    if (index == 0) {
+        [self presentRenameAlertForItem:item];
+    } else if (index == 2) {
+        // 从列表删除动作由票 11 绑定
+        NSLog(@"delete requested (ticket 11): %@", item.title);
+    } else {
+        // 分享动作由票 12 绑定
+        NSLog(@"share requested (ticket 12): %@", item.title);
+    }
+}
+
+- (void)presentRenameAlertForItem:(RecentDocumentItem *)item {
+    if (item == nil) {
+        return;
+    }
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"重命名"
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
+        NSString *title = item.title;
+        NSString *ext = title.pathExtension;
+        field.text = ext.length > 0 ? [title stringByDeletingPathExtension] : title;
+        field.placeholder = @"文件名";
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *name = alert.textFields.firstObject.text ?: @"";
+        [self.recentStore renameItem:item toTitle:name];
+        [self reloadRecents];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
     if (gestureRecognizer.view == self.moreOverlay) {

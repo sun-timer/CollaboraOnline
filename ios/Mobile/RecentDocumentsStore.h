@@ -31,6 +31,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)recordURL:(NSURL *)url;
 - (void)importLocalTestFiles;
 - (void)removeItem:(RecentDocumentItem *)item;
+- (void)renameItem:(RecentDocumentItem *)item toTitle:(NSString *)title;
 
 @end
 

@@ -154,6 +154,36 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
     [self.records removeObject:item];
     [self persist];
 }
+- (void)renameItem:(RecentDocumentItem *)item toTitle:(NSString *)title {
+    NSString *trimmed = [title stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmed.length == 0) {
+        return;
+    }
+    NSURL *url = [item resolvedURL];
+    if (url != nil) {
+        NSString *ext = url.pathExtension;
+        NSString *newName = ext.length > 0 ? [trimmed stringByAppendingPathExtension:ext] : trimmed;
+        NSURL *dir = [url URLByDeletingLastPathComponent];
+        NSURL *newURL = [dir URLByAppendingPathComponent:newName];
+        if (![newURL.path isEqualToString:url.path]) {
+            NSFileManager *fm = [NSFileManager defaultManager];
+            NSError *error = nil;
+            if ([fm moveItemAtURL:url toURL:newURL error:&error]) {
+                item.title = newName;
+                item.path = newURL.path.stringByStandardizingPath;
+                item.bookmark = [newURL bookmarkDataWithOptions:NSURLBookmarkCreationMinimalBookmark
+                                   includingResourceValuesForKeys:nil
+                                                    relativeToURL:nil
+                                                            error:nil];
+                [self persist];
+                return;
+            }
+        }
+    }
+    // 文件不可用时仅更新记录标题
+    item.title = trimmed;
+    [self persist];
+}
 
 - (void)importLocalTestFiles {
     NSURL *documents = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
