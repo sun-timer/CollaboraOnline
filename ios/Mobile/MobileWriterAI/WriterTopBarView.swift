@@ -89,7 +89,7 @@ import UIKit
     }
 
     /// Consume the `undo.redo` v1 message: enable/disable the two buttons.
-    @objc func setUndoRedoEnabled:(BOOL)canUndo redo:(BOOL)canRedo {
+    @objc func setUndoRedoEnabled(_ canUndo: Bool, redo canRedo: Bool) {
         undoButton.isEnabled = canUndo
         undoButton.alpha = canUndo ? 1 : 0.4
         redoButton.isEnabled = canRedo
