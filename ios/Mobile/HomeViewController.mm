@@ -701,8 +701,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     if (index == 0) {
         [self presentRenameAlertForItem:item];
     } else if (index == 2) {
-        // 从列表删除动作由票 11 绑定
-        NSLog(@"delete requested (ticket 11): %@", item.title);
+        [self presentDeleteConfirmationForItem:item];
     } else {
         // 分享动作由票 12 绑定
         NSLog(@"share requested (ticket 12): %@", item.title);
@@ -726,6 +725,20 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *name = alert.textFields.firstObject.text ?: @"";
         [self.recentStore renameItem:item toTitle:name];
+        [self reloadRecents];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+- (void)presentDeleteConfirmationForItem:(RecentDocumentItem *)item {
+    if (item == nil) {
+        return;
+    }
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"从列表中删除"
+                                                                   message:@"仅从最近列表移除，不会删除文件。"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"删除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+        [self.recentStore removeItem:item];
         [self reloadRecents];
     }]];
     [self presentViewController:alert animated:YES completion:nil];
