@@ -8,6 +8,7 @@
 #import "AIService.h"
 
 #import "AIConfigurationStore.h"
+#import "AIModelConfigStore.h"
 #import "AIRequestSession.h"
 
 @interface AIServiceRequest : NSObject
@@ -21,6 +22,7 @@
 
 @interface AIService ()
 @property (strong, nonatomic) AIConfigurationStore *configurationStore;
+@property (strong, nonatomic) AIModelConfigStore *modelStore;
 @property (strong, nonatomic) NSURLSession *urlSession;
 @property (strong, nonatomic) NSOperationQueue *delegateQueue;
 @property (strong, nonatomic) NSMutableDictionary<NSURLSessionTask *, AIServiceRequest *> *requestsByTask;
@@ -37,6 +39,7 @@
     self = [super init];
     if (self) {
         _configurationStore = configurationStore ?: [[AIConfigurationStore alloc] init];
+        _modelStore = [[AIModelConfigStore alloc] init];
         _delegateQueue = [[NSOperationQueue alloc] init];
         _delegateQueue.maxConcurrentOperationCount = 1;
         _requestsByTask = [[NSMutableDictionary alloc] init];
@@ -58,10 +61,30 @@
 
     [self cancelRequest:requestId documentSessionId:documentSessionId];
 
-    NSError *configurationError = nil;
-    AIConfiguration *configuration = [self.configurationStore configurationWithError:&configurationError];
-    if (configuration == nil || !self.configurationStore.isConfigured) {
-        NSString *message = configurationError.localizedDescription ?: @"AI service is not configured";
+    AIModelType modelType = AIModelTypeBase;
+    id rawType = payload[@"modelType"];
+    if ([rawType isKindOfClass:[NSNumber class]]) {
+        NSInteger typeValue = ((NSNumber *)rawType).integerValue;
+        if (typeValue >= AIModelTypeBase && typeValue <= AIModelTypeVision) {
+            modelType = (AIModelType)typeValue;
+        }
+    }
+    AIModelConfigForm *form = [self.modelStore loadForm:modelType];
+    NSString *endpoint = form.url;
+    NSString *model = form.modelName;
+    NSString *apiKey = form.apiKey;
+    if (endpoint.length == 0 || model.length == 0 || apiKey.length == 0) {
+        // 回退旧配置存储
+        NSError *configurationError = nil;
+        AIConfiguration *configuration = [self.configurationStore configurationWithError:&configurationError];
+        if (configuration != nil && configuration.endpoint.length > 0) {
+            endpoint = configuration.endpoint;
+            model = configuration.model ?: model;
+            apiKey = configuration.apiKey ?: apiKey;
+        }
+    }
+    if (endpoint.length == 0 || model.length == 0 || apiKey.length == 0) {
+        NSString *message = @"AI service is not configured";
         [self emitType:@"ai.error"
               requestId:requestId
            documentSessionId:documentSessionId
@@ -86,7 +109,7 @@
         return;
     }
 
-    NSURL *url = [NSURL URLWithString:configuration.endpoint];
+    NSURL *url = [NSURL URLWithString:endpoint];
     if (url == nil || url.scheme.length == 0 || url.host.length == 0) {
         [self emitType:@"ai.error"
               requestId:requestId
@@ -101,14 +124,26 @@
     request.timeoutInterval = 30.0;
     [request setValue:@"application/json; charset=UTF-8" forHTTPHeaderField:@"Content-Type"];
     [request setValue:@"text/event-stream" forHTTPHeaderField:@"Accept"];
-    [request setValue:[NSString stringWithFormat:@"Bearer %@", configuration.apiKey]
+    [request setValue:[NSString stringWithFormat:@"Bearer %@", apiKey]
         forHTTPHeaderField:@"Authorization"];
 
-    NSDictionary *body = @{
-        @"model": configuration.model,
+    NSMutableDictionary *body = [@{
+        @"model": model,
         @"stream": @YES,
         @"messages": messages,
-    };
+    } mutableCopy];
+    if (form.temperature > 0) {
+        body[@"temperature"] = @(form.temperature);
+    }
+    if (form.topP > 0) {
+        body[@"top_p"] = @(form.topP);
+    }
+    if (form.presencePenalty != 0) {
+        body[@"presence_penalty"] = @(form.presencePenalty);
+    }
+    if (form.frequencyPenalty != 0) {
+        body[@"frequency_penalty"] = @(form.frequencyPenalty);
+    }
     request.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
 
     AIServiceRequest *serviceRequest = [[AIServiceRequest alloc] init];
