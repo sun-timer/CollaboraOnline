@@ -14,6 +14,8 @@ import UIKit
     private let searchField = UITextField()
     private let replaceField = UITextField()
     private let segment = UISegmentedControl(items: ["查找", "替换"])
+    private let replaceAllButton = WriterAISecondaryButton(title: "全部替换")
+    private let replaceOneButton = WriterAIPrimaryButton(title: "替换")
     private var mode: Mode = .find
 
     @objc init(onCommand: @escaping (String, String, Bool) -> Void, onClose: @escaping () -> Void) {
@@ -71,8 +73,8 @@ import UIKit
         // Action buttons.
         let prev = WriterAISecondaryButton(title: "上一处")
         let next = WriterAISecondaryButton(title: "下一处")
-        let replaceAll = WriterAISecondaryButton(title: "全部替换")
-        let replaceOne = WriterAIPrimaryButton(title: "替换")
+        let replaceAll = replaceAllButton
+        let replaceOne = replaceOneButton
         replaceAll.isHidden = true
         replaceOne.isHidden = true
         prev.addTarget(self, action: #selector(prevTapped), for: .touchUpInside)
@@ -104,8 +106,8 @@ import UIKit
     @objc private func segmentChanged() {
         mode = segment.selectedSegmentIndex == 0 ? .find : .replace
         replaceField.isHidden = mode == .find
-        replaceAll.isHidden = mode == .find
-        replaceOne.isHidden = mode == .find
+        replaceAllButton.isHidden = mode == .find
+        replaceOneButton.isHidden = mode == .find
     }
 
     // MARK: Actions
@@ -113,8 +115,8 @@ import UIKit
     @objc private func closeTapped() { onClose() }
     @objc private func prevTapped() { onCommand("prev", searchField.text ?? "", mode == .replace) }
     @objc private func nextTapped() { onCommand("next", searchField.text ?? "", mode == .replace) }
-    @objc private func replaceAllTapped() { onCommand("all", searchField.text ?? "", replaceField.text ?? "") }
-    @objc private func replaceOneTapped() { onCommand("one", searchField.text ?? "", replaceField.text ?? "") }
+    @objc private func replaceAllTapped() { onCommand("all", searchField.text ?? "", true) }
+    @objc private func replaceOneTapped() { onCommand("one", searchField.text ?? "", true) }
 
     // MARK: Presentation
 
