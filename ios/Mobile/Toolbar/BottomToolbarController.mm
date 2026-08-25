@@ -152,12 +152,15 @@ static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger t
     NSArray<NSArray<NSString *> *> *items = nil;
     if (self.mode == IOSBottomToolbarModePreview) {
         items = @[
-            @[@"iphone", @"手机预览", [NSString stringWithFormat:@"%ld", kMobilePreviewTag]],
+            @[@"iphone", @"适配手机", [NSString stringWithFormat:@"%ld", kMobilePreviewTag]],
             @[@"square.grid.2x2", @"功能", [NSString stringWithFormat:@"%ld", kFunctionTag]],
             @[@"wand.and.stars", @"AI 助手", [NSString stringWithFormat:@"%ld", kAIAssistantTag]],
+            @[@"wand.and.stars", @"AI 功能", [NSString stringWithFormat:@"%ld", kAIFeaturesTag]],
+            @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", kKeyboardTag]],
         ];
     } else {
         NSMutableArray<NSArray<NSString *> *> *editItems = [NSMutableArray arrayWithArray:@[
+            @[@"square.grid.2x2", @"功能", [NSString stringWithFormat:@"%ld", kFunctionTag]],
             @[@"wand.and.stars", @"AI 功能", [NSString stringWithFormat:@"%ld", kAIFeaturesTag]],
             @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", kKeyboardTag]],
             @[@"bold", @"字符", [NSString stringWithFormat:@"%ld", kCharacterTag]],

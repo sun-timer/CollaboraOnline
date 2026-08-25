@@ -39,6 +39,11 @@
 /// <reference path="../src/app/MobileAiResultRenderer.ts" />
 /// <reference path="../src/app/MobileAiConfiguration.ts" />
 /// <reference path="../src/app/WriterAiPanel.ts" />
+/// <reference path="../src/app/WriterEditorCatalog.ts" />
+/// <reference path="../src/app/WriterEditorController.ts" />
+/// <reference path="../src/app/WriterEditorWatermarkDialog.ts" />
+/// <reference path="../src/app/WriterEditorSheet.ts" />
+/// <reference path="../src/app/WriterEditorIcons.ts" />
 
 /// <reference path="./CanvasSectionContainer.test.ts" />
 /// <reference path="./CBounds.test.ts" />
@@ -59,4 +64,6 @@
 /// <reference path="./CalcAiController.test.ts" />
 /// <reference path="./MobileAiConversationController.test.ts" />
 /// <reference path="./MobileAiOperationDialog.test.ts" />
+/// <reference path="./WriterEditorCatalog.test.ts" />
+/// <reference path="./WriterEditorController.test.ts" />
 // NOTE: reference new tests here ...

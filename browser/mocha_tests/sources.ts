@@ -32,4 +32,6 @@
 /// <reference path="../src/canvas/sections/TilesSection.ts" />
 /// <reference path="../src/app/iface/MapZoom.Interface.ts" />
 /// <reference path="../src/app/ServerCommand.ts" />
+/// <reference path="../src/canvas/sections/MouseControl.ts" />
+/// <reference path="../src/control/Control.Header.ts" />
 
