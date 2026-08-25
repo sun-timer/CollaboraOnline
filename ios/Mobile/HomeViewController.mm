@@ -12,6 +12,9 @@
 #import "RecentDocumentsStore.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import <CoreImage/CoreImage.h>
+
+static NSString *const kSharePublicKey = @"SHARE_PUBLIC_ENABLED";
 static NSString *const ProfileNameKey = @"USER_PROFILE_NAME";
 static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
 
@@ -703,8 +706,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     } else if (index == 2) {
         [self presentDeleteConfirmationForItem:item];
     } else {
-        // 分享动作由票 12 绑定
-        NSLog(@"share requested (ticket 12): %@", item.title);
+        [self presentSharePanelForItem:item];
     }
 }
 
@@ -742,6 +744,152 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
         [self reloadRecents];
     }]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+- (void)presentSharePanelForItem:(RecentDocumentItem *)item {
+    if (item == nil) {
+        return;
+    }
+    __weak typeof(self) weakSelf = self;
+
+    UIViewController *page = [[UIViewController alloc] init];
+    page.view.backgroundColor = UIColor.whiteColor;
+    page.modalPresentationStyle = UIModalPresentationPageSheet;
+
+    UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
+    back.translatesAutoresizingMaskIntoConstraints = NO;
+    [back setTitle:@"‹ 返回" forState:UIControlStateNormal];
+    [back addAction:[UIAction actionWithTitle:@"返回" handler:^(UIAction *action) {
+        [page dismissViewControllerAnimated:YES completion:nil];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [page.view addSubview:back];
+
+    UILabel *titleLabel = [[UILabel alloc] init];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.text = @"分享";
+    titleLabel.font = [UIFont boldSystemFontOfSize:17];
+    titleLabel.textColor = UIColor.blackColor;
+    [page.view addSubview:titleLabel];
+
+    UILabel *fileName = [[UILabel alloc] init];
+    fileName.translatesAutoresizingMaskIntoConstraints = NO;
+    fileName.text = item.title;
+    fileName.font = [UIFont systemFontOfSize:14];
+    fileName.textColor = [UIColor colorWithWhite:0.42 alpha:1];
+    fileName.numberOfLines = 1;
+    fileName.lineBreakMode = NSLineBreakByTruncatingMiddle;
+    [page.view addSubview:fileName];
+
+    UILabel *publicLabel = [[UILabel alloc] init];
+    publicLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    publicLabel.text = @"公开分享";
+    publicLabel.font = [UIFont systemFontOfSize:16];
+    publicLabel.textColor = UIColor.blackColor;
+    [page.view addSubview:publicLabel];
+
+    UISwitch *publicSwitch = [[UISwitch alloc] init];
+    publicSwitch.translatesAutoresizingMaskIntoConstraints = NO;
+    publicSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:kSharePublicKey];
+    [publicSwitch addAction:[UIAction actionWithTitle:@"切换" handler:^(UIAction *action) {
+        [[NSUserDefaults standardUserDefaults] setBool:publicSwitch.isOn forKey:kSharePublicKey];
+    }] forControlEvents:UIControlEventValueChanged];
+    [page.view addSubview:publicSwitch];
+
+    UIView *qrCard = [[UIView alloc] init];
+    qrCard.translatesAutoresizingMaskIntoConstraints = NO;
+    qrCard.backgroundColor = UIColor.whiteColor;
+    qrCard.layer.cornerRadius = 16;
+    qrCard.layer.borderColor = [UIColor colorWithWhite:0.0 alpha:0.1].CGColor;
+    qrCard.layer.borderWidth = 1;
+    [page.view addSubview:qrCard];
+
+    UIImageView *qrView = [[UIImageView alloc] init];
+    qrView.translatesAutoresizingMaskIntoConstraints = NO;
+    qrView.contentMode = UIViewContentModeScaleAspectFit;
+    qrView.image = [self qrImageForString:item.title size:140];
+    [qrCard addSubview:qrView];
+
+    UILabel *qrHint = [[UILabel alloc] init];
+    qrHint.translatesAutoresizingMaskIntoConstraints = NO;
+    qrHint.text = @"扫描二维码打开文档";
+    qrHint.font = [UIFont systemFontOfSize:12];
+    qrHint.textColor = [UIColor colorWithWhite:0.45 alpha:1];
+    [page.view addSubview:qrHint];
+
+    UIButton *shareMore = [UIButton buttonWithType:UIButtonTypeSystem];
+    shareMore.translatesAutoresizingMaskIntoConstraints = NO;
+    [shareMore setTitle:@"更多发送方式" forState:UIControlStateNormal];
+    [shareMore setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    shareMore.backgroundColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
+    shareMore.layer.cornerRadius = 8;
+    [shareMore addAction:[UIAction actionWithTitle:@"更多发送方式" handler:^(UIAction *action) {
+        [weakSelf presentShareSheetForItem:item];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [page.view addSubview:shareMore];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [back.topAnchor constraintEqualToAnchor:page.view.safeAreaLayoutGuide.topAnchor constant:8],
+        [back.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:12],
+        [titleLabel.centerYAnchor constraintEqualToAnchor:back.centerYAnchor],
+        [titleLabel.centerXAnchor constraintEqualToAnchor:page.view.centerXAnchor],
+        [fileName.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:16],
+        [fileName.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
+        [fileName.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-24],
+        [publicLabel.topAnchor constraintEqualToAnchor:fileName.bottomAnchor constant:20],
+        [publicLabel.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
+        [publicSwitch.centerYAnchor constraintEqualToAnchor:publicLabel.centerYAnchor],
+        [publicSwitch.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-24],
+        [qrCard.topAnchor constraintEqualToAnchor:publicLabel.bottomAnchor constant:20],
+        [qrCard.centerXAnchor constraintEqualToAnchor:page.view.centerXAnchor],
+        [qrCard.widthAnchor constraintEqualToConstant:176],
+        [qrCard.heightAnchor constraintEqualToConstant:176],
+        [qrView.centerXAnchor constraintEqualToAnchor:qrCard.centerXAnchor],
+        [qrView.centerYAnchor constraintEqualToAnchor:qrCard.centerYAnchor],
+        [qrView.widthAnchor constraintEqualToConstant:140],
+        [qrView.heightAnchor constraintEqualToConstant:140],
+        [qrHint.topAnchor constraintEqualToAnchor:qrCard.bottomAnchor constant:8],
+        [qrHint.centerXAnchor constraintEqualToAnchor:page.view.centerXAnchor],
+        [shareMore.topAnchor constraintEqualToAnchor:qrHint.bottomAnchor constant:24],
+        [shareMore.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:64],
+        [shareMore.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-64],
+        [shareMore.heightAnchor constraintEqualToConstant:48],
+    ]];
+    [self presentViewController:page animated:YES completion:nil];
+}
+
+- (UIImage *)qrImageForString:(NSString *)string size:(CGFloat)size {
+    NSData *data = [string dataUsingEncoding:NSISOTF8StringEncoding];
+    if (data == nil) {
+        return nil;
+    }
+    CIFilter *filter = [CIFilter filterWithName:@"CIQRCodeGenerator"];
+    [filter setValue:data forKey:@"inputMessage"];
+    [filter setValue:@"M" forKey:@"inputCorrectionLevel"];
+    CIImage *output = filter.outputImage;
+    if (output == nil) {
+        return nil;
+    }
+    CGFloat scale = size / MAX(output.extent.size.width, 1.0);
+    CIImage *scaled = [output imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
+    UIImage *ciImage = [UIImage imageWithCIImage:scaled];
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(size, size)];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [ciImage drawInRect:CGRectMake(0, 0, size, size)];
+    }];
+}
+
+- (void)presentShareSheetForItem:(RecentDocumentItem *)item {
+    NSURL *url = [item resolvedURL];
+    if (url == nil) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"无法分享"
+                                                                       message:@"该文件已不可用。"
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+    UIActivityViewController *activity = [[UIActivityViewController alloc] initWithActivityItems:@[ url ] applicationActivities:nil];
+    activity.popoverPresentationController.sourceView = self.view;
+    [self presentViewController:activity animated:YES completion:nil];
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
     if (gestureRecognizer.view == self.moreOverlay) {
