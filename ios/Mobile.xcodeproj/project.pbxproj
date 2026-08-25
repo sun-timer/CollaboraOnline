@@ -1554,6 +1554,7 @@
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C73BEA622E8429C4009E12D3 /* MobileUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = MobileUITests; sourceTree = "<group>"; };
+		AB1200012F000000000000A1 /* MobileWriterAI */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Mobile/MobileWriterAI; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -2715,6 +2716,7 @@
 				BE5EB5B5213FE1F900E0826C /* Online */,
 				BE8D77292136762500AC58EA /* Mobile */,
 				C73BEA622E8429C4009E12D3 /* MobileUITests */,
+				AB1200012F000000000000A1 /* MobileWriterAI */,
 				BE8D77282136762500AC58EA /* Products */,
 				BE00F8B3213ED542001CE2D4 /* Frameworks */,
 			);
@@ -3713,6 +3715,9 @@
 			buildRules = (
 			);
 			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AB1200012F000000000000A1 /* MobileWriterAI */,
 			);
 			name = Mobile;
 			productName = Mobile;
