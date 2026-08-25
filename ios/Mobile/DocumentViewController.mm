@@ -39,7 +39,7 @@
 #import "Toolbar/TopToolbarController.h"
 
 #import "DocumentViewController.h"
- #import "Mobile-Swift.h"
+ #import "orange_office-Swift.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <Poco/MemoryStream.h>
