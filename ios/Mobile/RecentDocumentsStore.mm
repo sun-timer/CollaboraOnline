@@ -39,6 +39,46 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
     return nil;
 }
 
+- (NSDate *)effectiveLastModified {
+    NSError *error = nil;
+    NSURL *url = [self resolvedURL];
+    if (url != nil) {
+        NSDate *modified = nil;
+        if ([url getResourceValue:&modified forKey:NSURLContentModificationDateKey error:&error] && modified != nil) {
+            self.lastModified = modified;
+            return modified;
+        }
+    }
+    if (self.lastModified != nil) {
+        return self.lastModified;
+    }
+    return self.openedAt ?: [NSDate date];
+}
+
+- (NSString *)displaySubtitle {
+    return [RecentDocumentItem formatModified:[self effectiveLastModified]];
+}
+
++ (NSString *)formatModified:(NSDate *)date {
+    if (date == nil) {
+        date = [NSDate date];
+    }
+    NSDateFormatter *timeFormatter = [[NSDateFormatter alloc] init];
+    timeFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    timeFormatter.dateFormat = @"HH:mm";
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    dateFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    dateFormatter.dateFormat = @"yyyy/MM/dd";
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    if ([calendar isDateInToday:date]) {
+        return [timeFormatter stringFromDate:date];
+    }
+    if ([calendar isDateInYesterday:date]) {
+        return [@"昨天 " stringByAppendingString:[timeFormatter stringFromDate:date]];
+    }
+    return [dateFormatter stringFromDate:date];
+}
+
 @end
 
 @interface RecentDocumentsStore ()
@@ -88,6 +128,13 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
                   includingResourceValuesForKeys:nil
                                    relativeToURL:nil
                                            error:&error];
+    NSDate *modified = nil;
+    BOOL scopedAccess = [url startAccessingSecurityScopedResource];
+    [url getResourceValue:&modified forKey:NSURLContentModificationDateKey error:nil];
+    item.lastModified = modified;
+    if (scopedAccess) {
+        [url stopAccessingSecurityScopedResource];
+    }
 
     NSMutableArray<RecentDocumentItem *> *next = [NSMutableArray array];
     [next addObject:item];
@@ -161,6 +208,10 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
         if ([opened isKindOfClass:[NSNumber class]]) {
             item.openedAt = [NSDate dateWithTimeIntervalSince1970:opened.doubleValue];
         }
+        NSNumber *modified = dict[@"modified"];
+        if ([modified isKindOfClass:[NSNumber class]]) {
+            item.lastModified = [NSDate dateWithTimeIntervalSince1970:modified.doubleValue];
+        }
         NSString *bookmarkB64 = dict[@"bookmark"];
         if ([bookmarkB64 isKindOfClass:[NSString class]] && bookmarkB64.length > 0) {
             item.bookmark = [[NSData alloc] initWithBase64EncodedString:bookmarkB64 options:0];
@@ -184,6 +235,9 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
         }
         if (item.openedAt != nil) {
             dict[@"openedAt"] = @(item.openedAt.timeIntervalSince1970);
+        }
+        if (item.lastModified != nil) {
+            dict[@"modified"] = @(item.lastModified.timeIntervalSince1970);
         }
         if (item.bookmark.length > 0) {
             dict[@"bookmark"] = [item.bookmark base64EncodedStringWithOptions:0];
