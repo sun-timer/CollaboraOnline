@@ -57,7 +57,7 @@ import UIKit
         button.titleLabel?.font = WriterAITheme.Font.menu()
         button.titleLabel?.textAlignment = .center
         button.sizeThatFits(CGSize(width: 108, height: 108))
-        let config = UIButton.Configuration.plain()
+        var config = UIButton.Configuration.plain()
         config.image = UIImage(systemName: icon)
         config.title = title
         config.imagePlacement = .top
