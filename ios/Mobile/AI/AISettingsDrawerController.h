@@ -11,9 +11,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface AISettingsDrawerController : UIViewController
 
+@property (strong, nonatomic, readonly) UIScreenEdgePanGestureRecognizer *edgePanGesture;
+
 + (instancetype)attachToHost:(UIViewController *)host;
 - (void)openDrawer;
 - (void)closeDrawer;
+- (void)requireFailureOfScrollViewGestures:(UIScrollView *)scrollView;
 
 @end
 

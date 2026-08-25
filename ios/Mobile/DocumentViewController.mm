@@ -300,6 +300,7 @@ static IMP standardImpOfInputAccessoryView = nil;
         webViewBottomConstraint,
     ]];
     aiDrawer = [AISettingsDrawerController attachToHost:self];
+    [aiDrawer requireFailureOfScrollViewGestures:self.webView.scrollView];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
