@@ -473,6 +473,31 @@ didCompleteWithError:(NSError *)error {
     } else if ([taskType isEqualToString:@"summarize"]) {
         systemPrompt = @"You are a concise summarizer. Extract key points precisely. Return only the summary.";
         userPrompt = [NSString stringWithFormat:@"请用简洁的语言概括以下内容的核心要点：\n\n---\n%@\n---", text];
+    } else if ([taskType isEqualToString:@"create_document"]) {
+        NSString *docType = [context[@"docType"] isKindOfClass:[NSString class]]
+            ? context[@"docType"] : @"writer";
+        NSString *pageCount = [context[@"pageCount"] isKindOfClass:[NSString class]]
+            ? [context[@"pageCount"] stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+        NSString *audience = [context[@"audience"] isKindOfClass:[NSString class]]
+            ? [context[@"audience"] stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+        NSMutableString *sys = [NSMutableString stringWithString:
+            @"你是办公文档写作助手。根据用户给出的主题生成一份结构完整、内容翔实的文档。\n"
+             "只返回文档正文内容，不要包含任何解释、前言或 Markdown 代码块标记。\n"];
+        if ([docType isEqualToString:@"calc"]) {
+            [sys appendString:@"用户需要的是表格类文档：用清晰的表格(如 Markdown 表格)组织数据。\n"];
+        } else if ([docType isEqualToString:@"impress"]) {
+            [sys appendString:@"用户需要的是演示文稿：按幻灯片结构组织内容，用「## 第N页」分隔每一页。\n"];
+        }
+        if (pageCount.length > 0) {
+            [sys appendFormat:@"文档篇幅控制在约 %@ 页。\n", pageCount];
+        }
+        if (audience.length > 0) {
+            [sys appendFormat:@"目标读者：%@。\n", audience];
+        }
+        systemPrompt = sys;
+        userPrompt = [NSString stringWithFormat:@"文档主题：%@", text];
     } else if (error != NULL) {
         *error = [NSError errorWithDomain:@"com.xunlong.xloffice.ai"
                                      code:2

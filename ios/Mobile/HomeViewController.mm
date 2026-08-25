@@ -13,6 +13,7 @@
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <CoreImage/CoreImage.h>
+#import "AI/AIService.h"
 
 static NSString *const kSharePublicKey = @"SHARE_PUBLIC_ENABLED";
 static NSString *const ProfileNameKey = @"USER_PROFILE_NAME";
@@ -30,6 +31,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
 @property (strong, nonatomic) UIStackView *emptyStack;
 @property (strong, nonatomic, nullable) UIView *splashView;
 @property (strong, nonatomic, nullable) RecentDocumentItem *activeMoreItem;
+@property (strong, nonatomic) AIService *aiService;
 @property (strong, nonatomic, nullable) UIView *moreOverlay;
 @property (strong, nonatomic, nullable) UIButton *profileAvatarEditButton;
 @property (strong, nonatomic, nullable) UIView *createOverlay;
@@ -506,6 +508,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
         @{ @"title": @"新建文稿", @"template": @"ott", @"output": @"odt", @"basename": @"文档", @"ext": @"odt" },
         @{ @"title": @"新建表格", @"template": @"ots", @"output": @"ods", @"basename": @"表格", @"ext": @"ods" },
         @{ @"title": @"新建演示", @"template": @"otp", @"output": @"odp", @"basename": @"演示", @"ext": @"odp" },
+        @{ @"title": @"AI 快速生成", @"template": @"", @"output": @"", @"basename": @"", @"ext": @"ai" },
     ];
     UIButton *previous = nil;
     for (NSDictionary *spec in items) {
@@ -518,7 +521,12 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
         row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
         row.contentEdgeInsets = UIEdgeInsetsMake(0, 20, 0, 20);
         row.tag = (NSInteger)[items indexOfObject:spec];
-        [row setImage:[self typeIconForPathExtension:spec[@"ext"]] forState:UIControlStateNormal];
+        if ([spec[@"title"] isEqualToString:@"AI 快速生成"]) {
+            [row setImage:[UIImage systemImageNamed:@"sparkles"] forState:UIControlStateNormal];
+            row.tintColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
+        } else {
+            [row setImage:[self typeIconForPathExtension:spec[@"ext"]] forState:UIControlStateNormal];
+        }
         row.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 16);
         [card addSubview:row];
         [row.leadingAnchor constraintEqualToAnchor:card.leadingAnchor].active = YES;
@@ -547,7 +555,9 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
         @[ @"otp", @"odp", @"演示" ],
     ];
     [self dismissCreateOverlay];
-    if (sender.tag >= 0 && sender.tag < (NSInteger)specs.count) {
+    if (sender.tag == 3) {
+        [self presentCreateWizard];
+    } else if (sender.tag >= 0 && sender.tag < (NSInteger)specs.count) {
         NSArray<NSString *> *spec = specs[(NSUInteger)sender.tag];
         [self createWithTemplateExtension:spec[0] outputExtension:spec[1] basename:spec[2]];
     }
@@ -558,6 +568,186 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
         [self.createOverlay removeFromSuperview];
         self.createOverlay = nil;
     }
+}
+- (void)presentCreateWizard {
+    __weak typeof(self) weakSelf = self;
+
+    UIViewController *page = [[UIViewController alloc] init];
+    page.view.backgroundColor = UIColor.whiteColor;
+    page.modalPresentationStyle = UIModalPresentationPageSheet;
+
+    UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
+    back.translatesAutoresizingMaskIntoConstraints = NO;
+    [back setTitle:@"‹ 返回" forState:UIControlStateNormal];
+    [back addAction:[UIAction actionWithTitle:@"返回" handler:^(UIAction *action) {
+        [page dismissViewControllerAnimated:YES completion:nil];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [page.view addSubview:back];
+
+    UILabel *titleLabel = [[UILabel alloc] init];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.text = @"AI 快速生成";
+    titleLabel.font = [UIFont boldSystemFontOfSize:17];
+    titleLabel.textColor = UIColor.blackColor;
+    [page.view addSubview:titleLabel];
+
+    UITextField *topicField = [[UITextField alloc] init];
+    topicField.translatesAutoresizingMaskIntoConstraints = NO;
+    topicField.placeholder = @"文档主题，如：年度总结报告";
+    topicField.font = [UIFont systemFontOfSize:16];
+    topicField.borderStyle = UITextBorderStyleRoundedRect;
+    topicField.returnKeyType = UIReturnKeyDone;
+    topicField.accessibilityIdentifier = @"wizardTopic";
+    [topicField addTarget:topicField action:@selector(resignFirstResponder) forControlEvents:UIControlEventEditingDidEndOnExit];
+    [page.view addSubview:topicField];
+
+    UILabel *pageLabel = [[UILabel alloc] init];
+    pageLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    pageLabel.text = @"页数";
+    pageLabel.font = [UIFont systemFontOfSize:14];
+    pageLabel.textColor = [UIColor colorWithWhite:0.42 alpha:1];
+    [page.view addSubview:pageLabel];
+
+    UISegmentedControl *pageControl = [[UISegmentedControl alloc] initWithItems:@[ @"1 页", @"2 页", @"3 页以上" ]];
+    pageControl.translatesAutoresizingMaskIntoConstraints = NO;
+    pageControl.selectedSegmentIndex = 1;
+    pageControl.accessibilityIdentifier = @"wizardPages";
+    [page.view addSubview:pageControl];
+
+    UILabel *typeLabel = [[UILabel alloc] init];
+    typeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    typeLabel.text = @"文档类型";
+    typeLabel.font = [UIFont systemFontOfSize:14];
+    typeLabel.textColor = [UIColor colorWithWhite:0.42 alpha:1];
+    [page.view addSubview:typeLabel];
+
+    UISegmentedControl *typeControl = [[UISegmentedControl alloc] initWithItems:@[ @"文稿", @"表格", @"演示" ]];
+    typeControl.translatesAutoresizingMaskIntoConstraints = NO;
+    typeControl.selectedSegmentIndex = 0;
+    typeControl.accessibilityIdentifier = @"wizardType";
+    [page.view addSubview:typeControl];
+
+    UIButton *generate = [UIButton buttonWithType:UIButtonTypeSystem];
+    generate.translatesAutoresizingMaskIntoConstraints = NO;
+    [generate setTitle:@"生成文档" forState:UIControlStateNormal];
+    [generate setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    generate.backgroundColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
+    generate.layer.cornerRadius = 8;
+    [generate addAction:[UIAction actionWithTitle:@"生成文档" handler:^(UIAction *action) {
+        NSString *topic = [topicField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (topic.length == 0) {
+            return;
+        }
+        NSArray<NSString *> *types = @[ @"writer", @"calc", @"impress" ];
+        NSArray<NSString *> *pages = @[ @"1", @"2", @"3" ];
+        [weakSelf runQuickCreateWithTopic:topic
+                                pageCount:pages[(NSUInteger)MAX(0, pageControl.selectedSegmentIndex)]
+                                   docType:types[(NSUInteger)MAX(0, typeControl.selectedSegmentIndex)]
+                                    button:generate
+                                      page:page];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [page.view addSubview:generate];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [back.topAnchor constraintEqualToAnchor:page.view.safeAreaLayoutGuide.topAnchor constant:8],
+        [back.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:12],
+        [titleLabel.centerYAnchor constraintEqualToAnchor:back.centerYAnchor],
+        [titleLabel.centerXAnchor constraintEqualToAnchor:page.view.centerXAnchor],
+        [topicField.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:24],
+        [topicField.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
+        [topicField.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-24],
+        [topicField.heightAnchor constraintEqualToConstant:44],
+        [pageLabel.topAnchor constraintEqualToAnchor:topicField.bottomAnchor constant:24],
+        [pageLabel.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
+        [pageControl.topAnchor constraintEqualToAnchor:pageLabel.bottomAnchor constant:8],
+        [pageControl.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
+        [pageControl.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-24],
+        [typeLabel.topAnchor constraintEqualToAnchor:pageControl.bottomAnchor constant:24],
+        [typeLabel.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
+        [typeControl.topAnchor constraintEqualToAnchor:typeLabel.bottomAnchor constant:8],
+        [typeControl.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
+        [typeControl.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-24],
+        [generate.topAnchor constraintEqualToAnchor:typeControl.bottomAnchor constant:32],
+        [generate.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:64],
+        [generate.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-64],
+        [generate.heightAnchor constraintEqualToConstant:48],
+    ]];
+    [self presentViewController:page animated:YES completion:nil];
+}
+
+- (void)runQuickCreateWithTopic:(NSString *)topic
+                      pageCount:(NSString *)pageCount
+                        docType:(NSString *)docType
+                         button:(UIButton *)button
+                           page:(UIViewController *)page {
+    if (self.aiService == nil) {
+        self.aiService = [[AIService alloc] init];
+    }
+    [button setTitle:@"生成中..." forState:UIControlStateNormal];
+    button.enabled = NO;
+    NSString *requestId = [[NSUUID UUID] UUIDString];
+    NSString *sessionId = [[NSUUID UUID] UUIDString];
+    NSDictionary *payload = @{
+        @"taskType": @"create_document",
+        @"selection": topic,
+        @"context": @{
+            @"pageCount": pageCount ?: @"",
+            @"audience": @"",
+            @"docType": docType ?: @"writer",
+        },
+    };
+    __block NSMutableString *accumulated = [NSMutableString string];
+    __weak typeof(self) weakSelf = self;
+    [self.aiService startRequest:payload
+                       requestId:requestId
+              documentSessionId:sessionId
+                           emit:^(NSString *type, NSString *rid, NSString *dsid, NSDictionary *eventPayload) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if ([type isEqualToString:@"ai.stream"]) {
+                NSString *delta = eventPayload[@"delta"];
+                if ([delta isKindOfClass:[NSString class]]) {
+                    [accumulated appendString:delta];
+                }
+            } else if ([type isEqualToString:@"ai.done"]) {
+                NSString *fullText = eventPayload[@"fullText"];
+                [weakSelf finishQuickCreate:fullText page:page button:button];
+            } else if ([type isEqualToString:@"ai.error"]) {
+                [button setTitle:@"生成文档" forState:UIControlStateNormal];
+                button.enabled = YES;
+                NSString *message = eventPayload[@"message"] ?: @"生成失败";
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"生成失败"
+                                                                               message:message
+                                                                        preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+                [page presentViewController:alert animated:YES completion:nil];
+            }
+        });
+    }];
+}
+
+- (void)finishQuickCreate:(NSString *)fullText page:(UIViewController *)page button:(UIButton *)button {
+    if (fullText.length == 0) {
+        [button setTitle:@"生成文档" forState:UIControlStateNormal];
+        button.enabled = YES;
+        return;
+    }
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateFormat = @"yyyyMMddHHmmss";
+    NSString *name = [NSString stringWithFormat:@"AI文档-%@.txt", [formatter stringFromDate:[NSDate date]]];
+    NSURL *dir = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
+    NSURL *file = [dir URLByAppendingPathComponent:name];
+    NSError *error = nil;
+    if (![fullText writeToURL:file atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"生成失败"
+                                                                       message:error.localizedDescription ?: @"无法保存文档"
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+        [page presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+    [page dismissViewControllerAnimated:YES completion:^{
+        [self presentDocumentAtURL:file];
+    }];
 }
 
 - (void)createWithTemplateExtension:(NSString *)templateExtension
