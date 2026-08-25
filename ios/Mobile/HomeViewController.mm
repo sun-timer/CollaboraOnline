@@ -213,7 +213,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
 }
 
 - (void)presentProfileEditor {
-    __weak typeof(self) weakSelf = self;
+    __weak HomeViewController *weakSelf = self;
 
     UIViewController *editor = [[UIViewController alloc] init];
     editor.view.backgroundColor = UIColor.whiteColor;
@@ -264,7 +264,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
 
     UIButton *cancelButton = [UIButton buttonWithType:UIButtonTypeSystem];
     cancelButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [cancelButton addAction:[UIAction actionWithTitle:@"取消" handler:^(UIAction *action) {
+    [cancelButton addAction:[UIAction actionWithTitle:@"取消" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
         [editor dismissViewControllerAnimated:YES completion:^{
             weakSelf.profileAvatarEditButton = nil;
         }];
@@ -273,7 +273,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
 
     UIButton *saveButton = [UIButton buttonWithType:UIButtonTypeSystem];
     saveButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [saveButton addAction:[UIAction actionWithTitle:@"保存" handler:^(UIAction *action) {
+    [saveButton addAction:[UIAction actionWithTitle:@"保存" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
         NSString *name = [nameField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         [weakSelf saveProfileName:name];
         [editor dismissViewControllerAnimated:YES completion:^{
@@ -307,7 +307,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     [modelConfig setTitle:@"AI 模型配置 ›" forState:UIControlStateNormal];
     modelConfig.titleLabel.font = [UIFont systemFontOfSize:15];
     modelConfig.accessibilityIdentifier = @"profileModelConfig";
-    [modelConfig addAction:[UIAction actionWithTitle:@"AI 模型配置" handler:^(UIAction *action) {
+    [modelConfig addAction:[UIAction actionWithTitle:@"AI 模型配置" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
         [editor dismissViewControllerAnimated:YES completion:^{
             weakSelf.profileAvatarEditButton = nil;
             [weakSelf.drawer openDrawer];
@@ -570,7 +570,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     }
 }
 - (void)presentCreateWizard {
-    __weak typeof(self) weakSelf = self;
+    __weak HomeViewController *weakSelf = self;
 
     UIViewController *page = [[UIViewController alloc] init];
     page.view.backgroundColor = UIColor.whiteColor;
@@ -579,7 +579,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
     back.translatesAutoresizingMaskIntoConstraints = NO;
     [back setTitle:@"‹ 返回" forState:UIControlStateNormal];
-    [back addAction:[UIAction actionWithTitle:@"返回" handler:^(UIAction *action) {
+    [back addAction:[UIAction actionWithTitle:@"返回" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
         [page dismissViewControllerAnimated:YES completion:nil];
     }] forControlEvents:UIControlEventTouchUpInside];
     [page.view addSubview:back];
@@ -633,7 +633,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     [generate setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     generate.backgroundColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
     generate.layer.cornerRadius = 8;
-    [generate addAction:[UIAction actionWithTitle:@"生成文档" handler:^(UIAction *action) {
+    [generate addAction:[UIAction actionWithTitle:@"生成文档" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
         NSString *topic = [topicField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         if (topic.length == 0) {
             return;
@@ -697,7 +697,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
         },
     };
     __block NSMutableString *accumulated = [NSMutableString string];
-    __weak typeof(self) weakSelf = self;
+    __weak HomeViewController *weakSelf = self;
     [self.aiService startRequest:payload
                        requestId:requestId
               documentSessionId:sessionId
@@ -939,7 +939,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     if (item == nil) {
         return;
     }
-    __weak typeof(self) weakSelf = self;
+    __weak HomeViewController *weakSelf = self;
 
     UIViewController *page = [[UIViewController alloc] init];
     page.view.backgroundColor = UIColor.whiteColor;
@@ -948,7 +948,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
     back.translatesAutoresizingMaskIntoConstraints = NO;
     [back setTitle:@"‹ 返回" forState:UIControlStateNormal];
-    [back addAction:[UIAction actionWithTitle:@"返回" handler:^(UIAction *action) {
+    [back addAction:[UIAction actionWithTitle:@"返回" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
         [page dismissViewControllerAnimated:YES completion:nil];
     }] forControlEvents:UIControlEventTouchUpInside];
     [page.view addSubview:back];
@@ -979,7 +979,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     UISwitch *publicSwitch = [[UISwitch alloc] init];
     publicSwitch.translatesAutoresizingMaskIntoConstraints = NO;
     publicSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:kSharePublicKey];
-    [publicSwitch addAction:[UIAction actionWithTitle:@"切换" handler:^(UIAction *action) {
+    [publicSwitch addAction:[UIAction actionWithTitle:@"切换" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
         [[NSUserDefaults standardUserDefaults] setBool:publicSwitch.isOn forKey:kSharePublicKey];
     }] forControlEvents:UIControlEventValueChanged];
     [page.view addSubview:publicSwitch];
@@ -1011,7 +1011,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     [shareMore setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     shareMore.backgroundColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
     shareMore.layer.cornerRadius = 8;
-    [shareMore addAction:[UIAction actionWithTitle:@"更多发送方式" handler:^(UIAction *action) {
+    [shareMore addAction:[UIAction actionWithTitle:@"更多发送方式" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
         [weakSelf presentShareSheetForItem:item];
     }] forControlEvents:UIControlEventTouchUpInside];
     [page.view addSubview:shareMore];
@@ -1047,7 +1047,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
 }
 
 - (UIImage *)qrImageForString:(NSString *)string size:(CGFloat)size {
-    NSData *data = [string dataUsingEncoding:NSISOTF8StringEncoding];
+    NSData *data = [string dataUsingEncoding:NSUTF8StringEncoding];
     if (data == nil) {
         return nil;
     }

@@ -698,7 +698,7 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
 }
 
 - (void)clearCache {
-    __weak typeof(self) weakSelf = self;
+    __weak AISettingsDrawerController *weakSelf = self;
 
     UIViewController *page = [[UIViewController alloc] init];
     page.view.backgroundColor = UIColor.whiteColor;
@@ -707,7 +707,7 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
     UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
     back.translatesAutoresizingMaskIntoConstraints = NO;
     [back setTitle:@"‹ 返回" forState:UIControlStateNormal];
-    [back addAction:[UIAction actionWithTitle:@"返回" handler:^(UIAction *action) {
+    [back addAction:[UIAction actionWithTitle:@"返回" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
         [page dismissViewControllerAnimated:YES completion:nil];
     }] forControlEvents:UIControlEventTouchUpInside];
     [page.view addSubview:back];
@@ -747,7 +747,7 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
         option.titleLabel.font = [UIFont systemFontOfSize:15];
         option.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
         option.contentEdgeInsets = UIEdgeInsetsMake(0, 16, 0, 16);
-        [option addAction:[UIAction actionWithTitle:options[i] handler:^(UIAction *action) {
+        [option addAction:[UIAction actionWithTitle:options[i] image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
             for (UIView *sub in card.subviews) {
                 if ([sub isKindOfClass:[UIButton class]] && sub != option) {
                     ((UIButton *)sub).layer.borderWidth = 0;
@@ -779,7 +779,7 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
     clearButton.layer.cornerRadius = 28;
     clearButton.enabled = NO;
     [clearButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    [clearButton addAction:[UIAction actionWithTitle:@"清理" handler:^(UIAction *action) {
+    [clearButton addAction:[UIAction actionWithTitle:@"清理" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
         [weakSelf runCacheCleanOnPage:page button:clearButton];
     }] forControlEvents:UIControlEventTouchUpInside];
     [page.view addSubview:clearButton];
