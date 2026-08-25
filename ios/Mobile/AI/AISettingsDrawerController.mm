@@ -11,8 +11,8 @@
 
 #import <PhotosUI/PhotosUI.h>
 
-static const CGFloat kDrawerWidth = 356.0;
-static NSString *const kProfileNameKey = @"AI_PROFILE_NAME";
+static const CGFloat kDrawerWidth = 320.0;
+static NSString *const kProfileNameKey = @"USER_PROFILE_NAME";
 static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
 
 @interface AISettingsDrawerController () <PHPickerViewControllerDelegate, UITextFieldDelegate>
@@ -126,7 +126,7 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
 }
 
 - (UIColor *)accentColor {
-    return [UIColor colorWithRed:250.0 / 255.0 green:98.0 / 255.0 blue:0 alpha:1];
+    return [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
 }
 
 - (void)buildDrawerContent {
@@ -632,6 +632,10 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
 }
 
 - (NSURL *)avatarURL {
+    NSString *path = [[NSUserDefaults standardUserDefaults] stringForKey:@"USER_PROFILE_AVATAR_PATH"];
+    if (path.length > 0) {
+        return [NSURL fileURLWithPath:path];
+    }
     NSURL *support = [[[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask] lastObject];
     [[NSFileManager defaultManager] createDirectoryAtURL:support withIntermediateDirectories:YES attributes:nil error:nil];
     return [support URLByAppendingPathComponent:kAvatarFileName];

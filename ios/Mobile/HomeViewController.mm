@@ -296,6 +296,23 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
         [underline.trailingAnchor constraintEqualToAnchor:nameField.trailingAnchor],
         [underline.heightAnchor constraintEqualToConstant:1],
     ]];
+    UIButton *modelConfig = [UIButton buttonWithType:UIButtonTypeSystem];
+    modelConfig.translatesAutoresizingMaskIntoConstraints = NO;
+    [modelConfig setTitle:@"AI 模型配置 ›" forState:UIControlStateNormal];
+    modelConfig.titleLabel.font = [UIFont systemFontOfSize:15];
+    modelConfig.accessibilityIdentifier = @"profileModelConfig";
+    [modelConfig addAction:[UIAction actionWithTitle:@"AI 模型配置" handler:^(UIAction *action) {
+        [editor dismissViewControllerAnimated:YES completion:^{
+            weakSelf.profileAvatarEditButton = nil;
+            [weakSelf.drawer openDrawer];
+        }];
+    }] forControlEvents:UIControlEventTouchUpInside];
+    [editor.view addSubview:modelConfig];
+    [NSLayoutConstraint activateConstraints:@[
+        [modelConfig.topAnchor constraintEqualToAnchor:underline.bottomAnchor constant:24],
+        [modelConfig.centerXAnchor constraintEqualToAnchor:editor.view.centerXAnchor],
+    ]];
+
     [self presentViewController:editor animated:YES completion:nil];
 }
 - (void)saveProfileName:(NSString *)name {
