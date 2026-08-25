@@ -34,8 +34,8 @@ import UIKit
     @objc var localEventEmitter: ((String, String, NSDictionary) -> Void)?
 
     @objc func execute(_ requestId: String, payload: NSDictionary) {
-        let task = Task { [weak self] in
-            await self?.runRequest(requestId: requestId, payload: payload)
+        let task = Task<Void, Never> { [weak self] in
+            _ = await self?.runRequest(requestId: requestId, payload: payload)
         }
         lock.lock()
         tasks[requestId] = task

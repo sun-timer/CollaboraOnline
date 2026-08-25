@@ -70,7 +70,7 @@ final class WriterAIToast: UILabel {
 final class WriterAICloseButton: UIButton {
     init() {
         super.init(frame: .zero)
-        let config = UIButton.Configuration.plain()
+        var config = UIButton.Configuration.plain()
         let symbol = UIImage(systemName: "xmark",
                              withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium))
         config.image = symbol
@@ -413,7 +413,7 @@ final class WriterAILanguageRow: UIButton {
     init(languageName: String) {
         super.init(frame: .zero)
         var config = UIButton.Configuration.plain()
-        config.contentHorizontalAlignment = .leading
+        self.contentHorizontalAlignment = .leading
         var title = AttributedString(languageName)
         title.font = WriterAITheme.Font.button()
         title.foregroundColor = WriterAITheme.Color.textPrimary
