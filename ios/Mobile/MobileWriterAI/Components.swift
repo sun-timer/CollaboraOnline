@@ -361,6 +361,7 @@ final class WriterAIMenuItemView: UIButton {
     var onTap: ((Bool) -> Void)?
 
     init(icon: UIImage?, title: String) {
+        super.init(frame: .zero)
         iconView.image = icon
         addTarget(self, action: #selector(tapped), for: .touchUpInside)
         iconView.contentMode = .scaleAspectFit
