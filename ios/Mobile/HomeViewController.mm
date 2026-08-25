@@ -29,6 +29,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
 @property (strong, nonatomic, nullable) RecentDocumentItem *activeMoreItem;
 @property (strong, nonatomic, nullable) UIView *moreOverlay;
 @property (strong, nonatomic, nullable) UIButton *profileAvatarEditButton;
+@property (strong, nonatomic, nullable) UIView *createOverlay;
 @end
 
 @implementation HomeViewController
@@ -476,22 +477,84 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
 }
 
 - (void)createDocument {
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"新建"
-                                                                   message:nil
-                                                            preferredStyle:UIAlertControllerStyleActionSheet];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"文本文档" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [self createWithTemplateExtension:@"ott" outputExtension:@"odt" basename:@"文档"];
-    }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"电子表格" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [self createWithTemplateExtension:@"ots" outputExtension:@"ods" basename:@"表格"];
-    }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"演示文稿" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [self createWithTemplateExtension:@"otp" outputExtension:@"odp" basename:@"演示"];
-    }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    sheet.popoverPresentationController.sourceView = self.view;
-    sheet.popoverPresentationController.sourceRect = CGRectMake(self.view.bounds.size.width - 52, self.view.bounds.size.height - 80, 1, 1);
-    [self presentViewController:sheet animated:YES completion:nil];
+    if (self.createOverlay != nil) {
+        return;
+    }
+    UIView *overlay = [[UIView alloc] initWithFrame:self.view.bounds];
+    overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    overlay.backgroundColor = [UIColor colorWithWhite:0 alpha:0.4];
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissCreateOverlay)];
+    [overlay addGestureRecognizer:tap];
+    [self.view addSubview:overlay];
+    self.createOverlay = overlay;
+
+    UIView *card = [[UIView alloc] init];
+    card.translatesAutoresizingMaskIntoConstraints = NO;
+    card.backgroundColor = UIColor.whiteColor;
+    card.layer.cornerRadius = 24;
+    card.layer.cornerCurve = kCACornerCurveContinuous;
+    card.layer.shadowColor = [UIColor.blackColor CGColor];
+    card.layer.shadowOpacity = 0.1;
+    card.layer.shadowRadius = 16;
+    card.layer.shadowOffset = CGSizeMake(0, 4);
+    [overlay addSubview:card];
+
+    NSArray<NSDictionary *> *items = @[
+        @{ @"title": @"新建文稿", @"template": @"ott", @"output": @"odt", @"basename": @"文档", @"ext": @"odt" },
+        @{ @"title": @"新建表格", @"template": @"ots", @"output": @"ods", @"basename": @"表格", @"ext": @"ods" },
+        @{ @"title": @"新建演示", @"template": @"otp", @"output": @"odp", @"basename": @"演示", @"ext": @"odp" },
+    ];
+    UIButton *previous = nil;
+    for (NSDictionary *spec in items) {
+        UIButton *row = [UIButton buttonWithType:UIButtonTypeCustom];
+        row.translatesAutoresizingMaskIntoConstraints = NO;
+        [row addTarget:self action:@selector(createMenuAction:) forControlEvents:UIControlEventTouchUpInside];
+        [row setTitle:spec[@"title"] forState:UIControlStateNormal];
+        [row setTitleColor:UIColor.blackColor forState:UIControlStateNormal];
+        row.titleLabel.font = [UIFont systemFontOfSize:17];
+        row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+        row.contentEdgeInsets = UIEdgeInsetsMake(0, 20, 0, 20);
+        row.tag = (NSInteger)[items indexOfObject:spec];
+        [row setImage:[self typeIconForPathExtension:spec[@"ext"]] forState:UIControlStateNormal];
+        row.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 16);
+        [card addSubview:row];
+        [row.leadingAnchor constraintEqualToAnchor:card.leadingAnchor].active = YES;
+        [row.trailingAnchor constraintEqualToAnchor:card.trailingAnchor].active = YES;
+        [row.heightAnchor constraintEqualToConstant:80].active = YES;
+        if (previous == nil) {
+            [row.topAnchor constraintEqualToAnchor:card.topAnchor constant:16].active = YES;
+        } else {
+            [row.topAnchor constraintEqualToAnchor:previous.bottomAnchor].active = YES;
+        }
+        previous = row;
+    }
+
+    CGFloat cardWidth = fmin(360, self.view.bounds.size.width - 40);
+    [NSLayoutConstraint activateConstraints:@[
+        [card.centerXAnchor constraintEqualToAnchor:overlay.centerXAnchor],
+        [card.centerYAnchor constraintEqualToAnchor:overlay.centerYAnchor],
+        [card.widthAnchor constraintEqualToConstant:cardWidth],
+        [card.bottomAnchor constraintEqualToAnchor:previous.bottomAnchor constant:16],
+    ]];
+}
+- (void)createMenuAction:(UIButton *)sender {
+    NSArray<NSArray<NSString *> *> *specs = @[
+        @[ @"ott", @"odt", @"文档" ],
+        @[ @"ots", @"ods", @"表格" ],
+        @[ @"otp", @"odp", @"演示" ],
+    ];
+    [self dismissCreateOverlay];
+    if (sender.tag >= 0 && sender.tag < (NSInteger)specs.count) {
+        NSArray<NSString *> *spec = specs[(NSUInteger)sender.tag];
+        [self createWithTemplateExtension:spec[0] outputExtension:spec[1] basename:spec[2]];
+    }
+}
+
+- (void)dismissCreateOverlay {
+    if (self.createOverlay != nil) {
+        [self.createOverlay removeFromSuperview];
+        self.createOverlay = nil;
+    }
 }
 
 - (void)createWithTemplateExtension:(NSString *)templateExtension
@@ -641,6 +704,9 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
     if (gestureRecognizer.view == self.moreOverlay) {
         return touch.view == self.moreOverlay;
+    }
+    if (gestureRecognizer.view == self.createOverlay) {
+        return touch.view == self.createOverlay;
     }
     return YES;
 }
