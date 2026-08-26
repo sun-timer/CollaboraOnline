@@ -677,27 +677,24 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 
 - (void)createWriter {
     [self closeFabMenu];
-    [self createWithTemplateExtension:@"ott" outputExtension:@"odt" basename:@"文档"];
+    [self createBlankDocumentWithExtension:@"odt" basename:@"文档"];
 }
 
 - (void)createCalc {
     [self closeFabMenu];
-    [self createWithTemplateExtension:@"ots" outputExtension:@"ods" basename:@"表格"];
+    [self createBlankDocumentWithExtension:@"ods" basename:@"表格"];
 }
 
 - (void)createImpress {
     [self closeFabMenu];
-    [self createWithTemplateExtension:@"otp" outputExtension:@"odp" basename:@"演示"];
+    [self createBlankDocumentWithExtension:@"odp" basename:@"演示"];
 }
 
-- (void)createWithTemplateExtension:(NSString *)templateExtension
-                    outputExtension:(NSString *)outputExtension
-                          basename:(NSString *)basename {
+- (void)createBlankDocumentWithExtension:(NSString *)outputExtension basename:(NSString *)basename {
     NSError *error = nil;
-    NSURL *url = [DocumentPresentation createDocumentFromTemplateExtension:templateExtension
-                                                           outputExtension:outputExtension
-                                                                 basename:basename
-                                                                    error:&error];
+    NSURL *url = [DocumentPresentation createBlankDocumentWithExtension:outputExtension
+                                                              basename:basename
+                                                                 error:&error];
     if (url == nil) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"无法新建文档"
                                                                        message:error.localizedDescription

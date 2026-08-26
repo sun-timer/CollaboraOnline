@@ -14,10 +14,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property (copy, nonatomic) NSString *title;
 @property (copy, nonatomic) NSString *pathExtension;
 @property (strong, nonatomic, nullable) NSDate *openedAt;
+@property (strong, nonatomic, nullable) NSDate *lastModified;
 @property (copy, nonatomic, nullable) NSString *path;
 @property (copy, nonatomic, nullable) NSData *bookmark;
 
 - (nullable NSURL *)resolvedURL;
+- (NSString *)displaySubtitle;
++ (NSString *)formatModified:(nullable NSDate *)date;
 
 @end
 
@@ -28,6 +31,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)recordURL:(NSURL *)url;
 - (void)importLocalTestFiles;
 - (void)removeItem:(RecentDocumentItem *)item;
+- (void)renameItem:(RecentDocumentItem *)item toTitle:(NSString *)title;
 
 @end
 
