@@ -39,7 +39,7 @@
 #import "Toolbar/TopToolbarController.h"
 
 #import "DocumentViewController.h"
- #import "orange_office-Swift.h"
+ #import "AI/WriterAIComponents.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <Poco/MemoryStream.h>
@@ -326,13 +326,8 @@ static IMP standardImpOfInputAccessoryView = nil;
         [floatingAiButton.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
     ]];
 
-    [WriterAIService shared].localEventEmitter = ^(NSString *type, NSString *reqId, NSDictionary *payload) {
-        DocumentViewController *strongSelf = weakSelf;
-        if (!strongSelf) {
-            return;
-        }
-        [strongSelf aiEventReceived:type requestId:reqId payload:payload];
-    };
+    // Local AI requests use the ObjC AIService with per-request emit (see
+    // launchAIRequestWithTaskType:); no global event emitter needed.
 }
 
 #pragma mark - Ticket 07: AI panel, result modal, language picker
@@ -437,7 +432,16 @@ static IMP standardImpOfInputAccessoryView = nil;
     if ([taskType isEqualToString:@"translate"] && translateTargetLang.length > 0) {
         payload[@"context"] = @{@"targetLang": translateTargetLang};
     }
-    [[WriterAIService shared] execute:aiRequestId payload:payload];
+    __weak DocumentViewController *aiWeakSelf = self;
+    [self.aiService startRequest:payload
+                       requestId:aiRequestId
+              documentSessionId:@"ai-panel-local"
+                           emit:^(NSString *type, NSString *reqId, NSString *dsid, NSDictionary *eventPayload) {
+        DocumentViewController *strongSelf = aiWeakSelf;
+        if (strongSelf) {
+            [strongSelf aiEventReceived:type requestId:reqId payload:eventPayload];
+        }
+    }];
 }
 
 - (void)aiEventReceived:(NSString *)type requestId:(NSString *)reqId payload:(NSDictionary *)payload
@@ -466,7 +470,7 @@ static IMP standardImpOfInputAccessoryView = nil;
 - (void)cancelAIGeneration
 {
     if (aiRequestId) {
-        [[WriterAIService shared] cancel:aiRequestId];
+        [self.aiService cancelRequest:aiRequestId documentSessionId:@"ai-panel-local"];
     }
 }
 
