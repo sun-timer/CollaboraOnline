@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AB1201002F000000000000D1 /* WriterAIComponents.mm in Sources */ = {isa = PBXBuildFile; fileRef = AB1201002F000000000000C1 /* WriterAIComponents.mm */; };
 		1F957DC22BA8229A006C9E78 /* Util-mobile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1F957DC12BA82296006C9E78 /* Util-mobile.cpp */; };
 		1FCFA28A2B2AF13F007EE2DF /* coolwsd-fork.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1FCFA2892B2AF13C007EE2DF /* coolwsd-fork.cpp */; };
 		3F3A77D22C59B04000947249 /* global.js in Resources */ = {isa = PBXBuildFile; fileRef = 3F3A77D12C59B04000947249 /* global.js */; };
@@ -124,6 +125,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		AB1201002F000000000000C1 /* WriterAIComponents.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = Mobile/AI/WriterAIComponents.mm; sourceTree = "<group>"; };
 		1F957DC12BA82296006C9E78 /* Util-mobile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = "Util-mobile.cpp"; sourceTree = "<group>"; };
 		1FCFA2892B2AF13C007EE2DF /* coolwsd-fork.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = "coolwsd-fork.cpp"; sourceTree = "<group>"; };
 		3F3A77D12C59B04000947249 /* global.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = global.js; path = ../../../browser/dist/global.js; sourceTree = "<group>"; };
@@ -2715,6 +2717,7 @@
 				BE5EB5B5213FE1F900E0826C /* Online */,
 				BE8D77292136762500AC58EA /* Mobile */,
 				C73BEA622E8429C4009E12D3 /* MobileUITests */,
+				AB1201002F000000000000C1 /* WriterAIComponents.mm */,
 				BE8D77282136762500AC58EA /* Products */,
 				BE00F8B3213ED542001CE2D4 /* Frameworks */,
 			);
@@ -3714,6 +3717,8 @@
 			);
 			dependencies = (
 			);
+			fileSystemSynchronizedGroups = (
+			);
 			name = Mobile;
 			productName = Mobile;
 			productReference = BE8D77272136762500AC58EA /* orange office.app */;
@@ -3926,6 +3931,7 @@
 				D0A020260814000000000001 /* TopToolbarController.mm in Sources */,
 				D0A020260814000000000002 /* BottomToolbarController.mm in Sources */,
 				BE8D772C2136762500AC58EA /* AppDelegate.mm in Sources */,
+				AB1201002F000000000000D1 /* WriterAIComponents.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -4116,6 +4122,7 @@
 					"$(SOURCE_ROOT)/../zstdinclude-symlink",
 				);
 				INFOPLIST_FILE = Mobile/Info.plist;
+				SWIFT_VERSION = 5.0;
 				INFOPLIST_KEY_CFBundleDisplayName = "Orange Office";
 				LD_GENERATE_MAP_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -4186,6 +4193,7 @@
 					"$(SOURCE_ROOT)/../zstdinclude-symlink",
 				);
 				INFOPLIST_FILE = Mobile/Info.plist;
+				SWIFT_VERSION = 5.0;
 				INFOPLIST_KEY_CFBundleDisplayName = "Orange Office";
 				LD_GENERATE_MAP_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (

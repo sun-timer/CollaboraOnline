@@ -39,6 +39,7 @@
 #import "Toolbar/TopToolbarController.h"
 
 #import "DocumentViewController.h"
+#import "AI/WriterAIComponents.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <Poco/MemoryStream.h>
@@ -48,6 +49,17 @@
     int closeNotificationPipeForForwardingThread[2];
     NSURL *downloadAsTmpURL;
     NativeBridgeHandler *nativeBridgeHandler;
+    WriterAIPanelView *aiPanel;
+    WriterAAIResultModal *aiResultModal;
+    WriterALanguagePicker *languagePicker;
+    WriterAFloatingAIButton *floatingAiButton;
+    NSString *lastSelection;
+    NSString *lastTaskType;
+    NSString *aiTaskTitle;
+    NSString *aiRequestId;
+    NSString *translateTargetLang;
+    NSString *aiFullText;
+    CGFloat keyboardHeight;
     AIService *aiService;
     IOSTopToolbarController *topToolbarController;
     IOSBottomToolbarController *bottomToolbarController;
@@ -302,8 +314,219 @@ static IMP standardImpOfInputAccessoryView = nil;
     ]];
     aiDrawer = [AISettingsDrawerController attachToHost:self];
     [aiDrawer requireFailureOfScrollViewGestures:self.webView.scrollView];
+    // Ticket 07 (phase3): floating AI shortcut bar + local AI events.
+    floatingAiButton = [[WriterAFloatingAIButton alloc] initWithOnAction:^(NSString *action) {
+        DocumentViewController *strongSelf = weakSelf;
+        [strongSelf floatingAiTapped];
+    }];
+    [self.view addSubview:floatingAiButton];
+    floatingAiButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [NSLayoutConstraint activateConstraints:@[
+        [floatingAiButton.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-8],
+        [floatingAiButton.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+    ]];
+
+    // Local AI requests use the ObjC AIService with per-request emit (see
+    // launchAIRequestWithTaskType:); no global event emitter needed.
 }
 
+#pragma mark - Ticket 07: AI panel, result modal, language picker
+
+- (void)floatingAiTapped
+{
+    [self dismissLanguagePicker];
+    CGFloat width = MIN(self.view.bounds.size.width, 420.0);
+    if (self.view.bounds.size.width > 600.0) {
+        width = self.view.bounds.size.width * 750.0 / 750.0;
+    }
+    __weak DocumentViewController *weakSelf = self;
+    aiPanel = [[WriterAIPanelView alloc] initWithWidth:width
+        onTile:^(NSString *taskType) {
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf aiTileTapped:taskType];
+        }
+        onClose:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf dismissAIPanel];
+        }];
+    [aiPanel showIn:self.view aboveBottomInset:keyboardHeight];
+}
+
+- (void)dismissAIPanel
+{
+    [aiPanel dismiss];
+    aiPanel = nil;
+}
+
+- (void)aiTileTapped:(NSString *)taskType
+{
+    [self dismissAIPanel];
+    NSString *title = @"AI 处理中";
+    if ([taskType isEqualToString:@"summarize"]) {
+        title = @"总结大纲";
+    } else if ([taskType isEqualToString:@"continue_write"]) {
+        title = @"AI 续写";
+    } else if ([taskType isEqualToString:@"polish"]) {
+        title = @"文案润色";
+    } else if ([taskType isEqualToString:@"translate"]) {
+        title = @"翻译";
+    }
+    [self startAIRequestWithTaskType:taskType title:title];
+}
+
+- (void)startAIRequestWithTaskType:(NSString *)taskType title:(NSString *)title
+{
+    if ([taskType isEqualToString:@"translate"]) {
+        [self showLanguagePickerForTranslateWithTitle:title];
+        return;
+    }
+    [self launchAIRequestWithTaskType:taskType title:title];
+}
+
+- (void)startTranslateRequestWithTitle:(NSString *)title
+{
+    [self launchAIRequestWithTaskType:@"translate" title:title];
+}
+
+- (void)launchAIRequestWithTaskType:(NSString *)taskType title:(NSString *)title
+{
+    aiTaskTitle = title;
+    lastTaskType = taskType;
+    aiRequestId = [[NSUUID UUID] UUIDString];
+    aiFullText = @"";
+
+    [self dismissAIPanel];
+    __weak DocumentViewController *weakSelf = self;
+    aiResultModal = [[WriterAAIResultModal alloc] initWithTitle:title
+        onClose:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf cancelAIGeneration];
+            [strongSelf dismissAIResultModal];
+        }
+        onStop:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf cancelAIGeneration];
+            if (strongSelf->aiResultModal) {
+                [strongSelf->aiResultModal setReadyWithFullText:strongSelf->aiFullText ?: @""];
+            }
+        }
+        onRetry:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf retryAIGeneration];
+        }
+        onInsert:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf insertAIText];
+        }
+        onCopy:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf copyAIText];
+        }];
+    [aiResultModal showIn:self.view];
+
+    NSMutableDictionary *payload = [@{
+        @"taskType": taskType,
+        @"selection": lastSelection ?: @"",
+        @"modelMode": @"cloud",
+    } mutableCopy];
+    if ([taskType isEqualToString:@"translate"] && translateTargetLang.length > 0) {
+        payload[@"context"] = @{@"targetLang": translateTargetLang};
+    }
+    __weak DocumentViewController *aiWeakSelf = self;
+    [self->aiService startRequest:payload
+                       requestId:aiRequestId
+              documentSessionId:@"ai-panel-local"
+                           emit:^(NSString *type, NSString *reqId, NSString *dsid, NSDictionary *eventPayload) {
+        DocumentViewController *strongSelf = aiWeakSelf;
+        if (strongSelf) {
+            [strongSelf aiEventReceived:type requestId:reqId payload:eventPayload];
+        }
+    }];
+}
+
+- (void)aiEventReceived:(NSString *)type requestId:(NSString *)reqId payload:(NSDictionary *)payload
+{
+    if (!aiResultModal || ![reqId isEqualToString:aiRequestId]) {
+        return;
+    }
+    if ([type isEqualToString:@"ai.stream"]) {
+        NSString *delta = payload[@"delta"];
+        if ([delta isKindOfClass:[NSString class]]) {
+            aiFullText = [aiFullText stringByAppendingString:delta];
+            [aiResultModal setStreamingText:aiFullText];
+        }
+    } else if ([type isEqualToString:@"ai.done"]) {
+        id fullText = payload[@"fullText"];
+        aiFullText = [fullText isKindOfClass:[NSString class]] ? fullText : @"";
+        [aiResultModal setReadyWithFullText:aiFullText];
+    } else if ([type isEqualToString:@"ai.error"]) {
+        NSString *message = [payload[@"message"] isKindOfClass:[NSString class]]
+                                ? payload[@"message"]
+                                : @"AI 请求失败";
+        [aiResultModal setErrorWithMessage:message];
+    }
+}
+
+- (void)cancelAIGeneration
+{
+    if (aiRequestId) {
+        [self->aiService cancelRequest:aiRequestId documentSessionId:@"ai-panel-local"];
+    }
+}
+
+- (void)retryAIGeneration
+{
+    [self dismissAIResultModal];
+    if (lastTaskType) {
+        [self startAIRequestWithTaskType:lastTaskType title:aiTaskTitle ?: @"AI 处理中"];
+    }
+}
+
+- (void)insertAIText
+{
+    if (aiFullText.length > 0) {
+        UIPasteboard.generalPasteboard.string = aiFullText;
+    }
+    [self execScript:@"if(window.app&&app.map&&app.map._clip){app.map._clip._execCopyCutPaste('paste');}"];
+    [self dismissAIResultModal];
+}
+
+- (void)copyAIText
+{
+    if (aiFullText.length > 0) {
+        UIPasteboard.generalPasteboard.string = aiFullText;
+    }
+}
+
+- (void)dismissAIResultModal
+{
+    [aiResultModal dismiss];
+    aiResultModal = nil;
+}
+
+- (void)showLanguagePickerForTranslateWithTitle:(NSString *)title
+{
+    [self dismissLanguagePicker];
+    __weak DocumentViewController *weakSelf = self;
+    languagePicker = [[WriterALanguagePicker alloc] initWithOnSelect:^(NSString *lang) {
+        DocumentViewController *strongSelf = weakSelf;
+        strongSelf->translateTargetLang = lang;
+        [strongSelf dismissLanguagePicker];
+        [strongSelf startTranslateRequestWithTitle:title];
+    }];
+    [languagePicker showIn:self.view];
+}
+
+- (void)dismissLanguagePicker
+{
+    [languagePicker dismiss];
+    languagePicker = nil;
+}
+
+- (void)execScript:(NSString *)script
+{
+    [self.webView evaluateJavaScript:script completionHandler:nil];
+}
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
 
