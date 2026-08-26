@@ -314,7 +314,6 @@ static IMP standardImpOfInputAccessoryView = nil;
     ]];
     aiDrawer = [AISettingsDrawerController attachToHost:self];
     // Ticket 07 (phase3): floating AI shortcut bar + local AI events.
-    __weak DocumentViewController *weakSelf = self;
     floatingAiButton = [[WriterAFloatingAIButton alloc] initWithOnAction:^(NSString *action) {
         DocumentViewController *strongSelf = weakSelf;
         [strongSelf floatingAiTapped];
@@ -406,8 +405,8 @@ static IMP standardImpOfInputAccessoryView = nil;
         onStop:^{
             DocumentViewController *strongSelf = weakSelf;
             [strongSelf cancelAIGeneration];
-            if (strongSelf.aiResultModal) {
-                [strongSelf.aiResultModal setReadyWithFullText:strongSelf->aiFullText ?: @""];
+            if (strongSelf->aiResultModal) {
+                [strongSelf->aiResultModal setReadyWithFullText:strongSelf->aiFullText ?: @""];
             }
         }
         onRetry:^{
@@ -433,7 +432,7 @@ static IMP standardImpOfInputAccessoryView = nil;
         payload[@"context"] = @{@"targetLang": translateTargetLang};
     }
     __weak DocumentViewController *aiWeakSelf = self;
-    [self.aiService startRequest:payload
+    [self->aiService startRequest:payload
                        requestId:aiRequestId
               documentSessionId:@"ai-panel-local"
                            emit:^(NSString *type, NSString *reqId, NSString *dsid, NSDictionary *eventPayload) {
@@ -470,7 +469,7 @@ static IMP standardImpOfInputAccessoryView = nil;
 - (void)cancelAIGeneration
 {
     if (aiRequestId) {
-        [self.aiService cancelRequest:aiRequestId documentSessionId:@"ai-panel-local"];
+        [self->aiService cancelRequest:aiRequestId documentSessionId:@"ai-panel-local"];
     }
 }
 
