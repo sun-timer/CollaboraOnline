@@ -39,7 +39,7 @@
 #import "Toolbar/TopToolbarController.h"
 
 #import "DocumentViewController.h"
- #import "AI/WriterAIComponents.h"
+#import "AI/WriterAIComponents.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <Poco/MemoryStream.h>
@@ -313,6 +313,7 @@ static IMP standardImpOfInputAccessoryView = nil;
         webViewBottomConstraint,
     ]];
     aiDrawer = [AISettingsDrawerController attachToHost:self];
+    [aiDrawer requireFailureOfScrollViewGestures:self.webView.scrollView];
     // Ticket 07 (phase3): floating AI shortcut bar + local AI events.
     floatingAiButton = [[WriterAFloatingAIButton alloc] initWithOnAction:^(NSString *action) {
         DocumentViewController *strongSelf = weakSelf;

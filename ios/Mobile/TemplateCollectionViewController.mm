@@ -9,11 +9,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#define LIBO_INTERNAL_ONLY
-#import <LibreOfficeKit/LibreOfficeKitInit.h>
-
-#import "ios.h"
 #import "AppDelegate.h"
+#import "DocumentPresentation.h"
 #import "L10n.h"
 #import "TemplateCollectionViewController.h"
 #import "TemplateSectionHeaderView.h"
@@ -24,14 +21,28 @@ static NSString *mapTemplateExtensionToActual(NSString *templateName) {
     NSString *baseName = [templateName stringByDeletingPathExtension];
     NSString *extension = [templateName substringFromIndex:baseName.length];
 
-    if ([extension isEqualToString:@".ott"])
+    if ([extension isEqualToString:@".ott"] || [extension isEqualToString:@".odt"])
         return [baseName stringByAppendingString:@".odt"];
-    else if ([extension isEqualToString:@".ots"])
+    else if ([extension isEqualToString:@".ots"] || [extension isEqualToString:@".ods"])
         return [baseName stringByAppendingString:@".ods"];
-    else if ([extension isEqualToString:@".otp"])
+    else if ([extension isEqualToString:@".otp"] || [extension isEqualToString:@".odp"])
         return [baseName stringByAppendingString:@".odp"];
     else
         assert(false);
+}
+
+static NSMutableArray<NSURL *> *blankTemplatesForExtension(NSString *ext) {
+    NSMutableArray<NSURL *> *result = [NSMutableArray array];
+    NSURL *url = [[NSBundle mainBundle] URLForResource:@"untitled"
+                                         withExtension:ext
+                                          subdirectory:@"Templates"];
+    if (url == nil) {
+        url = [[NSBundle mainBundle] URLForResource:@"untitled" withExtension:ext];
+    }
+    if (url != nil) {
+        [result addObject:url];
+    }
+    return result;
 }
 
 @implementation TemplateCollectionViewController
@@ -55,21 +66,35 @@ static NSString *mapTemplateExtensionToActual(NSString *templateName) {
     NSString *subPath;
     while ((subPath = [e nextObject]) != nil) {
         NSString *path = [downloadedTemplates stringByAppendingString:subPath];
-        if ([[path pathExtension] isEqualToString:@"ott"]) {
+        NSString *pathExt = [[path pathExtension] lowercaseString];
+        if ([pathExt isEqualToString:@"ott"] || [pathExt isEqualToString:@"odt"]) {
             [templates[0] addObject:[NSURL fileURLWithPath:path]];
-        } else if ([[path pathExtension] isEqualToString:@"ots"]) {
+        } else if ([pathExt isEqualToString:@"ots"] || [pathExt isEqualToString:@"ods"]) {
             [templates[1] addObject:[NSURL fileURLWithPath:path]];
-        } else if ([[path pathExtension] isEqualToString:@"otp"]) {
+        } else if ([pathExt isEqualToString:@"otp"] || [pathExt isEqualToString:@"odp"]) {
             [templates[2] addObject:[NSURL fileURLWithPath:path]];
         }
     }
 
-    if ([templates[0] count] == 0)
-        templates[0] = [[[NSBundle mainBundle] URLsForResourcesWithExtension:@".ott" subdirectory:@"Templates"] mutableCopy];
-    if ([templates[1] count] == 0)
-        templates[1] = [[[NSBundle mainBundle] URLsForResourcesWithExtension:@".ots" subdirectory:@"Templates"] mutableCopy];
-    if ([templates[2] count] == 0)
-        templates[2] = [[[NSBundle mainBundle] URLsForResourcesWithExtension:@".otp" subdirectory:@"Templates"] mutableCopy];
+    // Prefer blank untitled ODF copies (Android-aligned). Fall back to ott/ots/otp if present.
+    if ([templates[0] count] == 0) {
+        templates[0] = blankTemplatesForExtension(@"odt");
+        if ([templates[0] count] == 0) {
+            templates[0] = [[[NSBundle mainBundle] URLsForResourcesWithExtension:@".ott" subdirectory:@"Templates"] mutableCopy] ?: [@[] mutableCopy];
+        }
+    }
+    if ([templates[1] count] == 0) {
+        templates[1] = blankTemplatesForExtension(@"ods");
+        if ([templates[1] count] == 0) {
+            templates[1] = [[[NSBundle mainBundle] URLsForResourcesWithExtension:@".ots" subdirectory:@"Templates"] mutableCopy] ?: [@[] mutableCopy];
+        }
+    }
+    if ([templates[2] count] == 0) {
+        templates[2] = blankTemplatesForExtension(@"odp");
+        if ([templates[2] count] == 0) {
+            templates[2] = [[[NSBundle mainBundle] URLsForResourcesWithExtension:@".otp" subdirectory:@"Templates"] mutableCopy] ?: [@[] mutableCopy];
+        }
+    }
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
@@ -155,16 +180,39 @@ static NSString *mapTemplateExtensionToActual(NSString *templateName) {
 
 - (BOOL)collectionView:(UICollectionView *)collectionView shouldSelectItemAtIndexPath:(NSIndexPath *)indexPath {
     NSURL *selectedTemplate = templates[[indexPath indexAtPosition:0]][[indexPath indexAtPosition:1]];
+    NSString *outputName = mapTemplateExtensionToActual(selectedTemplate.lastPathComponent);
+    NSString *outputExt = [[outputName pathExtension] lowercaseString];
+    NSString *selectedExt = [[selectedTemplate pathExtension] lowercaseString];
 
-    NSURL *cacheDirectory = [NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask][0];
-    NSURL *newURL = [cacheDirectory URLByAppendingPathComponent:mapTemplateExtensionToActual(selectedTemplate.lastPathComponent)
-                                                    isDirectory:NO];
-    // Load the template into LibreOffice core, save as the corresponding document type (with the
-    // same basename), and then proceed to edit that.
+    NSURL *newURL = nil;
+    NSError *error = nil;
 
-    LibreOfficeKitDocument *doc = lo_kit->pClass->documentLoad(lo_kit, [[selectedTemplate absoluteString] UTF8String]);
-    doc->pClass->saveAs(doc, [[newURL absoluteString] UTF8String], nullptr, nullptr);
-    doc->pClass->destroy(doc);
+    // Never call lo_kit documentLoad from the UI thread (crashes after a prior document).
+    if ([selectedExt isEqualToString:@"odt"] || [selectedExt isEqualToString:@"ods"]
+        || [selectedExt isEqualToString:@"odp"]) {
+        NSURL *documents = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory
+                                                                   inDomains:NSUserDomainMask] lastObject];
+        NSString *base = [outputName stringByDeletingPathExtension];
+        NSString *fileName = [NSString stringWithFormat:@"%@.%@", base, outputExt];
+        newURL = [documents URLByAppendingPathComponent:fileName];
+        NSUInteger suffix = 2;
+        while ([[NSFileManager defaultManager] fileExistsAtPath:newURL.path]) {
+            fileName = [NSString stringWithFormat:@"%@ %lu.%@", base, (unsigned long)suffix, outputExt];
+            newURL = [documents URLByAppendingPathComponent:fileName];
+            suffix++;
+        }
+        if (![[NSFileManager defaultManager] copyItemAtURL:selectedTemplate toURL:newURL error:&error]) {
+            return NO;
+        }
+    } else {
+        // ott/ots/otp without LOK conversion: fall back to blank untitled ODF.
+        newURL = [DocumentPresentation createBlankDocumentWithExtension:outputExt
+                                                              basename:[outputName stringByDeletingPathExtension]
+                                                                 error:&error];
+        if (newURL == nil) {
+            return NO;
+        }
+    }
 
     // Partial fix for issue #1962 Set import handler to nil after use
     if (self.importHandler) {

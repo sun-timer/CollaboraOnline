@@ -12,30 +12,153 @@
 #import "RecentDocumentsStore.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
-#import <CoreImage/CoreImage.h>
-#import "AI/AIService.h"
 #import "AI/WriterAIComponents.h"
 
-static NSString *const kSharePublicKey = @"SHARE_PUBLIC_ENABLED";
-static NSString *const ProfileNameKey = @"USER_PROFILE_NAME";
-static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
+static NSString *const kHomeRecentCellId = @"homeRecentCell";
+static NSString *const kHomeGridCellId = @"homeGridCell";
+static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 
-@interface HomeViewController () <UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate, UITextFieldDelegate, UIGestureRecognizerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate>
+@interface HomeRecentCell : UITableViewCell
+@property (strong, nonatomic) UIImageView *fileIconView;
+@property (strong, nonatomic) UILabel *nameLabel;
+@property (strong, nonatomic) UILabel *dateLabel;
+@property (strong, nonatomic) UIButton *moreButton;
+@property (copy, nonatomic) void (^moreAction)(void);
+@end
+
+@implementation HomeRecentCell
+
+- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
+    self = [super initWithStyle:style reuseIdentifier:reuseIdentifier];
+    if (self) {
+        self.selectionStyle = UITableViewCellSelectionStyleDefault;
+        self.fileIconView = [[UIImageView alloc] init];
+        self.fileIconView.translatesAutoresizingMaskIntoConstraints = NO;
+        self.fileIconView.contentMode = UIViewContentModeScaleAspectFit;
+        [self.contentView addSubview:self.fileIconView];
+
+        self.nameLabel = [[UILabel alloc] init];
+        self.nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        self.nameLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightBold];
+        self.nameLabel.textColor = [UIColor colorWithWhite:0.2 alpha:1];
+        self.nameLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        [self.contentView addSubview:self.nameLabel];
+
+        self.dateLabel = [[UILabel alloc] init];
+        self.dateLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        self.dateLabel.font = [UIFont systemFontOfSize:12];
+        self.dateLabel.textColor = [UIColor colorWithWhite:0 alpha:0.4];
+        [self.contentView addSubview:self.dateLabel];
+
+        self.moreButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        self.moreButton.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.moreButton setImage:[UIImage imageNamed:@"HomeMoreDots"] forState:UIControlStateNormal];
+        self.moreButton.tintColor = [UIColor colorWithWhite:0 alpha:0.35];
+        [self.moreButton addTarget:self action:@selector(moreTapped) forControlEvents:UIControlEventTouchUpInside];
+        [self.contentView addSubview:self.moreButton];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [self.fileIconView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16],
+            [self.fileIconView.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+            [self.fileIconView.widthAnchor constraintEqualToConstant:39],
+            [self.fileIconView.heightAnchor constraintEqualToConstant:39],
+            [self.moreButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-12],
+            [self.moreButton.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+            [self.moreButton.widthAnchor constraintEqualToConstant:36],
+            [self.moreButton.heightAnchor constraintEqualToConstant:36],
+            [self.nameLabel.leadingAnchor constraintEqualToAnchor:self.fileIconView.trailingAnchor constant:12],
+            [self.nameLabel.trailingAnchor constraintEqualToAnchor:self.moreButton.leadingAnchor constant:-8],
+            [self.nameLabel.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:12],
+            [self.dateLabel.leadingAnchor constraintEqualToAnchor:self.nameLabel.leadingAnchor],
+            [self.dateLabel.trailingAnchor constraintEqualToAnchor:self.nameLabel.trailingAnchor],
+            [self.dateLabel.topAnchor constraintEqualToAnchor:self.nameLabel.bottomAnchor constant:4],
+            [self.dateLabel.bottomAnchor constraintLessThanOrEqualToAnchor:self.contentView.bottomAnchor constant:-12],
+        ]];
+    }
+    return self;
+}
+
+- (void)moreTapped {
+    if (self.moreAction) {
+        self.moreAction();
+    }
+}
+
+@end
+
+@interface HomeGridCell : UICollectionViewCell
+@property (strong, nonatomic) UIImageView *fileIconView;
+@property (strong, nonatomic) UILabel *nameLabel;
+@property (strong, nonatomic) UILabel *dateLabel;
+@end
+
+@implementation HomeGridCell
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.fileIconView = [[UIImageView alloc] init];
+        self.fileIconView.translatesAutoresizingMaskIntoConstraints = NO;
+        self.fileIconView.contentMode = UIViewContentModeScaleAspectFit;
+        [self.contentView addSubview:self.fileIconView];
+
+        self.nameLabel = [[UILabel alloc] init];
+        self.nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        self.nameLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightBold];
+        self.nameLabel.textColor = [UIColor colorWithWhite:0.2 alpha:1];
+        self.nameLabel.textAlignment = NSTextAlignmentCenter;
+        self.nameLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        [self.contentView addSubview:self.nameLabel];
+
+        self.dateLabel = [[UILabel alloc] init];
+        self.dateLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        self.dateLabel.font = [UIFont systemFontOfSize:11];
+        self.dateLabel.textColor = [UIColor colorWithWhite:0 alpha:0.4];
+        self.dateLabel.textAlignment = NSTextAlignmentCenter;
+        [self.contentView addSubview:self.dateLabel];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [self.fileIconView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:12],
+            [self.fileIconView.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
+            [self.fileIconView.widthAnchor constraintEqualToConstant:48],
+            [self.fileIconView.heightAnchor constraintEqualToConstant:48],
+            [self.nameLabel.topAnchor constraintEqualToAnchor:self.fileIconView.bottomAnchor constant:8],
+            [self.nameLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
+            [self.nameLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
+            [self.dateLabel.topAnchor constraintEqualToAnchor:self.nameLabel.bottomAnchor constant:4],
+            [self.dateLabel.leadingAnchor constraintEqualToAnchor:self.nameLabel.leadingAnchor],
+            [self.dateLabel.trailingAnchor constraintEqualToAnchor:self.nameLabel.trailingAnchor],
+        ]];
+    }
+    return self;
+}
+
+@end
+
+@interface HomeViewController () <UITableViewDataSource, UITableViewDelegate, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout, UIDocumentPickerDelegate, UITextFieldDelegate>
 @property (strong, nonatomic) RecentDocumentsStore *recentStore;
 @property (strong, nonatomic) AISettingsDrawerController *drawer;
 @property (strong, nonatomic) NSArray<RecentDocumentItem *> *visibleItems;
-@property (strong, nonatomic) UITableView *tableView;
-@property (strong, nonatomic) UITextField *searchField;
+@property (assign, nonatomic) NSUInteger totalCount;
+@property (assign, nonatomic) BOOL gridMode;
+@property (strong, nonatomic) UIView *topBar;
 @property (strong, nonatomic) UIButton *avatarButton;
-@property (strong, nonatomic) UIView *emptyContainer;
-@property (strong, nonatomic) UILabel *emptyTitleLabel;
-@property (strong, nonatomic) UIStackView *emptyStack;
-@property (strong, nonatomic, nullable) UIView *splashView;
-@property (strong, nonatomic, nullable) RecentDocumentItem *activeMoreItem;
-@property (strong, nonatomic) AIService *aiService;
-@property (strong, nonatomic, nullable) UIView *moreOverlay;
-@property (strong, nonatomic, nullable) UIButton *profileAvatarEditButton;
-@property (strong, nonatomic, nullable) UIView *createOverlay;
+@property (strong, nonatomic) UIView *searchBox;
+@property (strong, nonatomic) UITextField *searchField;
+@property (strong, nonatomic) UIButton *openFileButton;
+@property (strong, nonatomic) UIView *recentsHeaderRow;
+@property (strong, nonatomic) UILabel *recentsHeaderLabel;
+@property (strong, nonatomic) UIButton *layoutToggleButton;
+@property (strong, nonatomic) UITableView *tableView;
+@property (strong, nonatomic) UICollectionView *collectionView;
+@property (strong, nonatomic) UIView *emptyRecentState;
+@property (strong, nonatomic) UIView *emptySearchState;
+@property (strong, nonatomic) UIButton *fabButton;
+@property (strong, nonatomic) UIView *fabOverlay;
+@property (strong, nonatomic) UIView *fabMenuCard;
+@property (assign, nonatomic) BOOL fabMenuOpen;
+@property (strong, nonatomic) NSLayoutConstraint *contentTopToHeader;
+@property (strong, nonatomic) NSLayoutConstraint *contentTopToTopBar;
 @end
 
 @implementation HomeViewController
@@ -45,420 +168,466 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     self.view.backgroundColor = UIColor.whiteColor;
     self.view.accessibilityIdentifier = @"homeRoot";
     self.recentStore = [[RecentDocumentsStore alloc] init];
+    self.gridMode = [[NSUserDefaults standardUserDefaults] boolForKey:kHomeGridModeKey];
+    self.visibleItems = @[];
 
-    UIView *topBar = [[UIView alloc] init];
-    topBar.translatesAutoresizingMaskIntoConstraints = NO;
-    topBar.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1];
-    [self.view addSubview:topBar];
+    [self buildTopBar];
+    [self buildRecentsHeader];
+    [self buildContentViews];
+    [self buildEmptyStates];
+    [self buildFab];
+    [self layoutChrome];
+
+    self.drawer = [AISettingsDrawerController attachToHost:self];
+    [self.drawer requireFailureOfScrollViewGestures:self.tableView];
+    [self.drawer requireFailureOfScrollViewGestures:self.collectionView];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.recentStore importLocalTestFiles];
+    [self reloadAvatar];
+    [self reloadRecents];
+}
+
+- (UIColor *)chromePlateColor {
+    return [UIColor colorWithRed:0xF2 / 255.0 green:0xF2 / 255.0 blue:0xF2 / 255.0 alpha:1];
+}
+
+- (void)buildTopBar {
+    self.topBar = [[UIView alloc] init];
+    self.topBar.translatesAutoresizingMaskIntoConstraints = NO;
+    self.topBar.backgroundColor = [self chromePlateColor];
+    [self.view addSubview:self.topBar];
 
     self.avatarButton = [UIButton buttonWithType:UIButtonTypeCustom];
     self.avatarButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.avatarButton.backgroundColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
-    self.avatarButton.layer.cornerRadius = 32;
+    self.avatarButton.layer.cornerRadius = 18;
     self.avatarButton.clipsToBounds = YES;
     self.avatarButton.accessibilityIdentifier = @"homeAvatarButton";
-    self.avatarButton.accessibilityLabel = @"修改资料";
-    [self.avatarButton addTarget:self action:@selector(presentProfileEditor) forControlEvents:UIControlEventTouchUpInside];
-    [topBar addSubview:self.avatarButton];
+    self.avatarButton.accessibilityLabel = @"打开设置";
+    [self.avatarButton setImage:[UIImage imageNamed:@"HomeAvatar"] forState:UIControlStateNormal];
+    self.avatarButton.imageView.contentMode = UIViewContentModeScaleAspectFill;
+    [self.avatarButton addTarget:self action:@selector(openDrawer) forControlEvents:UIControlEventTouchUpInside];
+    [self.topBar addSubview:self.avatarButton];
 
-    UIView *searchBox = [[UIView alloc] init];
-    searchBox.translatesAutoresizingMaskIntoConstraints = NO;
-    searchBox.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.08];
-    searchBox.layer.cornerRadius = 18;
-    [topBar addSubview:searchBox];
+    self.searchBox = [[UIView alloc] init];
+    self.searchBox.translatesAutoresizingMaskIntoConstraints = NO;
+    self.searchBox.backgroundColor = UIColor.whiteColor;
+    self.searchBox.layer.cornerRadius = 18;
+    [self.topBar addSubview:self.searchBox];
+
+    UIImageView *searchIcon = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"HomeSearch"]];
+    searchIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    searchIcon.contentMode = UIViewContentModeScaleAspectFit;
+    searchIcon.tintColor = [UIColor colorWithWhite:0.6 alpha:1];
+    [self.searchBox addSubview:searchIcon];
 
     self.searchField = [[UITextField alloc] init];
     self.searchField.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchField.placeholder = @"搜索";
     self.searchField.font = [UIFont systemFontOfSize:16];
+    self.searchField.textColor = [UIColor colorWithWhite:0.2 alpha:1];
     self.searchField.delegate = self;
     self.searchField.accessibilityIdentifier = @"homeSearchField";
     self.searchField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    self.searchField.returnKeyType = UIReturnKeySearch;
     [self.searchField addTarget:self action:@selector(searchChanged) forControlEvents:UIControlEventEditingChanged];
-    [searchBox addSubview:self.searchField];
+    [self.searchBox addSubview:self.searchField];
 
-    UIButton *openFile = [UIButton buttonWithType:UIButtonTypeSystem];
-    openFile.translatesAutoresizingMaskIntoConstraints = NO;
-    [openFile setImage:[[UIImage writerIconNamed:@"recent"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate] forState:UIControlStateNormal];
-    openFile.tintColor = [UIColor colorWithWhite:0.0 alpha:0.4];
-    openFile.accessibilityLabel = @"最近打开";
-    openFile.accessibilityIdentifier = @"homeOpenFileButton";
-    [openFile addTarget:self action:@selector(openFile) forControlEvents:UIControlEventTouchUpInside];
-    [topBar addSubview:openFile];
+    self.openFileButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.openFileButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.openFileButton setImage:[UIImage imageNamed:@"HomeFolder"] forState:UIControlStateNormal];
+    self.openFileButton.tintColor = [UIColor colorWithWhite:0.26 alpha:1];
+    self.openFileButton.accessibilityIdentifier = @"homeOpenFileButton";
+    self.openFileButton.accessibilityLabel = @"打开";
+    [self.openFileButton addTarget:self action:@selector(openFile) forControlEvents:UIControlEventTouchUpInside];
+    [self.topBar addSubview:self.openFileButton];
 
-    UILabel *recentsHeader = [[UILabel alloc] init];
-    recentsHeader.translatesAutoresizingMaskIntoConstraints = NO;
-    recentsHeader.text = @"最近打开";
-    recentsHeader.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
-    recentsHeader.textColor = [UIColor colorWithWhite:0.0 alpha:0.4];
-    recentsHeader.accessibilityIdentifier = @"homeRecentsHeader";
-    [self.view addSubview:recentsHeader];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.avatarButton.widthAnchor constraintEqualToConstant:36],
+        [self.avatarButton.heightAnchor constraintEqualToConstant:36],
+        [searchIcon.leadingAnchor constraintEqualToAnchor:self.searchBox.leadingAnchor constant:12],
+        [searchIcon.centerYAnchor constraintEqualToAnchor:self.searchBox.centerYAnchor],
+        [searchIcon.widthAnchor constraintEqualToConstant:18],
+        [searchIcon.heightAnchor constraintEqualToConstant:18],
+        [self.searchField.leadingAnchor constraintEqualToAnchor:searchIcon.trailingAnchor constant:8],
+        [self.searchField.trailingAnchor constraintEqualToAnchor:self.searchBox.trailingAnchor constant:-12],
+        [self.searchField.centerYAnchor constraintEqualToAnchor:self.searchBox.centerYAnchor],
+        [self.openFileButton.widthAnchor constraintEqualToConstant:40],
+        [self.openFileButton.heightAnchor constraintEqualToConstant:40],
+    ]];
+}
 
+- (void)buildRecentsHeader {
+    self.recentsHeaderRow = [[UIView alloc] init];
+    self.recentsHeaderRow.translatesAutoresizingMaskIntoConstraints = NO;
+    self.recentsHeaderRow.backgroundColor = UIColor.whiteColor;
+    [self.view addSubview:self.recentsHeaderRow];
+
+    self.recentsHeaderLabel = [[UILabel alloc] init];
+    self.recentsHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.recentsHeaderLabel.text = @"最近打开";
+    self.recentsHeaderLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightBold];
+    self.recentsHeaderLabel.textColor = [UIColor colorWithRed:111 / 255.0 green:115 / 255.0 blue:120 / 255.0 alpha:1];
+    self.recentsHeaderLabel.accessibilityIdentifier = @"homeRecentsHeader";
+    [self.recentsHeaderRow addSubview:self.recentsHeaderLabel];
+
+    self.layoutToggleButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.layoutToggleButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.layoutToggleButton.tintColor = [UIColor colorWithRed:111 / 255.0 green:115 / 255.0 blue:120 / 255.0 alpha:1];
+    self.layoutToggleButton.accessibilityIdentifier = @"homeLayoutToggle";
+    [self.layoutToggleButton addTarget:self action:@selector(toggleLayoutMode) forControlEvents:UIControlEventTouchUpInside];
+    [self.recentsHeaderRow addSubview:self.layoutToggleButton];
+    [self updateLayoutToggleIcon];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.recentsHeaderLabel.leadingAnchor constraintEqualToAnchor:self.recentsHeaderRow.leadingAnchor constant:16],
+        [self.recentsHeaderLabel.centerYAnchor constraintEqualToAnchor:self.recentsHeaderRow.centerYAnchor],
+        [self.layoutToggleButton.trailingAnchor constraintEqualToAnchor:self.recentsHeaderRow.trailingAnchor constant:-16],
+        [self.layoutToggleButton.centerYAnchor constraintEqualToAnchor:self.recentsHeaderRow.centerYAnchor],
+        [self.layoutToggleButton.widthAnchor constraintEqualToConstant:28],
+        [self.layoutToggleButton.heightAnchor constraintEqualToConstant:28],
+    ]];
+}
+
+- (void)buildContentViews {
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
     self.tableView.rowHeight = 64;
     self.tableView.separatorInset = UIEdgeInsetsMake(0, 16, 0, 16);
+    self.tableView.tableFooterView = [[UIView alloc] init];
     self.tableView.accessibilityIdentifier = @"homeRecentsTable";
+    [self.tableView registerClass:[HomeRecentCell class] forCellReuseIdentifier:kHomeRecentCellId];
     [self.view addSubview:self.tableView];
 
-    self.emptyContainer = [[UIView alloc] init];
-    self.emptyContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    self.emptyContainer.hidden = YES;
-    [self.view addSubview:self.emptyContainer];
-
-    UIImageView *emptyIcon = [[UIImageView alloc] initWithImage:[UIImage writerIconNamed:@"empty-doc"]];
-    emptyIcon.translatesAutoresizingMaskIntoConstraints = NO;
-    emptyIcon.tintColor = [UIColor colorWithWhite:0.75 alpha:1];
-    emptyIcon.contentMode = UIViewContentModeScaleAspectFit;
-
-    self.emptyTitleLabel = [[UILabel alloc] init];
-    self.emptyTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.emptyTitleLabel.text = @"还没有最近文档";
-    self.emptyTitleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
-    self.emptyTitleLabel.textColor = [UIColor colorWithWhite:0.0 alpha:0.4];
-    self.emptyTitleLabel.textAlignment = NSTextAlignmentCenter;
-
-    UIButton *emptyOpen = [UIButton buttonWithType:UIButtonTypeSystem];
-    emptyOpen.translatesAutoresizingMaskIntoConstraints = NO;
-    [emptyOpen setTitle:@"打开本地文件" forState:UIControlStateNormal];
-    emptyOpen.titleLabel.font = [UIFont systemFontOfSize:15];
-    emptyOpen.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1];
-    emptyOpen.layer.cornerRadius = 8;
-    emptyOpen.accessibilityIdentifier = @"homeEmptyOpen";
-    [emptyOpen addTarget:self action:@selector(openFile) forControlEvents:UIControlEventTouchUpInside];
-
-    UIButton *emptyImport = [UIButton buttonWithType:UIButtonTypeSystem];
-    emptyImport.translatesAutoresizingMaskIntoConstraints = NO;
-    [emptyImport setTitle:@"导入" forState:UIControlStateNormal];
-    emptyImport.titleLabel.font = [UIFont systemFontOfSize:15];
-    emptyImport.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1];
-    emptyImport.layer.cornerRadius = 8;
-    emptyImport.accessibilityIdentifier = @"homeEmptyImport";
-    [emptyImport addTarget:self action:@selector(openFile) forControlEvents:UIControlEventTouchUpInside];
-
-    self.emptyStack = [[UIStackView alloc] initWithArrangedSubviews:@[ emptyIcon, self.emptyTitleLabel, emptyOpen, emptyImport ]];
-    self.emptyStack.translatesAutoresizingMaskIntoConstraints = NO;
-    self.emptyStack.axis = UILayoutConstraintAxisVertical;
-    self.emptyStack.alignment = UIStackViewAlignmentCenter;
-    self.emptyStack.spacing = 12;
-    [self.emptyContainer addSubview:self.emptyStack];
-
-    [emptyIcon.widthAnchor constraintEqualToConstant:80].active = YES;
-    [emptyIcon.heightAnchor constraintEqualToConstant:80].active = YES;
-    [emptyOpen.widthAnchor constraintEqualToConstant:140].active = YES;
-    [emptyOpen.heightAnchor constraintEqualToConstant:44].active = YES;
-    [emptyImport.widthAnchor constraintEqualToConstant:140].active = YES;
-    [emptyImport.heightAnchor constraintEqualToConstant:44].active = YES;
-    [self.emptyStack.centerXAnchor constraintEqualToAnchor:self.emptyContainer.centerXAnchor].active = YES;
-    [self.emptyStack.centerYAnchor constraintEqualToAnchor:self.emptyContainer.centerYAnchor].active = YES;
-
-    UIButton *fab = [UIButton buttonWithType:UIButtonTypeSystem];
-    fab.translatesAutoresizingMaskIntoConstraints = NO;
-    [fab setTitle:@"+" forState:UIControlStateNormal];
-    fab.titleLabel.font = [UIFont systemFontOfSize:28 weight:UIFontWeightMedium];
-    [fab setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    fab.backgroundColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
-    fab.layer.cornerRadius = 28;
-    fab.accessibilityIdentifier = @"homeFab";
-    fab.accessibilityLabel = @"新建文档";
-    [fab addTarget:self action:@selector(createDocument) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:fab];
-
-    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
-    [NSLayoutConstraint activateConstraints:@[
-        [topBar.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-        [topBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [topBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [topBar.bottomAnchor constraintEqualToAnchor:safe.topAnchor constant:100],
-        [self.avatarButton.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:16],
-        [self.avatarButton.bottomAnchor constraintEqualToAnchor:topBar.bottomAnchor constant:-8],
-        [self.avatarButton.widthAnchor constraintEqualToConstant:64],
-        [self.avatarButton.heightAnchor constraintEqualToConstant:64],
-        [openFile.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-12],
-        [openFile.widthAnchor constraintEqualToConstant:44],
-        [openFile.heightAnchor constraintEqualToConstant:44],
-        [openFile.centerYAnchor constraintEqualToAnchor:self.avatarButton.centerYAnchor],
-        [searchBox.leadingAnchor constraintEqualToAnchor:self.avatarButton.trailingAnchor constant:12],
-        [searchBox.trailingAnchor constraintEqualToAnchor:openFile.leadingAnchor constant:-8],
-        [searchBox.centerYAnchor constraintEqualToAnchor:self.avatarButton.centerYAnchor],
-        [searchBox.heightAnchor constraintEqualToConstant:36],
-        [self.searchField.leadingAnchor constraintEqualToAnchor:searchBox.leadingAnchor constant:12],
-        [self.searchField.trailingAnchor constraintEqualToAnchor:searchBox.trailingAnchor constant:-12],
-        [self.searchField.centerYAnchor constraintEqualToAnchor:searchBox.centerYAnchor],
-        [recentsHeader.topAnchor constraintEqualToAnchor:topBar.bottomAnchor],
-        [recentsHeader.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:16],
-        [recentsHeader.heightAnchor constraintEqualToConstant:56],
-        [self.tableView.topAnchor constraintEqualToAnchor:recentsHeader.bottomAnchor],
-        [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
-        [self.emptyContainer.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
-        [self.emptyContainer.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
-        [fab.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-24],
-        [fab.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-24],
-        [fab.widthAnchor constraintEqualToConstant:56],
-        [fab.heightAnchor constraintEqualToConstant:56],
-    ]];
-
-    self.drawer = [AISettingsDrawerController attachToHost:self];
-    [self showSplash];
+    UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
+    layout.minimumInteritemSpacing = 8;
+    layout.minimumLineSpacing = 12;
+    layout.sectionInset = UIEdgeInsetsMake(8, 16, 96, 16);
+    self.collectionView = [[UICollectionView alloc] initWithFrame:CGRectZero collectionViewLayout:layout];
+    self.collectionView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.collectionView.backgroundColor = UIColor.whiteColor;
+    self.collectionView.dataSource = self;
+    self.collectionView.delegate = self;
+    self.collectionView.hidden = YES;
+    self.collectionView.accessibilityIdentifier = @"homeRecentsGrid";
+    [self.collectionView registerClass:[HomeGridCell class] forCellWithReuseIdentifier:kHomeGridCellId];
+    [self.view addSubview:self.collectionView];
 }
 
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self.recentStore importLocalTestFiles];
-    [self refreshAvatarButton];
-    [self reloadRecents];
-}
+- (UIView *)buildEmptyContainerWithImage:(NSString *)imageName
+                                   title:(NSString *)title
+                                subtitle:(NSString *)subtitle
+                            retryVisible:(BOOL)retryVisible {
+    UIView *container = [[UIView alloc] init];
+    container.translatesAutoresizingMaskIntoConstraints = NO;
+    container.hidden = YES;
 
-- (void)presentProfileEditor {
-    __weak HomeViewController *weakSelf = self;
-
-    UIViewController *editor = [[UIViewController alloc] init];
-    editor.view.backgroundColor = UIColor.whiteColor;
-    editor.modalPresentationStyle = UIModalPresentationPageSheet;
+    UIImageView *imageView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:imageName]];
+    imageView.translatesAutoresizingMaskIntoConstraints = NO;
+    imageView.contentMode = UIViewContentModeScaleAspectFit;
+    imageView.alpha = [imageName isEqualToString:@"HomeEmptySearch"] ? 0.45 : 1.0;
+    [container addSubview:imageView];
 
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLabel.text = @"修改资料";
-    titleLabel.font = [UIFont boldSystemFontOfSize:17];
-    titleLabel.textColor = UIColor.blackColor;
-    [editor.view addSubview:titleLabel];
+    titleLabel.text = title;
+    titleLabel.font = [UIFont systemFontOfSize:22 weight:UIFontWeightBold];
+    titleLabel.textColor = [UIColor colorWithRed:0xB0 / 255.0 green:0xB3 / 255.0 blue:0xB8 / 255.0 alpha:1];
+    titleLabel.textAlignment = NSTextAlignmentCenter;
+    [container addSubview:titleLabel];
 
-    UITextField *nameField = [[UITextField alloc] init];
-    nameField.translatesAutoresizingMaskIntoConstraints = NO;
-    nameField.placeholder = @"名字";
-    nameField.font = [UIFont systemFontOfSize:17];
-    nameField.text = [[NSUserDefaults standardUserDefaults] stringForKey:ProfileNameKey];
-    nameField.borderStyle = UITextBorderStyleNone;
-    nameField.textAlignment = NSTextAlignmentCenter;
-    nameField.returnKeyType = UIReturnKeyDone;
-    nameField.accessibilityIdentifier = @"profileNameField";
-    [nameField addTarget:nameField action:@selector(resignFirstResponder) forControlEvents:UIControlEventEditingDidEndOnExit];
-    [editor.view addSubview:nameField];
+    UILabel *subtitleLabel = [[UILabel alloc] init];
+    subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    subtitleLabel.text = subtitle;
+    subtitleLabel.font = [UIFont systemFontOfSize:16];
+    subtitleLabel.textColor = [UIColor colorWithRed:0xB0 / 255.0 green:0xB3 / 255.0 blue:0xB8 / 255.0 alpha:1];
+    subtitleLabel.textAlignment = NSTextAlignmentCenter;
+    subtitleLabel.numberOfLines = 0;
+    subtitleLabel.hidden = subtitle.length == 0;
+    [container addSubview:subtitleLabel];
 
-    UIView *underline = [[UIView alloc] init];
-    underline.translatesAutoresizingMaskIntoConstraints = NO;
-    underline.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.12];
-    [editor.view addSubview:underline];
-
-    UIButton *avatarEdit = [UIButton buttonWithType:UIButtonTypeCustom];
-    avatarEdit.translatesAutoresizingMaskIntoConstraints = NO;
-    avatarEdit.layer.cornerRadius = 48;
-    avatarEdit.clipsToBounds = YES;
-    avatarEdit.accessibilityIdentifier = @"profileAvatarEdit";
-    NSString *avatarPath = [[NSUserDefaults standardUserDefaults] stringForKey:ProfileAvatarKey];
-    UIImage *avatarImage = (avatarPath.length > 0) ? [UIImage imageWithContentsOfFile:avatarPath] : nil;
-    if (avatarImage != nil) {
-        [avatarEdit setBackgroundImage:avatarImage forState:UIControlStateNormal];
-    } else {
-        avatarEdit.backgroundColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
-        [avatarEdit setTitle:@"选择照片" forState:UIControlStateNormal];
-        [avatarEdit setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-        avatarEdit.titleLabel.font = [UIFont systemFontOfSize:13];
-    }
-    [avatarEdit addTarget:self action:@selector(pickAvatarPhoto) forControlEvents:UIControlEventTouchUpInside];
-    [editor.view addSubview:avatarEdit];
-    self.profileAvatarEditButton = avatarEdit;
-
-    UIButton *cancelButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    cancelButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [cancelButton addAction:[UIAction actionWithTitle:@"取消" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-        [editor dismissViewControllerAnimated:YES completion:^{
-            weakSelf.profileAvatarEditButton = nil;
-        }];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [editor.view addSubview:cancelButton];
-
-    UIButton *saveButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    saveButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [saveButton addAction:[UIAction actionWithTitle:@"保存" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-        NSString *name = [nameField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        [weakSelf saveProfileName:name];
-        [editor dismissViewControllerAnimated:YES completion:^{
-            weakSelf.profileAvatarEditButton = nil;
-        }];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [editor.view addSubview:saveButton];
+    UIButton *retry = [UIButton buttonWithType:UIButtonTypeSystem];
+    retry.translatesAutoresizingMaskIntoConstraints = NO;
+    [retry setTitle:@"重试" forState:UIControlStateNormal];
+    [retry setTitleColor:[UIColor colorWithWhite:0.13 alpha:1] forState:UIControlStateNormal];
+    retry.titleLabel.font = [UIFont systemFontOfSize:18];
+    retry.backgroundColor = [UIColor colorWithWhite:0.93 alpha:1];
+    retry.layer.cornerRadius = 12;
+    retry.hidden = !retryVisible;
+    retry.accessibilityIdentifier = @"homeSearchRetry";
+    [retry addTarget:self action:@selector(retrySearch) forControlEvents:UIControlEventTouchUpInside];
+    [container addSubview:retry];
 
     [NSLayoutConstraint activateConstraints:@[
-        [titleLabel.topAnchor constraintEqualToAnchor:editor.view.safeAreaLayoutGuide.topAnchor constant:16],
-        [titleLabel.centerXAnchor constraintEqualToAnchor:editor.view.centerXAnchor],
-        [cancelButton.leadingAnchor constraintEqualToAnchor:editor.view.leadingAnchor constant:16],
-        [cancelButton.centerYAnchor constraintEqualToAnchor:titleLabel.centerYAnchor],
-        [saveButton.trailingAnchor constraintEqualToAnchor:editor.view.trailingAnchor constant:-16],
-        [saveButton.centerYAnchor constraintEqualToAnchor:titleLabel.centerYAnchor],
-        [avatarEdit.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:48],
-        [avatarEdit.centerXAnchor constraintEqualToAnchor:editor.view.centerXAnchor],
-        [avatarEdit.widthAnchor constraintEqualToConstant:96],
-        [avatarEdit.heightAnchor constraintEqualToConstant:96],
-        [nameField.topAnchor constraintEqualToAnchor:avatarEdit.bottomAnchor constant:40],
-        [nameField.leadingAnchor constraintEqualToAnchor:editor.view.leadingAnchor constant:40],
-        [nameField.trailingAnchor constraintEqualToAnchor:editor.view.trailingAnchor constant:-40],
-        [nameField.heightAnchor constraintEqualToConstant:44],
-        [underline.topAnchor constraintEqualToAnchor:nameField.bottomAnchor],
-        [underline.leadingAnchor constraintEqualToAnchor:nameField.leadingAnchor],
-        [underline.trailingAnchor constraintEqualToAnchor:nameField.trailingAnchor],
-        [underline.heightAnchor constraintEqualToConstant:1],
+        [imageView.centerXAnchor constraintEqualToAnchor:container.centerXAnchor],
+        [imageView.centerYAnchor constraintEqualToAnchor:container.centerYAnchor constant:-48],
+        [imageView.widthAnchor constraintEqualToConstant:210],
+        [imageView.heightAnchor constraintEqualToConstant:210],
+        [titleLabel.topAnchor constraintEqualToAnchor:imageView.bottomAnchor constant:16],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:24],
+        [titleLabel.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-24],
+        [subtitleLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:8],
+        [subtitleLabel.leadingAnchor constraintEqualToAnchor:titleLabel.leadingAnchor],
+        [subtitleLabel.trailingAnchor constraintEqualToAnchor:titleLabel.trailingAnchor],
+        [retry.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:30],
+        [retry.centerXAnchor constraintEqualToAnchor:container.centerXAnchor],
+        [retry.widthAnchor constraintEqualToConstant:190],
+        [retry.heightAnchor constraintEqualToConstant:56],
     ]];
-    UIButton *modelConfig = [UIButton buttonWithType:UIButtonTypeSystem];
-    modelConfig.translatesAutoresizingMaskIntoConstraints = NO;
-    [modelConfig setTitle:@"AI 模型配置 ›" forState:UIControlStateNormal];
-    modelConfig.titleLabel.font = [UIFont systemFontOfSize:15];
-    modelConfig.accessibilityIdentifier = @"profileModelConfig";
-    [modelConfig addAction:[UIAction actionWithTitle:@"AI 模型配置" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-        [editor dismissViewControllerAnimated:YES completion:^{
-            weakSelf.profileAvatarEditButton = nil;
-            [weakSelf.drawer openDrawer];
-        }];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [editor.view addSubview:modelConfig];
+    return container;
+}
+
+- (void)buildEmptyStates {
+    self.emptyRecentState = [self buildEmptyContainerWithImage:@"HomeEmptyRecent"
+                                                         title:@"没有最近的文档"
+                                                      subtitle:@"创建或导入文件以开始使用"
+                                                  retryVisible:NO];
+    self.emptyRecentState.accessibilityIdentifier = @"homeEmptyRecent";
+    [self.view addSubview:self.emptyRecentState];
+
+    self.emptySearchState = [self buildEmptyContainerWithImage:@"HomeEmptySearch"
+                                                         title:@"搜索结果为空"
+                                                      subtitle:nil
+                                                  retryVisible:YES];
+    self.emptySearchState.accessibilityIdentifier = @"homeEmptySearch";
+    [self.view addSubview:self.emptySearchState];
+}
+
+- (void)buildFab {
+    self.fabOverlay = [[UIView alloc] init];
+    self.fabOverlay.translatesAutoresizingMaskIntoConstraints = NO;
+    self.fabOverlay.backgroundColor = UIColor.clearColor;
+    self.fabOverlay.hidden = YES;
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(closeFabMenu)];
+    [self.fabOverlay addGestureRecognizer:tap];
+    [self.view addSubview:self.fabOverlay];
+
+    self.fabMenuCard = [[UIView alloc] init];
+    self.fabMenuCard.translatesAutoresizingMaskIntoConstraints = NO;
+    self.fabMenuCard.backgroundColor = UIColor.whiteColor;
+    self.fabMenuCard.layer.cornerRadius = 14;
+    self.fabMenuCard.layer.shadowColor = UIColor.blackColor.CGColor;
+    self.fabMenuCard.layer.shadowOpacity = 0.16;
+    self.fabMenuCard.layer.shadowRadius = 12;
+    self.fabMenuCard.layer.shadowOffset = CGSizeMake(0, 4);
+    self.fabMenuCard.hidden = YES;
+    [self.view addSubview:self.fabMenuCard];
+
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisVertical;
+    [self.fabMenuCard addSubview:stack];
+
+    [stack addArrangedSubview:[self newDocRowWithTitle:@"文本文档"
+                                                  icon:@"HomeFileWriter"
+                                                action:@selector(createWriter)]];
+    [stack addArrangedSubview:[self newDocRowWithTitle:@"电子表格"
+                                                  icon:@"HomeFileCalc"
+                                                action:@selector(createCalc)]];
+    [stack addArrangedSubview:[self newDocRowWithTitle:@"演示文稿"
+                                                  icon:@"HomeFileImpress"
+                                                action:@selector(createImpress)]];
+
     [NSLayoutConstraint activateConstraints:@[
-        [modelConfig.topAnchor constraintEqualToAnchor:underline.bottomAnchor constant:24],
-        [modelConfig.centerXAnchor constraintEqualToAnchor:editor.view.centerXAnchor],
+        [stack.topAnchor constraintEqualToAnchor:self.fabMenuCard.topAnchor constant:4],
+        [stack.leadingAnchor constraintEqualToAnchor:self.fabMenuCard.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:self.fabMenuCard.trailingAnchor],
+        [stack.bottomAnchor constraintEqualToAnchor:self.fabMenuCard.bottomAnchor constant:-4],
+        [self.fabMenuCard.widthAnchor constraintEqualToConstant:196],
     ]];
 
-    [self presentViewController:editor animated:YES completion:nil];
-}
-- (void)saveProfileName:(NSString *)name {
-    if (name.length > 0) {
-        [[NSUserDefaults standardUserDefaults] setObject:name forKey:ProfileNameKey];
-    }
-    [self refreshAvatarButton];
-}
-
-- (void)refreshAvatarButton {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSString *avatarPath = [defaults stringForKey:ProfileAvatarKey];
-    UIImage *avatar = (avatarPath.length > 0) ? [UIImage imageWithContentsOfFile:avatarPath] : nil;
-    self.avatarButton.layer.cornerRadius = 32;
-    self.avatarButton.clipsToBounds = YES;
-    if (avatar != nil) {
-        [self.avatarButton setImage:avatar forState:UIControlStateNormal];
-        [self.avatarButton setTitle:@"" forState:UIControlStateNormal];
-        self.avatarButton.backgroundColor = UIColor.clearColor;
-    } else {
-        [self.avatarButton setImage:nil forState:UIControlStateNormal];
-        self.avatarButton.backgroundColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
-        NSString *name = [defaults stringForKey:ProfileNameKey];
-        NSString *initial = (name.length > 0) ? [name substringToIndex:1] : @"我";
-        [self.avatarButton setTitle:initial forState:UIControlStateNormal];
-        [self.avatarButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-        self.avatarButton.titleLabel.font = [UIFont boldSystemFontOfSize:24];
-    }
+    self.fabButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.fabButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.fabButton setImage:[UIImage imageNamed:@"HomeFab"] forState:UIControlStateNormal];
+    self.fabButton.accessibilityIdentifier = @"homeFab";
+    self.fabButton.accessibilityLabel = @"新建文档";
+    [self.fabButton addTarget:self action:@selector(toggleFabMenu) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:self.fabButton];
 }
 
-- (void)pickAvatarPhoto {
-    if (![UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypePhotoLibrary]) {
-        return;
-    }
-    UIImagePickerController *picker = [[UIImagePickerController alloc] init];
-    picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
-    picker.allowsEditing = YES;
-    picker.delegate = self;
-    [self presentViewController:picker animated:YES completion:nil];
+- (UIView *)newDocRowWithTitle:(NSString *)title icon:(NSString *)icon action:(SEL)action {
+    UIControl *row = [[UIControl alloc] init];
+    row.translatesAutoresizingMaskIntoConstraints = NO;
+    [row.heightAnchor constraintEqualToConstant:52].active = YES;
+    [row addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+
+    UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:icon]];
+    iconView.translatesAutoresizingMaskIntoConstraints = NO;
+    iconView.contentMode = UIViewContentModeScaleAspectFit;
+    [row addSubview:iconView];
+
+    UILabel *label = [[UILabel alloc] init];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.text = title;
+    label.font = [UIFont systemFontOfSize:15];
+    label.textColor = [UIColor colorWithWhite:0.2 alpha:1];
+    [row addSubview:label];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [iconView.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:14],
+        [iconView.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        [iconView.widthAnchor constraintEqualToConstant:28],
+        [iconView.heightAnchor constraintEqualToConstant:28],
+        [label.leadingAnchor constraintEqualToAnchor:iconView.trailingAnchor constant:12],
+        [label.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-14],
+        [label.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+    ]];
+    return row;
 }
 
-- (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> *)info {
-    UIImage *image = info[UIImagePickerControllerEditedImage];
-    if (image == nil) {
-        image = info[UIImagePickerControllerOriginalImage];
-    }
-    if (image != nil) {
-        NSData *data = UIImagePNGRepresentation(image);
-        if (data != nil) {
-            NSURL *dir = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
-            NSURL *file = [dir URLByAppendingPathComponent:@"profile_avatar.png"];
-            if ([data writeToURL:file atomically:YES]) {
-                [[NSUserDefaults standardUserDefaults] setObject:file.path forKey:ProfileAvatarKey];
-                if (self.profileAvatarEditButton != nil) {
-                    [self.profileAvatarEditButton setBackgroundImage:image forState:UIControlStateNormal];
-                    [self.profileAvatarEditButton setTitle:@"" forState:UIControlStateNormal];
-                }
-                [self refreshAvatarButton];
-            }
-        }
-    }
-    [picker dismissViewControllerAnimated:YES completion:nil];
+- (void)layoutChrome {
+    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+    self.contentTopToHeader = [self.tableView.topAnchor constraintEqualToAnchor:self.recentsHeaderRow.bottomAnchor];
+    self.contentTopToTopBar = [self.tableView.topAnchor constraintEqualToAnchor:self.topBar.bottomAnchor];
+    self.contentTopToHeader.active = YES;
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.topBar.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.topBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.topBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.topBar.bottomAnchor constraintEqualToAnchor:safe.topAnchor constant:56],
+        [self.avatarButton.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:16],
+        [self.avatarButton.bottomAnchor constraintEqualToAnchor:self.topBar.bottomAnchor constant:-8],
+        [self.openFileButton.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-8],
+        [self.openFileButton.centerYAnchor constraintEqualToAnchor:self.avatarButton.centerYAnchor],
+        [self.searchBox.leadingAnchor constraintEqualToAnchor:self.avatarButton.trailingAnchor constant:12],
+        [self.searchBox.trailingAnchor constraintEqualToAnchor:self.openFileButton.leadingAnchor constant:-4],
+        [self.searchBox.centerYAnchor constraintEqualToAnchor:self.avatarButton.centerYAnchor],
+        [self.searchBox.heightAnchor constraintEqualToConstant:36],
+        [self.recentsHeaderRow.topAnchor constraintEqualToAnchor:self.topBar.bottomAnchor],
+        [self.recentsHeaderRow.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.recentsHeaderRow.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.recentsHeaderRow.heightAnchor constraintEqualToConstant:56],
+        [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.collectionView.topAnchor constraintEqualToAnchor:self.tableView.topAnchor],
+        [self.collectionView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.collectionView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.collectionView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.emptyRecentState.topAnchor constraintEqualToAnchor:self.topBar.bottomAnchor],
+        [self.emptyRecentState.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.emptyRecentState.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.emptyRecentState.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.emptySearchState.topAnchor constraintEqualToAnchor:self.topBar.bottomAnchor],
+        [self.emptySearchState.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.emptySearchState.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.emptySearchState.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.fabOverlay.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.fabOverlay.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.fabOverlay.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.fabOverlay.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.fabButton.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-24],
+        [self.fabButton.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-24],
+        [self.fabButton.widthAnchor constraintEqualToConstant:56],
+        [self.fabButton.heightAnchor constraintEqualToConstant:56],
+        [self.fabMenuCard.trailingAnchor constraintEqualToAnchor:self.fabButton.trailingAnchor],
+        [self.fabMenuCard.bottomAnchor constraintEqualToAnchor:self.fabButton.topAnchor constant:-12],
+    ]];
 }
 
-- (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
-    [picker dismissViewControllerAnimated:YES completion:nil];
+- (void)reloadAvatar {
+    NSURL *support = [[[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask] lastObject];
+    NSURL *custom = [support URLByAppendingPathComponent:@"ai_profile_avatar.jpg"];
+    UIImage *image = [UIImage imageWithContentsOfFile:custom.path] ?: [UIImage imageNamed:@"HomeAvatar"];
+    [self.avatarButton setImage:image forState:UIControlStateNormal];
+}
+
+- (void)openDrawer {
+    [self.drawer openDrawer];
 }
 
 - (void)searchChanged {
     [self reloadRecents];
 }
 
-- (void)reloadRecents {
-    self.visibleItems = [self.recentStore itemsMatchingQuery:self.searchField.text ?: @""];
-    BOOL hasItems = self.visibleItems.count > 0;
-    BOOL searching = self.searchField.text.length > 0;
-    self.emptyContainer.hidden = hasItems;
-    self.emptyTitleLabel.text = searching ? @"未找到相关文档" : @"还没有最近文档";
-    if (self.emptyStack.arrangedSubviews.count >= 4) {
-        self.emptyStack.arrangedSubviews[2].hidden = searching;
-        self.emptyStack.arrangedSubviews[3].hidden = searching;
-    }
-    [self.tableView reloadData];
+- (void)retrySearch {
+    self.searchField.text = @"";
+    [self reloadRecents];
 }
-- (void)showSplash {
-    UIView *splash = [[UIView alloc] initWithFrame:self.view.bounds];
-    splash.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    splash.backgroundColor = UIColor.whiteColor;
-    [self.view addSubview:splash];
-    self.splashView = splash;
 
-    UIView *logo = [[UIView alloc] init];
-    logo.translatesAutoresizingMaskIntoConstraints = NO;
-    logo.backgroundColor = UIColor.whiteColor;
-    logo.layer.cornerRadius = 60;
-    logo.clipsToBounds = YES;
-    logo.layer.shadowColor = [UIColor.blackColor CGColor];
-    logo.layer.shadowOpacity = 0.08;
-    logo.layer.shadowRadius = 12;
-    logo.layer.shadowOffset = CGSizeMake(0, 4);
-    [splash addSubview:logo];
+- (void)toggleLayoutMode {
+    self.gridMode = !self.gridMode;
+    [[NSUserDefaults standardUserDefaults] setBool:self.gridMode forKey:kHomeGridModeKey];
+    [self updateLayoutToggleIcon];
+    [self updateContentVisibility];
+}
 
-    UILabel *brand = [[UILabel alloc] init];
-    brand.translatesAutoresizingMaskIntoConstraints = NO;
-    brand.text = @"AI Office";
-    brand.font = [UIFont boldSystemFontOfSize:20];
-    brand.textColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
-    brand.textAlignment = NSTextAlignmentCenter;
-    [logo addSubview:brand];
+- (void)updateLayoutToggleIcon {
+    NSString *icon = self.gridMode ? @"list" : @"function";
+    UIImage *image = [UIImage writerIconNamed:icon];
+    [self.layoutToggleButton setImage:image forState:UIControlStateNormal];
+    self.layoutToggleButton.accessibilityLabel = self.gridMode ? @"列表视图" : @"网格视图";
+}
 
-    UILabel *tagline = [[UILabel alloc] init];
-    tagline.translatesAutoresizingMaskIntoConstraints = NO;
-    tagline.text = @"智启办公，高效随行";
-    tagline.font = [UIFont systemFontOfSize:12];
-    tagline.textColor = [UIColor blackColor];
-    tagline.textAlignment = NSTextAlignmentCenter;
-    [splash addSubview:tagline];
+- (NSString *)trimmedQuery {
+    return [[self.searchField.text ?: @"" stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
+}
 
-    [NSLayoutConstraint activateConstraints:@[
-        [logo.centerXAnchor constraintEqualToAnchor:splash.centerXAnchor],
-        [logo.bottomAnchor constraintEqualToAnchor:splash.bottomAnchor constant:-140],
-        [logo.widthAnchor constraintEqualToConstant:120],
-        [logo.heightAnchor constraintEqualToConstant:120],
-        [brand.centerXAnchor constraintEqualToAnchor:logo.centerXAnchor],
-        [brand.centerYAnchor constraintEqualToAnchor:logo.centerYAnchor],
-        [brand.leadingAnchor constraintEqualToAnchor:logo.leadingAnchor constant:8],
-        [brand.trailingAnchor constraintEqualToAnchor:logo.trailingAnchor constant:-8],
-        [tagline.centerXAnchor constraintEqualToAnchor:splash.centerXAnchor],
-        [tagline.topAnchor constraintEqualToAnchor:logo.bottomAnchor constant:20],
-    ]];
+- (void)reloadRecents {
+    self.totalCount = [self.recentStore items].count;
+    self.visibleItems = [self.recentStore itemsMatchingQuery:self.searchField.text ?: @""];
+    [self.tableView reloadData];
+    [self.collectionView reloadData];
+    [self updateContentVisibility];
+}
 
-    [UIView animateWithDuration:0.3 delay:1.4 options:UIViewAnimationOptionCurveEaseOut animations:^{
-        splash.alpha = 0;
-    } completion:^(BOOL finished) {
-        [splash removeFromSuperview];
-        if (self.splashView == splash) {
-            self.splashView = nil;
-        }
-    }];
+- (void)updateContentVisibility {
+    NSString *query = [self trimmedQuery];
+    BOOL hasQuery = query.length > 0;
+    // Align Android: hide「最近打开」when searching or when there are no recents.
+    BOOL showHeader = !hasQuery && self.totalCount > 0;
+    BOOL showEmptyRecent = !hasQuery && self.totalCount == 0;
+    BOOL showEmptySearch = hasQuery && self.visibleItems.count == 0;
+    BOOL showList = self.visibleItems.count > 0;
+
+    self.recentsHeaderRow.hidden = !showHeader;
+    self.contentTopToHeader.active = showHeader;
+    self.contentTopToTopBar.active = !showHeader;
+
+    self.emptyRecentState.hidden = !showEmptyRecent;
+    self.emptySearchState.hidden = !showEmptySearch;
+
+    BOOL useGrid = self.gridMode && showList;
+    self.tableView.hidden = !(showList && !useGrid);
+    self.collectionView.hidden = !useGrid;
+}
+
+- (UIImage *)iconForItem:(RecentDocumentItem *)item {
+    NSString *ext = item.pathExtension.lowercaseString;
+    if ([ext isEqualToString:@"ods"] || [ext isEqualToString:@"xlsx"] || [ext isEqualToString:@"xls"]
+        || [ext isEqualToString:@"csv"]) {
+        return [UIImage imageNamed:@"HomeFileCalc"];
+    }
+    if ([ext isEqualToString:@"odp"] || [ext isEqualToString:@"pptx"] || [ext isEqualToString:@"ppt"]) {
+        return [UIImage imageNamed:@"HomeFileImpress"];
+    }
+    return [UIImage imageNamed:@"HomeFileWriter"];
+}
+
+- (NSString *)formatOpenedAt:(NSDate *)date {
+    if (date == nil) {
+        return @"";
+    }
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDate *startOfToday = [calendar startOfDayForDate:[NSDate date]];
+    NSDate *startOfYesterday = [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:startOfToday options:0];
+    NSDateFormatter *timeFormat = [[NSDateFormatter alloc] init];
+    timeFormat.dateFormat = @"HH:mm";
+    NSTimeInterval opened = date.timeIntervalSince1970;
+    if (opened >= startOfToday.timeIntervalSince1970) {
+        return [timeFormat stringFromDate:date];
+    }
+    if (opened >= startOfYesterday.timeIntervalSince1970) {
+        return [NSString stringWithFormat:@"昨天 %@", [timeFormat stringFromDate:date]];
+    }
+    NSDateFormatter *dateFormat = [[NSDateFormatter alloc] init];
+    dateFormat.dateFormat = @"yyyy/M/d";
+    return [dateFormat stringFromDate:date];
 }
 
 - (void)presentDocumentAtURL:(NSURL *)documentURL {
@@ -482,283 +651,51 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     [self presentDocumentAtURL:url];
 }
 
-- (void)createDocument {
-    if (self.createOverlay != nil) {
-        return;
-    }
-    UIView *overlay = [[UIView alloc] initWithFrame:self.view.bounds];
-    overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    overlay.backgroundColor = [UIColor colorWithWhite:0 alpha:0.4];
-    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissCreateOverlay)];
-    [overlay addGestureRecognizer:tap];
-    [self.view addSubview:overlay];
-    self.createOverlay = overlay;
-
-    UIView *card = [[UIView alloc] init];
-    card.translatesAutoresizingMaskIntoConstraints = NO;
-    card.backgroundColor = UIColor.whiteColor;
-    card.layer.cornerRadius = 24;
-    card.layer.cornerCurve = kCACornerCurveContinuous;
-    card.layer.shadowColor = [UIColor.blackColor CGColor];
-    card.layer.shadowOpacity = 0.1;
-    card.layer.shadowRadius = 16;
-    card.layer.shadowOffset = CGSizeMake(0, 4);
-    [overlay addSubview:card];
-
-    NSArray<NSDictionary *> *items = @[
-        @{ @"title": @"新建文稿", @"template": @"ott", @"output": @"odt", @"basename": @"文档", @"ext": @"odt" },
-        @{ @"title": @"新建表格", @"template": @"ots", @"output": @"ods", @"basename": @"表格", @"ext": @"ods" },
-        @{ @"title": @"新建演示", @"template": @"otp", @"output": @"odp", @"basename": @"演示", @"ext": @"odp" },
-        @{ @"title": @"AI 快速生成", @"template": @"", @"output": @"", @"basename": @"", @"ext": @"ai" },
-    ];
-    UIButton *previous = nil;
-    for (NSDictionary *spec in items) {
-        UIButton *row = [UIButton buttonWithType:UIButtonTypeCustom];
-        row.translatesAutoresizingMaskIntoConstraints = NO;
-        [row addTarget:self action:@selector(createMenuAction:) forControlEvents:UIControlEventTouchUpInside];
-        [row setTitle:spec[@"title"] forState:UIControlStateNormal];
-        [row setTitleColor:UIColor.blackColor forState:UIControlStateNormal];
-        row.titleLabel.font = [UIFont systemFontOfSize:17];
-        row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
-        row.contentEdgeInsets = UIEdgeInsetsMake(0, 20, 0, 20);
-        row.tag = (NSInteger)[items indexOfObject:spec];
-        if ([spec[@"title"] isEqualToString:@"AI 快速生成"]) {
-            [row setImage:[UIImage writerIconNamed:@"ai-quick"] forState:UIControlStateNormal];
-            row.tintColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
-        } else {
-            [row setImage:[self typeIconForPathExtension:spec[@"ext"]] forState:UIControlStateNormal];
-        }
-        row.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 16);
-        [card addSubview:row];
-        [row.leadingAnchor constraintEqualToAnchor:card.leadingAnchor].active = YES;
-        [row.trailingAnchor constraintEqualToAnchor:card.trailingAnchor].active = YES;
-        [row.heightAnchor constraintEqualToConstant:80].active = YES;
-        if (previous == nil) {
-            [row.topAnchor constraintEqualToAnchor:card.topAnchor constant:16].active = YES;
-        } else {
-            [row.topAnchor constraintEqualToAnchor:previous.bottomAnchor].active = YES;
-        }
-        previous = row;
-    }
-
-    CGFloat cardWidth = fmin(360, self.view.bounds.size.width - 40);
-    [NSLayoutConstraint activateConstraints:@[
-        [card.centerXAnchor constraintEqualToAnchor:overlay.centerXAnchor],
-        [card.centerYAnchor constraintEqualToAnchor:overlay.centerYAnchor],
-        [card.widthAnchor constraintEqualToConstant:cardWidth],
-        [card.bottomAnchor constraintEqualToAnchor:previous.bottomAnchor constant:16],
-    ]];
-}
-- (void)createMenuAction:(UIButton *)sender {
-    NSArray<NSArray<NSString *> *> *specs = @[
-        @[ @"ott", @"odt", @"文档" ],
-        @[ @"ots", @"ods", @"表格" ],
-        @[ @"otp", @"odp", @"演示" ],
-    ];
-    [self dismissCreateOverlay];
-    if (sender.tag == 3) {
-        [self presentCreateWizard];
-    } else if (sender.tag >= 0 && sender.tag < (NSInteger)specs.count) {
-        NSArray<NSString *> *spec = specs[(NSUInteger)sender.tag];
-        [self createWithTemplateExtension:spec[0] outputExtension:spec[1] basename:spec[2]];
+- (void)toggleFabMenu {
+    if (self.fabMenuOpen) {
+        [self closeFabMenu];
+    } else {
+        [self openFabMenu];
     }
 }
 
-- (void)dismissCreateOverlay {
-    if (self.createOverlay != nil) {
-        [self.createOverlay removeFromSuperview];
-        self.createOverlay = nil;
-    }
-}
-- (void)presentCreateWizard {
-    __weak HomeViewController *weakSelf = self;
-
-    UIViewController *page = [[UIViewController alloc] init];
-    page.view.backgroundColor = UIColor.whiteColor;
-    page.modalPresentationStyle = UIModalPresentationPageSheet;
-
-    UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
-    back.translatesAutoresizingMaskIntoConstraints = NO;
-    [back setTitle:@"‹ 返回" forState:UIControlStateNormal];
-    [back addAction:[UIAction actionWithTitle:@"返回" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-        [page dismissViewControllerAnimated:YES completion:nil];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [page.view addSubview:back];
-
-    UILabel *titleLabel = [[UILabel alloc] init];
-    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLabel.text = @"AI 快速生成";
-    titleLabel.font = [UIFont boldSystemFontOfSize:17];
-    titleLabel.textColor = UIColor.blackColor;
-    [page.view addSubview:titleLabel];
-
-    UITextField *topicField = [[UITextField alloc] init];
-    topicField.translatesAutoresizingMaskIntoConstraints = NO;
-    topicField.placeholder = @"文档主题，如：年度总结报告";
-    topicField.font = [UIFont systemFontOfSize:16];
-    topicField.borderStyle = UITextBorderStyleRoundedRect;
-    topicField.returnKeyType = UIReturnKeyDone;
-    topicField.accessibilityIdentifier = @"wizardTopic";
-    [topicField addTarget:topicField action:@selector(resignFirstResponder) forControlEvents:UIControlEventEditingDidEndOnExit];
-    [page.view addSubview:topicField];
-
-    UILabel *pageLabel = [[UILabel alloc] init];
-    pageLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    pageLabel.text = @"页数";
-    pageLabel.font = [UIFont systemFontOfSize:14];
-    pageLabel.textColor = [UIColor colorWithWhite:0.42 alpha:1];
-    [page.view addSubview:pageLabel];
-
-    UISegmentedControl *pageControl = [[UISegmentedControl alloc] initWithItems:@[ @"1 页", @"2 页", @"3 页以上" ]];
-    pageControl.translatesAutoresizingMaskIntoConstraints = NO;
-    pageControl.selectedSegmentIndex = 1;
-    pageControl.accessibilityIdentifier = @"wizardPages";
-    [page.view addSubview:pageControl];
-
-    UILabel *typeLabel = [[UILabel alloc] init];
-    typeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    typeLabel.text = @"文档类型";
-    typeLabel.font = [UIFont systemFontOfSize:14];
-    typeLabel.textColor = [UIColor colorWithWhite:0.42 alpha:1];
-    [page.view addSubview:typeLabel];
-
-    UISegmentedControl *typeControl = [[UISegmentedControl alloc] initWithItems:@[ @"文稿", @"表格", @"演示" ]];
-    typeControl.translatesAutoresizingMaskIntoConstraints = NO;
-    typeControl.selectedSegmentIndex = 0;
-    typeControl.accessibilityIdentifier = @"wizardType";
-    [page.view addSubview:typeControl];
-
-    UIButton *generate = [UIButton buttonWithType:UIButtonTypeSystem];
-    generate.translatesAutoresizingMaskIntoConstraints = NO;
-    [generate setTitle:@"生成文档" forState:UIControlStateNormal];
-    [generate setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    generate.backgroundColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
-    generate.layer.cornerRadius = 8;
-    [generate addAction:[UIAction actionWithTitle:@"生成文档" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-        NSString *topic = [topicField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if (topic.length == 0) {
-            return;
-        }
-        NSArray<NSString *> *types = @[ @"writer", @"calc", @"impress" ];
-        NSArray<NSString *> *pages = @[ @"1", @"2", @"3" ];
-        [weakSelf runQuickCreateWithTopic:topic
-                                pageCount:pages[(NSUInteger)MAX(0, pageControl.selectedSegmentIndex)]
-                                   docType:types[(NSUInteger)MAX(0, typeControl.selectedSegmentIndex)]
-                                    button:generate
-                                      page:page];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [page.view addSubview:generate];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [back.topAnchor constraintEqualToAnchor:page.view.safeAreaLayoutGuide.topAnchor constant:8],
-        [back.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:12],
-        [titleLabel.centerYAnchor constraintEqualToAnchor:back.centerYAnchor],
-        [titleLabel.centerXAnchor constraintEqualToAnchor:page.view.centerXAnchor],
-        [topicField.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:24],
-        [topicField.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
-        [topicField.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-24],
-        [topicField.heightAnchor constraintEqualToConstant:44],
-        [pageLabel.topAnchor constraintEqualToAnchor:topicField.bottomAnchor constant:24],
-        [pageLabel.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
-        [pageControl.topAnchor constraintEqualToAnchor:pageLabel.bottomAnchor constant:8],
-        [pageControl.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
-        [pageControl.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-24],
-        [typeLabel.topAnchor constraintEqualToAnchor:pageControl.bottomAnchor constant:24],
-        [typeLabel.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
-        [typeControl.topAnchor constraintEqualToAnchor:typeLabel.bottomAnchor constant:8],
-        [typeControl.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
-        [typeControl.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-24],
-        [generate.topAnchor constraintEqualToAnchor:typeControl.bottomAnchor constant:32],
-        [generate.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:64],
-        [generate.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-64],
-        [generate.heightAnchor constraintEqualToConstant:48],
-    ]];
-    [self presentViewController:page animated:YES completion:nil];
+- (void)openFabMenu {
+    self.fabMenuOpen = YES;
+    self.fabOverlay.hidden = NO;
+    self.fabMenuCard.hidden = NO;
+    [self.fabButton setImage:[UIImage imageNamed:@"HomeFabClose"] forState:UIControlStateNormal];
+    [self.view bringSubviewToFront:self.fabOverlay];
+    [self.view bringSubviewToFront:self.fabMenuCard];
+    [self.view bringSubviewToFront:self.fabButton];
 }
 
-- (void)runQuickCreateWithTopic:(NSString *)topic
-                      pageCount:(NSString *)pageCount
-                        docType:(NSString *)docType
-                         button:(UIButton *)button
-                           page:(UIViewController *)page {
-    if (self.aiService == nil) {
-        self.aiService = [[AIService alloc] init];
-    }
-    [button setTitle:@"生成中..." forState:UIControlStateNormal];
-    button.enabled = NO;
-    NSString *requestId = [[NSUUID UUID] UUIDString];
-    NSString *sessionId = [[NSUUID UUID] UUIDString];
-    NSDictionary *payload = @{
-        @"taskType": @"create_document",
-        @"selection": topic,
-        @"context": @{
-            @"pageCount": pageCount ?: @"",
-            @"audience": @"",
-            @"docType": docType ?: @"writer",
-        },
-    };
-    __block NSMutableString *accumulated = [NSMutableString string];
-    __weak HomeViewController *weakSelf = self;
-    [self.aiService startRequest:payload
-                       requestId:requestId
-              documentSessionId:sessionId
-                           emit:^(NSString *type, NSString *rid, NSString *dsid, NSDictionary *eventPayload) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if ([type isEqualToString:@"ai.stream"]) {
-                NSString *delta = eventPayload[@"delta"];
-                if ([delta isKindOfClass:[NSString class]]) {
-                    [accumulated appendString:delta];
-                }
-            } else if ([type isEqualToString:@"ai.done"]) {
-                NSString *fullText = eventPayload[@"fullText"];
-                [weakSelf finishQuickCreate:fullText page:page button:button];
-            } else if ([type isEqualToString:@"ai.error"]) {
-                [button setTitle:@"生成文档" forState:UIControlStateNormal];
-                button.enabled = YES;
-                NSString *message = eventPayload[@"message"] ?: @"生成失败";
-                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"生成失败"
-                                                                               message:message
-                                                                        preferredStyle:UIAlertControllerStyleAlert];
-                [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
-                [page presentViewController:alert animated:YES completion:nil];
-            }
-        });
-    }];
+- (void)closeFabMenu {
+    self.fabMenuOpen = NO;
+    self.fabOverlay.hidden = YES;
+    self.fabMenuCard.hidden = YES;
+    [self.fabButton setImage:[UIImage imageNamed:@"HomeFab"] forState:UIControlStateNormal];
 }
 
-- (void)finishQuickCreate:(NSString *)fullText page:(UIViewController *)page button:(UIButton *)button {
-    if (fullText.length == 0) {
-        [button setTitle:@"生成文档" forState:UIControlStateNormal];
-        button.enabled = YES;
-        return;
-    }
-    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-    formatter.dateFormat = @"yyyyMMddHHmmss";
-    NSString *name = [NSString stringWithFormat:@"AI文档-%@.txt", [formatter stringFromDate:[NSDate date]]];
-    NSURL *dir = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
-    NSURL *file = [dir URLByAppendingPathComponent:name];
+- (void)createWriter {
+    [self closeFabMenu];
+    [self createBlankDocumentWithExtension:@"odt" basename:@"文档"];
+}
+
+- (void)createCalc {
+    [self closeFabMenu];
+    [self createBlankDocumentWithExtension:@"ods" basename:@"表格"];
+}
+
+- (void)createImpress {
+    [self closeFabMenu];
+    [self createBlankDocumentWithExtension:@"odp" basename:@"演示"];
+}
+
+- (void)createBlankDocumentWithExtension:(NSString *)outputExtension basename:(NSString *)basename {
     NSError *error = nil;
-    if (![fullText writeToURL:file atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"生成失败"
-                                                                       message:error.localizedDescription ?: @"无法保存文档"
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
-        [page presentViewController:alert animated:YES completion:nil];
-        return;
-    }
-    [page dismissViewControllerAnimated:YES completion:^{
-        [self presentDocumentAtURL:file];
-    }];
-}
-
-- (void)createWithTemplateExtension:(NSString *)templateExtension
-                    outputExtension:(NSString *)outputExtension
-                          basename:(NSString *)basename {
-    NSError *error = nil;
-    NSURL *url = [DocumentPresentation createDocumentFromTemplateExtension:templateExtension
-                                                           outputExtension:outputExtension
-                                                                 basename:basename
-                                                                    error:&error];
+    NSURL *url = [DocumentPresentation createBlankDocumentWithExtension:outputExtension
+                                                              basename:basename
+                                                                 error:&error];
     if (url == nil) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"无法新建文档"
                                                                        message:error.localizedDescription
@@ -770,36 +707,31 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     [self presentDocumentAtURL:url];
 }
 
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return (NSInteger)self.visibleItems.count;
+- (void)showActionsForItem:(RecentDocumentItem *)item sourceView:(UIView *)sourceView {
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:item.title
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"分享" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSURL *url = [item resolvedURL];
+        if (url == nil) {
+            return;
+        }
+        UIActivityViewController *activity = [[UIActivityViewController alloc] initWithActivityItems:@[ url ]
+                                                                               applicationActivities:nil];
+        activity.popoverPresentationController.sourceView = sourceView;
+        [self presentViewController:activity animated:YES completion:nil];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"从最近移除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+        [self.recentStore removeItem:item];
+        [self reloadRecents];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    sheet.popoverPresentationController.sourceView = sourceView;
+    sheet.popoverPresentationController.sourceRect = sourceView.bounds;
+    [self presentViewController:sheet animated:YES completion:nil];
 }
 
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"recent"];
-    if (cell == nil) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"recent"];
-    }
-    RecentDocumentItem *item = self.visibleItems[indexPath.row];
-    cell.textLabel.text = item.title;
-    cell.detailTextLabel.text = [item displaySubtitle];
-    cell.accessibilityIdentifier = [NSString stringWithFormat:@"homeRecent-%@", item.title];
-    cell.imageView.image = [self typeIconForPathExtension:item.pathExtension];
-    UIButton *moreButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    moreButton.frame = CGRectMake(0, 0, 56, 56);
-    moreButton.backgroundColor = [UIColor colorWithRed:240.0 / 255.0 green:244.0 / 255.0 blue:249.0 / 255.0 alpha:1];
-    moreButton.layer.cornerRadius = 8;
-    [moreButton setImage:[UIImage writerIconNamed:@"more"] forState:UIControlStateNormal];
-    moreButton.tintColor = [UIColor colorWithWhite:0 alpha:0.6];
-    moreButton.tag = indexPath.row;
-    [moreButton addTarget:self action:@selector(moreButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
-    moreButton.accessibilityIdentifier = [NSString stringWithFormat:@"homeMore-%@", item.title];
-    cell.accessoryView = moreButton;
-    return cell;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    RecentDocumentItem *item = self.visibleItems[indexPath.row];
+- (void)openItem:(RecentDocumentItem *)item {
     NSURL *url = [item resolvedURL];
     if (url == nil) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"无法打开"
@@ -812,322 +744,61 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     [self presentDocumentAtURL:url];
 }
 
+#pragma mark - Table
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return (NSInteger)self.visibleItems.count;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    HomeRecentCell *cell = [tableView dequeueReusableCellWithIdentifier:kHomeRecentCellId forIndexPath:indexPath];
+    RecentDocumentItem *item = self.visibleItems[indexPath.row];
+    cell.nameLabel.text = item.title;
+    cell.dateLabel.text = [self formatOpenedAt:item.openedAt];
+    cell.fileIconView.image = [self iconForItem:item];
+    cell.accessibilityIdentifier = [NSString stringWithFormat:@"homeRecent-%@", item.title];
+    __weak __typeof(self) weakSelf = self;
+    __weak __typeof(cell) weakCell = cell;
+    cell.moreAction = ^{
+        [weakSelf showActionsForItem:item sourceView:weakCell.moreButton];
+    };
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    [self openItem:self.visibleItems[indexPath.row]];
+}
+
+#pragma mark - Collection
+
+- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
+    return (NSInteger)self.visibleItems.count;
+}
+
+- (__kindof UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
+    HomeGridCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:kHomeGridCellId forIndexPath:indexPath];
+    RecentDocumentItem *item = self.visibleItems[indexPath.item];
+    cell.nameLabel.text = item.title;
+    cell.dateLabel.text = [self formatOpenedAt:item.openedAt];
+    cell.fileIconView.image = [self iconForItem:item];
+    return cell;
+}
+
+- (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
+    [self openItem:self.visibleItems[indexPath.item]];
+}
+
+- (CGSize)collectionView:(UICollectionView *)collectionView
+                  layout:(UICollectionViewLayout *)collectionViewLayout
+  sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
+    CGFloat width = (collectionView.bounds.size.width - 16 * 2 - 8) / 2.0;
+    return CGSizeMake(MAX(140, width), 120);
+}
+
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     [textField resignFirstResponder];
     return YES;
-}
-
-- (void)moreButtonTapped:(UIButton *)sender {
-    NSInteger row = sender.tag;
-    if (row < 0 || row >= (NSInteger)self.visibleItems.count) {
-        return;
-    }
-    self.activeMoreItem = self.visibleItems[(NSUInteger)row];
-    [self presentMoreMenu];
-}
-
-- (void)presentMoreMenu {
-    if (self.moreOverlay != nil) {
-        return;
-    }
-    UIView *overlay = [[UIView alloc] initWithFrame:self.view.bounds];
-    overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    overlay.backgroundColor = [UIColor colorWithWhite:0 alpha:0.4];
-    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissMoreMenu)];
-    tap.delegate = self;
-    [overlay addGestureRecognizer:tap];
-    [self.view addSubview:overlay];
-    self.moreOverlay = overlay;
-
-    UIView *card = [[UIView alloc] init];
-    card.translatesAutoresizingMaskIntoConstraints = NO;
-    card.backgroundColor = UIColor.whiteColor;
-    card.layer.cornerRadius = 24;
-    card.layer.cornerCurve = kCACornerCurveContinuous;
-    card.layer.shadowColor = [UIColor.blackColor CGColor];
-    card.layer.shadowOpacity = 0.1;
-    card.layer.shadowRadius = 16;
-    card.layer.shadowOffset = CGSizeMake(0, 4);
-    [overlay addSubview:card];
-
-    NSArray<NSString *> *titles = @[ @"重命名", @"分享", @"从列表中删除" ];
-    UIButton *previous = nil;
-    for (NSUInteger i = 0; i < titles.count; i++) {
-        UIButton *item = [UIButton buttonWithType:UIButtonTypeSystem];
-        item.translatesAutoresizingMaskIntoConstraints = NO;
-        [item setTitle:titles[i] forState:UIControlStateNormal];
-        item.titleLabel.font = [UIFont systemFontOfSize:17];
-        item.tag = (NSInteger)i;
-        [item addTarget:self action:@selector(moreMenuAction:) forControlEvents:UIControlEventTouchUpInside];
-        [card addSubview:item];
-        [item.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:24].active = YES;
-        [item.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-24].active = YES;
-        [item.heightAnchor constraintEqualToConstant:52].active = YES;
-        if (previous == nil) {
-            [item.topAnchor constraintEqualToAnchor:card.topAnchor constant:16].active = YES;
-        } else {
-            [item.topAnchor constraintEqualToAnchor:previous.bottomAnchor].active = YES;
-        }
-        previous = item;
-    }
-
-    CGFloat cardWidth = fmin(360, self.view.bounds.size.width - 40);
-    [NSLayoutConstraint activateConstraints:@[
-        [card.centerXAnchor constraintEqualToAnchor:overlay.centerXAnchor],
-        [card.centerYAnchor constraintEqualToAnchor:overlay.centerYAnchor],
-        [card.widthAnchor constraintEqualToConstant:cardWidth],
-        [card.heightAnchor constraintEqualToConstant:200],
-    ]];
-}
-
-- (void)dismissMoreMenu {
-    if (self.moreOverlay != nil) {
-        [self.moreOverlay removeFromSuperview];
-        self.moreOverlay = nil;
-    }
-    self.activeMoreItem = nil;
-}
-
-- (void)moreMenuAction:(UIButton *)sender {
-    NSInteger index = sender.tag;
-    RecentDocumentItem *item = self.activeMoreItem;
-    [self dismissMoreMenu];
-    if (index == 0) {
-        [self presentRenameAlertForItem:item];
-    } else if (index == 2) {
-        [self presentDeleteConfirmationForItem:item];
-    } else {
-        [self presentSharePanelForItem:item];
-    }
-}
-
-- (void)presentRenameAlertForItem:(RecentDocumentItem *)item {
-    if (item == nil) {
-        return;
-    }
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"重命名"
-                                                                   message:nil
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
-        NSString *title = item.title;
-        NSString *ext = title.pathExtension;
-        field.text = ext.length > 0 ? [title stringByDeletingPathExtension] : title;
-        field.placeholder = @"文件名";
-    }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *name = alert.textFields.firstObject.text ?: @"";
-        [self.recentStore renameItem:item toTitle:name];
-        [self reloadRecents];
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-- (void)presentDeleteConfirmationForItem:(RecentDocumentItem *)item {
-    if (item == nil) {
-        return;
-    }
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"从列表中删除"
-                                                                   message:@"仅从最近列表移除，不会删除文件。"
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"删除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
-        [self.recentStore removeItem:item];
-        [self reloadRecents];
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-- (void)presentSharePanelForItem:(RecentDocumentItem *)item {
-    if (item == nil) {
-        return;
-    }
-    __weak HomeViewController *weakSelf = self;
-
-    UIViewController *page = [[UIViewController alloc] init];
-    page.view.backgroundColor = UIColor.whiteColor;
-    page.modalPresentationStyle = UIModalPresentationPageSheet;
-
-    UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
-    back.translatesAutoresizingMaskIntoConstraints = NO;
-    [back setTitle:@"‹ 返回" forState:UIControlStateNormal];
-    [back addAction:[UIAction actionWithTitle:@"返回" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-        [page dismissViewControllerAnimated:YES completion:nil];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [page.view addSubview:back];
-
-    UILabel *titleLabel = [[UILabel alloc] init];
-    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLabel.text = @"分享";
-    titleLabel.font = [UIFont boldSystemFontOfSize:17];
-    titleLabel.textColor = UIColor.blackColor;
-    [page.view addSubview:titleLabel];
-
-    UILabel *fileName = [[UILabel alloc] init];
-    fileName.translatesAutoresizingMaskIntoConstraints = NO;
-    fileName.text = item.title;
-    fileName.font = [UIFont systemFontOfSize:14];
-    fileName.textColor = [UIColor colorWithWhite:0.42 alpha:1];
-    fileName.numberOfLines = 1;
-    fileName.lineBreakMode = NSLineBreakByTruncatingMiddle;
-    [page.view addSubview:fileName];
-
-    UILabel *publicLabel = [[UILabel alloc] init];
-    publicLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    publicLabel.text = @"公开分享";
-    publicLabel.font = [UIFont systemFontOfSize:16];
-    publicLabel.textColor = UIColor.blackColor;
-    [page.view addSubview:publicLabel];
-
-    UISwitch *publicSwitch = [[UISwitch alloc] init];
-    publicSwitch.translatesAutoresizingMaskIntoConstraints = NO;
-    publicSwitch.on = [[NSUserDefaults standardUserDefaults] boolForKey:kSharePublicKey];
-    [publicSwitch addAction:[UIAction actionWithTitle:@"切换" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-        [[NSUserDefaults standardUserDefaults] setBool:publicSwitch.isOn forKey:kSharePublicKey];
-    }] forControlEvents:UIControlEventValueChanged];
-    [page.view addSubview:publicSwitch];
-
-    UIView *qrCard = [[UIView alloc] init];
-    qrCard.translatesAutoresizingMaskIntoConstraints = NO;
-    qrCard.backgroundColor = UIColor.whiteColor;
-    qrCard.layer.cornerRadius = 16;
-    qrCard.layer.borderColor = [UIColor colorWithWhite:0.0 alpha:0.1].CGColor;
-    qrCard.layer.borderWidth = 1;
-    [page.view addSubview:qrCard];
-
-    UIImageView *qrView = [[UIImageView alloc] init];
-    qrView.translatesAutoresizingMaskIntoConstraints = NO;
-    qrView.contentMode = UIViewContentModeScaleAspectFit;
-    qrView.image = [self qrImageForString:item.title size:140];
-    [qrCard addSubview:qrView];
-
-    UILabel *qrHint = [[UILabel alloc] init];
-    qrHint.translatesAutoresizingMaskIntoConstraints = NO;
-    qrHint.text = @"扫描二维码打开文档";
-    qrHint.font = [UIFont systemFontOfSize:12];
-    qrHint.textColor = [UIColor colorWithWhite:0.45 alpha:1];
-    [page.view addSubview:qrHint];
-
-    UIButton *shareMore = [UIButton buttonWithType:UIButtonTypeSystem];
-    shareMore.translatesAutoresizingMaskIntoConstraints = NO;
-    [shareMore setTitle:@"更多发送方式" forState:UIControlStateNormal];
-    [shareMore setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    shareMore.backgroundColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
-    shareMore.layer.cornerRadius = 8;
-    [shareMore addAction:[UIAction actionWithTitle:@"更多发送方式" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-        [weakSelf presentShareSheetForItem:item];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [page.view addSubview:shareMore];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [back.topAnchor constraintEqualToAnchor:page.view.safeAreaLayoutGuide.topAnchor constant:8],
-        [back.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:12],
-        [titleLabel.centerYAnchor constraintEqualToAnchor:back.centerYAnchor],
-        [titleLabel.centerXAnchor constraintEqualToAnchor:page.view.centerXAnchor],
-        [fileName.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:16],
-        [fileName.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
-        [fileName.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-24],
-        [publicLabel.topAnchor constraintEqualToAnchor:fileName.bottomAnchor constant:20],
-        [publicLabel.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:24],
-        [publicSwitch.centerYAnchor constraintEqualToAnchor:publicLabel.centerYAnchor],
-        [publicSwitch.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-24],
-        [qrCard.topAnchor constraintEqualToAnchor:publicLabel.bottomAnchor constant:20],
-        [qrCard.centerXAnchor constraintEqualToAnchor:page.view.centerXAnchor],
-        [qrCard.widthAnchor constraintEqualToConstant:176],
-        [qrCard.heightAnchor constraintEqualToConstant:176],
-        [qrView.centerXAnchor constraintEqualToAnchor:qrCard.centerXAnchor],
-        [qrView.centerYAnchor constraintEqualToAnchor:qrCard.centerYAnchor],
-        [qrView.widthAnchor constraintEqualToConstant:140],
-        [qrView.heightAnchor constraintEqualToConstant:140],
-        [qrHint.topAnchor constraintEqualToAnchor:qrCard.bottomAnchor constant:8],
-        [qrHint.centerXAnchor constraintEqualToAnchor:page.view.centerXAnchor],
-        [shareMore.topAnchor constraintEqualToAnchor:qrHint.bottomAnchor constant:24],
-        [shareMore.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:64],
-        [shareMore.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-64],
-        [shareMore.heightAnchor constraintEqualToConstant:48],
-    ]];
-    [self presentViewController:page animated:YES completion:nil];
-}
-
-- (UIImage *)qrImageForString:(NSString *)string size:(CGFloat)size {
-    NSData *data = [string dataUsingEncoding:NSUTF8StringEncoding];
-    if (data == nil) {
-        return nil;
-    }
-    CIFilter *filter = [CIFilter filterWithName:@"CIQRCodeGenerator"];
-    [filter setValue:data forKey:@"inputMessage"];
-    [filter setValue:@"M" forKey:@"inputCorrectionLevel"];
-    CIImage *output = filter.outputImage;
-    if (output == nil) {
-        return nil;
-    }
-    CGFloat scale = size / MAX(output.extent.size.width, 1.0);
-    CIImage *scaled = [output imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
-    UIImage *ciImage = [UIImage imageWithCIImage:scaled];
-    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(size, size)];
-    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
-        [ciImage drawInRect:CGRectMake(0, 0, size, size)];
-    }];
-}
-
-- (void)presentShareSheetForItem:(RecentDocumentItem *)item {
-    NSURL *url = [item resolvedURL];
-    if (url == nil) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"无法分享"
-                                                                       message:@"该文件已不可用。"
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
-        [self presentViewController:alert animated:YES completion:nil];
-        return;
-    }
-    UIActivityViewController *activity = [[UIActivityViewController alloc] initWithActivityItems:@[ url ] applicationActivities:nil];
-    activity.popoverPresentationController.sourceView = self.view;
-    [self presentViewController:activity animated:YES completion:nil];
-}
-- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
-    if (gestureRecognizer.view == self.moreOverlay) {
-        return touch.view == self.moreOverlay;
-    }
-    if (gestureRecognizer.view == self.createOverlay) {
-        return touch.view == self.createOverlay;
-    }
-    return YES;
-}
-- (UIImage *)typeIconForPathExtension:(NSString *)pathExtension {
-    static NSMutableDictionary<NSString *, UIImage *> *cache = nil;
-    if (cache == nil) {
-        cache = [NSMutableDictionary dictionary];
-    }
-    NSString *ext = pathExtension.lowercaseString;
-    UIImage *cached = cache[ext];
-    if (cached != nil) {
-        return cached;
-    }
-    UIColor *fill = nil;
-    NSString *glyph = nil;
-    if ([ext isEqualToString:@"ods"] || [ext isEqualToString:@"xls"] || [ext isEqualToString:@"xlsx"]) {
-        fill = [UIColor colorWithRed:59.0 / 255.0 green:128.0 / 255.0 blue:64.0 / 255.0 alpha:1];
-        glyph = @"∑";
-    } else if ([ext isEqualToString:@"odp"] || [ext isEqualToString:@"ppt"] || [ext isEqualToString:@"pptx"]) {
-        fill = [UIColor colorWithRed:236.0 / 255.0 green:93.0 / 255.0 blue:31.0 / 255.0 alpha:1];
-        glyph = @"P";
-    } else {
-        fill = [UIColor colorWithRed:18.0 / 255.0 green:120.0 / 255.0 blue:217.0 / 255.0 alpha:1];
-        glyph = @"W";
-    }
-    CGSize size = CGSizeMake(56, 56);
-    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size];
-    UIImage *image = [renderer imageWithActions:^(UIGraphicsImageRendererContext * _Nonnull context) {
-        UIBezierPath *card = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, 56, 56) cornerRadius:8];
-        [fill setFill];
-        [card fill];
-        NSDictionary *attrs = @{
-            NSFontAttributeName: [UIFont boldSystemFontOfSize:34],
-            NSForegroundColorAttributeName: [UIColor whiteColor],
-        };
-        CGSize glyphSize = [glyph sizeWithAttributes:attrs];
-        [glyph drawAtPoint:CGPointMake((56 - glyphSize.width) / 2, (56 - glyphSize.height) / 2) withAttributes:attrs];
-    }];
-    cache[ext] = image;
-    return image;
 }
 
 @end

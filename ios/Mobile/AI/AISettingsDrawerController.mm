@@ -15,8 +15,9 @@ static const CGFloat kDrawerWidth = 320.0;
 static NSString *const kProfileNameKey = @"USER_PROFILE_NAME";
 static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
 
-@interface AISettingsDrawerController () <PHPickerViewControllerDelegate, UITextFieldDelegate>
+@interface AISettingsDrawerController () <PHPickerViewControllerDelegate, UITextFieldDelegate, UIGestureRecognizerDelegate>
 @property (weak, nonatomic) UIViewController *host;
+@property (strong, nonatomic, readwrite) UIScreenEdgePanGestureRecognizer *edgePanGesture;
 @property (strong, nonatomic) AIModelConfigStore *modelStore;
 @property (assign, nonatomic) BOOL open;
 @property (assign, nonatomic) BOOL modelsExpanded;
@@ -68,8 +69,22 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
     UIScreenEdgePanGestureRecognizer *edge = [[UIScreenEdgePanGestureRecognizer alloc]
         initWithTarget:drawer action:@selector(handleEdgePan:)];
     edge.edges = UIRectEdgeLeft;
+    edge.delegate = drawer;
+    drawer.edgePanGesture = edge;
     [host.view addGestureRecognizer:edge];
     return drawer;
+}
+
+- (void)requireFailureOfScrollViewGestures:(UIScrollView *)scrollView {
+    if (scrollView == nil || self.edgePanGesture == nil) {
+        return;
+    }
+    [scrollView.panGestureRecognizer requireGestureRecognizerToFail:self.edgePanGesture];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    return gestureRecognizer == self.edgePanGesture;
 }
 
 - (void)loadView {
@@ -645,6 +660,9 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
     NSString *name = [[NSUserDefaults standardUserDefaults] stringForKey:kProfileNameKey];
     self.nameLabel.text = name.length > 0 ? name : @"用户";
     UIImage *image = [UIImage imageWithContentsOfFile:[self avatarURL].path];
+    if (image == nil) {
+        image = [UIImage imageNamed:@"HomeAvatar"];
+    }
     self.avatarView.image = image;
 }
 
