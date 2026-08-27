@@ -14,6 +14,7 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <CoreImage/CoreImage.h>
 #import "AI/AIService.h"
+#import "AI/WriterAIComponents.h"
 
 static NSString *const kSharePublicKey = @"SHARE_PUBLIC_ENABLED";
 static NSString *const ProfileNameKey = @"USER_PROFILE_NAME";
@@ -78,7 +79,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
 
     UIButton *openFile = [UIButton buttonWithType:UIButtonTypeSystem];
     openFile.translatesAutoresizingMaskIntoConstraints = NO;
-    [openFile setImage:[[UIImage systemImageNamed:@"clock"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate] forState:UIControlStateNormal];
+    [openFile setImage:[[UIImage writerIconNamed:@"recent"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate] forState:UIControlStateNormal];
     openFile.tintColor = [UIColor colorWithWhite:0.0 alpha:0.4];
     openFile.accessibilityLabel = @"最近打开";
     openFile.accessibilityIdentifier = @"homeOpenFileButton";
@@ -107,7 +108,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     self.emptyContainer.hidden = YES;
     [self.view addSubview:self.emptyContainer];
 
-    UIImageView *emptyIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"doc.plaintext"]];
+    UIImageView *emptyIcon = [[UIImageView alloc] initWithImage:[UIImage writerIconNamed:@"empty-doc"]];
     emptyIcon.translatesAutoresizingMaskIntoConstraints = NO;
     emptyIcon.tintColor = [UIColor colorWithWhite:0.75 alpha:1];
     emptyIcon.contentMode = UIViewContentModeScaleAspectFit;
@@ -522,7 +523,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
         row.contentEdgeInsets = UIEdgeInsetsMake(0, 20, 0, 20);
         row.tag = (NSInteger)[items indexOfObject:spec];
         if ([spec[@"title"] isEqualToString:@"AI 快速生成"]) {
-            [row setImage:[UIImage systemImageNamed:@"sparkles"] forState:UIControlStateNormal];
+            [row setImage:[UIImage writerIconNamed:@"ai-quick"] forState:UIControlStateNormal];
             row.tintColor = [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
         } else {
             [row setImage:[self typeIconForPathExtension:spec[@"ext"]] forState:UIControlStateNormal];
@@ -787,7 +788,7 @@ static NSString *const ProfileAvatarKey = @"USER_PROFILE_AVATAR_PATH";
     moreButton.frame = CGRectMake(0, 0, 56, 56);
     moreButton.backgroundColor = [UIColor colorWithRed:240.0 / 255.0 green:244.0 / 255.0 blue:249.0 / 255.0 alpha:1];
     moreButton.layer.cornerRadius = 8;
-    [moreButton setImage:[UIImage systemImageNamed:@"ellipsis"] forState:UIControlStateNormal];
+    [moreButton setImage:[UIImage writerIconNamed:@"more"] forState:UIControlStateNormal];
     moreButton.tintColor = [UIColor colorWithWhite:0 alpha:0.6];
     moreButton.tag = indexPath.row;
     [moreButton addTarget:self action:@selector(moreButtonTapped:) forControlEvents:UIControlEventTouchUpInside];

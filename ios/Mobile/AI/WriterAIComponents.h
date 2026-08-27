@@ -49,4 +49,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)dismiss;
 @end
 
+#pragma mark - Shared icons (Figma-sourced; replaces SF Symbols)
+
+@interface UIImage (WriterAIIcons)
++ (nullable UIImage *)writerIconNamed:(nonnull NSString *)name;
+@end
+
 NS_ASSUME_NONNULL_END

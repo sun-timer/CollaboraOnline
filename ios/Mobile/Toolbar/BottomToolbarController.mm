@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: MPL-2.0
  */
 
+#import "AI/WriterAIComponents.h"
 #import "BottomToolbarController.h"
 
 static const NSInteger kMobilePreviewTag = 1;
@@ -25,7 +26,7 @@ static const NSInteger kInsertImageTag = 8;
 @property (nonatomic, assign, readwrite) CGFloat preferredHeight;
 @end
 
-static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger tag)
+static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag)
 {
     UIControl *item = [[UIControl alloc] init];
     item.translatesAutoresizingMaskIntoConstraints = NO;
@@ -39,7 +40,7 @@ static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger t
     content.spacing = 3.0;
     content.userInteractionEnabled = NO;
 
-    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:symbolName]];
+    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage writerIconNamed:iconName]];
     icon.translatesAutoresizingMaskIntoConstraints = NO;
     icon.tintColor = [UIColor colorWithRed:0.12 green:0.12 blue:0.13 alpha:1.0];
     icon.contentMode = UIViewContentModeScaleAspectFit;
@@ -152,22 +153,22 @@ static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger t
     NSArray<NSArray<NSString *> *> *items = nil;
     if (self.mode == IOSBottomToolbarModePreview) {
         items = @[
-            @[@"iphone", @"适配手机", [NSString stringWithFormat:@"%ld", kMobilePreviewTag]],
-            @[@"square.grid.2x2", @"功能", [NSString stringWithFormat:@"%ld", kFunctionTag]],
-            @[@"wand.and.stars", @"AI 助手", [NSString stringWithFormat:@"%ld", kAIAssistantTag]],
-            @[@"wand.and.stars", @"AI 功能", [NSString stringWithFormat:@"%ld", kAIFeaturesTag]],
+            @[@"mobile-preview", @"适配手机", [NSString stringWithFormat:@"%ld", kMobilePreviewTag]],
+            @[@"function", @"功能", [NSString stringWithFormat:@"%ld", kFunctionTag]],
+            @[@"ai-assistant", @"AI 助手", [NSString stringWithFormat:@"%ld", kAIAssistantTag]],
+            @[@"ai-feature", @"AI 功能", [NSString stringWithFormat:@"%ld", kAIFeaturesTag]],
             @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", kKeyboardTag]],
         ];
     } else {
         NSMutableArray<NSArray<NSString *> *> *editItems = [NSMutableArray arrayWithArray:@[
-            @[@"square.grid.2x2", @"功能", [NSString stringWithFormat:@"%ld", kFunctionTag]],
-            @[@"wand.and.stars", @"AI 功能", [NSString stringWithFormat:@"%ld", kAIFeaturesTag]],
+            @[@"function", @"功能", [NSString stringWithFormat:@"%ld", kFunctionTag]],
+            @[@"ai-feature", @"AI 功能", [NSString stringWithFormat:@"%ld", kAIFeaturesTag]],
             @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", kKeyboardTag]],
-            @[@"bold", @"字符", [NSString stringWithFormat:@"%ld", kCharacterTag]],
+            @[@"character", @"字符", [NSString stringWithFormat:@"%ld", kCharacterTag]],
         ]];
         if (![self.documentType isEqualToString:@"spreadsheet"]) {
-            [editItems addObject:@[@"text.alignleft", @"段落", [NSString stringWithFormat:@"%ld", kParagraphTag]]];
-            [editItems addObject:@[@"photo", @"插入图片", [NSString stringWithFormat:@"%ld", kInsertImageTag]]];
+            [editItems addObject:@[@"paragraph", @"段落", [NSString stringWithFormat:@"%ld", kParagraphTag]]];
+            [editItems addObject:@[@"insert-image", @"插入图片", [NSString stringWithFormat:@"%ld", kInsertImageTag]]];
         }
         items = editItems;
     }
