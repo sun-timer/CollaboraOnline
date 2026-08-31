@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: MPL-2.0
  */
 
+#import "AI/WriterAIComponents.h"
 #import "BottomToolbarController.h"
 
 static const NSInteger kMobilePreviewTag = 1;
@@ -28,7 +29,7 @@ static const NSInteger kMergeCellTag = 10;
 @property (nonatomic, assign, readwrite) CGFloat preferredHeight;
 @end
 
-static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger tag)
+static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag)
 {
     UIControl *item = [[UIControl alloc] init];
     item.translatesAutoresizingMaskIntoConstraints = NO;
@@ -43,7 +44,7 @@ static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger t
     content.spacing = 3.0;
     content.userInteractionEnabled = NO;
 
-    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:symbolName]];
+    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage writerIconNamed:iconName]];
     icon.translatesAutoresizingMaskIntoConstraints = NO;
     icon.tintColor = [UIColor colorWithRed:0.12 green:0.12 blue:0.13 alpha:1.0];
     icon.contentMode = UIViewContentModeScaleAspectFit;
@@ -160,9 +161,9 @@ static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger t
     if (isPreview) {
         // Align Android preview: three equal tabs.
         items = @[
-            @[@"iphone", @"手机预览", [NSString stringWithFormat:@"%ld", (long)kMobilePreviewTag]],
-            @[@"square.grid.2x2", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
-            @[@"sparkles", @"AI助手", [NSString stringWithFormat:@"%ld", (long)kAIAssistantTag]],
+            @[@"mobile-preview", @"手机预览", [NSString stringWithFormat:@"%ld", (long)kMobilePreviewTag]],
+            @[@"function", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
+            @[@"ai-assistant", @"AI助手", [NSString stringWithFormat:@"%ld", (long)kAIAssistantTag]],
         ];
         self.itemsStack.distribution = UIStackViewDistributionFillEqually;
         self.scrollView.scrollEnabled = NO;
@@ -173,17 +174,17 @@ static UIControl *toolbarItem(NSString *symbolName, NSString *title, NSInteger t
         self.previewEqualWidthConstraint.active = YES;
     } else {
         NSMutableArray<NSArray<NSString *> *> *editItems = [NSMutableArray arrayWithArray:@[
-            @[@"square.grid.2x2", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
-            @[@"wand.and.stars", @"AI功能", [NSString stringWithFormat:@"%ld", (long)kAIFeaturesTag]],
+            @[@"function", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
+            @[@"ai-feature", @"AI功能", [NSString stringWithFormat:@"%ld", (long)kAIFeaturesTag]],
             @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", (long)kKeyboardTag]],
-            @[@"bold", @"字符", [NSString stringWithFormat:@"%ld", (long)kCharacterTag]],
+            @[@"character", @"字符", [NSString stringWithFormat:@"%ld", (long)kCharacterTag]],
         ]];
         if (isCalc) {
-            [editItems addObject:@[@"paintbrush.fill", @"填充", [NSString stringWithFormat:@"%ld", (long)kFillCellTag]]];
-            [editItems addObject:@[@"rectangle.split.3x1", @"合并", [NSString stringWithFormat:@"%ld", (long)kMergeCellTag]]];
+            [editItems addObject:@[@"ai-expand", @"填充", [NSString stringWithFormat:@"%ld", (long)kFillCellTag]]];
+            [editItems addObject:@[@"list", @"合并", [NSString stringWithFormat:@"%ld", (long)kMergeCellTag]]];
         } else {
-            [editItems addObject:@[@"text.alignleft", @"段落", [NSString stringWithFormat:@"%ld", (long)kParagraphTag]]];
-            [editItems addObject:@[@"photo", @"插入图片", [NSString stringWithFormat:@"%ld", (long)kInsertImageTag]]];
+            [editItems addObject:@[@"paragraph", @"段落", [NSString stringWithFormat:@"%ld", (long)kParagraphTag]]];
+            [editItems addObject:@[@"insert-image", @"插入图片", [NSString stringWithFormat:@"%ld", (long)kInsertImageTag]]];
         }
         items = editItems;
         self.itemsStack.distribution = UIStackViewDistributionFill;

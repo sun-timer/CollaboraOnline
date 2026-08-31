@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: MPL-2.0
  */
 
+#import "AI/WriterAIComponents.h"
 #import "TopToolbarController.h"
 
 @interface IOSTopToolbarController ()
@@ -21,10 +22,10 @@
 @property (nonatomic, copy) NSString *documentType;
 @end
 
-static UIButton *toolbarButton(NSString *symbolName, NSString *accessibilityLabel)
+static UIButton *toolbarButton(NSString *iconName, NSString *accessibilityLabel)
 {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-    UIImage *image = [UIImage systemImageNamed:symbolName];
+    UIImage *image = [UIImage writerIconNamed:iconName];
     if (image != nil) {
         [button setImage:image forState:UIControlStateNormal];
     }
@@ -68,7 +69,7 @@ static UIView *toolbarSpacer(void)
     _previewRow.translatesAutoresizingMaskIntoConstraints = NO;
     [_view addSubview:_previewRow];
 
-    UIButton *backButton = toolbarButton(@"chevron.left", @"返回");
+    UIButton *backButton = toolbarButton(@"back", @"返回");
     [backButton addTarget:self action:@selector(backPressed:) forControlEvents:UIControlEventTouchUpInside];
     [_previewRow addSubview:backButton];
 
@@ -80,15 +81,15 @@ static UIView *toolbarSpacer(void)
     _titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_previewRow addSubview:_titleLabel];
 
-    UIButton *searchButton = toolbarButton(@"magnifyingglass", @"查找替换");
+    UIButton *searchButton = toolbarButton(@"search", @"查找替换");
     [searchButton addTarget:self action:@selector(searchPressed:) forControlEvents:UIControlEventTouchUpInside];
     [_previewRow addSubview:searchButton];
 
-    UIButton *shareButton = toolbarButton(@"square.and.arrow.up", @"分享");
+    UIButton *shareButton = toolbarButton(@"share", @"分享");
     [shareButton addTarget:self action:@selector(sharePressed:) forControlEvents:UIControlEventTouchUpInside];
     [_previewRow addSubview:shareButton];
 
-    UIButton *previewDocumentsButton = toolbarButton(@"rectangle.stack", @"已打开文档");
+    UIButton *previewDocumentsButton = toolbarButton(@"open-docs", @"已打开文档");
     [previewDocumentsButton addTarget:self action:@selector(documentsPressed:)
                      forControlEvents:UIControlEventTouchUpInside];
     [_previewRow addSubview:previewDocumentsButton];
@@ -106,15 +107,15 @@ static UIView *toolbarSpacer(void)
     [_doneButton addTarget:self action:@selector(donePressed:) forControlEvents:UIControlEventTouchUpInside];
     [_editRow addSubview:_doneButton];
 
-    _undoButton = toolbarButton(@"arrow.uturn.left", @"撤销");
+    _undoButton = toolbarButton(@"undo", @"撤销");
     [_undoButton addTarget:self action:@selector(undoPressed:) forControlEvents:UIControlEventTouchUpInside];
     [_editRow addSubview:_undoButton];
 
-    _redoButton = toolbarButton(@"arrow.uturn.right", @"重做");
+    _redoButton = toolbarButton(@"redo", @"重做");
     [_redoButton addTarget:self action:@selector(redoPressed:) forControlEvents:UIControlEventTouchUpInside];
     [_editRow addSubview:_redoButton];
 
-    _commentButton = toolbarButton(@"bubble.left", @"批注");
+    _commentButton = toolbarButton(@"comment", @"批注");
     [_commentButton addTarget:self action:@selector(commentPressed:) forControlEvents:UIControlEventTouchUpInside];
     [_editRow addSubview:_commentButton];
 
@@ -125,7 +126,7 @@ static UIView *toolbarSpacer(void)
     _commentBadge.hidden = YES;
     [_editRow addSubview:_commentBadge];
 
-    UIButton *closeButton = toolbarButton(@"xmark", @"关闭编辑");
+    UIButton *closeButton = toolbarButton(@"close", @"关闭编辑");
     [closeButton addTarget:self action:@selector(closePressed:) forControlEvents:UIControlEventTouchUpInside];
     [_editRow addSubview:closeButton];
 

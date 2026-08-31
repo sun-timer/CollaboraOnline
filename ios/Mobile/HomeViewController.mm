@@ -12,6 +12,7 @@
 #import "RecentDocumentsStore.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import "AI/WriterAIComponents.h"
 
 static NSString *const kHomeRecentCellId = @"homeRecentCell";
 static NSString *const kHomeGridCellId = @"homeGridCell";
@@ -557,8 +558,8 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 }
 
 - (void)updateLayoutToggleIcon {
-    NSString *symbol = self.gridMode ? @"list.bullet" : @"square.grid.2x2";
-    UIImage *image = [UIImage systemImageNamed:symbol];
+    NSString *icon = self.gridMode ? @"list" : @"function";
+    UIImage *image = [UIImage writerIconNamed:icon];
     [self.layoutToggleButton setImage:image forState:UIControlStateNormal];
     self.layoutToggleButton.accessibilityLabel = self.gridMode ? @"列表视图" : @"网格视图";
 }
