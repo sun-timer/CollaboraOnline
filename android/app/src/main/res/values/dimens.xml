@@ -174,4 +174,9 @@
     <dimen name="local_model_list_confirm_margin_h">20dp</dimen>
     <dimen name="local_model_list_confirm_margin_v">12dp</dimen>
     <dimen name="local_model_list_max_height">464dp</dimen>
+    <dimen name="confirm_dialog_bottom_padding">8dp</dimen>
+    <dimen name="confirm_dialog_buttons_padding_bottom">12dp</dimen>
+    <dimen name="confirm_dialog_buttons_padding_top">12dp</dimen>
+    <dimen name="confirm_dialog_message_padding_bottom">24dp</dimen>
+    <dimen name="confirm_dialog_message_padding_top">24dp</dimen>
 </resources>
