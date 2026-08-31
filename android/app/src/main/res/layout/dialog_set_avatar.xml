@@ -1,79 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/setAvatarDialogCard"
-    android:layout_width="match_parent"
-    android:maxWidth="@dimen/dialog_content_max_width"
-    android:layout_height="wrap_content"
-    android:background="@drawable/bg_rename_dialog_card"
-    android:elevation="8dp"
-    android:orientation="vertical"
-    android:paddingBottom="@dimen/rename_dialog_bottom_padding">
-
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/rename_dialog_header_height"
-        android:paddingStart="@dimen/rename_dialog_header_padding_horizontal"
-        android:paddingEnd="@dimen/rename_dialog_header_padding_horizontal">
-
-        <TextView
-            android:id="@+id/setAvatarDialogTitle"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:text="@string/ai_set_avatar_title"
-            android:textColor="#1F1F1F"
-            android:textSize="@dimen/rename_dialog_title_size"
-            android:fontFamily="sans-serif-medium" />
-    </FrameLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingStart="@dimen/rename_dialog_content_padding"
-        android:paddingEnd="@dimen/rename_dialog_content_padding">
-
-        <TextView
-            android:id="@+id/setAvatarTakePhoto"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="?attr/selectableItemBackground"
-            android:paddingTop="14dp"
-            android:paddingBottom="14dp"
-            android:text="@string/ai_avatar_take_photo"
-            android:textColor="#101010"
-            android:textSize="@dimen/rename_dialog_input_label_size" />
-
-        <TextView
-            android:id="@+id/setAvatarPickGallery"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="?attr/selectableItemBackground"
-            android:paddingTop="14dp"
-            android:paddingBottom="14dp"
-            android:text="@string/ai_avatar_pick_gallery"
-            android:textColor="#101010"
-            android:textSize="@dimen/rename_dialog_input_label_size" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/rename_dialog_buttons_margin_top"
-        android:orientation="vertical"
-        android:paddingStart="@dimen/rename_dialog_buttons_padding_horizontal"
-        android:paddingTop="@dimen/rename_dialog_buttons_padding_vertical"
-        android:paddingEnd="@dimen/rename_dialog_buttons_padding_horizontal"
-        android:paddingBottom="@dimen/rename_dialog_buttons_padding_vertical">
-
-        <TextView
-            android:id="@+id/setAvatarDialogCancel"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/rename_dialog_btn_height"
-            android:background="@drawable/bg_rename_dialog_btn_cancel"
-            android:gravity="center"
-            android:text="@string/action_cancel"
-            android:textColor="#E5000000"
-            android:textSize="@dimen/rename_dialog_btn_text_size" />
-    </LinearLayout>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@id/setAvatarDialogCard" android:background="@drawable/bg_rename_dialog_card" android:paddingBottom="@dimen/rename_dialog_bottom_padding" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxWidth="@dimen/dialog_content_max_width" android:elevation="8dp">
+        <FrameLayout android:layout_width="match_parent" android:layout_height="@dimen/rename_dialog_header_height" android:paddingStart="@dimen/rename_dialog_header_padding_horizontal" android:paddingEnd="@dimen/rename_dialog_header_padding_horizontal">
+                <TextView android:textSize="@dimen/rename_dialog_title_size" android:textColor="#ff1f1f1f" android:gravity="center" android:id="@id/setAvatarDialogTitle" android:layout_width="match_parent" android:layout_height="match_parent" android:text="@string/ai_set_avatar_title" android:fontFamily="sans-serif-medium"/>
+        </FrameLayout>
+        <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="@dimen/rename_dialog_content_padding" android:paddingEnd="@dimen/rename_dialog_content_padding">
+                <TextView android:textSize="@dimen/rename_dialog_input_label_size" android:textColor="#ff101010" android:id="@id/setAvatarTakePhoto" android:background="?attr/selectableItemBackground" android:paddingTop="14dp" android:paddingBottom="14dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ai_avatar_take_photo"/>
+                <TextView android:textSize="@dimen/rename_dialog_input_label_size" android:textColor="#ff101010" android:id="@id/setAvatarPickGallery" android:background="?attr/selectableItemBackground" android:paddingTop="14dp" android:paddingBottom="14dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ai_avatar_pick_gallery"/>
+        </LinearLayout>
+        <LinearLayout android:orientation="vertical" android:paddingTop="@dimen/rename_dialog_buttons_padding_vertical" android:paddingBottom="@dimen/rename_dialog_buttons_padding_vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/rename_dialog_buttons_margin_top" android:paddingStart="@dimen/rename_dialog_buttons_padding_horizontal" android:paddingEnd="@dimen/rename_dialog_buttons_padding_horizontal">
+                <TextView android:textSize="@dimen/rename_dialog_btn_text_size" android:textColor="#e5000000" android:gravity="center" android:id="@id/setAvatarDialogCancel" android:background="@drawable/bg_rename_dialog_btn_cancel" android:layout_width="match_parent" android:layout_height="@dimen/rename_dialog_btn_height" android:text="@string/action_cancel"/>
+        </LinearLayout>
 </LinearLayout>

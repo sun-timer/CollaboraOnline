@@ -1,28 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Impress shape icon — scripts/generate-impress-shape-assets.js -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="64"
-    android:viewportHeight="64">
-    <path
-        android:pathData="M27.1955 27.3501H14.3787H4.75928V36.9062L14.3787 36.906H27.1955"
-        android:fillColor="#00000000"
-        android:strokeColor="#333333"
-        android:strokeWidth="2.66667" />
-    <path
-        android:pathData="M36.8034 27.3504H49.6192H59.2388V36.9062H49.6192H36.8034"
-        android:fillColor="#00000000"
-        android:strokeColor="#333333"
-        android:strokeWidth="2.66667" />
-    <path
-        android:pathData="M36.7774 37.0585V49.6904H44.9681L31.9995 61.9766L19.0308 49.6904H27.2215V37.0585"
-        android:fillColor="#00000000"
-        android:strokeColor="#333333"
-        android:strokeWidth="2.66667" />
-    <path
-        android:pathData="M36.7774 26.9415V14.3096H44.9681L31.9995 2.02344L19.0308 14.3096H27.2215V27.2791"
-        android:fillColor="#00000000"
-        android:strokeColor="#333333"
-        android:strokeWidth="2.66667" />
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="24dp" android:width="24dp" android:viewportWidth="64" android:viewportHeight="64">
+        <path android:fillColor="#00000000" android:pathData="M27.1955 27.3501H14.3787H4.75928V36.9062L14.3787 36.906H27.1955" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
+        <path android:fillColor="#00000000" android:pathData="M36.8034 27.3504H49.6192H59.2388V36.9062H49.6192H36.8034" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
+        <path android:fillColor="#00000000" android:pathData="M36.7774 37.0585V49.6904H44.9681L31.9995 61.9766L19.0308 49.6904H27.2215V37.0585" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
+        <path android:fillColor="#00000000" android:pathData="M36.7774 26.9415V14.3096H44.9681L31.9995 2.02344L19.0308 14.3096H27.2215V27.2791" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
 </vector>

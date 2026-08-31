@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list/>
-    <item/>
-        <shape android:shape="0"/>
-            <solid android:color="#ffffffff"/>
-    <item android:gravity="bottom"/>
-        <shape android:shape="0"/>
-            <size android:height="1dp"/>
-            <solid android:color="#14000000"/>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+        <item>
+                <shape android:shape="0">
+                        <solid android:color="#ffffffff"/>
+                </shape>
+        </item>
+        <item android:gravity="bottom">
+                <shape android:shape="0">
+                        <size android:height="1dp"/>
+                        <solid android:color="#14000000"/>
+                </shape>
+        </item>
+</layer-list>

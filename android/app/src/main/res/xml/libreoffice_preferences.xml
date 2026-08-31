@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<PreferenceScreen/>
-    <PreferenceCategory android:title="@string/theme" android:key="PREF_CATEGORY_THEME"/>
-        <Preference android:title="@string/choose_theme" android:key="THEME_SELECTION" android:summary="@string/theme_system_default"/>
-    <PreferenceCategory android:title="@string/pref_category_editor" android:key="PREF_CATEGORY_EDITOR"/>
-        <EditTextPreference android:layout_width="wrap_content" android:layout_height="wrap_content" android:title="@string/pref_user_name" android:key="USER_NAME" android:summary="@string/pref_user_name_info" android:defaultValue="@string/pref_user_name_guest"/>
-        <CheckBoxPreference android:title="@string/pref_show_debug_info" android:key="ENABLE_SHOW_DEBUG_INFO" android:summary="@string/pref_show_debug_info_summary" android:defaultValue="false"/>
-        <CheckBoxPreference android:layout_width="wrap_content" android:layout_height="wrap_content" android:title="@string/pref_enable_chrome_debugger" android:key="ENABLE_CHROME_DEBUGGING" android:summary="@string/pref_enable_chrome_debugger_info" android:defaultValue="false"/>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+        <PreferenceCategory android:title="@string/theme" android:key="PREF_CATEGORY_THEME" app:iconSpaceReserved="false">
+                <Preference android:title="@string/choose_theme" android:key="THEME_SELECTION" android:summary="@string/theme_system_default" app:iconSpaceReserved="false"/>
+        </PreferenceCategory>
+        <PreferenceCategory android:title="@string/pref_category_editor" android:key="PREF_CATEGORY_EDITOR" app:iconSpaceReserved="false">
+                <EditTextPreference android:layout_width="wrap_content" android:layout_height="wrap_content" android:title="@string/pref_user_name" android:key="USER_NAME" android:summary="@string/pref_user_name_info" android:defaultValue="@string/pref_user_name_guest" app:iconSpaceReserved="false"/>
+                <CheckBoxPreference android:title="@string/pref_show_debug_info" android:key="ENABLE_SHOW_DEBUG_INFO" android:summary="@string/pref_show_debug_info_summary" android:defaultValue="false" app:iconSpaceReserved="false"/>
+                <CheckBoxPreference android:layout_width="wrap_content" android:layout_height="wrap_content" android:title="@string/pref_enable_chrome_debugger" android:key="ENABLE_CHROME_DEBUGGING" android:summary="@string/pref_enable_chrome_debugger_info" android:defaultValue="false" app:iconSpaceReserved="false"/>
+        </PreferenceCategory>
+</PreferenceScreen>

@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector android:height="24dp" android:width="24dp" android:viewportWidth="48" android:viewportHeight="48"/>
-    <path android:fillColor="@android:color/transparent" android:pathData="M41.9985 6H5.99854C4.89397 6 3.99854 6.89543 3.99854 8V40C3.99854 41.1046 4.89397 42 5.99854 42H41.9985C43.1031 42 43.9985 41.1046 43.9985 40V8C43.9985 6.89543 43.1031 6 41.9985 6Z" android:strokeColor="#ff333333" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
-    <path android:fillColor="@android:color/transparent" android:pathData="M17.4985 18V42" android:strokeColor="#ff1278d9" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
-    <path android:fillColor="@android:color/transparent" android:pathData="M30.5015 18V42" android:strokeColor="#ff1278d9" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
-    <path android:fillColor="@android:color/transparent" android:pathData="M3.99854 30H43.9985" android:strokeColor="#ff1278d9" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
-    <path android:fillColor="@android:color/transparent" android:pathData="M43.9985 8V40C43.9985 41.1046 43.1031 42 41.9985 42H5.99854C4.89397 42 3.99854 41.1046 3.99854 40V8" android:strokeColor="#ff333333" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
-    <path android:fillColor="@android:color/transparent" android:pathData="M3.99854 18H43.9985" android:strokeColor="#ff333333" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="24dp" android:width="24dp" android:viewportWidth="48" android:viewportHeight="48">
+        <path android:fillColor="@android:color/transparent" android:pathData="M41.9985 6H5.99854C4.89397 6 3.99854 6.89543 3.99854 8V40C3.99854 41.1046 4.89397 42 5.99854 42H41.9985C43.1031 42 43.9985 41.1046 43.9985 40V8C43.9985 6.89543 43.1031 6 41.9985 6Z" android:strokeColor="#ff333333" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+        <path android:fillColor="@android:color/transparent" android:pathData="M17.4985 18V42" android:strokeColor="#ff1278d9" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+        <path android:fillColor="@android:color/transparent" android:pathData="M30.5015 18V42" android:strokeColor="#ff1278d9" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+        <path android:fillColor="@android:color/transparent" android:pathData="M3.99854 30H43.9985" android:strokeColor="#ff1278d9" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+        <path android:fillColor="@android:color/transparent" android:pathData="M43.9985 8V40C43.9985 41.1046 43.1031 42 41.9985 42H5.99854C4.89397 42 3.99854 41.1046 3.99854 40V8" android:strokeColor="#ff333333" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+        <path android:fillColor="@android:color/transparent" android:pathData="M3.99854 18H43.9985" android:strokeColor="#ff333333" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+</vector>

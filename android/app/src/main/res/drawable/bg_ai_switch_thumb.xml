@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list/>
-    <item android:gravity="center" android:height="16dp" android:width="16dp" android:top="1.500000dp"/>
-        <shape android:shape="1"/>
-            <solid android:color="#33000000"/>
-    <item android:gravity="center" android:height="16dp" android:width="16dp" android:bottom="1.500000dp"/>
-        <shape android:shape="1"/>
-            <solid android:color="#ffffffff"/>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+        <item android:gravity="center" android:height="16dp" android:width="16dp" android:top="1.500000dp">
+                <shape android:shape="1">
+                        <solid android:color="#33000000"/>
+                </shape>
+        </item>
+        <item android:gravity="center" android:height="16dp" android:width="16dp" android:bottom="1.500000dp">
+                <shape android:shape="1">
+                        <solid android:color="#ffffffff"/>
+                </shape>
+        </item>
+</layer-list>

@@ -1,240 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Figma 5632:26268/26294 查找替换底部弹窗（查找/替换 双 tab） -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="@android:color/transparent"
-    android:orientation="vertical"
-    android:paddingBottom="@dimen/lolib_function_sheet_bottom_pad">
-
-    <!-- 标题栏：设置 / 查找替换 / 关闭 -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/find_sheet_header_height"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp">
-
-        <ImageButton
-            android:id="@+id/find_sheet_settings"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="设置"
-            android:padding="6dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/lolib_ic_find_settings" />
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:text="查找替换"
-            android:textColor="#101010"
-            android:textSize="18sp"
-            android:fontFamily="sans-serif-medium" />
-
-        <ImageButton
-            android:id="@+id/find_sheet_close"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="关闭"
-            android:padding="4dp"
-            android:scaleType="fitCenter"
-            android:src="@drawable/lolib_ic_sheet_close_80" />
-    </LinearLayout>
-
-    <!-- 查找/替换 分段控件（Figma 轨道 #F2F3F5 圆角 8dp，选中白底深字） -->
-    <LinearLayout
-        android:id="@+id/find_tab_bar"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/find_sheet_tab_track_height"
-        android:layout_marginStart="@dimen/find_sheet_content_margin_h"
-        android:layout_marginTop="@dimen/find_sheet_section_gap"
-        android:layout_marginEnd="@dimen/find_sheet_content_margin_h"
-        android:background="@drawable/lolib_bg_find_segment_track"
-        android:orientation="horizontal"
-        android:paddingStart="@dimen/find_sheet_tab_track_padding_h"
-        android:paddingTop="@dimen/find_sheet_tab_track_padding_v"
-        android:paddingEnd="@dimen/find_sheet_tab_track_padding_h"
-        android:paddingBottom="@dimen/find_sheet_tab_track_padding_v">
-
-        <TextView
-            android:id="@+id/find_tab_find"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:background="@drawable/lolib_bg_find_segment_active"
-            android:gravity="center"
-            android:text="查找"
-            android:textColor="#101010"
-            android:textSize="16sp" />
-
-        <TextView
-            android:id="@+id/find_tab_replace"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_marginStart="@dimen/find_sheet_tab_gap"
-            android:layout_weight="1"
-            android:background="@drawable/lolib_bg_find_segment_inactive"
-            android:gravity="center"
-            android:text="替换"
-            android:textColor="#6A6A6A"
-            android:textSize="16sp" />
-    </LinearLayout>
-
-    <!-- 查找 tab 内容 -->
-    <LinearLayout
-        android:id="@+id/find_panel_find"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/find_sheet_content_margin_h"
-        android:layout_marginEnd="@dimen/find_sheet_content_margin_h"
-        android:orientation="vertical">
-
-        <!-- 查找输入框（Figma 边框 #D8D8D8，有输入变 #101010） -->
-        <EditText
-            android:id="@+id/find_query_input"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/find_sheet_field_height"
-            android:layout_marginTop="@dimen/find_sheet_section_gap"
-            android:background="@drawable/lolib_bg_find_search_field"
-            android:hint="请输入查找内容"
-            android:imeOptions="actionSearch"
-            android:inputType="text"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:textColor="#101010"
-            android:textColorHint="#999999"
-            android:textSize="16sp" />
-
-        <!-- 上一处 / 下一处（空态灰字 #CCCCCC，有输入深字 #101010） -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/find_sheet_section_gap"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/find_btn_prev"
-                android:layout_width="0dp"
-                android:layout_height="@dimen/find_sheet_action_row_height"
-                android:layout_marginEnd="8dp"
-                android:layout_weight="1"
-                android:background="@drawable/lolib_bg_find_nav_button"
-                android:gravity="center"
-                android:text="上一处"
-                android:textColor="#CCCCCC"
-                android:textSize="16sp" />
-
-            <TextView
-                android:id="@+id/find_btn_next"
-                android:layout_width="0dp"
-                android:layout_height="@dimen/find_sheet_action_row_height"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:background="@drawable/lolib_bg_find_nav_button"
-                android:gravity="center"
-                android:text="下一处"
-                android:textColor="#CCCCCC"
-                android:textSize="16sp" />
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:background="@android:color/transparent" android:paddingBottom="@dimen/lolib_function_sheet_bottom_pad" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="@dimen/find_sheet_header_height" android:paddingStart="12dp" android:paddingEnd="12dp">
+                <ImageButton android:id="@id/find_sheet_settings" android:background="?attr/selectableItemBackgroundBorderless" android:padding="6dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/lolib_ic_find_settings" android:scaleType="centerinside" android:contentDescription="设置"/>
+                <TextView android:textSize="18sp" android:textColor="#ff101010" android:gravity="center" android:layout_width="0dp" android:layout_height="wrap_content" android:text="查找替换" android:layout_weight="1" android:fontFamily="sans-serif-medium"/>
+                <ImageButton android:id="@id/find_sheet_close" android:background="?attr/selectableItemBackgroundBorderless" android:padding="4dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/lolib_ic_sheet_close_80" android:scaleType="fitcenter" android:contentDescription="关闭"/>
         </LinearLayout>
-    </LinearLayout>
-
-    <!-- 替换 tab 内容（Figma 5632:26327/26359） -->
-    <LinearLayout
-        android:id="@+id/find_panel_replace"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/find_sheet_content_margin_h"
-        android:layout_marginEnd="@dimen/find_sheet_content_margin_h"
-        android:orientation="vertical"
-        android:visibility="gone">
-
-        <EditText
-            android:id="@+id/find_replace_query_input"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/find_sheet_field_height"
-            android:layout_marginTop="@dimen/find_sheet_section_gap"
-            android:background="@drawable/lolib_bg_find_search_field"
-            android:hint="请输入查找内容"
-            android:inputType="text"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:textColor="#101010"
-            android:textColorHint="#999999"
-            android:textSize="16sp" />
-
-        <EditText
-            android:id="@+id/find_replace_with_input"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/find_sheet_field_height"
-            android:layout_marginTop="@dimen/find_sheet_replace_field_gap"
-            android:background="@drawable/lolib_bg_find_search_field"
-            android:hint="请输入替换内容"
-            android:inputType="text"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:textColor="#101010"
-            android:textColorHint="#999999"
-            android:textSize="16sp" />
-
-        <!-- 上一处 / 下一处 / 全部替换 / 替换 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/find_sheet_section_gap"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/find_replace_btn_prev"
-                android:layout_width="0dp"
-                android:layout_height="@dimen/find_sheet_action_row_height"
-                android:layout_marginEnd="@dimen/find_sheet_action_button_gap"
-                android:layout_weight="1"
-                android:background="@drawable/lolib_bg_find_nav_button"
-                android:gravity="center"
-                android:text="上一处"
-                android:textColor="#CCCCCC"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/find_replace_btn_next"
-                android:layout_width="0dp"
-                android:layout_height="@dimen/find_sheet_action_row_height"
-                android:layout_marginEnd="@dimen/find_sheet_action_button_gap"
-                android:layout_weight="1"
-                android:background="@drawable/lolib_bg_find_nav_button"
-                android:gravity="center"
-                android:text="下一处"
-                android:textColor="#CCCCCC"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/find_replace_btn_all"
-                android:layout_width="0dp"
-                android:layout_height="@dimen/find_sheet_action_row_height"
-                android:layout_marginEnd="@dimen/find_sheet_action_button_gap"
-                android:layout_weight="1"
-                android:background="@drawable/lolib_bg_find_nav_button"
-                android:gravity="center"
-                android:text="全部替换"
-                android:textColor="#CCCCCC"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/find_replace_btn_one"
-                android:layout_width="0dp"
-                android:layout_height="@dimen/find_sheet_action_row_height"
-                android:layout_weight="1"
-                android:background="@drawable/lolib_bg_find_replace_primary"
-                android:gravity="center"
-                android:text="替换"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp" />
+        <LinearLayout android:orientation="horizontal" android:id="@id/find_tab_bar" android:background="@drawable/lolib_bg_find_segment_track" android:paddingTop="@dimen/find_sheet_tab_track_padding_v" android:paddingBottom="@dimen/find_sheet_tab_track_padding_v" android:layout_width="match_parent" android:layout_height="@dimen/find_sheet_tab_track_height" android:layout_marginTop="@dimen/find_sheet_section_gap" android:paddingStart="@dimen/find_sheet_tab_track_padding_h" android:paddingEnd="@dimen/find_sheet_tab_track_padding_h" android:layout_marginStart="@dimen/find_sheet_content_margin_h" android:layout_marginEnd="@dimen/find_sheet_content_margin_h">
+                <TextView android:textSize="16sp" android:textColor="#ff101010" android:gravity="center" android:id="@id/find_tab_find" android:background="@drawable/lolib_bg_find_segment_active" android:layout_width="0dp" android:layout_height="match_parent" android:text="查找" android:layout_weight="1"/>
+                <TextView android:textSize="16sp" android:textColor="#ff6a6a6a" android:gravity="center" android:id="@id/find_tab_replace" android:background="@drawable/lolib_bg_find_segment_inactive" android:layout_width="0dp" android:layout_height="match_parent" android:text="替换" android:layout_weight="1" android:layout_marginStart="@dimen/find_sheet_tab_gap"/>
         </LinearLayout>
-    </LinearLayout>
+        <LinearLayout android:orientation="vertical" android:id="@id/find_panel_find" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginStart="@dimen/find_sheet_content_margin_h" android:layout_marginEnd="@dimen/find_sheet_content_margin_h">
+                <EditText android:textSize="16sp" android:textColor="#ff101010" android:textColorHint="#ff999999" android:id="@id/find_query_input" android:background="@drawable/lolib_bg_find_search_field" android:layout_width="match_parent" android:layout_height="@dimen/find_sheet_field_height" android:layout_marginTop="@dimen/find_sheet_section_gap" android:hint="请输入查找内容" android:inputType="text" android:imeOptions="actionSearch" android:paddingStart="16dp" android:paddingEnd="16dp"/>
+                <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/find_sheet_section_gap">
+                        <TextView android:textSize="16sp" android:textColor="#ffcccccc" android:gravity="center" android:id="@id/find_btn_prev" android:background="@drawable/lolib_bg_find_nav_button" android:layout_width="0dp" android:layout_height="@dimen/find_sheet_action_row_height" android:text="上一处" android:layout_weight="1" android:layout_marginEnd="8dp"/>
+                        <TextView android:textSize="16sp" android:textColor="#ffcccccc" android:gravity="center" android:id="@id/find_btn_next" android:background="@drawable/lolib_bg_find_nav_button" android:layout_width="0dp" android:layout_height="@dimen/find_sheet_action_row_height" android:text="下一处" android:layout_weight="1" android:layout_marginStart="8dp"/>
+                </LinearLayout>
+        </LinearLayout>
+        <LinearLayout android:orientation="vertical" android:id="@id/find_panel_replace" android:visibility="gone" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginStart="@dimen/find_sheet_content_margin_h" android:layout_marginEnd="@dimen/find_sheet_content_margin_h">
+                <EditText android:textSize="16sp" android:textColor="#ff101010" android:textColorHint="#ff999999" android:id="@id/find_replace_query_input" android:background="@drawable/lolib_bg_find_search_field" android:layout_width="match_parent" android:layout_height="@dimen/find_sheet_field_height" android:layout_marginTop="@dimen/find_sheet_section_gap" android:hint="请输入查找内容" android:inputType="text" android:paddingStart="16dp" android:paddingEnd="16dp"/>
+                <EditText android:textSize="16sp" android:textColor="#ff101010" android:textColorHint="#ff999999" android:id="@id/find_replace_with_input" android:background="@drawable/lolib_bg_find_search_field" android:layout_width="match_parent" android:layout_height="@dimen/find_sheet_field_height" android:layout_marginTop="@dimen/find_sheet_replace_field_gap" android:hint="请输入替换内容" android:inputType="text" android:paddingStart="16dp" android:paddingEnd="16dp"/>
+                <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/find_sheet_section_gap">
+                        <TextView android:textSize="14sp" android:textColor="#ffcccccc" android:gravity="center" android:id="@id/find_replace_btn_prev" android:background="@drawable/lolib_bg_find_nav_button" android:layout_width="0dp" android:layout_height="@dimen/find_sheet_action_row_height" android:text="上一处" android:layout_weight="1" android:layout_marginEnd="@dimen/find_sheet_action_button_gap"/>
+                        <TextView android:textSize="14sp" android:textColor="#ffcccccc" android:gravity="center" android:id="@id/find_replace_btn_next" android:background="@drawable/lolib_bg_find_nav_button" android:layout_width="0dp" android:layout_height="@dimen/find_sheet_action_row_height" android:text="下一处" android:layout_weight="1" android:layout_marginEnd="@dimen/find_sheet_action_button_gap"/>
+                        <TextView android:textSize="14sp" android:textColor="#ffcccccc" android:gravity="center" android:id="@id/find_replace_btn_all" android:background="@drawable/lolib_bg_find_nav_button" android:layout_width="0dp" android:layout_height="@dimen/find_sheet_action_row_height" android:text="全部替换" android:layout_weight="1" android:layout_marginEnd="@dimen/find_sheet_action_button_gap"/>
+                        <TextView android:textSize="14sp" android:textColor="#ffffffff" android:gravity="center" android:id="@id/find_replace_btn_one" android:background="@drawable/lolib_bg_find_replace_primary" android:layout_width="0dp" android:layout_height="@dimen/find_sheet_action_row_height" android:text="替换" android:layout_weight="1"/>
+                </LinearLayout>
+        </LinearLayout>
 </LinearLayout>

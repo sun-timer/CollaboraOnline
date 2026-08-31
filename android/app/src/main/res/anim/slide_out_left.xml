@@ -1,3 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<set android:interpolator="@android:anim/accelerate_interpolator"/>
-    <translate android:duration="300" android:fromXDelta="0.000000e+00" android:toXDelta="16777215.000000%p"/>
+<set xmlns:android="http://schemas.android.com/apk/res/android" android:interpolator="@android:anim/accelerate_interpolator">
+        <translate android:duration="300" android:fromXDelta="0.000000e+00" android:toXDelta="16777215.000000%p"/>
+</set>

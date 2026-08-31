@@ -1,19 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:orientation="vertical" android:background="@drawable/lolib_bg_dialog_outline" android:paddingTop="20dp" android:paddingBottom="24dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="24dp" android:paddingEnd="24dp"/>
-    <include android:id="@id/delete_contents_header"/>
-    <TextView android:textSize="14sp" android:textColor="#ff666666" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="选择要删除的内容类型"/>
-    <ScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:fillViewport="false" android:overScrollMode="2"/>
-        <LinearLayout android:orientation="vertical" android:id="@id/delete_contents_checkbox_container" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-            <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_deleteall" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="全部删除"/>
-            <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="文本"/>
-            <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_numbers" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="数值"/>
-            <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_datetime" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="日期与时间"/>
-            <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_formulas" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="公式"/>
-            <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_comments" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="批注"/>
-            <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_formats" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="格式"/>
-            <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_objects" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="对象"/>
-    <LinearLayout android:gravity="center" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp"/>
-        <LinearLayout android:gravity="center" android:orientation="horizontal" android:id="@id/delete_contents_cancel_btn" android:background="@drawable/lolib_bg_outline_secondary_button" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="52dp" android:layout_weight="1" android:layout_marginEnd="12dp"/>
-            <TextView android:textSize="17sp" android:textColor="#ff333333" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="取消"/>
-        <LinearLayout android:gravity="center" android:orientation="horizontal" android:id="@id/delete_contents_ok_btn" android:background="@drawable/lolib_bg_gradient_button_outline" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="52dp" android:layout_weight="1"/>
-            <TextView android:textSize="17sp" android:textStyle="0x00000001" android:textColor="#ffffffff" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="确定"/>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:background="@drawable/lolib_bg_dialog_outline" android:paddingTop="20dp" android:paddingBottom="24dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="24dp" android:paddingEnd="24dp">
+        <include android:id="@id/delete_contents_header"/>
+        <TextView android:textSize="14sp" android:textColor="#ff666666" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="选择要删除的内容类型"/>
+        <ScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:fillViewport="false" android:overScrollMode="2">
+                <LinearLayout android:orientation="vertical" android:id="@id/delete_contents_checkbox_container" android:layout_width="match_parent" android:layout_height="wrap_content">
+                        <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_deleteall" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="全部删除"/>
+                        <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="文本"/>
+                        <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_numbers" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="数值"/>
+                        <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_datetime" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="日期与时间"/>
+                        <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_formulas" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="公式"/>
+                        <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_comments" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="批注"/>
+                        <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_formats" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="格式"/>
+                        <CheckBox android:textSize="16sp" android:textColor="#ff101010" android:id="@id/delete_contents_objects" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:text="对象"/>
+                </LinearLayout>
+        </ScrollView>
+        <LinearLayout android:gravity="center" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp">
+                <LinearLayout android:gravity="center" android:orientation="horizontal" android:id="@id/delete_contents_cancel_btn" android:background="@drawable/lolib_bg_outline_secondary_button" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="52dp" android:layout_weight="1" android:layout_marginEnd="12dp">
+                        <TextView android:textSize="17sp" android:textColor="#ff333333" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="取消"/>
+                </LinearLayout>
+                <LinearLayout android:gravity="center" android:orientation="horizontal" android:id="@id/delete_contents_ok_btn" android:background="@drawable/lolib_bg_gradient_button_outline" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="52dp" android:layout_weight="1">
+                        <TextView android:textSize="17sp" android:textStyle="0x00000001" android:textColor="#ffffffff" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="确定"/>
+                </LinearLayout>
+        </LinearLayout>
+</LinearLayout>

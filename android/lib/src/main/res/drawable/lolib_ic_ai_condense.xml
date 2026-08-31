@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector android:height="48dp" android:width="48dp" android:viewportWidth="48" android:viewportHeight="48"/>
-    <path android:pathData="M39 6H9C7.34315 6 6 7.34315 6 9V39C6 40.6569 7.34315 42 9 42H39C40.6569 42 42 40.6569 42 39V9C42 7.34315 40.6569 6 39 6Z" android:strokeColor="#ff000000" android:strokeWidth="2" android:strokeLineJoin="1"/>
-    <path android:pathData="M30 24H18" android:strokeColor="#ff1278d9" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
-    <path android:pathData="M34 15H14" android:strokeColor="#ff000000" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="48dp" android:width="48dp" android:viewportWidth="48" android:viewportHeight="48">
+        <path android:pathData="M39 6H9C7.34315 6 6 7.34315 6 9V39C6 40.6569 7.34315 42 9 42H39C40.6569 42 42 40.6569 42 39V9C42 7.34315 40.6569 6 39 6Z" android:strokeColor="#ff000000" android:strokeWidth="2" android:strokeLineJoin="1"/>
+        <path android:pathData="M30 24H18" android:strokeColor="#ff1278d9" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+        <path android:pathData="M34 15H14" android:strokeColor="#ff000000" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+</vector>

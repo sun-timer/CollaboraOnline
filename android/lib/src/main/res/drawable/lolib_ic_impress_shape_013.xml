@@ -1,3 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector android:height="24dp" android:width="24dp" android:viewportWidth="64" android:viewportHeight="64"/>
-    <path android:fillColor="?attr/lolibShapeAccentFill" android:pathData="M31.1223 57.332L52.5063 53.332L41.8332 30.3349L48.5063 6.66536L11.4935 16.7747L31.1223 57.332Z" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="24dp" android:width="24dp" android:viewportWidth="64" android:viewportHeight="64">
+        <path android:fillColor="?attr/lolibShapeAccentFill" android:pathData="M31.1223 57.332L52.5063 53.332L41.8332 30.3349L48.5063 6.66536L11.4935 16.7747L31.1223 57.332Z" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
+</vector>

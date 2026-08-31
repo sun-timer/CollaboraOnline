@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector android:height="24dp" android:width="24dp" android:viewportWidth="64" android:viewportHeight="64"/>
-    <path android:fillColor="?attr/lolibShapeAccentFill" android:pathData="M51.4361 39.9946C51.4361 51.0814 42.4484 60.0691 31.3616 60.0691C20.2747 60.0691 11.287 51.0814 11.287 39.9946C11.287 28.9077 20.2747 19.92 31.3616 19.92C42.4484 19.92 51.4361 28.9077 51.4361 39.9946Z"/>
-    <path android:fillColor="?attr/lolibShapeAccentFill" android:pathData="M8.58691 12.3751H27.3051L29.3556 20.8L14.0728 31.3016L8.58691 12.3751Z"/>
-    <path android:fillColor="#00000000" android:pathData="M12.8539 30.7054C9.77139 36.5489 9.53262 43.7641 12.8494 50.0479C18.1871 60.1606 30.7121 64.0314 40.8248 58.6937C50.9375 53.3559 54.8083 40.8309 49.4706 30.7182C44.6719 21.0662 34.0546 19.6189 29.3458 20.1017L27.2108 11.8548" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
-    <path android:fillColor="#00000000" android:pathData="M12.9471 30.7344L7.78643 11.7219H27.1484" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
-    <path android:fillColor="#ffffffff" android:pathData="M32 31.9987V25.332L52 5.33203L58.6667 11.9987L38.6667 31.9987H32Z" android:strokeColor="?attr/lolibShapeAccentStroke" android:strokeWidth="2.66667" android:fillType="1"/>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="24dp" android:width="24dp" android:viewportWidth="64" android:viewportHeight="64">
+        <path android:fillColor="?attr/lolibShapeAccentFill" android:pathData="M51.4361 39.9946C51.4361 51.0814 42.4484 60.0691 31.3616 60.0691C20.2747 60.0691 11.287 51.0814 11.287 39.9946C11.287 28.9077 20.2747 19.92 31.3616 19.92C42.4484 19.92 51.4361 28.9077 51.4361 39.9946Z"/>
+        <path android:fillColor="?attr/lolibShapeAccentFill" android:pathData="M8.58691 12.3751H27.3051L29.3556 20.8L14.0728 31.3016L8.58691 12.3751Z"/>
+        <path android:fillColor="#00000000" android:pathData="M12.8539 30.7054C9.77139 36.5489 9.53262 43.7641 12.8494 50.0479C18.1871 60.1606 30.7121 64.0314 40.8248 58.6937C50.9375 53.3559 54.8083 40.8309 49.4706 30.7182C44.6719 21.0662 34.0546 19.6189 29.3458 20.1017L27.2108 11.8548" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
+        <path android:fillColor="#00000000" android:pathData="M12.9471 30.7344L7.78643 11.7219H27.1484" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
+        <path android:fillColor="#ffffffff" android:pathData="M32 31.9987V25.332L52 5.33203L58.6667 11.9987L38.6667 31.9987H32Z" android:strokeColor="?attr/lolibShapeAccentStroke" android:strokeWidth="2.66667" android:fillType="1"/>
+</vector>

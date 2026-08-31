@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list/>
-    <item/>
-        <shape android:shape="0"/>
-            <gradient android:startColor="#ff1da8ff" android:endColor="#ffdd00ce" android:angle="137" android:type="0"/>
-            <corners android:radius="24dp"/>
-    <item android:left="2dp" android:top="2dp" android:right="2dp" android:bottom="2dp"/>
-        <shape android:shape="0"/>
-            <gradient android:startColor="#fff5f9ff" android:endColor="#ffe6f0ff" android:angle="270" android:type="0"/>
-            <corners android:radius="22dp"/>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+        <item>
+                <shape android:shape="0">
+                        <gradient android:startColor="#ff1da8ff" android:endColor="#ffdd00ce" android:angle="137" android:type="0"/>
+                        <corners android:radius="24dp"/>
+                </shape>
+        </item>
+        <item android:left="2dp" android:top="2dp" android:right="2dp" android:bottom="2dp">
+                <shape android:shape="0">
+                        <gradient android:startColor="#fff5f9ff" android:endColor="#ffe6f0ff" android:angle="270" android:type="0"/>
+                        <corners android:radius="22dp"/>
+                </shape>
+        </item>
+</layer-list>

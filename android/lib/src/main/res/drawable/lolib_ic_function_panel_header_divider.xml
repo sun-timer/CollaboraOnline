@@ -1,3 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector android:height="@dimen/function_panel_header_divider_height" android:width="@dimen/function_panel_header_divider_width" android:viewportWidth="2" android:viewportHeight="53"/>
-    <path android:fillColor="#00000000" android:pathData="M1,1V52" android:strokeColor="#ffd8d8d8" android:strokeWidth="2" android:strokeLineCap="1"/>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="@dimen/function_panel_header_divider_height" android:width="@dimen/function_panel_header_divider_width" android:viewportWidth="2" android:viewportHeight="53">
+        <path android:fillColor="#00000000" android:pathData="M1,1V52" android:strokeColor="#ffd8d8d8" android:strokeWidth="2" android:strokeLineCap="1"/>
+</vector>

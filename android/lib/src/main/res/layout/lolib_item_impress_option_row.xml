@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:background="?attr/selectableItemBackground" android:paddingTop="10dp" android:paddingBottom="10dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:paddingStart="14dp" android:paddingEnd="12dp"/>
-    <TextView android:textSize="15sp" android:textColor="#ff333333" android:ellipsize="3" android:id="@id/impress_option_item_label" android:layout_width="0dp" android:layout_height="wrap_content" android:maxLines="1" android:layout_weight="1"/>
-    <ImageView android:id="@id/impress_option_item_check" android:visibility="gone" android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/lolib_ic_impress_option_check" android:contentDescription="已选中"/>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:gravity="center_vertical" android:orientation="horizontal" android:background="?attr/selectableItemBackground" android:paddingTop="10dp" android:paddingBottom="10dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="44dp" android:paddingStart="14dp" android:paddingEnd="12dp">
+        <TextView android:textSize="15sp" android:textColor="#ff333333" android:ellipsize="3" android:id="@id/impress_option_item_label" android:layout_width="0dp" android:layout_height="wrap_content" android:maxLines="1" android:layout_weight="1"/>
+        <ImageView android:id="@id/impress_option_item_check" android:visibility="gone" android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/lolib_ic_impress_option_check" android:contentDescription="已选中"/>
+</LinearLayout>

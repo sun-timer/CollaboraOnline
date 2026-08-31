@@ -1,3 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector android:height="@dimen/function_panel_icon_collapse_size" android:width="@dimen/function_panel_icon_collapse_size" android:viewportWidth="42" android:viewportHeight="42"/>
-    <path android:fillColor="#00000000" android:pathData="M7,14 L21.1421,28.1421 L35.2843,14" android:strokeColor="#ff333333" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="@dimen/function_panel_icon_collapse_size" android:width="@dimen/function_panel_icon_collapse_size" android:viewportWidth="42" android:viewportHeight="42">
+        <path android:fillColor="#00000000" android:pathData="M7,14 L21.1421,28.1421 L35.2843,14" android:strokeColor="#ff333333" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+</vector>

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector android:height="24dp" android:width="24dp" android:viewportWidth="48" android:viewportHeight="48"/>
-    <path android:fillColor="@android:color/transparent" android:pathData="M40 42V33C40 31.3432 38.9255 30 37.6 30H10.4C9.07452 30 8 31.3432 8 33V42" android:strokeColor="#ff333333" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
-    <path android:fillColor="@android:color/transparent" android:pathData="M40 6V15C40 16.6568 38.9255 18 37.6 18H10.4C9.07452 18 8 16.6568 8 15V6" android:strokeColor="#ff333333" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
-    <path android:fillColor="@android:color/transparent" android:pathData="M8 24H40" android:strokeColor="#ff1278d9" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="24dp" android:width="24dp" android:viewportWidth="48" android:viewportHeight="48">
+        <path android:fillColor="@android:color/transparent" android:pathData="M40 42V33C40 31.3432 38.9255 30 37.6 30H10.4C9.07452 30 8 31.3432 8 33V42" android:strokeColor="#ff333333" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+        <path android:fillColor="@android:color/transparent" android:pathData="M40 6V15C40 16.6568 38.9255 18 37.6 18H10.4C9.07452 18 8 16.6568 8 15V6" android:strokeColor="#ff333333" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+        <path android:fillColor="@android:color/transparent" android:pathData="M8 24H40" android:strokeColor="#ff1278d9" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+</vector>

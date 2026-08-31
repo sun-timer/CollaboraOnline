@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp"/>
-    <TextView android:textSize="20sp" android:textStyle="0x00000001" android:textColor="#ff101010" android:gravity="center" android:layout_gravity="center" android:id="@id/ai_dialog_header_title" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-    <ImageButton android:layout_gravity="top|end" android:id="@id/ai_dialog_header_close" android:background="?attr/selectableItemBackgroundBorderless" android:padding="12dp" android:layout_width="48dp" android:layout_height="48dp" android:src="@drawable/lolib_ic_dialog_close" android:scaleType="centerinside" android:contentDescription="关闭"/>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp">
+        <TextView android:textSize="20sp" android:textStyle="0x00000001" android:textColor="#ff101010" android:gravity="center" android:layout_gravity="center" android:id="@id/ai_dialog_header_title" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <ImageButton android:layout_gravity="top|end" android:id="@id/ai_dialog_header_close" android:background="?attr/selectableItemBackgroundBorderless" android:padding="12dp" android:layout_width="48dp" android:layout_height="48dp" android:src="@drawable/lolib_ic_dialog_close" android:scaleType="centerinside" android:contentDescription="关闭"/>
+</FrameLayout>

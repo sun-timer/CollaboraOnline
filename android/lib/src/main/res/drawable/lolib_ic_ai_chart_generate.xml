@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector android:height="48dp" android:width="48dp" android:viewportWidth="48" android:viewportHeight="48"/>
-    <path android:fillColor="#00000000" android:pathData="M5,24C5,34.493 13.507,43 24,43V26C24,24.895 24.895,24 26,24H43C43,13.507 34.493,5 24,5C13.507,5 5,13.507 5,24Z" android:strokeColor="#ff101010" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
-    <path android:fillColor="#00000000" android:pathData="M42,30H30V42H42V30Z" android:strokeColor="#ff3b8040" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="48dp" android:width="48dp" android:viewportWidth="48" android:viewportHeight="48">
+        <path android:fillColor="#00000000" android:pathData="M5,24C5,34.493 13.507,43 24,43V26C24,24.895 24.895,24 26,24H43C43,13.507 34.493,5 24,5C13.507,5 5,13.507 5,24Z" android:strokeColor="#ff101010" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+        <path android:fillColor="#00000000" android:pathData="M42,30H30V42H42V30Z" android:strokeColor="#ff3b8040" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+</vector>

@@ -1,28 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Impress shape icon — scripts/generate-impress-shape-assets.js -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="64"
-    android:viewportHeight="64">
-    <path
-        android:pathData="M35.4243 5.14746C41.1784 6.32967 46.4732 9.17305 50.6431 13.3428C54.8128 17.5125 57.6561 22.8076 58.8384 28.5615H35.4243V5.14746Z"
-        android:fillColor="#00000000"
-        android:strokeColor="#333333"
-        android:strokeWidth="2.66667" />
-    <path
-        android:pathData="M28.561 5.14746C22.807 6.32967 17.5121 9.17305 13.3423 13.3428C9.17257 17.5125 6.3293 22.8076 5.14697 28.5615H28.561V5.14746Z"
-        android:fillColor="#00000000"
-        android:strokeColor="#333333"
-        android:strokeWidth="2.66667" />
-    <path
-        android:pathData="M35.4399 58.8525C41.194 57.6703 46.4889 54.8269 50.6587 50.6572C54.8284 46.4875 57.6717 41.1924 58.854 35.4385H35.4399V58.8525Z"
-        android:fillColor="#00000000"
-        android:strokeColor="#333333"
-        android:strokeWidth="2.66667" />
-    <path
-        android:pathData="M28.5757 58.8525C22.8216 57.6703 17.5268 54.8269 13.3569 50.6572C9.18722 46.4875 6.34394 41.1924 5.16162 35.4385H28.5757V58.8525Z"
-        android:fillColor="#00000000"
-        android:strokeColor="#333333"
-        android:strokeWidth="2.66667" />
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="24dp" android:width="24dp" android:viewportWidth="64" android:viewportHeight="64">
+        <path android:fillColor="#00000000" android:pathData="M35.4243 5.14746C41.1784 6.32967 46.4732 9.17305 50.6431 13.3428C54.8128 17.5125 57.6561 22.8076 58.8384 28.5615H35.4243V5.14746Z" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
+        <path android:fillColor="#00000000" android:pathData="M28.561 5.14746C22.807 6.32967 17.5121 9.17305 13.3423 13.3428C9.17257 17.5125 6.3293 22.8076 5.14697 28.5615H28.561V5.14746Z" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
+        <path android:fillColor="#00000000" android:pathData="M35.4399 58.8525C41.194 57.6703 46.4889 54.8269 50.6587 50.6572C54.8284 46.4875 57.6717 41.1924 58.854 35.4385H35.4399V58.8525Z" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
+        <path android:fillColor="#00000000" android:pathData="M28.5757 58.8525C22.8216 57.6703 17.5268 54.8269 13.3569 50.6572C9.18722 46.4875 6.34394 41.1924 5.16162 35.4385H28.5757V58.8525Z" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
 </vector>

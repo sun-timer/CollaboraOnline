@@ -1,14 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Calc 开关关闭：灰色 41×21dp 圆角轨道 + 白色圆形滑块靠左 -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="41dp"
-    android:height="21dp"
-    android:viewportWidth="82"
-    android:viewportHeight="42">
-    <path
-        android:fillColor="#CBD1D7"
-        android:pathData="M21,0 H61 A21,21 0 0 1 82,21 A21,21 0 0 1 61,42 H21 A21,21 0 0 1 0,21 A21,21 0 0 1 21,0 Z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M21,5a16,16 0 1,0 0,32a16,16 0 1,0 0,-32z" />
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="21dp" android:width="41dp" android:viewportWidth="82" android:viewportHeight="42">
+        <path android:fillColor="#ffcbd1d7" android:pathData="M21,0 H61 A21,21 0 0 1 82,21 A21,21 0 0 1 61,42 H21 A21,21 0 0 1 0,21 A21,21 0 0 1 21,0 Z"/>
+        <path android:fillColor="#ffffffff" android:pathData="M21,5a16,16 0 1,0 0,32a16,16 0 1,0 0,-32z"/>
 </vector>

@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout android:orientation="vertical" android:background="@drawable/lolib_bg_typeset_card" android:padding="8dp" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_margin="6dp" android:layout_weight="1"/>
-    <FrameLayout android:background="#ffffffff" android:padding="6dp" android:layout_width="match_parent" android:layout_height="120dp"/>
-        <ImageView android:id="@id/template_cover_image" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitcenter" android:adjustViewBounds="true" android:contentDescription="模板封面"/>
-    <TextView android:textSize="14sp" android:textStyle="0x00000001" android:textColor="#ff101010" android:gravity="center" android:id="@id/template_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"/>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:background="@drawable/lolib_bg_typeset_card" android:padding="8dp" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_margin="6dp" android:layout_weight="1">
+        <FrameLayout android:background="#ffffffff" android:padding="6dp" android:layout_width="match_parent" android:layout_height="120dp">
+                <ImageView android:id="@id/template_cover_image" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitcenter" android:adjustViewBounds="true" android:contentDescription="模板封面"/>
+        </FrameLayout>
+        <TextView android:textSize="14sp" android:textStyle="0x00000001" android:textColor="#ff101010" android:gravity="center" android:id="@id/template_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"/>
+</LinearLayout>

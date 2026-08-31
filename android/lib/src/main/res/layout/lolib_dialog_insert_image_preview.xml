@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout android:background="#ff000000" android:focusable="true" android:clickable="true" android:layout_width="match_parent" android:layout_height="match_parent"/>
-    <ImageView android:id="@id/insertImagePreviewImage" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitcenter"/>
-    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:background="#80000000" android:layout_width="match_parent" android:layout_height="62dp" android:paddingStart="8dp" android:paddingEnd="8dp"/>
-        <ImageButton android:id="@id/insertImagePreviewBackBtn" android:background="?attr/selectableItemBackgroundBorderless" android:padding="12dp" android:layout_width="48dp" android:layout_height="48dp" android:src="@drawable/lolib_ic_top_back" android:scaleType="centerinside" android:tint="#ffffffff" android:contentDescription="@string/back_label"/>
-        <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
-        <ImageView android:id="@id/insertImagePreviewCheckbox" android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/lolib_ic_checkbox_circle_unchecked" android:contentDescription="@string/insert_image_select" android:layout_marginEnd="12dp"/>
-    <LinearLayout android:gravity="center" android:layout_gravity="bottom" android:orientation="horizontal" android:background="#80000000" android:layout_width="match_parent" android:layout_height="62dp" android:paddingStart="16dp" android:paddingEnd="16dp"/>
-        <TextView android:textSize="16sp" android:textColor="#ffffffff" android:gravity="center" android:id="@id/insertImagePreviewConfirmBtn" android:background="@drawable/bg_insert_image_done" android:layout_width="wrap_content" android:layout_height="31dp" android:minWidth="92dp" android:paddingStart="20dp" android:paddingEnd="20dp"/>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:background="#ff000000" android:focusable="true" android:clickable="true" android:layout_width="match_parent" android:layout_height="match_parent">
+        <ImageView android:id="@id/insertImagePreviewImage" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitcenter"/>
+        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:background="#80000000" android:layout_width="match_parent" android:layout_height="62dp" android:paddingStart="8dp" android:paddingEnd="8dp">
+                <ImageButton android:id="@id/insertImagePreviewBackBtn" android:background="?attr/selectableItemBackgroundBorderless" android:padding="12dp" android:layout_width="48dp" android:layout_height="48dp" android:src="@drawable/lolib_ic_top_back" android:scaleType="centerinside" android:tint="#ffffffff" android:contentDescription="@string/back_label"/>
+                <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+                <ImageView android:id="@id/insertImagePreviewCheckbox" android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/lolib_ic_checkbox_circle_unchecked" android:contentDescription="@string/insert_image_select" android:layout_marginEnd="12dp"/>
+        </LinearLayout>
+        <LinearLayout android:gravity="center" android:layout_gravity="bottom" android:orientation="horizontal" android:background="#80000000" android:layout_width="match_parent" android:layout_height="62dp" android:paddingStart="16dp" android:paddingEnd="16dp">
+                <TextView android:textSize="16sp" android:textColor="#ffffffff" android:gravity="center" android:id="@id/insertImagePreviewConfirmBtn" android:background="@drawable/bg_insert_image_done" android:layout_width="wrap_content" android:layout_height="31dp" android:minWidth="92dp" android:paddingStart="20dp" android:paddingEnd="20dp"/>
+        </LinearLayout>
+</FrameLayout>

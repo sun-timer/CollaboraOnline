@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<PreferenceScreen/>
-    <PreferenceCategory android:title="@string/owncloud_settings" android:key="pref_key_owncloud_settings"/>
-        <EditTextPreference android:hint="https://server:port/" android:title="@string/server_url" android:key="pref_server_url" android:summary="@string/server_url_and_port"/>
-        <EditTextPreference android:title="@string/user_name" android:key="pref_user_name"/>
-        <EditTextPreference android:password="true" android:title="@string/password" android:key="pref_password"/>
-    <PreferenceCategory android:title="@string/physical_storage_settings"/>
-        <Preference android:title="@string/external_sd_path" android:key="pref_extsd_path_uri"/>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+        <PreferenceCategory android:title="@string/owncloud_settings" android:key="pref_key_owncloud_settings" app:iconSpaceReserved="false">
+                <EditTextPreference android:hint="https://server:port/" android:title="@string/server_url" android:key="pref_server_url" android:summary="@string/server_url_and_port" app:iconSpaceReserved="false"/>
+                <EditTextPreference android:title="@string/user_name" android:key="pref_user_name" app:iconSpaceReserved="false"/>
+                <EditTextPreference android:password="true" android:title="@string/password" android:key="pref_password" app:iconSpaceReserved="false"/>
+        </PreferenceCategory>
+        <PreferenceCategory android:title="@string/physical_storage_settings" app:iconSpaceReserved="false">
+                <Preference android:title="@string/external_sd_path" android:key="pref_extsd_path_uri" app:iconSpaceReserved="false"/>
+        </PreferenceCategory>
+</PreferenceScreen>

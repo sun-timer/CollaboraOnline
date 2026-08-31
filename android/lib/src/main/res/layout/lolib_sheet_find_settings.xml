@@ -1,147 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Figma 129:6554 查找设置 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="@android:color/transparent"
-    android:orientation="vertical"
-    android:paddingBottom="@dimen/lolib_function_sheet_bottom_pad">
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/find_sheet_header_height"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp">
-
-        <ImageButton
-            android:id="@+id/find_settings_back"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="返回"
-            android:padding="10dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/lolib_ic_impress_subpage_back" />
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:text="设置"
-            android:textColor="#101010"
-            android:textSize="18sp"
-            android:fontFamily="sans-serif-medium" />
-
-        <View
-            android:layout_width="40dp"
-            android:layout_height="40dp" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/find_sheet_content_margin_h"
-        android:layout_marginTop="@dimen/find_sheet_section_gap"
-        android:layout_marginEnd="@dimen/find_sheet_content_margin_h"
-        android:orientation="vertical">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/find_sheet_settings_row_height"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="模糊查找"
-                    android:textColor="#101010"
-                    android:textSize="16sp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="根据AI匹配近义词"
-                    android:textColor="#6A6A6A"
-                    android:textSize="14sp" />
-            </LinearLayout>
-
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/find_opt_ignore_case"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:thumb="@drawable/lolib_bg_find_toggle_thumb"
-                android:track="@drawable/lolib_bg_find_toggle_track" />
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:background="@android:color/transparent" android:paddingBottom="@dimen/lolib_function_sheet_bottom_pad" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="@dimen/find_sheet_header_height" android:paddingStart="12dp" android:paddingEnd="12dp">
+                <ImageButton android:id="@id/find_settings_back" android:background="?attr/selectableItemBackgroundBorderless" android:padding="10dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/lolib_ic_impress_subpage_back" android:scaleType="centerinside" android:contentDescription="返回"/>
+                <TextView android:textSize="18sp" android:textColor="#ff101010" android:gravity="center" android:layout_width="0dp" android:layout_height="wrap_content" android:text="设置" android:layout_weight="1" android:fontFamily="sans-serif-medium"/>
+                <View android:layout_width="40dp" android:layout_height="40dp"/>
         </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#D8D8D8" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/find_sheet_settings_row_height"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="区分大小写"
-                android:textColor="#101010"
-                android:textSize="16sp" />
-
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/find_opt_case_sensitive"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:thumb="@drawable/lolib_bg_find_toggle_thumb"
-                android:track="@drawable/lolib_bg_find_toggle_track" />
+        <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/find_sheet_section_gap" android:layout_marginStart="@dimen/find_sheet_content_margin_h" android:layout_marginEnd="@dimen/find_sheet_content_margin_h">
+                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="@dimen/find_sheet_settings_row_height" android:paddingStart="8dp" android:paddingEnd="8dp">
+                        <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
+                                <TextView android:textSize="16sp" android:textColor="#ff101010" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="模糊查找"/>
+                                <TextView android:textSize="14sp" android:textColor="#ff6a6a6a" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="根据AI匹配近义词"/>
+                        </LinearLayout>
+                        <androidx.appcompat.widget.SwitchCompat android:id="@id/find_opt_ignore_case" android:layout_width="wrap_content" android:layout_height="wrap_content" android:thumb="@drawable/lolib_bg_find_toggle_thumb" android:track="@drawable/lolib_bg_find_toggle_track"/>
+                </LinearLayout>
+                <View android:background="#ffd8d8d8" android:layout_width="match_parent" android:layout_height="1dp"/>
+                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="@dimen/find_sheet_settings_row_height" android:paddingStart="8dp" android:paddingEnd="8dp">
+                        <TextView android:textSize="16sp" android:textColor="#ff101010" android:layout_width="0dp" android:layout_height="wrap_content" android:text="区分大小写" android:layout_weight="1"/>
+                        <androidx.appcompat.widget.SwitchCompat android:id="@id/find_opt_case_sensitive" android:layout_width="wrap_content" android:layout_height="wrap_content" android:thumb="@drawable/lolib_bg_find_toggle_thumb" android:track="@drawable/lolib_bg_find_toggle_track"/>
+                </LinearLayout>
+                <View android:background="#ffd8d8d8" android:layout_width="match_parent" android:layout_height="1dp"/>
+                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="@dimen/find_sheet_settings_row_height" android:paddingStart="8dp" android:paddingEnd="8dp">
+                        <TextView android:textSize="16sp" android:textColor="#ff101010" android:layout_width="0dp" android:layout_height="wrap_content" android:text="全字匹配" android:layout_weight="1"/>
+                        <androidx.appcompat.widget.SwitchCompat android:id="@id/find_opt_whole_word" android:layout_width="wrap_content" android:layout_height="wrap_content" android:thumb="@drawable/lolib_bg_find_toggle_thumb" android:track="@drawable/lolib_bg_find_toggle_track"/>
+                </LinearLayout>
         </LinearLayout>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#D8D8D8" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/find_sheet_settings_row_height"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="全字匹配"
-                android:textColor="#101010"
-                android:textSize="16sp" />
-
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/find_opt_whole_word"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:thumb="@drawable/lolib_bg_find_toggle_thumb"
-                android:track="@drawable/lolib_bg_find_toggle_track" />
-        </LinearLayout>
-    </LinearLayout>
 </LinearLayout>
