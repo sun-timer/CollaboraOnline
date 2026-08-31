@@ -11,7 +11,7 @@
         </LinearLayout>
         <FrameLayout android:id="@+id/calc_function_tab_indicator_area" android:layout_width="match_parent" android:layout_height="8dp">
                 <View android:layout_gravity="bottom" android:background="#e3e3e3" android:layout_width="match_parent" android:layout_height="1dp"/>
-                <View android:layout_gravity="bottom|start" android:id="@+id/calc_function_tab_indicator" android:background="@drawable/lolib_bg_calc_tab_indicator" android:visibility="invisible" android:layout_width="24dp" android:layout_height="3dp" android:layout_marginBottom="5dp"/>
+                <View android:layout_gravity="start|bottom" android:id="@+id/calc_function_tab_indicator" android:background="@drawable/lolib_bg_calc_tab_indicator" android:visibility="invisible" android:layout_width="24dp" android:layout_height="3dp" android:layout_marginBottom="5dp"/>
         </FrameLayout>
         <androidx.core.widget.NestedScrollView android:id="@+id/calc_function_content_container" android:paddingTop="8dp" android:paddingBottom="16dp" android:scrollbars="vertical" android:clipToPadding="false" android:layout_width="match_parent" android:layout_height="0dp" android:fillViewport="false" android:layout_weight="1" android:overScrollMode="ifContentScrolls" android:paddingStart="16dp" android:paddingEnd="16dp"/>
         <include android:id="@+id/calc_function_font_picker_panel" android:visibility="gone" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" layout="@layout/lolib_sheet_font_picker"/>
