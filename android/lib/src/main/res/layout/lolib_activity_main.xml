@@ -49,7 +49,7 @@
                                         </LinearLayout>
                                 </LinearLayout>
                         </HorizontalScrollView>
-                        <View android:id="@+id/doc_bottom_nav_spacer" android:background="@color/lolib_chrome_toolbar" android:layout_width="match_parent" android:layout_height="0dp" android:importantForAccessibility="2"/>
+                        <View android:id="@+id/doc_bottom_nav_spacer" android:background="@color/lolib_chrome_toolbar" android:layout_width="match_parent" android:layout_height="0dp" android:importantForAccessibility="no"/>
                 </LinearLayout>
                 <View android:id="@+id/toolbar_quick_overlay" android:background="@android:color/transparent" android:focusable="true" android:visibility="gone" android:clickable="true" android:layout_width="0dp" android:layout_height="0dp" app:layout_constraintBottom_toTopOf="@+id/doc_bottom_toolbar" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@+id/doc_top_toolbar_include"/>
                 <View android:id="@+id/selection_menu_overlay" android:background="@android:color/transparent" android:visibility="gone" android:clickable="true" android:layout_width="0dp" android:layout_height="0dp" android:elevation="12dp" app:layout_constraintBottom_toTopOf="@+id/doc_bottom_toolbar" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@+id/doc_top_toolbar_include"/>

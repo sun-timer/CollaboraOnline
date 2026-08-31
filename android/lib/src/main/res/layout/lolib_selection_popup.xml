@@ -67,6 +67,6 @@
                         <ImageView android:src="@drawable/lolib_ic_ai_rewrite"/>
                         <TextView android:text="文案重写"/>
                 </LinearLayout>
-                <View android:id="@+id/selection_ai_row_2_spacer" android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="3" android:importantForAccessibility="2"/>
+                <View android:id="@+id/selection_ai_row_2_spacer" android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="3" android:importantForAccessibility="no"/>
         </LinearLayout>
 </LinearLayout>
