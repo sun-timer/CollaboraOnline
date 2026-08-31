@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:theme="@style/LibreOfficeTheme.Base" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content">
-        <RadioGroup android:id="@id/radioGrp_theme" android:paddingLeft="26sp" android:paddingTop="16sp" android:layout_width="match_parent" android:layout_height="match_parent">
-                <RadioButton android:textSize="18sp" android:id="@id/radioBtn_dark" android:paddingLeft="15sp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="15sp" android:text="@string/theme_dark" android:fontFamily="sans-serif"/>
-                <RadioButton android:textSize="18sp" android:id="@id/radioBtn_light" android:paddingLeft="15sp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="15sp" android:text="@string/theme_light" android:fontFamily="sans-serif"/>
-                <RadioButton android:textSize="18sp" android:id="@id/radioBtn_default" android:paddingLeft="15sp" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/theme_system_default" android:fontFamily="sans-serif"/>
+        <RadioGroup android:id="@+id/radioGrp_theme" android:paddingLeft="26sp" android:paddingTop="16sp" android:layout_width="match_parent" android:layout_height="match_parent">
+                <RadioButton android:textSize="18sp" android:id="@+id/radioBtn_dark" android:paddingLeft="15sp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="15sp" android:text="@string/theme_dark" android:fontFamily="sans-serif"/>
+                <RadioButton android:textSize="18sp" android:id="@+id/radioBtn_light" android:paddingLeft="15sp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="15sp" android:text="@string/theme_light" android:fontFamily="sans-serif"/>
+                <RadioButton android:textSize="18sp" android:id="@+id/radioBtn_default" android:paddingLeft="15sp" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/theme_system_default" android:fontFamily="sans-serif"/>
         </RadioGroup>
 </LinearLayout>

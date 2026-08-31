@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@id/feedbackListItemRoot" android:background="@drawable/bg_feedback_input" android:paddingTop="8dp" android:paddingBottom="8dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="8dp" android:paddingStart="12dp" android:paddingEnd="12dp">
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@+id/feedbackListItemRoot" android:background="@drawable/bg_feedback_input" android:paddingTop="8dp" android:paddingBottom="8dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="8dp" android:paddingStart="12dp" android:paddingEnd="12dp">
         <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
                 <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
-                        <TextView android:textSize="18sp" android:textStyle="0x00000001" android:textColor="#ff333333" android:id="@id/feedbackItemType" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-                        <TextView android:textSize="14sp" android:textColor="#ff999999" android:id="@id/feedbackItemTime" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp"/>
+                        <TextView android:textSize="18sp" android:textStyle="0x00000001" android:textColor="#333333" android:id="@+id/feedbackItemType" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                        <TextView android:textSize="14sp" android:textColor="#999999" android:id="@+id/feedbackItemTime" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp"/>
                 </LinearLayout>
-                <View android:id="@id/feedbackItemDot" android:background="@drawable/bg_feedback_dot_gray" android:layout_width="8dp" android:layout_height="8dp"/>
-                <TextView android:textSize="14sp" android:textColor="#ff6a6a6a" android:id="@id/feedbackItemStatus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="4dp"/>
+                <View android:id="@+id/feedbackItemDot" android:background="@drawable/bg_feedback_dot_gray" android:layout_width="8dp" android:layout_height="8dp"/>
+                <TextView android:textSize="14sp" android:textColor="#6a6a6a" android:id="@+id/feedbackItemStatus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="4dp"/>
                 <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_feedback_arrow_right" android:contentDescription="@string/action_next" android:layout_marginStart="4dp"/>
         </LinearLayout>
         <LinearLayout android:orientation="horizontal" android:background="@drawable/bg_feedback_content_block" android:paddingTop="8dp" android:paddingBottom="8dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:paddingStart="12dp" android:paddingEnd="12dp">
-                <TextView android:textSize="14sp" android:textColor="#ff6a6a6a" android:ellipsize="3" android:id="@id/feedbackItemContent" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="2"/>
+                <TextView android:textSize="14sp" android:textColor="#6a6a6a" android:ellipsize="3" android:id="@+id/feedbackItemContent" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="2"/>
         </LinearLayout>
 </LinearLayout>

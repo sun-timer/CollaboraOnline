@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@id/profileSettingsRoot" android:background="#fff3f3f3" android:layout_width="match_parent" android:layout_height="match_parent">
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@+id/profileSettingsRoot" android:background="#f3f3f3" android:layout_width="match_parent" android:layout_height="match_parent">
         <LinearLayout android:gravity="center_vertical" android:layout_width="match_parent" android:layout_height="72dp" android:paddingStart="16dp" android:paddingEnd="16dp">
-                <ImageButton android:id="@id/profileBackButton" android:background="@android:color/transparent" android:padding="8dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_model_config_back" android:scaleType="centerinside" android:contentDescription="@string/action_back"/>
-                <TextView android:textSize="20sp" android:textStyle="0x00000001" android:textColor="#ff101010" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_profile_edit_title" android:layout_marginStart="8dp"/>
+                <ImageButton android:id="@+id/profileBackButton" android:background="@android:color/transparent" android:padding="8dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_model_config_back" android:scaleType="centerinside" android:contentDescription="@string/action_back"/>
+                <TextView android:textSize="20sp" android:textStyle="0x00000001" android:textColor="#101010" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_profile_edit_title" android:layout_marginStart="8dp"/>
         </LinearLayout>
         <LinearLayout android:layout_gravity="center_horizontal" android:orientation="vertical" android:background="@drawable/bg_ai_profile_card" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:maxWidth="@dimen/content_max_width" android:layout_marginStart="@dimen/dialog_shell_padding_horizontal" android:layout_marginEnd="@dimen/dialog_shell_padding_horizontal">
-                <LinearLayout android:gravity="center_vertical" android:id="@id/profileAvatarRow" android:layout_width="match_parent" android:layout_height="55dp" android:paddingStart="20dp" android:paddingEnd="20dp">
-                        <TextView android:textSize="16sp" android:textColor="#ff101010" android:layout_width="0dp" android:layout_height="wrap_content" android:text="@string/ai_profile_avatar" android:layout_weight="1"/>
-                        <ImageView android:id="@id/profileAvatarValue" android:layout_width="36dp" android:layout_height="36dp" android:src="@drawable/drawer_header" android:scaleType="centercrop" android:contentDescription="@string/ai_profile_avatar"/>
+                <LinearLayout android:gravity="center_vertical" android:id="@+id/profileAvatarRow" android:layout_width="match_parent" android:layout_height="55dp" android:paddingStart="20dp" android:paddingEnd="20dp">
+                        <TextView android:textSize="16sp" android:textColor="#101010" android:layout_width="0dp" android:layout_height="wrap_content" android:text="@string/ai_profile_avatar" android:layout_weight="1"/>
+                        <ImageView android:id="@+id/profileAvatarValue" android:layout_width="36dp" android:layout_height="36dp" android:src="@drawable/drawer_header" android:scaleType="centercrop" android:contentDescription="@string/ai_profile_avatar"/>
                         <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_profile_chevron" android:contentDescription="@string/open" android:layout_marginStart="8dp"/>
                 </LinearLayout>
-                <View android:background="#ffe2e3e4" android:layout_width="match_parent" android:layout_height="1dp"/>
-                <LinearLayout android:gravity="center_vertical" android:id="@id/profileNicknameRow" android:layout_width="match_parent" android:layout_height="55dp" android:paddingStart="20dp" android:paddingEnd="20dp">
-                        <TextView android:textSize="16sp" android:textColor="#ff101010" android:layout_width="0dp" android:layout_height="wrap_content" android:text="@string/ai_profile_name" android:layout_weight="1"/>
-                        <TextView android:textSize="14sp" android:textColor="#ff6d7278" android:id="@id/profileNicknameValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxWidth="@dimen/profile_nickname_max_width" android:singleLine="true"/>
+                <View android:background="#e2e3e4" android:layout_width="match_parent" android:layout_height="1dp"/>
+                <LinearLayout android:gravity="center_vertical" android:id="@+id/profileNicknameRow" android:layout_width="match_parent" android:layout_height="55dp" android:paddingStart="20dp" android:paddingEnd="20dp">
+                        <TextView android:textSize="16sp" android:textColor="#101010" android:layout_width="0dp" android:layout_height="wrap_content" android:text="@string/ai_profile_name" android:layout_weight="1"/>
+                        <TextView android:textSize="14sp" android:textColor="#6d7278" android:id="@+id/profileNicknameValue" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxWidth="@dimen/profile_nickname_max_width" android:singleLine="true"/>
                         <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_profile_chevron" android:contentDescription="@string/open" android:layout_marginStart="8dp"/>
                 </LinearLayout>
         </LinearLayout>

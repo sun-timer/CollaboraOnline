@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ai_model_config_slider_item_gap">
         <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
-                <TextView android:textSize="@dimen/ai_model_config_slider_label_size" android:textColor="#ff101010" android:layout_width="0dp" android:layout_height="wrap_content" android:text="@string/ai_max_tokens" android:layout_weight="1"/>
-                <TextView android:textSize="@dimen/ai_model_config_slider_label_size" android:textColor="#ff101010" android:id="@id/maxTokensValue" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                <TextView android:textSize="@dimen/ai_model_config_slider_label_size" android:textColor="#101010" android:layout_width="0dp" android:layout_height="wrap_content" android:text="@string/ai_max_tokens" android:layout_weight="1"/>
+                <TextView android:textSize="@dimen/ai_model_config_slider_label_size" android:textColor="#101010" android:id="@+id/maxTokensValue" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
         </LinearLayout>
-        <SeekBar android:id="@id/maxTokensBar" android:layout_width="match_parent" android:layout_height="@dimen/ai_model_config_slider_track_height" android:layout_marginTop="@dimen/ai_model_config_slider_label_bar_gap" android:maxHeight="@dimen/ai_model_config_slider_track_height" android:minHeight="@dimen/ai_model_config_slider_track_height" android:paddingStart="0dp" android:paddingEnd="0dp" android:splitTrack="false" android:progressTint="#fffa6200" android:thumbTint="#fffa6200"/>
+        <SeekBar android:id="@+id/maxTokensBar" android:layout_width="match_parent" android:layout_height="@dimen/ai_model_config_slider_track_height" android:layout_marginTop="@dimen/ai_model_config_slider_label_bar_gap" android:maxHeight="@dimen/ai_model_config_slider_track_height" android:minHeight="@dimen/ai_model_config_slider_track_height" android:paddingStart="0dp" android:paddingEnd="0dp" android:splitTrack="false" android:progressTint="#fa6200" android:thumbTint="#fa6200"/>
 </LinearLayout>

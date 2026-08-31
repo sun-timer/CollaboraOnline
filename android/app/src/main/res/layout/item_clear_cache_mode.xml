@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/clearCacheModeRow" android:background="?attr/selectableItemBackground" android:paddingTop="10dp" android:paddingBottom="10dp" android:focusable="true" android:clickable="true" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="76dp" android:paddingStart="12dp" android:paddingEnd="12dp">
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:gravity="center_vertical" android:orientation="horizontal" android:id="@+id/clearCacheModeRow" android:background="?attr/selectableItemBackground" android:paddingTop="10dp" android:paddingBottom="10dp" android:focusable="true" android:clickable="true" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="76dp" android:paddingStart="12dp" android:paddingEnd="12dp">
         <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
-                <TextView android:textSize="16sp" android:textColor="#e5000000" android:id="@id/clearCacheModeTitle" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-                <TextView android:textSize="14sp" android:textColor="#8f000000" android:id="@id/clearCacheModeDesc" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:lineSpacingExtra="2dp"/>
+                <TextView android:textSize="16sp" android:textColor="#e5000000" android:id="@+id/clearCacheModeTitle" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+                <TextView android:textSize="14sp" android:textColor="#8f000000" android:id="@+id/clearCacheModeDesc" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:lineSpacingExtra="2dp"/>
         </LinearLayout>
-        <ImageView android:id="@id/clearCacheModeRadio" android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_clear_cache_radio_unselected" android:contentDescription="@null" android:layout_marginStart="12dp"/>
+        <ImageView android:id="@+id/clearCacheModeRadio" android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_clear_cache_radio_unselected" android:contentDescription="@null" android:layout_marginStart="12dp"/>
 </LinearLayout>

@@ -1,72 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@id/selection_popup_root" android:background="@drawable/lolib_bg_selection_popup" android:padding="8dp" android:clickable="true" android:layout_width="match_parent" android:layout_height="wrap_content" android:elevation="8dp">
-        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/selection_basic_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="56dp">
-                <LinearLayout android:id="@id/selection_op_copy">
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@+id/selection_popup_root" android:background="@drawable/lolib_bg_selection_popup" android:padding="8dp" android:clickable="true" android:layout_width="match_parent" android:layout_height="wrap_content" android:elevation="8dp">
+        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@+id/selection_basic_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="56dp">
+                <LinearLayout android:id="@+id/selection_op_copy">
                         <ImageView android:src="@drawable/lolib_ic_selection_copy"/>
                         <TextView android:text="复制"/>
                 </LinearLayout>
-                <LinearLayout android:id="@id/selection_op_cut">
+                <LinearLayout android:id="@+id/selection_op_cut">
                         <ImageView android:src="@drawable/lolib_ic_selection_cut"/>
                         <TextView android:text="剪切"/>
                 </LinearLayout>
-                <LinearLayout android:id="@id/selection_op_paste">
+                <LinearLayout android:id="@+id/selection_op_paste">
                         <ImageView android:src="@drawable/lolib_ic_selection_paste"/>
                         <TextView android:text="粘贴"/>
                 </LinearLayout>
-                <LinearLayout android:id="@id/selection_op_select_all">
+                <LinearLayout android:id="@+id/selection_op_select_all">
                         <ImageView android:src="@drawable/lolib_ic_selection_select_all"/>
                         <TextView android:text="全选"/>
                 </LinearLayout>
-                <LinearLayout android:id="@id/selection_op_delete" android:visibility="gone">
+                <LinearLayout android:id="@+id/selection_op_delete" android:visibility="gone">
                         <ImageView android:src="@drawable/lolib_ic_selection_delete"/>
                         <TextView android:text="删除"/>
                 </LinearLayout>
-                <LinearLayout android:id="@id/selection_op_image_edit" android:visibility="gone">
+                <LinearLayout android:id="@+id/selection_op_image_edit" android:visibility="gone">
                         <ImageView android:src="@drawable/lolib_ic_impress_insert_local_image"/>
                         <TextView android:text="图片编辑"/>
                 </LinearLayout>
-                <LinearLayout android:id="@id/selection_op_save" android:visibility="gone">
+                <LinearLayout android:id="@+id/selection_op_save" android:visibility="gone">
                         <ImageView android:src="@drawable/lolib_ic_impress_file_save_as"/>
                         <TextView android:text="保存"/>
                 </LinearLayout>
-                <LinearLayout android:id="@id/selection_op_translate">
+                <LinearLayout android:id="@+id/selection_op_translate">
                         <ImageView android:src="@drawable/lolib_ic_ai_translate"/>
                         <TextView android:text="翻译"/>
                 </LinearLayout>
         </LinearLayout>
-        <View android:id="@id/selection_divider_1" android:background="@drawable/lolib_bg_selection_popup_row_divider" android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="2dp"/>
-        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/selection_ai_row_1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:minHeight="60dp">
-                <LinearLayout android:id="@id/selection_op_outline">
+        <View android:id="@+id/selection_divider_1" android:background="@drawable/lolib_bg_selection_popup_row_divider" android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="2dp"/>
+        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@+id/selection_ai_row_1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:minHeight="60dp">
+                <LinearLayout android:id="@+id/selection_op_outline">
                         <ImageView android:src="@drawable/lolib_ic_ai_outline"/>
                         <TextView android:text="总结大纲"/>
                 </LinearLayout>
-                <LinearLayout android:id="@id/selection_op_continue_write">
+                <LinearLayout android:id="@+id/selection_op_continue_write">
                         <ImageView android:src="@drawable/lolib_ic_ai_continue_write"/>
                         <TextView android:text="文案续写"/>
                 </LinearLayout>
-                <LinearLayout android:id="@id/selection_op_article_generate">
+                <LinearLayout android:id="@+id/selection_op_article_generate">
                         <ImageView android:src="@drawable/lolib_ic_ai_article_generate"/>
                         <TextView android:text="文案生成"/>
                 </LinearLayout>
-                <LinearLayout android:id="@id/selection_op_expand">
+                <LinearLayout android:id="@+id/selection_op_expand">
                         <ImageView android:src="@drawable/lolib_ic_ai_expand"/>
                         <TextView android:text="文案扩写"/>
                 </LinearLayout>
-                <LinearLayout android:id="@id/selection_op_polish">
+                <LinearLayout android:id="@+id/selection_op_polish">
                         <ImageView android:src="@drawable/lolib_ic_ai_polish"/>
                         <TextView android:text="文案润色"/>
                 </LinearLayout>
         </LinearLayout>
-        <View android:id="@id/selection_divider_2" android:background="@drawable/lolib_bg_selection_popup_row_divider" android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="2dp"/>
-        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/selection_ai_row_2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:minHeight="56dp">
-                <LinearLayout android:id="@id/selection_op_condense">
+        <View android:id="@+id/selection_divider_2" android:background="@drawable/lolib_bg_selection_popup_row_divider" android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="2dp"/>
+        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@+id/selection_ai_row_2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:minHeight="56dp">
+                <LinearLayout android:id="@+id/selection_op_condense">
                         <ImageView android:src="@drawable/lolib_ic_ai_condense"/>
                         <TextView android:text="文案缩写"/>
                 </LinearLayout>
-                <LinearLayout android:id="@id/selection_op_rewrite">
+                <LinearLayout android:id="@+id/selection_op_rewrite">
                         <ImageView android:src="@drawable/lolib_ic_ai_rewrite"/>
                         <TextView android:text="文案重写"/>
                 </LinearLayout>
-                <View android:id="@id/selection_ai_row_2_spacer" android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="3" android:importantForAccessibility="2"/>
+                <View android:id="@+id/selection_ai_row_2_spacer" android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="3" android:importantForAccessibility="2"/>
         </LinearLayout>
 </LinearLayout>

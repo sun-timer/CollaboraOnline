@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="24dp" android:width="24dp" android:viewportWidth="64" android:viewportHeight="64">
-        <path android:fillColor="?attr/lolibShapeAccentFill" android:pathData="M24.0686 11.2267H8V56.0003H52L52.0499 40.0003H24.0686V11.2267Z" android:strokeColor="#ff333333" android:strokeWidth="2.66667"/>
+        <path android:fillColor="?attr/lolibShapeAccentFill" android:pathData="M24.0686 11.2267H8V56.0003H52L52.0499 40.0003H24.0686V11.2267Z" android:strokeColor="#333333" android:strokeWidth="2.66667"/>
 </vector>

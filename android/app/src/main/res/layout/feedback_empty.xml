@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@id/feedbackEmptyRoot" android:background="#fff2f2f2" android:layout_width="match_parent" android:layout_height="match_parent">
-        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/feedbackEmptyHeader" android:background="#fff2f2f2" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="62dp" android:paddingStart="15dp" android:paddingEnd="12dp">
-                <ImageButton android:id="@id/feedbackEmptyHeaderBackBtn" android:background="@android:color/transparent" android:padding="8dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_model_config_back" android:scaleType="centerinside" android:contentDescription="@string/action_back"/>
-                <TextView android:textSize="20sp" android:textStyle="0x00000001" android:textColor="#ff333333" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/feedback_my_records_title" android:layout_marginStart="4dp"/>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@+id/feedbackEmptyRoot" android:background="#f2f2f2" android:layout_width="match_parent" android:layout_height="match_parent">
+        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@+id/feedbackEmptyHeader" android:background="#f2f2f2" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="62dp" android:paddingStart="15dp" android:paddingEnd="12dp">
+                <ImageButton android:id="@+id/feedbackEmptyHeaderBackBtn" android:background="@android:color/transparent" android:padding="8dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_model_config_back" android:scaleType="centerinside" android:contentDescription="@string/action_back"/>
+                <TextView android:textSize="20sp" android:textStyle="0x00000001" android:textColor="#333333" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/feedback_my_records_title" android:layout_marginStart="4dp"/>
         </LinearLayout>
         <LinearLayout android:gravity="center_horizontal" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
                 <ImageView android:layout_width="269dp" android:layout_height="190dp" android:layout_marginTop="60dp" android:src="@drawable/feedback_empty_art" android:scaleType="fitcenter" android:contentDescription="@string/feedback_empty_art_desc"/>
-                <TextView android:textSize="14sp" android:textColor="#ff999999" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/feedback_empty_message"/>
+                <TextView android:textSize="14sp" android:textColor="#999999" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/feedback_empty_message"/>
         </LinearLayout>
         <LinearLayout android:gravity="center" android:paddingTop="6dp" android:paddingBottom="12dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="106dp" android:paddingEnd="106dp">
-                <TextView android:textSize="16sp" android:textColor="#e5000000" android:gravity="center" android:id="@id/feedbackEmptyBackBtn" android:background="@drawable/bg_feedback_btn_gray" android:layout_width="match_parent" android:layout_height="35dp" android:text="@string/action_back"/>
+                <TextView android:textSize="16sp" android:textColor="#e5000000" android:gravity="center" android:id="@+id/feedbackEmptyBackBtn" android:background="@drawable/bg_feedback_btn_gray" android:layout_width="match_parent" android:layout_height="35dp" android:text="@string/action_back"/>
         </LinearLayout>
 </LinearLayout>

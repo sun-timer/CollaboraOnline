@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#fff2f3f5">
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#f2f3f5">
         <item>
-                <shape android:shape="0">
+                <shape android:shape="rectangle">
                         <solid android:color="@android:color/transparent"/>
                         <corners android:radius="8dp"/>
                 </shape>
         </item>
         <item android:id="@android:id/mask">
-                <shape android:shape="0">
-                        <solid android:color="#ffffffff"/>
+                <shape android:shape="rectangle">
+                        <solid android:color="#ffffff"/>
                         <corners android:radius="8dp"/>
                 </shape>
         </item>

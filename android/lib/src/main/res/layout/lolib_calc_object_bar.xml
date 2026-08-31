@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:gravity="center" android:orientation="horizontal" android:id="@id/calc_object_bar_root" android:background="@drawable/lolib_bg_selection_popup" android:layout_width="wrap_content" android:layout_height="48dp" android:paddingStart="6dp" android:paddingEnd="6dp" android:elevation="30dp">
-        <LinearLayout android:id="@id/calc_object_op_delete" android:layout_marginEnd="2dp">
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:gravity="center" android:orientation="horizontal" android:id="@+id/calc_object_bar_root" android:background="@drawable/lolib_bg_selection_popup" android:layout_width="wrap_content" android:layout_height="48dp" android:paddingStart="6dp" android:paddingEnd="6dp" android:elevation="30dp">
+        <LinearLayout android:id="@+id/calc_object_op_delete" android:layout_marginEnd="2dp">
                 <ImageView android:src="@drawable/lolib_ic_selection_delete"/>
                 <TextView android:text="删除"/>
         </LinearLayout>
-        <LinearLayout android:id="@id/calc_object_op_copy" android:layout_marginEnd="2dp">
+        <LinearLayout android:id="@+id/calc_object_op_copy" android:layout_marginEnd="2dp">
                 <ImageView android:src="@drawable/lolib_ic_selection_copy"/>
                 <TextView android:text="复制"/>
         </LinearLayout>
-        <LinearLayout android:id="@id/calc_object_op_cut">
+        <LinearLayout android:id="@+id/calc_object_op_cut">
                 <ImageView android:src="@drawable/lolib_ic_selection_cut"/>
                 <TextView android:text="剪切"/>
         </LinearLayout>

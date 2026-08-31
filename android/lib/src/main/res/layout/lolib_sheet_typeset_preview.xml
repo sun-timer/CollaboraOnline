@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:background="#fff4f6fa" android:focusable="true" android:focusableInTouchMode="true" android:descendantFocusability="2" android:layout_width="match_parent" android:layout_height="wrap_content" android:fillViewport="true">
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:background="#f4f6fa" android:focusable="true" android:focusableInTouchMode="true" android:descendantFocusability="2" android:layout_width="match_parent" android:layout_height="wrap_content" android:fillViewport="true">
         <LinearLayout android:orientation="vertical" android:paddingTop="14dp" android:paddingBottom="16dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="16dp" android:paddingEnd="16dp">
                 <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:background="@drawable/lolib_bg_ai_panel_header" android:paddingTop="14dp" android:paddingBottom="14dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="20dp" android:paddingEnd="12dp">
                         <ImageView android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/lolib_ic_ai_typeset" android:contentDescription="预览"/>
-                        <TextView android:textSize="20sp" android:textStyle="0x00000001" android:textColor="#ff15171a" android:layout_width="0dp" android:layout_height="wrap_content" android:text="排版预览" android:layout_weight="1" android:layout_marginStart="12dp"/>
-                        <ImageButton android:id="@id/typeset_preview_close" android:background="?attr/selectableItemBackgroundBorderless" android:padding="8dp" android:layout_width="42dp" android:layout_height="42dp" android:src="@android:drawable/ic_menu_close_clear_cancel" android:contentDescription="关闭"/>
+                        <TextView android:textSize="20sp" android:textStyle="0x00000001" android:textColor="#15171a" android:layout_width="0dp" android:layout_height="wrap_content" android:text="排版预览" android:layout_weight="1" android:layout_marginStart="12dp"/>
+                        <ImageButton android:id="@+id/typeset_preview_close" android:background="?attr/selectableItemBackgroundBorderless" android:padding="8dp" android:layout_width="42dp" android:layout_height="42dp" android:src="@android:drawable/ic_menu_close_clear_cancel" android:contentDescription="关闭"/>
                 </LinearLayout>
-                <FrameLayout android:background="#ffffffff" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:minHeight="200dp">
-                        <WebView android:id="@id/typeset_preview_webview" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+                <FrameLayout android:background="#ffffff" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:minHeight="200dp">
+                        <WebView android:id="@+id/typeset_preview_webview" android:layout_width="match_parent" android:layout_height="wrap_content"/>
                 </FrameLayout>
                 <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp">
-                        <Button android:textSize="16sp" android:textColor="#ff15171a" android:id="@id/typeset_preview_cancel" android:background="#ffe7e7e7" android:layout_width="0dp" android:layout_height="48dp" android:text="取消" android:layout_weight="1" android:layout_marginEnd="8dp"/>
-                        <Button android:textSize="16sp" android:textColor="#ffffffff" android:id="@id/typeset_preview_apply" android:background="#ff1278d9" android:layout_width="0dp" android:layout_height="48dp" android:text="应用排版" android:layout_weight="1" android:layout_marginStart="8dp"/>
+                        <Button android:textSize="16sp" android:textColor="#15171a" android:id="@+id/typeset_preview_cancel" android:background="#e7e7e7" android:layout_width="0dp" android:layout_height="48dp" android:text="取消" android:layout_weight="1" android:layout_marginEnd="8dp"/>
+                        <Button android:textSize="16sp" android:textColor="#ffffff" android:id="@+id/typeset_preview_apply" android:background="#1278d9" android:layout_width="0dp" android:layout_height="48dp" android:text="应用排版" android:layout_weight="1" android:layout_marginStart="8dp"/>
                 </LinearLayout>
         </LinearLayout>
 </androidx.core.widget.NestedScrollView>
