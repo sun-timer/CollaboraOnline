@@ -43,7 +43,7 @@ public class AboutActivity extends AppCompatActivity {
 
         View feedbackRow = findViewById(R.id.aboutFeedbackRow);
         feedbackRow.setOnClickListener(v -> {
-            // TODO: feedback entry (link / email)
+            startActivity(new Intent(this, FeedbackActivity.class));
         });
 
         View licenseRow = findViewById(R.id.aboutLicenseRow);

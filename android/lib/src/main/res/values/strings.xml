@@ -111,4 +111,11 @@
     <!-- Local LLM -->
     <string name="ai_local_inference">Local inference</string>
     <string name="ai_local_inference_running">Local model is processing, please wait…</string>
+    <string name="insert_image_album">Album</string>
+    <string name="insert_image_camera">Camera</string>
+    <string name="insert_image_confirm">OK(%1$d)</string>
+    <string name="insert_image_no_photo">No photos found</string>
+    <string name="insert_image_preview">Preview</string>
+    <string name="insert_image_select">Select</string>
+    <string name="insert_image_title">Image</string>
 </resources>

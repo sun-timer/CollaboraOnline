@@ -1,26 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Impress AI function icon — scripts/generate-impress-ai-function-icons.js -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="64"
-    android:viewportHeight="64">
-    <path
-        android:pathData="M26.8006 10.7994L32.4574 16.4562M40 5.33203V13.332M53.1993 10.7994L47.5425 16.4562M58.6666 23.9987H50.6666M53.1993 37.198L47.5425 31.5412M40 42.6654V34.6654M21.3333 23.9987H29.3333"
-        android:fillColor="#00000000"
-        android:strokeColor="#EC5D1F"
-        android:strokeWidth="2.66667"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M27.1859 43.0888L10.4248 57.7547C10.4248 57.7547 8.85348 59.3261 7.28215 57.7547C5.71081 56.1834 7.28215 54.6121 7.28215 54.6121L21.9481 37.851L27.1859 43.0888Z"
-        android:fillColor="#00000000"
-        android:strokeColor="#101010"
-        android:strokeWidth="2.66667"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M35.0447 35.5556L27.1856 43.0898L21.9478 37.852L29.1047 29.3333C29.1047 29.3333 29.2807 29.4715 32.4234 32.6141C35.5661 35.7569 35.0447 35.5556 35.0447 35.5556Z"
-        android:fillColor="#00000000"
-        android:strokeColor="#101010"
-        android:strokeWidth="2.66667"
-        android:strokeLineJoin="round" />
-</vector>
+<vector android:height="24dp" android:width="24dp" android:viewportWidth="64" android:viewportHeight="64"/>
+    <path android:fillColor="#00000000" android:pathData="M26.8006 10.7994L32.4574 16.4562M40 5.33203V13.332M53.1993 10.7994L47.5425 16.4562M58.6666 23.9987H50.6666M53.1993 37.198L47.5425 31.5412M40 42.6654V34.6654M21.3333 23.9987H29.3333" android:strokeColor="#ffec5d1f" android:strokeWidth="2.66667" android:strokeLineCap="1"/>
+    <path android:fillColor="#00000000" android:pathData="M27.1859 43.0888L10.4248 57.7547C10.4248 57.7547 8.85348 59.3261 7.28215 57.7547C5.71081 56.1834 7.28215 54.6121 7.28215 54.6121L21.9481 37.851L27.1859 43.0888Z" android:strokeColor="#ff101010" android:strokeWidth="2.66667" android:strokeLineJoin="1"/>
+    <path android:fillColor="#00000000" android:pathData="M35.0447 35.5556L27.1856 43.0898L21.9478 37.852L29.1047 29.3333C29.1047 29.3333 29.2807 29.4715 32.4234 32.6141C35.5661 35.7569 35.0447 35.5556 35.0447 35.5556Z" android:strokeColor="#ff101010" android:strokeWidth="2.66667" android:strokeLineJoin="1"/>

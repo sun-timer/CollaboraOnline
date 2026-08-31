@@ -1,325 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/aiModelConfigPanel"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#FFFFFF"
-    android:clickable="false"
-    android:focusable="false"
-    android:orientation="vertical">
-
-    <LinearLayout
-        android:id="@+id/modelConfigHeaderRow"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:minHeight="@dimen/ai_model_config_header_height"
-        android:background="#FFFFFF"
-        android:gravity="center_vertical"
-        android:paddingStart="@dimen/ai_model_config_footer_padding_h"
-        android:paddingEnd="@dimen/ai_model_config_footer_padding_h">
-
-        <ImageButton
-            android:id="@+id/modelConfigBackButton"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@android:color/transparent"
-            android:contentDescription="@string/action_back"
-            android:padding="8dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_back_arrow" />
-
-        <TextView
-            android:id="@+id/modelConfigTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:textColor="#101010"
-            android:textSize="@dimen/ai_model_config_title_size" />
-    </LinearLayout>
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@drawable/bg_drawer_model_divider" />
-
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="#FFFFFF"
-        android:fillViewport="true"
-        android:overScrollMode="never"
-        android:scrollbars="vertical">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingStart="@dimen/ai_model_config_card_padding"
-            android:paddingTop="@dimen/ai_model_config_card_gap"
-            android:paddingEnd="@dimen/ai_model_config_card_padding"
-            android:paddingBottom="@dimen/ai_model_config_card_gap">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_ai_settings_card"
-                android:orientation="vertical"
-                android:padding="@dimen/ai_model_config_card_padding">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <ImageView
-                        android:id="@+id/modelConnectionIcon"
-                        android:layout_width="@dimen/ai_model_config_connection_icon_size"
-                        android:layout_height="@dimen/ai_model_config_connection_icon_size"
-                        android:contentDescription="@string/ai_connection"
-                        android:scaleType="fitCenter"
-                        android:src="@drawable/ic_ai_connection" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:text="@string/ai_connection"
-                        android:textColor="#FA6200"
-                        android:textSize="@dimen/ai_model_config_section_title_size" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/ai_model_config_connection_fields_gap"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/ai_config_name"
-                        android:textColor="#101010"
-                        android:textSize="@dimen/ai_model_config_field_label_size" />
-
-                    <EditText
-                        android:id="@+id/modelConfigNameInput"
-                        android:layout_width="match_parent"
-                        android:layout_height="@dimen/ai_model_config_field_input_height"
-                        android:layout_marginTop="@dimen/ai_model_config_field_label_input_gap"
-                        android:background="@drawable/bg_ai_input_field"
-                        android:gravity="center_vertical"
-                        android:hint="@string/ai_config_name_hint"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        android:singleLine="true"
-                        android:textColor="#6A6A6A"
-                        android:textColorHint="#6A6A6A"
-                        android:textSize="@dimen/ai_model_config_field_input_size" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/ai_model_config_field_group_gap"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/ai_provider"
-                        android:textColor="#101010"
-                        android:textSize="@dimen/ai_model_config_field_label_size" />
-
-                    <EditText
-                        android:id="@+id/modelProviderInput"
-                        android:layout_width="match_parent"
-                        android:layout_height="@dimen/ai_model_config_field_input_height"
-                        android:layout_marginTop="@dimen/ai_model_config_field_label_input_gap"
-                        android:background="@drawable/bg_ai_input_field"
-                        android:gravity="center_vertical"
-                        android:hint="@string/ai_provider_hint"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        android:singleLine="true"
-                        android:textColor="#6A6A6A"
-                        android:textColorHint="#6A6A6A"
-                        android:textSize="@dimen/ai_model_config_field_input_size" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/ai_model_config_field_group_gap"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/ai_url"
-                        android:textColor="#101010"
-                        android:textSize="@dimen/ai_model_config_field_label_size" />
-
-                    <EditText
-                        android:id="@+id/modelUrlInput"
-                        android:layout_width="match_parent"
-                        android:layout_height="@dimen/ai_model_config_field_input_height"
-                        android:layout_marginTop="@dimen/ai_model_config_field_label_input_gap"
-                        android:background="@drawable/bg_ai_input_field"
-                        android:gravity="center_vertical"
-                        android:hint="https://api.openai.com/v1/chat/completions"
-                        android:inputType="textUri"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        android:singleLine="true"
-                        android:textColor="#6A6A6A"
-                        android:textColorHint="#6A6A6A"
-                        android:textSize="@dimen/ai_model_config_field_input_size" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/ai_model_config_field_group_gap"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/ai_api_key"
-                        android:textColor="#101010"
-                        android:textSize="@dimen/ai_model_config_field_label_size" />
-
-                    <EditText
-                        android:id="@+id/modelApiKeyInput"
-                        android:layout_width="match_parent"
-                        android:layout_height="@dimen/ai_model_config_field_input_height"
-                        android:layout_marginTop="@dimen/ai_model_config_field_label_input_gap"
-                        android:background="@drawable/bg_ai_input_field"
-                        android:gravity="center_vertical"
-                        android:hint="sk-..."
-                        android:inputType="textPassword"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        android:singleLine="true"
-                        android:textColor="#6A6A6A"
-                        android:textColorHint="#6A6A6A"
-                        android:textSize="@dimen/ai_model_config_field_input_size" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/ai_model_config_field_group_gap"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/ai_model_name_label"
-                        android:textColor="#101010"
-                        android:textSize="@dimen/ai_model_config_field_label_size" />
-
-                    <EditText
-                        android:id="@+id/modelNameInput"
-                        android:layout_width="match_parent"
-                        android:layout_height="@dimen/ai_model_config_field_input_height"
-                        android:layout_marginTop="@dimen/ai_model_config_field_label_input_gap"
-                        android:background="@drawable/bg_ai_input_field"
-                        android:gravity="center_vertical"
-                        android:hint="gpt-4o-mini"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        android:singleLine="true"
-                        android:textColor="#6A6A6A"
-                        android:textColorHint="#6A6A6A"
-                        android:textSize="@dimen/ai_model_config_field_input_size" />
-                </LinearLayout>
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/ai_model_config_card_gap"
-                android:background="@drawable/bg_ai_settings_card"
-                android:orientation="vertical"
-                android:padding="@dimen/ai_model_config_card_padding">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <ImageView
-                        android:layout_width="@dimen/ai_model_config_params_icon_size"
-                        android:layout_height="@dimen/ai_model_config_params_icon_size"
-                        android:contentDescription="@string/ai_params"
-                        android:scaleType="fitCenter"
-                        android:src="@drawable/ic_ai_params" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:text="@string/ai_params"
-                        android:textColor="#FA6200"
-                        android:textSize="@dimen/ai_model_config_section_title_size" />
-                </LinearLayout>
-
-                <include layout="@layout/item_ai_slider_top_p" />
-                <include layout="@layout/item_ai_slider_temperature" />
-                <include layout="@layout/item_ai_slider_presence_penalty" />
-                <include layout="@layout/item_ai_slider_frequency_penalty" />
-                <include layout="@layout/item_ai_slider_max_tokens" />
-                <include layout="@layout/item_ai_slider_seed" />
-            </LinearLayout>
-        </LinearLayout>
-    </ScrollView>
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@drawable/bg_drawer_model_divider" />
-
-    <LinearLayout
-        android:id="@+id/modelConfigFooter"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="#FFFFFF"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="@dimen/ai_model_config_footer_padding_h"
-        android:paddingTop="@dimen/ai_model_config_footer_padding_v"
-        android:paddingEnd="@dimen/ai_model_config_footer_padding_h"
-        android:paddingBottom="0dp">
-
-        <Button
-            android:id="@+id/modelConfigCancelButton"
-            android:layout_width="0dp"
-            android:layout_height="@dimen/ai_model_config_footer_button_height"
-            android:layout_weight="1"
-            android:background="@drawable/bg_ai_btn_cancel"
-            android:elevation="2dp"
-            android:stateListAnimator="@null"
-            android:text="@string/action_cancel"
-            android:textAllCaps="false"
-            android:textColor="#E6000000"
-            android:textSize="@dimen/ai_model_config_footer_button_text_size" />
-
-        <Button
-            android:id="@+id/modelConfigSaveButton"
-            android:layout_width="0dp"
-            android:layout_height="@dimen/ai_model_config_footer_button_height"
-            android:layout_marginStart="@dimen/ai_model_config_footer_button_gap"
-            android:layout_weight="1"
-            android:background="@drawable/bg_local_install_btn"
-            android:elevation="4dp"
-            android:stateListAnimator="@null"
-            android:text="@string/action_save"
-            android:textAllCaps="false"
-            android:textColor="@android:color/white"
-            android:textSize="@dimen/ai_model_config_footer_button_text_size" />
-    </LinearLayout>
-</LinearLayout>
+<LinearLayout android:orientation="vertical" android:id="@id/aiModelConfigPanel" android:background="#ffffffff" android:focusable="false" android:clickable="false" android:layout_width="match_parent" android:layout_height="match_parent"/>
+    <LinearLayout android:gravity="center_vertical" android:id="@id/modelConfigHeaderRow" android:background="#ffffffff" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="@dimen/ai_model_config_header_height" android:paddingStart="@dimen/ai_model_config_footer_padding_h" android:paddingEnd="@dimen/ai_model_config_footer_padding_h"/>
+        <ImageButton android:id="@id/modelConfigBackButton" android:background="@android:color/transparent" android:padding="8dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_back_arrow" android:scaleType="centerinside" android:contentDescription="@string/action_back"/>
+        <TextView android:textSize="@dimen/ai_model_config_title_size" android:textColor="#ff101010" android:id="@id/modelConfigTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp"/>
+    <View android:background="@drawable/bg_drawer_model_divider" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <ScrollView android:background="#ffffffff" android:scrollbars="0x00000200" android:layout_width="match_parent" android:layout_height="0dp" android:fillViewport="true" android:layout_weight="1" android:overScrollMode="2"/>
+        <LinearLayout android:orientation="vertical" android:paddingTop="@dimen/ai_model_config_card_gap" android:paddingBottom="@dimen/ai_model_config_card_gap" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="@dimen/ai_model_config_card_padding" android:paddingEnd="@dimen/ai_model_config_card_padding"/>
+            <LinearLayout android:orientation="vertical" android:background="@drawable/bg_ai_settings_card" android:padding="@dimen/ai_model_config_card_padding" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+                    <ImageView android:id="@id/modelConnectionIcon" android:layout_width="@dimen/ai_model_config_connection_icon_size" android:layout_height="@dimen/ai_model_config_connection_icon_size" android:src="@drawable/ic_ai_connection" android:scaleType="fitcenter" android:contentDescription="@string/ai_connection"/>
+                    <TextView android:textSize="@dimen/ai_model_config_section_title_size" android:textColor="#fffa6200" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_connection" android:layout_marginStart="8dp"/>
+                <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ai_model_config_connection_fields_gap"/>
+                    <TextView android:textSize="@dimen/ai_model_config_field_label_size" android:textColor="#ff101010" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ai_config_name"/>
+                    <EditText android:textSize="@dimen/ai_model_config_field_input_size" android:textColor="#ff6a6a6a" android:textColorHint="#ff6a6a6a" android:gravity="center_vertical" android:id="@id/modelConfigNameInput" android:background="@drawable/bg_ai_input_field" android:layout_width="match_parent" android:layout_height="@dimen/ai_model_config_field_input_height" android:layout_marginTop="@dimen/ai_model_config_field_label_input_gap" android:hint="@string/ai_config_name_hint" android:singleLine="true" android:paddingStart="12dp" android:paddingEnd="12dp"/>
+                <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ai_model_config_field_group_gap"/>
+                    <TextView android:textSize="@dimen/ai_model_config_field_label_size" android:textColor="#ff101010" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ai_provider"/>
+                    <EditText android:textSize="@dimen/ai_model_config_field_input_size" android:textColor="#ff6a6a6a" android:textColorHint="#ff6a6a6a" android:gravity="center_vertical" android:id="@id/modelProviderInput" android:background="@drawable/bg_ai_input_field" android:layout_width="match_parent" android:layout_height="@dimen/ai_model_config_field_input_height" android:layout_marginTop="@dimen/ai_model_config_field_label_input_gap" android:hint="@string/ai_provider_hint" android:singleLine="true" android:paddingStart="12dp" android:paddingEnd="12dp"/>
+                <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ai_model_config_field_group_gap"/>
+                    <TextView android:textSize="@dimen/ai_model_config_field_label_size" android:textColor="#ff101010" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ai_url"/>
+                    <EditText android:textSize="@dimen/ai_model_config_field_input_size" android:textColor="#ff6a6a6a" android:textColorHint="#ff6a6a6a" android:gravity="center_vertical" android:id="@id/modelUrlInput" android:background="@drawable/bg_ai_input_field" android:layout_width="match_parent" android:layout_height="@dimen/ai_model_config_field_input_height" android:layout_marginTop="@dimen/ai_model_config_field_label_input_gap" android:hint="https://api.openai.com/v1/chat/completions" android:singleLine="true" android:inputType="textEmailAddress" android:paddingStart="12dp" android:paddingEnd="12dp"/>
+                <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ai_model_config_field_group_gap"/>
+                    <TextView android:textSize="@dimen/ai_model_config_field_label_size" android:textColor="#ff101010" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ai_api_key"/>
+                    <EditText android:textSize="@dimen/ai_model_config_field_input_size" android:textColor="#ff6a6a6a" android:textColorHint="#ff6a6a6a" android:gravity="center_vertical" android:id="@id/modelApiKeyInput" android:background="@drawable/bg_ai_input_field" android:layout_width="match_parent" android:layout_height="@dimen/ai_model_config_field_input_height" android:layout_marginTop="@dimen/ai_model_config_field_label_input_gap" android:hint="sk-..." android:singleLine="true" android:inputType="0x00000081" android:paddingStart="12dp" android:paddingEnd="12dp"/>
+                <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ai_model_config_field_group_gap"/>
+                    <TextView android:textSize="@dimen/ai_model_config_field_label_size" android:textColor="#ff101010" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ai_model_name_label"/>
+                    <EditText android:textSize="@dimen/ai_model_config_field_input_size" android:textColor="#ff6a6a6a" android:textColorHint="#ff6a6a6a" android:gravity="center_vertical" android:id="@id/modelNameInput" android:background="@drawable/bg_ai_input_field" android:layout_width="match_parent" android:layout_height="@dimen/ai_model_config_field_input_height" android:layout_marginTop="@dimen/ai_model_config_field_label_input_gap" android:hint="gpt-4o-mini" android:singleLine="true" android:paddingStart="12dp" android:paddingEnd="12dp"/>
+            <LinearLayout android:orientation="vertical" android:background="@drawable/bg_ai_settings_card" android:padding="@dimen/ai_model_config_card_padding" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ai_model_config_card_gap"/>
+                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+                    <ImageView android:layout_width="@dimen/ai_model_config_params_icon_size" android:layout_height="@dimen/ai_model_config_params_icon_size" android:src="@drawable/ic_ai_params" android:scaleType="fitcenter" android:contentDescription="@string/ai_params"/>
+                    <TextView android:textSize="@dimen/ai_model_config_section_title_size" android:textColor="#fffa6200" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_params" android:layout_marginStart="8dp"/>
+                <include/>
+                <include/>
+                <include/>
+                <include/>
+                <include/>
+                <include/>
+    <View android:background="@drawable/bg_drawer_model_divider" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/modelConfigFooter" android:background="#ffffffff" android:paddingTop="@dimen/ai_model_config_footer_padding_v" android:paddingBottom="0dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="@dimen/ai_model_config_footer_padding_h" android:paddingEnd="@dimen/ai_model_config_footer_padding_h"/>
+        <Button android:textSize="@dimen/ai_model_config_footer_button_text_size" android:textColor="#e6000000" android:id="@id/modelConfigCancelButton" android:background="@drawable/bg_ai_btn_cancel" android:layout_width="0dp" android:layout_height="@dimen/ai_model_config_footer_button_height" android:text="@string/action_cancel" android:layout_weight="1" android:textAllCaps="false" android:elevation="2dp" android:stateListAnimator="@null"/>
+        <Button android:textSize="@dimen/ai_model_config_footer_button_text_size" android:textColor="@android:color/white" android:id="@id/modelConfigSaveButton" android:background="@drawable/bg_local_install_btn" android:layout_width="0dp" android:layout_height="@dimen/ai_model_config_footer_button_height" android:text="@string/action_save" android:layout_weight="1" android:textAllCaps="false" android:layout_marginStart="@dimen/ai_model_config_footer_button_gap" android:elevation="4dp" android:stateListAnimator="@null"/>

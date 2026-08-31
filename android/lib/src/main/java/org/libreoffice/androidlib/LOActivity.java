@@ -761,10 +761,13 @@ public class LOActivity extends AppCompatActivity {
     private static final int REQUEST_CODE_INSERT_LOCAL_IMAGE = 9003;
     private static final int REQUEST_CODE_INSERT_CAMERA_IMAGE = 9004;
     private static final int PERMISSION_INSERT_CAMERA = 9010;
+    private static final int PERMISSION_READ_GALLERY = 9011;
     private Uri pendingInsertCameraUri;
+    private ImageInsertSheetController imageInsertSheetController;
 
     // ========== Impress PPT 模板选择 + 生成 ==========
     private LinearLayout impressTemplateGridContainer;
+
     private String selectedTemplateId = "";
     private String pptGenerationTemplateId = "";
     private org.libreoffice.androidlib.template.TemplateIndex templateIndex;
@@ -1705,6 +1708,13 @@ public class LOActivity extends AppCompatActivity {
                     startCameraForInsertImage();
                 } else {
                     toastTodo("需要相机权限才能拍照插入图片");
+                }
+                break;
+            case PERMISSION_READ_GALLERY:
+                if (permissions.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    showImageInsertSheet();
+                } else {
+                    toastTodo("需要相册权限才能插入图片");
                 }
                 break;
             default:
@@ -11094,6 +11104,11 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public String getCommentAuthorAvatarUri() {
+                    return LOActivity.this.getPrefs().getString(KEY_PROFILE_AVATAR_URI, "");
+                }
+
+                @Override
                 public void insertCommentWithText(String text) {
                     LOActivity.this.insertCommentWithText(text);
                 }
@@ -11271,6 +11286,11 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public String getCommentAuthorAvatarUri() {
+                    return LOActivity.this.getPrefs().getString(KEY_PROFILE_AVATAR_URI, "");
+                }
+
+                @Override
                 public void insertCommentWithText(String text) {
                     LOActivity.this.insertCommentWithText(text);
                 }
@@ -11439,6 +11459,11 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public String getCommentAuthorAvatarUri() {
+                    return LOActivity.this.getPrefs().getString(KEY_PROFILE_AVATAR_URI, "");
+                }
+
+                @Override
                 public void insertCommentWithText(String text) {
                     LOActivity.this.insertCommentWithText(text);
                 }
@@ -11599,39 +11624,50 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void openLocalImagePickerFromWeb() {
-        // Android WebView 对 programmatic <input type=file> click 常静默失败；
-        // 功能面板路径与 Writer 一致：dismiss 后立即走系统相册选择器。
+        // 走原生插入图片 sheet（Figma 3100:61787）：API 33+ READ_MEDIA_IMAGES，其余 READ_EXTERNAL_STORAGE
         Log.i(TAG, "open_local_image_picker route=native");
-        launchLocalImagePickerForInsert();
+        maybeOpenImageInsertSheet();
         nudgeSocketIfStalled("insert_image_click");
     }
 
-    private void launchLocalImagePickerForInsert() {
-        String[] options = {"拍照", "从相册选择"};
-        new AlertDialog.Builder(this)
-                .setTitle("插入图片")
-                .setItems(options, (dialog, which) -> {
-                    if (which == 0) {
-                        launchCameraForInsertImage();
-                    } else {
-                        launchGalleryForInsertImage();
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
+    private void maybeOpenImageInsertSheet() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (checkSelfPermission(android.Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.READ_MEDIA_IMAGES}, PERMISSION_READ_GALLERY);
+                return;
+            }
+        } else {
+            if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, PERMISSION_READ_GALLERY);
+                return;
+            }
+        }
+        showImageInsertSheet();
     }
 
-    private void launchGalleryForInsertImage() {
-        try {
-            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-            intent.setType("image/*");
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            startActivityForResult(Intent.createChooser(intent, "选择图片"), REQUEST_CODE_INSERT_LOCAL_IMAGE);
-        } catch (ActivityNotFoundException e) {
-            Log.w(TAG, "launchGalleryForInsertImage no activity, fallback uno");
-            executeUnoCommand(".uno:InsertGraphic");
+    private void showImageInsertSheet() {
+        if (imageInsertSheetController == null) {
+            imageInsertSheetController = new ImageInsertSheetController(new ImageInsertSheetController.Host() {
+                @Override
+                public Activity getActivity() {
+                    return LOActivity.this;
+                }
+
+                @Override
+                public void insertLocalImages(List<Uri> uris) {
+                    insertLocalImagesForDoc(uris);
+                }
+
+                @Override
+                public void launchCameraPicker() {
+                    launchCameraForInsertImage();
+                }
+            });
         }
+        imageInsertSheetController.show();
     }
+
+
 
     private void launchCameraForInsertImage() {
         if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -11681,6 +11717,47 @@ public class LOActivity extends AppCompatActivity {
             });
         }, "local-image-insert").start();
     }
+
+    private void insertLocalImagesForDoc(List<Uri> uris) {
+        if (uris == null || uris.isEmpty()) {
+            return;
+        }
+        new Thread(() -> {
+            List<String> base64List = new ArrayList<>();
+            for (Uri uri : uris) {
+                String base64 = readImageUriAsBase64(uri);
+                if (base64 != null && !base64.isEmpty()) {
+                    base64List.add(base64);
+                }
+            }
+            runOnUiThread(() -> insertImageBase64List(base64List));
+        }, "insert-local-images").start();
+    }
+
+    private void insertImageBase64List(List<String> base64List) {
+        if (base64List == null || base64List.isEmpty()) {
+            return;
+        }
+        if (!isDocEditable) {
+            Toast.makeText(this, "当前文档为只读，无法插入图片", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!mIsEditModeActive) {
+            ensureEditModeThen(() -> insertImageBase64List(base64List));
+            return;
+        }
+        sendNextImageBase64(base64List, 0);
+    }
+
+    private void sendNextImageBase64(List<String> base64List, int index) {
+        if (index >= base64List.size()) {
+            Log.i(TAG, "local_images_inserted count=" + base64List.size());
+            return;
+        }
+        sendInsertFileWhenSocketOpen("insert_image.png", base64List.get(index), 0,
+                () -> sendNextImageBase64(base64List, index + 1));
+    }
+
 
     private void executeUnoCommand(String command) {
         if (command == null || command.trim().isEmpty()) {
@@ -15846,7 +15923,7 @@ public class LOActivity extends AppCompatActivity {
         if (base64 == null || base64.isEmpty()) {
             return;
         }
-        ensureEditModeThen(() -> sendInsertFileWhenSocketOpen(base64, fileName, 0));
+        ensureEditModeThen(() -> sendInsertFileWhenSocketOpen(fileName, base64, 0, null));
     }
 
     /**
@@ -15854,9 +15931,12 @@ public class LOActivity extends AppCompatActivity {
      * 原生发送命中 "sending on closed socket" 导致图片丢失。
      * 轮询 readyState，OPEN 时走高效原生路径；超时则退回 JS sendMessage 队列兜底。
      */
-    private void sendInsertFileWhenSocketOpen(String base64, String fileName, int attempt) {
+    private void sendInsertFileWhenSocketOpen(String fileName, String base64, int attempt, final Runnable onDone) {
         if (mWebView == null) {
             Log.w(TAG, "ai_image_insert_abort no_webview name=" + fileName);
+            if (onDone != null) {
+                onDone.run();
+            }
             return;
         }
         final String script = "(function(){try{return window.socket?window.socket.readyState:-1;}catch(e){return -1;}})()";
@@ -15868,6 +15948,9 @@ public class LOActivity extends AppCompatActivity {
                 nudgeSocketIfStalled("insert_ai_image");
                 Log.i(TAG, "ai_image_inserted name=" + fileName + " bytes=" + base64.length()
                         + " socket=open attempt=" + attempt);
+                if (onDone != null) {
+                    onDone.run();
+                }
             } else if (attempt < 40) {
                 // socket 未就绪（reconnecting/closed），150ms 后重试，最长约 6s
                 if (attempt == 0 || attempt % 5 == 0) {
@@ -15875,11 +15958,14 @@ public class LOActivity extends AppCompatActivity {
                             + " attempt=" + attempt);
                 }
                 getMainHandler().postDelayed(
-                        () -> sendInsertFileWhenSocketOpen(base64, fileName, attempt + 1), 150L);
+                        () -> sendInsertFileWhenSocketOpen(fileName, base64, attempt + 1, onDone), 150L);
             } else {
                 // 超时：退回 JS sendMessage 队列，由 Socket.ts 在重连完成后 flush
                 Log.w(TAG, "ai_image_insert_timeout name=" + fileName + " fallback=js_queue");
                 sendInsertFileViaJsQueue(base64, fileName);
+                if (onDone != null) {
+                    onDone.run();
+                }
             }
         });
     }

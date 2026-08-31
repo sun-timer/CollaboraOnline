@@ -1,7 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 数据有效性宏"浏览"按钮：不透明浅绿底（#3B80401F 叠白 ≈ #E6F4E8）+ 圆角 full（Figma 5279:60580） -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#E6F4E8" />
-    <corners android:radius="35dp" />
-</shape>
+<shape android:shape="0"/>
+    <solid android:color="#ffe6f4e8"/>
+    <corners android:radius="35dp"/>

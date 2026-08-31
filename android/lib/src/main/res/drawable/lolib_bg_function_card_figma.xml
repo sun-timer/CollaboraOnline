@@ -1,7 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Figma-style card: bg #F2F3F5, no border, rounded 12dp -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#F2F3F5" />
-    <corners android:radius="12dp" />
-</shape>
+<shape android:shape="0"/>
+    <solid android:color="#fff2f3f5"/>
+    <corners android:radius="12dp"/>

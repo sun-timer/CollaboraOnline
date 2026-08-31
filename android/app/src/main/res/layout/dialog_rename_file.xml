@@ -1,106 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/renameDialogCard"
-    android:layout_width="match_parent"
-    android:maxWidth="@dimen/dialog_content_max_width"
-    android:layout_height="wrap_content"
-    android:background="@drawable/bg_rename_dialog_card"
-    android:elevation="8dp"
-    android:orientation="vertical"
-    android:paddingBottom="@dimen/rename_dialog_bottom_padding">
-
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/rename_dialog_header_height"
-        android:paddingStart="@dimen/rename_dialog_header_padding_horizontal"
-        android:paddingEnd="@dimen/rename_dialog_header_padding_horizontal">
-
-        <View
-            android:layout_width="@dimen/rename_dialog_close_size"
-            android:layout_height="@dimen/rename_dialog_close_size"
-            android:layout_gravity="start|center_vertical"
-            android:visibility="invisible" />
-
-        <TextView
-            android:id="@+id/renameDialogTitle"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:text="@string/action_rename"
-            android:textColor="#1F1F1F"
-            android:textSize="@dimen/rename_dialog_title_size"
-            android:fontFamily="sans-serif-medium" />
-
-        <ImageButton
-            android:id="@+id/renameDialogClose"
-            android:layout_width="@dimen/rename_dialog_close_size"
-            android:layout_height="@dimen/rename_dialog_close_size"
-            android:layout_gravity="end|center_vertical"
-            android:background="@android:color/transparent"
-            android:contentDescription="@string/action_cancel"
-            android:padding="@dimen/rename_dialog_close_padding"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_create_dialog_close" />
-    </FrameLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="@dimen/rename_dialog_content_padding">
-
-        <EditText
-            android:id="@+id/renameFileInput"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/rename_dialog_input_height"
-            android:background="@drawable/bg_rename_dialog_input"
-            android:gravity="center_vertical"
-            android:imeOptions="actionDone"
-            android:inputType="text"
-            android:paddingStart="@dimen/rename_dialog_input_padding_horizontal"
-            android:paddingTop="@dimen/rename_dialog_input_padding_vertical"
-            android:paddingEnd="@dimen/rename_dialog_input_padding_horizontal"
-            android:paddingBottom="@dimen/rename_dialog_input_padding_vertical"
-            android:singleLine="true"
-            android:textColor="#101010"
-            android:textCursorDrawable="@drawable/bg_rename_dialog_input_cursor"
-            android:textSize="@dimen/rename_dialog_input_label_size" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="@dimen/rename_dialog_buttons_padding_horizontal"
-        android:paddingTop="@dimen/rename_dialog_buttons_padding_vertical"
-        android:paddingEnd="@dimen/rename_dialog_buttons_padding_horizontal"
-        android:paddingBottom="@dimen/rename_dialog_buttons_padding_vertical">
-
-        <TextView
-            android:id="@+id/renameDialogCancel"
-            android:layout_width="0dp"
-            android:layout_height="@dimen/rename_dialog_btn_height"
-            android:layout_weight="1"
-            android:background="@drawable/bg_rename_dialog_btn_cancel"
-            android:gravity="center"
-            android:text="@string/action_cancel"
-            android:textColor="#E5000000"
-            android:textSize="@dimen/rename_dialog_btn_text_size" />
-
-        <Space
-            android:layout_width="@dimen/rename_dialog_btn_gap"
-            android:layout_height="1dp" />
-
-        <TextView
-            android:id="@+id/renameDialogConfirm"
-            android:layout_width="0dp"
-            android:layout_height="@dimen/rename_dialog_btn_height"
-            android:layout_weight="1"
-            android:background="@drawable/bg_rename_dialog_btn_confirm"
-            android:gravity="center"
-            android:text="@string/action_confirm"
-            android:textColor="#FFFFFF"
-            android:textSize="@dimen/rename_dialog_btn_text_size" />
-    </LinearLayout>
-</LinearLayout>
+<LinearLayout android:orientation="vertical" android:id="@id/renameDialogCard" android:background="@drawable/bg_rename_dialog_card" android:paddingBottom="@dimen/rename_dialog_bottom_padding" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxWidth="@dimen/dialog_content_max_width" android:elevation="8dp"/>
+    <FrameLayout android:layout_width="match_parent" android:layout_height="@dimen/rename_dialog_header_height" android:paddingStart="@dimen/rename_dialog_header_padding_horizontal" android:paddingEnd="@dimen/rename_dialog_header_padding_horizontal"/>
+        <View android:layout_gravity="center" android:visibility="invisible" android:layout_width="@dimen/rename_dialog_close_size" android:layout_height="@dimen/rename_dialog_close_size"/>
+        <TextView android:textSize="@dimen/rename_dialog_title_size" android:textColor="#ff1f1f1f" android:gravity="center" android:id="@id/renameDialogTitle" android:layout_width="match_parent" android:layout_height="match_parent" android:text="@string/action_rename" android:fontFamily="sans-serif-medium"/>
+        <ImageButton android:layout_gravity="center" android:id="@id/renameDialogClose" android:background="@android:color/transparent" android:padding="@dimen/rename_dialog_close_padding" android:layout_width="@dimen/rename_dialog_close_size" android:layout_height="@dimen/rename_dialog_close_size" android:src="@drawable/ic_create_dialog_close" android:scaleType="centerinside" android:contentDescription="@string/action_cancel"/>
+    <LinearLayout android:orientation="vertical" android:padding="@dimen/rename_dialog_content_padding" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <EditText android:textSize="@dimen/rename_dialog_input_label_size" android:textColor="#ff101010" android:gravity="center_vertical" android:id="@id/renameFileInput" android:background="@drawable/bg_rename_dialog_input" android:paddingTop="@dimen/rename_dialog_input_padding_vertical" android:paddingBottom="@dimen/rename_dialog_input_padding_vertical" android:layout_width="match_parent" android:layout_height="@dimen/rename_dialog_input_height" android:singleLine="true" android:inputType="text" android:imeOptions="actionDone" android:textCursorDrawable="@drawable/bg_rename_dialog_input_cursor" android:paddingStart="@dimen/rename_dialog_input_padding_horizontal" android:paddingEnd="@dimen/rename_dialog_input_padding_horizontal"/>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:paddingTop="@dimen/rename_dialog_buttons_padding_vertical" android:paddingBottom="@dimen/rename_dialog_buttons_padding_vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="@dimen/rename_dialog_buttons_padding_horizontal" android:paddingEnd="@dimen/rename_dialog_buttons_padding_horizontal"/>
+        <TextView android:textSize="@dimen/rename_dialog_btn_text_size" android:textColor="#e5000000" android:gravity="center" android:id="@id/renameDialogCancel" android:background="@drawable/bg_rename_dialog_btn_cancel" android:layout_width="0dp" android:layout_height="@dimen/rename_dialog_btn_height" android:text="@string/action_cancel" android:layout_weight="1"/>
+        <Space android:layout_width="@dimen/rename_dialog_btn_gap" android:layout_height="1dp"/>
+        <TextView android:textSize="@dimen/rename_dialog_btn_text_size" android:textColor="#ffffffff" android:gravity="center" android:id="@id/renameDialogConfirm" android:background="@drawable/bg_rename_dialog_btn_confirm" android:layout_width="0dp" android:layout_height="@dimen/rename_dialog_btn_height" android:text="@string/action_confirm" android:layout_weight="1"/>

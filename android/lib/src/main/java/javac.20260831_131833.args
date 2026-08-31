@@ -1,0 +1,9 @@
+-nowarn
+--release
+8
+-Xdiags:verbose
+-cp
+/dev/null
+-d
+/tmp/head-lib
+org/libreoffice/androidlib/SystemUiHelper.java

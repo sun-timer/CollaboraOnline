@@ -35,6 +35,7 @@ final class ImpressCommentPickerController {
         int dpToPx(int dp);
 
         String getCommentAuthorName();
+        String getCommentAuthorAvatarUri();
 
         void toastTodo(String text);
 

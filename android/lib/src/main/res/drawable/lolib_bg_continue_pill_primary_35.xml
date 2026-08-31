@@ -1,11 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 35dp 高胶囊主按钮：圆角为高度一半，避免被父容器裁切 -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <gradient
-        android:angle="315"
-        android:endColor="#DD00CE"
-        android:startColor="#1DA8FF"
-        android:type="linear" />
-    <corners android:radius="18dp" />
-</shape>
+<shape android:shape="0"/>
+    <gradient android:startColor="#ff1da8ff" android:endColor="#ffdd00ce" android:angle="315" android:type="0"/>
+    <corners android:radius="18dp"/>

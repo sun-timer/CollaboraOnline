@@ -1,22 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Figma 249:13942 — 箭头总汇第 3 行第 4 个 -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="64"
-    android:viewportHeight="64">
-    <path
-        android:pathData="M39.7633,56.3229L59.9738,34.9896L39.7633,13.6562V27.1299H19.5527V42.8492H39.7633V56.3229Z"
-        android:fillColor="#00000000"
-        android:strokeColor="#333333"
-        android:strokeWidth="2.66667"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M5.933,25.791H14.532A1.333,1.333 0,0 1,15.266 27.124V42.853A1.333,1.333 0,0 1,14.533 44.187H5.933A1.333,1.333 0,0 1,4.6 42.853V27.124A1.333,1.333 0,0 1,5.933 25.791Z"
-        android:fillColor="#00000000"
-        android:strokeColor="#333333"
-        android:strokeWidth="2.66667"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-</vector>
+<vector android:height="24dp" android:width="24dp" android:viewportWidth="64" android:viewportHeight="64"/>
+    <path android:fillColor="#00000000" android:pathData="M39.7633,56.3229L59.9738,34.9896L39.7633,13.6562V27.1299H19.5527V42.8492H39.7633V56.3229Z" android:strokeColor="#ff333333" android:strokeWidth="2.66667" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+    <path android:fillColor="#00000000" android:pathData="M5.933,25.791H14.532A1.333,1.333 0,0 1,15.266 27.124V42.853A1.333,1.333 0,0 1,14.533 44.187H5.933A1.333,1.333 0,0 1,4.6 42.853V27.124A1.333,1.333 0,0 1,5.933 25.791Z" android:strokeColor="#ff333333" android:strokeWidth="2.66667" android:strokeLineCap="1" android:strokeLineJoin="1"/>

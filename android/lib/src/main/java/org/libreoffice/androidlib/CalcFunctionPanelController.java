@@ -101,6 +101,7 @@ public class CalcFunctionPanelController {
         void insertComment();
 
         String getCommentAuthorName();
+        String getCommentAuthorAvatarUri();
 
         void insertCommentWithText(String text);
 
@@ -1536,6 +1537,11 @@ public class CalcFunctionPanelController {
                 @Override
                 public String getCommentAuthorName() {
                     return host.getCommentAuthorName();
+                }
+
+                @Override
+                public String getCommentAuthorAvatarUri() {
+                    return host.getCommentAuthorAvatarUri();
                 }
 
                 @Override

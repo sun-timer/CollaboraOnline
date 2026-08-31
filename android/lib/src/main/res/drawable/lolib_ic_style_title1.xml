@@ -1,35 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="48"
-    android:viewportHeight="48">
-    <path
-        android:pathData="M6,8v32"
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#101010"
-        android:strokeWidth="2"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M25,8v32"
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#101010"
-        android:strokeWidth="2"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M6,24h19"
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#101010"
-        android:strokeWidth="2"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M34.226,24L39,19.017v21"
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#1278D9"
-        android:strokeWidth="2"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-</vector>
+<vector android:height="24dp" android:width="24dp" android:viewportWidth="48" android:viewportHeight="48"/>
+    <path android:fillColor="@android:color/transparent" android:pathData="M6,8v32" android:strokeColor="#ff101010" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+    <path android:fillColor="@android:color/transparent" android:pathData="M25,8v32" android:strokeColor="#ff101010" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+    <path android:fillColor="@android:color/transparent" android:pathData="M6,24h19" android:strokeColor="#ff101010" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+    <path android:fillColor="@android:color/transparent" android:pathData="M34.226,24L39,19.017v21" android:strokeColor="#ff1278d9" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>

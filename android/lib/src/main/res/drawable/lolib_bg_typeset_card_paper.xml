@@ -1,11 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Figma 330:33102 论文卡片 -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <gradient
-        android:angle="270"
-        android:endColor="#EBE6FF"
-        android:startColor="#F7F5FF"
-        android:type="linear" />
-    <corners android:radius="16dp" />
-</shape>
+<shape android:shape="0"/>
+    <gradient android:startColor="#fff7f5ff" android:endColor="#ffebe6ff" android:angle="270" android:type="0"/>
+    <corners android:radius="16dp"/>

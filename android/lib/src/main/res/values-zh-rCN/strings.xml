@@ -24,4 +24,11 @@
     <string name="cant_open_the_document">打不开文档</string>
     <string name="ai_local_inference">本地推理</string>
     <string name="ai_local_inference_running">本地模型处理中，请稍候…</string>
+    <string name="insert_image_album">相册</string>
+    <string name="insert_image_camera">拍照</string>
+    <string name="insert_image_confirm">确定(%1$d)</string>
+    <string name="insert_image_no_photo">相册中没有照片</string>
+    <string name="insert_image_preview">预览</string>
+    <string name="insert_image_select">选择</string>
+    <string name="insert_image_title">图片</string>
 </resources>

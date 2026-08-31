@@ -1,7 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Figma：输入区 96px 高 → 全圆角 48px pill -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#F0F4F9" />
-    <corners android:radius="24dp" />
-</shape>
+<shape android:shape="0"/>
+    <solid android:color="#fff0f4f9"/>
+    <corners android:radius="24dp"/>

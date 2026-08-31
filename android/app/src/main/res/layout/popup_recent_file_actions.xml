@@ -1,106 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="@dimen/home_recent_actions_popup_width"
-    android:layout_height="@dimen/home_recent_actions_popup_height"
-    android:background="@drawable/bg_recent_actions_popup"
-    android:elevation="12dp"
-    android:orientation="vertical"
-    android:paddingStart="@dimen/home_recent_actions_popup_padding_horizontal"
-    android:paddingTop="@dimen/home_recent_actions_popup_padding_vertical"
-    android:paddingEnd="@dimen/home_recent_actions_popup_padding_horizontal"
-    android:paddingBottom="@dimen/home_recent_actions_popup_padding_vertical">
-
-    <LinearLayout
-        android:id="@+id/actionRenameRow"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/home_recent_actions_row_height"
-        android:background="?android:attr/selectableItemBackground"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="@dimen/home_recent_actions_row_padding">
-
-        <ImageView
-            android:layout_width="@dimen/home_recent_actions_icon_size"
-            android:layout_height="@dimen/home_recent_actions_icon_size"
-            android:contentDescription="@string/action_rename"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_action_rename" />
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/home_recent_actions_text_margin_start"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="@string/action_rename"
-            android:textColor="#333333"
-            android:textSize="@dimen/home_recent_actions_text_size" />
-    </LinearLayout>
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@drawable/bg_popup_menu_divider" />
-
-    <LinearLayout
-        android:id="@+id/actionShareRow"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/home_recent_actions_row_height"
-        android:background="?android:attr/selectableItemBackground"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="@dimen/home_recent_actions_row_padding">
-
-        <ImageView
-            android:layout_width="@dimen/home_recent_actions_icon_size"
-            android:layout_height="@dimen/home_recent_actions_icon_size"
-            android:contentDescription="@string/action_share_home"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_action_share" />
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/home_recent_actions_text_margin_start"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="@string/action_share_home"
-            android:textColor="#333333"
-            android:textSize="@dimen/home_recent_actions_text_size" />
-    </LinearLayout>
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@drawable/bg_popup_menu_divider" />
-
-    <LinearLayout
-        android:id="@+id/actionRemoveRow"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/home_recent_actions_row_height"
-        android:background="?android:attr/selectableItemBackground"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="@dimen/home_recent_actions_row_padding">
-
-        <ImageView
-            android:layout_width="@dimen/home_recent_actions_icon_size"
-            android:layout_height="@dimen/home_recent_actions_icon_size"
-            android:contentDescription="@string/remove_from_list"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_action_remove" />
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/home_recent_actions_text_margin_start"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="@string/remove_from_list"
-            android:textColor="#333333"
-            android:textSize="@dimen/home_recent_actions_text_size" />
-    </LinearLayout>
-</LinearLayout>
+<LinearLayout android:orientation="vertical" android:background="@drawable/bg_recent_actions_popup" android:paddingTop="@dimen/home_recent_actions_popup_padding_vertical" android:paddingBottom="@dimen/home_recent_actions_popup_padding_vertical" android:layout_width="@dimen/home_recent_actions_popup_width" android:layout_height="@dimen/home_recent_actions_popup_height" android:paddingStart="@dimen/home_recent_actions_popup_padding_horizontal" android:paddingEnd="@dimen/home_recent_actions_popup_padding_horizontal" android:elevation="12dp"/>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/actionRenameRow" android:background="?android:attr/selectableItemBackground" android:padding="@dimen/home_recent_actions_row_padding" android:layout_width="match_parent" android:layout_height="@dimen/home_recent_actions_row_height"/>
+        <ImageView android:layout_width="@dimen/home_recent_actions_icon_size" android:layout_height="@dimen/home_recent_actions_icon_size" android:src="@drawable/ic_action_rename" android:scaleType="centerinside" android:contentDescription="@string/action_rename"/>
+        <TextView android:textSize="@dimen/home_recent_actions_text_size" android:textColor="#ff333333" android:ellipsize="3" android:layout_width="0dp" android:layout_height="wrap_content" android:text="@string/action_rename" android:maxLines="1" android:layout_weight="1" android:layout_marginStart="@dimen/home_recent_actions_text_margin_start"/>
+    <View android:background="@drawable/bg_popup_menu_divider" android:layout_width="match_parent" android:layout_height="1dp"/>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/actionShareRow" android:background="?android:attr/selectableItemBackground" android:padding="@dimen/home_recent_actions_row_padding" android:layout_width="match_parent" android:layout_height="@dimen/home_recent_actions_row_height"/>
+        <ImageView android:layout_width="@dimen/home_recent_actions_icon_size" android:layout_height="@dimen/home_recent_actions_icon_size" android:src="@drawable/ic_action_share" android:scaleType="centerinside" android:contentDescription="@string/action_share_home"/>
+        <TextView android:textSize="@dimen/home_recent_actions_text_size" android:textColor="#ff333333" android:ellipsize="3" android:layout_width="0dp" android:layout_height="wrap_content" android:text="@string/action_share_home" android:maxLines="1" android:layout_weight="1" android:layout_marginStart="@dimen/home_recent_actions_text_margin_start"/>
+    <View android:background="@drawable/bg_popup_menu_divider" android:layout_width="match_parent" android:layout_height="1dp"/>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/actionRemoveRow" android:background="?android:attr/selectableItemBackground" android:padding="@dimen/home_recent_actions_row_padding" android:layout_width="match_parent" android:layout_height="@dimen/home_recent_actions_row_height"/>
+        <ImageView android:layout_width="@dimen/home_recent_actions_icon_size" android:layout_height="@dimen/home_recent_actions_icon_size" android:src="@drawable/ic_action_remove" android:scaleType="centerinside" android:contentDescription="@string/remove_from_list"/>
+        <TextView android:textSize="@dimen/home_recent_actions_text_size" android:textColor="#ff333333" android:ellipsize="3" android:layout_width="0dp" android:layout_height="wrap_content" android:text="@string/remove_from_list" android:maxLines="1" android:layout_weight="1" android:layout_marginStart="@dimen/home_recent_actions_text_margin_start"/>

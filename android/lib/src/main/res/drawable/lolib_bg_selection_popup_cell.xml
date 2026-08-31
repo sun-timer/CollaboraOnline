@@ -1,17 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Figma 245:7964 — cell ripple, pressed #F2F3F5, radius 8dp -->
-<ripple xmlns:android="http://schemas.android.com/apk/res/android"
-    android:color="#F2F3F5">
-    <item>
-        <shape android:shape="rectangle">
-            <solid android:color="@android:color/transparent" />
-            <corners android:radius="8dp" />
-        </shape>
-    </item>
-    <item android:id="@android:id/mask">
-        <shape android:shape="rectangle">
-            <solid android:color="#FFFFFF" />
-            <corners android:radius="8dp" />
-        </shape>
-    </item>
-</ripple>
+<ripple android:color="#fff2f3f5"/>
+    <item/>
+        <shape android:shape="0"/>
+            <solid android:color="@android:color/transparent"/>
+            <corners android:radius="8dp"/>
+    <item android:id="@android:id/mask"/>
+        <shape android:shape="0"/>
+            <solid android:color="#ffffffff"/>
+            <corners android:radius="8dp"/>

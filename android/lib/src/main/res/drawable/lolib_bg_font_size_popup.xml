@@ -1,7 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 字号浮层背景：白底圆角 16dp，对应 Figma 3082:60036 -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#FFFFFF" />
-    <corners android:radius="16dp" />
-</shape>
+<shape android:shape="0"/>
+    <solid android:color="#ffffffff"/>
+    <corners android:radius="16dp"/>

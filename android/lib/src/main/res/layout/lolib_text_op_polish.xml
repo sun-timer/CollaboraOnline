@@ -1,39 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:gravity="center_vertical"
-    android:orientation="vertical">
-
-    <LinearLayout
-        android:id="@+id/text_op_polish_style_card"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@drawable/lolib_bg_outline_edit"
-        android:clickable="true"
-        android:focusable="true"
-        android:gravity="center_vertical"
-        android:minHeight="56dp"
-        android:orientation="horizontal"
-        android:paddingStart="20dp"
-        android:paddingTop="16dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="16dp">
-
-        <TextView
-            android:id="@+id/text_op_polish_style_label"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="快速润色"
-            android:textColor="#333333"
-            android:textSize="16sp" />
-
-        <ImageView
-            android:id="@+id/text_op_polish_style_chevron"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:contentDescription="选择风格"
-            android:src="@drawable/lolib_ic_arrow_down" />
-    </LinearLayout>
-</LinearLayout>
+<LinearLayout android:gravity="center_vertical" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/text_op_polish_style_card" android:background="@drawable/lolib_bg_outline_edit" android:focusable="true" android:clickable="true" android:layout_width="match_parent" android:layout_height="51dp" android:paddingStart="16dp" android:paddingEnd="12dp"/>
+        <TextView android:textSize="16sp" android:textColor="#ff333333" android:id="@id/text_op_polish_style_label" android:layout_width="0dp" android:layout_height="wrap_content" android:text="快速润色" android:singleLine="true" android:layout_weight="1"/>
+        <ImageView android:id="@id/text_op_polish_style_chevron" android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/lolib_ic_arrow_down" android:contentDescription="选择风格"/>

@@ -1,11 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Figma 330:33155 合同协议卡片 -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <gradient
-        android:angle="270"
-        android:endColor="#E6FDFF"
-        android:startColor="#ECFCFF"
-        android:type="linear" />
-    <corners android:radius="24dp" />
-</shape>
+<shape android:shape="0"/>
+    <gradient android:startColor="#ffecfcff" android:endColor="#ffe6fdff" android:angle="270" android:type="0"/>
+    <corners android:radius="24dp"/>

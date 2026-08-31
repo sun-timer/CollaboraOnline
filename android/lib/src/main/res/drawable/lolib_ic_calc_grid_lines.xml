@@ -1,34 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 布局：显示网格线（Figma 64×64；矢量路径不支持虚线，网格线以实线 #CCCCCC 呈现） -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="32dp"
-    android:height="32dp"
-    android:viewportWidth="64"
-    android:viewportHeight="64">
-    <path
-        android:pathData="M6.66699 24H57.3337"
-        android:strokeColor="#CCCCCC"
-        android:strokeWidth="2.67"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M6.66699 40H57.3337"
-        android:strokeColor="#CCCCCC"
-        android:strokeWidth="2.67"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M22.667 6.66699V57.3337"
-        android:strokeColor="#CCCCCC"
-        android:strokeWidth="2.67"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M40 6.66699V57.3337"
-        android:strokeColor="#CCCCCC"
-        android:strokeWidth="2.67"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M54.667 6.66699H9.33366C7.8609 6.66699 6.66699 7.8609 6.66699 9.33366V54.667C6.66699 56.1398 7.8609 57.3337 9.33366 57.3337H54.667C56.1398 57.3337 57.3337 56.1398 57.3337 54.667V9.33366C57.3337 7.8609 56.1398 6.66699 54.667 6.66699Z"
-        android:strokeColor="#333333"
-        android:strokeWidth="2.67"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-</vector>
+<vector android:height="32dp" android:width="32dp" android:viewportWidth="64" android:viewportHeight="64"/>
+    <path android:pathData="M6.66699 24H57.3337" android:strokeColor="#ffcccccc" android:strokeWidth="2.67" android:strokeLineCap="1"/>
+    <path android:pathData="M6.66699 40H57.3337" android:strokeColor="#ffcccccc" android:strokeWidth="2.67" android:strokeLineCap="1"/>
+    <path android:pathData="M22.667 6.66699V57.3337" android:strokeColor="#ffcccccc" android:strokeWidth="2.67" android:strokeLineCap="1"/>
+    <path android:pathData="M40 6.66699V57.3337" android:strokeColor="#ffcccccc" android:strokeWidth="2.67" android:strokeLineCap="1"/>
+    <path android:pathData="M54.667 6.66699H9.33366C7.8609 6.66699 6.66699 7.8609 6.66699 9.33366V54.667C6.66699 56.1398 7.8609 57.3337 9.33366 57.3337H54.667C56.1398 57.3337 57.3337 56.1398 57.3337 54.667V9.33366C57.3337 7.8609 56.1398 6.66699 54.667 6.66699Z" android:strokeColor="#ff333333" android:strokeWidth="2.67" android:strokeLineCap="1" android:strokeLineJoin="1"/>

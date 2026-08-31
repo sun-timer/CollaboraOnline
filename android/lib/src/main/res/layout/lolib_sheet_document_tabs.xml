@@ -1,148 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Figma 125:11499 — document tabs top sheet -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/document_tabs_panel"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="@drawable/lolib_bg_document_tabs_panel"
-    android:elevation="12dp"
-    android:orientation="vertical">
-
-    <!-- System status bar inset only; document app toolbar is covered by this sheet. -->
-    <View
-        android:id="@+id/document_tabs_status_plate"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:background="@color/lolib_chrome_status_plate"
-        android:importantForAccessibility="no"
-        android:minHeight="@dimen/lolib_status_plate_min_height" />
-
-    <LinearLayout
-        android:id="@+id/tabs_sheet_header"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/function_sheet_header_height"
-        android:background="@color/lolib_chrome_status_plate"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="@dimen/function_sheet_header_padding_h"
-        android:paddingEnd="@dimen/function_sheet_header_padding_h">
-
-        <View
-            android:layout_width="@dimen/function_sheet_close_size"
-            android:layout_height="@dimen/function_sheet_close_size" />
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:text="文档"
-            android:textColor="#101010"
-            android:textSize="20sp"
-            android:fontFamily="sans-serif-medium" />
-
-        <ImageButton
-            android:id="@+id/tabs_sheet_close"
-            android:layout_width="@dimen/function_sheet_close_size"
-            android:layout_height="@dimen/function_sheet_close_size"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="关闭"
-            android:padding="@dimen/function_sheet_close_icon_padding"
-            android:scaleType="centerInside"
-            android:src="@drawable/lolib_ic_dialog_close" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="20dp">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="38dp"
-            android:background="@drawable/lolib_bg_document_tabs_tab_container"
-            android:orientation="horizontal"
-            android:paddingStart="4dp"
-            android:paddingTop="4dp"
-            android:paddingEnd="4dp"
-            android:paddingBottom="4dp">
-
-            <TextView
-                android:id="@+id/tabs_tab_opened"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:background="@drawable/lolib_bg_document_tabs_tab_active"
-                android:gravity="center"
-                android:text="已打开"
-                android:textColor="#101010"
-                android:textSize="12sp" />
-
-            <TextView
-                android:id="@+id/tabs_tab_closed"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:background="@android:color/transparent"
-                android:gravity="center"
-                android:text="最近关闭 (0)"
-                android:textColor="#999999"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/lolib_bg_document_tabs_list_card"
-            android:orientation="vertical"
-            android:paddingStart="16dp"
-            android:paddingTop="16dp"
-            android:paddingEnd="16dp"
-            android:paddingBottom="16dp">
-
-            <ScrollView
-                android:layout_width="match_parent"
-                android:layout_height="280dp"
-                android:fillViewport="true"
-                android:overScrollMode="never"
-                android:scrollbars="none">
-
-                <LinearLayout
-                    android:id="@+id/tabs_list_container"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical" />
-            </ScrollView>
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/tabs_open_document"
-            android:layout_width="match_parent"
-            android:layout_height="39dp"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/lolib_bg_document_tabs_open_button"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="horizontal">
-
-            <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
-                android:layout_marginEnd="8dp"
-                android:contentDescription="打开文档"
-                android:src="@drawable/lolib_ic_tabs_open_folder" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="打开文档"
-                android:textColor="#999999"
-                android:textSize="12sp" />
-        </LinearLayout>
-    </LinearLayout>
-</LinearLayout>
+<LinearLayout android:orientation="vertical" android:id="@id/document_tabs_panel" android:background="@drawable/lolib_bg_document_tabs_panel" android:layout_width="match_parent" android:layout_height="wrap_content" android:elevation="12dp"/>
+    <View android:id="@id/document_tabs_status_plate" android:background="@color/lolib_chrome_status_plate" android:layout_width="match_parent" android:layout_height="0dp" android:minHeight="@dimen/lolib_status_plate_min_height" android:importantForAccessibility="2"/>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@id/tabs_sheet_header" android:background="@color/lolib_chrome_status_plate" android:layout_width="match_parent" android:layout_height="@dimen/function_sheet_header_height" android:paddingStart="@dimen/function_sheet_header_padding_h" android:paddingEnd="@dimen/function_sheet_header_padding_h"/>
+        <View android:layout_width="@dimen/function_sheet_close_size" android:layout_height="@dimen/function_sheet_close_size"/>
+        <TextView android:textSize="20sp" android:textColor="#ff101010" android:gravity="center" android:layout_width="0dp" android:layout_height="wrap_content" android:text="文档" android:layout_weight="1" android:fontFamily="sans-serif-medium"/>
+        <ImageButton android:id="@id/tabs_sheet_close" android:background="?attr/selectableItemBackgroundBorderless" android:padding="@dimen/function_sheet_close_icon_padding" android:layout_width="@dimen/function_sheet_close_size" android:layout_height="@dimen/function_sheet_close_size" android:src="@drawable/lolib_ic_dialog_close" android:scaleType="centerinside" android:contentDescription="关闭"/>
+    <LinearLayout android:orientation="vertical" android:paddingBottom="20dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="16dp" android:paddingEnd="16dp"/>
+        <LinearLayout android:orientation="horizontal" android:background="@drawable/lolib_bg_document_tabs_tab_container" android:paddingTop="4dp" android:paddingBottom="4dp" android:layout_width="match_parent" android:layout_height="38dp" android:paddingStart="4dp" android:paddingEnd="4dp"/>
+            <TextView android:textSize="12sp" android:textColor="#ff101010" android:gravity="center" android:id="@id/tabs_tab_opened" android:background="@drawable/lolib_bg_document_tabs_tab_active" android:layout_width="0dp" android:layout_height="match_parent" android:text="已打开" android:layout_weight="1"/>
+            <TextView android:textSize="12sp" android:textColor="#ff999999" android:gravity="center" android:id="@id/tabs_tab_closed" android:background="@android:color/transparent" android:layout_width="0dp" android:layout_height="match_parent" android:text="最近关闭 (0)" android:layout_weight="1"/>
+        <LinearLayout android:orientation="vertical" android:background="@drawable/lolib_bg_document_tabs_list_card" android:paddingTop="16dp" android:paddingBottom="16dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:paddingStart="16dp" android:paddingEnd="16dp"/>
+            <ScrollView android:scrollbars="0x00000000" android:layout_width="match_parent" android:layout_height="280dp" android:fillViewport="true" android:overScrollMode="2"/>
+                <LinearLayout android:orientation="vertical" android:id="@id/tabs_list_container" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <LinearLayout android:gravity="center" android:orientation="horizontal" android:id="@id/tabs_open_document" android:background="@drawable/lolib_bg_document_tabs_open_button" android:focusable="true" android:clickable="true" android:layout_width="match_parent" android:layout_height="39dp" android:layout_marginTop="16dp"/>
+            <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/lolib_ic_tabs_open_folder" android:contentDescription="打开文档" android:layout_marginEnd="8dp"/>
+            <TextView android:textSize="12sp" android:textColor="#ff999999" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="打开文档"/>

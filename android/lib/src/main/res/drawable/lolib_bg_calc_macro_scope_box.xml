@@ -1,10 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 宏选择器程序库框：白底 + #CBD1D7 描边 + 圆角16（Figma 5279:61576） -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#FFFFFF" />
-    <stroke
-        android:width="2dp"
-        android:color="#CBD1D7" />
-    <corners android:radius="16dp" />
-</shape>
+<shape android:shape="0"/>
+    <solid android:color="#ffffffff"/>
+    <stroke android:width="2dp" android:color="#ffcbd1d7"/>
+    <corners android:radius="16dp"/>

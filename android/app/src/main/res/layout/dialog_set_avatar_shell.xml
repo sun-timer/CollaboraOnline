@@ -1,15 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/setAvatarDialogScroll"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:paddingStart="@dimen/dialog_shell_padding_horizontal"
-    android:paddingEnd="@dimen/dialog_shell_padding_horizontal">
-
-    <include
-        layout="@layout/dialog_set_avatar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:maxWidth="@dimen/dialog_content_max_width" />
-</FrameLayout>
+<FrameLayout android:id="@id/setAvatarDialogScroll" android:layout_width="match_parent" android:layout_height="match_parent" android:paddingStart="@dimen/dialog_shell_padding_horizontal" android:paddingEnd="@dimen/dialog_shell_padding_horizontal"/>
+    <include android:layout_gravity="center" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxWidth="@dimen/dialog_content_max_width"/>

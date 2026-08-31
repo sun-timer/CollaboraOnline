@@ -1,246 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Figma 330:32962 AI排版类型选择 AlertDialog -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/typeset_select_root"
-    android:layout_width="@dimen/ai_typeset_dialog_width"
-    android:layout_height="@dimen/ai_typeset_dialog_height"
-    android:background="@drawable/lolib_bg_dialog_outline"
-    android:orientation="vertical">
-
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/ai_typeset_title_height"
-        android:paddingStart="@dimen/ai_typeset_header_padding_h"
-        android:paddingEnd="@dimen/ai_typeset_header_padding_h">
-
-        <View
-            android:layout_width="@dimen/ai_sheet_header_close_size"
-            android:layout_height="@dimen/ai_sheet_header_close_size"
-            android:layout_gravity="center_vertical|start"
-            android:importantForAccessibility="no" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:gravity="center"
-            android:text="AI 排版"
-            android:textColor="#1F1F1F"
-            android:textSize="20sp"
-            android:fontFamily="sans-serif-medium" />
-
-        <FrameLayout
-            android:id="@+id/typeset_select_close"
-            android:layout_width="@dimen/ai_sheet_header_close_size"
-            android:layout_height="@dimen/ai_sheet_header_close_size"
-            android:layout_gravity="center_vertical|end"
-            android:background="@drawable/lolib_bg_typeset_close_circle"
-            android:clickable="true"
-            android:contentDescription="关闭"
-            android:focusable="true">
-
-            <ImageView
-                android:layout_width="20dp"
-                android:layout_height="20dp"
-                android:layout_gravity="center"
-                android:importantForAccessibility="no"
-                android:scaleType="centerInside"
-                android:src="@drawable/lolib_ic_dialog_close" />
-        </FrameLayout>
-    </FrameLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:baselineAligned="false"
-        android:orientation="horizontal"
-        android:paddingStart="@dimen/ai_typeset_content_padding"
-        android:paddingEnd="@dimen/ai_typeset_content_padding">
-
-        <LinearLayout
-            android:id="@+id/typeset_type_paper"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
-            android:layout_weight="1"
-            android:background="@drawable/lolib_bg_typeset_card_paper_selected"
-            android:clickable="true"
-            android:focusable="true"
-            android:minHeight="@dimen/ai_typeset_card_min_height"
-            android:orientation="vertical"
-            android:padding="@dimen/ai_typeset_card_padding">
-
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/ai_typeset_card_preview_height"
-                android:background="@drawable/lolib_bg_typeset_preview_thumb"
-                android:padding="8dp">
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:contentDescription="论文预览"
-                    android:scaleType="fitCenter"
-                    android:src="@drawable/lolib_preview_paper" />
-            </FrameLayout>
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/ai_typeset_card_label_margin_top"
-                android:gravity="center"
-                android:text="论文"
-                android:textColor="#101010"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/typeset_type_gov"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:background="@drawable/lolib_bg_typeset_card_gov"
-            android:clickable="true"
-            android:focusable="true"
-            android:minHeight="@dimen/ai_typeset_card_min_height"
-            android:orientation="vertical"
-            android:padding="@dimen/ai_typeset_card_padding">
-
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/ai_typeset_card_preview_height"
-                android:background="@drawable/lolib_bg_typeset_preview_thumb"
-                android:padding="8dp">
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:contentDescription="党政公文预览"
-                    android:scaleType="fitCenter"
-                    android:src="@drawable/lolib_preview_gov" />
-            </FrameLayout>
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/ai_typeset_card_label_margin_top"
-                android:gravity="center"
-                android:text="党政公文"
-                android:textColor="#101010"
-                android:textSize="14sp" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/ai_typeset_card_gap"
-        android:baselineAligned="false"
-        android:orientation="horizontal"
-        android:paddingStart="@dimen/ai_typeset_content_padding"
-        android:paddingEnd="@dimen/ai_typeset_content_padding">
-
-        <LinearLayout
-            android:id="@+id/typeset_type_contract"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
-            android:layout_weight="1"
-            android:background="@drawable/lolib_bg_typeset_card_contract"
-            android:clickable="true"
-            android:focusable="true"
-            android:minHeight="@dimen/ai_typeset_card_min_height"
-            android:orientation="vertical"
-            android:padding="@dimen/ai_typeset_card_padding">
-
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/ai_typeset_card_preview_height"
-                android:background="@drawable/lolib_bg_typeset_preview_thumb"
-                android:padding="8dp">
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:contentDescription="合同预览"
-                    android:scaleType="fitCenter"
-                    android:src="@drawable/lolib_preview_contract" />
-            </FrameLayout>
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/ai_typeset_card_label_margin_top"
-                android:gravity="center"
-                android:text="合同协议"
-                android:textColor="#101010"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/typeset_type_general"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:background="@drawable/lolib_bg_typeset_card_general"
-            android:clickable="true"
-            android:focusable="true"
-            android:minHeight="@dimen/ai_typeset_card_min_height"
-            android:orientation="vertical"
-            android:padding="@dimen/ai_typeset_card_padding">
-
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/ai_typeset_card_preview_height"
-                android:background="@drawable/lolib_bg_typeset_preview_thumb"
-                android:padding="8dp">
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:contentDescription="通用文档预览"
-                    android:scaleType="fitCenter"
-                    android:src="@drawable/lolib_preview_general" />
-            </FrameLayout>
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/ai_typeset_card_label_margin_top"
-                android:gravity="center"
-                android:text="通用文档"
-                android:textColor="#101010"
-                android:textSize="14sp" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <Space
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
-
-    <FrameLayout
-        android:id="@+id/typeset_select_footer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingStart="@dimen/ai_typeset_button_padding_h"
-        android:paddingTop="@dimen/ai_typeset_button_padding_v"
-        android:paddingEnd="@dimen/ai_typeset_button_padding_h"
-        android:paddingBottom="@dimen/ai_typeset_button_padding_v">
-
-        <TextView
-            android:id="@+id/typeset_select_start"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/ai_typeset_button_height"
-            android:background="@drawable/lolib_bg_gradient_button_outline"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:text="开始排版"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp" />
-    </FrameLayout>
-
-</LinearLayout>
+<LinearLayout android:orientation="vertical" android:id="@id/typeset_select_root" android:background="@drawable/lolib_bg_dialog_outline" android:layout_width="@dimen/ai_typeset_dialog_width" android:layout_height="wrap_content"/>
+    <FrameLayout android:layout_width="match_parent" android:layout_height="@dimen/ai_typeset_title_height" android:paddingStart="@dimen/ai_typeset_header_padding_h" android:paddingEnd="@dimen/ai_typeset_header_padding_h"/>
+        <View android:layout_gravity="center" android:layout_width="@dimen/ai_sheet_header_close_size" android:layout_height="@dimen/ai_sheet_header_close_size" android:importantForAccessibility="2"/>
+        <TextView android:textSize="20sp" android:textColor="#ff1f1f1f" android:gravity="center" android:layout_gravity="center" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="AI 排版" android:fontFamily="sans-serif-medium"/>
+        <FrameLayout android:layout_gravity="center" android:id="@id/typeset_select_close" android:background="@drawable/lolib_bg_typeset_close_circle" android:focusable="true" android:clickable="true" android:layout_width="@dimen/ai_sheet_header_close_size" android:layout_height="@dimen/ai_sheet_header_close_size" android:contentDescription="关闭"/>
+            <ImageView android:layout_gravity="center" android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/lolib_ic_dialog_close" android:scaleType="centerinside" android:importantForAccessibility="2"/>
+    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:baselineAligned="false" android:paddingStart="@dimen/ai_typeset_content_padding" android:paddingEnd="@dimen/ai_typeset_content_padding"/>
+        <LinearLayout android:orientation="vertical" android:id="@id/typeset_type_paper" android:background="@drawable/lolib_bg_typeset_card_paper_selected" android:padding="@dimen/ai_typeset_card_padding" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="wrap_content" android:minHeight="@dimen/ai_typeset_card_min_height" android:layout_weight="1" android:layout_marginEnd="8dp"/>
+            <FrameLayout android:background="@drawable/lolib_bg_typeset_preview_thumb" android:padding="8dp" android:layout_width="match_parent" android:layout_height="@dimen/ai_typeset_card_preview_height"/>
+                <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/lolib_preview_paper" android:scaleType="fitcenter" android:contentDescription="论文预览"/>
+            <TextView android:textSize="14sp" android:textColor="#ff101010" android:gravity="center" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ai_typeset_card_label_margin_top" android:text="论文"/>
+        <LinearLayout android:orientation="vertical" android:id="@id/typeset_type_gov" android:background="@drawable/lolib_bg_typeset_card_gov" android:padding="@dimen/ai_typeset_card_padding" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="wrap_content" android:minHeight="@dimen/ai_typeset_card_min_height" android:layout_weight="1" android:layout_marginStart="8dp"/>
+            <FrameLayout android:background="@drawable/lolib_bg_typeset_preview_thumb" android:padding="8dp" android:layout_width="match_parent" android:layout_height="@dimen/ai_typeset_card_preview_height"/>
+                <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/lolib_preview_gov" android:scaleType="fitcenter" android:contentDescription="党政公文预览"/>
+            <TextView android:textSize="14sp" android:textColor="#ff101010" android:gravity="center" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ai_typeset_card_label_margin_top" android:text="党政公文"/>
+    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ai_typeset_card_gap" android:baselineAligned="false" android:paddingStart="@dimen/ai_typeset_content_padding" android:paddingEnd="@dimen/ai_typeset_content_padding"/>
+        <LinearLayout android:orientation="vertical" android:id="@id/typeset_type_contract" android:background="@drawable/lolib_bg_typeset_card_contract" android:padding="@dimen/ai_typeset_card_padding" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="wrap_content" android:minHeight="@dimen/ai_typeset_card_min_height" android:layout_weight="1" android:layout_marginEnd="8dp"/>
+            <FrameLayout android:background="@drawable/lolib_bg_typeset_preview_thumb" android:padding="8dp" android:layout_width="match_parent" android:layout_height="@dimen/ai_typeset_card_preview_height"/>
+                <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/lolib_preview_contract" android:scaleType="fitcenter" android:contentDescription="合同预览"/>
+            <TextView android:textSize="14sp" android:textColor="#ff101010" android:gravity="center" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ai_typeset_card_label_margin_top" android:text="合同协议"/>
+        <LinearLayout android:orientation="vertical" android:id="@id/typeset_type_general" android:background="@drawable/lolib_bg_typeset_card_general" android:padding="@dimen/ai_typeset_card_padding" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="wrap_content" android:minHeight="@dimen/ai_typeset_card_min_height" android:layout_weight="1" android:layout_marginStart="8dp"/>
+            <FrameLayout android:background="@drawable/lolib_bg_typeset_preview_thumb" android:padding="8dp" android:layout_width="match_parent" android:layout_height="@dimen/ai_typeset_card_preview_height"/>
+                <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/lolib_preview_general" android:scaleType="fitcenter" android:contentDescription="通用文档预览"/>
+            <TextView android:textSize="14sp" android:textColor="#ff101010" android:gravity="center" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/ai_typeset_card_label_margin_top" android:text="通用文档"/>
+    <Space android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
+    <FrameLayout android:id="@id/typeset_select_footer" android:paddingTop="@dimen/ai_typeset_button_padding_v" android:paddingBottom="@dimen/ai_typeset_button_padding_v" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="@dimen/ai_typeset_button_padding_h" android:paddingEnd="@dimen/ai_typeset_button_padding_h"/>
+        <TextView android:textSize="16sp" android:textColor="#ffffffff" android:gravity="center" android:id="@id/typeset_select_start" android:background="@drawable/lolib_bg_gradient_button_outline" android:focusable="true" android:clickable="true" android:layout_width="match_parent" android:layout_height="@dimen/ai_typeset_button_height" android:text="开始排版"/>

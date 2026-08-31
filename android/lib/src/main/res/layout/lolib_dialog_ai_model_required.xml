@@ -1,70 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Figma 3079:59671：未配置基础模型提示弹窗，670×388px → 335×194dp -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="@dimen/ai_model_required_dialog_width"
-    android:layout_height="wrap_content"
-    android:background="@drawable/lolib_bg_ai_model_required_dialog"
-    android:orientation="vertical">
-
-    <TextView
-        android:id="@+id/ai_model_required_title"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/ai_model_required_title_height"
-        android:gravity="center"
-        android:text="需要配置基础模型"
-        android:textColor="#1F1F1F"
-        android:textSize="20sp" />
-
-    <TextView
-        android:id="@+id/ai_model_required_message"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:lineSpacingExtra="4dp"
-        android:paddingStart="@dimen/ai_model_required_content_padding_h"
-        android:paddingEnd="@dimen/ai_model_required_content_padding_h"
-        android:paddingBottom="@dimen/ai_model_required_content_padding_v"
-        android:text="请先在设置中配置基础模型的接口地址"
-        android:textColor="#333333"
-        android:textSize="16sp" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="@dimen/ai_model_required_button_padding_h"
-        android:paddingEnd="@dimen/ai_model_required_button_padding_h"
-        android:paddingBottom="@dimen/ai_model_required_button_padding_v">
-
-        <TextView
-            android:id="@+id/ai_model_required_cancel"
-            android:layout_width="0dp"
-            android:layout_height="@dimen/ai_model_required_button_height"
-            android:layout_weight="1"
-            android:background="@drawable/lolib_bg_ai_dialog_btn_cancel"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:text="取消"
-            android:textColor="#333333"
-            android:textSize="16sp" />
-
-        <Space
-            android:layout_width="@dimen/ai_model_required_button_gap"
-            android:layout_height="1dp" />
-
-        <TextView
-            android:id="@+id/ai_model_required_confirm"
-            android:layout_width="0dp"
-            android:layout_height="@dimen/ai_model_required_button_height"
-            android:layout_weight="1"
-            android:background="@drawable/lolib_bg_ai_dialog_btn_primary"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:text="确定"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp" />
-    </LinearLayout>
-
-</LinearLayout>
+<LinearLayout android:orientation="vertical" android:background="@drawable/lolib_bg_ai_model_required_dialog" android:paddingTop="8dp" android:paddingBottom="12dp" android:layout_width="@dimen/ai_model_required_dialog_width" android:layout_height="wrap_content" android:paddingStart="16dp" android:paddingEnd="16dp"/>
+    <include android:id="@id/ai_model_required_header"/>
+    <TextView android:textSize="16sp" android:textColor="#ff333333" android:gravity="center" android:id="@id/ai_model_required_message" android:paddingTop="@dimen/ai_model_required_content_padding_v" android:paddingBottom="@dimen/ai_model_required_content_padding_v" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="请先在设置中配置基础模型的接口地址" android:lineSpacingExtra="4dp"/>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:paddingTop="@dimen/ai_model_required_button_padding_v" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <TextView android:textSize="16sp" android:textColor="#ff333333" android:gravity="center" android:id="@id/ai_model_required_cancel" android:background="@drawable/lolib_bg_ai_dialog_btn_cancel" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="@dimen/ai_model_required_button_height" android:text="取消" android:layout_weight="1"/>
+        <Space android:layout_width="@dimen/ai_model_required_button_gap" android:layout_height="1dp"/>
+        <TextView android:textSize="16sp" android:textColor="#ffffffff" android:gravity="center" android:id="@id/ai_model_required_confirm" android:background="@drawable/lolib_bg_ai_dialog_btn_primary" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="@dimen/ai_model_required_button_height" android:text="确定" android:layout_weight="1"/>

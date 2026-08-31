@@ -1,12 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="#FFFFFF"
-    android:orientation="vertical">
-
-    <include layout="@layout/navigation_drawer_profile" />
-
-    <include layout="@layout/navigation_drawer_ai_config" />
-
-</LinearLayout>
+<LinearLayout android:orientation="vertical" android:background="#ffffffff" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <include/>
+    <include/>

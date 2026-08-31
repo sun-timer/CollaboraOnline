@@ -191,6 +191,7 @@ public class ImpressFunctionPanelController {
         void initiatePrint();
 
         String getCommentAuthorName();
+        String getCommentAuthorAvatarUri();
 
         void insertCommentWithText(String text);
 
@@ -2073,6 +2074,11 @@ public class ImpressFunctionPanelController {
                 public String getCommentAuthorName() {
                     return host.getCommentAuthorName();
                 }
+
+                        @Override
+                        public String getCommentAuthorAvatarUri() {
+                            return host.getCommentAuthorAvatarUri();
+                        }
 
                 @Override
                 public void toastTodo(String text) {

@@ -1,21 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
-    <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M14,4L20,4C21.1,4 22,4.9 22,6L22,14"
-        android:strokeWidth="2"
-        android:strokeColor="#6A6A6A"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M4,10L4,20C4,21.1 4.9,22 6,22L16,22"
-        android:strokeWidth="2"
-        android:strokeColor="#6A6A6A"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-</vector>
+<vector android:height="24dp" android:width="24dp" android:viewportWidth="24" android:viewportHeight="24"/>
+    <path android:fillColor="@android:color/transparent" android:pathData="M14,4L20,4C21.1,4 22,4.9 22,6L22,14" android:strokeColor="#ff6a6a6a" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+    <path android:fillColor="@android:color/transparent" android:pathData="M4,10L4,20C4,21.1 4.9,22 6,22L16,22" android:strokeColor="#ff6a6a6a" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>

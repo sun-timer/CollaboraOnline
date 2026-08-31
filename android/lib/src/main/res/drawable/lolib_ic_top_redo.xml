@@ -1,19 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 恢复图标：带箭头钩子的弧形箭头，镜像（Figma 214:15743），stroke #101010 2px，视口 48 -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="48"
-    android:viewportHeight="48">
-    <group
-        android:translateX="5"
-        android:translateY="8">
-        <path
-            android:fillColor="#00000000"
-            android:pathData="M35.0002 8 L42 14 L19.0062 14 C12.1232 14 6.2779 19.6204 6.0096 26.5 C5.7261 33.7696 11.7329 40 19.0062 40 L36.0016 40"
-            android:strokeColor="#101010"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:strokeWidth="2" />
-    </group>
-</vector>
+<vector android:height="24dp" android:width="24dp" android:viewportWidth="48" android:viewportHeight="48"/>
+    <group android:translateX="5" android:translateY="5"/>
+        <path android:fillColor="#00000000" android:pathData="M35.0002 8 L42 14 L19.0062 14 C12.1232 14 6.2779 19.6204 6.0096 26.5 C5.7261 33.7696 11.7329 40 19.0062 40 L36.0016 40" android:strokeColor="#ff101010" android:strokeWidth="2" android:strokeLineCap="1" android:strokeLineJoin="1"/>

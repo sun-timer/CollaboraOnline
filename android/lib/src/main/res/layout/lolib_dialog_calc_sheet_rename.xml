@@ -1,72 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Calc 重命名工作表弹窗：Figma 1689:45414（670×396 → 335×198dp Hug） -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/calc_sheet_rename_root"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="@drawable/lolib_bg_dialog_outline"
-    android:orientation="vertical"
-    android:paddingBottom="12dp">
-
-    <include
-        android:id="@+id/calc_sheet_rename_header"
-        layout="@layout/lolib_include_ai_dialog_header" />
-
-    <EditText
-        android:id="@+id/calc_sheet_rename_input"
-        android:layout_width="match_parent"
-        android:layout_height="43dp"
-        android:layout_marginStart="24dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginEnd="24dp"
-        android:background="@drawable/lolib_bg_calc_sheet_rename_input"
-        android:gravity="center"
-        android:hint="Sheet 1"
-        android:imeOptions="actionDone"
-        android:inputType="text"
-        android:maxLines="1"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp"
-        android:singleLine="true"
-        android:textColor="#3B8040"
-        android:textColorHint="#CCCCCC"
-        android:textSize="16sp"
-        android:textStyle="bold" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="20dp"
-        android:layout_marginTop="24dp"
-        android:layout_marginEnd="20dp"
-        android:orientation="horizontal">
-
-        <TextView
-            android:id="@+id/calc_sheet_rename_cancel"
-            android:layout_width="0dp"
-            android:layout_height="35dp"
-            android:layout_marginEnd="14dp"
-            android:layout_weight="1"
-            android:background="@drawable/lolib_bg_calc_sheet_pill_secondary"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:text="取消"
-            android:textColor="#E5000000"
-            android:textSize="16sp" />
-
-        <TextView
-            android:id="@+id/calc_sheet_rename_confirm"
-            android:layout_width="0dp"
-            android:layout_height="35dp"
-            android:layout_marginStart="14dp"
-            android:layout_weight="1"
-            android:background="@drawable/lolib_bg_calc_sheet_pill_primary"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:text="确定"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp" />
-    </LinearLayout>
-</LinearLayout>
+<LinearLayout android:orientation="vertical" android:id="@id/calc_sheet_rename_root" android:background="@drawable/lolib_bg_dialog_outline" android:paddingBottom="12dp" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <include android:id="@id/calc_sheet_rename_header"/>
+    <EditText android:textSize="16sp" android:textStyle="0x00000001" android:textColor="#ff3b8040" android:textColorHint="#ffcccccc" android:gravity="center" android:id="@id/calc_sheet_rename_input" android:background="@drawable/lolib_bg_calc_sheet_rename_input" android:layout_width="match_parent" android:layout_height="43dp" android:layout_marginTop="16dp" android:hint="Sheet 1" android:maxLines="1" android:singleLine="true" android:inputType="text" android:imeOptions="actionDone" android:paddingStart="20dp" android:paddingEnd="20dp" android:layout_marginStart="24dp" android:layout_marginEnd="24dp"/>
+    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:layout_marginStart="20dp" android:layout_marginEnd="20dp"/>
+        <TextView android:textSize="16sp" android:textColor="#e5000000" android:gravity="center" android:id="@id/calc_sheet_rename_cancel" android:background="@drawable/lolib_bg_calc_sheet_pill_secondary" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="35dp" android:text="取消" android:layout_weight="1" android:layout_marginEnd="14dp"/>
+        <TextView android:textSize="16sp" android:textColor="#ffffffff" android:gravity="center" android:id="@id/calc_sheet_rename_confirm" android:background="@drawable/lolib_bg_calc_sheet_pill_primary" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="35dp" android:text="确定" android:layout_weight="1" android:layout_marginStart="14dp"/>

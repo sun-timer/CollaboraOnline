@@ -1,9 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- AI续写停止按钮：红色圆形（#FE3A3A，72dp），对应设计稿红色圆按钮 -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="oval">
-    <size
-        android:width="72dp"
-        android:height="72dp" />
-    <solid android:color="#FE3A3A" />
-</shape>
+<shape android:shape="1"/>
+    <size android:height="36dp" android:width="36dp"/>
+    <solid android:color="#fffe3a3a"/>

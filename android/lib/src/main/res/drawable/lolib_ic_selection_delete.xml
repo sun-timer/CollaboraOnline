@@ -1,40 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Delete/trash icon for image selection popup -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
-    <path
-        android:pathData="M6,7h12v13a1,1 0,0 1,-1 1H7a1,1 0,0 1,-1 -1V7z"
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#333333"
-        android:strokeWidth="1.5"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M4,7h16"
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#333333"
-        android:strokeWidth="1.5"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M10,7V4a1,1 0,0 1,1 -1h2a1,1 0,0 1,1 1v3"
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#333333"
-        android:strokeWidth="1.5"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M10,11v5"
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#333333"
-        android:strokeWidth="1.5"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M14,11v5"
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#333333"
-        android:strokeWidth="1.5"
-        android:strokeLineCap="round" />
-</vector>
+<vector android:height="24dp" android:width="24dp" android:viewportWidth="24" android:viewportHeight="24"/>
+    <path android:fillColor="@android:color/transparent" android:pathData="M6,7h12v13a1,1 0,0 1,-1 1H7a1,1 0,0 1,-1 -1V7z" android:strokeColor="#ff333333" android:strokeWidth="1.5" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+    <path android:fillColor="@android:color/transparent" android:pathData="M4,7h16" android:strokeColor="#ff333333" android:strokeWidth="1.5" android:strokeLineCap="1"/>
+    <path android:fillColor="@android:color/transparent" android:pathData="M10,7V4a1,1 0,0 1,1 -1h2a1,1 0,0 1,1 1v3" android:strokeColor="#ff333333" android:strokeWidth="1.5" android:strokeLineCap="1" android:strokeLineJoin="1"/>
+    <path android:fillColor="@android:color/transparent" android:pathData="M10,11v5" android:strokeColor="#ff333333" android:strokeWidth="1.5" android:strokeLineCap="1"/>
+    <path android:fillColor="@android:color/transparent" android:pathData="M14,11v5" android:strokeColor="#ff333333" android:strokeWidth="1.5" android:strokeLineCap="1"/>
