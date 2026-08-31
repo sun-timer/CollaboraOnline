@@ -164,7 +164,8 @@ class WriterEditorPanel {
 			const isDialog = feature.kind === 'dialog';
 			const dialogReady =
 				isDialog &&
-				WriterEditorPanel.SUPPORTED_DIALOGS.indexOf(feature.dialog || '') >= 0;
+				!!feature.dialog &&
+				WriterEditorPanel.SUPPORTED_DIALOGS.indexOf(feature.dialog) >= 0;
 			const gated = isDialog && !dialogReady;
 			const needsSelection = !!feature.needsSelection && !selection;
 			button.disabled = gated || needsSelection;
