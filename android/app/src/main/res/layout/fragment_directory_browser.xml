@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:background="#ffffff" android:layout_width="match_parent" android:layout_height="match_parent">
         <LinearLayout android:orientation="horizontal" android:id="@+id/browser_header" android:layout_width="match_parent" android:layout_height="wrap_content">
-                <ImageView android:id="@+id/up_image" android:layout_width="wrap_content" android:layout_height="match_parent" android:src="@drawable/ic_menu_back" android:scaleType="fitcenter" android:adjustViewBounds="true" android:contentDescription="@string/up_description"/>
+                <ImageView android:id="@+id/up_image" android:layout_width="wrap_content" android:layout_height="match_parent" android:src="@drawable/ic_menu_back" android:scaleType="fitCenter" android:adjustViewBounds="true" android:contentDescription="@string/up_description"/>
                 <EditText android:textAppearance="?android:attr/textAppearanceMedium" android:id="@+id/directory_header" android:layout_width="0dp" android:layout_height="wrap_content" android:maxLines="1" android:scrollHorizontally="true" android:layout_weight="1" android:inputType="text"/>
                 <Button android:id="@+id/directory_search_button" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="@string/search_label"/>
         </LinearLayout>

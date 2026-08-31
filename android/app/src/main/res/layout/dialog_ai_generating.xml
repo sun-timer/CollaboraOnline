@@ -2,6 +2,6 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:background="#66000000" android:padding="24dp" android:layout_width="match_parent" android:layout_height="match_parent">
         <LinearLayout android:gravity="center" android:layout_gravity="center" android:orientation="vertical" android:background="@drawable/bg_ai_generating_card" android:paddingTop="40dp" android:paddingBottom="40dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="24dp" android:paddingEnd="24dp">
                 <ProgressBar android:id="@+id/aiGeneratingSpinner" android:layout_width="64dp" android:layout_height="64dp" android:indeterminate="true" android:indeterminateTint="#8a5cff" android:indeterminateTintMode="5"/>
-                <TextView android:textSize="18sp" android:textStyle="0x00000001" android:textColor="#202124" android:id="@+id/aiGeneratingLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="28dp" android:text="@string/ai_generating_label"/>
+                <TextView android:textSize="18sp" android:textStyle="bold" android:textColor="#202124" android:id="@+id/aiGeneratingLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="28dp" android:text="@string/ai_generating_label"/>
         </LinearLayout>
 </FrameLayout>

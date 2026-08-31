@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@+id/impress_option_popup_root" android:background="@drawable/lolib_bg_impress_option_popup" android:paddingTop="6dp" android:paddingBottom="6dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:elevation="8dp">
-        <ScrollView android:id="@+id/impress_option_scroll" android:scrollbars="0x00000200" android:layout_width="match_parent" android:layout_height="wrap_content" android:fillViewport="true" android:fadeScrollbars="false">
+        <ScrollView android:id="@+id/impress_option_scroll" android:scrollbars="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:fillViewport="true" android:fadeScrollbars="false">
                 <LinearLayout android:orientation="vertical" android:id="@+id/impress_option_list" android:layout_width="match_parent" android:layout_height="wrap_content"/>
         </ScrollView>
 </LinearLayout>

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@+id/showHtmlRoot" android:background="#f2f2f2" android:layout_width="match_parent" android:layout_height="match_parent">
         <LinearLayout android:gravity="center_vertical" android:id="@+id/showHtmlHeader" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="62dp" android:paddingStart="12dp" android:paddingEnd="16dp">
-                <ImageButton android:id="@+id/showHtmlBackButton" android:background="@android:color/transparent" android:padding="8dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_model_config_back" android:scaleType="centerinside" android:contentDescription="@string/action_back"/>
-                <TextView android:textSize="20sp" android:textStyle="0x00000001" android:textColor="#000000" android:id="@+id/showHtmlTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="4dp"/>
+                <ImageButton android:id="@+id/showHtmlBackButton" android:background="@android:color/transparent" android:padding="8dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_model_config_back" android:scaleType="centerInside" android:contentDescription="@string/action_back"/>
+                <TextView android:textSize="20sp" android:textStyle="bold" android:textColor="#000000" android:id="@+id/showHtmlTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="4dp"/>
         </LinearLayout>
         <FrameLayout android:id="@+id/showHtmlContent" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
                 <WebView android:id="@+id/browser" android:background="#ffffff" android:layout_width="match_parent" android:layout_height="match_parent"/>

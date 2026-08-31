@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@+id/feedbackListItemRoot" android:background="@drawable/bg_feedback_input" android:paddingTop="8dp" android:paddingBottom="8dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="8dp" android:paddingStart="12dp" android:paddingEnd="12dp">
         <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
                 <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
-                        <TextView android:textSize="18sp" android:textStyle="0x00000001" android:textColor="#333333" android:id="@+id/feedbackItemType" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                        <TextView android:textSize="18sp" android:textStyle="bold" android:textColor="#333333" android:id="@+id/feedbackItemType" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
                         <TextView android:textSize="14sp" android:textColor="#999999" android:id="@+id/feedbackItemTime" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp"/>
                 </LinearLayout>
                 <View android:id="@+id/feedbackItemDot" android:background="@drawable/bg_feedback_dot_gray" android:layout_width="8dp" android:layout_height="8dp"/>

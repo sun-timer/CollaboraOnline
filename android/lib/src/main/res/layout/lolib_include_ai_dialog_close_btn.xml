@@ -1,2 +1,2 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ImageButton xmlns:android="http://schemas.android.com/apk/res/android" android:layout_gravity="top|end" android:background="?attr/selectableItemBackgroundBorderless" android:padding="12dp" android:layout_width="48dp" android:layout_height="48dp" android:src="@drawable/lolib_ic_dialog_close" android:scaleType="centerinside" android:contentDescription="关闭"/>
+<ImageButton xmlns:android="http://schemas.android.com/apk/res/android" android:layout_gravity="top|end" android:background="?attr/selectableItemBackgroundBorderless" android:padding="12dp" android:layout_width="48dp" android:layout_height="48dp" android:src="@drawable/lolib_ic_dialog_close" android:scaleType="centerInside" android:contentDescription="关闭"/>

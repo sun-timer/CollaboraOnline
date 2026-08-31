@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:background="@android:color/transparent" android:paddingBottom="@dimen/lolib_function_sheet_bottom_pad" android:layout_width="match_parent" android:layout_height="wrap_content">
         <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="@dimen/find_sheet_header_height" android:paddingStart="12dp" android:paddingEnd="12dp">
-                <ImageButton android:id="@+id/find_settings_back" android:background="?attr/selectableItemBackgroundBorderless" android:padding="10dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/lolib_ic_impress_subpage_back" android:scaleType="centerinside" android:contentDescription="返回"/>
+                <ImageButton android:id="@+id/find_settings_back" android:background="?attr/selectableItemBackgroundBorderless" android:padding="10dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/lolib_ic_impress_subpage_back" android:scaleType="centerInside" android:contentDescription="返回"/>
                 <TextView android:textSize="18sp" android:textColor="#101010" android:gravity="center" android:layout_width="0dp" android:layout_height="wrap_content" android:text="设置" android:layout_weight="1" android:fontFamily="sans-serif-medium"/>
                 <View android:layout_width="40dp" android:layout_height="40dp"/>
         </LinearLayout>

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@+id/feedbackMainRoot" android:background="#f2f2f2" android:layout_width="match_parent" android:layout_height="match_parent">
         <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@+id/feedbackMainHeader" android:background="#f2f2f2" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="62dp" android:paddingStart="15dp" android:paddingEnd="12dp">
-                <ImageButton android:id="@+id/feedbackMainBackBtn" android:background="@android:color/transparent" android:padding="8dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_model_config_back" android:scaleType="centerinside" android:contentDescription="@string/action_back"/>
-                <TextView android:textSize="20sp" android:textStyle="0x00000001" android:textColor="#333333" android:layout_width="0dp" android:layout_height="wrap_content" android:text="@string/feedback_title" android:layout_weight="1" android:layout_marginStart="4dp"/>
+                <ImageButton android:id="@+id/feedbackMainBackBtn" android:background="@android:color/transparent" android:padding="8dp" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_model_config_back" android:scaleType="centerInside" android:contentDescription="@string/action_back"/>
+                <TextView android:textSize="20sp" android:textStyle="bold" android:textColor="#333333" android:layout_width="0dp" android:layout_height="wrap_content" android:text="@string/feedback_title" android:layout_weight="1" android:layout_marginStart="4dp"/>
                 <TextView android:textSize="16sp" android:textColor="#333333" android:id="@+id/feedbackMainRecordsEntry" android:padding="8dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/feedback_records_title"/>
         </LinearLayout>
-        <ScrollView android:scrollbars="0x00000000" android:layout_width="match_parent" android:layout_height="0dp" android:fillViewport="false" android:layout_weight="1" android:overScrollMode="2">
+        <ScrollView android:scrollbars="none" android:layout_width="match_parent" android:layout_height="0dp" android:fillViewport="false" android:layout_weight="1" android:overScrollMode="never">
                 <LinearLayout android:orientation="vertical" android:paddingTop="6dp" android:paddingBottom="16dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="16dp" android:paddingEnd="16dp">
                         <LinearLayout android:orientation="vertical" android:id="@+id/feedbackTypeSection" android:layout_width="match_parent" android:layout_height="wrap_content">
                                 <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content">
@@ -27,7 +27,7 @@
                                         <TextView android:textSize="14sp" android:textColor="#6a6a6a" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/feedback_desc_label"/>
                                 </LinearLayout>
                                 <LinearLayout android:orientation="vertical" android:background="@drawable/bg_feedback_input" android:paddingTop="10dp" android:paddingBottom="6dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:paddingStart="8dp" android:paddingEnd="8dp">
-                                        <EditText android:textSize="14sp" android:textColor="#333333" android:textColorHint="#cccccc" android:gravity="top|start" android:id="@+id/feedbackDescInput" android:background="@null" android:padding="0dp" android:layout_width="match_parent" android:layout_height="100dp" android:hint="@string/feedback_desc_hint" android:maxLength="500" android:inputType="0x00020001"/>
+                                        <EditText android:textSize="14sp" android:textColor="#333333" android:textColorHint="#cccccc" android:gravity="top|start" android:id="@+id/feedbackDescInput" android:background="@null" android:padding="0dp" android:layout_width="match_parent" android:layout_height="100dp" android:hint="@string/feedback_desc_hint" android:maxLength="500" android:inputType="textMultiLine"/>
                                         <TextView android:textSize="14sp" android:textColor="#999999" android:layout_gravity="end" android:id="@+id/feedbackDescCount" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0/500"/>
                                 </LinearLayout>
                                 <LinearLayout android:orientation="horizontal" android:id="@+id/feedbackAttachRow" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp">
@@ -38,7 +38,7 @@
                         </LinearLayout>
                         <LinearLayout android:orientation="vertical" android:id="@+id/feedbackContactSection" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp">
                                 <TextView android:textSize="14sp" android:textColor="#6a6a6a" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/feedback_contact_label"/>
-                                <EditText android:textSize="14sp" android:textColor="#333333" android:textColorHint="#cccccc" android:id="@+id/feedbackContactInput" android:background="@drawable/bg_feedback_small_input" android:layout_width="match_parent" android:layout_height="44dp" android:layout_marginTop="8dp" android:hint="@string/feedback_contact_hint" android:maxLines="1" android:inputType="textPassword" android:paddingStart="12dp" android:paddingEnd="12dp"/>
+                                <EditText android:textSize="14sp" android:textColor="#333333" android:textColorHint="#cccccc" android:id="@+id/feedbackContactInput" android:background="@drawable/bg_feedback_small_input" android:layout_width="match_parent" android:layout_height="44dp" android:layout_marginTop="8dp" android:hint="@string/feedback_contact_hint" android:maxLines="1" android:inputType="textEmailAddress" android:paddingStart="12dp" android:paddingEnd="12dp"/>
                         </LinearLayout>
                         <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@+id/feedbackLogRow" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp">
                                 <ImageView android:id="@+id/feedbackLogCheck" android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_feedback_checkbox_off" android:contentDescription="@string/feedback_share_log"/>
@@ -47,6 +47,6 @@
                 </LinearLayout>
         </ScrollView>
         <LinearLayout android:gravity="center" android:paddingTop="6dp" android:paddingBottom="12dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="40dp" android:paddingEnd="40dp">
-                <TextView android:textSize="18sp" android:textStyle="0x00000001" android:textColor="#ffffff" android:gravity="center" android:id="@+id/feedbackSubmitBtn" android:background="@drawable/bg_feedback_btn_primary" android:layout_width="match_parent" android:layout_height="45dp" android:text="@string/feedback_submit"/>
+                <TextView android:textSize="18sp" android:textStyle="bold" android:textColor="#ffffff" android:gravity="center" android:id="@+id/feedbackSubmitBtn" android:background="@drawable/bg_feedback_btn_primary" android:layout_width="match_parent" android:layout_height="45dp" android:text="@string/feedback_submit"/>
         </LinearLayout>
 </LinearLayout>
