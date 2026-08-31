@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:background="@drawable/lolib_bg_dialog_outline" android:paddingTop="20dp" android:paddingBottom="24dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="24dp" android:paddingEnd="24dp">
-        <include/>
+        <include layout="@layout/lolib_include_ai_dialog_header"/>
         <TextView android:textSize="13sp" android:textColor="#666666" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="不在词典中"/>
         <TextView android:textSize="15sp" android:textColor="#101010" android:id="@+id/spell_sentence" android:background="@drawable/lolib_bg_function_card_figma" android:padding="12dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:minHeight="56dp" android:lineSpacingExtra="4dp"/>
         <TextView android:textSize="13sp" android:textColor="#666666" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="建议"/>

@@ -38,12 +38,12 @@
                                         <ImageView android:layout_width="@dimen/ai_model_config_params_icon_size" android:layout_height="@dimen/ai_model_config_params_icon_size" android:src="@drawable/ic_ai_params" android:scaleType="fitCenter" android:contentDescription="@string/ai_params"/>
                                         <TextView android:textSize="@dimen/ai_model_config_section_title_size" android:textColor="#fa6200" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ai_params" android:layout_marginStart="8dp"/>
                                 </LinearLayout>
-                                <include/>
-                                <include/>
-                                <include/>
-                                <include/>
-                                <include/>
-                                <include/>
+                                <include layout="@layout/item_ai_slider_top_p"/>
+                                <include layout="@layout/item_ai_slider_temperature"/>
+                                <include layout="@layout/item_ai_slider_presence_penalty"/>
+                                <include layout="@layout/item_ai_slider_frequency_penalty"/>
+                                <include layout="@layout/item_ai_slider_max_tokens"/>
+                                <include layout="@layout/item_ai_slider_seed"/>
                         </LinearLayout>
                 </LinearLayout>
         </ScrollView>

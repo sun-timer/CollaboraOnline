@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/renameDialogScroll" android:layout_width="match_parent" android:layout_height="match_parent" android:paddingStart="@dimen/dialog_shell_padding_horizontal" android:paddingEnd="@dimen/dialog_shell_padding_horizontal">
-        <include android:layout_gravity="center" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxWidth="@dimen/dialog_content_max_width"/>
+        <include android:layout_gravity="center" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxWidth="@dimen/dialog_content_max_width" layout="@layout/dialog_rename_file"/>
 </FrameLayout>

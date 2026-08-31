@@ -14,5 +14,5 @@
                 <View android:layout_gravity="bottom|start" android:id="@+id/impress_function_tab_indicator" android:background="@drawable/lolib_bg_impress_tab_indicator" android:visibility="invisible" android:layout_width="24dp" android:layout_height="3dp"/>
         </FrameLayout>
         <androidx.core.widget.NestedScrollView android:id="@+id/impress_function_content_container" android:paddingTop="8dp" android:paddingBottom="16dp" android:scrollbars="vertical" android:clipToPadding="false" android:layout_width="match_parent" android:layout_height="0dp" android:fillViewport="false" android:layout_weight="1" android:overScrollMode="ifContentScrolls" android:paddingStart="16dp" android:paddingEnd="16dp"/>
-        <include android:id="@+id/impress_function_font_picker_panel" android:visibility="gone" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
+        <include android:id="@+id/impress_function_font_picker_panel" android:visibility="gone" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" layout="@layout/lolib_sheet_font_picker"/>
 </LinearLayout>
