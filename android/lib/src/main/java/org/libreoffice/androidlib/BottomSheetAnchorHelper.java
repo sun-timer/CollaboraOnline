@@ -87,6 +87,21 @@ public final class BottomSheetAnchorHelper {
         SystemUiHelper.applyBottomSheetChrome(context, dialog.getWindow());
     }
 
+
+    /**
+     * 文档内 sheet 的锚定选项：贴底不叠导航栏、按设计稿底部留白、日志带模块名。
+     */
+    public static Options overlayDocumentSheetOptions(Context context, String logTag) {
+        Options options = new Options();
+        options.applyNavBarPadding = false;
+        if (context != null) {
+            options.internalBottomDesignPadPx =
+                    context.getResources().getDimensionPixelSize(R.dimen.lolib_function_sheet_bottom_pad);
+        }
+        options.logTag = logTag != null ? logTag : "BottomSheetAnchor";
+        return options;
+    }
+
     public static void expandRatio(BottomSheetDialog dialog, float heightRatio, Options options) {
         if (dialog == null) {
             return;

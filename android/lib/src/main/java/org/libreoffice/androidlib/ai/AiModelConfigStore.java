@@ -209,4 +209,38 @@ public final class AiModelConfigStore {
         }
         return Math.max(0f, Math.min(1f, value));
     }
+
+    public static String getModelLabel(int modelType) {
+        switch (modelType) {
+            case MODEL_VISION:
+                return "视觉模型";
+            case MODEL_IMAGE:
+                return "图片生成模型";
+            case MODEL_THINK:
+                return "思考模型";
+            case MODEL_BASE:
+            default:
+                return "基础模型";
+        }
+    }
+
+    /** AI 弹窗标题：需要配置<模型名>。 */
+    public static String getRequiredDialogTitle(int modelType) {
+        return "需要配置" + getModelLabel(modelType);
+    }
+
+    /** 校验指定模型是否已配置 URL/API Key；缺项返回提示文案，就绪返回空串。 */
+    public static String validateConfigured(Context context, int modelType) {
+        Form form = loadForm(context, modelType, "", "");
+        String url = safeTrim(form.url);
+        String apiKey = safeTrim(form.apiKey);
+        String label = getModelLabel(modelType);
+        if (url.isEmpty()) {
+            return "请先在设置中配置" + label + "的接口地址。";
+        }
+        if (apiKey.isEmpty()) {
+            return "请先在设置中配置" + label + "的 API Key。";
+        }
+        return "";
+    }
 }

@@ -1,5 +1,6 @@
 package org.libreoffice.androidlib.ai;
 
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.res.Resources;
@@ -14,6 +15,7 @@ import android.view.WindowManager;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.BottomSheetAnchorHelper;
+import org.libreoffice.androidlib.SafeAreaInsets;
 import org.libreoffice.androidlib.SystemUiHelper;
 
 import androidx.constraintlayout.widget.ConstraintLayout;
@@ -105,18 +107,32 @@ public final class AiDialogHelper {
     /** 输入/简单弹窗（Hug）高度上限。 */
     public static int computeMaxHeightHugPx(Resources res) {
         DisplayMetrics dm = res.getDisplayMetrics();
-        int maxHeight = dpToPx(res, MAX_HEIGHT_HUG_DP);
-        maxHeight = Math.min(maxHeight, dm.heightPixels - dpToPx(res, 24));
-        return Math.max(maxHeight, dpToPx(res, MIN_HEIGHT_DP));
+        int screenCap = Math.max(dm.heightPixels - dpToPx(res, 24), 1);
+        int maxHeight = Math.min(dpToPx(res, MAX_HEIGHT_HUG_DP), screenCap);
+        // 下限不得反超屏幕可用高，避免横屏/短屏时弹窗比屏幕还高
+        int floor = Math.min(dpToPx(res, MIN_HEIGHT_DP), screenCap);
+        return Math.max(maxHeight, floor);
     }
 
     /** 结果/滚动内容弹窗高度上限（较 Hug 略高，但仍低于旧 80% 屏高）。 */
     public static int computeMaxHeightContentPx(Resources res) {
         DisplayMetrics dm = res.getDisplayMetrics();
+        int screenCap = Math.max(dm.heightPixels - dpToPx(res, 24), 1);
         int maxHeight = Math.min(dpToPx(res, MAX_HEIGHT_CONTENT_DP),
                 (int) (dm.heightPixels * MAX_HEIGHT_SCREEN_RATIO));
-        maxHeight = Math.min(maxHeight, dm.heightPixels - dpToPx(res, 24));
-        return Math.max(maxHeight, dpToPx(res, 320));
+        maxHeight = Math.min(maxHeight, screenCap);
+        int floor = Math.min(dpToPx(res, 320), screenCap);
+        return Math.max(maxHeight, floor);
+    }
+
+    /** 任意目标高度钳制到屏幕可用高（屏高-24dp），防止固定 dp 高度在横屏/短屏溢出。 */
+    public static int clampHeightToScreen(Resources res, int heightPx) {
+        if (res == null || heightPx <= 0) {
+            return heightPx;
+        }
+        DisplayMetrics dm = res.getDisplayMetrics();
+        int screenCap = Math.max(dm.heightPixels - dpToPx(res, 24), 1);
+        return Math.min(heightPx, screenCap);
     }
 
     /** overlay 居中面板高度：内容多时可占屏 60%，否则用 Hug 上限。 */
@@ -311,11 +327,35 @@ public final class AiDialogHelper {
                 return;
             }
             if (alertDialog != null) {
-                alertDialog.setOnDismissListener(d -> onDismiss.run());
+                alertDialog.setOnDismissListener(d -> {
+                    untrackCompactPanel(this);
+                    onDismiss.run();
+                });
             }
             if (bottomSheetDialog != null) {
-                bottomSheetDialog.setOnDismissListener(d -> onDismiss.run());
+                bottomSheetDialog.setOnDismissListener(d -> {
+                    untrackCompactPanel(this);
+                    onDismiss.run();
+                });
             }
         }
+    }
+
+    /** 居中弹窗可用高度上限：内容模式(content)或 Hug 模式；Activity 时扣除状态栏+导航栏。 */
+    public static int computeCenteredDialogMaxHeightPx(Context context, boolean contentMode) {
+        Resources res = context.getResources();
+        int base = contentMode ? computeMaxHeightContentPx(res) : computeMaxHeightHugPx(res);
+        DisplayMetrics dm = res.getDisplayMetrics();
+        int reserved = dpToPx(res, 48);
+        if (context instanceof Activity) {
+            View decor = ((Activity) context).getWindow().getDecorView();
+            SafeAreaInsets insets = SystemUiHelper.readSafeAreaInsets(decor);
+            int total = insets.top + insets.bottom;
+            if (total > 0) {
+                reserved = total;
+            }
+        }
+        int available = dm.heightPixels - reserved;
+        return Math.max(dpToPx(res, 180), Math.min(base, available));
     }
 }
