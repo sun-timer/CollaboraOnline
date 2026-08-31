@@ -5,12 +5,17 @@
  * SPDX-License-Identifier: MPL-2.0
  */
 
+#import "config.h"
+
 #import "CODocument.h"
 #import "DocumentPresentation.h"
 #import "DocumentViewController.h"
 #import "RecentDocumentsStore.h"
+#import "MobileApp.hpp"
 
 static NSString *const DocumentPresentationErrorDomain = @"com.xunlong.xloffice.document";
+static const int kKitIdlePollAttempts = 60;
+static const int kKitIdlePollIntervalMs = 50;
 
 @implementation DocumentPresentation
 
@@ -19,12 +24,56 @@ static NSString *const DocumentPresentationErrorDomain = @"com.xunlong.xloffice.
         return;
     }
 
+    UIViewController *existing = presenter.presentedViewController;
+    if (existing != nil) {
+        if ([existing isKindOfClass:[DocumentViewController class]]) {
+            DocumentViewController *documentVC = (DocumentViewController *)existing;
+            [documentVC requestCloseWithCompletion:^{
+                [self waitForKitIdleThenPresent:documentURL from:presenter attempt:0];
+            }];
+        } else {
+            [existing dismissViewControllerAnimated:NO completion:^{
+                [self waitForKitIdleThenPresent:documentURL from:presenter attempt:0];
+            }];
+        }
+        return;
+    }
+
+    [self waitForKitIdleThenPresent:documentURL from:presenter attempt:0];
+}
+
++ (void)waitForKitIdleThenPresent:(NSURL *)documentURL
+                             from:(UIViewController *)presenter
+                          attempt:(int)attempt {
+    if (presenter.presentedViewController != nil && attempt < kKitIdlePollAttempts) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                     (int64_t)(kKitIdlePollIntervalMs * NSEC_PER_MSEC)),
+                       dispatch_get_main_queue(), ^{
+            [self waitForKitIdleThenPresent:documentURL from:presenter attempt:attempt + 1];
+        });
+        return;
+    }
+
+    if (DocumentData::isAnyDocumentOpen() && attempt < kKitIdlePollAttempts) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                     (int64_t)(kKitIdlePollIntervalMs * NSEC_PER_MSEC)),
+                       dispatch_get_main_queue(), ^{
+            [self waitForKitIdleThenPresent:documentURL from:presenter attempt:attempt + 1];
+        });
+        return;
+    }
+
+    [self presentDocumentNowAtURL:documentURL from:presenter];
+}
+
++ (void)presentDocumentNowAtURL:(NSURL *)documentURL from:(UIViewController *)presenter {
     [documentURL startAccessingSecurityScopedResource];
     RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
     [store recordURL:documentURL];
 
     UIStoryboard *storyBoard = [UIStoryboard storyboardWithName:@"Main" bundle:nil];
-    DocumentViewController *documentViewController = [storyBoard instantiateViewControllerWithIdentifier:@"DocumentViewController"];
+    DocumentViewController *documentViewController =
+        [storyBoard instantiateViewControllerWithIdentifier:@"DocumentViewController"];
     documentViewController.document = [[CODocument alloc] initWithFileURL:documentURL];
     documentViewController.document->fakeClientFd = -1;
     documentViewController.document->readOnly = false;
@@ -68,7 +117,8 @@ static NSString *const DocumentPresentationErrorDomain = @"com.xunlong.xloffice.
     }
 
     NSString *base = basename.length > 0 ? basename : @"文档";
-    NSURL *documents = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
+    NSURL *documents = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory
+                                                               inDomains:NSUserDomainMask] lastObject];
     NSString *fileName = [NSString stringWithFormat:@"%@.%@", base, ext];
     NSURL *destination = [documents URLByAppendingPathComponent:fileName];
     NSUInteger suffix = 2;

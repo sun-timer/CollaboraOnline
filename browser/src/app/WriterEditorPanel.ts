@@ -164,7 +164,7 @@ class WriterEditorPanel {
 			const isDialog = feature.kind === 'dialog';
 			const dialogReady =
 				isDialog &&
-				WriterEditorPanel.SUPPORTED_DIALOGS.indexOf(feature.dialog || '') >= 0;
+				!!feature.dialog && WriterEditorPanel.SUPPORTED_DIALOGS.indexOf(feature.dialog) >= 0;
 			const gated = isDialog && !dialogReady;
 			const needsSelection = !!feature.needsSelection && !selection;
 			button.disabled = gated || needsSelection;
@@ -377,12 +377,19 @@ class WriterEditorPanel {
 }
 
 if (typeof window !== 'undefined' && (window as any).ThisIsTheiOSApp) {
+	// bundle.js is loaded with defer, so readyState is already "interactive"
+	// while this file is still evaluating. Never mount synchronously here:
+	// WriterEditorSheet (and Leaflet/Map after it) must finish parsing first.
 	const mount = () => {
-		WriterEditorPanel.mount();
+		try {
+			WriterEditorPanel.mount();
+		} catch (_e) {
+			window.setTimeout(mount, 0);
+		}
 	};
 	if (document.readyState === 'loading') {
 		document.addEventListener('DOMContentLoaded', mount, { once: true });
 	} else {
-		mount();
+		window.setTimeout(mount, 0);
 	}
 }

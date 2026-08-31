@@ -1,5 +1,5 @@
 /*
- * Shared Calc AI task catalog for Phase 5 P1.
+ * Shared Calc AI task catalog for Phase 5 (P1 read/insert + P2 mutate-confirm).
  *
  * Native code owns credentials and networking. This catalog only freezes
  * taskType, promptId, context fields and validation rules.
@@ -10,7 +10,7 @@ interface CalcAiTaskDefinition {
 	promptId: string;
 	androidTaskType: string;
 	requiredInput: 'prompt';
-	resultMode: 'insertFormula' | 'conversation';
+	resultMode: 'insertFormula' | 'conversation' | 'mutateConfirm';
 	allowedContextFields: string[];
 	requiresRange: boolean;
 }
@@ -22,6 +22,12 @@ interface CalcAiValidationResult {
 
 class CalcAiCatalog {
 	static readonly P1_TASK_TYPES = ['calc_formula', 'calc_data_analysis'];
+	static readonly P2_TASK_TYPES = [
+		'calc_cond_format',
+		'calc_data_process',
+		'calc_chart',
+		'calc_new_table',
+	];
 
 	static readonly TASKS: { [taskType: string]: CalcAiTaskDefinition } = {
 		calc_formula: {
@@ -41,6 +47,42 @@ class CalcAiCatalog {
 			resultMode: 'conversation',
 			allowedContextFields: ['cellRange', 'cellData'],
 			requiresRange: true,
+		},
+		calc_cond_format: {
+			taskType: 'calc_cond_format',
+			promptId: 'calc.cond_format',
+			androidTaskType: 'calc_cond_format',
+			requiredInput: 'prompt',
+			resultMode: 'mutateConfirm',
+			allowedContextFields: ['cellRange', 'cellData'],
+			requiresRange: true,
+		},
+		calc_data_process: {
+			taskType: 'calc_data_process',
+			promptId: 'calc.data_process',
+			androidTaskType: 'calc_data_process',
+			requiredInput: 'prompt',
+			resultMode: 'mutateConfirm',
+			allowedContextFields: ['cellRange', 'cellData'],
+			requiresRange: true,
+		},
+		calc_chart: {
+			taskType: 'calc_chart',
+			promptId: 'calc.chart',
+			androidTaskType: 'calc_chart',
+			requiredInput: 'prompt',
+			resultMode: 'mutateConfirm',
+			allowedContextFields: ['cellRange', 'cellData'],
+			requiresRange: true,
+		},
+		calc_new_table: {
+			taskType: 'calc_new_table',
+			promptId: 'calc.new_table',
+			androidTaskType: 'calc_new_table',
+			requiredInput: 'prompt',
+			resultMode: 'mutateConfirm',
+			allowedContextFields: ['cellAddress'],
+			requiresRange: false,
 		},
 	};
 
@@ -116,26 +158,32 @@ class CalcAiCatalog {
 		return formula;
 	}
 
+	static extractJsonObject(text: string): any | null {
+		if (typeof text !== 'string' || text.trim().length === 0) {
+			return null;
+		}
+		let cleaned = text.trim();
+		cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/m, '');
+		const start = cleaned.indexOf('{');
+		const end = cleaned.lastIndexOf('}');
+		if (start < 0 || end <= start) {
+			return null;
+		}
+		try {
+			return JSON.parse(cleaned.slice(start, end + 1));
+		} catch (_error) {
+			return null;
+		}
+	}
+
 	private static containsSensitiveField(value: any): boolean {
 		if (!value || typeof value !== 'object') {
 			return false;
 		}
-		if (Array.isArray(value)) {
-			for (let i = 0; i < value.length; i++) {
-				if (CalcAiCatalog.containsSensitiveField(value[i])) {
-					return true;
-				}
-			}
-			return false;
-		}
+		const blocked = ['apiKey', 'Authorization', 'accessToken', 'password'];
 		const keys = Object.keys(value);
 		for (let i = 0; i < keys.length; i++) {
-			const lowerKey = keys[i].toLowerCase();
-			if (
-				lowerKey.indexOf('apikey') >= 0 ||
-				lowerKey.indexOf('authorization') >= 0 ||
-				lowerKey.indexOf('accesstoken') >= 0
-			) {
+			if (blocked.indexOf(keys[i]) >= 0) {
 				return true;
 			}
 			if (CalcAiCatalog.containsSensitiveField(value[keys[i]])) {
@@ -145,3 +193,5 @@ class CalcAiCatalog {
 		return false;
 	}
 }
+
+(window as any).CalcAiCatalog = CalcAiCatalog;

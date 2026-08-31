@@ -52,6 +52,12 @@ void DocumentData::deallocate(unsigned docId)
     idToDocDataMap.erase(docId);
 }
 
+bool DocumentData::isAnyDocumentOpen()
+{
+    const std::lock_guard<std::mutex> lock(idToDocDataMapMutex);
+    return !idToDocDataMap.empty();
+}
+
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
