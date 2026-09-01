@@ -16,7 +16,7 @@ class MobileAiCalcDialog {
 	private readonly regenerateButton: HTMLButtonElement;
 	private readonly applyButton: HTMLButtonElement | null;
 	private readonly unsubscribe: () => void;
-	private readonly resultMode: 'insertFormula' | 'conversation';
+	private readonly resultMode: 'insertFormula' | 'conversation' | 'mutateConfirm';
 
 	constructor(taskType: string) {
 		this.taskType = taskType;
@@ -40,7 +40,15 @@ class MobileAiCalcDialog {
 		this.promptInput.placeholder =
 			taskType === 'calc_formula'
 				? '例如：计算 A1 到 A10 的平均值'
-				: '例如：总结这组数据的趋势和异常值';
+				: taskType === 'calc_cond_format'
+					? '例如：把大于 100 的单元格标红'
+					: taskType === 'calc_data_process'
+						? '例如：按第一列升序排序'
+						: taskType === 'calc_chart'
+							? '例如：用选中数据做柱状图'
+							: taskType === 'calc_new_table'
+								? '例如：生成一份销售周报样例表'
+								: '例如：总结这组数据的趋势和异常值';
 		this.promptInput.setAttribute('aria-label', 'AI 需求');
 		this.promptInput.style.cssText =
 			'width:100%;box-sizing:border-box;padding:10px;border:1px solid #d8dde3;' +
@@ -80,6 +88,10 @@ class MobileAiCalcDialog {
 			this.applyButton = this.createButton('插入单元格');
 			this.applyButton.onclick = () => this.controller.accept();
 			resultActions.appendChild(this.applyButton);
+		} else if (this.resultMode === 'mutateConfirm') {
+			this.applyButton = this.createButton('确认执行');
+			this.applyButton.onclick = () => this.controller.accept();
+			resultActions.appendChild(this.applyButton);
 		} else {
 			this.applyButton = null;
 		}
@@ -107,18 +119,18 @@ class MobileAiCalcDialog {
 	}
 
 	private refreshHint(): void {
-		if (this.taskType === 'calc_formula') {
+		if (this.taskType === 'calc_formula' || this.taskType === 'calc_new_table') {
 			const cellAddress = CalcAiContext.getActiveCellAddress();
 			this.hint.textContent = cellAddress
 				? `当前单元格：${cellAddress}`
-				: '未检测到活动单元格，仍可生成公式';
+				: '未检测到活动单元格，仍可生成';
 			this.hint.style.color = cellAddress ? '#188038' : '#5f6368';
 			return;
 		}
 		const cellRange = CalcAiContext.getSelectedRange();
 		this.hint.textContent = cellRange
 			? `已选范围：${cellRange}`
-			: '请先选择要分析的单元格区域';
+			: '请先选择单元格区域';
 		this.hint.style.color = cellRange ? '#188038' : '#d93025';
 	}
 
@@ -129,7 +141,8 @@ class MobileAiCalcDialog {
 		const ready = state.state === 'ready' && !!state.preview;
 		const canGenerate =
 			!active &&
-			(this.taskType !== 'calc_data_analysis' ||
+			(this.taskType === 'calc_formula' ||
+				this.taskType === 'calc_new_table' ||
 				!!CalcAiContext.getSelectedRange());
 		this.generateButton.disabled = !canGenerate;
 		this.stopButton.disabled = !active;

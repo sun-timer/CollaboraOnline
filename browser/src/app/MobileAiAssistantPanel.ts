@@ -27,6 +27,7 @@ class MobileAiAssistantPanel {
 		tabs.style.cssText =
 			'display:flex;gap:4px;padding:4px;border-radius:8px;background:#eef1f5;';
 		this.tabDocQa = this.createTab('文档 Q&A', 'doc_qa');
+		this.refreshDocQaLabel();
 		this.tabChat = this.createTab('聊天', 'chat');
 		tabs.appendChild(this.tabDocQa);
 		tabs.appendChild(this.tabChat);
@@ -72,8 +73,17 @@ class MobileAiAssistantPanel {
 	}
 
 	open(): void {
+		this.refreshDocQaLabel();
 		this.sheet.open();
 		this.render();
+	}
+
+	refreshDocQaLabel(): void {
+		const docType =
+			typeof window !== 'undefined' && (window as any).app?.map?.getDocType
+				? (window as any).app.map.getDocType()
+				: '';
+		this.tabDocQa.textContent = docType === 'spreadsheet' ? '表格Q&A' : '文档 Q&A';
 	}
 
 	private createTab(

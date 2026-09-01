@@ -421,6 +421,55 @@ didCompleteWithError:(NSError *)error {
             cellRange.length > 0 ? cellRange : @"未知",
             cellData.length > 0 ? cellData : @"（无数据）",
             text];
+    } else if ([taskType isEqualToString:@"calc_cond_format"]) {
+        NSString *cellRange = [context[@"cellRange"] isKindOfClass:[NSString class]]
+            ? [context[@"cellRange"] stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+        NSString *cellData = [context[@"cellData"] isKindOfClass:[NSString class]]
+            ? context[@"cellData"] : @"";
+        systemPrompt = [NSString stringWithFormat:
+            @"你是 Excel/Calc 条件格式助手。根据选中数据和用户需求，只返回 JSON（不要 Markdown 代码块）。\n"
+             "选中范围：%@\n选中数据：\n%@\n"
+             "JSON 字段：conditionType(greater|less|equal|between|top_n|bottom_n|above_average|below_average|duplicate|unique|contains_text|formula|clear),"
+             "value,value2,range,format{backgroundColor,fontColor,fontBold,fontItalic},description。\n"
+             "clear 表示清除条件/直接格式。颜色用 #RRGGBB。",
+            cellRange.length > 0 ? cellRange : @"未知",
+            cellData.length > 0 ? cellData : @"（无数据）"];
+        userPrompt = text;
+    } else if ([taskType isEqualToString:@"calc_data_process"]) {
+        NSString *cellRange = [context[@"cellRange"] isKindOfClass:[NSString class]]
+            ? [context[@"cellRange"] stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+        NSString *cellData = [context[@"cellData"] isKindOfClass:[NSString class]]
+            ? context[@"cellData"] : @"";
+        systemPrompt = [NSString stringWithFormat:
+            @"你是电子表格数据处理专家。只返回 JSON："
+             "{\"description\":\"...\",\"actions\":[{\"type\":\"set_formula|set_value|sort|filter|clear_formatting|merge_cells|bold|calculate\","
+             "\"range\":\"A1:C10\",\"value\":\"...\",\"ascending\":true}]}。\n"
+             "选中范围：%@\n数据样本：\n%@\n不要 Markdown 代码块。",
+            cellRange.length > 0 ? cellRange : @"未知",
+            cellData.length > 0 ? cellData : @"（无数据）"];
+        userPrompt = text;
+    } else if ([taskType isEqualToString:@"calc_chart"]) {
+        NSString *cellRange = [context[@"cellRange"] isKindOfClass:[NSString class]]
+            ? [context[@"cellRange"] stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+        NSString *cellData = [context[@"cellData"] isKindOfClass:[NSString class]]
+            ? context[@"cellData"] : @"";
+        systemPrompt = [NSString stringWithFormat:
+            @"你是 Calc 图表专家。只返回 JSON："
+             "{\"preprocess\":[],\"chart\":{\"dataRange\":\"$Sheet1.$A$1:$B$10\","
+             "\"chartType\":\"pie|bar|column|line\",\"title\":\"...\"}}。\n"
+             "选中范围：%@\n数据样本：\n%@\n不要多余解释。",
+            cellRange.length > 0 ? cellRange : @"未知",
+            cellData.length > 0 ? cellData : @"（无数据）"];
+        userPrompt = text;
+    } else if ([taskType isEqualToString:@"calc_new_table"]) {
+        systemPrompt =
+            @"你是电子表格数据生成助手。只返回纯 JSON："
+             "{\"columns\":[\"列1\",\"列2\"],\"data\":[[\"a\",1],[\"b\",2]]}。"
+             "至少 8 行，不要 Markdown 代码块。";
+        userPrompt = text.length > 0 ? text : @"生成一份示例数据表";
     } else if ([taskType isEqualToString:@"polish"]) {
         NSString *style = context[@"polishStyle"] ?: @"quick";
         NSDictionary *styles = @{

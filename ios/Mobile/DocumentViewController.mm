@@ -36,6 +36,7 @@
 #import "AI/AISettingsDrawerController.h"
 #import "Bridge/NativeBridgeHandler.h"
 #import "Toolbar/BottomToolbarController.h"
+#import "Toolbar/PreviewFunctionSheetController.h"
 #import "Toolbar/TopToolbarController.h"
 
 #import "DocumentViewController.h"
@@ -45,7 +46,7 @@
 #import <Poco/MemoryStream.h>
 #import <PhotosUI/PhotosUI.h>
 
-@interface DocumentViewController() <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, UIScrollViewDelegate, UIDocumentPickerDelegate, UIFontPickerViewControllerDelegate, PHPickerViewControllerDelegate, IOSTopToolbarControllerDelegate, IOSBottomToolbarControllerDelegate> {
+@interface DocumentViewController() <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, UIScrollViewDelegate, UIDocumentPickerDelegate, UIFontPickerViewControllerDelegate, PHPickerViewControllerDelegate, IOSTopToolbarControllerDelegate, IOSBottomToolbarControllerDelegate, PreviewFunctionSheetControllerDelegate> {
     int closeNotificationPipeForForwardingThread[2];
     NSURL *downloadAsTmpURL;
     NativeBridgeHandler *nativeBridgeHandler;
@@ -70,6 +71,8 @@
     BOOL nativeEditMode;
     NSString *nativeDocumentType;
     AISettingsDrawerController *aiDrawer;
+    BOOL isClosing;
+    BOOL kitConnectionTornDown;
 }
 
 @end
@@ -116,6 +119,11 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+
+    closeNotificationPipeForForwardingThread[0] = -1;
+    closeNotificationPipeForForwardingThread[1] = -1;
+    isClosing = NO;
+    kitConnectionTornDown = NO;
 
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     WKUserContentController *userContentController = [[WKUserContentController alloc] init];
@@ -547,27 +555,100 @@ static IMP standardImpOfInputAccessoryView = nil;
     }];
 }
 
-- (IBAction)dismissDocumentViewController {
+- (void)tearDownKitConnectionIfNeeded {
+    if (kitConnectionTornDown) {
+        return;
+    }
+    kitConnectionTornDown = YES;
+
+    if (closeNotificationPipeForForwardingThread[0] >= 0) {
+        fakeSocketClose(closeNotificationPipeForForwardingThread[0]);
+        closeNotificationPipeForForwardingThread[0] = -1;
+    } else if (self.document != nil && self.document->fakeClientFd >= 0) {
+        // HULLO never ran: no forwarding thread, close the client fd directly.
+        fakeSocketClose(self.document->fakeClientFd);
+        self.document->fakeClientFd = -1;
+    }
+}
+
+- (void)removeDocumentCopyIfNeeded {
+    if (self.document == nil || self.document->copyFileURL == nil) {
+        return;
+    }
+    if (![[NSFileManager defaultManager] removeItemAtURL:self.document->copyFileURL error:nil]) {
+        LOG_SYS("Could not remove copy of document at "
+                << [[self.document->copyFileURL path] UTF8String]);
+    }
+}
+
+- (void)tearDownWebView {
+    if (self.webView == nil) {
+        return;
+    }
+    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"debug"];
+    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"lok"];
+    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"error"];
+    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"nativeBridge"];
+    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"aiConfiguration"];
+    nativeBridgeHandler = nil;
+    aiService = nil;
+    [self.webView removeFromSuperview];
+    self.webView = nil;
+}
+
+- (void)finishDocumentUiCloseWithCompletion:(void (^)(void))completion {
     [nativeBridgeHandler cancelAllRequests];
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                     name:UIKeyboardWillChangeFrameNotification
                                                   object:nil];
-    [self dismissViewControllerAnimated:YES completion:^ {
-            [self.document closeWithCompletionHandler:^(BOOL success){
-                    LOG_TRC("close completion handler gets " << (success?"YES":"NO"));
-                    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"debug"];
-                    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"lok"];
-                    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"error"];
-                    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"nativeBridge"];
-                    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"aiConfiguration"];
-                    self->nativeBridgeHandler = nil;
-                    self->aiService = nil;
-                    // Don't set webView.configuration.userContentController to
-                    // nil as it generates a "nil not allowed" compiler warning
-                    [self.webView removeFromSuperview];
-                    self.webView = nil;
-                    }];
+    [self removeDocumentCopyIfNeeded];
+    [self.document closeWithCompletionHandler:^(BOOL success) {
+        LOG_TRC("close completion handler gets " << (success ? "YES" : "NO"));
+        [self tearDownWebView];
+        [self dismissViewControllerAnimated:YES completion:^{
+            if (completion != nil) {
+                completion();
+            }
+        }];
     }];
+}
+
+- (void)requestCloseWithCompletion:(void (^)(void))completion {
+    if (isClosing) {
+        if (completion != nil) {
+            completion();
+        }
+        return;
+    }
+    isClosing = YES;
+
+    void (^proceedToNativeTeardown)(void) = ^{
+        [self tearDownKitConnectionIfNeeded];
+        [self finishDocumentUiCloseWithCompletion:completion];
+    };
+
+    if (self.webView != nil && self.document != nil && self.document->fakeClientFd >= 0) {
+        NSString *script =
+            @"(function(){"
+             "try{if(window.app&&app.dispatcher){app.dispatcher.dispatch('closeapp');return;}}"
+             "catch(e){}"
+             "try{if(window.app&&app.socket){app.socket.sendMessage('closedocument');}}"
+             "catch(e){}"
+             "try{if(window.postMobileMessage){window.postMobileMessage('BYE');}}"
+             "catch(e){}"
+             "})();";
+        [self.webView evaluateJavaScript:script
+                       completionHandler:^(__unused id _Nonnull, __unused NSError *_Nullable error) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(150 * NSEC_PER_MSEC)),
+                           dispatch_get_main_queue(), proceedToNativeTeardown);
+        }];
+    } else {
+        proceedToNativeTeardown();
+    }
+}
+
+- (IBAction)dismissDocumentViewController {
+    [self requestCloseWithCompletion:nil];
 }
 
 - (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
@@ -1327,12 +1408,20 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)bottomToolbarDidPressMobilePreview
 {
-    [self showToolbarPlaceholder:@"手机预览将在后续阶段接入。"];
+    if (nativeEditMode) {
+        [self finishNativeEditing];
+    }
+    [self sendToolbarJavaScript:
+     @"if(window.MobilePhonePreview){"
+      "if(document.body.classList.contains('mobile-phone-preview-active')){window.MobilePhonePreview.hide();}"
+      "else{window.MobilePhonePreview.show();}"
+      "}"];
 }
 
 - (void)bottomToolbarDidPressFunction
 {
-    [self sendToolbarJavaScript:@"if(window.__coolWriterEditorPanel){window.__coolWriterEditorPanel.open();}"];
+    // Preview/edit shared sheet (Android preview 功能 parity). Do not open Writer editor panel.
+    [PreviewFunctionSheetController presentFrom:self delegate:self];
 }
 
 - (void)bottomToolbarDidPressAIAssistant
@@ -1358,6 +1447,90 @@ static IMP standardImpOfInputAccessoryView = nil;
 - (void)bottomToolbarDidPressParagraph
 {
     [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:LeftPara');}"];
+}
+
+- (void)bottomToolbarDidPressFillCell
+{
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"选择单元格填充颜色"
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    NSArray<NSDictionary *> *colors = @[
+        @{ @"title": @"黄色", @"hex": @"FFFF00" },
+        @{ @"title": @"浅绿", @"hex": @"C6EFCE" },
+        @{ @"title": @"浅红", @"hex": @"FFC7CE" },
+        @{ @"title": @"浅蓝", @"hex": @"BDD7EE" },
+        @{ @"title": @"橙色", @"hex": @"FCE4D6" },
+        @{ @"title": @"无填充", @"hex": @"FFFFFF" },
+    ];
+    for (NSDictionary *spec in colors) {
+        NSString *hex = spec[@"hex"];
+        [sheet addAction:[UIAlertAction actionWithTitle:spec[@"title"]
+                                                  style:UIAlertActionStyleDefault
+                                                handler:^(UIAlertAction *action) {
+            NSString *js = [NSString stringWithFormat:
+                @"if(window.app&&app.socket){app.socket.sendMessage("
+                 "'uno .uno:BackgroundColor {\\\"BackgroundColor.Color\\\":{\\\"type\\\":\\\"long\\\","
+                 "\\\"value\\\":%lu}}');}",
+                (unsigned long)strtoul(hex.UTF8String, NULL, 16)];
+            [self sendToolbarJavaScript:js];
+        }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    UIPopoverPresentationController *popover = sheet.popoverPresentationController;
+    if (popover != nil) {
+        popover.sourceView = bottomToolbarController.view;
+        popover.sourceRect = bottomToolbarController.view.bounds;
+    }
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)bottomToolbarDidPressMergeCell
+{
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"合并单元格"
+                                                                   message:@"部分单元格不为空时可选择合并方式。"
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    NSArray<NSArray<NSString *> *> *options = @[
+        @[ @"合并内容", @".uno:MergeCells?MoveContents:bool=true" ],
+        @[ @"合并单元格", @".uno:MergeCells?MoveContents:bool=false" ],
+        @[ @"合并相同单元格", @".uno:MergeCells?MoveContents:bool=false" ],
+    ];
+    for (NSArray<NSString *> *opt in options) {
+        [sheet addAction:[UIAlertAction actionWithTitle:opt[0]
+                                                  style:UIAlertActionStyleDefault
+                                                handler:^(UIAlertAction *action) {
+            NSString *js = [NSString stringWithFormat:
+                @"if(window.app&&app.socket){app.socket.sendMessage('uno %@');}", opt[1]];
+            [self sendToolbarJavaScript:js];
+        }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    UIPopoverPresentationController *popover = sheet.popoverPresentationController;
+    if (popover != nil) {
+        popover.sourceView = bottomToolbarController.view;
+        popover.sourceRect = bottomToolbarController.view.bounds;
+    }
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)previewFunctionSheetDidRequestSave
+{
+    [self saveAfterReadOnlyTransition];
+}
+
+- (void)previewFunctionSheetDidRequestExportPDF
+{
+    [self sendToolbarJavaScript:
+     @"window.webkit.messageHandlers.lok.postMessage('downloadas name=export.pdf format=pdf');"];
+}
+
+- (void)previewFunctionSheetDidRequestPrint
+{
+    [self sendToolbarJavaScript:@"window.webkit.messageHandlers.lok.postMessage('PRINT');"];
+}
+
+- (void)previewFunctionSheetDidRequestFindReplace
+{
+    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SearchDialog');}"];
 }
 
 - (void)bottomToolbarDidPressInsertImage
@@ -1392,20 +1565,18 @@ static IMP standardImpOfInputAccessoryView = nil;
 }
 
 - (void)bye {
-    // Close one end of the socket pair, that will wake up the forwarding thread above
-    fakeSocketClose(closeNotificationPipeForForwardingThread[0]);
-
-    // DocumentData::deallocate(self.document->appDocId);
-
-    if (![[NSFileManager defaultManager] removeItemAtURL:self.document->copyFileURL error:nil]) {
-        LOG_SYS("Could not remove copy of document at " << [[self.document->copyFileURL path] UTF8String]);
+    if (isClosing) {
+        [self tearDownKitConnectionIfNeeded];
+        return;
     }
+    isClosing = YES;
 
-    // The dismissViewControllerAnimated must be done on the main queue.
-    dispatch_async(dispatch_get_main_queue(),
-                   ^{
-                       [self dismissDocumentViewController];
-                   });
+    [self tearDownKitConnectionIfNeeded];
+    [self removeDocumentCopyIfNeeded];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self finishDocumentUiCloseWithCompletion:nil];
+    });
 }
 
 - (void)exportFileURL:(NSURL *)fileURL {

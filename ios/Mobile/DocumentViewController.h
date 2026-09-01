@@ -22,6 +22,9 @@
 
 - (void)bye;
 
+/// Tear down kit + WebView and dismiss. Safe to call from native chrome or JS BYE.
+- (void)requestCloseWithCompletion:(void (^ _Nullable)(void))completion;
+
 - (void)exportFileURL:(NSURL *)fileURL;
 
 @end

@@ -16,12 +16,15 @@ static const NSInteger kKeyboardTag = 5;
 static const NSInteger kCharacterTag = 6;
 static const NSInteger kParagraphTag = 7;
 static const NSInteger kInsertImageTag = 8;
+static const NSInteger kFillCellTag = 9;
+static const NSInteger kMergeCellTag = 10;
 
 @interface IOSBottomToolbarController ()
 @property (nonatomic, strong, readwrite) UIView *view;
 @property (nonatomic, weak) id<IOSBottomToolbarControllerDelegate> delegate;
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIStackView *itemsStack;
+@property (nonatomic, strong, nullable) NSLayoutConstraint *previewEqualWidthConstraint;
 @property (nonatomic, copy) NSString *documentType;
 @property (nonatomic, assign, readwrite) CGFloat preferredHeight;
 @end
@@ -32,6 +35,7 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
     item.translatesAutoresizingMaskIntoConstraints = NO;
     item.tag = tag;
     item.accessibilityLabel = title;
+    item.accessibilityIdentifier = [NSString stringWithFormat:@"bottomToolbarItem_%@", title];
 
     UIStackView *content = [[UIStackView alloc] init];
     content.translatesAutoresizingMaskIntoConstraints = NO;
@@ -60,7 +64,7 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
     [NSLayoutConstraint activateConstraints:@[
         [content.centerXAnchor constraintEqualToAnchor:item.centerXAnchor],
         [content.centerYAnchor constraintEqualToAnchor:item.centerYAnchor],
-        [item.widthAnchor constraintGreaterThanOrEqualToConstant:92.0],
+        [item.widthAnchor constraintGreaterThanOrEqualToConstant:72.0],
         [item.heightAnchor constraintEqualToConstant:82.0],
     ]];
     return item;
@@ -99,7 +103,7 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
     _itemsStack.translatesAutoresizingMaskIntoConstraints = NO;
     _itemsStack.axis = UILayoutConstraintAxisHorizontal;
     _itemsStack.alignment = UIStackViewAlignmentFill;
-    _itemsStack.distribution = UIStackViewDistributionFill;
+    _itemsStack.distribution = UIStackViewDistributionFillEqually;
     [_scrollView addSubview:_itemsStack];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -150,27 +154,44 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
         [view removeFromSuperview];
     }
 
+    BOOL isPreview = (self.mode == IOSBottomToolbarModePreview);
+    BOOL isCalc = [self.documentType isEqualToString:@"spreadsheet"];
     NSArray<NSArray<NSString *> *> *items = nil;
-    if (self.mode == IOSBottomToolbarModePreview) {
+
+    if (isPreview) {
+        // Align Android preview: three equal tabs.
         items = @[
-            @[@"mobile-preview", @"适配手机", [NSString stringWithFormat:@"%ld", kMobilePreviewTag]],
-            @[@"function", @"功能", [NSString stringWithFormat:@"%ld", kFunctionTag]],
-            @[@"ai-assistant", @"AI 助手", [NSString stringWithFormat:@"%ld", kAIAssistantTag]],
-            @[@"ai-feature", @"AI 功能", [NSString stringWithFormat:@"%ld", kAIFeaturesTag]],
-            @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", kKeyboardTag]],
+            @[@"mobile-preview", @"手机预览", [NSString stringWithFormat:@"%ld", (long)kMobilePreviewTag]],
+            @[@"function", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
+            @[@"ai-assistant", @"AI助手", [NSString stringWithFormat:@"%ld", (long)kAIAssistantTag]],
         ];
+        self.itemsStack.distribution = UIStackViewDistributionFillEqually;
+        self.scrollView.scrollEnabled = NO;
+        if (self.previewEqualWidthConstraint == nil) {
+            self.previewEqualWidthConstraint =
+                [self.itemsStack.widthAnchor constraintEqualToAnchor:self.scrollView.frameLayoutGuide.widthAnchor];
+        }
+        self.previewEqualWidthConstraint.active = YES;
     } else {
         NSMutableArray<NSArray<NSString *> *> *editItems = [NSMutableArray arrayWithArray:@[
-            @[@"function", @"功能", [NSString stringWithFormat:@"%ld", kFunctionTag]],
-            @[@"ai-feature", @"AI 功能", [NSString stringWithFormat:@"%ld", kAIFeaturesTag]],
-            @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", kKeyboardTag]],
-            @[@"character", @"字符", [NSString stringWithFormat:@"%ld", kCharacterTag]],
+            @[@"function", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
+            @[@"ai-feature", @"AI功能", [NSString stringWithFormat:@"%ld", (long)kAIFeaturesTag]],
+            @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", (long)kKeyboardTag]],
+            @[@"character", @"字符", [NSString stringWithFormat:@"%ld", (long)kCharacterTag]],
         ]];
-        if (![self.documentType isEqualToString:@"spreadsheet"]) {
-            [editItems addObject:@[@"paragraph", @"段落", [NSString stringWithFormat:@"%ld", kParagraphTag]]];
-            [editItems addObject:@[@"insert-image", @"插入图片", [NSString stringWithFormat:@"%ld", kInsertImageTag]]];
+        if (isCalc) {
+            [editItems addObject:@[@"ai-expand", @"填充", [NSString stringWithFormat:@"%ld", (long)kFillCellTag]]];
+            [editItems addObject:@[@"list", @"合并", [NSString stringWithFormat:@"%ld", (long)kMergeCellTag]]];
+        } else {
+            [editItems addObject:@[@"paragraph", @"段落", [NSString stringWithFormat:@"%ld", (long)kParagraphTag]]];
+            [editItems addObject:@[@"insert-image", @"插入图片", [NSString stringWithFormat:@"%ld", (long)kInsertImageTag]]];
         }
         items = editItems;
+        self.itemsStack.distribution = UIStackViewDistributionFill;
+        self.scrollView.scrollEnabled = YES;
+        if (self.previewEqualWidthConstraint != nil) {
+            self.previewEqualWidthConstraint.active = NO;
+        }
     }
 
     for (NSArray<NSString *> *definition in items) {
@@ -223,6 +244,12 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
             break;
         case kInsertImageTag:
             [self.delegate bottomToolbarDidPressInsertImage];
+            break;
+        case kFillCellTag:
+            [self.delegate bottomToolbarDidPressFillCell];
+            break;
+        case kMergeCellTag:
+            [self.delegate bottomToolbarDidPressMergeCell];
             break;
         default:
             break;

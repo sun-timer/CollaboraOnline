@@ -34,7 +34,7 @@ class CalcAiController {
 	private readonly listeners: CalcAiStateListener[] = [];
 	private readonly unsubscribeBridge: () => void;
 	private state: CalcAiControllerState = { state: 'idle', preview: '' };
-	private resultMode: 'insertFormula' | 'conversation' = 'insertFormula';
+	private resultMode: 'insertFormula' | 'conversation' | 'mutateConfirm' = 'insertFormula';
 	private lastRequest: {
 		taskType: string;
 		context: { [key: string]: any };
@@ -115,9 +115,9 @@ class CalcAiController {
 
 		const context =
 			contextOverride ||
-			(taskType === 'calc_data_analysis'
-				? CalcAiContext.buildAnalysisContext()
-				: CalcAiContext.buildFormulaContext());
+			(taskType === 'calc_formula' || taskType === 'calc_new_table'
+				? CalcAiContext.buildFormulaContext()
+				: CalcAiContext.buildAnalysisContext());
 		const payload = {
 			taskType,
 			selection: typeof prompt === 'string' ? prompt : '',
@@ -199,12 +199,31 @@ class CalcAiController {
 	}
 
 	accept(): boolean {
-		if (
-			this.resultMode !== 'insertFormula' ||
-			this.state.state !== 'ready' ||
-			!this.state.requestId ||
-			!this.state.preview
-		) {
+		if (this.state.state !== 'ready' || !this.state.requestId || !this.state.preview) {
+			return false;
+		}
+		if (this.resultMode === 'mutateConfirm') {
+			const result = CalcAiMutateApply.apply(
+				this.state.taskType || '',
+				this.state.preview,
+			);
+			if (!result.ok) {
+				this.setError(result.error || '改表执行失败');
+				return false;
+			}
+			const accepted = this.bridge.accept(this.state.requestId, this.state.preview);
+			if (!accepted) {
+				this.setError('NativeBridge 未确认 AI 结果');
+				return false;
+			}
+			this.state = {
+				...this.state,
+				state: 'accepted',
+			};
+			this.notify();
+			return true;
+		}
+		if (this.resultMode !== 'insertFormula') {
 			return false;
 		}
 		const formula = CalcAiCatalog.normalizeFormula(this.state.preview);

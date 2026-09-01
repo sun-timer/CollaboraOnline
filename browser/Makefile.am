@@ -271,6 +271,7 @@ COOL_JS_LST =\
 	src/app/NativeBridge.ts \
 	src/app/MobileAiBridge.ts \
 	src/app/WriterAiController.ts \
+	src/app/CalcAiMutateApply.ts \
 	src/app/CalcAiController.ts \
 	src/app/MobileAiConversationController.ts \
 	src/app/MobileAiSheet.ts \
@@ -286,12 +287,12 @@ COOL_JS_LST =\
 	src/app/WriterAiPanel.ts \
 	src/app/WriterEditorCatalog.ts \
 	src/app/WriterEditorController.ts \
+	src/app/WriterEditorSheet.ts \
+	src/app/WriterEditorIcons.ts \
 	src/app/WriterEditorPanel.ts \
 	src/app/WriterEditorChooseDialog.ts \
 	src/app/WriterFindReplaceDialog.ts \
 	src/app/WriterEditorWatermarkDialog.ts \
-	src/app/WriterEditorSheet.ts \
-	src/app/WriterEditorIcons.ts \
 	src/app/AndroidCalcCellMenu.ts \
 	src/app/AndroidCalcHeaderMenu.ts \
 	src/app/MobilePhonePreview.ts \
