@@ -1257,6 +1257,7 @@ body {
 [data-doctype='text'] .selections-data {
 	background-color: rgb(0, 129, 234); /* fill color — design #0081EA */
 	border-top-color: #0078d7; /* stroke color — design */
+	border-top-width: 3px; /* stroke weight — design */
 }
 
 .leaflet-canvas-container .splitters-data {

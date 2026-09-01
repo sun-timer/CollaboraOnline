@@ -125,7 +125,7 @@ class TextSelectionSection extends CanvasSectionObject {
 				this.context.strokeStyle = this.strokeColor;
 				this.context.lineJoin = 'miter';
 				this.context.lineCap = 'butt';
-				this.context.lineWidth = Math.max(3, 3 * app.dpiScale);
+				this.context.lineWidth = 3;
 				this.context.stroke();
 			} else {
 				// Impress: keep the legacy single-color translucent fill + stroke.
