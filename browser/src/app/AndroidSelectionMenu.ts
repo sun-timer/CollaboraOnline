@@ -60,6 +60,15 @@ class AndroidSelectionMenu {
 		return !!app.map && app.map.getDocType() === 'text';
 	}
 
+	/**
+	 * Selection-capable document types: Writer text and Impress presentation
+	 * (LOK setTextSelection is implemented for both — sd SdXImpressDocument).
+	 * Calc uses its own cell-selection bridge; Draw stays out for now.
+	 */
+	private static isSelectionDoc(): boolean {
+		return !!app.map && (app.map.getDocType() === 'text' || app.map.getDocType() === 'presentation');
+	}
+
 	private static isEditMode(): boolean {
 		return (
 			!!app.map &&
@@ -71,12 +80,12 @@ class AndroidSelectionMenu {
 	/**
 	 * In preview Writer, long-press always means "select text for the AI menu",
 	 * so the browser's 550ms long-press must never fall through to a right-click.
-	 * In edit-mode Writer we only suppress while a native selection gesture is in
-	 * flight, so a long-press that did NOT become a selection still keeps the
-	 * normal edit context menu.
+	 * In edit mode (Writer / Impress) we only suppress while a native selection
+	 * gesture is in flight, so a long-press that did NOT become a selection still
+	 * keeps the normal edit context menu.
 	 */
 	private static shouldSuppressContextMenu(): boolean {
-		if (!AndroidSelectionMenu.isWriterDoc()) {
+		if (!AndroidSelectionMenu.isSelectionDoc()) {
 			return false;
 		}
 		return (
@@ -202,7 +211,7 @@ class AndroidSelectionMenu {
 	 * Uses the same selecttext reset+start path as long-press.
 	 */
 	static onDoubleTapAtSectionPoint(point: cool.SimplePoint): void {
-		if (!window.ThisIsTheAndroidApp || !AndroidSelectionMenu.isWriterDoc()) {
+		if (!window.ThisIsTheAndroidApp || !AndroidSelectionMenu.isSelectionDoc()) {
 			return;
 		}
 
@@ -272,7 +281,7 @@ class AndroidSelectionMenu {
 			}
 			app.map._docLayer._postSelectTextEvent('start', anchor.x, anchor.y);
 		}
-		if (!AndroidSelectionMenu.isWriterDoc()) {
+		if (!AndroidSelectionMenu.isSelectionDoc()) {
 			AndroidSelectionMenu.cancelGesture();
 			return;
 		}
@@ -348,7 +357,7 @@ class AndroidSelectionMenu {
 	 * Invoked from LOActivity / COWebView only when native preview mode is active.
 	 */
 	static onLongPressAt(viewX: number, viewY: number): void {
-		if (!window.ThisIsTheAndroidApp || !AndroidSelectionMenu.isWriterDoc()) {
+		if (!window.ThisIsTheAndroidApp || !AndroidSelectionMenu.isSelectionDoc()) {
 			return;
 		}
 
@@ -371,8 +380,9 @@ class AndroidSelectionMenu {
 		if (!app.map || typeof app.map.isReadOnlyMode !== 'function') {
 			return;
 		}
-		// Both preview (read-only) and edit mode are allowed for Writer docs.
-		if (app.map.getDocType() !== 'text') {
+		// Both preview (read-only) and edit mode are allowed for selection docs;
+		// other doc types (spreadsheet / draw) never show this menu.
+		if (!AndroidSelectionMenu.isSelectionDoc()) {
 			return;
 		}
 		if (!AndroidSelectionMenu.hasNonDegenerateSelection()) {
@@ -614,7 +624,7 @@ class AndroidSelectionMenu {
 				if (
 					!window.ThisIsTheAndroidApp ||
 					!app.map ||
-					app.map.getDocType() !== 'text'
+					!AndroidSelectionMenu.isSelectionDoc()
 				) {
 					return originalOnClick.call(this, point, e);
 				}
@@ -751,10 +761,10 @@ class AndroidSelectionMenu {
 					return;
 				}
 
-				// Edit mode (Writer): same gesture-driven rules as preview — do not
-				// pop the menu on every core textselection (e.g. leftover SelectAll).
+				// Edit mode (Writer / Impress): same gesture-driven rules as preview —
+				// do not pop the menu on every core textselection (e.g. leftover SelectAll).
 				if (
-					AndroidSelectionMenu.isWriterDoc() &&
+					AndroidSelectionMenu.isSelectionDoc() &&
 					AndroidSelectionMenu.isEditMode()
 				) {
 					if (payload && payload !== 'EMPTY') {
