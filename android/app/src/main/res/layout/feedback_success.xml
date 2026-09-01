@@ -9,7 +9,7 @@
                 <ImageView android:layout_width="135dp" android:layout_height="138dp" android:layout_marginTop="40dp" android:src="@drawable/feedback_success_art" android:scaleType="fitCenter" android:contentDescription="@string/feedback_success_art_desc"/>
                 <TextView android:textSize="16sp" android:textColor="#333333" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="@string/feedback_success_message"/>
         </LinearLayout>
-        <LinearLayout android:gravity="center" android:paddingTop="6dp" android:paddingBottom="12dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="40dp" android:paddingEnd="40dp">
+        <LinearLayout android:gravity="center" android:id="@+id/feedbackSuccessBottomBar" android:paddingTop="6dp" android:paddingBottom="12dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="40dp" android:paddingEnd="40dp">
                 <TextView android:textSize="18sp" android:textStyle="bold" android:textColor="#ffffff" android:gravity="center" android:id="@+id/feedbackSuccessViewRecordsBtn" android:background="@drawable/bg_feedback_btn_primary" android:layout_width="match_parent" android:layout_height="45dp" android:text="@string/feedback_view_records"/>
         </LinearLayout>
 </LinearLayout>

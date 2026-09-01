@@ -86,7 +86,7 @@ public class FeedbackActivity extends AppCompatActivity {
         SystemUiHelper.enableEdgeToEdge(this);
         SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
         SystemUiHelper.applyStatusBarPadding(findViewById(R.id.feedbackMainHeader), 0);
-        applyImeAwareInsets(findViewById(R.id.feedbackMainRoot));
+        applyFormBottomInsets(findViewById(R.id.feedbackMainBottomBar));
 
         findViewById(R.id.feedbackMainBackBtn).setOnClickListener(v -> finish());
         findViewById(R.id.feedbackMainRecordsEntry).setOnClickListener(v -> showList());
@@ -129,24 +129,35 @@ public class FeedbackActivity extends AppCompatActivity {
     }
 
     /**
-     * 表单页根布局：合并 底部导航 + 软键盘 insets 到根 padding，
-     * 键盘弹出时顶起内容并切换 IME 配色（避免遮挡输入框/提交按钮）。
+     * 表单页底部栏：合并导航栏 + 软键盘 insets，避免在根布局消费 insets 导致顶栏无法预留状态栏。
      */
-    private void applyImeAwareInsets(View root) {
+    private void applyFormBottomInsets(View bottomBar) {
+        if (bottomBar == null) {
+            return;
+        }
         final boolean light = SystemUiHelper.isLightMode(this);
-        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
-            int nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
-            int ime = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom;
-            int bottom = Math.max(nav, ime);
+        final int extraBottom = getResources().getDimensionPixelSize(R.dimen.feedback_bottom_bar_padding_v);
+        ViewCompat.setOnApplyWindowInsetsListener(bottomBar, (v, insets) -> {
+            int bottom = SystemUiHelper.resolveBottomInset(v.getContext(), insets)
+                    + extraBottom + SystemUiHelper.getBottomSafeExtraPx(v.getContext());
             v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), bottom);
-            if (ime > 0) {
+            if (insets.getInsets(WindowInsetsCompat.Type.ime()).bottom > 0) {
                 SystemUiHelper.applyImeChrome(this, light);
             } else {
                 SystemUiHelper.applyDocumentChrome(this, light);
             }
             return WindowInsetsCompat.CONSUMED;
         });
-        ViewCompat.requestApplyInsets(root);
+        ViewCompat.requestApplyInsets(bottomBar);
+    }
+
+    private void applyFeedbackBottomBarInsets(int bottomBarId) {
+        View bottomBar = findViewById(bottomBarId);
+        if (bottomBar == null) {
+            return;
+        }
+        SystemUiHelper.applyNavigationBarPadding(bottomBar,
+                getResources().getDimensionPixelSize(R.dimen.feedback_bottom_bar_padding_v));
     }
 
     private void showSuccess() {
@@ -154,7 +165,7 @@ public class FeedbackActivity extends AppCompatActivity {
         SystemUiHelper.enableEdgeToEdge(this);
         SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
         SystemUiHelper.applyStatusBarPadding(findViewById(R.id.feedbackHeader), 0);
-        SystemUiHelper.applyNavigationBarPadding(findViewById(R.id.feedbackSuccessRoot), 0);
+        applyFeedbackBottomBarInsets(R.id.feedbackSuccessBottomBar);
 
         findViewById(R.id.feedbackHeaderBackBtn).setOnClickListener(v -> finish());
         findViewById(R.id.feedbackHeaderRecordsEntry).setOnClickListener(v -> showList());
@@ -171,7 +182,8 @@ public class FeedbackActivity extends AppCompatActivity {
         SystemUiHelper.enableEdgeToEdge(this);
         SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
         SystemUiHelper.applyStatusBarPadding(findViewById(R.id.feedbackListHeader), 0);
-        SystemUiHelper.applyNavigationBarPadding(findViewById(R.id.feedbackListRoot), 0);
+        SystemUiHelper.applyNavigationBarPadding(findViewById(R.id.feedbackList),
+                getResources().getDimensionPixelSize(R.dimen.feedback_list_bottom_padding_v));
 
         findViewById(R.id.feedbackListBackBtn).setOnClickListener(v -> showForm());
 
@@ -207,7 +219,7 @@ public class FeedbackActivity extends AppCompatActivity {
         SystemUiHelper.enableEdgeToEdge(this);
         SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
         SystemUiHelper.applyStatusBarPadding(findViewById(R.id.feedbackEmptyHeader), 0);
-        SystemUiHelper.applyNavigationBarPadding(findViewById(R.id.feedbackEmptyRoot), 0);
+        applyFeedbackBottomBarInsets(R.id.feedbackEmptyBottomBar);
 
         findViewById(R.id.feedbackEmptyHeaderBackBtn).setOnClickListener(v -> showForm());
         findViewById(R.id.feedbackEmptyBackBtn).setOnClickListener(v -> showForm());
@@ -230,7 +242,7 @@ public class FeedbackActivity extends AppCompatActivity {
                 && System.currentTimeMillis() - currentDetail.submitTime > 30_000L) {
             FeedbackApi.simulateReply(this, currentDetail);
         }
-        SystemUiHelper.applyNavigationBarPadding(findViewById(R.id.feedbackDetailRoot), 0);
+        applyFeedbackBottomBarInsets(R.id.feedbackDetailBottomBar);
 
         findViewById(R.id.feedbackDetailBackBtn).setOnClickListener(v -> showList());
 

@@ -46,7 +46,7 @@
                         </LinearLayout>
                 </LinearLayout>
         </ScrollView>
-        <LinearLayout android:gravity="center" android:paddingTop="6dp" android:paddingBottom="12dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="40dp" android:paddingEnd="40dp">
+        <LinearLayout android:gravity="center" android:id="@+id/feedbackMainBottomBar" android:paddingTop="6dp" android:paddingBottom="12dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="40dp" android:paddingEnd="40dp">
                 <TextView android:textSize="18sp" android:textStyle="bold" android:textColor="#ffffff" android:gravity="center" android:id="@+id/feedbackSubmitBtn" android:background="@drawable/bg_feedback_btn_primary" android:layout_width="match_parent" android:layout_height="45dp" android:text="@string/feedback_submit"/>
         </LinearLayout>
 </LinearLayout>

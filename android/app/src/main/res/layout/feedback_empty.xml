@@ -8,7 +8,7 @@
                 <ImageView android:layout_width="269dp" android:layout_height="190dp" android:layout_marginTop="60dp" android:src="@drawable/feedback_empty_art" android:scaleType="fitCenter" android:contentDescription="@string/feedback_empty_art_desc"/>
                 <TextView android:textSize="14sp" android:textColor="#999999" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/feedback_empty_message"/>
         </LinearLayout>
-        <LinearLayout android:gravity="center" android:paddingTop="6dp" android:paddingBottom="12dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="106dp" android:paddingEnd="106dp">
+        <LinearLayout android:gravity="center" android:id="@+id/feedbackEmptyBottomBar" android:paddingTop="6dp" android:paddingBottom="12dp" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="106dp" android:paddingEnd="106dp">
                 <TextView android:textSize="16sp" android:textColor="#e5000000" android:gravity="center" android:id="@+id/feedbackEmptyBackBtn" android:background="@drawable/bg_feedback_btn_gray" android:layout_width="match_parent" android:layout_height="35dp" android:text="@string/action_back"/>
         </LinearLayout>
 </LinearLayout>
