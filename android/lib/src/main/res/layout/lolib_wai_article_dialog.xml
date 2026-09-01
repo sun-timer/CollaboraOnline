@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="335dp"
+    android:layout_height="wrap_content"
+    android:background="@drawable/lolib_wai_bg_dialog"
+    android:paddingBottom="12dp">
+
+    <include layout="@layout/lolib_wai_header" />
+
+    <LinearLayout
+        android:id="@+id/wai_article_setup_group"
+        android:layout_width="match_parent"
+       android:layout_height="0dp"
+       android:layout_weight="1"
+       android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/wai_article_category_card"
+            android:layout_width="match_parent"
+            android:layout_height="51dp"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/lolib_wai_bg_box"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="12dp">
+
+            <TextView
+                android:id="@+id/wai_article_category_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="16sp"
+                android:textColor="#333333"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="选择文案类型" />
+
+            <ImageView
+                android:id="@+id/wai_article_category_chevron"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_marginStart="12dp"
+                android:src="@drawable/lolib_wai_ic_chevron_right"
+                android:contentDescription="选择类型" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/wai_article_subtype_card"
+            android:layout_width="match_parent"
+            android:layout_height="51dp"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/lolib_wai_bg_box"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="12dp">
+
+            <TextView
+                android:id="@+id/wai_article_subtype_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="16sp"
+                android:textColor="#333333"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="选择文案子类" />
+
+            <ImageView
+                android:id="@+id/wai_article_subtype_chevron"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_marginStart="12dp"
+                android:src="@drawable/lolib_wai_ic_chevron_right"
+                android:contentDescription="选择子类" />
+        </LinearLayout>
+
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/wai_article_form_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:layout_marginTop="12dp"
+            android:fillViewport="true"
+            android:scrollbars="vertical"
+            android:scrollbarSize="4dp"
+            android:scrollbarThumbVertical="@drawable/lolib_wai_scrollbar"
+            android:scrollbarStyle="insideOverlay">
+
+            <LinearLayout
+                android:id="@+id/wai_article_form_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="8dp" />
+        </androidx.core.widget.NestedScrollView>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/wai_article_result_group"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="@drawable/lolib_wai_bg_box"
+            android:orientation="vertical"
+            android:padding="10dp">
+
+            <androidx.core.widget.NestedScrollView
+                android:id="@+id/wai_article_result_scroll"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:fillViewport="true"
+                android:scrollbars="vertical"
+                android:scrollbarSize="4dp"
+                android:scrollbarThumbVertical="@drawable/lolib_wai_scrollbar"
+                android:scrollbarStyle="insideOverlay">
+
+                <TextView
+                    android:id="@+id/wai_article_result_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="16sp"
+                    android:textColor="#101010"
+                    android:lineSpacingExtra="8dp"
+                    android:text="" />
+            </androidx.core.widget.NestedScrollView>
+
+            <LinearLayout
+                android:id="@+id/wai_article_copy_row"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp">
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:src="@drawable/lolib_wai_ic_copy"
+                    android:contentDescription="复制" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:textSize="14sp"
+                    android:textColor="#6A6A6A"
+                    android:text="复制" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/wai_article_hint_bar"
+        android:layout_width="match_parent"
+        android:layout_height="59dp"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp">
+
+        <TextView
+            android:id="@+id/wai_article_hint_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textColor="#4D000000"
+            android:text="请选择文案类型后,进行文案生成" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/wai_article_cta_bar"
+        android:layout_width="match_parent"
+        android:layout_height="59dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/wai_article_generate_btn"
+            android:layout_width="0dp"
+            android:layout_height="35dp"
+            android:layout_weight="1"
+            android:background="@drawable/lolib_bg_continue_pill_primary_35"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/lolib_wai_ic_sparkle"
+                android:contentDescription="生成" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:textSize="16sp"
+                android:textColor="#FFFFFF"
+                android:text="开始生成" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/wai_article_result_bar"
+        android:layout_width="match_parent"
+        android:layout_height="59dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/wai_article_regenerate_btn"
+            android:layout_width="120dp"
+            android:layout_height="35dp"
+            android:background="@drawable/lolib_bg_continue_pill_secondary_35"
+            android:gravity="center"
+            android:textSize="16sp"
+            android:textColor="#E5000000"
+            android:clickable="true"
+            android:focusable="true"
+            android:text="重新生成" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/wai_article_insert_btn"
+            android:layout_width="120dp"
+            android:layout_height="35dp"
+            android:background="@drawable/lolib_bg_continue_pill_primary_35"
+            android:gravity="center"
+            android:textSize="16sp"
+            android:textColor="#FFFFFF"
+            android:clickable="true"
+            android:focusable="true"
+            android:text="插入文档" />
+    </LinearLayout>
+</LinearLayout>

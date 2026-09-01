@@ -1,6 +1,5 @@
 package org.libreoffice.androidlib.ai;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.res.Resources;
@@ -11,12 +10,15 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
 
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
+import org.libreoffice.androidlib.R;
 import org.libreoffice.androidlib.BottomSheetAnchorHelper;
-import org.libreoffice.androidlib.SafeAreaInsets;
 import org.libreoffice.androidlib.SystemUiHelper;
+import org.libreoffice.androidlib.SafeAreaInsets;
 
 import androidx.constraintlayout.widget.ConstraintLayout;
 
@@ -107,32 +109,41 @@ public final class AiDialogHelper {
     /** 输入/简单弹窗（Hug）高度上限。 */
     public static int computeMaxHeightHugPx(Resources res) {
         DisplayMetrics dm = res.getDisplayMetrics();
-        int screenCap = Math.max(dm.heightPixels - dpToPx(res, 24), 1);
-        int maxHeight = Math.min(dpToPx(res, MAX_HEIGHT_HUG_DP), screenCap);
-        // 下限不得反超屏幕可用高，避免横屏/短屏时弹窗比屏幕还高
-        int floor = Math.min(dpToPx(res, MIN_HEIGHT_DP), screenCap);
-        return Math.max(maxHeight, floor);
+        int maxHeight = dpToPx(res, MAX_HEIGHT_HUG_DP);
+        maxHeight = Math.min(maxHeight, dm.heightPixels - dpToPx(res, 24));
+        return Math.max(maxHeight, dpToPx(res, MIN_HEIGHT_DP));
     }
 
     /** 结果/滚动内容弹窗高度上限（较 Hug 略高，但仍低于旧 80% 屏高）。 */
     public static int computeMaxHeightContentPx(Resources res) {
         DisplayMetrics dm = res.getDisplayMetrics();
-        int screenCap = Math.max(dm.heightPixels - dpToPx(res, 24), 1);
         int maxHeight = Math.min(dpToPx(res, MAX_HEIGHT_CONTENT_DP),
                 (int) (dm.heightPixels * MAX_HEIGHT_SCREEN_RATIO));
-        maxHeight = Math.min(maxHeight, screenCap);
-        int floor = Math.min(dpToPx(res, 320), screenCap);
-        return Math.max(maxHeight, floor);
+        maxHeight = Math.min(maxHeight, dm.heightPixels - dpToPx(res, 24));
+        return Math.max(maxHeight, dpToPx(res, 320));
     }
 
-    /** 任意目标高度钳制到屏幕可用高（屏高-24dp），防止固定 dp 高度在横屏/短屏溢出。 */
-    public static int clampHeightToScreen(Resources res, int heightPx) {
-        if (res == null || heightPx <= 0) {
-            return heightPx;
-        }
+    /**
+     * 居中 AlertDialog 可用高度：在 Hug/Content 上限基础上再扣除状态栏与导航栏，
+     * 避免窗口垂直居中时超出可视区、底部按钮被系统栏裁切。
+     */
+    public static int computeCenteredDialogMaxHeightPx(Context context, boolean contentHeavy) {
+        Resources res = context.getResources();
+        int baseMax = contentHeavy
+                ? computeMaxHeightContentPx(res)
+                : computeMaxHeightHugPx(res);
         DisplayMetrics dm = res.getDisplayMetrics();
-        int screenCap = Math.max(dm.heightPixels - dpToPx(res, 24), 1);
-        return Math.min(heightPx, screenCap);
+        int verticalReserve = dpToPx(res, 48);
+        if (context instanceof android.app.Activity) {
+            android.view.View decor = ((android.app.Activity) context).getWindow().getDecorView();
+            SafeAreaInsets safe = SystemUiHelper.readSafeAreaInsets(decor);
+            int insetTotal = safe.top + safe.bottom;
+            if (insetTotal > 0) {
+                verticalReserve = insetTotal;
+            }
+        }
+        int available = dm.heightPixels - verticalReserve;
+        return Math.max(dpToPx(res, MIN_HEIGHT_DP), Math.min(baseMax, available));
     }
 
     /** overlay 居中面板高度：内容多时可占屏 60%，否则用 Hug 上限。 */
@@ -142,7 +153,9 @@ public final class AiDialogHelper {
         }
         if (contentHeavy) {
             int target = Math.max(dpToPx(res, 400), (int) (parentHeight * MAX_HEIGHT_SCREEN_RATIO));
-            return Math.min(computeMaxHeightContentPx(res), target);
+            target = Math.min(computeMaxHeightContentPx(res), target);
+            target = Math.min(target, parentHeight - dpToPx(res, 24));
+            return target;
         }
         return Math.min(computeMaxHeightHugPx(res), parentHeight - dpToPx(res, 24));
     }
@@ -196,10 +209,56 @@ public final class AiDialogHelper {
         if (dialog == null || dialog.getWindow() == null) {
             return;
         }
-        dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        Window window = dialog.getWindow();
+        // 窗口背景用同款圆角白卡(而非透明):窗口与 root 高度有偏差时(键盘收起/系统 relayout),
+        // 底部露出的窗口区域仍是圆角,不会出现「上方圆角、下方直角」。
+        android.graphics.drawable.Drawable card =
+                dialog.getContext().getDrawable(R.drawable.lolib_wai_bg_dialog);
+        window.setBackgroundDrawable(card != null ? card : new ColorDrawable(Color.TRANSPARENT));
+        // 设计稿遮罩 #0000004D（30%）；AlertDialog 默认 60% 过重
+        WindowManager.LayoutParams params = window.getAttributes();
+        params.dimAmount = 0.3f;
+        window.setAttributes(params);
+        window.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                        | WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED);
+        SystemUiHelper.applyDialogChrome(dialog);
         SystemUiHelper.applyCenteredDialogSafeInsets(dialog);
     }
 
+    /** 弹窗内 EditText：点击/获焦时显式唤起软键盘（Activity 为 adjustNothing 时需配合窗口 softInputMode）。 */
+    public static void bindDialogTextInput(EditText edit) {
+        if (edit == null) {
+            return;
+        }
+        Runnable showIme = () -> {
+            edit.requestFocusFromTouch();
+            InputMethodManager imm = (InputMethodManager) edit.getContext()
+                    .getSystemService(Context.INPUT_METHOD_SERVICE);
+            boolean shown = false;
+            if (imm != null) {
+                // 强制 IMM 重新服务该 view(重建 InputConnection),否则动态/滚动容器内
+                // view 可能从未建立连接,showSoftInput 直接失败(immActive=false)。
+                imm.restartInput(edit);
+                shown = imm.showSoftInput(edit, InputMethodManager.SHOW_IMPLICIT);
+                if (!shown) {
+                    shown = imm.showSoftInput(edit, InputMethodManager.SHOW_FORCED);
+                }
+            }
+            android.util.Log.d("LOActivity", "wai_input_bind focused=" + edit.isFocused()
+                    + " shown=" + shown
+                    + " immActive=" + (imm != null && imm.isActive()));
+        };
+        edit.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) {
+                edit.post(showIme);
+            }
+        });
+        edit.setOnClickListener(v -> {
+            edit.requestFocusFromTouch();
+            edit.post(showIme);
+        });
+    }
     /**
      * 约束宽度、高度随内容（上限 maxHeightPx），避免固定高度裁切底部按钮。
      */
@@ -226,6 +285,118 @@ public final class AiDialogHelper {
             lp.height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
         }
         root.setLayoutParams(lp);
+    }
+
+    /**
+     * Writer(文档)AI 弹窗宽度:Figma 设计稿 335dp、左右边距 20dp。
+     * 旧 computeTargetWidthPx 的 670dp 上限是 2 倍图错误,勿混用。
+     */
+    public static int computeWriterDialogWidthPx(Resources res) {
+        DisplayMetrics dm = res.getDisplayMetrics();
+        int target = Math.min(dpToPx(res, 335), dm.widthPixels - dpToPx(res, 40));
+        return Math.max(target, dpToPx(res, MIN_WIDTH_DP));
+    }
+
+    /**
+     * Writer AI 弹窗固定窗口尺寸:窗口与根布局同时设为 exact 高度,
+     * 内部滚动区(0dp+weight)按剩余空间收缩,彻底避免截断。
+     * heightPx 已按屏幕上限 clamp 过。
+     */
+    public static void applyWriterFixedSize(AlertDialog dialog, android.view.View root,
+                                            int widthPx, int heightPx) {
+        if (dialog == null || dialog.getWindow() == null || root == null) {
+            return;
+        }
+        int h = Math.max(heightPx, dpToPx(root.getResources(), MIN_HEIGHT_DP));
+        dialog.getWindow().setLayout(widthPx, h);
+        android.view.ViewGroup.LayoutParams lp = root.getLayoutParams();
+        if (lp == null) {
+            lp = new android.view.ViewGroup.LayoutParams(widthPx, h);
+        } else {
+            lp.width = widthPx;
+            lp.height = h;
+        }
+        root.setLayoutParams(lp);
+    }
+
+    /**
+     * Writer AI 弹窗「内容自适应」尺寸(用户认可的模式):窗口高 = 内容自然测量高,
+     * 封顶 maxHeightPx;内容超高时 root 固定为窗口高,由内部滚动区收缩吸收。
+     * 与固定设计稿高模式相比,表单/选项内容多高弹窗就多高,底部按钮永不被裁。
+     *
+     * @param minHeightPx 窗口高度下限(结果态防止文本短时窗口塌得过矮);<=0 表示不设下限
+     */
+    public static void applyContentAdaptiveSize(AlertDialog dialog, android.view.View root,
+                                                int widthPx, int maxHeightPx, int minHeightPx) {
+        if (dialog == null || dialog.getWindow() == null || root == null) {
+            return;
+        }
+        // 测量前递归放开 0dp+weight 子项(临时转 wrap),让内容自适应拿到自然高;
+        // 测后恢复——运行时 0dp+weight 保持弹性,键盘/窗口压缩时由弹性区收缩吸收,
+        // 固定高 CTA 永不溢出窗口被裁。
+        java.util.List<android.view.View> relaxed = new java.util.ArrayList<>();
+        relaxWeightedChildHeights(root, relaxed);
+        int widthSpec = android.view.View.MeasureSpec.makeMeasureSpec(widthPx,
+                android.view.View.MeasureSpec.EXACTLY);
+        int heightSpec = android.view.View.MeasureSpec.makeMeasureSpec(0,
+                android.view.View.MeasureSpec.UNSPECIFIED);
+        root.measure(widthSpec, heightSpec);
+        int contentHeight = root.getMeasuredHeight();
+        restoreWeightedChildHeights(relaxed);
+        int windowHeight = Math.min(Math.max(contentHeight, minHeightPx), maxHeightPx);
+        windowHeight = Math.max(windowHeight, dpToPx(root.getResources(), MIN_HEIGHT_DP));
+        dialog.getWindow().setLayout(widthPx, windowHeight);
+        android.view.ViewGroup.LayoutParams lp = root.getLayoutParams();
+        if (lp == null) {
+            lp = new android.view.ViewGroup.LayoutParams(widthPx, windowHeight);
+        } else {
+            lp.width = widthPx;
+        }
+        // 根部恒撑满窗口:键盘压缩/结果态下限时内部 weight 弹性区收缩,底部按钮不溢出
+        lp.height = windowHeight;
+        root.setLayoutParams(lp);
+        android.util.Log.d("LOActivity", "ai_dialog_adaptive contentH=" + contentHeight
+                + " windowH=" + windowHeight + " min=" + minHeightPx + " cap=" + maxHeightPx);
+    }
+
+    /** 递归放开 0dp+weight 子项:高度临时转 wrap_content(原值记录在 relaxed,由恢复方还原)。 */
+    public static void relaxWeightedChildHeights(android.view.View view,
+            java.util.List<android.view.View> relaxed) {
+        if (!(view instanceof android.view.ViewGroup)) {
+            return;
+        }
+        android.view.ViewGroup group = (android.view.ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            android.view.View child = group.getChildAt(i);
+            android.view.ViewGroup.LayoutParams lp = child.getLayoutParams();
+            if (lp instanceof android.widget.LinearLayout.LayoutParams
+                    && lp.height == 0
+                    && ((android.widget.LinearLayout.LayoutParams) lp).weight > 0) {
+                relaxed.add(child);
+                lp.height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+            }
+            relaxWeightedChildHeights(child, relaxed);
+        }
+    }
+
+    /** 恢复 {@link #relaxWeightedChildHeights} 临时改动的子项高度(回到 0dp+weight)。 */
+    public static void restoreWeightedChildHeights(java.util.List<android.view.View> relaxed) {
+        for (android.view.View child : relaxed) {
+            child.getLayoutParams().height = 0;
+        }
+    }
+
+
+    /**
+     * Writer AI 弹窗「结果态」高度上限:结果态无软键盘,允许撑到屏高扣除垂直保留区,
+     * 而不是 0.6 屏高比例——否则设计稿较高结果页(image 660 / preview 716 / translate 549)
+     * 在 3x 屏(0.6×800=480dp)下底部按钮被裁。
+     */
+    public static int computeWriterResultMaxHeightPx(Context context) {
+        int centeredMax = computeCenteredDialogMaxHeightPx(context, true);
+        DisplayMetrics dm = context.getResources().getDisplayMetrics();
+        int screenMax = dm.heightPixels - dpToPx(context.getResources(), 48);
+        return Math.max(centeredMax, screenMax);
     }
 
     /**
@@ -267,9 +438,10 @@ public final class AiDialogHelper {
         applyCloseOnlyDismiss(dialog);
         dialog.show();
         applyNoDimScrim(dialog);
-        BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
+        BottomSheetAnchorHelper.Options options =
+                BottomSheetAnchorHelper.overlayDocumentSheetOptions(context,
+                        logTag != null ? logTag : "CompactPanel");
         options.draggable = false;
-        options.logTag = logTag != null ? logTag : "CompactPanel";
         BottomSheetAnchorHelper.expandWrapContent(dialog, 0.92f, options);
         CompactPanelSession session = new CompactPanelSession(null, dialog);
         dialog.setOnDismissListener(d -> untrackCompactPanel(session));
@@ -327,35 +499,11 @@ public final class AiDialogHelper {
                 return;
             }
             if (alertDialog != null) {
-                alertDialog.setOnDismissListener(d -> {
-                    untrackCompactPanel(this);
-                    onDismiss.run();
-                });
+                alertDialog.setOnDismissListener(d -> onDismiss.run());
             }
             if (bottomSheetDialog != null) {
-                bottomSheetDialog.setOnDismissListener(d -> {
-                    untrackCompactPanel(this);
-                    onDismiss.run();
-                });
+                bottomSheetDialog.setOnDismissListener(d -> onDismiss.run());
             }
         }
-    }
-
-    /** 居中弹窗可用高度上限：内容模式(content)或 Hug 模式；Activity 时扣除状态栏+导航栏。 */
-    public static int computeCenteredDialogMaxHeightPx(Context context, boolean contentMode) {
-        Resources res = context.getResources();
-        int base = contentMode ? computeMaxHeightContentPx(res) : computeMaxHeightHugPx(res);
-        DisplayMetrics dm = res.getDisplayMetrics();
-        int reserved = dpToPx(res, 48);
-        if (context instanceof Activity) {
-            View decor = ((Activity) context).getWindow().getDecorView();
-            SafeAreaInsets insets = SystemUiHelper.readSafeAreaInsets(decor);
-            int total = insets.top + insets.bottom;
-            if (total > 0) {
-                reserved = total;
-            }
-        }
-        int available = dm.heightPixels - reserved;
-        return Math.max(dpToPx(res, 180), Math.min(base, available));
     }
 }

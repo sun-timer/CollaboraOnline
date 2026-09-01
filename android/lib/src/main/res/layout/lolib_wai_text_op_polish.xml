@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+   android:layout_height="match_parent"
+   android:layout_marginTop="12dp">
+    <LinearLayout
+        android:id="@+id/wai_text_op_polish_style_card"
+        android:layout_width="match_parent"
+        android:layout_height="51dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_gravity="center"
+        android:background="@drawable/lolib_wai_bg_box"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="12dp">
+
+        <TextView
+            android:id="@+id/wai_text_op_polish_style_label"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textSize="16sp"
+            android:textColor="#333333"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:text="快速润色" />
+
+        <ImageView
+            android:id="@+id/wai_text_op_polish_style_chevron"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_marginStart="12dp"
+            android:src="@drawable/lolib_wai_ic_chevron_down"
+            android:contentDescription="选择风格" />
+    </LinearLayout>
+</FrameLayout>

@@ -1,26 +1,185 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@+id/continue_dialog_root" android:background="@drawable/lolib_bg_continue_dialog" android:layout_width="match_parent" android:layout_height="match_parent" android:elevation="24dp">
-        <FrameLayout android:layout_width="match_parent" android:layout_height="60dp">
-                <TextView android:textSize="20sp" android:textStyle="bold" android:textColor="#1f1f1f" android:gravity="start" android:layout_gravity="center" android:id="@+id/continue_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="AI 续写中..." android:paddingStart="16dp" android:paddingEnd="56dp"/>
-                <ImageButton android:layout_gravity="end|top" android:id="@+id/continue_close_button" android:background="?attr/selectableItemBackgroundBorderless" android:padding="8dp" android:focusable="true" android:clickable="true" android:layout_width="40dp" android:layout_height="40dp" android:layout_marginTop="10dp" android:src="@drawable/lolib_ic_dialog_close" android:scaleType="centerInside" android:contentDescription="关闭" android:layout_marginEnd="16dp"/>
-        </FrameLayout>
-        <FrameLayout android:background="@drawable/lolib_bg_continue_content_generating" android:layout_width="match_parent" android:layout_height="0dp" android:layout_marginTop="12dp" android:layout_weight="1" android:layout_marginStart="12dp" android:layout_marginEnd="12dp">
-                <androidx.core.widget.NestedScrollView android:scrollbarSize="4dp" android:scrollbarThumbVertical="@drawable/lolib_scrollbar_thumb" android:scrollbarStyle="insideOverlay" android:id="@+id/continue_content_scroll" android:paddingTop="10dp" android:paddingBottom="48dp" android:scrollbars="vertical" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true" android:paddingStart="10dp" android:paddingEnd="6dp">
-                        <TextView android:textSize="16sp" android:textColor="#101010" android:textColorHint="#9aa0a6" android:gravity="top" android:id="@+id/continue_content_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="" android:lineSpacingExtra="4dp"/>
-                </androidx.core.widget.NestedScrollView>
-                <LinearLayout android:gravity="center_vertical" android:layout_gravity="end|bottom" android:orientation="horizontal" android:id="@+id/continue_copy_bar" android:background="?attr/selectableItemBackground" android:focusable="true" android:visibility="gone" android:clickable="true" android:layout_width="wrap_content" android:layout_height="40dp" android:layout_marginBottom="4dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:layout_marginStart="12dp" android:layout_marginEnd="8dp">
-                        <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/lolib_ic_continue_copy" android:contentDescription="复制"/>
-                        <TextView android:textSize="14sp" android:textColor="#6a6a6a" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="复制" android:layout_marginStart="4dp"/>
-                </LinearLayout>
-        </FrameLayout>
-        <LinearLayout android:gravity="start|center_vertical" android:orientation="horizontal" android:id="@+id/continue_stop_group" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:paddingStart="20dp" android:paddingEnd="20dp">
-                <FrameLayout android:id="@+id/continue_stop_button" android:background="@drawable/lolib_bg_continue_stop_button" android:focusable="true" android:clickable="true" android:layout_width="36dp" android:layout_height="36dp">
-                        <ImageView android:layout_gravity="center" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/lolib_ic_continue_stop" android:contentDescription="停止生成"/>
-                </FrameLayout>
-                <TextView android:textSize="16sp" android:textColor="#1f1f1f" android:id="@+id/continue_stop_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="停止生成" android:layout_marginStart="12dp"/>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:id="@+id/continue_dialog_root"
+    android:background="@drawable/lolib_bg_continue_dialog"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:elevation="24dp">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="60dp">
+
+        <TextView
+            android:textSize="20sp"
+            android:textColor="#1F1F1F"
+            android:gravity="center"
+            android:layout_gravity="center"
+            android:id="@+id/continue_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="56dp"
+            android:paddingEnd="56dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:text="AI 续写中..." />
+
+        <ImageView
+            android:layout_gravity="end|center_vertical"
+            android:id="@+id/continue_close_button"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="12dp"
+            android:focusable="true"
+            android:clickable="true"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/lolib_wai_ic_close"
+            android:scaleType="centerInside"
+            android:contentDescription="关闭" />
+    </FrameLayout>
+
+    <FrameLayout
+        android:background="@drawable/lolib_wai_bg_box"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp">
+
+        <androidx.core.widget.NestedScrollView
+            android:scrollbarSize="4dp"
+            android:scrollbarThumbVertical="@drawable/lolib_wai_scrollbar"
+            android:scrollbarStyle="insideOverlay"
+            android:id="@+id/continue_content_scroll"
+            android:paddingTop="10dp"
+            android:paddingBottom="48dp"
+            android:scrollbars="vertical"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:paddingStart="10dp"
+            android:paddingEnd="6dp">
+
+            <TextView
+                android:textSize="16sp"
+                android:textColor="#101010"
+                android:textColorHint="#999999"
+                android:gravity="top"
+                android:id="@+id/continue_content_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:lineSpacingExtra="8dp" />
+        </androidx.core.widget.NestedScrollView>
+
+        <LinearLayout
+            android:gravity="center_vertical"
+            android:layout_gravity="end|bottom"
+            android:orientation="horizontal"
+            android:id="@+id/continue_copy_bar"
+            android:background="?attr/selectableItemBackground"
+            android:focusable="true"
+            android:visibility="gone"
+            android:clickable="true"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:layout_marginEnd="8dp"
+            android:layout_marginBottom="4dp">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/lolib_wai_ic_copy"
+                android:contentDescription="复制" />
+
+            <TextView
+                android:textSize="14sp"
+                android:textColor="#6A6A6A"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="复制"
+                android:layout_marginStart="4dp" />
         </LinearLayout>
-        <LinearLayout android:orientation="horizontal" android:id="@+id/continue_completed_group" android:visibility="gone" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:paddingStart="20dp" android:paddingEnd="20dp">
-                <TextView android:textSize="16sp" android:textColor="#e5000000" android:gravity="center" android:id="@+id/continue_regenerate_button" android:background="@drawable/lolib_bg_continue_pill_secondary" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="35dp" android:text="重写生成" android:layout_weight="1" android:layout_marginEnd="8dp"/>
-                <TextView android:textSize="16sp" android:textColor="#ffffff" android:gravity="center" android:id="@+id/continue_insert_button" android:background="@drawable/lolib_bg_continue_pill_primary" android:focusable="true" android:clickable="true" android:layout_width="0dp" android:layout_height="35dp" android:text="插入文档" android:layout_weight="1" android:layout_marginStart="8dp"/>
-        </LinearLayout>
+    </FrameLayout>
+
+    <LinearLayout
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:id="@+id/continue_stop_group"
+        android:layout_width="match_parent"
+        android:layout_height="59dp"
+        android:layout_marginTop="12dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp">
+
+        <FrameLayout
+            android:id="@+id/continue_stop_button"
+            android:background="@drawable/lolib_wai_bg_stop"
+            android:focusable="true"
+            android:clickable="true"
+            android:layout_width="36dp"
+            android:layout_height="36dp">
+
+            <ImageView
+                android:layout_gravity="center"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:src="@drawable/lolib_wai_ic_stop_plane"
+                android:contentDescription="停止生成" />
+        </FrameLayout>
+
+        <TextView
+            android:textSize="16sp"
+            android:textColor="#1F1F1F"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="停止生成"
+            android:layout_marginStart="12dp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:id="@+id/continue_completed_group"
+        android:visibility="gone"
+        android:layout_width="match_parent"
+        android:layout_height="59dp"
+        android:layout_marginTop="12dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp">
+
+        <TextView
+            android:textSize="16sp"
+            android:textColor="#E5000000"
+            android:gravity="center"
+            android:id="@+id/continue_regenerate_button"
+            android:background="@drawable/lolib_bg_continue_pill_secondary_35"
+            android:focusable="true"
+            android:clickable="true"
+            android:layout_width="120dp"
+            android:layout_height="35dp"
+            android:text="重新生成" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:textSize="16sp"
+            android:textColor="#ffffff"
+            android:gravity="center"
+            android:id="@+id/continue_insert_button"
+            android:background="@drawable/lolib_bg_continue_pill_primary_35"
+            android:focusable="true"
+            android:clickable="true"
+            android:layout_width="120dp"
+            android:layout_height="35dp"
+            android:text="插入文档" />
+    </LinearLayout>
 </LinearLayout>

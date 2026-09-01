@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="335dp"
+    android:layout_height="wrap_content"
+    android:background="@drawable/lolib_wai_bg_dialog"
+    android:paddingBottom="12dp">
+
+    <include layout="@layout/lolib_wai_header" />
+
+    <ImageView
+        android:id="@+id/wai_preview_back"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="4dp"
+        android:src="@drawable/lolib_wai_ic_back"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:clickable="true"
+        android:focusable="true"
+        android:contentDescription="返回" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="8dp">
+
+        <ImageView
+            android:id="@+id/wai_preview_image"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:background="@drawable/lolib_wai_bg_thumb"
+            android:clipToOutline="true"
+            android:scaleType="centerCrop"
+            android:contentDescription="图片预览" />
+
+        <LinearLayout
+            android:id="@+id/wai_preview_dots"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:orientation="horizontal"
+            android:gravity="center" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/wai_preview_bar"
+        android:layout_width="match_parent"
+        android:layout_height="59dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp">
+
+        <TextView
+            android:id="@+id/wai_preview_regenerate_btn"
+            android:layout_width="120dp"
+            android:layout_height="35dp"
+            android:background="@drawable/lolib_bg_continue_pill_secondary_35"
+            android:gravity="center"
+            android:textSize="16sp"
+            android:textColor="#E5000000"
+            android:clickable="true"
+            android:focusable="true"
+            android:text="重新生成" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/wai_preview_insert_btn"
+            android:layout_width="120dp"
+            android:layout_height="35dp"
+            android:background="@drawable/lolib_bg_continue_pill_primary_35"
+            android:gravity="center"
+            android:textSize="16sp"
+            android:textColor="#FFFFFF"
+            android:clickable="true"
+            android:focusable="true"
+            android:text="插入文档" />
+    </LinearLayout>
+</LinearLayout>

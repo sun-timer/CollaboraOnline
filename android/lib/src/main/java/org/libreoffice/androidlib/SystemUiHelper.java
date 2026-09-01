@@ -108,6 +108,14 @@ public final class SystemUiHelper {
         applyBottomSheetChrome(window, lightMode);
     }
 
+    /** Any {@link android.app.Dialog} window: force white navigation bar (三键区). */
+    public static void applyDialogChrome(android.app.Dialog dialog) {
+        if (dialog == null || dialog.getWindow() == null) {
+            return;
+        }
+        applyBottomSheetChrome(dialog.getContext(), dialog.getWindow());
+    }
+
     public static boolean isLightMode(Activity activity) {
         return (activity.getResources().getConfiguration().uiMode
                 & android.content.res.Configuration.UI_MODE_NIGHT_YES) == 0;
@@ -474,10 +482,17 @@ public final class SystemUiHelper {
             View content = v.findViewById(android.R.id.content);
             if (content instanceof ViewGroup && ((ViewGroup) content).getChildCount() > 0) {
                 View root = ((ViewGroup) content).getChildAt(0);
-                root.setPadding(safe.left, root.getPaddingTop(), safe.right,
-                        safe.bottom + getBottomSafeExtraPx(v.getContext()));
+                // 保留布局 XML 的设计底部 padding(如 12dp),按钮不贴底;
+                // 另补居中弹窗进导航区的最小补偿 (safe.bottom-safe.top)/2,避免大 padding 留白。
+                int bottomPad = Math.max(root.getPaddingBottom(),
+                        Math.max(0, (safe.bottom - safe.top) / 2));
+                root.setPadding(safe.left, root.getPaddingTop(), safe.right, bottomPad);
             }
-            return WindowInsetsCompat.CONSUMED;
+            // 仅消费已手动处理的 systemBars / cutout，保留 IME inset 供软键盘布局。
+            return new WindowInsetsCompat.Builder(windowInsets)
+                    .setInsets(WindowInsetsCompat.Type.systemBars()
+                            | WindowInsetsCompat.Type.displayCutout(), Insets.NONE)
+                    .build();
         });
         ViewCompat.requestApplyInsets(decor);
     }

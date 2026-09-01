@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="335dp"
+    android:layout_height="wrap_content"
+    android:background="@drawable/lolib_wai_bg_dialog"
+    android:paddingBottom="12dp">
+
+    <include layout="@layout/lolib_wai_header" />
+
+    <FrameLayout
+        android:id="@+id/wai_text_op_input_container"
+        android:layout_width="match_parent"
+       android:layout_height="0dp"
+       android:layout_weight="1" />
+
+    <LinearLayout
+        android:id="@+id/wai_text_op_result_group"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="@drawable/lolib_wai_bg_box"
+            android:orientation="vertical"
+            android:padding="10dp">
+
+            <androidx.core.widget.NestedScrollView
+                android:id="@+id/wai_text_op_result_scroll"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:fillViewport="true"
+                android:scrollbars="vertical"
+                android:scrollbarSize="4dp"
+                android:scrollbarThumbVertical="@drawable/lolib_wai_scrollbar"
+                android:scrollbarStyle="insideOverlay">
+
+                <TextView
+                    android:id="@+id/wai_text_op_result_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="16sp"
+                    android:textColor="#101010"
+                    android:lineSpacingExtra="8dp"
+                    android:text="" />
+            </androidx.core.widget.NestedScrollView>
+
+            <LinearLayout
+                android:id="@+id/wai_text_op_copy_row"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp">
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:src="@drawable/lolib_wai_ic_copy"
+                    android:contentDescription="复制" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:textSize="14sp"
+                    android:textColor="#6A6A6A"
+                    android:text="复制" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/wai_text_op_cta_bar"
+        android:layout_width="match_parent"
+        android:layout_height="59dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp">
+
+        <LinearLayout
+            android:id="@+id/wai_text_op_generate_btn"
+            android:layout_width="0dp"
+            android:layout_height="35dp"
+            android:layout_weight="1"
+            android:background="@drawable/lolib_bg_continue_pill_primary_35"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:id="@+id/wai_text_op_generate_icon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/lolib_wai_ic_sparkle"
+                android:contentDescription="生成" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:textSize="16sp"
+                android:textColor="#FFFFFF"
+                android:text="开始生成" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/wai_text_op_result_bar"
+        android:layout_width="match_parent"
+        android:layout_height="59dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/wai_text_op_regenerate_btn"
+            android:layout_width="120dp"
+            android:layout_height="35dp"
+            android:background="@drawable/lolib_bg_continue_pill_secondary_35"
+            android:gravity="center"
+            android:textSize="16sp"
+            android:textColor="#E5000000"
+            android:clickable="true"
+            android:focusable="true"
+            android:text="重新生成" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/wai_text_op_apply_btn"
+            android:layout_width="120dp"
+            android:layout_height="35dp"
+            android:background="@drawable/lolib_bg_continue_pill_primary_35"
+            android:gravity="center"
+            android:textSize="16sp"
+            android:textColor="#FFFFFF"
+            android:clickable="true"
+            android:focusable="true"
+            android:text="插入文档" />
+    </LinearLayout>
+</LinearLayout>

@@ -72,7 +72,6 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.PopupMenu;
 import android.widget.PopupWindow;
 import android.widget.ScrollView;
 import android.widget.Space;
@@ -183,9 +182,9 @@ import org.libreoffice.androidlib.ai.CondFormatApplier;
 import org.libreoffice.androidlib.ai.ArticleTemplate;
 import org.libreoffice.androidlib.ai.ArticleTemplateRegistry;
 import org.libreoffice.androidlib.ai.FormatBatchProcessor;
-import org.libreoffice.androidlib.ai.ArticleDropdownPopup;
 import org.libreoffice.androidlib.ai.PolishStyleRegistry;
 import org.libreoffice.androidlib.ai.TranslateLanguageRegistry;
+import org.libreoffice.androidlib.ai.WaiDropdownPopup;
 import org.libreoffice.androidlib.lok.LokClipboardData;
 import org.libreoffice.androidlib.lok.LokClipboardEntry;
 
@@ -264,6 +263,8 @@ public class LOActivity extends AppCompatActivity {
     private boolean isDocEditable = false;
     private boolean isDocDebuggable = BuildConfig.DEBUG;
     private boolean documentLoaded = false;
+    /** initUI 中 WebView / native 线程 / 弹层绑定仅执行一次；换文档时只 copyFileToTemp + loadDocument。 */
+    private boolean documentUiInitialized = false;
     /** onNewIntent 换文档期间忽略 JS 侧 BYE，避免 finishWithProgress 闪回首页开屏。 */
     private volatile boolean documentSwitchInProgress = false;
     /** onDestroy 开始后拒绝 WebView / native 再回调 Java。 */
@@ -341,6 +342,8 @@ public class LOActivity extends AppCompatActivity {
     private final Map<String, AiRequestSession> aiRequestSessions = new ConcurrentHashMap<>();
     private final Map<String, StringBuilder> aiTextByRequestId = new ConcurrentHashMap<>();
     private final Map<String, String> aiRequestModeById = new ConcurrentHashMap<>();
+    private final Map<String, String> aiRequestModelModeById = new ConcurrentHashMap<>();
+    private int aiModelRequiredModelType = MODEL_TYPE_BASE;
     private final Map<String, Boolean> aiDocQaFirstTurnByRequestId = new ConcurrentHashMap<>();
     private final Map<String, TextView> aiStreamingViewByRequestId = new ConcurrentHashMap<>();
     private final Map<String, String> nativeBridgeRequestSessions = new ConcurrentHashMap<>();
@@ -395,32 +398,37 @@ public class LOActivity extends AppCompatActivity {
     private String aiOpPendingSelection = "";
     // AI排版相关
     private boolean typesetInProgress = false;  // 排版进行中，抑制选区弹窗
+    /** V2 插入文档：已将排版 docx 覆盖回原文件 URI，换文档时勿把旧 mTempFile 写回（会冲掉排版结果）。 */
+    private volatile boolean typesetReplacingOriginal = false;
     private AlertDialog typesetSelectDialog;
     private String selectedTypesetType = "paper";
     private BottomSheetDialog typesetPreviewSheet;
     private String pendingTypesetType;  // "paper" | "gov" | "contract" | "general"
     private String pendingTypesetHtml;  // AI 返回的排版结果（旧 HTML 路径，fallback）
     // AI排版 V2 — docx 模板填充
-    private View typesetPreviewOverlay;
-    private View typesetPreviewCard;
+    private View typesetPreviewPanel;
     private WebView typesetPreviewWebView;
     private File pendingTypesetDocx;    // 填充后的 docx 临时文件
     private Map<String, String> pendingTypesetSections;  // AI 返回的 sections
     private Map<String, TypesetImageEntry> pendingTypesetImages;  // 源文档图片（排版后插入）
     private boolean pendingTypesetParagraphMode = false;  // true=段落分类模式（LLM 只做分类不改写原文）
-    // 生成大纲相关
+    // 生成大纲相关（Writer AI 新设计 lolib_wai_outline_dialog）
     private AlertDialog outlineDialog;
     private View outlineDialogRoot;
     private TextView outlineTypeLabel;
+    private View outlineTypeChevron;
     private EditText outlineDescEdit;
     private TextView outlineResultText;
-    private View outlineDescCard;
-    private View outlineResultCard;
     private NestedScrollView outlineResultScroll;
     private View outlineTypeCard;
     private View outlineGenerateBtn;
-    private View outlineDoneRow;
-    private View outlineCopyRow;  // 结果区下方的复制横条
+    private View outlineCopyRow;
+    private View outlineInputGroup;
+    private View outlineResultGroup;
+    private View outlineCtaBar;
+    private View outlineResultBar;
+    private View outlineRegenerateBtn;
+    private View outlineInsertBtn;
     private String outlineContextText;  // 入口A=选区文字，入口B=null→生成时提取全文
     private String pendingOutlineType = AiChatCoordinator.OUTLINE_TYPE_GENERAL;
     private String pendingOutlineDesc;
@@ -436,19 +444,23 @@ public class LOActivity extends AppCompatActivity {
     private AlertDialog articleDialog;
     private View articleDialogRoot;
     private TextView articleCategoryLabel;
+    private View articleCategoryChevron;
     private TextView articleSubTypeLabel;
+    private View articleSubTypeChevron;
     private View articleSubTypeCard;
-    private View articleStageHint;
-    private View articleStageForm;
     private NestedScrollView articleFormScroll;
     private View articleGenerateBtn;
     private LinearLayout articleFormContainer;
-    private TextView articleGenerateBtnText;
-    private View articleResultCard;
+    private View articleSetupGroup;
+    private View articleResultGroup;
+    private View articleHintBar;
+    private View articleCtaBar;
+    private View articleResultBar;
+    private View articleRegenerateBtn;
+    private View articleInsertBtn;
     private NestedScrollView articleResultScroll;
     private TextView articleResultText;
     private View articleCopyRow;
-    private View articleDoneRow;
     private String pendingArticleCategory;
     private ArticleTemplate pendingArticleTemplate;
     private String[] pendingArticleValues;
@@ -467,11 +479,16 @@ public class LOActivity extends AppCompatActivity {
     private TextView textOperatePolishStyleLabel;
     private View textOperatePolishStyleCard;
     private View textOperatePolishStyleChevron;
-    private NestedScrollView textOperateResultCard;
+    private NestedScrollView textOperateResultScroll;
+    private View textOperateResultGroup;
     private TextView textOperateResultText;
     private View textOperateGenerateBtn;
+    private ImageView textOperateGenerateIcon;
     private View textOperateCopyRow;
-    private View textOperateDoneRow;
+    private View textOperateCtaBar;
+    private View textOperateResultBar;
+    private View textOperateRegenerateBtn;
+    private View textOperateApplyBtn;
     private String textOperateActiveRequestId = "";
     private String pendingTextOperateResult;
     private String pendingPolishStyle = AiChatCoordinator.POLISH_STYLE_QUICK;
@@ -483,23 +500,31 @@ public class LOActivity extends AppCompatActivity {
     private View formatBatchDialogRoot;
     private String formatBatchSelection = "";
     private String pendingFormatBatchResult;
-    private View formatBatchOptionsContainer;
+    private View formatBatchInputGroup;
+    private View formatBatchResultGroup;
     private View formatBatchExecuteBtn;
-    private NestedScrollView formatBatchResultCard;
+    private NestedScrollView formatBatchResultScroll;
     private TextView formatBatchResultText;
     private View formatBatchCopyRow;
-    private View formatBatchDoneRow;
+    private View formatBatchCtaBar;
+    private View formatBatchResultBar;
+    private View formatBatchRegenerateBtn;
+    private View formatBatchInsertBtn;
     private CheckBox[] formatBatchCheckBoxes = new CheckBox[FormatBatchProcessor.RULE_COUNT];
+    private TextView[] formatBatchLabels = new TextView[FormatBatchProcessor.RULE_COUNT];
     // 文字提取弹窗
     private static final int TEXT_EXTRACT_STAGE_INPUT = 1;
     private static final int TEXT_EXTRACT_STAGE_RESULT = 2;
     private AlertDialog textExtractDialog;
     private View textExtractDialogRoot;
-    private View textExtractInputContainer;
-    private NestedScrollView textExtractResultCard;
+    private View textExtractInputGroup;
+    private View textExtractResultGroup;
+    private NestedScrollView textExtractResultScroll;
     private TextView textExtractResultText;
     private View textExtractCopyRow;
-    private View textExtractDoneRow;
+    private View textExtractResultBar;
+    private View textExtractReRecognizeBtn;
+    private View textExtractInsertBtn;
     private String textExtractActiveRequestId = "";
     private String pendingTextExtractResult;
     private Uri pendingTextExtractCameraUri;
@@ -518,13 +543,21 @@ public class LOActivity extends AppCompatActivity {
     private ImageView aiImageMainView;
     private ImageView[] aiImageThumbViews = new ImageView[3];
     private View aiImageLoading;
-    private View aiImageDoneRow;
+    private View aiImageResultGroup;
+    private View aiImageCtaBar;
+    private View aiImageResultBar;
+    private View aiImageRegenerateBtn;
+    private TextView aiImageResultPrompt;
+    private TextView aiImageResultRatioLabel;
+    private AlertDialog aiImagePreviewDialog;
+    private View aiImagePreviewRoot;
+    private ImageView aiImagePreviewImage;
+    private LinearLayout aiImagePreviewDots;
+    private int aiImagePreviewCurrentIndex = 0;
     private java.util.List<String> aiImageBase64List = new java.util.ArrayList<>();
     private int aiImageSelectedIndex = 0;
     private String aiImageActiveRequestId = "";
     private java.util.List<AiRequestSession> aiImageSessions = new java.util.ArrayList<>();
-    private AlertDialog aiImagePreviewDialog;
-    private int aiImagePreviewCurrentIndex = 0;
     // 翻译弹窗
     private static final int TRANSLATE_STAGE_INPUT = 1;
     private static final int TRANSLATE_STAGE_RESULT = 2;
@@ -533,11 +566,17 @@ public class LOActivity extends AppCompatActivity {
     private TextView translateSourceLabel;
     private TextView translateTargetLabel;
     private EditText translateSourceEdit;
-    private NestedScrollView translateResultCard;
+    private NestedScrollView translateSourceScroll;
+    private NestedScrollView translateResultScroll;
     private TextView translateResultText;
+    private TextView translateHintText;
     private View translateGenerateBtn;
     private View translateCopyRow;
-    private View translateDoneRow;
+    private View translateCtaBar;
+    private View translateResultBar;
+    private View translateRegenerateBtn;
+    private View translateInsertBtn;
+    private View translateSwapBtn;
     private String translateActiveRequestId = "";
     private String pendingTranslateResult;
     private String pendingTranslateSourceLang = AiChatCoordinator.TRANSLATE_LANG_AUTO;
@@ -560,6 +599,10 @@ public class LOActivity extends AppCompatActivity {
     // 所有续写请求 id（含已结束/被取代的），用于在 onDone/onError 抑制 operate-mode 自动粘贴：
     // AiRequestManager 流自然结束时 onDone 无 cancel 守卫，dismiss/regenerate 后漏出的 onDone 不能误触粘贴。
     private final java.util.Set<String> continueWriteRequestIds =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    // Writer/Calc AI 弹窗共享请求抑制集：dismiss 时登记的请求 id 在 onDone/onError 中直接丢弃，
+    // 防止关闭弹窗后漏出的回调触发自动粘贴/结果渲染（一次编译原则：行为修复随新布局重建）。
+    private final java.util.Set<String> aiSuppressedRequestIds =
             java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     // Calc AI公式生成浮层（弹窗式公式生成：输入态/生成中态/完成态，复用 aiStreamingViewByRequestId 流式接入）
     private boolean mIsCalcDocument = false;
@@ -762,12 +805,10 @@ public class LOActivity extends AppCompatActivity {
     private static final int REQUEST_CODE_INSERT_CAMERA_IMAGE = 9004;
     private static final int PERMISSION_INSERT_CAMERA = 9010;
     private static final int PERMISSION_READ_GALLERY = 9011;
+    private org.libreoffice.androidlib.ImageInsertSheetController imageInsertSheetController;
     private Uri pendingInsertCameraUri;
-    private ImageInsertSheetController imageInsertSheetController;
-
     // ========== Impress PPT 模板选择 + 生成 ==========
     private LinearLayout impressTemplateGridContainer;
-
     private String selectedTemplateId = "";
     private String pptGenerationTemplateId = "";
     private org.libreoffice.androidlib.template.TemplateIndex templateIndex;
@@ -1117,10 +1158,11 @@ public class LOActivity extends AppCompatActivity {
             }
         }
         if (mTempFile != null) {
-            mWebView = (COWebView) findViewById(R.id.browser);
+            if (!documentUiInitialized) {
+                mWebView = (COWebView) findViewById(R.id.browser);
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                mWebView.setOnApplyWindowInsetsListener((v, windowInsets) -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    mWebView.setOnApplyWindowInsetsListener((v, windowInsets) -> {
                     Insets insets = windowInsets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.ime()
                             | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
                                     ? WindowInsets.Type.systemOverlays()
@@ -1272,6 +1314,9 @@ public class LOActivity extends AppCompatActivity {
                 }
             });
 
+                documentUiInitialized = true;
+            }
+
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(this,
                     Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                 Log.i(TAG, "asking for read storage permission");
@@ -1299,9 +1344,12 @@ public class LOActivity extends AppCompatActivity {
         final Uri originalDataUri = getIntent().getData();
         final File originalTempFile = mTempFile;
         final boolean wasEditable = isDocEditable;
+        final boolean skipPreByeSave = typesetReplacingOriginal;
 
-        if (documentLoaded) {
+        if (documentLoaded && !skipPreByeSave) {
             postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1");
+        } else if (documentLoaded && skipPreByeSave) {
+            Log.i(TAG, "doc_switch_pre_bye_save_skipped reason=typeset_replace");
         }
 
         final Intent finalIntent = intent;
@@ -1315,7 +1363,13 @@ public class LOActivity extends AppCompatActivity {
                 // Save original doc back to its content:// URI BEFORE BYE and
                 // setIntent — after those, mTempFile and getIntent().getData()
                 // point to the new document and the original is unreachable.
-                saveOriginalDocBeforeSwitch(originalTempFile, originalDataUri, wasEditable);
+                // AI 排版 V2「插入文档」已先把 filled docx 写回原 URI，此处不能再写旧 mTempFile。
+                if (typesetReplacingOriginal) {
+                    Log.i(TAG, "save_original_before_switch_skipped reason=typeset_replace");
+                    typesetReplacingOriginal = false;
+                } else {
+                    saveOriginalDocBeforeSwitch(originalTempFile, originalDataUri, wasEditable);
+                }
 
                 final Runnable afterBye = new Runnable() {
                     @Override
@@ -1955,7 +2009,7 @@ public class LOActivity extends AppCompatActivity {
     private void repositionAiDialogsOnConfigurationChanged() {
         AiDialogHelper.dismissCompactPanelsOnConfigurationChange();
         dismissImpressOptionPopup();
-        ArticleDropdownPopup.dismissIfShowing();
+        WaiDropdownPopup.dismissIfShowing();
         View contentRoot = findViewById(android.R.id.content);
         Runnable work = () -> {
             if (continueDialogOverlay != null && continueDialogOverlay.getVisibility() == View.VISIBLE) {
@@ -1976,8 +2030,26 @@ public class LOActivity extends AppCompatActivity {
             if (impressOutlineOverlay != null && impressOutlineOverlay.getVisibility() == View.VISIBLE) {
                 positionImpressOutlineDialogCenter();
             }
-            if (typesetPreviewOverlay != null && typesetPreviewOverlay.getVisibility() == View.VISIBLE) {
-                positionTypesetPreviewOverlay();
+            if (typesetPreviewPanel != null && typesetPreviewPanel.getVisibility() == View.VISIBLE) {
+                positionTypesetPreviewPanelCenter();
+            }
+            if (typesetSelectDialog != null && typesetSelectDialog.isShowing()
+                    && typesetSelectDialog.getWindow() != null) {
+                View tsContent = typesetSelectDialog.getWindow().getDecorView()
+                        .findViewById(android.R.id.content);
+                View tsRoot = (tsContent instanceof ViewGroup
+                        && ((ViewGroup) tsContent).getChildCount() > 0)
+                        ? ((ViewGroup) tsContent).getChildAt(0) : null;
+                if (tsRoot != null) {
+                    applyTypesetSelectDialogSize(tsRoot);
+                }
+            }
+            if (aiImagePreviewDialog != null && aiImagePreviewDialog.isShowing()
+                    && aiImagePreviewRoot != null) {
+                int pCap = AiDialogHelper.computeWriterResultMaxHeightPx(this);
+                int pH = Math.min(dpToPx(716), pCap);
+                AiDialogHelper.applyWriterFixedSize(aiImagePreviewDialog, aiImagePreviewRoot,
+                        AiDialogHelper.computeWriterDialogWidthPx(getResources()), pH);
             }
             if (outlineDialog != null && outlineDialog.isShowing()) {
                 applyOutlineDialogSize();
@@ -3647,11 +3719,19 @@ public class LOActivity extends AppCompatActivity {
 
             final String finalRequestId = requestId;
             String requestMode = request.optString("taskType", AI_MODE_CHAT);
+            String modelMode = resolveRequestModelMode(request);
             Log.i(TAG, "ai_request_handle_start requestId=" + finalRequestId
                     + " mode=" + requestMode
+                    + " modelMode=" + modelMode
                     + " payloadChars=" + payloadChars);
+            if (!ensureCloudModelConfigured(requestMode, modelMode)) {
+                Log.w(TAG, "ai_request_blocked reason=config_missing requestId=" + finalRequestId
+                        + " mode=" + requestMode + " modelMode=" + modelMode);
+                return;
+            }
             persistAiConfigFromRequest(request);
             cancelAiRequest(finalRequestId);
+            aiRequestModelModeById.put(finalRequestId, modelMode);
             dispatchAiState(finalRequestId, AI_STATE_LOADING, "AI request queued");
 
             AiRequestSession session = new AiRequestSession();
@@ -4082,6 +4162,10 @@ public class LOActivity extends AppCompatActivity {
                         @Override
                         public void onDone(String callbackRequestId, String fullText) throws JSONException {
                             flushAiStreamNow(callbackRequestId);
+                            if (aiSuppressedRequestIds.remove(callbackRequestId)) {
+                                Log.i(TAG, "ai_done_suppressed requestId=" + callbackRequestId);
+                                return;
+                            }
                             if (callbackRequestId.equals(continueActiveRequestId)) {
                                 // 续写弹窗请求：不自动粘贴，切到完成态（重写生成/插入文档）
                                 onContinueWriteDone(callbackRequestId, fullText);
@@ -4120,8 +4204,10 @@ public class LOActivity extends AppCompatActivity {
                                     Log.i(TAG, "ai_typeset_para_mode_done requestId=" + callbackRequestId);
                                     sections = buildTypesetSectionsFromParagraphs(fullText);
                                 }
-                                // 标准 V2 JSON 解析
-                                if (sections == null || sections.isEmpty()) {
+                                // 标准 V2 JSON 解析（段落模式失败时，仅当响应含 sections 对象才尝试）
+                                if ((sections == null || sections.isEmpty())
+                                        && (!pendingTypesetParagraphMode
+                                        || fullText.contains("\"sections\""))) {
                                     sections = AiChatCoordinator.parseTypesetSections(fullText);
                                 }
                                 final Map<String, String> finalSections = sections;
@@ -4133,32 +4219,31 @@ public class LOActivity extends AppCompatActivity {
                                 } else {
                                     Log.i(TAG, "ai_typeset_fallback_to_v1 — JSON parse failed, showing raw"
                                             + " prefix=" + responsePrefix);
-                                    // Save for handleTypesetV2Result fallback
                                     pendingTypesetHtml = fullText;
-                                    runOnUiThread(() -> showTypesetPreviewSheet(fullText));
+                                    runOnUiThread(() -> showTypesetPreviewHtmlInOverlay(fullText));
                                 }
                             } else if (AiChatCoordinator.MODE_OUTLINE.equals(taskType)) {
                                 // 生成大纲：在弹窗结果区展示，不自动粘贴
                                 Log.i(TAG, "ai_outline_done requestId=" + callbackRequestId + " chars=" + fullText.length());
-                                runOnUiThread(() -> showOutlineResult(fullText));
+                                runOnUiThread(() -> showOutlineResult(callbackRequestId, fullText));
                             } else if (AiChatCoordinator.MODE_ARTICLE_GENERATE.equals(taskType)) {
                                 Log.i(TAG, "ai_article_done requestId=" + callbackRequestId + " chars=" + fullText.length());
-                                runOnUiThread(() -> showArticleGenerateResult(fullText));
+                                runOnUiThread(() -> showArticleGenerateResult(callbackRequestId, fullText));
                             } else if (AiChatCoordinator.MODE_EXPAND.equals(taskType)
                                     || AiChatCoordinator.MODE_CONDENSE.equals(taskType)
                                     || AiChatCoordinator.MODE_POLISH.equals(taskType)
                                     || AiChatCoordinator.MODE_REWRITE.equals(taskType)) {
                                 Log.i(TAG, "ai_text_op_done requestId=" + callbackRequestId
                                         + " mode=" + taskType + " chars=" + fullText.length());
-                                runOnUiThread(() -> showTextOperateResult(fullText));
+                                runOnUiThread(() -> showTextOperateResult(callbackRequestId, fullText));
                             } else if (AiChatCoordinator.MODE_TRANSLATE.equals(taskType)) {
                                 Log.i(TAG, "ai_translate_done requestId=" + callbackRequestId
                                         + " chars=" + fullText.length());
-                                runOnUiThread(() -> showTranslateResult(fullText));
+                                runOnUiThread(() -> showTranslateResult(callbackRequestId, fullText));
                             } else if (AiChatCoordinator.MODE_TEXT_EXTRACT.equals(taskType)) {
                                 Log.i(TAG, "ai_text_extract_done requestId=" + callbackRequestId
                                         + " chars=" + fullText.length());
-                                runOnUiThread(() -> showTextExtractResult(fullText));
+                                runOnUiThread(() -> showTextExtractResult(callbackRequestId, fullText));
                             }
                             JSONObject donePayload = new JSONObject();
                             donePayload.put("requestId", callbackRequestId);
@@ -4171,6 +4256,20 @@ public class LOActivity extends AppCompatActivity {
                             flushAiStreamNow(callbackRequestId);
                             String safeMsg = message == null ? "" : (message.length() > 120 ? message.substring(0, 120) + "..." : message);
                             Log.i(TAG, "ai_operation_error requestId=" + callbackRequestId + " code=" + code + " msg=" + safeMsg);
+                            if (aiSuppressedRequestIds.remove(callbackRequestId)) {
+                                Log.i(TAG, "ai_error_suppressed requestId=" + callbackRequestId);
+                                return;
+                            }
+                            if ("config_missing".equals(code)) {
+                                runOnUiThread(() -> {
+                                    int modelType = AiModelConfigStore.resolveModelTypeFromMode(
+                                            aiRequestModelModeById.getOrDefault(callbackRequestId, "base"));
+                                    showModelConfigRequiredDialog(modelType, message);
+                                    resetUiOnConfigMissing(callbackRequestId);
+                                });
+                                dispatchAiError(callbackRequestId, code, message);
+                                return;
+                            }
                             if (continueWriteRequestIds.contains(callbackRequestId)) {
                                 // 续写请求失败：提示并关闭浮层，不走 operate-mode "AI 操作失败" 分支
                                 runOnUiThread(() -> {
@@ -4312,6 +4411,19 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         session.cancel();
+    }
+
+    /**
+     * 弹窗关闭时取消请求并加入抑制集:onDone/onError 若仍回调该 requestId,
+     * 顶部 check-and-remove 直接丢弃,避免旧会话结果写入新弹窗或复活已关弹窗。
+     */
+    private void cancelAndSuppressAiRequest(String requestId) {
+        if (requestId == null || requestId.isEmpty()) {
+            return;
+        }
+        cancelAiRequest(requestId);
+        aiSuppressedRequestIds.add(requestId);
+        Log.i(TAG, "ai_request_suppressed requestId=" + requestId);
     }
 
     private void cancelAllAiRequests() {
@@ -4841,6 +4953,10 @@ public class LOActivity extends AppCompatActivity {
             lp.setMargins(x, y, x, 0);
             panel.setLayoutParams(lp);
             panel.requestLayout();
+        }
+        if (panel instanceof ViewGroup) {
+            ((ViewGroup) panel).setClipToPadding(false);
+            ((ViewGroup) panel).setClipChildren(false);
         }
     }
 
@@ -5503,6 +5619,8 @@ public class LOActivity extends AppCompatActivity {
         }
 
         continueDialogOverlay.setOnClickListener(v -> dismissContinueWriteDialog());
+        // 透明 overlay 仅拦截点击关闭；面板需 clickable 防止触摸穿透到 WebView（对齐 impress_outline）
+        continueDialogPanel.setClickable(true);
         // 右上角关闭×（设计稿顶部横栏，两态都有）
         View closeBtn = continueDialogPanel.findViewById(R.id.continue_close_button);
         if (closeBtn != null) {
@@ -5525,6 +5643,13 @@ public class LOActivity extends AppCompatActivity {
      */
     private void openContinueWriteDialog(String selection) {
         continueSelection = selection == null ? "" : selection;
+        if (continueSelection.trim().isEmpty()) {
+            Toast.makeText(this, "请先选择文本", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_CONTINUE, "base")) {
+            return;
+        }
         if (selectionMenuController != null) {
             selectionMenuController.hide();
         }
@@ -5555,6 +5680,13 @@ public class LOActivity extends AppCompatActivity {
         if (selection == null || selection.trim().isEmpty()) {
             Toast.makeText(this, "请先选择文本", Toast.LENGTH_SHORT).show();
             dismissContinueWriteDialog();
+            return;
+        }
+        if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_CONTINUE, "base")) {
+            setContinueDialogState(false);
+            if (continueContentView != null) {
+                continueContentView.setText("");
+            }
             return;
         }
         try {
@@ -5600,13 +5732,10 @@ public class LOActivity extends AppCompatActivity {
     private void setContinueDialogState(boolean generating) {
         if (continueTitleView != null) {
             continueTitleView.setText(generating ? "AI 续写中..." : "AI 续写");
+            // 设计稿 326:20844（生成中）：标题左对齐；326:20411（完成）：居中
+            continueTitleView.setGravity(generating ? Gravity.START : Gravity.CENTER);
         }
-        if (continueContentScroll != null) {
-            continueContentScroll.setBackgroundResource(
-                    generating ? R.drawable.lolib_bg_continue_content_generating : 0);
-            int pad = generating ? dpToPx(12) : 0;
-            continueContentScroll.setPadding(pad, pad, pad, pad);
-        }
+        // 内容卡片边框两态一致：白底 + 1dp #CBD1D7 实线 + 12dp 圆角（XML 静态背景）
         if (continueStopGroup != null) {
             continueStopGroup.setVisibility(generating ? View.VISIBLE : View.GONE);
         }
@@ -5624,6 +5753,16 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+    /** 续写流式/完成时滚动内容卡到底部，避免长文本“看起来被截断”。 */
+    private void scrollContinueToBottom() {
+        if (!(continueContentScroll instanceof androidx.core.widget.NestedScrollView)) {
+            return;
+        }
+        androidx.core.widget.NestedScrollView scroll =
+                (androidx.core.widget.NestedScrollView) continueContentScroll;
+        scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
+    }
+
     /**
      * 续写请求自然完成（onDone 回调在 requestId==continueActiveRequestId 时 divert，请求线程触发）。
      * 内容已由 handleAiNativeEvent 的 ai.done 分支重渲进 continueContentView，这里只切到完成态。
@@ -5633,6 +5772,9 @@ public class LOActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             continueResultText = text;
             setContinueDialogState(false);
+            if (continueDialogPanel != null) {
+                continueDialogPanel.post(this::positionContinueDialogCenter);
+            }
             Log.i(TAG, "continue_write_done requestId=" + requestId + " chars=" + text.length());
         });
     }
@@ -5965,6 +6107,10 @@ public class LOActivity extends AppCompatActivity {
      * 将流式目标注册到公式显示 TextView。
      */
     private void startCalcFormulaRequest(String userInput) {
+        if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_CALC_FORMULA, "base")) {
+            dismissCalcFormulaDialog();
+            return;
+        }
         try {
             JSONObject context = new JSONObject();
             context.put("prompt", "");
@@ -6297,6 +6443,10 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void startCondFormatRequest(String userInput) {
+        if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_CALC_COND_FORMAT, "base")) {
+            dismissCondFormatDialog();
+            return;
+        }
         try {
             // Read selected cell data via native JNI getTextSelection (sub-thread safe)
             String cellData = "";
@@ -6795,6 +6945,10 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void startDataProcessRequest(String userInput) {
+        if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_CALC_DATA_PROCESS, "base")) {
+            dismissDataProcessDialog();
+            return;
+        }
         try {
             // Read selected cell data via native JNI getTextSelection (sub-thread safe)
             String cellData = "";
@@ -7170,6 +7324,10 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void startChartRequest(String input) {
+        if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_CALC_CHART, "base")) {
+            dismissChartDialog();
+            return;
+        }
         String requestId = "chart-" + java.util.UUID.randomUUID().toString();
         chartActiveRequestId = requestId;
         Log.i(TAG, "calc_chart_request_start id=" + requestId + " input=" + input + " range=" + chartSelectedRange);
@@ -8003,6 +8161,10 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void startImpressOutlineRequest(String userInput) {
+        if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_IMPRESS_OUTLINE, "base")) {
+            setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_INPUT);
+            return;
+        }
         String requestId = "impress-outline-" + java.util.UUID.randomUUID().toString();
         impressOutlineActiveRequestId = requestId;
         impressOutlineRequestIds.add(requestId);
@@ -10051,7 +10213,13 @@ public class LOActivity extends AppCompatActivity {
     /*package*/ boolean startAiOperationFromSelection(String taskType) {
         // 生成大纲：弹出生成大纲对话框（入口 A，使用选区文字）
         if (AiChatCoordinator.MODE_OUTLINE.equals(taskType)) {
-            showOutlineDialog(aiOpPendingSelection);
+            // Impress 大纲 = 生成 PPT 大纲弹窗（openImpressOutlineDialog）；
+            // Writer 才走 Writer 版总结大纲弹窗。
+            if (mIsImpressDocument) {
+                openImpressOutlineDialog();
+            } else {
+                showOutlineDialog(aiOpPendingSelection);
+            }
             return true;
         }
         // 文案生成：弹出文案生成对话框（不依赖选区）
@@ -10796,9 +10964,9 @@ public class LOActivity extends AppCompatActivity {
 
         dialog.setView(root);
         dialog.setOnCancelListener(d -> closeAfterSaveRequested = false);
+        AiDialogHelper.applyTransparentWindow(dialog);
         dialog.show();
         if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             dialog.getWindow().setLayout(Math.min(getResources().getDisplayMetrics().widthPixels - dpToPx(96),
                     dpToPx(760)), WindowManager.LayoutParams.WRAP_CONTENT);
         }
@@ -10990,13 +11158,10 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         bottomSheet.setBackgroundResource(R.drawable.lolib_bg_function_sheet_panel);
-        BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
+        BottomSheetAnchorHelper.Options options =
+                BottomSheetAnchorHelper.overlayDocumentSheetOptions(this, TAG);
         options.draggable = false;
         options.hideable = false;
-        options.applyNavBarPadding = false;
-        options.internalBottomDesignPadPx = getResources()
-                .getDimensionPixelSize(R.dimen.lolib_function_sheet_bottom_pad);
-        options.logTag = TAG;
         BottomSheetAnchorHelper.clearAppliedHeight(functionPanelDialog);
         int targetHeight = resolvePreviewFunctionPanelHeightPx();
         BottomSheetAnchorHelper.expandFixed(functionPanelDialog, targetHeight, options);
@@ -11197,6 +11362,11 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void loadMacroCatalog(CalcValidationMacroCatalog.Callback callback) {
                     LOActivity.this.loadMacroCatalog(callback);
+                }
+
+                @Override
+                public void showMergeCellOptions() {
+                    LOActivity.this.showCalcMergeCellOptions();
                 }
             });
         }
@@ -11624,49 +11794,99 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void openLocalImagePickerFromWeb() {
-        // 走原生插入图片 sheet（Figma 3100:61787）：API 33+ READ_MEDIA_IMAGES，其余 READ_EXTERNAL_STORAGE
+        // Android WebView 对 programmatic <input type=file> click 常静默失败；
+        // 功能面板路径与 Writer 一致：走原生 Figma 选择页（相册网格/拍照）。
         Log.i(TAG, "open_local_image_picker route=native");
         maybeOpenImageInsertSheet();
         nudgeSocketIfStalled("insert_image_click");
     }
 
     private void maybeOpenImageInsertSheet() {
-        if (Build.VERSION.SDK_INT >= 33) {
-            if (checkSelfPermission(android.Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{android.Manifest.permission.READ_MEDIA_IMAGES}, PERMISSION_READ_GALLERY);
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            if (checkSelfPermission(android.Manifest.permission.READ_MEDIA_IMAGES)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.READ_MEDIA_IMAGES},
+                        PERMISSION_READ_GALLERY);
                 return;
             }
-        } else {
-            if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, PERMISSION_READ_GALLERY);
-                return;
-            }
+        } else if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE},
+                    PERMISSION_READ_GALLERY);
+            return;
         }
         showImageInsertSheet();
     }
 
     private void showImageInsertSheet() {
         if (imageInsertSheetController == null) {
-            imageInsertSheetController = new ImageInsertSheetController(new ImageInsertSheetController.Host() {
-                @Override
-                public Activity getActivity() {
-                    return LOActivity.this;
-                }
+            imageInsertSheetController = new org.libreoffice.androidlib.ImageInsertSheetController(
+                    new org.libreoffice.androidlib.ImageInsertSheetController.Host() {
+                        @Override
+                        public android.app.Activity getActivity() {
+                            return LOActivity.this;
+                        }
 
-                @Override
-                public void insertLocalImages(List<Uri> uris) {
-                    insertLocalImagesForDoc(uris);
-                }
+                        @Override
+                        public void insertLocalImages(java.util.List<android.net.Uri> uris) {
+                            LOActivity.this.insertLocalImagesForDoc(uris);
+                        }
 
-                @Override
-                public void launchCameraPicker() {
-                    launchCameraForInsertImage();
-                }
-            });
+                        @Override
+                        public void launchCameraPicker() {
+                            LOActivity.this.launchCameraForInsertImage();
+                        }
+                    });
         }
         imageInsertSheetController.show();
     }
 
+    private void insertLocalImagesForDoc(java.util.List<android.net.Uri> uris) {
+        if (uris == null || uris.isEmpty()) {
+            return;
+        }
+        new Thread(() -> {
+            final List<String> payloads = new ArrayList<>();
+            for (android.net.Uri uri : uris) {
+                String base64 = readImageUriAsBase64(uri);
+                if (base64 != null && !base64.isEmpty()) {
+                    payloads.add(base64);
+                }
+            }
+            runOnUiThread(() -> insertImageBase64List(payloads));
+        }, "insert-local-images").start();
+    }
+
+    /**
+     * Insert several base64 graphics sequentially. The edit-mode switch happens
+     * at most once (ensureEditModeThen keeps only one pending action, so the
+     * old per-image call from a preview state would drop all but the last one),
+     * then each insertfile is sent only after the previous one was handed to
+     * the socket, preserving order and delivery for multi-select.
+     */
+    private void insertImageBase64List(List<String> payloads) {
+        if (payloads == null || payloads.isEmpty()) {
+            return;
+        }
+        if (!isDocEditable) {
+            Toast.makeText(this, "当前文档为只读，无法插入图片", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!mIsEditModeActive) {
+            ensureEditModeThen(() -> insertImageBase64List(payloads));
+            return;
+        }
+        sendNextImageBase64(payloads, 0);
+    }
+
+    private void sendNextImageBase64(List<String> payloads, int index) {
+        if (index >= payloads.size()) {
+            Log.i(TAG, "local_images_inserted count=" + payloads.size());
+            return;
+        }
+        sendInsertFileWhenSocketOpen(payloads.get(index), "insert_image.png", 0,
+                () -> sendNextImageBase64(payloads, index + 1));
+    }
 
 
     private void launchCameraForInsertImage() {
@@ -11717,47 +11937,6 @@ public class LOActivity extends AppCompatActivity {
             });
         }, "local-image-insert").start();
     }
-
-    private void insertLocalImagesForDoc(List<Uri> uris) {
-        if (uris == null || uris.isEmpty()) {
-            return;
-        }
-        new Thread(() -> {
-            List<String> base64List = new ArrayList<>();
-            for (Uri uri : uris) {
-                String base64 = readImageUriAsBase64(uri);
-                if (base64 != null && !base64.isEmpty()) {
-                    base64List.add(base64);
-                }
-            }
-            runOnUiThread(() -> insertImageBase64List(base64List));
-        }, "insert-local-images").start();
-    }
-
-    private void insertImageBase64List(List<String> base64List) {
-        if (base64List == null || base64List.isEmpty()) {
-            return;
-        }
-        if (!isDocEditable) {
-            Toast.makeText(this, "当前文档为只读，无法插入图片", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        if (!mIsEditModeActive) {
-            ensureEditModeThen(() -> insertImageBase64List(base64List));
-            return;
-        }
-        sendNextImageBase64(base64List, 0);
-    }
-
-    private void sendNextImageBase64(List<String> base64List, int index) {
-        if (index >= base64List.size()) {
-            Log.i(TAG, "local_images_inserted count=" + base64List.size());
-            return;
-        }
-        sendInsertFileWhenSocketOpen("insert_image.png", base64List.get(index), 0,
-                () -> sendNextImageBase64(base64List, index + 1));
-    }
-
 
     private void executeUnoCommand(String command) {
         if (command == null || command.trim().isEmpty()) {
@@ -12297,6 +12476,26 @@ public class LOActivity extends AppCompatActivity {
         } else {
             load.run();
         }
+    }
+
+    void showCalcMergeCellOptions() {
+        new org.libreoffice.androidlib.calc.CalcMergeCellOptionsController(
+                new org.libreoffice.androidlib.calc.CalcMergeCellOptionsController.Host() {
+                    @Override
+                    public Context getContext() {
+                        return LOActivity.this;
+                    }
+
+                    @Override
+                    public int dpToPx(int dp) {
+                        return LOActivity.this.dpToPx(dp);
+                    }
+
+                    @Override
+                    public void executeUnoCommand(String command) {
+                        LOActivity.this.executeUnoCommand(command);
+                    }
+                }).show();
     }
 
     void fetchImpressHyperlinkContext(ImpressHyperlinkPickerController.HyperlinkContextCallback callback) {
@@ -13707,14 +13906,19 @@ public class LOActivity extends AppCompatActivity {
         if (button != null) {
             button.setOnClickListener(v -> {
                 if (aiOpPendingSelection == null || aiOpPendingSelection.isEmpty()) {
+                    Toast.makeText(LOActivity.this, "请先在文档中选择文本", Toast.LENGTH_SHORT).show();
                     return;
                 }
                 // 弹窗流程：直接打开对话框，不走 operate-mode 加载条
-                if (AiChatCoordinator.MODE_EXPAND.equals(mode)
+                if (AiChatCoordinator.MODE_CONTINUE.equals(mode)
+                        || AiChatCoordinator.MODE_EXPAND.equals(mode)
                         || AiChatCoordinator.MODE_CONDENSE.equals(mode)
                         || AiChatCoordinator.MODE_POLISH.equals(mode)
                         || AiChatCoordinator.MODE_TRANSLATE.equals(mode)
                         || AiChatCoordinator.MODE_REWRITE.equals(mode)) {
+                    if (aiOperationSheet != null) {
+                        aiOperationSheet.dismiss();
+                    }
                     runAiOperation(mode);
                     return;
                 }
@@ -13804,9 +14008,9 @@ public class LOActivity extends AppCompatActivity {
             typesetSelectDialog = null;
         });
 
+        AiDialogHelper.applyTransparentWindow(typesetSelectDialog);
         typesetSelectDialog.show();
         if (typesetSelectDialog.getWindow() != null) {
-            typesetSelectDialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             WindowManager.LayoutParams params = typesetSelectDialog.getWindow().getAttributes();
             params.gravity = Gravity.CENTER;
             typesetSelectDialog.getWindow().setAttributes(params);
@@ -13815,25 +14019,37 @@ public class LOActivity extends AppCompatActivity {
         Log.i(TAG, "ai_typeset_select_shown");
     }
 
-    /** Figma 330:32962：固定 335×510dp，避免 AlertDialog 量高偏小裁切底栏。 */
+    /** Figma 330:32962：宽固定、高随内容 Hug；上限 = 屏高扣除垂直保留区(不再套 0.6 比例,
+     *  否则 4 卡自然高(~490dp)在 3x 屏会被压到 480dp 裁掉底部开始按钮)。 */
     private void applyTypesetSelectDialogSize(View root) {
         if (typesetSelectDialog == null || !typesetSelectDialog.isShowing()
                 || typesetSelectDialog.getWindow() == null || root == null) {
             return;
         }
-        int widthPx = getResources().getDimensionPixelSize(R.dimen.ai_typeset_dialog_width);
-        int heightPx = getResources().getDimensionPixelSize(R.dimen.ai_typeset_dialog_height);
-        int maxHeightPx = AiDialogHelper.computeMaxHeightHugPx(getResources());
-        heightPx = Math.min(heightPx, maxHeightPx);
+        // 宽度与 Writer AI 弹窗统一：min(335dp, 屏宽-40dp)，避免窄屏/横屏横向截断
+        int widthPx = AiDialogHelper.computeWriterDialogWidthPx(getResources());
+        int maxHeightPx = AiDialogHelper.computeCenteredDialogMaxHeightPx(this, true);
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        int screenMax = dm.heightPixels - dpToPx(48);
+        maxHeightPx = Math.max(maxHeightPx, screenMax);
 
-        typesetSelectDialog.getWindow().setLayout(widthPx, heightPx);
         ViewGroup.LayoutParams rootLp = root.getLayoutParams();
         if (rootLp == null) {
-            rootLp = new ViewGroup.LayoutParams(widthPx, heightPx);
+            rootLp = new ViewGroup.LayoutParams(widthPx, ViewGroup.LayoutParams.WRAP_CONTENT);
         } else {
             rootLp.width = widthPx;
-            rootLp.height = heightPx;
+            rootLp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
         }
+        root.setLayoutParams(rootLp);
+
+        int widthSpec = View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY);
+        int heightSpec = View.MeasureSpec.makeMeasureSpec(maxHeightPx, View.MeasureSpec.AT_MOST);
+        root.measure(widthSpec, heightSpec);
+        int windowHeight = Math.min(Math.max(root.getMeasuredHeight(), 1), maxHeightPx);
+
+        typesetSelectDialog.getWindow().setLayout(widthPx, windowHeight);
+        rootLp.width = widthPx;
+        rootLp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
         root.setLayoutParams(rootLp);
     }
 
@@ -13910,7 +14126,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     /**
-     * 从源文档的 mTempFile（docx）提取全文文本 + 图片标记 + 图片数据。
+     * 从源文档提取全文文本 + 图片标记 + 图片数据。
      * 图片在文本中标记为 [图1]、[图2]…，以在排版后保持原图位置。
      * 需要后台线程调用（涉及解压/解析，非 UI 线程）。
      *
@@ -13918,26 +14134,22 @@ public class LOActivity extends AppCompatActivity {
      */
     @Nullable
     private String extractFullTextWithImagesNative() {
-        if (mTempFile == null || !mTempFile.exists()) {
-            Log.i(TAG, "extract_image_text_skipped no mTempFile");
+        if (mTempFile == null && mOriginalTypesetDocx == null) {
+            Log.i(TAG, "extract_image_text_skipped no source file");
             return null;
         }
         try {
-            // Prefer current mTempFile (has latest user edits including inserted images).
-            // Fall back to mOriginalTypesetDocx (original format backup) if mTempFile
-            // is unavailable, e.g. if LOKit hasn't saved yet.
-            File docxFile = (mTempFile != null && mTempFile.exists())
-                    ? mTempFile
-                    : (mOriginalTypesetDocx != null && mOriginalTypesetDocx.exists())
-                        ? mOriginalTypesetDocx
-                        : null;
-            if (docxFile == null) {
+            File sourceFile = resolveTypesetExtractFile();
+            if (sourceFile == null || !sourceFile.exists()) {
                 Log.i(TAG, "extract_image_text_no_source_file");
                 return null;
             }
-            // 1. Open and parse the docx
+            String format = peekZipDocumentFormat(sourceFile);
+            Log.i(TAG, "extract_image_text_source path=" + sourceFile.getAbsolutePath()
+                    + " format=" + format + " size=" + sourceFile.length());
+            // 1. Open and parse the zip (docx or ODF)
             java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(
-                    new java.io.FileInputStream(docxFile));
+                    new java.io.FileInputStream(sourceFile));
             Map<String, byte[]> rawEntries = new HashMap<>();
             Map<String, Document> xmlEntries = new HashMap<>();
 
@@ -14137,6 +14349,63 @@ public class LOActivity extends AppCompatActivity {
     }
 
     // ---- Helpers for extractFullTextWithImagesNative ----
+
+    /** 检测 ZIP 文档格式：docx（OOXML）/ odf（OpenDocument）/ unknown。 */
+    private static String peekZipDocumentFormat(File file) {
+        if (file == null || !file.exists()) {
+            return "unknown";
+        }
+        boolean hasDocx = false;
+        boolean hasOdf = false;
+        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(
+                new java.io.FileInputStream(file))) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    continue;
+                }
+                String name = entry.getName();
+                if ("word/document.xml".equals(name)) {
+                    hasDocx = true;
+                }
+                if ("content.xml".equals(name)) {
+                    hasOdf = true;
+                }
+                if (hasDocx || hasOdf) {
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            return "unknown";
+        }
+        if (hasDocx) {
+            return "docx";
+        }
+        if (hasOdf) {
+            return "odf";
+        }
+        return "unknown";
+    }
+
+    /**
+     * 选择排版全文/段落提取用的磁盘文件。
+     * LOKit 保存后 mTempFile 通常为 ODF；打开时的 docx 备份在 mOriginalTypesetDocx。
+     * 7/16 误改为「Save 后始终优先 mTempFile(ODF)」导致 docx 解析失败 — 此处恢复 7/6 策略：
+     * mTempFile 仍为 docx 时用最新副本；已转 ODF 时回退到 mOriginalTypesetDocx。
+     */
+    @Nullable
+    private File resolveTypesetExtractFile() {
+        if (mTempFile != null && mTempFile.exists()) {
+            String fmt = peekZipDocumentFormat(mTempFile);
+            if ("docx".equals(fmt)) {
+                return mTempFile;
+            }
+        }
+        if (mOriginalTypesetDocx != null && mOriginalTypesetDocx.exists()) {
+            return mOriginalTypesetDocx;
+        }
+        return (mTempFile != null && mTempFile.exists()) ? mTempFile : null;
+    }
 
     /**
      * Find the r:embed attribute value inside a &lt;w:drawing&gt; element.
@@ -14455,13 +14724,18 @@ public class LOActivity extends AppCompatActivity {
             pendingTypesetParagraphs = null;
             pendingParaImageMarkers = null;
             pendingTypesetParagraphMode = false;
-            String extracted = extractFullTextWithImagesNative();
+            String structuredExtract = extractFullTextWithImagesNative();
+            String extracted = structuredExtract;
             if (extracted == null || extracted.isEmpty()) {
+                pendingTypesetImages = null;
+                pendingTypesetParagraphs = null;
+                pendingParaImageMarkers = null;
                 extracted = extractFullTextNative("typeset-" + typesetType);
             }
-            // 段落分类模式：extractFullTextWithImagesNative 成功且含多段内容时使用
-            final boolean hasParagraphs = (pendingTypesetParagraphs != null
-                    && pendingTypesetParagraphs.size() > 1);
+            // 段落分类模式：仅当结构化提取成功且多段时使用（7/6 V3 设计）
+            final boolean hasParagraphs = structuredExtract != null && !structuredExtract.isEmpty()
+                    && pendingTypesetParagraphs != null
+                    && pendingTypesetParagraphs.size() > 1;
             pendingTypesetParagraphMode = hasParagraphs;
             if (hasParagraphs) {
                 Log.i(TAG, "ai_typeset_paragraph_mode paragraphs=" + pendingTypesetParagraphs.size());
@@ -14479,6 +14753,11 @@ public class LOActivity extends AppCompatActivity {
             Log.i(TAG, "ai_typeset_doc_extracted chars=" + docText.length());
 
             runOnUiThread(() -> {
+                if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_TYPESET, "base")) {
+                    typesetInProgress = false;
+                    dismissTypesetPreviewOverlay();
+                    return;
+                }
                 try {
                     JSONObject request = new JSONObject();
                     String requestId = "typeset-" + UUID.randomUUID().toString();
@@ -14638,10 +14917,20 @@ public class LOActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             paste("text/html", htmlBytes);
             toastTodo("AI排版已应用");
+            persistDocumentAfterTypesetApply();
+            dismissTypesetPreviewOverlay();
         });
 
         pendingTypesetHtml = null;
         pendingTypesetType = null;
+        pendingTypesetDocx = null;
+    }
+
+    /** V1 HTML 粘贴后排版结果仅在 LOKit 内存中，须强制 save 写回 mTempFile → content URI。 */
+    private void persistDocumentAfterTypesetApply() {
+        documentModified = true;
+        postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=0");
+        Log.i(TAG, "ai_typeset_apply_save_requested");
     }
 
     // ==================== AI排版 V2 — docx 模板填充方法 ====================
@@ -14739,13 +15028,15 @@ public class LOActivity extends AppCompatActivity {
                         typesetPreviewWebView.loadDataWithBaseURL(null, previewHtml,
                                 "text/html", "UTF-8", null);
                     }
+                    typesetPreviewPanel.post(this::positionTypesetPreviewPanelCenter);
                 } else {
                     typesetInProgress = false;
                     Log.e(TAG, "ai_typeset_v2_fill_failed — falling back to HTML paste");
                     toastTodo("模板填充失败，使用HTML方式");
-                    // Fallback: if we have pendingTypesetHtml, use old flow
                     if (pendingTypesetHtml != null && !pendingTypesetHtml.isEmpty()) {
-                        showTypesetPreviewSheet(pendingTypesetHtml);
+                        showTypesetPreviewHtmlInOverlay(pendingTypesetHtml);
+                    } else {
+                        dismissTypesetPreviewOverlay();
                     }
                 }
             });
@@ -14767,11 +15058,10 @@ public class LOActivity extends AppCompatActivity {
      * Called at the start of typeset so the user sees immediate feedback.
      */
     private void showTypesetLoadingOverlay() {
-        if (typesetPreviewOverlay == null) {
-            Log.w(TAG, "ai_typeset_v2_overlay_null — cannot show loading");
+        if (typesetPreviewPanel == null) {
+            Log.w(TAG, "ai_typeset_v2_panel_null — cannot show loading");
             return;
         }
-        // Load "正在排版" placeholder into WebView
         if (typesetPreviewWebView != null) {
             String loadingHtml = "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"UTF-8\">"
                     + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\">"
@@ -14785,57 +15075,45 @@ public class LOActivity extends AppCompatActivity {
                     + "<p>AI 正在排版，请稍候…</p></div></body></html>";
             typesetPreviewWebView.loadDataWithBaseURL(null, loadingHtml, "text/html", "UTF-8", null);
         }
-        typesetPreviewOverlay.post(() -> {
-            positionTypesetPreviewOverlay();
-            typesetPreviewOverlay.setVisibility(View.VISIBLE);
-        });
+        typesetPreviewPanel.setVisibility(View.VISIBLE);
+        typesetPreviewPanel.post(this::positionTypesetPreviewPanelCenter);
         Log.i(TAG, "ai_typeset_v2_loading_shown");
     }
 
     /**
-     * Initialize the typeset preview overlay — find views, wire listeners.
+     * Initialize the typeset preview panel — find views, wire listeners.
+     * 无全屏遮罩：仅居中 panel（对齐续写/大纲弹窗），避免透明 overlay 拦截「插入文档」点击。
      */
     private void setupTypesetPreviewOverlay() {
-        // The <include> tag id overrides the root view id of the included layout.
-        // So we find by the include id, which IS the overlay FrameLayout.
-        typesetPreviewOverlay = findViewById(R.id.typeset_preview_overlay_include);
-        if (typesetPreviewOverlay == null) {
-            Log.w(TAG, "ai_typeset_v2_overlay_not_found — layout include missing?");
+        typesetPreviewPanel = findViewById(R.id.typeset_preview_panel);
+        if (typesetPreviewPanel == null) {
+            Log.w(TAG, "ai_typeset_v2_panel_not_found — layout include missing?");
             return;
         }
 
-        // Find children within the overlay
-        typesetPreviewCard = typesetPreviewOverlay.findViewById(R.id.typeset_preview_card);
-        typesetPreviewWebView = typesetPreviewOverlay.findViewById(R.id.typeset_preview_webview);
+        typesetPreviewWebView = typesetPreviewPanel.findViewById(R.id.typeset_preview_webview);
 
-        // Configure WebView
         if (typesetPreviewWebView != null) {
             WebSettings ws = typesetPreviewWebView.getSettings();
             ws.setJavaScriptEnabled(false);
-            ws.setBuiltInZoomControls(true);
+            ws.setBuiltInZoomControls(false);
             ws.setDisplayZoomControls(false);
             ws.setLoadWithOverviewMode(true);
-            ws.setUseWideViewPort(false);
+            ws.setUseWideViewPort(true);
+            typesetPreviewWebView.setVerticalScrollBarEnabled(true);
+            typesetPreviewWebView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+            typesetPreviewWebView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+            typesetPreviewWebView.setNestedScrollingEnabled(true);
         }
 
-        // Overlay background is NOT dismissible on click —
-        // accidental taps outside the card could close it before the user
-        // has reviewed or inserted the result. Use the close button instead.
-        typesetPreviewOverlay.setClickable(true);
+        typesetPreviewPanel.setClickable(true);
 
-        // Prevent card click from propagating to overlay
-        if (typesetPreviewCard != null) {
-            typesetPreviewCard.setClickable(true);
-        }
-
-        // Close button
-        View closeBtn = typesetPreviewOverlay.findViewById(R.id.typeset_preview_close);
+        View closeBtn = typesetPreviewPanel.findViewById(R.id.typeset_preview_close);
         if (closeBtn != null) {
             closeBtn.setOnClickListener(v -> dismissTypesetPreviewOverlay());
         }
 
-        // Regenerate button
-        View regenBtn = typesetPreviewOverlay.findViewById(R.id.typeset_preview_regenerate);
+        View regenBtn = typesetPreviewPanel.findViewById(R.id.typeset_preview_regenerate);
         if (regenBtn != null) {
             regenBtn.setOnClickListener(v -> {
                 Log.i(TAG, "ai_typeset_v2_regenerate");
@@ -14845,13 +15123,14 @@ public class LOActivity extends AppCompatActivity {
             });
         }
 
-        // Insert document button
-        View insertBtn = typesetPreviewOverlay.findViewById(R.id.typeset_preview_insert);
+        View insertBtn = typesetPreviewPanel.findViewById(R.id.typeset_preview_insert);
         if (insertBtn != null) {
             insertBtn.setOnClickListener(v -> {
                 Log.i(TAG, "ai_typeset_v2_insert_document");
                 if (pendingTypesetDocx != null && pendingTypesetDocx.exists()) {
                     openTypesetDocument(pendingTypesetDocx);
+                } else if (pendingTypesetHtml != null && !pendingTypesetHtml.isEmpty()) {
+                    applyTypesetResult();
                 } else {
                     toastTodo("排版文档不存在，请重新生成");
                 }
@@ -14859,13 +15138,45 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+    /** V1 HTML 预览：在同一 panel 中展示。 */
+    private void showTypesetPreviewHtmlInOverlay(String htmlContent) {
+        if (typesetPreviewPanel == null) {
+            showTypesetPreviewSheet(htmlContent);
+            return;
+        }
+        String cleaned = sanitizeTypesetHtml(htmlContent);
+        pendingTypesetHtml = cleaned;
+        pendingTypesetDocx = null;
+        typesetInProgress = false;
+
+        String displayContent = cleaned;
+        if (!isLikelyHtml(cleaned)) {
+            displayContent = "<pre style=\"white-space:pre-wrap;word-break:break-all;font-size:13px;\">"
+                    + escapeHtml(cleaned != null ? cleaned : "") + "</pre>";
+        }
+        String wrappedHtml = "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"UTF-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\">"
+                + "<style>body{font-family:sans-serif;padding:16px;line-height:1.6;margin:0;color:#333;}"
+                + "h1,h2,h3{margin-top:1em;margin-bottom:0.5em;}p{margin:0.5em 0;}"
+                + "table{border-collapse:collapse;width:100%;}td,th{border:1px solid #ccc;padding:8px;}"
+                + "</style></head><body>" + (displayContent != null ? displayContent : "")
+                + "</body></html>";
+
+        if (typesetPreviewWebView != null) {
+            typesetPreviewWebView.loadDataWithBaseURL(null, wrappedHtml, "text/html", "UTF-8", null);
+        }
+        typesetPreviewPanel.setVisibility(View.VISIBLE);
+        typesetPreviewPanel.post(this::positionTypesetPreviewPanelCenter);
+        Log.i(TAG, "ai_typeset_v1_preview_shown htmlChars=" + (cleaned != null ? cleaned.length() : 0));
+    }
+
     /**
      * Show the typeset preview overlay with the filled template content.
      */
     private void showTypesetPreviewOverlay(String typesetType, Map<String, String> sections,
                                             File docxFile) {
-        if (typesetPreviewOverlay == null) {
-            Log.e(TAG, "ai_typeset_v2_overlay_null");
+        if (typesetPreviewPanel == null) {
+            Log.e(TAG, "ai_typeset_v2_panel_null");
             return;
         }
 
@@ -14876,18 +15187,15 @@ public class LOActivity extends AppCompatActivity {
                     "text/html", "UTF-8", null);
         }
 
-        // Position and show
-        typesetPreviewOverlay.post(() -> {
-            positionTypesetPreviewOverlay();
-            typesetPreviewOverlay.setVisibility(View.VISIBLE);
-        });
+        typesetPreviewPanel.setVisibility(View.VISIBLE);
+        typesetPreviewPanel.post(this::positionTypesetPreviewPanelCenter);
 
         Log.i(TAG, "ai_typeset_v2_preview_shown type=" + typesetType
                 + " docxSize=" + docxFile.length());
     }
 
     /**
-     * Dismiss the typeset preview overlay.
+     * Dismiss the typeset preview panel.
      */
     private void dismissTypesetPreviewOverlay() {
         typesetInProgress = false;
@@ -14895,38 +15203,18 @@ public class LOActivity extends AppCompatActivity {
         pendingTypesetParagraphs = null;
         pendingParaImageMarkers = null;
         pendingTypesetParagraphMode = false;
-        if (typesetPreviewOverlay != null) {
-            typesetPreviewOverlay.setVisibility(View.GONE);
+        if (typesetPreviewPanel != null) {
+            typesetPreviewPanel.setVisibility(View.GONE);
         }
-        // Clean up WebView content
         if (typesetPreviewWebView != null) {
             typesetPreviewWebView.loadUrl("about:blank");
         }
         Log.i(TAG, "ai_typeset_v2_preview_dismissed");
     }
 
-    /**
-     * Size and center the preview card within the overlay.
-     */
-    private void positionTypesetPreviewOverlay() {
-        if (typesetPreviewCard == null || typesetPreviewOverlay == null) return;
-
-        int parentWidth = typesetPreviewOverlay.getWidth();
-        int parentHeight = typesetPreviewOverlay.getHeight();
-        if (parentWidth == 0 || parentHeight == 0) return;
-
-        int dp16 = (int) (16 * getResources().getDisplayMetrics().density);
-
-        int cardWidth = AiDialogHelper.computeTargetWidthPx(getResources(), parentWidth);
-        int maxCardHeight = parentHeight - dp16 * 2;
-        int cardHeight = Math.min(maxCardHeight, AiDialogHelper.computeMaxHeightContentPx(getResources()));
-        cardHeight = Math.max(cardHeight, dpToPx(400));
-        cardHeight = Math.min(cardHeight, maxCardHeight);
-
-        ViewGroup.LayoutParams lp = typesetPreviewCard.getLayoutParams();
-        lp.width = cardWidth;
-        lp.height = cardHeight;
-        typesetPreviewCard.setLayoutParams(lp);
+    /** 居中定位排版预览 panel（对齐续写浮层）。 */
+    private void positionTypesetPreviewPanelCenter() {
+        positionAiOverlayPanelCenter(typesetPreviewPanel, true);
     }
 
     /**
@@ -15109,34 +15397,150 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         try {
-            Uri typesetUri = FileProvider.getUriForFile(
-                    this, getPackageName() + ".fileprovider", docxFile);
+            Uri originalUri = getIntent().getData();
+            boolean replacedOriginal = copyTypesetResultToOriginal(docxFile, originalUri);
 
-            Log.i(TAG, "ai_typeset_v2_open_document uri=" + typesetUri.toString()
-                    + " path=" + docxFile.getAbsolutePath());
-
-            RecentDocumentsStore.prependRecent(
-                    getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE),
-                    typesetUri.toString());
-
-            // Dismiss the preview overlay before starting the switch
+            // Dismiss preview before reload/switch
             typesetInProgress = false;
-            if (typesetPreviewOverlay != null) {
-                typesetPreviewOverlay.setVisibility(View.GONE);
+            if (typesetPreviewPanel != null) {
+                typesetPreviewPanel.setVisibility(View.GONE);
             }
             if (typesetPreviewWebView != null) {
                 typesetPreviewWebView.loadUrl("about:blank");
             }
+            pendingTypesetDocx = null;
+            pendingTypesetSections = null;
+            pendingTypesetHtml = null;
 
-            // startActivity triggers onNewIntent (singleTask), which handles
-            // save → BYE → init → loadDocument — the standard document switch.
-            // No finish() — the same LOActivity instance handles the switch.
-            startActivity(buildEditIntent(typesetUri));
+            if (replacedOriginal) {
+                Log.i(TAG, "ai_typeset_v2_replace_original uri=" + originalUri
+                        + " filled=" + docxFile.getAbsolutePath());
+                reloadTypesetDocumentInPlace();
+                return;
+            }
+
+            Uri reloadUri = FileProvider.getUriForFile(
+                    this, getPackageName() + ".fileprovider", docxFile);
+            Log.i(TAG, "ai_typeset_v2_open_document uri=" + reloadUri
+                    + " path=" + docxFile.getAbsolutePath());
+
+            RecentDocumentsStore.prependRecent(
+                    getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE),
+                    reloadUri.toString());
+
+            startActivity(buildEditIntent(reloadUri));
 
         } catch (Exception e) {
+            typesetReplacingOriginal = false;
             Log.e(TAG, "ai_typeset_v2_open_failed: " + e.getMessage(), e);
             toastTodo("打开排版文档失败：" + e.getMessage());
         }
+    }
+
+    /**
+     * 排版结果已写回原 URI：在当前 Activity 内 BYE → 从 URI 重新 copy 到 temp → loadDocument。
+     * 不走 startActivity/onNewIntent，避免重复 initUI（native 线程/WebView 双绑）导致卡在「正在加载」。
+     */
+    private void reloadTypesetDocumentInPlace() {
+        if (!documentUiInitialized || mWebView == null || nativeHandler == null) {
+            Log.w(TAG, "ai_typeset_reload_fallback_onNewIntent uiReady=" + documentUiInitialized);
+            typesetReplacingOriginal = true;
+            Uri uri = getIntent().getData();
+            if (uri != null) {
+                startActivity(buildEditIntent(uri));
+            }
+            return;
+        }
+
+        documentSwitchInProgress = true;
+        mProgressDialog.indeterminate(R.string.exiting);
+        cancelAllAiRequests();
+
+        final Runnable afterBye = () -> {
+            try {
+                if (!copyFileToTemp() || mTempFile == null) {
+                    throw new IOException("copyFileToTemp failed");
+                }
+                documentUri = mTempFile.toURI();
+                urlToLoad = documentUri.toString();
+                refreshOriginalTypesetDocxBackup();
+                documentLoaded = false;
+                loadDocument();
+                Log.i(TAG, "ai_typeset_reload_in_place_done temp=" + mTempFile.getAbsolutePath()
+                        + " size=" + mTempFile.length());
+            } catch (Exception e) {
+                Log.e(TAG, "ai_typeset_reload_in_place_failed", e);
+                documentSwitchInProgress = false;
+                mProgressDialog.dismiss();
+                toastTodo("重新加载排版文档失败");
+            }
+        };
+
+        Log.i(TAG, "ai_typeset_reload_bye_start pid=" + android.os.Process.myPid());
+        nativeHandler.post(() -> {
+            final long byeStart = System.currentTimeMillis();
+            postMobileMessageNative("BYE");
+            Log.i(TAG, "ai_typeset_reload_bye_done ms=" + (System.currentTimeMillis() - byeStart));
+            runOnUiThread(afterBye);
+        });
+    }
+
+    private void refreshOriginalTypesetDocxBackup() {
+        if (mTempFile == null || !mTempFile.exists()) {
+            mOriginalTypesetDocx = null;
+            return;
+        }
+        try {
+            if (mOriginalTypesetDocx == null || !mOriginalTypesetDocx.exists()) {
+                mOriginalTypesetDocx = File.createTempFile("LO_orig_docx_", ".docx", getCacheDir());
+            }
+            copyFileStream(mTempFile, mOriginalTypesetDocx);
+            Log.i(TAG, "original_docx_refreshed path=" + mOriginalTypesetDocx + " size=" + mTempFile.length());
+        } catch (Exception e) {
+            Log.w(TAG, "original_docx_refresh_failed", e);
+            mOriginalTypesetDocx = null;
+        }
+    }
+
+    /**
+     * 将排版生成的 docx 写回当前文档 URI，使再次打开同一文件仍保留排版样式。
+     * content:// 与 file:// 可编辑 URI 均支持；失败时返回 false，由调用方回退为打开独立排版文件。
+     */
+    private boolean copyTypesetResultToOriginal(File docxFile, Uri originalUri) {
+        if (!isDocEditable || docxFile == null || !docxFile.exists() || originalUri == null) {
+            return false;
+        }
+        try {
+            if (ContentResolver.SCHEME_CONTENT.equals(originalUri.getScheme())) {
+                try (InputStream in = new FileInputStream(docxFile);
+                     OutputStream out = getContentResolver().openOutputStream(originalUri, "wt")) {
+                    if (out == null) {
+                        return false;
+                    }
+                    byte[] buf = new byte[8192];
+                    int len;
+                    long total = 0;
+                    while ((len = in.read(buf)) != -1) {
+                        out.write(buf, 0, len);
+                        total += len;
+                    }
+                    Log.i(TAG, "ai_typeset_copy_to_original bytes=" + total + " uri=" + originalUri);
+                    return total > 0;
+                }
+            }
+            if (ContentResolver.SCHEME_FILE.equals(originalUri.getScheme())) {
+                String path = originalUri.getPath();
+                if (path == null || path.isEmpty()) {
+                    return false;
+                }
+                copyFileStream(docxFile, new File(path));
+                Log.i(TAG, "ai_typeset_copy_to_original file=" + path);
+                return true;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "ai_typeset_copy_to_original_failed uri=" + originalUri, e);
+        }
+        return false;
     }
 
     // ==================== AI排版 V2 方法结束 ====================
@@ -15167,86 +15571,130 @@ public class LOActivity extends AppCompatActivity {
         pendingOutlineResult = null;
 
         final AlertDialog dialog = new AlertDialog.Builder(this).create();
-        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_outline_v2, null);
+        View root = getLayoutInflater().inflate(R.layout.lolib_wai_outline_dialog, null);
         outlineDialogRoot = root;
 
-        outlineTypeLabel = root.findViewById(R.id.outline_type_label);
-        outlineTypeCard = root.findViewById(R.id.outline_type_card);
-        outlineDescEdit = root.findViewById(R.id.outline_desc_edit);
-        outlineResultText = root.findViewById(R.id.outline_result_text);
-        outlineDescCard = root.findViewById(R.id.outline_desc_card);
-        outlineResultCard = root.findViewById(R.id.outline_result_card);
-        outlineResultScroll = root.findViewById(R.id.outline_result_scroll);
-        outlineGenerateBtn = root.findViewById(R.id.outline_generate_btn);
-        outlineDoneRow = root.findViewById(R.id.outline_done_row);
-        outlineCopyRow = root.findViewById(R.id.outline_copy_row);
+        outlineTypeCard = root.findViewById(R.id.wai_outline_type_card);
+        outlineTypeLabel = root.findViewById(R.id.wai_outline_type_label);
+        outlineTypeChevron = root.findViewById(R.id.wai_outline_type_chevron);
+        outlineDescEdit = root.findViewById(R.id.wai_outline_require_edit);
+        outlineInputGroup = root.findViewById(R.id.wai_outline_input_group);
+        outlineResultGroup = root.findViewById(R.id.wai_outline_result_group);
+        outlineResultScroll = root.findViewById(R.id.wai_outline_result_scroll);
+        outlineResultText = root.findViewById(R.id.wai_outline_result_text);
+        outlineGenerateBtn = root.findViewById(R.id.wai_outline_generate_btn);
+        outlineCopyRow = root.findViewById(R.id.wai_outline_copy_row);
+        outlineCtaBar = root.findViewById(R.id.wai_outline_cta_bar);
+        outlineResultBar = root.findViewById(R.id.wai_outline_result_bar);
+        outlineRegenerateBtn = root.findViewById(R.id.wai_outline_regenerate_btn);
+        outlineInsertBtn = root.findViewById(R.id.wai_outline_insert_btn);
 
-        root.findViewById(R.id.outline_close_btn).setOnClickListener(v -> dialog.dismiss());
-        root.findViewById(R.id.outline_type_card).setOnClickListener(v -> showOutlineTypePicker());
+        TextView title = root.findViewById(R.id.wai_title);
+        if (title != null) {
+            title.setText("生成大纲");
+        }
+        root.findViewById(R.id.wai_close).setOnClickListener(v -> dialog.dismiss());
+        outlineTypeCard.setOnClickListener(v -> showOutlineTypePicker());
         outlineGenerateBtn.setOnClickListener(v -> startOutlineGeneration());
-        root.findViewById(R.id.outline_regenerate_btn).setOnClickListener(v -> startOutlineGeneration());
-        root.findViewById(R.id.outline_apply_btn).setOnClickListener(v -> applyOutlineResult());
+        outlineRegenerateBtn.setOnClickListener(v -> startOutlineGeneration());
+        outlineInsertBtn.setOnClickListener(v -> applyOutlineResult());
         outlineCopyRow.setOnClickListener(v -> copyOutlineResult());
+        if (outlineDescEdit != null) {
+            AiDialogHelper.bindDialogTextInput(outlineDescEdit);
+        }
+        syncOutlineTypeUi();
 
         dialog.setOnDismissListener(d -> {
             Log.i(TAG, "outline_dialog_dismissed");
+            cancelAndSuppressAiRequest(outlineActiveRequestId);
             aiStreamingViewByRequestId.remove(outlineActiveRequestId);
             outlineActiveRequestId = "";
             outlineDialog = null;
             outlineDialogRoot = null;
         });
         dialog.setView(root);
+        AiDialogHelper.applyTransparentWindow(dialog);
+        AiDialogHelper.applyCloseOnlyDismiss(dialog);
+        hideKeyboardForBottomSheet();
         dialog.show();
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        }
         outlineDialog = dialog;
         switchOutlineDialogState(false);
         root.post(this::applyOutlineDialogSize);
     }
 
     /**
-     * 约束弹窗宽度，高度随内容变化（上限 637dp Hug）。
+     * 生成大纲弹窗尺寸:内容自适应(用户认可模式)——输入态随要求框拉长;
+     * 结果态下限 486dp 设计稿高,上限放宽到屏高-保留区,长文本拉满后滚动区收缩。
      */
-    private void applyFlexibleDialogSize(AlertDialog dialog, View root, String logTag) {
-        if (dialog == null || dialog.getWindow() == null || root == null) {
+    private void applyOutlineDialogSize() {
+        if (outlineDialog == null || outlineDialog.getWindow() == null || outlineDialogRoot == null) {
             return;
         }
-        int targetWidth = AiDialogHelper.computeTargetWidthPx(getResources());
-        int maxHeight = AiDialogHelper.computeMaxHeightHugPx(getResources());
-        AiDialogHelper.applyFlexibleWidth(root, dialog, targetWidth, maxHeight);
-        Log.d(TAG, logTag + " w=" + targetWidth + " maxH=" + maxHeight);
-    }
-
-    private void applyOutlineDialogSize() {
-        applyFlexibleDialogSize(outlineDialog, outlineDialogRoot, "outline_dialog_size");
+        int targetWidth = AiDialogHelper.computeWriterDialogWidthPx(getResources());
+        boolean resultVisible = outlineResultGroup != null
+                && outlineResultGroup.getVisibility() == View.VISIBLE;
+        int cap = resultVisible
+                ? AiDialogHelper.computeWriterResultMaxHeightPx(this)
+                : AiDialogHelper.computeCenteredDialogMaxHeightPx(this, false);
+        int minHeight = resultVisible ? dpToPx(486) : 0;
+        AiDialogHelper.applyContentAdaptiveSize(outlineDialog, outlineDialogRoot,
+                targetWidth, cap, minHeight);
+        Log.d(TAG, "outline_dialog_size w=" + targetWidth + " cap=" + cap
+                + " result=" + resultVisible);
     }
 
     private void scrollOutlineResultToBottom() {
-        if (outlineResultScroll == null || outlineResultCard == null
-                || outlineResultCard.getVisibility() != View.VISIBLE) {
+        if (outlineResultScroll == null || outlineResultGroup == null
+                || outlineResultGroup.getVisibility() != View.VISIBLE) {
             return;
         }
         outlineResultScroll.post(() -> outlineResultScroll.fullScroll(View.FOCUS_DOWN));
     }
 
+    /** 同步类型标签与要求框占位文案(设计 326:21338:占位 = 请输入{类型}要求)。 */
+    private void syncOutlineTypeUi() {
+        String label = OUTLINE_TYPE_LABELS[OUTLINE_TYPE_LABELS.length - 1];
+        for (int i = 0; i < OUTLINE_TYPE_KEYS.length; i++) {
+            if (OUTLINE_TYPE_KEYS[i].equals(pendingOutlineType)) {
+                label = OUTLINE_TYPE_LABELS[i];
+                break;
+            }
+        }
+        if (outlineTypeLabel != null) {
+            outlineTypeLabel.setText(label);
+        }
+        if (outlineDescEdit != null) {
+            outlineDescEdit.setHint("请输入" + label + "要求");
+        }
+    }
+
     private void showOutlineTypePicker() {
         View anchor = outlineTypeCard != null ? outlineTypeCard : outlineTypeLabel;
-        PopupMenu popup = new PopupMenu(this, anchor);
-        for (int i = 0; i < OUTLINE_TYPE_LABELS.length; i++) {
-            popup.getMenu().add(0, i, i, OUTLINE_TYPE_LABELS[i]);
+        if (anchor == null) {
+            return;
         }
-        popup.setOnMenuItemClickListener(item -> {
-            int idx = item.getItemId();
-            if (idx >= 0 && idx < OUTLINE_TYPE_KEYS.length) {
-                pendingOutlineType = OUTLINE_TYPE_KEYS[idx];
-                outlineTypeLabel.setText(OUTLINE_TYPE_LABELS[idx]);
-                Log.i(TAG, "outline_type_selected type=" + pendingOutlineType);
-                return true;
+        int selected = 0;
+        for (int i = 0; i < OUTLINE_TYPE_KEYS.length; i++) {
+            if (OUTLINE_TYPE_KEYS[i].equals(pendingOutlineType)) {
+                selected = i;
+                break;
             }
-            return false;
-        });
-        popup.show();
+        }
+        if (outlineTypeChevron != null) {
+            outlineTypeChevron.setRotation(180f);
+        }
+        WaiDropdownPopup.show(this, anchor, OUTLINE_TYPE_LABELS, selected, 0,
+                WaiDropdownPopup.Style.CHECK, null,
+                (index, label) -> {
+                    pendingOutlineType = OUTLINE_TYPE_KEYS[index];
+                    syncOutlineTypeUi();
+                    Log.i(TAG, "outline_type_selected type=" + pendingOutlineType);
+                },
+                () -> {
+                    if (outlineTypeChevron != null) {
+                        outlineTypeChevron.setRotation(0f);
+                    }
+                });
     }
 
     private void startOutlineGeneration() {
@@ -15277,6 +15725,9 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void sendOutlineRequest() {
+        if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_OUTLINE, "base")) {
+            return;
+        }
         toastTodo("正在生成大纲...");
         if (outlineResultText != null) {
             outlineResultText.setText("正在生成大纲...");
@@ -15318,7 +15769,13 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
-    private void showOutlineResult(String text) {
+    private void showOutlineResult(String requestId, String text) {
+        if (requestId != null && !requestId.isEmpty() && !requestId.equals(outlineActiveRequestId)) {
+            Log.i(TAG, "outline_result_stale_drop requestId=" + requestId
+                    + " active=" + outlineActiveRequestId);
+            return;
+        }
+        aiSuppressedRequestIds.remove(requestId);
         pendingOutlineResult = text;
         if (outlineResultText != null) {
             outlineResultText.setText(text);
@@ -15328,20 +15785,25 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void switchOutlineDialogState(boolean completed) {
-        if (outlineDescCard != null) {
-            outlineDescCard.setVisibility(completed ? View.GONE : View.VISIBLE);
+        if (outlineInputGroup != null) {
+            outlineInputGroup.setVisibility(completed ? View.GONE : View.VISIBLE);
         }
-        if (outlineGenerateBtn != null) {
-            outlineGenerateBtn.setVisibility(completed ? View.GONE : View.VISIBLE);
+        if (outlineCtaBar != null) {
+            outlineCtaBar.setVisibility(completed ? View.GONE : View.VISIBLE);
         }
-        if (outlineResultCard != null) {
-            outlineResultCard.setVisibility(completed ? View.VISIBLE : View.GONE);
+        if (outlineResultGroup != null) {
+            outlineResultGroup.setVisibility(completed ? View.VISIBLE : View.GONE);
         }
-        if (outlineDoneRow != null) {
-            outlineDoneRow.setVisibility(completed ? View.VISIBLE : View.GONE);
+        if (outlineResultBar != null) {
+            outlineResultBar.setVisibility(completed ? View.VISIBLE : View.GONE);
         }
         if (outlineCopyRow != null) {
             outlineCopyRow.setVisibility(completed ? View.VISIBLE : View.GONE);
+        }
+        // 完成态提示行描边变浅 #D8D8D8(设计 326:22541)
+        if (outlineTypeCard != null) {
+            outlineTypeCard.setBackgroundResource(completed
+                    ? R.drawable.lolib_wai_bg_box_light : R.drawable.lolib_wai_bg_box);
         }
         if (outlineDialogRoot != null) {
             outlineDialogRoot.post(this::applyOutlineDialogSize);
@@ -15400,125 +15862,108 @@ public class LOActivity extends AppCompatActivity {
         pendingArticleResult = null;
 
         final AlertDialog dialog = new AlertDialog.Builder(this).create();
-        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_article_generate_v2, null);
+        View root = getLayoutInflater().inflate(R.layout.lolib_wai_article_dialog, null);
         articleDialogRoot = root;
 
-        articleCategoryLabel = root.findViewById(R.id.article_category_label);
-        articleSubTypeLabel = root.findViewById(R.id.article_subtype_label);
-        articleSubTypeCard = root.findViewById(R.id.article_subtype_card);
-        articleStageHint = root.findViewById(R.id.article_stage_hint);
-        articleStageForm = root.findViewById(R.id.article_stage_form);
-        articleFormScroll = root.findViewById(R.id.article_form_scroll);
-        articleFormContainer = root.findViewById(R.id.article_form_container);
-        articleGenerateBtn = root.findViewById(R.id.article_generate_btn);
-        articleGenerateBtnText = root.findViewById(R.id.article_generate_btn_text);
-        articleResultCard = root.findViewById(R.id.article_result_card);
-        articleResultScroll = root.findViewById(R.id.article_result_scroll);
-        articleResultText = root.findViewById(R.id.article_result_text);
-        articleCopyRow = root.findViewById(R.id.article_copy_row);
-        articleDoneRow = root.findViewById(R.id.article_done_row);
+        articleCategoryLabel = root.findViewById(R.id.wai_article_category_label);
+        articleCategoryChevron = root.findViewById(R.id.wai_article_category_chevron);
+        articleSubTypeLabel = root.findViewById(R.id.wai_article_subtype_label);
+        articleSubTypeChevron = root.findViewById(R.id.wai_article_subtype_chevron);
+        articleSubTypeCard = root.findViewById(R.id.wai_article_subtype_card);
+        articleSetupGroup = root.findViewById(R.id.wai_article_setup_group);
+        articleFormScroll = root.findViewById(R.id.wai_article_form_scroll);
+        articleFormContainer = root.findViewById(R.id.wai_article_form_container);
+        articleGenerateBtn = root.findViewById(R.id.wai_article_generate_btn);
+        articleResultGroup = root.findViewById(R.id.wai_article_result_group);
+        articleResultScroll = root.findViewById(R.id.wai_article_result_scroll);
+        articleResultText = root.findViewById(R.id.wai_article_result_text);
+        articleCopyRow = root.findViewById(R.id.wai_article_copy_row);
+        articleHintBar = root.findViewById(R.id.wai_article_hint_bar);
+        articleCtaBar = root.findViewById(R.id.wai_article_cta_bar);
+        articleResultBar = root.findViewById(R.id.wai_article_result_bar);
+        articleRegenerateBtn = root.findViewById(R.id.wai_article_regenerate_btn);
+        articleInsertBtn = root.findViewById(R.id.wai_article_insert_btn);
 
-        root.findViewById(R.id.article_close_btn).setOnClickListener(v -> dialog.dismiss());
-        root.findViewById(R.id.article_category_card).setOnClickListener(v -> showArticleCategoryPicker());
+        TextView title = root.findViewById(R.id.wai_title);
+        if (title != null) {
+            title.setText("文案生成");
+        }
+        root.findViewById(R.id.wai_close).setOnClickListener(v -> dialog.dismiss());
+        root.findViewById(R.id.wai_article_category_card)
+                .setOnClickListener(v -> showArticleCategoryPicker());
         articleSubTypeCard.setOnClickListener(v -> showArticleSubTypePicker());
-        root.findViewById(R.id.article_generate_btn).setOnClickListener(v -> startArticleGeneration());
-        root.findViewById(R.id.article_regenerate_btn).setOnClickListener(v -> {
+        articleGenerateBtn.setOnClickListener(v -> startArticleGeneration());
+        articleRegenerateBtn.setOnClickListener(v -> {
             if (pendingArticleTemplate != null) {
                 switchArticleDialogStage(ARTICLE_STAGE_FORM);
             }
         });
-        root.findViewById(R.id.article_apply_btn).setOnClickListener(v -> applyArticleResult());
+        articleInsertBtn.setOnClickListener(v -> applyArticleResult());
         articleCopyRow.setOnClickListener(v -> copyArticleResult());
 
         dialog.setOnDismissListener(d -> {
             Log.i(TAG, "article_dialog_dismissed");
+            cancelAndSuppressAiRequest(articleActiveRequestId);
             aiStreamingViewByRequestId.remove(articleActiveRequestId);
             articleActiveRequestId = "";
             articleDialog = null;
             articleDialogRoot = null;
         });
         dialog.setView(root);
+        AiDialogHelper.applyTransparentWindow(dialog);
+        AiDialogHelper.applyCloseOnlyDismiss(dialog);
+        hideKeyboardForBottomSheet();
         dialog.show();
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        }
         articleDialog = dialog;
         switchArticleDialogStage(ARTICLE_STAGE_SELECT);
         root.post(this::applyArticleDialogSize);
     }
 
+    /**
+     * 文案生成弹窗尺寸:恢复「内容自适应」逻辑(用户确认的旧行为)——表单内容展开多少
+     * 弹窗就拉长多少,超屏高上限时才把表单滚动区压到剩余空间。
+     * 窗口高度 = min(自然内容高, 上限),不再套固定设计稿高度,根治底部按钮被裁。
+     */
     private void applyArticleDialogSize() {
         if (articleDialog == null || articleDialog.getWindow() == null || articleDialogRoot == null) {
             return;
         }
-        int targetWidth = AiDialogHelper.computeTargetWidthPx(getResources());
-        int maxHeight = AiDialogHelper.computeMaxHeightHugPx(getResources());
+        boolean formVisible = articleSetupGroup != null
+                && articleSetupGroup.getVisibility() == View.VISIBLE;
+        boolean resultVisible = articleResultGroup != null
+                && articleResultGroup.getVisibility() == View.VISIBLE;
+        // 结果态(无键盘)上限放宽到屏高-保留区;同时保底 351dp 设计高,短文本也不塌
+        int targetWidth = AiDialogHelper.computeWriterDialogWidthPx(getResources());
+        int maxHeight = resultVisible && !formVisible
+                ? AiDialogHelper.computeWriterResultMaxHeightPx(this)
+                : AiDialogHelper.computeCenteredDialogMaxHeightPx(this, true);
+        int minHeight = resultVisible && !formVisible ? dpToPx(351) : 0;
 
-        setArticleFormScrollHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
-
+        // 测量前 relax 全部 0dp+weight(含 setup 组、form 滚动区),拿到自然内容高;
+        // 测后恢复 weight 弹性——键盘压缩/窗口封顶时由 setup 组与滚动区收缩吸收,
+        // 表单字段与底部按钮互不重叠、按钮不溢出。
+        java.util.List<View> relaxed = new java.util.ArrayList<>();
+        AiDialogHelper.relaxWeightedChildHeights(articleDialogRoot, relaxed);
         int widthSpec = View.MeasureSpec.makeMeasureSpec(targetWidth, View.MeasureSpec.EXACTLY);
         int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
         articleDialogRoot.measure(widthSpec, heightSpec);
         int contentHeight = articleDialogRoot.getMeasuredHeight();
+        AiDialogHelper.restoreWeightedChildHeights(relaxed);
 
-        if (contentHeight > maxHeight
-                && articleStageForm != null
-                && articleStageForm.getVisibility() == View.VISIBLE
-                && articleFormScroll != null) {
-            int fixedHeight = measureArticleDialogFixedHeight(targetWidth);
-            int scrollHeight = maxHeight - fixedHeight;
-            scrollHeight = Math.max(scrollHeight, dpToPx(120));
-            setArticleFormScrollHeight(scrollHeight);
-            articleDialogRoot.measure(widthSpec, heightSpec);
-            contentHeight = articleDialogRoot.getMeasuredHeight();
-        }
-
-        int windowHeight = Math.min(Math.max(contentHeight, 1), maxHeight);
+        // 内容超上限时窗口封顶,表单滚动区(0dp+weight)在 root EXACTLY 下自动分到剩余空间,可滚动
+        int windowHeight = Math.max(Math.min(Math.max(contentHeight, 1), maxHeight), minHeight);
         articleDialog.getWindow().setLayout(targetWidth, windowHeight);
         ViewGroup.LayoutParams lp = articleDialogRoot.getLayoutParams();
         if (lp == null) {
             lp = new ViewGroup.LayoutParams(targetWidth, windowHeight);
         } else {
             lp.width = targetWidth;
-            lp.height = contentHeight > maxHeight ? windowHeight : ViewGroup.LayoutParams.WRAP_CONTENT;
         }
+        // 根部恒撑满窗口:键盘压缩/结果态下限时内部 weight 弹性区收缩,底部按钮不溢出
+        lp.height = windowHeight;
         articleDialogRoot.setLayoutParams(lp);
         Log.d(TAG, "article_dialog_size w=" + targetWidth + " h=" + windowHeight
-                + " contentH=" + contentHeight);
-    }
-
-    private void setArticleFormScrollHeight(int heightPx) {
-        if (articleFormScroll == null) {
-            return;
-        }
-        ViewGroup.LayoutParams lp = articleFormScroll.getLayoutParams();
-        if (lp == null) {
-            lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, heightPx);
-        } else {
-            lp.height = heightPx;
-        }
-        articleFormScroll.setLayoutParams(lp);
-    }
-
-    /** 表单滚动区高度置 0 后测量，得到标题/分类/按钮等固定区域高度。 */
-    private int measureArticleDialogFixedHeight(int targetWidth) {
-        if (articleFormScroll == null) {
-            return 0;
-        }
-        ViewGroup.LayoutParams scrollLp = articleFormScroll.getLayoutParams();
-        int previousHeight = scrollLp.height;
-        scrollLp.height = 0;
-        articleFormScroll.setLayoutParams(scrollLp);
-
-        int widthSpec = View.MeasureSpec.makeMeasureSpec(targetWidth, View.MeasureSpec.EXACTLY);
-        int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
-        articleDialogRoot.measure(widthSpec, heightSpec);
-        int fixedHeight = articleDialogRoot.getMeasuredHeight();
-
-        scrollLp.height = previousHeight;
-        articleFormScroll.setLayoutParams(scrollLp);
-        return fixedHeight;
+                + " contentH=" + contentHeight + " form=" + formVisible);
     }
 
     private ArticleFieldKind detectArticleFieldKind(ArticleTemplate.Variable variable) {
@@ -15618,8 +16063,7 @@ public class LOActivity extends AppCompatActivity {
         if (articleDialogRoot == null) {
             return;
         }
-        View anchor = articleDialogRoot.findViewById(R.id.article_category_card);
-        ImageView chevron = articleDialogRoot.findViewById(R.id.article_category_chevron);
+        View anchor = articleDialogRoot.findViewById(R.id.wai_article_category_card);
         String[] categories = ArticleTemplateRegistry.getCategories();
         int selectedIndex = 0;
         if (pendingArticleCategory != null) {
@@ -15630,23 +16074,26 @@ public class LOActivity extends AppCompatActivity {
                 }
             }
         }
-        if (chevron != null) {
-            chevron.setRotation(180f);
+        if (articleCategoryChevron != null) {
+            articleCategoryChevron.setRotation(180f);
         }
-        ArticleDropdownPopup.show(this, anchor, categories, selectedIndex, (idx, label) -> {
-            pendingArticleCategory = categories[idx];
-            articleCategoryLabel.setText(pendingArticleCategory);
-            articleSubTypeLabel.setText("请选择子类");
-            pendingArticleTemplate = null;
-            pendingArticleValues = null;
-            articleSubTypeCard.setVisibility(View.VISIBLE);
-            switchArticleDialogStage(ARTICLE_STAGE_SELECT);
-            Log.i(TAG, "article_category_selected category=" + pendingArticleCategory);
-        }, () -> {
-            if (chevron != null) {
-                chevron.setRotation(0f);
-            }
-        });
+        WaiDropdownPopup.show(this, anchor, categories, selectedIndex, 0,
+                WaiDropdownPopup.Style.GRADIENT, null,
+                (idx, label) -> {
+                    pendingArticleCategory = categories[idx];
+                    articleCategoryLabel.setText(pendingArticleCategory);
+                    articleSubTypeLabel.setText("请选择子类");
+                    pendingArticleTemplate = null;
+                    pendingArticleValues = null;
+                    articleSubTypeCard.setVisibility(View.VISIBLE);
+                    switchArticleDialogStage(ARTICLE_STAGE_SELECT);
+                    Log.i(TAG, "article_category_selected category=" + pendingArticleCategory);
+                },
+                () -> {
+                    if (articleCategoryChevron != null) {
+                        articleCategoryChevron.setRotation(0f);
+                    }
+                });
     }
 
     private void showArticleSubTypePicker() {
@@ -15662,8 +16109,7 @@ public class LOActivity extends AppCompatActivity {
         if (templates.isEmpty()) {
             return;
         }
-        View anchor = articleDialogRoot.findViewById(R.id.article_subtype_card);
-        ImageView chevron = articleDialogRoot.findViewById(R.id.article_subtype_chevron);
+        View anchor = articleSubTypeCard;
         String[] labels = new String[templates.size()];
         int selectedIndex = 0;
         for (int i = 0; i < templates.size(); i++) {
@@ -15673,20 +16119,23 @@ public class LOActivity extends AppCompatActivity {
                 selectedIndex = i;
             }
         }
-        if (chevron != null) {
-            chevron.setRotation(180f);
+        if (articleSubTypeChevron != null) {
+            articleSubTypeChevron.setRotation(180f);
         }
-        ArticleDropdownPopup.show(this, anchor, labels, selectedIndex, (idx, label) -> {
-            ArticleTemplate tmpl = templates.get(idx);
-            pendingArticleTemplate = tmpl;
-            articleSubTypeLabel.setText(tmpl.subTypeLabel);
-            renderArticleForm(tmpl);
-            Log.i(TAG, "article_subtype_selected key=" + tmpl.key);
-        }, () -> {
-            if (chevron != null) {
-                chevron.setRotation(0f);
-            }
-        });
+        WaiDropdownPopup.show(this, anchor, labels, selectedIndex, 0,
+                WaiDropdownPopup.Style.GRADIENT, null,
+                (idx, label) -> {
+                    ArticleTemplate tmpl = templates.get(idx);
+                    pendingArticleTemplate = tmpl;
+                    articleSubTypeLabel.setText(tmpl.subTypeLabel);
+                    renderArticleForm(tmpl);
+                    Log.i(TAG, "article_subtype_selected key=" + tmpl.key);
+                },
+                () -> {
+                    if (articleSubTypeChevron != null) {
+                        articleSubTypeChevron.setRotation(0f);
+                    }
+                });
     }
 
     private void renderArticleForm(ArticleTemplate tmpl) {
@@ -15697,16 +16146,18 @@ public class LOActivity extends AppCompatActivity {
         pendingArticleValues = new String[tmpl.variables.length];
         float density = getResources().getDisplayMetrics().density;
         int labelTop = (int) (12 * density);
-        int fieldBottom = (int) (8 * density);
-        int fieldPadding = (int) (16 * density);
+        int fieldBottom = (int) (12 * density);
+        int fieldPaddingH = (int) (16 * density);
+        int fieldPaddingV = (int) (14 * density);
+        int fieldMinHeight = (int) (51 * density);
 
         for (int i = 0; i < tmpl.variables.length; i++) {
             ArticleTemplate.Variable variable = tmpl.variables[i];
 
             TextView label = new TextView(this);
             label.setText(variable.label);
-            label.setTextColor(Color.parseColor("#999999"));
-            label.setTextSize(14);
+            label.setTextColor(Color.parseColor("#6A6A6A"));
+            label.setTextSize(12);
             LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             if (i > 0) {
@@ -15722,25 +16173,29 @@ public class LOActivity extends AppCompatActivity {
             field.setTextColor(Color.parseColor("#333333"));
             field.setHintTextColor(Color.parseColor("#999999"));
             field.setTextSize(16);
-            field.setBackgroundResource(R.drawable.lolib_bg_outline_edit);
-            field.setPadding(fieldPadding, fieldPadding, fieldPadding, fieldPadding);
+            // 设计 326:23571: 参数输入框 = 311×51dp、描边 #D8D8D8、圆角 12dp
+            field.setBackgroundResource(R.drawable.lolib_wai_bg_box_light);
+            field.setPadding(fieldPaddingH, fieldPaddingV, fieldPaddingH, fieldPaddingV);
+            field.setMinHeight(fieldMinHeight);
             if (fieldKind == ArticleFieldKind.TEXT) {
                 field.setInputType(android.text.InputType.TYPE_CLASS_TEXT
                         | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-                field.setMaxLines(3);
+                field.setMaxLines(2);
+                // ScrollView 容器内显式可聚焦,防焦点被父级拦截导致键盘弹不出
+                field.setFocusable(true);
+                field.setFocusableInTouchMode(true);
+                AiDialogHelper.bindDialogTextInput(field);
             } else {
                 bindArticleDateField(field, fieldKind, variable.hint);
             }
             LinearLayout.LayoutParams fieldLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            fieldLp.topMargin = (int) (4 * density);
             fieldLp.bottomMargin = fieldBottom;
             field.setLayoutParams(fieldLp);
             articleFormContainer.addView(field);
         }
 
-        if (articleGenerateBtnText != null) {
-            articleGenerateBtnText.setText("开始生成");
-        }
         switchArticleDialogStage(ARTICLE_STAGE_FORM);
         if (articleDialogRoot != null) {
             articleDialogRoot.post(this::applyArticleDialogSize);
@@ -15767,6 +16222,9 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void sendArticleRequest(ArticleTemplate tmpl, String[] values) {
+        if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_ARTICLE_GENERATE, "base")) {
+            return;
+        }
         toastTodo("正在生成文案...");
         if (articleResultText != null) {
             articleResultText.setText("正在生成文案...");
@@ -15811,7 +16269,13 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
-    private void showArticleGenerateResult(String text) {
+    private void showArticleGenerateResult(String requestId, String text) {
+        if (requestId != null && !requestId.isEmpty() && !requestId.equals(articleActiveRequestId)) {
+            Log.i(TAG, "article_result_stale_drop requestId=" + requestId
+                    + " active=" + articleActiveRequestId);
+            return;
+        }
+        aiSuppressedRequestIds.remove(requestId);
         pendingArticleResult = text;
         if (articleResultText != null) {
             articleResultText.setText(text);
@@ -15821,8 +16285,8 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void scrollArticleResultToBottom() {
-        if (articleResultScroll == null || articleResultCard == null
-                || articleResultCard.getVisibility() != View.VISIBLE) {
+        if (articleResultScroll == null || articleResultGroup == null
+                || articleResultGroup.getVisibility() != View.VISIBLE) {
             return;
         }
         articleResultScroll.post(() -> articleResultScroll.fullScroll(View.FOCUS_DOWN));
@@ -15833,33 +16297,28 @@ public class LOActivity extends AppCompatActivity {
         boolean form = stage == ARTICLE_STAGE_FORM;
         boolean result = stage == ARTICLE_STAGE_RESULT;
 
-        View categoryCard = articleDialogRoot != null
-                ? articleDialogRoot.findViewById(R.id.article_category_card) : null;
-        if (categoryCard != null) {
-            categoryCard.setVisibility(result ? View.GONE : View.VISIBLE);
+        if (articleSetupGroup != null) {
+            articleSetupGroup.setVisibility(result ? View.GONE : View.VISIBLE);
         }
         if (articleSubTypeCard != null) {
-            articleSubTypeCard.setVisibility((select && pendingArticleCategory != null)
-                    || form ? View.VISIBLE : View.GONE);
-            if (result) {
-                articleSubTypeCard.setVisibility(View.GONE);
-            }
+            articleSubTypeCard.setVisibility(
+                    (select && pendingArticleCategory != null) || form
+                            ? View.VISIBLE : View.GONE);
         }
-
-        if (articleStageHint != null) {
-            articleStageHint.setVisibility(select ? View.VISIBLE : View.GONE);
+        if (articleHintBar != null) {
+            articleHintBar.setVisibility(select ? View.VISIBLE : View.GONE);
         }
-        if (articleStageForm != null) {
-            articleStageForm.setVisibility(form ? View.VISIBLE : View.GONE);
+        if (articleCtaBar != null) {
+            articleCtaBar.setVisibility(form ? View.VISIBLE : View.GONE);
         }
-        if (articleResultCard != null) {
-            articleResultCard.setVisibility(result ? View.VISIBLE : View.GONE);
+        if (articleResultGroup != null) {
+            articleResultGroup.setVisibility(result ? View.VISIBLE : View.GONE);
         }
         if (articleCopyRow != null) {
             articleCopyRow.setVisibility(result ? View.VISIBLE : View.GONE);
         }
-        if (articleDoneRow != null) {
-            articleDoneRow.setVisibility(result ? View.VISIBLE : View.GONE);
+        if (articleResultBar != null) {
+            articleResultBar.setVisibility(result ? View.VISIBLE : View.GONE);
         }
 
         if (articleDialogRoot != null) {
@@ -15923,7 +16382,7 @@ public class LOActivity extends AppCompatActivity {
         if (base64 == null || base64.isEmpty()) {
             return;
         }
-        ensureEditModeThen(() -> sendInsertFileWhenSocketOpen(fileName, base64, 0, null));
+        ensureEditModeThen(() -> sendInsertFileWhenSocketOpen(base64, fileName, 0, null));
     }
 
     /**
@@ -15931,11 +16390,12 @@ public class LOActivity extends AppCompatActivity {
      * 原生发送命中 "sending on closed socket" 导致图片丢失。
      * 轮询 readyState，OPEN 时走高效原生路径；超时则退回 JS sendMessage 队列兜底。
      */
-    private void sendInsertFileWhenSocketOpen(String fileName, String base64, int attempt, final Runnable onDone) {
+    private void sendInsertFileWhenSocketOpen(String base64, String fileName, int attempt,
+                                              Runnable onAfter) {
         if (mWebView == null) {
             Log.w(TAG, "ai_image_insert_abort no_webview name=" + fileName);
-            if (onDone != null) {
-                onDone.run();
+            if (onAfter != null) {
+                onAfter.run();
             }
             return;
         }
@@ -15948,8 +16408,8 @@ public class LOActivity extends AppCompatActivity {
                 nudgeSocketIfStalled("insert_ai_image");
                 Log.i(TAG, "ai_image_inserted name=" + fileName + " bytes=" + base64.length()
                         + " socket=open attempt=" + attempt);
-                if (onDone != null) {
-                    onDone.run();
+                if (onAfter != null) {
+                    onAfter.run();
                 }
             } else if (attempt < 40) {
                 // socket 未就绪（reconnecting/closed），150ms 后重试，最长约 6s
@@ -15958,13 +16418,14 @@ public class LOActivity extends AppCompatActivity {
                             + " attempt=" + attempt);
                 }
                 getMainHandler().postDelayed(
-                        () -> sendInsertFileWhenSocketOpen(fileName, base64, attempt + 1, onDone), 150L);
+                        () -> sendInsertFileWhenSocketOpen(base64, fileName, attempt + 1, onAfter),
+                        150L);
             } else {
                 // 超时：退回 JS sendMessage 队列，由 Socket.ts 在重连完成后 flush
                 Log.w(TAG, "ai_image_insert_timeout name=" + fileName + " fallback=js_queue");
                 sendInsertFileViaJsQueue(base64, fileName);
-                if (onDone != null) {
-                    onDone.run();
+                if (onAfter != null) {
+                    onAfter.run();
                 }
             }
         });
@@ -16101,27 +16562,50 @@ public class LOActivity extends AppCompatActivity {
         pendingFormatBatchResult = null;
 
         final AlertDialog dialog = new AlertDialog.Builder(this).create();
-        int layoutId = mIsImpressDocument
-                ? R.layout.lolib_dialog_format_batch_impress
-                : R.layout.lolib_dialog_format_batch;
-        View root = getLayoutInflater().inflate(layoutId, null);
+        // Writer/Impress 统一走新设计稿弹窗(设计体系通用,旧 impress 布局废弃)
+        View root = getLayoutInflater().inflate(R.layout.lolib_wai_format_batch_dialog, null);
         formatBatchDialogRoot = root;
 
-        formatBatchOptionsContainer = root.findViewById(R.id.format_batch_options_container);
-        formatBatchExecuteBtn = root.findViewById(R.id.format_batch_execute_btn);
-        formatBatchResultCard = root.findViewById(R.id.format_batch_result_card);
-        formatBatchResultText = root.findViewById(R.id.format_batch_result_text);
-        formatBatchCopyRow = root.findViewById(R.id.format_batch_copy_row);
-        formatBatchDoneRow = root.findViewById(R.id.format_batch_done_row);
+        formatBatchInputGroup = root.findViewById(R.id.wai_format_input_group);
+        formatBatchResultGroup = root.findViewById(R.id.wai_format_result_group);
+        formatBatchExecuteBtn = root.findViewById(R.id.wai_format_execute_btn);
+        formatBatchResultScroll = root.findViewById(R.id.wai_format_result_scroll);
+        formatBatchResultText = root.findViewById(R.id.wai_format_result_text);
+        formatBatchCopyRow = root.findViewById(R.id.wai_format_copy_row);
+        formatBatchCtaBar = root.findViewById(R.id.wai_format_cta_bar);
+        formatBatchResultBar = root.findViewById(R.id.wai_format_result_bar);
+        formatBatchRegenerateBtn = root.findViewById(R.id.wai_format_regenerate_btn);
+        formatBatchInsertBtn = root.findViewById(R.id.wai_format_insert_btn);
 
-        formatBatchCheckBoxes[FormatBatchProcessor.RULE_EN_TO_ZH_PUNCT] = root.findViewById(R.id.fb_option_en_to_zh);
-        formatBatchCheckBoxes[FormatBatchProcessor.RULE_ZH_TO_EN_PUNCT] = root.findViewById(R.id.fb_option_zh_to_en);
-        formatBatchCheckBoxes[FormatBatchProcessor.RULE_GHOST_TO_SPACE] = root.findViewById(R.id.fb_option_ghost);
-        formatBatchCheckBoxes[FormatBatchProcessor.RULE_REMOVE_EXTRA_BLANK_LINES] = root.findViewById(R.id.fb_option_blank_lines);
-        formatBatchCheckBoxes[FormatBatchProcessor.RULE_REMOVE_WAVY_UNDERLINE] = root.findViewById(R.id.fb_option_wavy);
-        formatBatchCheckBoxes[FormatBatchProcessor.RULE_REMOVE_HYPERLINK] = root.findViewById(R.id.fb_option_hyperlink);
-
-        // 默认勾选 #4 #5（对应图3：删除多余空行、消除下滑波浪线）
+        String[] ruleLabels = {
+                "英文标点转中文", "中文标点转英文", "幽灵字符转空格",
+                "删除多余空行", "消除下滑波浪线", "消除超链接识别"
+        };
+        int[] labelIds = {
+                R.id.wai_format_label_0, R.id.wai_format_label_1, R.id.wai_format_label_2,
+                R.id.wai_format_label_3, R.id.wai_format_label_4, R.id.wai_format_label_5
+        };
+        int[] checkIds = {
+                R.id.wai_format_check_0, R.id.wai_format_check_1, R.id.wai_format_check_2,
+                R.id.wai_format_check_3, R.id.wai_format_check_4, R.id.wai_format_check_5
+        };
+        int[] rowIds = {
+                R.id.wai_format_row_0, R.id.wai_format_row_1, R.id.wai_format_row_2,
+                R.id.wai_format_row_3, R.id.wai_format_row_4, R.id.wai_format_row_5
+        };
+        for (int i = 0; i < FormatBatchProcessor.RULE_COUNT && i < checkIds.length; i++) {
+            formatBatchCheckBoxes[i] = root.findViewById(checkIds[i]);
+            formatBatchLabels[i] = root.findViewById(labelIds[i]);
+            if (formatBatchLabels[i] != null && i < ruleLabels.length) {
+                formatBatchLabels[i].setText(ruleLabels[i]);
+            }
+            CheckBox cb = formatBatchCheckBoxes[i];
+            View row = root.findViewById(rowIds[i]);
+            if (row != null && cb != null) {
+                row.setOnClickListener(v -> cb.toggle());
+            }
+        }
+        // 默认勾选 #4 #5（对应设计稿：删除多余空行、消除下滑波浪线）
         if (formatBatchCheckBoxes[FormatBatchProcessor.RULE_REMOVE_EXTRA_BLANK_LINES] != null) {
             formatBatchCheckBoxes[FormatBatchProcessor.RULE_REMOVE_EXTRA_BLANK_LINES].setChecked(true);
         }
@@ -16129,10 +16613,14 @@ public class LOActivity extends AppCompatActivity {
             formatBatchCheckBoxes[FormatBatchProcessor.RULE_REMOVE_WAVY_UNDERLINE].setChecked(true);
         }
 
-        root.findViewById(R.id.format_batch_close_btn).setOnClickListener(v -> dialog.dismiss());
+        TextView title = root.findViewById(R.id.wai_title);
+        if (title != null) {
+            title.setText("格式批量处理");
+        }
+        root.findViewById(R.id.wai_close).setOnClickListener(v -> dialog.dismiss());
         formatBatchExecuteBtn.setOnClickListener(v -> executeFormatBatch());
-        root.findViewById(R.id.format_batch_regenerate_btn).setOnClickListener(v -> switchFormatBatchStage(FORMAT_BATCH_STAGE_INPUT));
-        root.findViewById(R.id.format_batch_apply_btn).setOnClickListener(v -> applyFormatBatchResult());
+        formatBatchRegenerateBtn.setOnClickListener(v -> switchFormatBatchStage(FORMAT_BATCH_STAGE_INPUT));
+        formatBatchInsertBtn.setOnClickListener(v -> applyFormatBatchResult());
         formatBatchCopyRow.setOnClickListener(v -> copyFormatBatchResult());
 
         dialog.setOnDismissListener(d -> {
@@ -16141,54 +16629,54 @@ public class LOActivity extends AppCompatActivity {
             formatBatchDialogRoot = null;
         });
         dialog.setView(root);
+        AiDialogHelper.applyTransparentWindow(dialog);
+        AiDialogHelper.applyCloseOnlyDismiss(dialog);
+        hideKeyboardForBottomSheet();
         dialog.show();
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        }
         formatBatchDialog = dialog;
         switchFormatBatchStage(FORMAT_BATCH_STAGE_INPUT);
         root.post(this::applyFormatBatchDialogSize);
-        Log.i(TAG, "format_batch_dialog_show selectionChars=" + formatBatchSelection.length());
     }
 
+    /**
+     * 格式批量弹窗尺寸:内容自适应——输入态 6 行选项随字体自然高;结果态下限 423dp 设计高,
+     * 上限放宽到屏高-保留区,长文本拉满后滚动区收缩,底部按钮永不被裁。
+     */
     private void applyFormatBatchDialogSize() {
-        if (formatBatchDialog == null || formatBatchDialog.getWindow() == null) {
+        if (formatBatchDialog == null || formatBatchDialog.getWindow() == null
+                || formatBatchDialogRoot == null) {
             return;
         }
-        int targetWidth = AiDialogHelper.computeTargetWidthPx(getResources());
-        boolean resultStage = formatBatchResultCard != null && formatBatchResultCard.getVisibility() == View.VISIBLE;
-        int targetHeight = resultStage
-                ? AiDialogHelper.computeMaxHeightContentPx(getResources())
-                : dpToPx(380);
-        formatBatchDialog.getWindow().setLayout(targetWidth, targetHeight);
-        if (formatBatchDialogRoot != null) {
-            ViewGroup.LayoutParams lp = formatBatchDialogRoot.getLayoutParams();
-            if (lp == null) {
-                lp = new ViewGroup.LayoutParams(targetWidth, targetHeight);
-            } else {
-                lp.width = targetWidth;
-                lp.height = targetHeight;
-            }
-            formatBatchDialogRoot.setLayoutParams(lp);
-        }
+        int targetWidth = AiDialogHelper.computeWriterDialogWidthPx(getResources());
+        boolean resultStage = formatBatchResultGroup != null
+                && formatBatchResultGroup.getVisibility() == View.VISIBLE;
+        int cap = resultStage
+                ? AiDialogHelper.computeWriterResultMaxHeightPx(this)
+                : AiDialogHelper.computeCenteredDialogMaxHeightPx(this, false);
+        // 内容自适应:输入态 6 行选项自然高(字体放大时也不裁 CTA);结果态下限 423dp
+        int minHeight = resultStage ? dpToPx(423) : 0;
+        AiDialogHelper.applyContentAdaptiveSize(formatBatchDialog, formatBatchDialogRoot,
+                targetWidth, cap, minHeight);
+        Log.d(TAG, "format_batch_dialog_size w=" + targetWidth + " cap=" + cap
+                + " result=" + resultStage);
     }
 
     private void switchFormatBatchStage(int stage) {
         boolean input = stage == FORMAT_BATCH_STAGE_INPUT;
-        if (formatBatchOptionsContainer != null) {
-            formatBatchOptionsContainer.setVisibility(input ? View.VISIBLE : View.GONE);
+        if (formatBatchInputGroup != null) {
+            formatBatchInputGroup.setVisibility(input ? View.VISIBLE : View.GONE);
         }
-        if (formatBatchExecuteBtn != null) {
-            formatBatchExecuteBtn.setVisibility(input ? View.VISIBLE : View.GONE);
+        if (formatBatchCtaBar != null) {
+            formatBatchCtaBar.setVisibility(input ? View.VISIBLE : View.GONE);
         }
-        if (formatBatchResultCard != null) {
-            formatBatchResultCard.setVisibility(input ? View.GONE : View.VISIBLE);
+        if (formatBatchResultGroup != null) {
+            formatBatchResultGroup.setVisibility(input ? View.GONE : View.VISIBLE);
         }
         if (formatBatchCopyRow != null) {
             formatBatchCopyRow.setVisibility(input ? View.GONE : View.VISIBLE);
         }
-        if (formatBatchDoneRow != null) {
-            formatBatchDoneRow.setVisibility(input ? View.GONE : View.VISIBLE);
+        if (formatBatchResultBar != null) {
+            formatBatchResultBar.setVisibility(input ? View.GONE : View.VISIBLE);
         }
         if (formatBatchDialogRoot != null) {
             formatBatchDialogRoot.post(this::applyFormatBatchDialogSize);
@@ -16246,78 +16734,83 @@ public class LOActivity extends AppCompatActivity {
         textExtractActiveRequestId = "";
 
         final AlertDialog dialog = new AlertDialog.Builder(this).create();
-        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_text_extract, null);
+        View root = getLayoutInflater().inflate(R.layout.lolib_wai_extract_dialog, null);
         textExtractDialogRoot = root;
 
-        textExtractInputContainer = root.findViewById(R.id.text_extract_input_container);
-        textExtractResultCard = root.findViewById(R.id.text_extract_result_card);
-        textExtractResultText = root.findViewById(R.id.text_extract_result_text);
-        textExtractCopyRow = root.findViewById(R.id.text_extract_copy_row);
-        textExtractDoneRow = root.findViewById(R.id.text_extract_done_row);
+        textExtractInputGroup = root.findViewById(R.id.wai_extract_input_group);
+        textExtractResultGroup = root.findViewById(R.id.wai_extract_result_group);
+        textExtractResultScroll = root.findViewById(R.id.wai_extract_result_scroll);
+        textExtractResultText = root.findViewById(R.id.wai_extract_result_text);
+        textExtractCopyRow = root.findViewById(R.id.wai_extract_copy_row);
+        textExtractResultBar = root.findViewById(R.id.wai_extract_result_bar);
+        textExtractReRecognizeBtn = root.findViewById(R.id.wai_extract_re_recognize_btn);
+        textExtractInsertBtn = root.findViewById(R.id.wai_extract_insert_btn);
 
-        root.findViewById(R.id.text_extract_close_btn).setOnClickListener(v -> dialog.dismiss());
-        root.findViewById(R.id.text_extract_album_btn).setOnClickListener(v -> launchTextExtractAlbum());
-        root.findViewById(R.id.text_extract_camera_btn).setOnClickListener(v -> launchTextExtractCamera());
-        root.findViewById(R.id.text_extract_re_recognize_btn).setOnClickListener(v -> switchTextExtractStage(TEXT_EXTRACT_STAGE_INPUT));
-        root.findViewById(R.id.text_extract_apply_btn).setOnClickListener(v -> applyTextExtractResult());
+        TextView title = root.findViewById(R.id.wai_title);
+        if (title != null) {
+            title.setText("文字提取");
+        }
+        root.findViewById(R.id.wai_close).setOnClickListener(v -> dialog.dismiss());
+        root.findViewById(R.id.wai_extract_album_card).setOnClickListener(v -> launchTextExtractAlbum());
+        root.findViewById(R.id.wai_extract_camera_card).setOnClickListener(v -> launchTextExtractCamera());
+        textExtractReRecognizeBtn.setOnClickListener(v -> switchTextExtractStage(TEXT_EXTRACT_STAGE_INPUT));
+        textExtractInsertBtn.setOnClickListener(v -> applyTextExtractResult());
         textExtractCopyRow.setOnClickListener(v -> copyTextExtractResult());
 
         dialog.setOnDismissListener(d -> {
             Log.i(TAG, "text_extract_dialog_dismissed");
+            cancelAndSuppressAiRequest(textExtractActiveRequestId);
             aiStreamingViewByRequestId.remove(textExtractActiveRequestId);
-            if (!textExtractActiveRequestId.isEmpty()) {
-                cancelAiRequest(textExtractActiveRequestId);
-            }
             textExtractActiveRequestId = "";
             textExtractDialog = null;
             textExtractDialogRoot = null;
         });
         dialog.setView(root);
+        AiDialogHelper.applyTransparentWindow(dialog);
+        AiDialogHelper.applyCloseOnlyDismiss(dialog);
+        hideKeyboardForBottomSheet();
         dialog.show();
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        }
         textExtractDialog = dialog;
         switchTextExtractStage(TEXT_EXTRACT_STAGE_INPUT);
         root.post(this::applyTextExtractDialogSize);
         Log.i(TAG, "text_extract_dialog_show");
     }
 
+    /**
+     * 文字提取弹窗尺寸:内容自适应——输入态随来源卡自然高,结果态下限 423dp 设计高,
+     * 长文本拉满 cap 后滚动区收缩,底部按钮永不被裁。
+     */
     private void applyTextExtractDialogSize() {
-        if (textExtractDialog == null || textExtractDialog.getWindow() == null) {
+        if (textExtractDialog == null || textExtractDialog.getWindow() == null
+                || textExtractDialogRoot == null) {
             return;
         }
-        int targetWidth = AiDialogHelper.computeTargetWidthPx(getResources());
-        boolean resultStage = textExtractResultCard != null && textExtractResultCard.getVisibility() == View.VISIBLE;
-        int targetHeight = resultStage
-                ? AiDialogHelper.computeMaxHeightContentPx(getResources())
-                : dpToPx(320);
-        textExtractDialog.getWindow().setLayout(targetWidth, targetHeight);
-        if (textExtractDialogRoot != null) {
-            ViewGroup.LayoutParams lp = textExtractDialogRoot.getLayoutParams();
-            if (lp == null) {
-                lp = new ViewGroup.LayoutParams(targetWidth, targetHeight);
-            } else {
-                lp.width = targetWidth;
-                lp.height = targetHeight;
-            }
-            textExtractDialogRoot.setLayoutParams(lp);
-        }
-    }
+        int targetWidth = AiDialogHelper.computeWriterDialogWidthPx(getResources());
+        boolean resultStage = textExtractResultGroup != null
+                && textExtractResultGroup.getVisibility() == View.VISIBLE;
+        int cap = resultStage
+                ? AiDialogHelper.computeWriterResultMaxHeightPx(this)
+                : AiDialogHelper.computeCenteredDialogMaxHeightPx(this, false);
+        int minHeight = resultStage ? dpToPx(423) : 0;
+        AiDialogHelper.applyContentAdaptiveSize(textExtractDialog, textExtractDialogRoot,
+                targetWidth, cap, minHeight);
+        Log.d(TAG, "text_extract_dialog_size w=" + targetWidth + " cap=" + cap
+                + " result=" + resultStage);
 
+    }
     private void switchTextExtractStage(int stage) {
         boolean input = stage == TEXT_EXTRACT_STAGE_INPUT;
-        if (textExtractInputContainer != null) {
-            textExtractInputContainer.setVisibility(input ? View.VISIBLE : View.GONE);
+        if (textExtractInputGroup != null) {
+            textExtractInputGroup.setVisibility(input ? View.VISIBLE : View.GONE);
         }
-        if (textExtractResultCard != null) {
-            textExtractResultCard.setVisibility(input ? View.GONE : View.VISIBLE);
+        if (textExtractResultGroup != null) {
+            textExtractResultGroup.setVisibility(input ? View.GONE : View.VISIBLE);
         }
         if (textExtractCopyRow != null) {
             textExtractCopyRow.setVisibility(input ? View.GONE : View.VISIBLE);
         }
-        if (textExtractDoneRow != null) {
-            textExtractDoneRow.setVisibility(input ? View.GONE : View.VISIBLE);
+        if (textExtractResultBar != null) {
+            textExtractResultBar.setVisibility(input ? View.GONE : View.VISIBLE);
         }
         if (textExtractDialogRoot != null) {
             textExtractDialogRoot.post(this::applyTextExtractDialogSize);
@@ -16382,6 +16875,9 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void startTextExtractRequest(String base64Image) {
+        if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_TEXT_EXTRACT, "vision")) {
+            return;
+        }
         try {
             JSONObject request = new JSONObject();
             String requestId = "textextract-" + java.util.UUID.randomUUID().toString();
@@ -16413,7 +16909,13 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
-    private void showTextExtractResult(String text) {
+    private void showTextExtractResult(String requestId, String text) {
+        if (requestId != null && !requestId.isEmpty() && !requestId.equals(textExtractActiveRequestId)) {
+            Log.i(TAG, "text_extract_result_stale_drop requestId=" + requestId
+                    + " active=" + textExtractActiveRequestId);
+            return;
+        }
+        aiSuppressedRequestIds.remove(requestId);
         pendingTextExtractResult = text;
         if (textExtractResultText != null) {
             textExtractResultText.setText(text);
@@ -16460,22 +16962,31 @@ public class LOActivity extends AppCompatActivity {
         aiImageSelectedIndex = 0;
 
         final AlertDialog dialog = new AlertDialog.Builder(this).create();
-        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_ai_image, null);
+        View root = getLayoutInflater().inflate(R.layout.lolib_wai_image_dialog, null);
         aiImageDialogRoot = root;
 
-        aiImageInputContainer = root.findViewById(R.id.ai_image_input_container);
-        aiImagePromptEdit = root.findViewById(R.id.ai_image_prompt_edit);
-        aiImageRatioLabel = root.findViewById(R.id.ai_image_ratio_label);
-        aiImageRatioCard = root.findViewById(R.id.ai_image_ratio_card);
-        aiImageGenerateBtn = root.findViewById(R.id.ai_image_generate_btn);
-        aiImageGalleryContainer = root.findViewById(R.id.ai_image_gallery_container);
-        aiImageMainView = root.findViewById(R.id.ai_image_main);
-        aiImageThumbViews[0] = root.findViewById(R.id.ai_image_thumb_1);
-        aiImageThumbViews[1] = root.findViewById(R.id.ai_image_thumb_2);
-        aiImageThumbViews[2] = root.findViewById(R.id.ai_image_thumb_3);
-        aiImageLoading = root.findViewById(R.id.ai_image_loading);
-        aiImageDoneRow = root.findViewById(R.id.ai_image_done_row);
+        aiImageInputContainer = root.findViewById(R.id.wai_image_input_group);
+        aiImagePromptEdit = root.findViewById(R.id.wai_image_prompt_edit);
+        aiImageRatioLabel = root.findViewById(R.id.wai_image_ratio_label);
+        aiImageRatioCard = root.findViewById(R.id.wai_image_ratio_chip);
+        aiImageGenerateBtn = root.findViewById(R.id.wai_image_generate_btn);
+        aiImageGalleryContainer = root.findViewById(R.id.wai_image_gallery_container);
+        aiImageMainView = root.findViewById(R.id.wai_image_main);
+        aiImageThumbViews[0] = root.findViewById(R.id.wai_image_thumb_0);
+        aiImageThumbViews[1] = root.findViewById(R.id.wai_image_thumb_1);
+        aiImageThumbViews[2] = root.findViewById(R.id.wai_image_thumb_2);
+        aiImageLoading = root.findViewById(R.id.wai_image_loading);
+        aiImageResultGroup = root.findViewById(R.id.wai_image_result_group);
+        aiImageCtaBar = root.findViewById(R.id.wai_image_cta_bar);
+        aiImageResultBar = root.findViewById(R.id.wai_image_result_bar);
+        aiImageRegenerateBtn = root.findViewById(R.id.wai_image_regenerate_btn);
+        aiImageResultPrompt = root.findViewById(R.id.wai_image_result_prompt);
+        aiImageResultRatioLabel = root.findViewById(R.id.wai_image_result_ratio_label);
 
+        TextView title = root.findViewById(R.id.wai_title);
+        if (title != null) {
+            title.setText("AI 图片");
+        }
         aiImageSelectedRatioIndex = 0;
         if (aiImageRatioLabel != null) {
             aiImageRatioLabel.setText(AI_IMAGE_RATIOS[0]);
@@ -16484,9 +16995,9 @@ public class LOActivity extends AppCompatActivity {
             aiImageRatioCard.setOnClickListener(v -> showAiImageRatioPicker());
         }
 
-        root.findViewById(R.id.ai_image_close_btn).setOnClickListener(v -> dialog.dismiss());
+        root.findViewById(R.id.wai_close).setOnClickListener(v -> dialog.dismiss());
         aiImageGenerateBtn.setOnClickListener(v -> startAiImageGeneration());
-        root.findViewById(R.id.ai_image_regenerate_btn).setOnClickListener(v -> startAiImageGeneration());
+        aiImageRegenerateBtn.setOnClickListener(v -> startAiImageGeneration());
         if (aiImageMainView != null) {
             aiImageMainView.setOnClickListener(v -> showAiImagePreview(0));
         }
@@ -16504,37 +17015,37 @@ public class LOActivity extends AppCompatActivity {
             aiImageDialogRoot = null;
         });
         dialog.setView(root);
+        AiDialogHelper.applyTransparentWindow(dialog);
+        AiDialogHelper.applyCloseOnlyDismiss(dialog);
+        hideKeyboardForBottomSheet();
         dialog.show();
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        }
         aiImageDialog = dialog;
         switchAiImageStage(AI_IMAGE_STAGE_INPUT);
         root.post(this::applyAiImageDialogSize);
         Log.i(TAG, "ai_image_dialog_show");
     }
 
+    /**
+     * AI 图片弹窗尺寸:窗口/根布局双固定高(设计稿 输入 364dp / 结果 660dp,clamp 居中上限)。
+     * 结果态缩略图组固定尺寸,弹窗超高时整窗 clamp,不裁按钮。
+     */
     private void applyAiImageDialogSize() {
-        if (aiImageDialog == null || aiImageDialog.getWindow() == null) {
+        if (aiImageDialog == null || aiImageDialog.getWindow() == null
+                || aiImageDialogRoot == null) {
             return;
         }
-        int targetWidth = AiDialogHelper.computeTargetWidthPx(getResources());
-        boolean resultStage = aiImageGalleryContainer != null
-                && aiImageGalleryContainer.getVisibility() == View.VISIBLE;
-        int targetHeight = resultStage
-                ? AiDialogHelper.computeMaxHeightContentPx(getResources())
-                : dpToPx(320);
-        aiImageDialog.getWindow().setLayout(targetWidth, targetHeight);
-        if (aiImageDialogRoot != null) {
-            ViewGroup.LayoutParams lp = aiImageDialogRoot.getLayoutParams();
-            if (lp == null) {
-                lp = new ViewGroup.LayoutParams(targetWidth, targetHeight);
-            } else {
-                lp.width = targetWidth;
-                lp.height = targetHeight;
-            }
-            aiImageDialogRoot.setLayoutParams(lp);
-        }
+        int targetWidth = AiDialogHelper.computeWriterDialogWidthPx(getResources());
+        boolean resultStage = aiImageResultGroup != null
+                && aiImageResultGroup.getVisibility() == View.VISIBLE;
+        // 结果态(无键盘)上限放宽到屏高-保留区,660dp 设计稿不再被 0.6 屏高裁底
+        int cap = resultStage
+                ? AiDialogHelper.computeWriterResultMaxHeightPx(this)
+                : AiDialogHelper.computeCenteredDialogMaxHeightPx(this, false);
+        int height = Math.min(dpToPx(resultStage ? 660 : 364), cap);
+        AiDialogHelper.applyWriterFixedSize(aiImageDialog, aiImageDialogRoot,
+                targetWidth, height);
+        Log.d(TAG, "ai_image_dialog_size w=" + targetWidth + " h=" + height
+                + " result=" + resultStage);
     }
 
     private void switchAiImageStage(int stage) {
@@ -16542,40 +17053,44 @@ public class LOActivity extends AppCompatActivity {
         if (aiImageInputContainer != null) {
             aiImageInputContainer.setVisibility(input ? View.VISIBLE : View.GONE);
         }
-        if (aiImageGenerateBtn != null) {
-            aiImageGenerateBtn.setVisibility(input ? View.VISIBLE : View.GONE);
+        if (aiImageCtaBar != null) {
+            aiImageCtaBar.setVisibility(input ? View.VISIBLE : View.GONE);
         }
-        if (aiImageGalleryContainer != null) {
-            aiImageGalleryContainer.setVisibility(input ? View.GONE : View.VISIBLE);
+        if (aiImageResultGroup != null) {
+            aiImageResultGroup.setVisibility(input ? View.GONE : View.VISIBLE);
         }
-        if (aiImageDoneRow != null) {
-            aiImageDoneRow.setVisibility(input ? View.GONE : View.VISIBLE);
+        if (aiImageResultBar != null) {
+            aiImageResultBar.setVisibility(input ? View.GONE : View.VISIBLE);
         }
         if (aiImageDialogRoot != null) {
             aiImageDialogRoot.post(this::applyAiImageDialogSize);
         }
     }
 
+    /** 比例下拉:设计 334:20093 — 白底圆角浮层 + 比例预览图标 + 蓝勾选中。 */
     private void showAiImageRatioPicker() {
         View anchor = aiImageRatioCard != null ? aiImageRatioCard : aiImageRatioLabel;
         if (anchor == null) {
             return;
         }
-        PopupMenu popup = new PopupMenu(this, anchor);
-        for (int i = 0; i < AI_IMAGE_RATIOS.length; i++) {
-            popup.getMenu().add(0, i, i, AI_IMAGE_RATIOS[i]);
+        int[] iconRes = {
+                R.drawable.lolib_wai_ic_ratio_1_1,
+                R.drawable.lolib_wai_ic_ratio_9_16,
+                R.drawable.lolib_wai_ic_ratio_16_9
+        };
+        android.graphics.drawable.Drawable[] icons = new android.graphics.drawable.Drawable[AI_IMAGE_RATIOS.length];
+        for (int i = 0; i < AI_IMAGE_RATIOS.length && i < iconRes.length; i++) {
+            icons[i] = androidx.core.content.ContextCompat.getDrawable(this, iconRes[i]);
         }
-        popup.setOnMenuItemClickListener(item -> {
-            int idx = item.getItemId();
-            if (idx >= 0 && idx < AI_IMAGE_RATIOS.length) {
-                aiImageSelectedRatioIndex = idx;
-                if (aiImageRatioLabel != null) {
-                    aiImageRatioLabel.setText(AI_IMAGE_RATIOS[idx]);
-                }
-            }
-            return true;
-        });
-        popup.show();
+        WaiDropdownPopup.show(this, anchor, AI_IMAGE_RATIOS, aiImageSelectedRatioIndex,
+                192, WaiDropdownPopup.Style.CHECK, icons,
+                (index, label) -> {
+                    aiImageSelectedRatioIndex = index;
+                    if (aiImageRatioLabel != null) {
+                        aiImageRatioLabel.setText(AI_IMAGE_RATIOS[index]);
+                    }
+                    Log.i(TAG, "ai_image_ratio_selected ratio=" + AI_IMAGE_RATIOS[index]);
+                });
     }
 
     private void startAiImageGeneration() {
@@ -16591,6 +17106,9 @@ public class LOActivity extends AppCompatActivity {
         String size = AI_IMAGE_SIZES[ratioIdx];
 
         // 校验 MODEL_IMAGE 配置
+        if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_IMAGE_GENERATE, "image")) {
+            return;
+        }
         SharedPreferences modelPrefs = getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
         String endpoint = modelPrefs.getString("AI_MODEL_IMAGE_url", "");
         String apiKey = modelPrefs.getString("AI_MODEL_IMAGE_api_key", "");
@@ -16598,16 +17116,7 @@ public class LOActivity extends AppCompatActivity {
         endpoint = endpoint == null ? "" : endpoint.trim();
         apiKey = apiKey == null ? "" : apiKey.trim();
         model = model == null ? "" : model.trim();
-        // endpoint 兜底规范化：图片模型确保以 /images/generations 结尾
         endpoint = normalizeEndpoint(endpoint, "/images/generations");
-        if (endpoint.isEmpty()) {
-            toastTodo("请先在设置中配置图片生成模型的接口地址");
-            return;
-        }
-        if (apiKey.isEmpty()) {
-            toastTodo("请先在设置中配置图片生成模型的 API Key");
-            return;
-        }
 
         cancelAiImageRequest();
         final String requestId = "aiimage-" + System.currentTimeMillis();
@@ -16708,6 +17217,16 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void renderAiImageGallery() {
+        // 结果态头部:提示词 + 比例值(设计 330:34810/498:29338)
+        if (aiImageResultPrompt != null) {
+            String prompt = aiImagePromptEdit != null
+                    ? aiImagePromptEdit.getText().toString().trim() : "";
+            aiImageResultPrompt.setText(prompt);
+        }
+        if (aiImageResultRatioLabel != null
+                && aiImageSelectedRatioIndex >= 0 && aiImageSelectedRatioIndex < AI_IMAGE_RATIOS.length) {
+            aiImageResultRatioLabel.setText(AI_IMAGE_RATIOS[aiImageSelectedRatioIndex]);
+        }
         // 主图：第 0 个槽位；为 null 时显示生成中占位
         if (aiImageMainView != null) {
             if (aiImageBase64List.size() > 0 && aiImageBase64List.get(0) != null) {
@@ -16751,29 +17270,32 @@ public class LOActivity extends AppCompatActivity {
             aiImagePreviewDialog.dismiss();
         }
         final AlertDialog dialog = new AlertDialog.Builder(this).create();
-        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_ai_image_preview, null);
-        final ImageView previewImg = root.findViewById(R.id.ai_image_preview_img);
-        final LinearLayout dotsContainer = root.findViewById(R.id.ai_image_preview_dots);
+        View root = getLayoutInflater().inflate(R.layout.lolib_wai_image_preview, null);
+        final ImageView previewImg = root.findViewById(R.id.wai_preview_image);
+        final LinearLayout dotsContainer = root.findViewById(R.id.wai_preview_dots);
 
         // 初始渲染当前大图 + 圆点
         renderPreviewImage(previewImg, aiImagePreviewCurrentIndex);
         renderPreviewDots(dotsContainer, aiImagePreviewCurrentIndex, aiImageBase64List.size());
 
-        // 返回箭头：回到 gallery
-        root.findViewById(R.id.ai_image_preview_back_btn).setOnClickListener(v -> dialog.dismiss());
-        // 关闭 X：整体退出 AI 图片
-        root.findViewById(R.id.ai_image_preview_close_btn).setOnClickListener(v -> {
+        TextView title = root.findViewById(R.id.wai_title);
+        if (title != null) {
+            title.setText("AI 图片");
+        }
+        root.findViewById(R.id.wai_close).setOnClickListener(v -> {
             dialog.dismiss();
             if (aiImageDialog != null && aiImageDialog.isShowing()) {
                 aiImageDialog.dismiss();
             }
         });
+        // 返回箭头:回到 gallery
+        root.findViewById(R.id.wai_preview_back).setOnClickListener(v -> dialog.dismiss());
         // 重新生成（当前单张）
-        root.findViewById(R.id.ai_image_preview_regenerate_btn).setOnClickListener(v -> {
+        root.findViewById(R.id.wai_preview_regenerate_btn).setOnClickListener(v -> {
             regenerateSingleAiImage(aiImagePreviewCurrentIndex, previewImg, dotsContainer);
         });
         // 插入文档（当前单张）
-        root.findViewById(R.id.ai_image_preview_apply_btn).setOnClickListener(v -> {
+        root.findViewById(R.id.wai_preview_insert_btn).setOnClickListener(v -> {
             aiImageSelectedIndex = aiImagePreviewCurrentIndex;
             applyAiImageResult();
         });
@@ -16816,14 +17338,15 @@ public class LOActivity extends AppCompatActivity {
             Log.i(TAG, "ai_image_preview_dismissed index=" + index);
         });
         dialog.setView(root);
+        AiDialogHelper.applyTransparentWindow(dialog);
+        AiDialogHelper.applyCloseOnlyDismiss(dialog);
         dialog.show();
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            // 窗口化：居中白色圆角卡片，非整屏覆盖
-            int targetWidth = AiDialogHelper.computeTargetWidthPx(getResources());
-            int targetHeight = AiDialogHelper.computeMaxHeightContentPx(getResources());
-            dialog.getWindow().setLayout(targetWidth, targetHeight);
-        }
+        // 设计 334:12874:预览卡 335×716dp,窗口/根布局双固定高(clamp 居中上限)
+        int targetWidth = AiDialogHelper.computeWriterDialogWidthPx(getResources());
+        // 无键盘场景,上限放宽到屏高-保留区(716dp 预览卡不被 0.6 屏高裁底)
+        int cap = AiDialogHelper.computeWriterResultMaxHeightPx(this);
+        int targetHeight = Math.min(dpToPx(716), cap);
+        AiDialogHelper.applyWriterFixedSize(dialog, root, targetWidth, targetHeight);
         aiImagePreviewDialog = dialog;
         Log.i(TAG, "ai_image_preview_show index=" + index);
     }
@@ -16838,28 +17361,27 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
-    /** 渲染分页圆点：当前为蓝色横条，其余灰色小圆。 */
+    /** 渲染分页圆点(设计 334:20085):激活 12×6dp 胶囊 #1278D9,未激活 6dp 圆 #FFFFFF50,间距 8dp。 */
     private void renderPreviewDots(LinearLayout container, int current, int total) {
         if (container == null) return;
         container.removeAllViews();
-        int dp4 = dpToPx(4);
-        int dp8 = dpToPx(8);
+        int gap = dpToPx(8);
         for (int i = 0; i < total; i++) {
+            boolean active = i == current;
             android.graphics.drawable.GradientDrawable dot = new android.graphics.drawable.GradientDrawable();
-            if (i == current) {
-                dot.setColor(0xFF3399FF);
-                dot.setSize(dpToPx(18), dp4);
-                dot.setCornerRadius(dp4 / 2f);
+            dot.setColor(active ? 0xFF1278D9 : 0x80FFFFFF);
+            if (active) {
+                dot.setSize(dpToPx(12), dpToPx(6));
+                dot.setCornerRadius(dpToPx(3));
             } else {
-                dot.setColor(0xFFCCCCCC);
-                dot.setSize(dp8, dp8);
-                dot.setCornerRadius(dp8 / 2f);
+                dot.setSize(dpToPx(6), dpToPx(6));
+                dot.setCornerRadius(dpToPx(3));
             }
             android.view.View item = new android.view.View(this);
             android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(
-                    i == current ? dpToPx(18) : dp8,
-                    i == current ? dp4 : dp8);
-            if (i > 0) lp.setMarginStart(dp4);
+                    active ? dpToPx(12) : dpToPx(6),
+                    active ? dpToPx(6) : dpToPx(6));
+            if (i > 0) lp.setMarginStart(gap);
             item.setLayoutParams(lp);
             item.setBackground(dot);
             container.addView(item);
@@ -17001,16 +17523,22 @@ public class LOActivity extends AppCompatActivity {
         pendingTextOperateRequirement = "";
 
         final AlertDialog dialog = new AlertDialog.Builder(this).create();
-        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_text_operate, null);
+        View root = getLayoutInflater().inflate(R.layout.lolib_wai_text_op_dialog, null);
         textOperateDialogRoot = root;
 
-        textOperateTitle = root.findViewById(R.id.text_op_title);
-        textOperateInputContainer = root.findViewById(R.id.text_op_input_container);
-        textOperateResultCard = root.findViewById(R.id.text_op_result_card);
-        textOperateResultText = root.findViewById(R.id.text_op_result_text);
-        textOperateGenerateBtn = root.findViewById(R.id.text_op_generate_btn);
-        textOperateCopyRow = root.findViewById(R.id.text_op_copy_row);
-        textOperateDoneRow = root.findViewById(R.id.text_op_done_row);
+        textOperateTitle = root.findViewById(R.id.wai_title);
+        textOperateInputContainer = root.findViewById(R.id.wai_text_op_input_container);
+        textOperateResultScroll = root.findViewById(R.id.wai_text_op_result_scroll);
+        textOperateResultText = root.findViewById(R.id.wai_text_op_result_text);
+        textOperateGenerateBtn = root.findViewById(R.id.wai_text_op_generate_btn);
+        textOperateGenerateIcon = root.findViewById(R.id.wai_text_op_generate_icon);
+        textOperateCopyRow = root.findViewById(R.id.wai_text_op_copy_row);
+        textOperateCtaBar = root.findViewById(R.id.wai_text_op_cta_bar);
+        textOperateResultBar = root.findViewById(R.id.wai_text_op_result_bar);
+        textOperateRegenerateBtn = root.findViewById(R.id.wai_text_op_regenerate_btn);
+        textOperateApplyBtn = root.findViewById(R.id.wai_text_op_apply_btn);
+        View resultGroup = root.findViewById(R.id.wai_text_op_result_group);
+        textOperateResultGroup = resultGroup;
         textOperateRequirementEdit = null;
         textOperatePolishStyleLabel = null;
         textOperatePolishStyleCard = null;
@@ -17019,14 +17547,22 @@ public class LOActivity extends AppCompatActivity {
         if (textOperateTitle != null) {
             textOperateTitle.setText(getTextOperateTitle(mode));
         }
+        // 设计 326:25793: 润色 CTA = 星形图标;扩写/缩写/重写 = 火花图标
+        if (textOperateGenerateIcon != null) {
+            textOperateGenerateIcon.setImageResource(
+                    AiChatCoordinator.MODE_POLISH.equals(mode)
+                            ? R.drawable.lolib_wai_ic_star
+                            : R.drawable.lolib_wai_ic_sparkle);
+        }
 
         textOperateInputContainer.removeAllViews();
         if (AiChatCoordinator.MODE_POLISH.equals(mode)) {
-            View polishInput = getLayoutInflater().inflate(R.layout.lolib_text_op_polish, textOperateInputContainer, false);
+            View polishInput = getLayoutInflater().inflate(
+                    R.layout.lolib_wai_text_op_polish, textOperateInputContainer, false);
             textOperateInputContainer.addView(polishInput);
-            textOperatePolishStyleCard = polishInput.findViewById(R.id.text_op_polish_style_card);
-            textOperatePolishStyleLabel = polishInput.findViewById(R.id.text_op_polish_style_label);
-            textOperatePolishStyleChevron = polishInput.findViewById(R.id.text_op_polish_style_chevron);
+            textOperatePolishStyleCard = polishInput.findViewById(R.id.wai_text_op_polish_style_card);
+            textOperatePolishStyleLabel = polishInput.findViewById(R.id.wai_text_op_polish_style_label);
+            textOperatePolishStyleChevron = polishInput.findViewById(R.id.wai_text_op_polish_style_chevron);
             PolishStyleRegistry.PolishStyle initialStyle =
                     PolishStyleRegistry.findByKey(pendingPolishStyle);
             if (initialStyle == null) {
@@ -17040,9 +17576,10 @@ public class LOActivity extends AppCompatActivity {
                 textOperatePolishStyleCard.setOnClickListener(v -> showPolishStylePicker());
             }
         } else {
-            View reqInput = getLayoutInflater().inflate(R.layout.lolib_text_op_requirement, textOperateInputContainer, false);
+            View reqInput = getLayoutInflater().inflate(
+                    R.layout.lolib_wai_text_op_require, textOperateInputContainer, false);
             textOperateInputContainer.addView(reqInput);
-            textOperateRequirementEdit = reqInput.findViewById(R.id.text_op_requirement_edit);
+            textOperateRequirementEdit = reqInput.findViewById(R.id.wai_text_op_require_edit);
             if (textOperateRequirementEdit != null) {
                 String hint;
                 if (AiChatCoordinator.MODE_CONDENSE.equals(mode)) {
@@ -17053,107 +17590,58 @@ public class LOActivity extends AppCompatActivity {
                     hint = "请输入文案扩写要求";
                 }
                 textOperateRequirementEdit.setHint(hint);
+                AiDialogHelper.bindDialogTextInput(textOperateRequirementEdit);
             }
         }
 
-        root.findViewById(R.id.text_op_close_btn).setOnClickListener(v -> dialog.dismiss());
+        root.findViewById(R.id.wai_close).setOnClickListener(v -> dialog.dismiss());
         textOperateGenerateBtn.setOnClickListener(v -> startTextOperateGeneration());
-        root.findViewById(R.id.text_op_regenerate_btn).setOnClickListener(v -> startTextOperateGeneration());
-        root.findViewById(R.id.text_op_apply_btn).setOnClickListener(v -> applyTextOperateResult());
+        textOperateRegenerateBtn.setOnClickListener(v -> startTextOperateGeneration());
+        textOperateApplyBtn.setOnClickListener(v -> applyTextOperateResult());
         textOperateCopyRow.setOnClickListener(v -> copyTextOperateResult());
 
         dialog.setOnDismissListener(d -> {
             Log.i(TAG, "text_op_dialog_dismissed mode=" + textOperateMode);
+            cancelAndSuppressAiRequest(textOperateActiveRequestId);
             aiStreamingViewByRequestId.remove(textOperateActiveRequestId);
             textOperateActiveRequestId = "";
             textOperateDialog = null;
             textOperateDialogRoot = null;
         });
         dialog.setView(root);
+        AiDialogHelper.applyTransparentWindow(dialog);
+        AiDialogHelper.applyCloseOnlyDismiss(dialog);
+        hideKeyboardForBottomSheet();
         dialog.show();
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        }
         textOperateDialog = dialog;
         switchTextOperateStage(TEXT_OP_STAGE_INPUT);
         root.post(this::applyTextOperateDialogSize);
         Log.i(TAG, "text_op_dialog_show mode=" + mode + " selectionChars=" + textOperateSelection.length());
     }
-
     private void applyTextOperateDialogSize() {
-        if (textOperateDialog == null || textOperateDialog.getWindow() == null) {
+        if (textOperateDialog == null || textOperateDialog.getWindow() == null
+                || textOperateDialogRoot == null) {
             return;
         }
-        int targetWidth = AiDialogHelper.computeTargetWidthPx(getResources());
-
-        boolean compactInputStage = AiChatCoordinator.MODE_POLISH.equals(textOperateMode)
-                && textOperateResultCard != null
-                && textOperateResultCard.getVisibility() != View.VISIBLE;
-        int targetHeight;
-        if (compactInputStage) {
-            // 润色输入态仅需少量控件 + 按钮，使用紧凑高度避免大面积留白
-            targetHeight = dpToPx(320);
-        } else {
-            targetHeight = AiDialogHelper.computeMaxHeightContentPx(getResources());
-        }
-
-        textOperateDialog.getWindow().setLayout(targetWidth, targetHeight);
-        if (textOperateDialogRoot != null) {
-            ViewGroup.LayoutParams lp = textOperateDialogRoot.getLayoutParams();
-            if (lp == null) {
-                lp = new ViewGroup.LayoutParams(targetWidth, targetHeight);
-            } else {
-                lp.width = targetWidth;
-                lp.height = targetHeight;
-            }
-            textOperateDialogRoot.setLayoutParams(lp);
-        }
-        applyTextOperateInputLayout();
-        Log.d(TAG, "text_op_dialog_size w=" + targetWidth + " h=" + targetHeight
-                + " compactInput=" + compactInputStage);
-    }
-
-    /** 润色输入态：输入区垂直居中；扩写/缩写/重写：输入区占满剩余空间 */
-    private void applyTextOperateInputLayout() {
-        if (textOperateInputContainer == null) {
-            return;
-        }
-        ViewGroup.LayoutParams rawLp = textOperateInputContainer.getLayoutParams();
-        if (!(rawLp instanceof LinearLayout.LayoutParams)) {
-            return;
-        }
-        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) rawLp;
-        boolean compactInput = AiChatCoordinator.MODE_POLISH.equals(textOperateMode)
-                && textOperateResultCard != null
-                && textOperateResultCard.getVisibility() != View.VISIBLE;
-        if (compactInput) {
-            lp.height = 0;
-            lp.weight = 1f;
-            lp.topMargin = 0;
-            lp.bottomMargin = 0;
-        } else {
-            lp.height = 0;
-            lp.weight = 1f;
-            lp.topMargin = dpToPx(16);
-            lp.bottomMargin = 0;
-        }
-        textOperateInputContainer.setLayoutParams(lp);
-
-        if (textOperateInputContainer.getChildCount() > 0) {
-            View child = textOperateInputContainer.getChildAt(0);
-            FrameLayout.LayoutParams childLp = new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    compactInput ? ViewGroup.LayoutParams.WRAP_CONTENT : ViewGroup.LayoutParams.MATCH_PARENT,
-                    compactInput ? Gravity.CENTER : (Gravity.TOP | Gravity.CENTER_HORIZONTAL));
-            child.setLayoutParams(childLp);
-        }
+        int targetWidth = AiDialogHelper.computeWriterDialogWidthPx(getResources());
+        boolean resultVisible = textOperateResultGroup != null
+                && textOperateResultGroup.getVisibility() == View.VISIBLE;
+        int cap = resultVisible
+                ? AiDialogHelper.computeWriterResultMaxHeightPx(this)
+                : AiDialogHelper.computeCenteredDialogMaxHeightPx(this, false);
+        int minHeight = resultVisible ? dpToPx(423) : 0;
+        AiDialogHelper.applyContentAdaptiveSize(textOperateDialog, textOperateDialogRoot,
+                targetWidth, cap, minHeight);
+        Log.d(TAG, "text_op_dialog_size w=" + targetWidth + " cap=" + cap
+                + " result=" + resultVisible);
     }
 
     private void scrollTextOperateResultToBottom() {
-        if (textOperateResultCard == null || textOperateResultCard.getVisibility() != View.VISIBLE) {
+        if (textOperateResultScroll == null || textOperateResultGroup == null
+                || textOperateResultGroup.getVisibility() != View.VISIBLE) {
             return;
         }
-        textOperateResultCard.post(() -> textOperateResultCard.fullScroll(View.FOCUS_DOWN));
+        textOperateResultScroll.post(() -> textOperateResultScroll.fullScroll(View.FOCUS_DOWN));
     }
 
     private void showPolishStylePicker() {
@@ -17172,7 +17660,8 @@ public class LOActivity extends AppCompatActivity {
         if (textOperatePolishStyleChevron != null) {
             textOperatePolishStyleChevron.setRotation(180f);
         }
-        ArticleDropdownPopup.show(this, textOperatePolishStyleCard, labels, selectedIndex,
+        WaiDropdownPopup.show(this, textOperatePolishStyleCard, labels, selectedIndex, 0,
+                WaiDropdownPopup.Style.GRADIENT, null,
                 (index, label) -> {
                     pendingPolishStyle = styles[index].key;
                     textOperatePolishStyleLabel.setText(label);
@@ -17205,6 +17694,9 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void sendTextOperateRequest() {
+        if (!ensureCloudModelConfigured(textOperateMode, "base")) {
+            return;
+        }
         toastTodo("正在生成...");
         if (textOperateResultText != null) {
             textOperateResultText.setText("正在生成...");
@@ -17248,7 +17740,13 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
-    private void showTextOperateResult(String text) {
+    private void showTextOperateResult(String requestId, String text) {
+        if (requestId != null && !requestId.isEmpty() && !requestId.equals(textOperateActiveRequestId)) {
+            Log.i(TAG, "text_op_result_stale_drop requestId=" + requestId
+                    + " active=" + textOperateActiveRequestId);
+            return;
+        }
+        aiSuppressedRequestIds.remove(requestId);
         pendingTextOperateResult = text;
         if (textOperateResultText != null) {
             textOperateResultText.setText(text);
@@ -17264,17 +17762,17 @@ public class LOActivity extends AppCompatActivity {
         if (textOperateInputContainer != null) {
             textOperateInputContainer.setVisibility(input ? View.VISIBLE : View.GONE);
         }
-        if (textOperateGenerateBtn != null) {
-            textOperateGenerateBtn.setVisibility(input ? View.VISIBLE : View.GONE);
+        if (textOperateCtaBar != null) {
+            textOperateCtaBar.setVisibility(input ? View.VISIBLE : View.GONE);
         }
-        if (textOperateResultCard != null) {
-            textOperateResultCard.setVisibility(result ? View.VISIBLE : View.GONE);
+        if (textOperateResultGroup != null) {
+            textOperateResultGroup.setVisibility(result ? View.VISIBLE : View.GONE);
         }
         if (textOperateCopyRow != null) {
             textOperateCopyRow.setVisibility(result ? View.VISIBLE : View.GONE);
         }
-        if (textOperateDoneRow != null) {
-            textOperateDoneRow.setVisibility(result ? View.VISIBLE : View.GONE);
+        if (textOperateResultBar != null) {
+            textOperateResultBar.setVisibility(result ? View.VISIBLE : View.GONE);
         }
         if (textOperateDialogRoot != null) {
             textOperateDialogRoot.post(this::applyTextOperateDialogSize);
@@ -17324,44 +17822,52 @@ public class LOActivity extends AppCompatActivity {
         pendingTranslateTargetLang = AiChatCoordinator.TRANSLATE_LANG_ZH;
 
         final AlertDialog dialog = new AlertDialog.Builder(this).create();
-        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_translate, null);
+        View root = getLayoutInflater().inflate(R.layout.lolib_wai_translate_dialog, null);
         translateDialogRoot = root;
 
-        translateSourceLabel = root.findViewById(R.id.translate_source_label);
-        translateTargetLabel = root.findViewById(R.id.translate_target_label);
-        translateSourceEdit = root.findViewById(R.id.translate_source_edit);
-        translateResultCard = root.findViewById(R.id.translate_result_card);
-        translateResultText = root.findViewById(R.id.translate_result_text);
-        translateGenerateBtn = root.findViewById(R.id.translate_generate_btn);
-        translateCopyRow = root.findViewById(R.id.translate_copy_row);
-        translateDoneRow = root.findViewById(R.id.translate_done_row);
+        translateSourceLabel = root.findViewById(R.id.wai_translate_source_label);
+        translateTargetLabel = root.findViewById(R.id.wai_translate_target_label);
+        translateSourceEdit = root.findViewById(R.id.wai_translate_source_edit);
+        translateSourceScroll = root.findViewById(R.id.wai_translate_source_scroll);
+        translateResultScroll = root.findViewById(R.id.wai_translate_result_scroll);
+        translateResultText = root.findViewById(R.id.wai_translate_result_text);
+        translateGenerateBtn = root.findViewById(R.id.wai_translate_generate_btn);
+        translateCopyRow = root.findViewById(R.id.wai_translate_copy_row);
+        translateHintText = root.findViewById(R.id.wai_translate_hint_text);
+        translateCtaBar = root.findViewById(R.id.wai_translate_cta_bar);
+        translateResultBar = root.findViewById(R.id.wai_translate_result_bar);
 
+        TextView title = root.findViewById(R.id.wai_title);
+        if (title != null) {
+            title.setText("翻译");
+        }
         if (translateSourceEdit != null) {
             translateSourceEdit.setText(selection != null ? selection : "");
         }
         updateTranslateLanguageLabels();
 
-        root.findViewById(R.id.translate_close_btn).setOnClickListener(v -> dialog.dismiss());
-        root.findViewById(R.id.translate_source_card).setOnClickListener(v -> showTranslateSourcePicker());
-        root.findViewById(R.id.translate_target_card).setOnClickListener(v -> showTranslateTargetPicker());
-        root.findViewById(R.id.translate_swap_btn).setOnClickListener(v -> swapTranslateLanguages());
+        root.findViewById(R.id.wai_close).setOnClickListener(v -> dialog.dismiss());
+        root.findViewById(R.id.wai_translate_source_card).setOnClickListener(v -> showTranslateSourcePicker());
+        root.findViewById(R.id.wai_translate_target_card).setOnClickListener(v -> showTranslateTargetPicker());
+        root.findViewById(R.id.wai_translate_swap_btn).setOnClickListener(v -> swapTranslateLanguages());
         translateGenerateBtn.setOnClickListener(v -> startTranslateGeneration());
-        root.findViewById(R.id.translate_regenerate_btn).setOnClickListener(v -> startTranslateGeneration());
-        root.findViewById(R.id.translate_apply_btn).setOnClickListener(v -> applyTranslateResult());
+        root.findViewById(R.id.wai_translate_regenerate_btn).setOnClickListener(v -> startTranslateGeneration());
+        root.findViewById(R.id.wai_translate_insert_btn).setOnClickListener(v -> applyTranslateResult());
         translateCopyRow.setOnClickListener(v -> copyTranslateResult());
 
         dialog.setOnDismissListener(d -> {
             Log.i(TAG, "translate_dialog_dismissed");
+            cancelAndSuppressAiRequest(translateActiveRequestId);
             aiStreamingViewByRequestId.remove(translateActiveRequestId);
             translateActiveRequestId = "";
             translateDialog = null;
             translateDialogRoot = null;
         });
         dialog.setView(root);
+        AiDialogHelper.applyTransparentWindow(dialog);
+        AiDialogHelper.applyCloseOnlyDismiss(dialog);
+        hideKeyboardForBottomSheet();
         dialog.show();
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        }
         translateDialog = dialog;
         switchTranslateStage(TRANSLATE_STAGE_INPUT);
         root.post(this::applyTranslateDialogSize);
@@ -17379,85 +17885,93 @@ public class LOActivity extends AppCompatActivity {
         if (translateTargetLabel != null && target != null) {
             translateTargetLabel.setText(target.label);
         }
+        // 设计 331:19139:语言 chip 文字 — 源 #101010,目标选中蓝 #1278D9
+        if (translateSourceLabel != null) {
+            translateSourceLabel.setTextColor(0xFF101010);
+        }
+        if (translateTargetLabel != null) {
+            translateTargetLabel.setTextColor(0xFF1278D9);
+        }
     }
 
+    /**
+     * 翻译弹窗尺寸:输入态 541dp 固定、结果态上限放宽到屏高-保留区(549dp 设计稿不再被裁),
+     * 原文/译文框 0dp+weight 短屏自动收缩。
+     */
     private void applyTranslateDialogSize() {
-        if (translateDialog == null || translateDialog.getWindow() == null) {
+        if (translateDialog == null || translateDialog.getWindow() == null
+                || translateDialogRoot == null) {
             return;
         }
-        int targetWidth = AiDialogHelper.computeTargetWidthPx(getResources());
-        int targetHeight = AiDialogHelper.computeMaxHeightContentPx(getResources());
-
-        translateDialog.getWindow().setLayout(targetWidth, targetHeight);
-        if (translateDialogRoot != null) {
-            ViewGroup.LayoutParams lp = translateDialogRoot.getLayoutParams();
-            if (lp == null) {
-                lp = new ViewGroup.LayoutParams(targetWidth, targetHeight);
-            } else {
-                lp.width = targetWidth;
-                lp.height = targetHeight;
-            }
-            translateDialogRoot.setLayoutParams(lp);
-        }
-        Log.d(TAG, "translate_dialog_size w=" + targetWidth + " h=" + targetHeight);
+        int targetWidth = AiDialogHelper.computeWriterDialogWidthPx(getResources());
+        boolean resultStage = translateResultScroll != null
+                && translateResultScroll.getVisibility() == View.VISIBLE;
+        // 结果态(无键盘)上限放宽到屏高-保留区,549dp 设计稿不再被 0.6 屏高裁底
+        int cap = resultStage
+                ? AiDialogHelper.computeWriterResultMaxHeightPx(this)
+                : AiDialogHelper.computeCenteredDialogMaxHeightPx(this, false);
+        int height = Math.min(dpToPx(resultStage ? 549 : 541), cap);
+        AiDialogHelper.applyWriterFixedSize(translateDialog, translateDialogRoot,
+                targetWidth, height);
+        Log.d(TAG, "translate_dialog_size w=" + targetWidth + " h=" + height
+                + " result=" + resultStage);
     }
-
     private void scrollTranslateResultToBottom() {
-        if (translateResultCard == null || translateResultCard.getVisibility() != View.VISIBLE) {
+        if (translateResultScroll == null || translateResultScroll.getVisibility() != View.VISIBLE) {
             return;
         }
-        translateResultCard.post(() -> translateResultCard.fullScroll(View.FOCUS_DOWN));
+        translateResultScroll.post(() -> translateResultScroll.fullScroll(View.FOCUS_DOWN));
     }
 
     private void showTranslateSourcePicker() {
         if (translateSourceLabel == null) {
             return;
         }
-        PopupMenu popup = new PopupMenu(this, translateSourceLabel);
         TranslateLanguageRegistry.TranslateLanguage[] langs = TranslateLanguageRegistry.getSourceLanguages();
+        String[] labels = new String[langs.length];
+        int selected = 0;
         for (int i = 0; i < langs.length; i++) {
-            popup.getMenu().add(0, i, i, langs[i].label);
-        }
-        popup.setOnMenuItemClickListener(item -> {
-            int idx = item.getItemId();
-            if (idx >= 0 && idx < langs.length) {
-                pendingTranslateSourceLang = langs[idx].key;
-                if (pendingTranslateSourceLang.equals(pendingTranslateTargetLang)) {
-                    pendingTranslateTargetLang = AiChatCoordinator.TRANSLATE_LANG_EN;
-                }
-                updateTranslateLanguageLabels();
-                Log.i(TAG, "translate_source_selected lang=" + pendingTranslateSourceLang);
-                return true;
+            labels[i] = langs[i].label;
+            if (langs[i].key.equals(pendingTranslateSourceLang)) {
+                selected = i;
             }
-            return false;
-        });
-        popup.show();
+        }
+        WaiDropdownPopup.show(this, translateSourceLabel, labels, selected, 0,
+                WaiDropdownPopup.Style.CHECK, null,
+                (index, label) -> {
+                    pendingTranslateSourceLang = langs[index].key;
+                    if (pendingTranslateSourceLang.equals(pendingTranslateTargetLang)) {
+                        pendingTranslateTargetLang = AiChatCoordinator.TRANSLATE_LANG_EN;
+                    }
+                    updateTranslateLanguageLabels();
+                    Log.i(TAG, "translate_source_selected lang=" + pendingTranslateSourceLang);
+                });
     }
 
     private void showTranslateTargetPicker() {
         if (translateTargetLabel == null) {
             return;
         }
-        PopupMenu popup = new PopupMenu(this, translateTargetLabel);
         java.util.List<TranslateLanguageRegistry.TranslateLanguage> langs =
                 TranslateLanguageRegistry.getTargetLanguages();
+        String[] labels = new String[langs.size()];
+        int selected = 0;
         for (int i = 0; i < langs.size(); i++) {
-            popup.getMenu().add(0, i, i, langs.get(i).label);
-        }
-        popup.setOnMenuItemClickListener(item -> {
-            int idx = item.getItemId();
-            if (idx >= 0 && idx < langs.size()) {
-                pendingTranslateTargetLang = langs.get(idx).key;
-                if (pendingTranslateTargetLang.equals(pendingTranslateSourceLang)) {
-                    pendingTranslateSourceLang = AiChatCoordinator.TRANSLATE_LANG_AUTO;
-                }
-                updateTranslateLanguageLabels();
-                Log.i(TAG, "translate_target_selected lang=" + pendingTranslateTargetLang);
-                return true;
+            labels[i] = langs.get(i).label;
+            if (langs.get(i).key.equals(pendingTranslateTargetLang)) {
+                selected = i;
             }
-            return false;
-        });
-        popup.show();
+        }
+        WaiDropdownPopup.show(this, translateTargetLabel, labels, selected, 0,
+                WaiDropdownPopup.Style.CHECK, null,
+                (index, label) -> {
+                    pendingTranslateTargetLang = langs.get(index).key;
+                    if (pendingTranslateTargetLang.equals(pendingTranslateSourceLang)) {
+                        pendingTranslateSourceLang = AiChatCoordinator.TRANSLATE_LANG_AUTO;
+                    }
+                    updateTranslateLanguageLabels();
+                    Log.i(TAG, "translate_target_selected lang=" + pendingTranslateTargetLang);
+                });
     }
 
     private void swapTranslateLanguages() {
@@ -17486,6 +18000,9 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void sendTranslateRequest(String text) {
+        if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_TRANSLATE, "base")) {
+            return;
+        }
         toastTodo("正在翻译...");
         if (translateResultText != null) {
             translateResultText.setText("正在翻译...");
@@ -17527,7 +18044,13 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
-    private void showTranslateResult(String text) {
+    private void showTranslateResult(String requestId, String text) {
+        if (requestId != null && !requestId.isEmpty() && !requestId.equals(translateActiveRequestId)) {
+            Log.i(TAG, "translate_result_stale_drop requestId=" + requestId
+                    + " active=" + translateActiveRequestId);
+            return;
+        }
+        aiSuppressedRequestIds.remove(requestId);
         pendingTranslateResult = text;
         if (translateResultText != null) {
             translateResultText.setText(text);
@@ -17540,19 +18063,22 @@ public class LOActivity extends AppCompatActivity {
         boolean input = stage == TRANSLATE_STAGE_INPUT;
         boolean result = stage == TRANSLATE_STAGE_RESULT;
 
-        if (translateGenerateBtn != null) {
-            translateGenerateBtn.setVisibility(input ? View.VISIBLE : View.GONE);
+        if (translateHintText != null) {
+            translateHintText.setVisibility(input ? View.VISIBLE : View.GONE);
         }
-        if (translateResultCard != null) {
-            translateResultCard.setVisibility(result ? View.VISIBLE : View.GONE);
+        if (translateCtaBar != null) {
+            translateCtaBar.setVisibility(input ? View.VISIBLE : View.GONE);
+        }
+        if (translateResultScroll != null) {
+            translateResultScroll.setVisibility(result ? View.VISIBLE : View.GONE);
         }
         if (translateCopyRow != null) {
             translateCopyRow.setVisibility(result ? View.VISIBLE : View.GONE);
         }
-        if (translateDoneRow != null) {
-            translateDoneRow.setVisibility(result ? View.VISIBLE : View.GONE);
+        if (translateResultBar != null) {
+            translateResultBar.setVisibility(result ? View.VISIBLE : View.GONE);
         }
-        if (result && translateDialogRoot != null) {
+        if (translateDialogRoot != null) {
             translateDialogRoot.post(this::applyTranslateDialogSize);
         }
     }
@@ -17784,11 +18310,18 @@ public class LOActivity extends AppCompatActivity {
                 : pendingAutoOpenAiPrompt;
         Log.i(TAG, "ai_auto_generate_start promptChars=" + prompt.length()
                 + " promptPreview=" + (prompt.length() > 80 ? prompt.substring(0, 80) + "..." : prompt));
+        if (!ensureCloudModelConfigured(AI_MODE_CHAT, "base")) {
+            return;
+        }
         showNativeAiPanel();
         startNativeAiRequest("", prompt, true, "chat", false);
     }
 
     private void startCalcNewTableRequest(String userDescription) {
+        if (!ensureCloudModelConfigured(AI_MODE_CHAT, "base")) {
+            return;
+        }
+
         runOnUiThread(() -> {
             initCalcNewTableViews();
             showCalcNewTableProgress("正在生成表格数据...", "AI 正在分析你的需求");
@@ -17801,16 +18334,14 @@ public class LOActivity extends AppCompatActivity {
         calcNewTableActive = true;
         calcNewTableStreamBuffer.setLength(0);
 
-        final String rawEndpoint = getPrefs().getString(AI_PREF_ENDPOINT, AI_DEFAULT_ENDPOINT);
-        final String endpoint = normalizeEndpoint(rawEndpoint, "/chat/completions");
-        final String apiKey = getPrefs().getString(AI_PREF_API_KEY, "");
-        final String model = getPrefs().getString(AI_PREF_MODEL, AI_DEFAULT_MODEL);
-        Log.e(TAG, "ai_calc_debug_probe rawEndpoint=[" + rawEndpoint + "] normalized=[" + endpoint + "] apiKey.len=" + apiKey.length() + " model=[" + model + "]");
-
-        if (apiKey.isEmpty()) {
-            runOnUiThread(() -> showCalcNewTableError("AI 模型未配置，请在设置中配置 API Key"));
-            return;
-        }
+        AiModelConfigStore.Form baseModel = AiModelConfigStore.loadForm(
+                this, AiModelConfigStore.MODEL_BASE, "", AI_DEFAULT_MODEL);
+        final String endpoint = normalizeEndpoint(baseModel.url, "/chat/completions");
+        final String apiKey = baseModel.apiKey == null ? "" : baseModel.apiKey.trim();
+        final String model = baseModel.modelName == null || baseModel.modelName.trim().isEmpty()
+                ? AI_DEFAULT_MODEL : baseModel.modelName.trim();
+        Log.i(TAG, "ai_calc_new_table_config endpoint.len=" + endpoint.length()
+                + " apiKey.len=" + apiKey.length() + " model=" + model);
 
         new Thread(() -> {
             try {
@@ -18040,11 +18571,11 @@ public class LOActivity extends AppCompatActivity {
         Log.i(TAG, "ai_native_send_start mode=" + mode
                 + " firstDocQaTurn=" + firstDocQaTurn
                 + " promptChars=" + prompt.length());
-        String configError = validateBaseModelConfigured();
-        if (!configError.isEmpty()) {
+        String taskType = aiDocQaMode ? AI_MODE_DOC_QA : AI_MODE_CHAT;
+        if (!ensureCloudModelConfigured(taskType, "base")) {
             Log.w(TAG, "ai_native_send_blocked reason=config_missing mode=" + mode);
-            showBaseModelConfigRequiredDialog(configError);
-            setNativeAiPanelState(AI_STATE_UNCONFIGURED, configError);
+            setNativeAiPanelState(AI_STATE_UNCONFIGURED,
+                    AiModelConfigStore.validateConfigured(this, AiModelConfigStore.MODEL_BASE));
             return;
         }
         appendAiMessage(prompt, true, false);
@@ -18057,12 +18588,17 @@ public class LOActivity extends AppCompatActivity {
         }
         aiPromptInput.setText("");
         setNativeAiPanelState(AI_STATE_LOADING, "AI request queued");
-        String taskType = aiDocQaMode ? AI_MODE_DOC_QA : AI_MODE_CHAT;
         startNativeAiRequest("", prompt, false, taskType, firstDocQaTurn);
     }
 
     private void startNativeAiRequest(String selection, @Nullable String promptOverride, boolean autoAcceptWhenDone,
             String taskType, boolean firstDocQaTurn) {
+        String normalizedTaskType = taskType == null || taskType.trim().isEmpty() ? "chat" : taskType;
+        if (!ensureCloudModelConfigured(normalizedTaskType, "base")) {
+            setNativeAiPanelState(AI_STATE_UNCONFIGURED,
+                    AiModelConfigStore.validateConfigured(this, AiModelConfigStore.MODEL_BASE));
+            return;
+        }
         try {
             JSONObject context = new JSONObject();
             String promptValue;
@@ -18119,29 +18655,53 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
-    private String validateBaseModelConfigured() {
-        SharedPreferences modelPrefs = getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
-        String endpoint = modelPrefs.getString("AI_MODEL_BASE_url", "");
-        String apiKey = modelPrefs.getString("AI_MODEL_BASE_api_key", "");
-        endpoint = endpoint == null ? "" : endpoint.trim();
-        apiKey = apiKey == null ? "" : apiKey.trim();
-        if (endpoint.isEmpty()) {
-            return "请先在设置中配置基础模型的接口地址。";
+    private String resolveRequestModelMode(JSONObject request) {
+        String modelMode = request.optString("modelMode", "base");
+        JSONObject context = request.optJSONObject("context");
+        if (context != null && context.has("modelMode")) {
+            modelMode = context.optString("modelMode", modelMode);
         }
-        if (apiKey.isEmpty()) {
-            return "请先在设置中配置基础模型的 API Key。";
-        }
-        return "";
+        return modelMode == null || modelMode.isEmpty() ? "base" : modelMode;
     }
 
-    private void showBaseModelConfigRequiredDialog(String message) {
+    /**
+     * 云端路由前校验模型配置；本地推理可用时跳过云端配置检查。
+     *
+     * @return true 表示可以继续发起请求
+     */
+    private boolean ensureCloudModelConfigured(String taskType, String modelMode) {
+        // aiBackendRouter/localModelManager 仅在 ensureAiBackends() 中创建;此处必须先初始化,
+        // 否则 resolve 空指针(续写/AI排版入口均直调本方法,不经过发请求路径)
+        ensureAiBackends();
+        AiBackendRouter.LocalModelState localState = localModelManager != null
+                ? localModelManager.getState() : null;
+        AiBackendRouter.ResolvedRoute route = aiBackendRouter.resolve(
+                taskType, modelMode, 0, localState);
+        if (route.backend == AiBackend.BACKEND_LOCAL) {
+            return true;
+        }
+        int modelType = AiModelConfigStore.resolveModelTypeFromMode(modelMode);
+        String error = AiModelConfigStore.validateConfigured(this, modelType);
+        if (!error.isEmpty()) {
+            showModelConfigRequiredDialog(modelType, error);
+            return false;
+        }
+        return true;
+    }
+
+    private void showModelConfigRequiredDialog(int modelType, String message) {
         if (isFinishing()) {
             return;
         }
         if (aiModelRequiredDialog != null && aiModelRequiredDialog.isShowing()) {
             return;
         }
+        aiModelRequiredModelType = modelType;
         View root = getLayoutInflater().inflate(R.layout.lolib_dialog_ai_model_required, null, false);
+        TextView titleView = root.findViewById(R.id.ai_dialog_header_title);
+        if (titleView != null) {
+            titleView.setText(AiModelConfigStore.getRequiredDialogTitle(modelType));
+        }
         TextView messageView = root.findViewById(R.id.ai_model_required_message);
         if (messageView != null && message != null && !message.isEmpty()) {
             messageView.setText(message);
@@ -18152,6 +18712,14 @@ public class LOActivity extends AppCompatActivity {
         aiModelRequiredDialog.setCancelable(true);
         aiModelRequiredDialog.setCanceledOnTouchOutside(true);
         aiModelRequiredDialog.setOnDismissListener(dialog -> aiModelRequiredDialog = null);
+        View closeButton = root.findViewById(R.id.ai_dialog_header_close);
+        if (closeButton != null) {
+            closeButton.setOnClickListener(v -> {
+                if (aiModelRequiredDialog != null) {
+                    aiModelRequiredDialog.dismiss();
+                }
+            });
+        }
         View cancelButton = root.findViewById(R.id.ai_model_required_cancel);
         if (cancelButton != null) {
             cancelButton.setOnClickListener(v -> {
@@ -18166,20 +18734,56 @@ public class LOActivity extends AppCompatActivity {
                 if (aiModelRequiredDialog != null) {
                     aiModelRequiredDialog.dismiss();
                 }
-                openModelSettingsActivity(MODEL_TYPE_BASE);
+                openModelSettingsActivity(aiModelRequiredModelType);
             });
         }
         aiModelRequiredDialog.show();
         if (aiModelRequiredDialog.getWindow() != null) {
-            WindowManager.LayoutParams params = aiModelRequiredDialog.getWindow().getAttributes();
-            params.dimAmount = 0f;
-            aiModelRequiredDialog.getWindow().setAttributes(params);
-            aiModelRequiredDialog.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             int widthPx = getResources().getDimensionPixelSize(R.dimen.ai_model_required_dialog_width);
             AiDialogHelper.applyFlexibleWidth(root, aiModelRequiredDialog, widthPx,
                     AiDialogHelper.computeMaxHeightHugPx(getResources()));
         }
-        Log.i(TAG, "ai_model_required_dialog shown message=" + message);
+        Log.i(TAG, "ai_model_required_dialog shown modelType=" + modelType + " message=" + message);
+    }
+
+    private void resetUiOnConfigMissing(String requestId) {
+        if (requestId == null || requestId.isEmpty()) {
+            return;
+        }
+        if (requestId.equals(outlineActiveRequestId)) {
+            switchOutlineDialogState(false);
+        }
+        if (requestId.equals(articleActiveRequestId)) {
+            if (pendingArticleTemplate != null) {
+                switchArticleDialogStage(ARTICLE_STAGE_FORM);
+            } else {
+                switchArticleDialogStage(ARTICLE_STAGE_SELECT);
+            }
+        }
+        if (requestId.equals(textOperateActiveRequestId)) {
+            switchTextOperateStage(TEXT_OP_STAGE_INPUT);
+        }
+        if (requestId.equals(translateActiveRequestId)) {
+            switchTranslateStage(TRANSLATE_STAGE_INPUT);
+        }
+        if (requestId.equals(textExtractActiveRequestId)) {
+            switchTextExtractStage(TEXT_EXTRACT_STAGE_INPUT);
+        }
+        if (requestId.equals(continueActiveRequestId) || continueWriteRequestIds.contains(requestId)) {
+            setContinueDialogState(false);
+            if (continueContentView != null) {
+                continueContentView.setText("");
+            }
+        }
+        if (calcFormulaRequestIds.contains(requestId)) {
+            dismissCalcFormulaDialog();
+        } else if (condFormatRequestIds.contains(requestId)) {
+            dismissCondFormatDialog();
+        }
+        if (typesetInProgress && requestId.equals(aiActiveRequestId)) {
+            typesetInProgress = false;
+            dismissTypesetPreviewOverlay();
+        }
     }
 
     private void updateAiPanelTabStyle() {
@@ -18505,6 +19109,7 @@ public class LOActivity extends AppCompatActivity {
         cancelAllAiRequests();
         aiTextByRequestId.clear();
         aiRequestModeById.clear();
+        aiRequestModelModeById.clear();
         aiDocQaFirstTurnByRequestId.clear();
         aiStreamingViewByRequestId.clear();
         aiActiveRequestId = "";
@@ -18625,6 +19230,7 @@ public class LOActivity extends AppCompatActivity {
     private void cleanupRequestUiState(String requestId) {
         aiStreamingViewByRequestId.remove(requestId);
         aiDocQaFirstTurnByRequestId.remove(requestId);
+        aiRequestModelModeById.remove(requestId);
         if (requestId.equals(aiStreamingRequestId)) {
             aiStreamingRequestId = "";
             aiStreamingMessageView = null;
@@ -18664,15 +19270,25 @@ public class LOActivity extends AppCompatActivity {
                     renderAiMessageContent(accumulatedText, streamViewSnapshot, false, true);
                     if (requestId.equals(outlineActiveRequestId)) {
                         scrollOutlineResultToBottom();
+                        // 流式内容增长后重算窗口高度，避免底部按钮被窗口裁切（截断根因）
+                        if (outlineDialog != null && outlineDialog.isShowing()) {
+                            outlineDialogRoot.post(this::applyOutlineDialogSize);
+                        }
                     }
                     if (requestId.equals(articleActiveRequestId)) {
                         scrollArticleResultToBottom();
+                        if (articleDialog != null && articleDialog.isShowing()) {
+                            articleDialogRoot.post(this::applyArticleDialogSize);
+                        }
                     }
                     if (requestId.equals(textOperateActiveRequestId)) {
                         scrollTextOperateResultToBottom();
                     }
                     if (requestId.equals(translateActiveRequestId)) {
                         scrollTranslateResultToBottom();
+                    }
+                    if (requestId.equals(continueActiveRequestId)) {
+                        scrollContinueToBottom();
                     }
                 }
             });
@@ -18719,15 +19335,24 @@ public class LOActivity extends AppCompatActivity {
                     Log.i(TAG, "ai_done_render_markdown requestId=" + requestId + " chars=" + fullText.length());
                     if (requestId.equals(outlineActiveRequestId)) {
                         scrollOutlineResultToBottom();
+                        if (outlineDialog != null && outlineDialog.isShowing()) {
+                            outlineDialogRoot.post(this::applyOutlineDialogSize);
+                        }
                     }
                     if (requestId.equals(articleActiveRequestId)) {
                         scrollArticleResultToBottom();
+                        if (articleDialog != null && articleDialog.isShowing()) {
+                            articleDialogRoot.post(this::applyArticleDialogSize);
+                        }
                     }
                     if (requestId.equals(textOperateActiveRequestId)) {
                         scrollTextOperateResultToBottom();
                     }
                     if (requestId.equals(translateActiveRequestId)) {
                         scrollTranslateResultToBottom();
+                    }
+                    if (requestId.equals(continueActiveRequestId)) {
+                        scrollContinueToBottom();
                     }
                 }
                 cleanupRequestUiState(requestId);
@@ -18750,19 +19375,24 @@ public class LOActivity extends AppCompatActivity {
                 return;
             }
             final TextView streamViewSnapshot = aiStreamingViewByRequestId.get(requestId);
+            final boolean configMissing = "config_missing".equals(errorCode);
             runOnUiThread(() -> {
                 if (!requestId.equals(aiActiveRequestId)) {
                     return;
                 }
-                if (streamViewSnapshot != null && streamViewSnapshot.isAttachedToWindow()) {
+                if (configMissing) {
+                    int modelType = AiModelConfigStore.resolveModelTypeFromMode(
+                            aiRequestModelModeById.getOrDefault(requestId, "base"));
+                    if (!isFinishing()) {
+                        showModelConfigRequiredDialog(modelType, errorMessage);
+                    }
+                    resetUiOnConfigMissing(requestId);
+                } else if (streamViewSnapshot != null && streamViewSnapshot.isAttachedToWindow()) {
                     renderAiMessageContent(errorMessage, streamViewSnapshot, false, false);
-                }
-                if ("config_missing".equals(errorCode) && !isFinishing()) {
-                    showBaseModelConfigRequiredDialog(errorMessage);
                 }
                 aiRequestModeById.remove(requestId);
                 cleanupRequestUiState(requestId);
-                setNativeAiPanelState(AI_STATE_UNCONFIGURED, errorMessage);
+                setNativeAiPanelState(configMissing ? AI_STATE_UNCONFIGURED : AI_STATE_ERROR, errorMessage);
             });
             return;
         }

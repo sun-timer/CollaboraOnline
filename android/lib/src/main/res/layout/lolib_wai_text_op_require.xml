@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+   android:layout_height="match_parent"
+   android:layout_marginTop="12dp">
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:background="@drawable/lolib_wai_bg_box"
+        android:padding="10dp">
+
+        <EditText
+            android:id="@+id/wai_text_op_require_edit"
+            android:layout_width="match_parent"
+           android:layout_height="match_parent"
+           android:minHeight="140dp"
+            android:background="@null"
+            android:gravity="top"
+            android:textSize="16sp"
+            android:textColor="#333333"
+            android:textColorHint="#999999"
+            android:lineSpacingExtra="8dp"
+            android:inputType="textMultiLine|textCapSentences"
+            android:imeOptions="actionDone"
+            android:hint="请输入文案处理要求" />
+    </FrameLayout>
+</FrameLayout>

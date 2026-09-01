@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="335dp"
+    android:layout_height="wrap_content"
+    android:background="@drawable/lolib_wai_bg_dialog"
+    android:paddingBottom="12dp">
+
+    <include layout="@layout/lolib_wai_header" />
+
+    <FrameLayout
+        android:id="@+id/wai_image_input_group"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/lolib_wai_bg_box"
+            android:orientation="vertical"
+            android:padding="10dp">
+
+            <EditText
+                android:id="@+id/wai_image_prompt_edit"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="@null"
+                android:gravity="top"
+                android:textSize="16sp"
+                android:textColor="#101010"
+                android:textColorHint="#999999"
+                android:lineSpacingExtra="8dp"
+                android:inputType="textMultiLine|textCapSentences"
+                android:imeOptions="actionDone"
+                android:hint="请输入图片的引导词" />
+
+            <LinearLayout
+                android:id="@+id/wai_image_ratio_chip"
+                android:layout_width="120dp"
+                android:layout_height="32dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/lolib_wai_bg_chip_ratio"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textColor="#101010"
+                    android:text="比例" />
+
+                <TextView
+                    android:id="@+id/wai_image_ratio_label"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:textSize="14sp"
+                    android:textColor="#101010"
+                    android:maxLines="1"
+                    android:gravity="center"
+                    android:text="9:16" />
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/lolib_wai_ic_chevron_down"
+                    android:contentDescription="选择比例" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+
+    <FrameLayout
+        android:id="@+id/wai_image_result_group"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="12dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/lolib_wai_bg_box"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:padding="10dp">
+
+            <TextView
+                android:id="@+id/wai_image_result_prompt"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="16sp"
+                android:textColor="#101010"
+                android:lineSpacingExtra="8dp"
+                android:maxLines="3"
+                android:ellipsize="end"
+                android:text="" />
+
+            <LinearLayout
+                android:id="@+id/wai_image_result_ratio_chip"
+                android:layout_width="120dp"
+                android:layout_height="32dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/lolib_wai_bg_chip_ratio"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textColor="#101010"
+                    android:text="比例" />
+
+                <TextView
+                    android:id="@+id/wai_image_result_ratio_label"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:textSize="14sp"
+                    android:textColor="#101010"
+                    android:maxLines="1"
+                    android:gravity="center"
+                    android:text="9:16" />
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/lolib_wai_ic_chevron_down"
+                    android:contentDescription="比例" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/wai_image_gallery_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal"
+                android:gravity="center_horizontal"
+                android:clipChildren="false">
+
+                <ImageView
+                    android:id="@+id/wai_image_main"
+                    android:layout_width="180dp"
+                    android:layout_height="320dp"
+                    android:background="@drawable/lolib_wai_bg_thumb"
+                    android:clipToOutline="true"
+                    android:scaleType="centerCrop"
+                    android:contentDescription="生成结果" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="320dp"
+                    android:layout_marginStart="10dp"
+                    android:orientation="vertical"
+                    android:gravity="center_vertical"
+                    android:clipChildren="false">
+
+                    <ImageView
+                        android:id="@+id/wai_image_thumb_0"
+                        android:layout_width="100dp"
+                        android:layout_height="100dp"
+                        android:background="@drawable/lolib_wai_bg_thumb"
+                        android:clipToOutline="true"
+                        android:scaleType="centerCrop"
+                        android:contentDescription="缩略图1" />
+
+                    <ImageView
+                        android:id="@+id/wai_image_thumb_1"
+                        android:layout_width="100dp"
+                        android:layout_height="100dp"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/lolib_wai_bg_thumb"
+                        android:clipToOutline="true"
+                        android:scaleType="centerCrop"
+                        android:contentDescription="缩略图2" />
+
+                    <ImageView
+                        android:id="@+id/wai_image_thumb_2"
+                        android:layout_width="100dp"
+                        android:layout_height="100dp"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/lolib_wai_bg_thumb"
+                        android:clipToOutline="true"
+                        android:scaleType="centerCrop"
+                        android:contentDescription="缩略图3" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/wai_image_loading"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:indeterminate="true"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/wai_image_cta_bar"
+        android:layout_width="match_parent"
+        android:layout_height="59dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp">
+
+        <LinearLayout
+            android:id="@+id/wai_image_generate_btn"
+            android:layout_width="0dp"
+            android:layout_height="35dp"
+            android:layout_weight="1"
+            android:background="@drawable/lolib_bg_continue_pill_primary_35"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/lolib_wai_ic_sparkle"
+                android:contentDescription="生成" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:textSize="16sp"
+                android:textColor="#FFFFFF"
+                android:text="开始生成" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/wai_image_result_bar"
+        android:layout_width="match_parent"
+        android:layout_height="59dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/wai_image_regenerate_btn"
+            android:layout_width="120dp"
+            android:layout_height="35dp"
+            android:background="@drawable/lolib_bg_continue_pill_secondary_35"
+            android:gravity="center"
+            android:textSize="16sp"
+            android:textColor="#E5000000"
+            android:clickable="true"
+            android:focusable="true"
+            android:text="重新生成" />
+    </LinearLayout>
+</LinearLayout>
