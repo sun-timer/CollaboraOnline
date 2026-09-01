@@ -14,11 +14,18 @@
     <dimen name="home_file_name_text_size">16sp</dimen>
     <dimen name="home_file_date_text_size">12sp</dimen>
     <dimen name="home_more_action_button_size">28dp</dimen>
-    <!-- Figma group-3466352 — new doc FAB -->
+    <!-- Figma group-3466352 — new doc FAB.
+         Portrait: disc-right 35dp, disc-bottom 40dp above the system gesture
+         inset strip (Figma 750px board / 2: 70px / 120px).
+         Landscape keeps the original 54/78dp margins so the FAB never covers
+         the recents row "more-dots" actions; the code picks the _landscape
+         variants via Configuration.ORIENTATION_LANDSCAPE. -->
     <dimen name="home_fab_size">60dp</dimen>
     <dimen name="home_fab_icon_size">17dp</dimen>
-    <dimen name="home_fab_margin_end">54dp</dimen>
-    <dimen name="home_fab_margin_bottom">78dp</dimen>
+    <dimen name="home_fab_margin_end">35dp</dimen>
+    <dimen name="home_fab_margin_bottom">40dp</dimen>
+    <dimen name="home_fab_margin_end_landscape">54dp</dimen>
+    <dimen name="home_fab_margin_bottom_landscape">78dp</dimen>
     <dimen name="home_new_doc_menu_above_fab_gap">20dp</dimen>
     <dimen name="home_fab_menu_panel_bottom_padding">156dp</dimen>
     <dimen name="home_recent_list_bottom_padding">140dp</dimen>
@@ -71,8 +78,14 @@
     <dimen name="rename_dialog_header_padding_horizontal">16dp</dimen>
     <dimen name="rename_dialog_title_size">20sp</dimen>
     <dimen name="rename_dialog_close_size">40dp</dimen>
-    <dimen name="rename_dialog_close_padding">8dp</dimen>
+    <dimen name="rename_dialog_close_padding">0dp</dimen>
     <dimen name="rename_dialog_content_padding">12dp</dimen>
+    <!-- Figma 2371:53135 — remove-from-list confirm dialog -->
+    <dimen name="confirm_dialog_message_padding_top">24dp</dimen>
+    <dimen name="confirm_dialog_message_padding_bottom">24dp</dimen>
+    <dimen name="confirm_dialog_buttons_padding_top">12dp</dimen>
+    <dimen name="confirm_dialog_buttons_padding_bottom">12dp</dimen>
+    <dimen name="confirm_dialog_bottom_padding">8dp</dimen>
     <dimen name="rename_dialog_input_height">43dp</dimen>
     <dimen name="rename_dialog_input_padding_horizontal">10dp</dimen>
     <dimen name="rename_dialog_input_padding_vertical">12dp</dimen>
@@ -109,6 +122,8 @@
     <dimen name="ai_model_config_footer_padding_v">24dp</dimen>
     <dimen name="ai_model_config_footer_button_gap">20dp</dimen>
     <dimen name="clear_cache_bottom_bar_padding_v">24dp</dimen>
+    <dimen name="feedback_bottom_bar_padding_v">12dp</dimen>
+    <dimen name="feedback_list_bottom_padding_v">16dp</dimen>
     <dimen name="about_footer_padding_bottom">32dp</dimen>
     <dimen name="bottom_sheet_content_bottom_pad">24dp</dimen>
     <dimen name="local_model_sheet_bottom_pad">20dp</dimen>
@@ -174,9 +189,4 @@
     <dimen name="local_model_list_confirm_margin_h">20dp</dimen>
     <dimen name="local_model_list_confirm_margin_v">12dp</dimen>
     <dimen name="local_model_list_max_height">464dp</dimen>
-    <dimen name="confirm_dialog_bottom_padding">8dp</dimen>
-    <dimen name="confirm_dialog_buttons_padding_bottom">12dp</dimen>
-    <dimen name="confirm_dialog_buttons_padding_top">12dp</dimen>
-    <dimen name="confirm_dialog_message_padding_bottom">24dp</dimen>
-    <dimen name="confirm_dialog_message_padding_top">24dp</dimen>
 </resources>
