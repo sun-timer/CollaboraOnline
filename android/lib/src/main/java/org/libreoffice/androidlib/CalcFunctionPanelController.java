@@ -101,6 +101,7 @@ public class CalcFunctionPanelController {
         void insertComment();
 
         String getCommentAuthorName();
+
         String getCommentAuthorAvatarUri();
 
         void insertCommentWithText(String text);
@@ -148,6 +149,9 @@ public class CalcFunctionPanelController {
 
         /** 枚举真实宏树，回调 catalog。 */
         void loadMacroCatalog(CalcValidationMacroCatalog.Callback callback);
+
+        /** 打开合并单元格选项弹窗（与底部工具栏共用）。 */
+        void showMergeCellOptions();
     }
 
     private enum ItemType {
@@ -334,7 +338,6 @@ public class CalcFunctionPanelController {
         toggleStates.put("thousands_sep", false);
         toggleStates.put("vertical_stack", false);
         toggleStates.put("wrap_text", false);
-        toggleStates.put("merge_cells", false);
     }
 
     public void show() {
@@ -395,11 +398,27 @@ public class CalcFunctionPanelController {
         FrameLayout bottomSheet = dialog.findViewById(
                 com.google.android.material.R.id.design_bottom_sheet);
         if (bottomSheet != null) {
-            bottomSheet.setBackgroundResource(R.drawable.lolib_bg_calc_bottom_sheet);
+            bottomSheet.setBackgroundResource(commentPickerVisible
+                    ? R.drawable.lolib_bg_function_sheet_panel
+                    : R.drawable.lolib_bg_calc_bottom_sheet);
+            bottomSheet.setElevation(host.dpToPx(28));
         }
-        BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
-        options.logTag = TAG;
+        BottomSheetAnchorHelper.Options options =
+                BottomSheetAnchorHelper.overlayDocumentSheetOptions(host.getContext(), TAG);
         BottomSheetAnchorHelper.expandFunctionPanel(dialog, SHEET_HEIGHT_RATIO, options);
+    }
+
+    /** Re-measure and re-anchor after secondary-page content changes. */
+    private void scheduleSheetReanchor() {
+        if (dialog == null || !dialog.isShowing()) {
+            return;
+        }
+        View anchor = contentContainer != null ? contentContainer : tabBar;
+        if (anchor != null) {
+            anchor.post(this::applyAdaptiveSheetHeight);
+        } else {
+            applyAdaptiveSheetHeight();
+        }
     }
 
     public void dismiss() {
@@ -610,6 +629,7 @@ public class CalcFunctionPanelController {
         flushToolButtons(root, pendingTools);
         flushIconGrid(root, pendingGrid);
         contentContainer.addView(root);
+        scheduleSheetReanchor();
     }
 
     private void flushToolButtons(LinearLayout root, List<PanelItem> tools) {
@@ -1379,6 +1399,7 @@ public class CalcFunctionPanelController {
         }
 
         contentContainer.addView(root);
+        scheduleSheetReanchor();
         Log.i(TAG, "data_submenu_show parent=" + parent.id + " items=" + items.length);
     }
 
@@ -1497,6 +1518,7 @@ public class CalcFunctionPanelController {
         }
 
         contentContainer.addView(root);
+        scheduleSheetReanchor();
         Log.i(TAG, "option_picker_show title=" + title + " items=" + labels.length);
     }
 
@@ -1562,9 +1584,27 @@ public class CalcFunctionPanelController {
             });
         }
 
+        prepareCommentPickerContainer();
         contentContainer.removeAllViews();
         contentContainer.addView(commentPicker.buildRootView());
+        scheduleSheetReanchor();
         Log.i(TAG, "comment_picker_show");
+    }
+
+    private void prepareCommentPickerContainer() {
+        if (contentContainer == null) {
+            return;
+        }
+        contentContainer.setFillViewport(false);
+        contentContainer.setPadding(0, 0, 0, 0);
+    }
+
+    private void restoreCommentPickerContainer() {
+        if (contentContainer == null) {
+            return;
+        }
+        contentContainer.setFillViewport(false);
+        contentContainer.setPadding(host.dpToPx(16), host.dpToPx(8), host.dpToPx(16), host.dpToPx(16));
     }
 
     private void dismissCommentPickerPage() {
@@ -1572,6 +1612,7 @@ public class CalcFunctionPanelController {
             return;
         }
         commentPickerVisible = false;
+        restoreCommentPickerContainer();
         setTabChromeVisible(true);
         int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
                 ? submenuReturnTabIndex : selectedTabIndex;
@@ -1603,6 +1644,7 @@ public class CalcFunctionPanelController {
                 }));
 
         contentContainer.addView(root);
+        scheduleSheetReanchor();
         Log.i(TAG, "chart_type_picker_show");
     }
 
@@ -1712,6 +1754,7 @@ public class CalcFunctionPanelController {
         contentContainer.removeAllViews();
         contentContainer.addView(hyperlinkPicker.buildRootView());
         hyperlinkPicker.onPickerShown();
+        scheduleSheetReanchor();
         Log.i(TAG, "hyperlink_picker_show");
     }
 
@@ -1784,6 +1827,7 @@ public class CalcFunctionPanelController {
 
         contentContainer.removeAllViews();
         contentContainer.addView(dataValidationPicker.buildRootView());
+        scheduleSheetReanchor();
         Log.i(TAG, "data_validation_picker_show");
     }
 
@@ -1816,6 +1860,7 @@ public class CalcFunctionPanelController {
 
         contentContainer.removeAllViews();
         contentContainer.addView(colorPicker.buildRootView(title));
+        scheduleSheetReanchor();
         Log.i(TAG, "color_picker_show kind=" + kind.name() + " id=" + pickerId);
     }
 
@@ -2276,6 +2321,11 @@ public class CalcFunctionPanelController {
             showCommentPickerPage();
             return;
         }
+        if ("merge_cells".equals(item.id)) {
+            dismiss();
+            host.runAfterFunctionPanelDismiss(host::showMergeCellOptions);
+            return;
+        }
         Runnable action = () -> {
             if (item.hostAction != null) {
                 item.hostAction.run();
@@ -2322,8 +2372,8 @@ public class CalcFunctionPanelController {
                 ALIGN_LABELS, ALIGN_COMMANDS, ALIGN_ICONS, 6, new int[] { 6, 5 }, true));
         common.add(new PanelItem(ItemType.STEPPER_PAIR, "indent_steppers", "缩进"));
         common.add(new PanelItem(ItemType.TOGGLE_PAIR, "stack_wrap_toggles", "排列换行"));
-        common.add(new PanelItem(ItemType.TOGGLE, "merge_cells", "合并单元格",
-                ".uno:ToggleMergeCells", false));
+        common.add(new PanelItem(ItemType.ACTION, "merge_cells", "合并单元格",
+                R.drawable.lolib_ic_toolbar_merge_cell, (Runnable) null));
         common.add(new PanelItem(ItemType.SECTION, "sec_border", "边框"));
         common.add(new PanelItem(ItemType.ICON_GRID, "border_styles", "边框样式",
                 BORDER_LABELS, BORDER_COMMANDS, BORDER_ICONS, 6, new int[] { 6, 6 }, true));
