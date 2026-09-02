@@ -33,11 +33,10 @@ class MobileAiOutlineDialog {
 		const generate = document.createElement('button');
 		generate.type = 'button';
 		generate.textContent = '生成';
-		generate.disabled = true;
-		generate.title = 'iOS 尚未支持生成大纲请求';
+		generate.title = '生成能力待接通';
 		content.appendChild(generate);
 		const status = document.createElement('div');
-		status.textContent = 'iOS 尚未支持生成大纲请求';
+		status.textContent = '生成能力待接通';
 		status.setAttribute('role', 'status');
 		content.appendChild(status);
 		this.sheet.setBody(content);

@@ -26,7 +26,8 @@ type MobileAiUiDialog =
 	| 'outline'
 	| 'article'
 	| 'calc'
-	| 'unavailable';
+	| 'unavailable'
+	| 'formatBatch';
 
 interface MobileAiUiEntry {
 	taskType: string;
@@ -92,7 +93,7 @@ class MobileAiUiCatalog {
 			requiredInput: 'document',
 			resultMode: 'insertAtEnd',
 			dialog: 'outline',
-			iosSupport: false,
+			iosSupport: true,
 			selectionRequired: false,
 			includeInOperationSheet: true,
 		},
@@ -105,7 +106,7 @@ class MobileAiUiCatalog {
 			requiredInput: 'prompt',
 			resultMode: 'insertAtEnd',
 			dialog: 'article',
-			iosSupport: false,
+			iosSupport: true,
 			selectionRequired: false,
 			includeInOperationSheet: true,
 		},
@@ -234,8 +235,8 @@ class MobileAiUiCatalog {
 			documentTypes: ['text', 'presentation'],
 			requiredInput: 'selection',
 			resultMode: 'replaceSelection',
-			dialog: 'unavailable',
-			iosSupport: false,
+			dialog: 'formatBatch',
+			iosSupport: true,
 			selectionRequired: true,
 			includeInOperationSheet: true,
 		},

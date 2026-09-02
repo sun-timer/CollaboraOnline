@@ -31,12 +31,11 @@ class MobileAiArticleDialog {
 		content.appendChild(this.form);
 		this.generate = document.createElement('button');
 		this.generate.type = 'button';
-		this.generate.textContent = '开始生成';
 		this.generate.disabled = true;
-		this.generate.title = 'iOS 尚未支持文案生成请求';
+		this.generate.title = '生成能力待接通';
 		content.appendChild(this.generate);
 		const status = document.createElement('div');
-		status.textContent = 'iOS 尚未支持文案生成请求';
+		status.textContent = '生成能力待接通';
 		status.setAttribute('role', 'status');
 		content.appendChild(status);
 		this.sheet.setBody(content);

@@ -40,7 +40,10 @@ class WriterAiController {
 	private readonly unsubscribeBridge: () => void;
 	private state: WriterAiControllerState = { state: 'idle', preview: '' };
 	private originalSelection = '';
-	private resultMode: 'replaceSelection' | 'appendAfterSelection' = 'replaceSelection';
+	private resultMode:
+		| 'replaceSelection'
+		| 'appendAfterSelection'
+		| 'insertAtEnd' = 'replaceSelection';
 	private lastRequest: {
 		taskType: string;
 		context: { [key: string]: any };
@@ -210,6 +213,11 @@ class WriterAiController {
 		const text = this.state.preview;
 		let pasted = false;
 		if (
+			this.resultMode === 'insertAtEnd' &&
+			this.documentAdapter.insertAtEnd
+		) {
+			pasted = this.documentAdapter.insertAtEnd(text);
+		} else if (
 			html &&
 			this.resultMode === 'replaceSelection' &&
 			this.documentAdapter.pasteHtml
@@ -220,10 +228,11 @@ class WriterAiController {
 			this.documentAdapter.appendAfterSelection
 		) {
 			pasted = this.documentAdapter.appendAfterSelection(text);
-		} else if (this.resultMode === 'replaceSelection' && this.documentAdapter.replaceSelection) {
+		} else if (
+			this.resultMode === 'replaceSelection' &&
+			this.documentAdapter.replaceSelection
+		) {
 			pasted = this.documentAdapter.replaceSelection(text);
-		} else if (this.documentAdapter.insertAtEnd) {
-			pasted = this.documentAdapter.insertAtEnd(text);
 		} else {
 			pasted = this.documentAdapter.pastePlainText(text);
 		}
@@ -361,6 +370,35 @@ class WriterAiController {
 					return !!clip && typeof clip.pasteAiTextAsHtml === 'function'
 						? clip.pasteAiTextAsHtml(html, plainText)
 						: false;
+				} catch (_error) {
+					return false;
+				}
+			},
+			insertAtEnd(text: string): boolean {
+				try {
+					const map = (window as any).app?.map;
+					if (
+						!map ||
+						typeof map.sendUnoCommand !== 'function' ||
+						typeof map._clip?.pastePlainText !== 'function'
+					) {
+						return false;
+					}
+					// Move the caret to the document end, then paste once the
+					// command lands. Mirrors the Android typeset/outline path
+					// (.uno:GoToEndOfDoc + delayed paste).
+					map.sendUnoCommand('.uno:GoToEndOfDoc');
+					window.setTimeout(
+						() => {
+							try {
+								map._clip.pastePlainText(text);
+							} catch (_error) {
+								// Best-effort insertion; caller already accepted.
+							}
+						},
+						300,
+					);
+					return true;
 				} catch (_error) {
 					return false;
 				}

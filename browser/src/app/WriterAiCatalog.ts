@@ -9,8 +9,8 @@ interface WriterAiTaskDefinition {
 	taskType: string;
 	promptId: string;
 	androidTaskType: string;
-	requiredInput: 'selection';
-	resultMode: 'replaceSelection' | 'appendAfterSelection';
+	requiredInput: 'selection' | 'document' | 'prompt';
+	resultMode: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd';
 	allowedContextFields: string[];
 }
 
@@ -118,6 +118,22 @@ class WriterAiCatalog {
 			requiredInput: 'selection',
 			resultMode: 'replaceSelection',
 			allowedContextFields: [],
+		},
+		outline: {
+			taskType: 'outline',
+			promptId: 'writer.outline',
+			androidTaskType: 'outline',
+			requiredInput: 'document',
+			resultMode: 'insertAtEnd',
+			allowedContextFields: ['outlineType', 'requirement'],
+		},
+		article_generate: {
+			taskType: 'article_generate',
+			promptId: 'writer.article_generate',
+			androidTaskType: 'article_generate',
+			requiredInput: 'prompt',
+			resultMode: 'insertAtEnd',
+			allowedContextFields: ['template', 'variables'],
 		},
 	};
 
@@ -242,8 +258,9 @@ class WriterAiCatalog {
 			return { valid: false, errorCode: 'unsupported_task_type' };
 		}
 		if (
-			typeof payload.selection !== 'string' ||
-			payload.selection.trim().length === 0
+			task.requiredInput === 'selection' &&
+			(typeof payload.selection !== 'string' ||
+				payload.selection.trim().length === 0)
 		) {
 			return { valid: false, errorCode: 'empty_selection' };
 		}
