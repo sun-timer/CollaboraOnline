@@ -210,4 +210,32 @@ describe('WriterAiController', function () {
 			context: { outlineType: 'paper', requirement: '含方法部分' },
 		});
 	});
+
+	it('passes article template and variable values to the request payload', function () {
+		const bridge = createFakeBridge('');
+		const controller = new WriterAiController(bridge, {
+			insertAtEnd(): boolean {
+				return true;
+			},
+			pastePlainText(): boolean {
+				return false;
+			},
+			copyText(): boolean {
+				return false;
+			},
+		});
+
+		controller.request('article_generate', {
+			template: 'leave_apply',
+			variables: ['张三', '家中有事', '3天', '2026-09-03'],
+		});
+		assert.deepEqual(bridge.calls.request[0], {
+			taskType: 'article_generate',
+			selection: '',
+			context: {
+				template: 'leave_apply',
+				variables: ['张三', '家中有事', '3天', '2026-09-03'],
+			},
+		});
+	});
 });

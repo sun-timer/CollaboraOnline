@@ -10,6 +10,9 @@ class MobileAiOperationDialog {
 	private readonly style?: HTMLSelectElement;
 	private readonly outlineType?: HTMLSelectElement;
 	private readonly outlineDescription?: HTMLTextAreaElement;
+	private readonly articleTemplate?: HTMLSelectElement;
+	private readonly articleValues: HTMLInputElement[] = [];
+	private readonly articleForm?: HTMLDivElement;
 	private readonly preview: HTMLDivElement;
 	private readonly status: HTMLDivElement;
 	private readonly generateButton: HTMLButtonElement;
@@ -71,6 +74,7 @@ class MobileAiOperationDialog {
 				option.textContent = item.label;
 				this.outlineType?.appendChild(option);
 			});
+
 			this.outlineType.value = 'general';
 			content.appendChild(this.outlineType);
 			this.outlineDescription = document.createElement('textarea');
@@ -80,6 +84,24 @@ class MobileAiOperationDialog {
 			this.outlineDescription.style.cssText =
 				'width:100%;box-sizing:border-box;resize:vertical;';
 			content.appendChild(this.outlineDescription);
+		}
+		if (taskType === 'article_generate') {
+			this.articleTemplate = document.createElement('select');
+			this.articleTemplate.setAttribute('aria-label', '文案类型');
+			Object.keys(WriterAiCatalog.ARTICLE_TEMPLATES).forEach((key) => {
+				const option = document.createElement('option');
+				option.value = key;
+				const item = WriterAiCatalog.ARTICLE_TEMPLATES[key];
+				option.textContent = `${item.category} / ${key}`;
+				this.articleTemplate?.appendChild(option);
+			});
+			this.articleTemplate.onchange = () => this.renderArticleForm();
+			content.appendChild(this.articleTemplate);
+			this.articleForm = document.createElement('div');
+			this.articleForm.style.cssText =
+				'display:flex;flex-direction:column;gap:8px;';
+			content.appendChild(this.articleForm);
+			this.renderArticleForm();
 		}
 
 		this.status = document.createElement('div');
@@ -130,6 +152,25 @@ class MobileAiOperationDialog {
 		this.render();
 	}
 
+	private renderArticleForm(): void {
+		const item = WriterAiCatalog.getArticleTemplate(
+			this.articleTemplate?.value || '',
+		);
+		if (!this.articleForm || !item) {
+			return;
+		}
+		this.articleForm.replaceChildren();
+		this.articleValues.length = 0;
+		item.variables.forEach((label) => {
+			const input = document.createElement('input');
+			input.type = 'text';
+			input.placeholder = label;
+			input.setAttribute('aria-label', label);
+			this.articleForm?.appendChild(input);
+			this.articleValues.push(input);
+		});
+	}
+
 	close(): void {
 		this.controller.cancel();
 		this.unsubscribe();
@@ -150,6 +191,9 @@ class MobileAiOperationDialog {
 		} else if (this.taskType === 'outline') {
 			context.outlineType = this.outlineType?.value || 'general';
 			context.requirement = this.outlineDescription?.value.trim() || '';
+		} else if (this.taskType === 'article_generate') {
+			context.template = this.articleTemplate?.value || '';
+			context.variables = this.articleValues.map((input) => input.value.trim());
 		}
 		this.controller.request(this.taskType, context);
 	}

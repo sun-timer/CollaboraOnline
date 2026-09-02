@@ -557,6 +557,44 @@ didCompleteWithError:(NSError *)error {
         }
         [prompt appendString:@"\n请直接输出大纲。"];
         userPrompt = prompt;
+    } else if ([taskType isEqualToString:@"article_generate"]) {
+        NSString *templateKey = [context[@"template"] isKindOfClass:[NSString class]]
+            ? context[@"template"] : @"";
+        NSDictionary *tpl = [self articleTemplateForKey:templateKey];
+        if (tpl == nil) {
+            if (error != NULL) {
+                *error = [NSError errorWithDomain:@"com.xunlong.xloffice.ai"
+                                             code:2
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Unknown article template"}];
+            }
+            return nil;
+        }
+        NSArray *values = [context[@"variables"] isKindOfClass:[NSArray class]]
+            ? context[@"variables"] : @[];
+        NSArray *hints = tpl[@"hints"];
+        NSMutableString *prompt =
+            [NSMutableString stringWithString:tpl[@"promptTemplate"]];
+        for (NSUInteger i = 0; i < hints.count; i++) {
+            NSString *placeholder =
+                [NSString stringWithFormat:@"{变量%lu}", (unsigned long)(i + 1)];
+            NSString *value = @"";
+            if (i < values.count && [values[i] isKindOfClass:[NSString class]]) {
+                value = [values[i] stringByTrimmingCharactersInSet:
+                    [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            }
+            if (value.length == 0) {
+                value = hints[i];
+            }
+            [prompt replaceOccurrencesOfString:placeholder
+                                    withString:value
+                                       options:0
+                                         range:NSMakeRange(0, prompt.length)];
+        }
+        systemPrompt = [NSString stringWithFormat:
+            @"你是中文文案写作专家，请根据用户提供的要素撰写一份规范、得体的%@。"
+             "只输出正文内容，不要输出解释或标题前缀。",
+            tpl[@"subTypeLabel"]];
+        userPrompt = prompt;
     } else if ([taskType isEqualToString:@"create_document"]) {
         NSString *docType = [context[@"docType"] isKindOfClass:[NSString class]]
             ? context[@"docType"] : @"writer";
@@ -620,6 +658,112 @@ didCompleteWithError:(NSError *)error {
         [prompt appendFormat:@"\n\n额外要求：%@", requirement];
     }
     return prompt;
+}
+
+- (NSDictionary *)articleTemplateForKey:(NSString *)key {
+    static NSDictionary *templates = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        templates = @{
+            @"general_notice": @{
+                @"subTypeLabel": @"通用通知",
+                @"promptTemplate":
+                    @"请撰写一则通知，通知的主要内容为{变量1}，通知时间是{变量2}。",
+                @"hints": @[@"公司今晚聚餐", @"2025年01月01日"],
+            },
+            @"meeting_notice": @{
+                @"subTypeLabel": @"会议通知",
+                @"promptTemplate":
+                    @"请撰写一则会议通知，通知的主要内容为{变量1}，会议时间是{变量2}，参会人员包括{变量3}。",
+                @"hints": @[@"2025年研发计划", @"2025年01月01日 17:00", @"软件研发人员"],
+            },
+            @"holiday_notice": @{
+                @"subTypeLabel": @"放假通知",
+                @"promptTemplate":
+                    @"请撰写一则放假通知，假期名称为{变量1}，接收方是{变量2}，发送方是{变量3}，放假时间是{变量4}。",
+                @"hints": @[@"元旦节", @"全体员工", @"橙子云计算（深圳）有限公司", @"2025年01月01日"],
+            },
+            @"interview_notice": @{
+                @"subTypeLabel": @"面试通知",
+                @"promptTemplate":
+                    @"请撰写一则面试通知，面试人员是{变量1}，面试时间为{变量2}，面试地点是{变量3}，面试单位为{变量4}。",
+                @"hints": @[@"小王", @"2025年01月01日 17:00", @"名优大厦A座1区101", @"橙子云计算"],
+            },
+            @"activity_notice": @{
+                @"subTypeLabel": @"活动通知",
+                @"promptTemplate":
+                    @"请撰写一则活动通知，活动主题是{变量1}，活动时间是{变量2}，活动地点为{变量3}。",
+                @"hints": @[@"员工羽毛球大赛", @"2025年01月01日 17:00", @"羽毛球馆"],
+            },
+            @"training_notice": @{
+                @"subTypeLabel": @"培训通知",
+                @"promptTemplate":
+                    @"请撰写一则培训通知，培训主要内容为{变量1}，培训人员是{变量2}，培训日期是{变量3}。",
+                @"hints": @[@"如何使用AI Office提效", @"全体员工", @"2025年01月01日 17:00"],
+            },
+            @"general_apply": @{
+                @"subTypeLabel": @"通用申请",
+                @"promptTemplate":
+                    @"请撰写一则申请，申请人是{变量1}，申请事项是{变量2}，申请时间是{变量3}。",
+                @"hints": @[@"小王", @"外出参加会议", @"2025年01月01日"],
+            },
+            @"leave_apply": @{
+                @"subTypeLabel": @"请假申请",
+                @"promptTemplate":
+                    @"请撰写一则请假条，请假人为{变量1}，请假原因是{变量2}，请假天数为{变量3}，请假起始日期是{变量4}。",
+                @"hints": @[@"小王", @"身体不适", @"3天", @"2025年01月01日"],
+            },
+            @"resign_apply": @{
+                @"subTypeLabel": @"离职申请",
+                @"promptTemplate":
+                    @"请撰写一则离职申请，申请人是{变量1}，离职原因是{变量2}，离职时间是{变量3}。",
+                @"hints": @[@"小王", @"身体长期不适", @"2025年01月01日"],
+            },
+            @"general_cert": @{
+                @"subTypeLabel": @"通用证明",
+                @"promptTemplate":
+                    @"请撰写一则证明，被证明人是{变量1}，证明主要内容是{变量2}，证明单位为{变量3}，证明时间是{变量4}。",
+                @"hints": @[@"小王", @"小王是公司的员工", @"橙子云计算（深圳）有限公司", @"2025年01月01日"],
+            },
+            @"work_cert": @{
+                @"subTypeLabel": @"工作证明",
+                @"promptTemplate":
+                    @"请撰写一则工作证明，被证明人是{变量1}，工作时间是{变量2}，工作单位是{变量3}，工作岗位是{变量4}。",
+                @"hints": @[@"小王", @"2020年01月01日至2025年01月01日", @"橙子云计算（深圳）有限公司", @"软件研发工程师"],
+            },
+            @"income_cert": @{
+                @"subTypeLabel": @"收入证明",
+                @"promptTemplate":
+                    @"请撰写一则收入证明，被证明人是{变量1}，收入为{变量2}，工作单位是{变量3}，工作岗位是{变量4}。",
+                @"hints": @[@"小王", @"年收入10万元", @"橙子云计算（深圳）有限公司", @"软件研发工程师"],
+            },
+            @"resign_cert": @{
+                @"subTypeLabel": @"离职证明",
+                @"promptTemplate":
+                    @"请撰写一则离职证明，被证明人是{变量1}，离职原因为{变量2}，离职时间是{变量3}，证明单位为{变量4}，证明时间是{变量5}。",
+                @"hints": @[@"小王", @"员工个人原因", @"2025年01月01日", @"橙子云计算（深圳）有限公司", @"2025年01月01日"],
+            },
+            @"xiaohongshu": @{
+                @"subTypeLabel": @"小红书种草文",
+                @"promptTemplate":
+                    @"请撰写一篇小红书种草文，种草对象是{变量1}，目标受众是{变量2}，核心卖点是{变量3}，文章长度{变量4}，使用{变量5}的文案风格，",
+                @"hints": @[@"最新复古游戏掌机", @"喜欢游戏机的年轻人", @"畅玩复古游戏", @"500字左右", @"幽默风趣"],
+            },
+            @"ad_soft": @{
+                @"subTypeLabel": @"产品广告软文",
+                @"promptTemplate":
+                    @"请撰写一篇产品广告软文，产品名称是{变量1}，品牌是{变量2}，核心卖点是{变量3}，目标受众是{变量4}，投放平台是{变量5}，营销节点是{变量6}，文案风格是{变量7}",
+                @"hints": @[@"最新复古游戏掌机", @"香橙派", @"畅玩复古游戏", @"爱玩游戏的年轻人", @"微博", @"情人节", @"幽默风趣"],
+            },
+            @"douyin_script": @{
+                @"subTypeLabel": @"抖音视频脚本",
+                @"promptTemplate":
+                    @"请撰写一篇抖音视频脚本，视频的主题内容是{变量1}，目标受众是{变量2}，视频风格是{变量3}，视频时长是{变量4}",
+                @"hints": @[@"旅游攻略", @"旅游爱好者", @"搞笑幽默", @"三分钟左右"],
+            },
+        };
+    });
+    return templates[key];
 }
 
 @end

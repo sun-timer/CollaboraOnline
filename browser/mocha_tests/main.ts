@@ -37,7 +37,6 @@
 /// <reference path="../src/app/MobileAiOperationDialog.ts" />
 /// <reference path="../src/app/MobileAiCalcDialog.ts" />
 /// <reference path="../src/app/MobileAiTranslateDialog.ts" />
-/// <reference path="../src/app/MobileAiArticleDialog.ts" />
 /// <reference path="../src/app/MobileAiResultRenderer.ts" />
 /// <reference path="../src/app/MobileAiConfiguration.ts" />
 /// <reference path="../src/app/WriterAiPanel.ts" />

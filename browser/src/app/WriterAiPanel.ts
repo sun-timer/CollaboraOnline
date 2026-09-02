@@ -12,7 +12,6 @@ class WriterAiPanel {
 	private activeDialog:
 		| MobileAiOperationDialog
 		| MobileAiTranslateDialog
-		| MobileAiArticleDialog
 		| MobileAiFormatBatchDialog
 		| MobileAiCalcDialog
 		| null = null;
@@ -64,8 +63,6 @@ class WriterAiPanel {
 			this.activeDialog = new MobileAiTranslateDialog();
 		} else if (entry.dialog === 'calc') {
 			this.activeDialog = new MobileAiCalcDialog(taskType);
-		} else if (entry.dialog === 'article') {
-			this.activeDialog = new MobileAiArticleDialog();
 		} else if (entry.dialog === 'formatBatch') {
 			this.activeDialog = new MobileAiFormatBatchDialog();
 		} else {
