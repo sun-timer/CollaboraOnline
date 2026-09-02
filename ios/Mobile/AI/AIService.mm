@@ -15,6 +15,9 @@
 @property (strong, nonatomic) AIRequestSession *session;
 @property (copy, nonatomic) AIServiceEventEmitter emitter;
 @property (assign, nonatomic) NSInteger statusCode;
+/** Non-streaming image generation accumulates the raw JSON response. */
+@property (assign, nonatomic) BOOL imageGeneration;
+@property (strong, nonatomic) NSMutableData *responseData;
 @end
 
 @implementation AIServiceRequest
@@ -60,8 +63,9 @@
     }
 
     [self cancelRequest:requestId documentSessionId:documentSessionId];
-
-    AIModelType modelType = AIModelTypeBase;
+    AIModelType modelType = [self defaultModelTypeForTask:
+        [payload[@"taskType"] isKindOfClass:[NSString class]]
+            ? payload[@"taskType"] : @""];
     id rawType = payload[@"modelType"];
     if ([rawType isKindOfClass:[NSNumber class]]) {
         NSInteger typeValue = ((NSNumber *)rawType).integerValue;
@@ -69,6 +73,9 @@
             modelType = (AIModelType)typeValue;
         }
     }
+    NSString *taskType = [payload[@"taskType"] isKindOfClass:[NSString class]]
+        ? payload[@"taskType"] : @"";
+    BOOL isImageGeneration = [taskType isEqualToString:@"image_generate"];
     AIModelConfigForm *form = [self.modelStore loadForm:modelType];
     NSString *endpoint = form.url;
     NSString *model = form.modelName;
@@ -92,6 +99,18 @@
                    emitter:emit];
         return;
     }
+
+    if (isImageGeneration) {
+        [self startImageGenerationWithEndpoint:endpoint
+                                         model:model
+                                        apiKey:apiKey
+                                       payload:payload
+                                     requestId:requestId
+                            documentSessionId:documentSessionId
+                                        emit:emit];
+        return;
+    }
+
 
     NSError *messagesError = nil;
     NSArray *messages = [self messagesForPayload:payload error:&messagesError];
@@ -163,6 +182,61 @@
     [task resume];
 }
 
+- (void)startImageGenerationWithEndpoint:(NSString *)endpoint
+                                   model:(NSString *)model
+                                  apiKey:(NSString *)apiKey
+                                 payload:(NSDictionary *)payload
+                               requestId:(NSString *)requestId
+                      documentSessionId:(NSString *)documentSessionId
+                                  emit:(AIServiceEventEmitter)emit {
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"POST";
+    request.timeoutInterval = 60.0;
+    [request setValue:@"application/json; charset=UTF-8" forHTTPHeaderField:@"Content-Type"];
+    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    [request setValue:[NSString stringWithFormat:@"Bearer %@", apiKey]
+        forHTTPHeaderField:@"Authorization"];
+    NSString *size = [payload[@"size"] isKindOfClass:[NSString class]]
+        ? payload[@"size"] : @"1024x1024";
+    NSDictionary *body = @{
+        @"model": model,
+        @"prompt": prompt,
+        @"size": size.length > 0 ? size : @"1024x1024",
+        @"response_format": @"b64_json",
+        @"n": @1,
+    };
+
+    request.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
+
+    AIServiceRequest *serviceRequest = [[AIServiceRequest alloc] init];
+    serviceRequest.session = [[AIRequestSession alloc] initWithRequestId:requestId
+                                                       documentSessionId:documentSessionId];
+    serviceRequest.emitter = [emit copy];
+    serviceRequest.imageGeneration = YES;
+    serviceRequest.responseData = [[NSMutableData alloc] init];
+    NSURLSessionDataTask *task = [self.urlSession dataTaskWithRequest:request];
+    [serviceRequest.session bindTask:task];
+    self.requestsByTask[task] = serviceRequest;
+    self.requestsById[requestId] = serviceRequest;
+
+    [self emitType:@"ai.state"
+          requestId:requestId
+       documentSessionId:documentSessionId
+              payload:@{@"state": @"loading"}
+               emitter:emit];
+    [task resume];
+}
+
+- (AIModelType)defaultModelTypeForTask:(NSString *)taskType {
+    if ([taskType isEqualToString:@"image_generate"]) {
+        return AIModelTypeImage;
+    }
+    if ([taskType isEqualToString:@"text_extract"]) {
+        return AIModelTypeVision;
+    }
+    return AIModelTypeBase;
+}
+
 - (void)cancelRequest:(NSString *)requestId
    documentSessionId:(NSString *)documentSessionId {
     AIServiceRequest *serviceRequest = self.requestsById[requestId];
@@ -214,7 +288,10 @@ didReceiveResponse:(NSURLResponse *)response
     if (serviceRequest == nil || ![serviceRequest.session canEmit]) {
         return;
     }
-
+    if (serviceRequest.imageGeneration) {
+        [serviceRequest.responseData appendData:data];
+        return;
+    }
     for (NSString *line in [serviceRequest.session consumeLinesFromData:data]) {
         if ([line hasPrefix:@"data:"]) {
             [self handleSSEData:[line substringFromIndex:5] request:serviceRequest];
@@ -242,6 +319,10 @@ didCompleteWithError:(NSError *)error {
     if (error != nil && error.code != NSURLErrorCancelled) {
         [self finishErrorForRequest:serviceRequest code:@"request_failed"
                             message:@"AI request failed"];
+        return;
+    }
+    if (serviceRequest.imageGeneration) {
+        [self finishImageGenerationForRequest:serviceRequest];
         return;
     }
     for (NSString *line in [serviceRequest.session consumePendingLines]) {
@@ -291,6 +372,57 @@ didCompleteWithError:(NSError *)error {
        documentSessionId:serviceRequest.session.documentSessionId
               payload:@{@"state": @"streaming", @"delta": text}
                emitter:serviceRequest.emitter];
+}
+
+- (void)finishImageGenerationForRequest:(AIServiceRequest *)serviceRequest {
+    if (![serviceRequest.session markTerminal]) {
+        return;
+    }
+    NSError *jsonError = nil;
+    NSDictionary *response = nil;
+    if (serviceRequest.responseData.length > 0) {
+        response = [NSJSONSerialization JSONObjectWithData:serviceRequest.responseData
+                                                   options:0
+                                                     error:&jsonError];
+    }
+    if (jsonError != nil || ![response isKindOfClass:[NSDictionary class]]) {
+        [self emitType:@"ai.error"
+              requestId:serviceRequest.session.requestId
+           documentSessionId:serviceRequest.session.documentSessionId
+                  payload:@{@"code": @"image_response_invalid",
+                            @"message": @"图片生成响应解析失败"}
+                   emitter:serviceRequest.emitter];
+        [self removeRequest:serviceRequest];
+        return;
+    }
+    NSString *base64Image = nil;
+    NSArray *dataArray = [response[@"data"] isKindOfClass:[NSArray class]]
+        ? response[@"data"] : nil;
+    for (id item in dataArray) {
+        if ([item isKindOfClass:[NSDictionary class]]
+            && [item[@"b64_json"] isKindOfClass:[NSString class]]) {
+            NSString *candidate = item[@"b64_json"];
+            if (candidate.length > 0) {
+                base64Image = candidate;
+                break;
+            }
+        }
+    }
+    if (base64Image == nil) {
+        [self emitType:@"ai.error"
+              requestId:serviceRequest.session.requestId
+           documentSessionId:serviceRequest.session.documentSessionId
+                  payload:@{@"code": @"no_b64", @"message": @"返回数据未包含 b64_json 字段"}
+                   emitter:serviceRequest.emitter];
+        [self removeRequest:serviceRequest];
+        return;
+    }
+    [self emitType:@"ai.done"
+          requestId:serviceRequest.session.requestId
+       documentSessionId:serviceRequest.session.documentSessionId
+              payload:@{@"state": @"ready", @"imageBase64": base64Image}
+               emitter:serviceRequest.emitter];
+    [self removeRequest:serviceRequest];
 }
 
 - (void)finishDoneForRequest:(AIServiceRequest *)serviceRequest {
@@ -620,6 +752,10 @@ didCompleteWithError:(NSError *)error {
         }
         systemPrompt = sys;
         userPrompt = [NSString stringWithFormat:@"文档主题：%@", text];
+    } else if ([taskType isEqualToString:@"text_extract"]) {
+        systemPrompt =
+            @"你是文字识别专家。请识别并提取图片中的所有文字，保持原始排版和段落结构，只返回提取的文字内容，不要添加解释。";
+        userPrompt = @"请识别这张图片中的所有文字并提取出来：";
     } else if (error != NULL) {
         *error = [NSError errorWithDomain:@"com.xunlong.xloffice.ai"
                                      code:2
@@ -643,7 +779,32 @@ didCompleteWithError:(NSError *)error {
             [messages addObject:@{@"role": role, @"content": content}];
         }
     }
-    [messages addObject:@{@"role": @"user", @"content": userPrompt ?: @""}];
+    NSArray *images = [payload[@"images"] isKindOfClass:[NSArray class]]
+        ? payload[@"images"] : nil;
+    NSMutableArray *imageParts = nil;
+    for (id rawImage in images) {
+        if (![rawImage isKindOfClass:[NSString class]]
+            || ((NSString *)rawImage).length == 0) {
+            continue;
+        }
+        if (imageParts == nil) {
+            imageParts = [[NSMutableArray alloc] init];
+        }
+        [imageParts addObject:@{
+            @"type": @"image_url",
+            @"image_url": @{
+                @"url": [@"data:image/png;base64," stringByAppendingString:rawImage],
+            },
+        }];
+    }
+    id userContent = @{@"role": @"user", @"content": userPrompt ?: @""};
+    if (imageParts != nil) {
+        NSMutableArray *contentParts = [[NSMutableArray alloc] init];
+        [contentParts addObject:@{@"type": @"text", @"text": userPrompt ?: @""}];
+        [contentParts addObjectsFromArray:imageParts];
+        userContent = @{@"role": @"user", @"content": contentParts};
+    }
+    [messages addObject:userContent];
     return messages;
 }
 
