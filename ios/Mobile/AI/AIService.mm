@@ -329,8 +329,6 @@ didCompleteWithError:(NSError *)error {
         if ([line hasPrefix:@"data:"]) {
             [self handleSSEData:[line substringFromIndex:5] request:serviceRequest];
         }
-    }
-    if ([serviceRequest.session canEmit]) {
         [self finishDoneForRequest:serviceRequest];
     }
 }
@@ -487,7 +485,8 @@ didCompleteWithError:(NSError *)error {
         ? [context[@"prompt"] stringByTrimmingCharactersInSet:
             [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
     BOOL isDocumentLevelTask = [taskType isEqualToString:@"outline"]
-        || [taskType isEqualToString:@"article_generate"];
+        || [taskType isEqualToString:@"article_generate"]
+        || [taskType isEqualToString:@"text_extract"];
     if (text.length == 0 && !isDocumentLevelTask
         && (!isConversation || conversationPrompt.length == 0)) {
         if (error != NULL) {

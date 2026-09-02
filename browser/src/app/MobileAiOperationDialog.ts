@@ -13,6 +13,9 @@ class MobileAiOperationDialog {
 	private readonly articleTemplate?: HTMLSelectElement;
 	private readonly articleValues: HTMLInputElement[] = [];
 	private readonly articleForm?: HTMLDivElement;
+	private readonly imageThumb?: HTMLImageElement;
+	private pendingImage = '';
+	private lastGeneratedImage = '';
 	private readonly preview: HTMLDivElement;
 	private readonly status: HTMLDivElement;
 	private readonly generateButton: HTMLButtonElement;
@@ -85,6 +88,7 @@ class MobileAiOperationDialog {
 				'width:100%;box-sizing:border-box;resize:vertical;';
 			content.appendChild(this.outlineDescription);
 		}
+
 		if (taskType === 'article_generate') {
 			this.articleTemplate = document.createElement('select');
 			this.articleTemplate.setAttribute('aria-label', '文案类型');
@@ -104,6 +108,20 @@ class MobileAiOperationDialog {
 			this.renderArticleForm();
 		}
 
+		if (taskType === 'text_extract') {
+			const pick = document.createElement('button');
+			pick.type = 'button';
+			pick.textContent = '选择图片';
+			pick.onclick = () => this.pickImage();
+			content.appendChild(pick);
+			const thumb = document.createElement('img');
+			thumb.style.cssText =
+				'max-width:100%;max-height:160px;object-fit:contain;' +
+				'display:none;border-radius:8px;';
+			content.appendChild(thumb);
+			this.imageThumb = thumb;
+		}
+
 		this.status = document.createElement('div');
 		this.status.setAttribute('role', 'status');
 		content.appendChild(this.status);
@@ -117,7 +135,9 @@ class MobileAiOperationDialog {
 
 		const inputActions = document.createElement('div');
 		inputActions.style.cssText = 'display:flex;gap:8px;';
-		this.generateButton = this.createButton('开始生成');
+		this.generateButton = this.createButton(
+			taskType === 'text_extract' ? '提取文字' : '开始生成',
+		);
 		this.generateButton.onclick = () => this.request();
 		inputActions.appendChild(this.generateButton);
 		this.stopButton = this.createButton('停止生成');
@@ -136,9 +156,8 @@ class MobileAiOperationDialog {
 		this.applyButton = this.createButton('插入文档');
 		this.applyButton.onclick = () =>
 			this.controller.accept(MobileAiResultRenderer.toHtml(this.controller.getState().preview));
-		resultActions.appendChild(this.applyButton);
-		content.appendChild(resultActions);
-
+		this.regenerateButton = this.createButton('重新生成');
+		this.regenerateButton.onclick = () => this.regenerate();
 		this.sheet.setBody(content);
 		this.unsubscribe = this.controller.subscribe(() => this.render());
 	}
@@ -171,6 +190,34 @@ class MobileAiOperationDialog {
 		});
 	}
 
+	private pickImage(): void {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = 'image/*';
+		input.onchange = () => {
+			const file = input.files && input.files[0];
+			if (!file) {
+				return;
+			}
+			const reader = new FileReader();
+			reader.onload = () => {
+				const bytes = new Uint8Array(reader.result as ArrayBuffer);
+				let binary = '';
+				for (let i = 0; i < bytes.length; i++) {
+					binary += String.fromCharCode(bytes[i]);
+				}
+				this.pendingImage = window.btoa(binary);
+				if (this.imageThumb) {
+					this.imageThumb.src = 'data:image/png;base64,' + this.pendingImage;
+					this.imageThumb.style.display = 'block';
+				}
+				this.render();
+			};
+			reader.readAsArrayBuffer(file);
+		};
+		input.click();
+	}
+
 	close(): void {
 		this.controller.cancel();
 		this.unsubscribe();
@@ -194,8 +241,30 @@ class MobileAiOperationDialog {
 		} else if (this.taskType === 'article_generate') {
 			context.template = this.articleTemplate?.value || '';
 			context.variables = this.articleValues.map((input) => input.value.trim());
+		} else if (this.taskType === 'text_extract') {
+			this.lastGeneratedImage = this.pendingImage;
+			this.controller.request(
+				'text_extract',
+				{},
+				undefined,
+				this.pendingImage ? [this.pendingImage] : undefined,
+			);
+			return;
 		}
 		this.controller.request(this.taskType, context);
+	}
+
+	private regenerate(): void {
+		if (
+			this.taskType === 'text_extract' &&
+			this.pendingImage !== this.lastGeneratedImage
+		) {
+			// 重选图后 controller 仍持有旧图,replay 会回放过期结果;
+			// 直接按当前图发起新请求。
+			this.request();
+			return;
+		}
+		this.controller.regenerate();
 	}
 
 	private render(): void {
@@ -203,7 +272,9 @@ class MobileAiOperationDialog {
 		MobileAiResultRenderer.renderInto(this.preview, state.preview);
 		const active = state.state === 'loading' || state.state === 'streaming';
 		const ready = state.state === 'ready' && !!state.preview;
-		this.generateButton.disabled = active;
+		this.generateButton.disabled =
+			active ||
+			(this.taskType === 'text_extract' && !this.pendingImage);
 		this.stopButton.disabled = !active;
 		this.copyButton.disabled = !ready;
 		this.regenerateButton.disabled = !ready;

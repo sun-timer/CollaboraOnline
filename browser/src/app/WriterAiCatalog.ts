@@ -135,6 +135,14 @@ class WriterAiCatalog {
 			resultMode: 'insertAtEnd',
 			allowedContextFields: ['outlineType', 'requirement'],
 		},
+		text_extract: {
+			taskType: 'text_extract',
+			promptId: 'writer.text_extract',
+			androidTaskType: 'text_extract',
+			requiredInput: 'document',
+			resultMode: 'insertAtEnd',
+			allowedContextFields: [],
+		},
 		article_generate: {
 			taskType: 'article_generate',
 			promptId: 'writer.article_generate',

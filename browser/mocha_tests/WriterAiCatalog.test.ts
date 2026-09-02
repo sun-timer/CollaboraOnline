@@ -113,4 +113,16 @@ describe('Writer AI Catalog v1', function () {
 			['paper', 'report', 'speech', 'event', 'general'],
 		);
 	});
+
+	it('defines the image-based text_extract task', function () {
+		const extract = WriterAiCatalog.getTask('text_extract');
+		assert.ok(extract);
+		assert.equal(extract.promptId, 'writer.text_extract');
+		assert.equal(extract.resultMode, 'insertAtEnd');
+		assert.equal(extract.requiredInput, 'document');
+		assert.equal(
+			WriterAiCatalog.validateRequest({ taskType: 'text_extract' }).valid,
+			true,
+		);
+	});
 });

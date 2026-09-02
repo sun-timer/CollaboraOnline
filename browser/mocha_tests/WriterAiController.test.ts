@@ -238,4 +238,43 @@ describe('WriterAiController', function () {
 			},
 		});
 	});
+
+	it('attaches images to the request payload and keeps them on regenerate', function () {
+		const bridge = createFakeBridge('');
+		const controller = new WriterAiController(bridge, {
+			insertAtEnd(): boolean {
+				return true;
+			},
+			pastePlainText(): boolean {
+				return false;
+			},
+			copyText(): boolean {
+				return false;
+			},
+		});
+
+		controller.request('text_extract', {}, undefined, ['aW1nMQ==']);
+
+		bridge.emit(aiMessage('ai.done', { fullText: '识别出的文字' }));
+		assert.equal(controller.getState().state, 'ready');
+		controller.regenerate();
+		assert.deepEqual(bridge.calls.request[1].images, ['aW1nMQ==']);
+	});
+
+	it('omits the images field when no image was attached', function () {
+		const bridge = createFakeBridge('选区');
+		const controller = new WriterAiController(bridge, {
+			replaceSelection(): boolean {
+				return true;
+			},
+			pastePlainText(): boolean {
+				return false;
+			},
+			copyText(): boolean {
+				return false;
+			},
+		});
+		controller.request('polish', {});
+		assert.equal(bridge.calls.request[0].images, undefined);
+	});
 });

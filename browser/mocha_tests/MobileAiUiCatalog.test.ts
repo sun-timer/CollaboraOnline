@@ -79,4 +79,12 @@ describe('Mobile AI UI Catalog', function () {
 		assert.equal(summarize?.iosSupport, true);
 		assert.equal(summarize?.includeInOperationSheet, false);
 	});
+
+	it('enables text extraction on iOS with the operation dialog', function () {
+		const extract = MobileAiUiCatalog.getEntry('text_extract');
+		assert.ok(extract);
+		assert.equal(extract?.iosSupport, true);
+		assert.equal(extract?.dialog, 'operation');
+		assert.equal(MobileAiUiCatalog.canRun('text_extract', 'text'), true);
+	});
 });

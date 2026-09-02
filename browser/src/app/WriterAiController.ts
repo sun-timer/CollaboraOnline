@@ -48,6 +48,7 @@ class WriterAiController {
 		taskType: string;
 		context: { [key: string]: any };
 		selection?: string;
+		images?: string[];
 	} | null = null;
 
 	constructor(
@@ -101,6 +102,7 @@ class WriterAiController {
 		taskType: string,
 		context: { [key: string]: any } = {},
 		selectionOverride?: string,
+		images?: string[],
 	): string | null {
 		if (this.state.state === 'loading' || this.state.state === 'streaming') {
 			this.setError('已有 AI 请求正在进行');
@@ -111,8 +113,9 @@ class WriterAiController {
 			return null;
 		}
 		const map = typeof window !== 'undefined' ? (window as any).app?.map : null;
-		if (map && map.getDocType && map.getDocType() !== 'text') {
-			this.setError('Writer AI 仅支持 Writer 文档');
+		const docType = map && map.getDocType ? map.getDocType() : null;
+		if (docType && docType !== 'text' && docType !== 'presentation') {
+			this.setError('Writer AI 仅支持 Writer/Impress 文档');
 			return null;
 		}
 
@@ -120,11 +123,14 @@ class WriterAiController {
 			typeof selectionOverride === 'string'
 				? selectionOverride
 				: this.bridge.getSelectedText();
-		const payload = {
+		const payload: { [key: string]: any } = {
 			taskType,
 			selection,
 			context: context || {},
 		};
+		if (images && images.length > 0) {
+			payload.images = images;
+		}
 		const validation = WriterAiCatalog.validateRequest(payload);
 		if (!validation.valid) {
 			this.setError(this.messageForError(validation.errorCode || 'invalid_payload'));
@@ -142,6 +148,7 @@ class WriterAiController {
 			taskType,
 			context: context || {},
 			selection,
+			images: images && images.length > 0 ? images : undefined,
 		};
 		this.state = {
 			state: 'loading',
@@ -180,6 +187,7 @@ class WriterAiController {
 			this.lastRequest.taskType,
 			this.lastRequest.context,
 			this.lastRequest.selection,
+			this.lastRequest.images,
 		);
 	}
 
