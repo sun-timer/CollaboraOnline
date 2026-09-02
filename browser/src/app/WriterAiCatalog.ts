@@ -62,6 +62,14 @@ class WriterAiCatalog {
 		'ru',
 	];
 
+	static readonly OUTLINE_TYPES = [
+		{ key: 'paper', label: '论文' },
+		{ key: 'report', label: '工作报告' },
+		{ key: 'speech', label: '演讲稿' },
+		{ key: 'event', label: '活动策划' },
+		{ key: 'general', label: '通用文档' },
+	];
+
 	static readonly TASKS: { [taskType: string]: WriterAiTaskDefinition } = {
 		polish: {
 			taskType: 'polish',

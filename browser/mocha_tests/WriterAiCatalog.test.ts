@@ -105,9 +105,12 @@ describe('Writer AI Catalog v1', function () {
 			WriterAiCatalog.validateRequest({ taskType: 'outline' }).valid,
 			true,
 		);
-		assert.equal(
-			WriterAiCatalog.validateRequest({ taskType: 'article_generate' }).valid,
-			true,
+		assert.equal(outline.promptId, 'writer.outline');
+
+		// Android 对齐：paper/report/speech/event/general（默认 general）。
+		assert.deepEqual(
+			WriterAiCatalog.OUTLINE_TYPES.map((item) => item.key),
+			['paper', 'report', 'speech', 'event', 'general'],
 		);
 	});
 });

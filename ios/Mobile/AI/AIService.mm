@@ -354,7 +354,10 @@ didCompleteWithError:(NSError *)error {
     NSString *conversationPrompt = [context[@"prompt"] isKindOfClass:[NSString class]]
         ? [context[@"prompt"] stringByTrimmingCharactersInSet:
             [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
-    if (text.length == 0 && (!isConversation || conversationPrompt.length == 0)) {
+    BOOL isDocumentLevelTask = [taskType isEqualToString:@"outline"]
+        || [taskType isEqualToString:@"article_generate"];
+    if (text.length == 0 && !isDocumentLevelTask
+        && (!isConversation || conversationPrompt.length == 0)) {
         if (error != NULL) {
             *error = [NSError errorWithDomain:@"com.xunlong.xloffice.ai"
                                          code:1
@@ -522,6 +525,38 @@ didCompleteWithError:(NSError *)error {
     } else if ([taskType isEqualToString:@"summarize"]) {
         systemPrompt = @"You are a concise summarizer. Extract key points precisely. Return only the summary.";
         userPrompt = [NSString stringWithFormat:@"请用简洁的语言概括以下内容的核心要点：\n\n---\n%@\n---", text];
+    } else if ([taskType isEqualToString:@"outline"]) {
+        NSString *typeKey = [context[@"outlineType"] isKindOfClass:[NSString class]]
+            ? context[@"outlineType"] : @"general";
+        NSDictionary *typeLabels = @{
+            @"paper": @"学术论文",
+            @"report": @"工作报告",
+            @"speech": @"演讲稿",
+            @"event": @"活动策划",
+            @"general": @"通用文档",
+        };
+        NSString *typeLabel = typeLabels[typeKey] ?: @"通用文档";
+        NSString *requirement = [context[@"requirement"] isKindOfClass:[NSString class]]
+            ? [context[@"requirement"] stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+        systemPrompt =
+            @"你是专业的大纲生成助手。请根据用户提供的文档类型、参考内容和补充说明，"
+             "生成一份结构清晰、层次分明的大纲。\n\n"
+             "要求：\n"
+             "1. 使用中文编号：一级用「一、二、三…」，二级用「1. 2. 3.」，三级用「(1) (2) (3)」\n"
+             "2. 每个一级标题下给出必要的二级要点，三级按需展开\n"
+             "3. 标题简洁明确，要点可附一句简要说明\n"
+             "4. 覆盖该类型文档的完整结构（如论文含摘要/引言/方法/结果/结论）\n"
+             "5. 只输出大纲本身，不要输出前言、解释或额外说明";
+        NSMutableString *prompt = [NSMutableString stringWithFormat:@"请生成一份【%@】大纲。", typeLabel];
+        if (text.length > 0) {
+            [prompt appendFormat:@"\n\n参考内容：\n%@\n", text];
+        }
+        if (requirement.length > 0) {
+            [prompt appendFormat:@"\n补充说明：%@\n", requirement];
+        }
+        [prompt appendString:@"\n请直接输出大纲。"];
+        userPrompt = prompt;
     } else if ([taskType isEqualToString:@"create_document"]) {
         NSString *docType = [context[@"docType"] isKindOfClass:[NSString class]]
             ? context[@"docType"] : @"writer";

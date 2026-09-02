@@ -8,6 +8,8 @@ class MobileAiOperationDialog {
 	private readonly sheet: MobileAiSheet;
 	private readonly requirement?: HTMLInputElement;
 	private readonly style?: HTMLSelectElement;
+	private readonly outlineType?: HTMLSelectElement;
+	private readonly outlineDescription?: HTMLTextAreaElement;
 	private readonly preview: HTMLDivElement;
 	private readonly status: HTMLDivElement;
 	private readonly generateButton: HTMLButtonElement;
@@ -58,6 +60,26 @@ class MobileAiOperationDialog {
 			this.requirement.setAttribute('aria-label', '额外要求');
 			this.requirement.style.width = '100%';
 			content.appendChild(this.requirement);
+		}
+
+		if (taskType === 'outline') {
+			this.outlineType = document.createElement('select');
+			this.outlineType.setAttribute('aria-label', '大纲类型');
+			WriterAiCatalog.OUTLINE_TYPES.forEach((item) => {
+				const option = document.createElement('option');
+				option.value = item.key;
+				option.textContent = item.label;
+				this.outlineType?.appendChild(option);
+			});
+			this.outlineType.value = 'general';
+			content.appendChild(this.outlineType);
+			this.outlineDescription = document.createElement('textarea');
+			this.outlineDescription.rows = 4;
+			this.outlineDescription.placeholder = '补充说明（可选）';
+			this.outlineDescription.setAttribute('aria-label', '大纲补充说明');
+			this.outlineDescription.style.cssText =
+				'width:100%;box-sizing:border-box;resize:vertical;';
+			content.appendChild(this.outlineDescription);
 		}
 
 		this.status = document.createElement('div');
@@ -125,6 +147,9 @@ class MobileAiOperationDialog {
 			this.taskType === 'rewrite'
 		) {
 			context.requirement = this.requirement?.value || '';
+		} else if (this.taskType === 'outline') {
+			context.outlineType = this.outlineType?.value || 'general';
+			context.requirement = this.outlineDescription?.value.trim() || '';
 		}
 		this.controller.request(this.taskType, context);
 	}

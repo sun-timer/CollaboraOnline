@@ -281,7 +281,6 @@ COOL_JS_LST =\
 	src/app/MobileAiCalcDialog.ts \
 	src/app/MobileAiTranslateDialog.ts \
 	src/app/MobileAiArticleDialog.ts \
-	src/app/MobileAiOutlineDialog.ts \
 	src/app/MobileAiResultRenderer.ts \
 	src/app/MobileAiConfiguration.ts \
 	src/app/WriterAiPanel.ts \

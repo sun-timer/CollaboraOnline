@@ -188,4 +188,26 @@ describe('WriterAiController', function () {
 		assert.deepEqual(insertedEnd, ['1. 引言\n2. 方法']);
 		assert.equal(controller.getState().state, 'accepted');
 	});
+
+	it('passes outline type and requirement through to the request payload', function () {
+		const bridge = createFakeBridge('');
+		const controller = new WriterAiController(bridge, {
+			insertAtEnd(): boolean {
+				return true;
+			},
+			pastePlainText(): boolean {
+				return false;
+			},
+			copyText(): boolean {
+				return false;
+			},
+		});
+
+		controller.request('outline', { outlineType: 'paper', requirement: '含方法部分' });
+		assert.deepEqual(bridge.calls.request[0], {
+			taskType: 'outline',
+			selection: '',
+			context: { outlineType: 'paper', requirement: '含方法部分' },
+		});
+	});
 });
