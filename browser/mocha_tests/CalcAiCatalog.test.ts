@@ -15,22 +15,22 @@ describe('Calc AI Catalog v1', function () {
 		]);
 	});
 
-	it('defines unique prompt ids and result modes for P1 tasks', function () {
+	it('defines unique prompt ids and result modes for all P1+P2 tasks', function () {
 		const promptIds: { [promptId: string]: boolean } = {};
-		CalcAiCatalog.P1_TASK_TYPES.forEach(function (taskType) {
-			const task = CalcAiCatalog.getTask(taskType);
-			assert.ok(task);
-			assert.equal(promptIds[task.promptId], undefined);
-			promptIds[task.promptId] = true;
-			assert.equal(task.androidTaskType, taskType);
-			assert.equal(task.requiredInput, 'prompt');
-		});
+		CalcAiCatalog.P1_TASK_TYPES.concat(CalcAiCatalog.P2_TASK_TYPES).forEach(
+			function (taskType) {
+				const task = CalcAiCatalog.getTask(taskType);
+				assert.ok(task, 'task defined: ' + taskType);
+				assert.equal(promptIds[task.promptId], undefined, 'unique promptId');
+				promptIds[task.promptId] = true;
+			},
+		);
 		assert.equal(CalcAiCatalog.getTask('calc_formula')?.resultMode, 'insertFormula');
 		assert.equal(
 			CalcAiCatalog.getTask('calc_data_analysis')?.resultMode,
 			'conversation',
 		);
-		assert.equal(CalcAiCatalog.getTask('calc_chart'), null);
+		assert.equal(CalcAiCatalog.getTask('calc_chart')?.resultMode, 'mutateConfirm');
 		assert.equal(CalcAiCatalog.getTask('polish'), null);
 	});
 

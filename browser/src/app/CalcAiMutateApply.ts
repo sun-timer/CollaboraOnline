@@ -210,4 +210,6 @@ class CalcAiMutateApply {
 	}
 }
 
-(window as any).CalcAiMutateApply = CalcAiMutateApply;
+if (typeof window !== 'undefined') {
+	(window as any).CalcAiMutateApply = CalcAiMutateApply;
+}

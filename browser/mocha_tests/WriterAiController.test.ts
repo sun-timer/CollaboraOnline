@@ -162,4 +162,30 @@ describe('WriterAiController', function () {
 		});
 		assert.equal(controller.getState().state, 'loading');
 	});
+
+	it('inserts insertAtEnd results at the document end', function () {
+		const bridge = createFakeBridge('原始文本');
+		const insertedEnd: string[] = [];
+		const controller = new WriterAiController(bridge, {
+			insertAtEnd(text: string): boolean {
+				insertedEnd.push(text);
+				return true;
+			},
+			pastePlainText(): boolean {
+				return false;
+			},
+			copyText(): boolean {
+				return false;
+			},
+		});
+
+		assert.equal(controller.request('outline', {}), 'request-1');
+		bridge.emit(aiMessage('ai.stream', { delta: '1. 引言' }));
+		bridge.emit(aiMessage('ai.done', { fullText: '1. 引言\n2. 方法' }));
+
+		assert.equal(controller.getState().state, 'ready');
+		assert.equal(controller.accept(), true);
+		assert.deepEqual(insertedEnd, ['1. 引言\n2. 方法']);
+		assert.equal(controller.getState().state, 'accepted');
+	});
 });

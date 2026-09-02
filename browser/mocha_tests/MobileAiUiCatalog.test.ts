@@ -38,7 +38,12 @@ describe('Mobile AI UI Catalog', function () {
 	it('shows unsupported Android entries without allowing requests', function () {
 		assert.ok(
 			MobileAiUiCatalog.getEntries('text').some(function (entry) {
-				return entry.taskType === 'article_generate' && !entry.iosSupport;
+				return entry.taskType === 'outline' && entry.iosSupport;
+			}),
+		);
+		assert.ok(
+			MobileAiUiCatalog.getEntries('text').some(function (entry) {
+				return entry.taskType === 'article_generate' && entry.iosSupport;
 			}),
 		);
 		assert.ok(
@@ -53,10 +58,11 @@ describe('Mobile AI UI Catalog', function () {
 		);
 		assert.ok(
 			MobileAiUiCatalog.getEntries('spreadsheet').some(function (entry) {
-				return entry.taskType === 'calc_chart' && !entry.iosSupport;
+				return entry.taskType === 'calc_chart' && entry.iosSupport;
 			}),
 		);
-		assert.equal(MobileAiUiCatalog.canRun('article_generate', 'text'), false);
+		assert.equal(MobileAiUiCatalog.canRun('outline', 'text'), true);
+		assert.equal(MobileAiUiCatalog.canRun('article_generate', 'text'), true);
 		assert.equal(MobileAiUiCatalog.canRun('polish', 'text'), true);
 		assert.equal(MobileAiUiCatalog.canRun('polish', 'spreadsheet'), false);
 		assert.equal(MobileAiUiCatalog.canRun('calc_formula', 'spreadsheet'), true);
@@ -64,7 +70,7 @@ describe('Mobile AI UI Catalog', function () {
 			MobileAiUiCatalog.canRun('calc_data_analysis', 'spreadsheet'),
 			true,
 		);
-		assert.equal(MobileAiUiCatalog.canRun('calc_chart', 'spreadsheet'), false);
+		assert.equal(MobileAiUiCatalog.canRun('calc_chart', 'spreadsheet'), true);
 	});
 
 	it('keeps summarize available without making it an Android operation card', function () {

@@ -28,3 +28,6 @@ coverage/
 *.tar.gz
 dist/l10n/ui-*json
 dist/l10n/help-*.json
+
+# tsc incremental build cache
+*.tsbuildinfo

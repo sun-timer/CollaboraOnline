@@ -88,4 +88,26 @@ describe('Writer AI Catalog v1', function () {
 		]);
 		assert.equal(WriterAiCatalog.ARTICLE_TEMPLATES.douyin_script.category, '营销类');
 	});
+
+	it('defines document-level insertAtEnd tasks for the iOS migration', function () {
+		const outline = WriterAiCatalog.getTask('outline');
+		assert.ok(outline);
+		assert.equal(outline.resultMode, 'insertAtEnd');
+		assert.equal(outline.requiredInput, 'document');
+
+		const article = WriterAiCatalog.getTask('article_generate');
+		assert.ok(article);
+		assert.equal(article.resultMode, 'insertAtEnd');
+		assert.equal(article.requiredInput, 'prompt');
+
+		// Document/prompt-level tasks must not demand a text selection.
+		assert.equal(
+			WriterAiCatalog.validateRequest({ taskType: 'outline' }).valid,
+			true,
+		);
+		assert.equal(
+			WriterAiCatalog.validateRequest({ taskType: 'article_generate' }).valid,
+			true,
+		);
+	});
 });

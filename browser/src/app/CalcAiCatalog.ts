@@ -194,4 +194,6 @@ class CalcAiCatalog {
 	}
 }
 
-(window as any).CalcAiCatalog = CalcAiCatalog;
+if (typeof window !== 'undefined') {
+	(window as any).CalcAiCatalog = CalcAiCatalog;
+}
