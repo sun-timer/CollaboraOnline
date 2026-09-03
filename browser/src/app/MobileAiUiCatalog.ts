@@ -27,8 +27,8 @@ type MobileAiUiDialog =
 	| 'article'
 	| 'calc'
 	| 'unavailable'
-	| 'formatBatch';
-
+	| 'formatBatch'
+	| 'image';
 interface MobileAiUiEntry {
 	taskType: string;
 	androidTaskType: string;
@@ -222,8 +222,8 @@ class MobileAiUiCatalog {
 			documentTypes: ['text', 'presentation'],
 			requiredInput: 'prompt',
 			resultMode: 'insertAtEnd',
-			dialog: 'unavailable',
-			iosSupport: false,
+			dialog: 'image',
+			iosSupport: true,
 			selectionRequired: false,
 			includeInOperationSheet: true,
 		},

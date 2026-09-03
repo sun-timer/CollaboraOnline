@@ -30,6 +30,7 @@
 /// <reference path="../src/app/CalcAiController.ts" />
 /// <reference path="../src/app/FormatBatchProcessor.ts" />
 /// <reference path="../src/app/MobileAiFormatBatchDialog.ts" />
+/// <reference path="../src/app/MobileAiImageDialog.ts" />
 /// <reference path="../src/app/MobileAiConversationController.ts" />
 /// <reference path="../src/app/MobileAiSheet.ts" />
 /// <reference path="../src/app/MobileAiAssistantPanel.ts" />
@@ -68,4 +69,5 @@
 /// <reference path="./WriterEditorCatalog.test.ts" />
 /// <reference path="./WriterEditorController.test.ts" />
 /// <reference path="./FormatBatchProcessor.test.ts" />
+/// <reference path="./MobileAiImageDialog.test.ts" />
 // NOTE: reference new tests here ...

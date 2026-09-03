@@ -87,4 +87,12 @@ describe('Mobile AI UI Catalog', function () {
 		assert.equal(extract?.dialog, 'operation');
 		assert.equal(MobileAiUiCatalog.canRun('text_extract', 'text'), true);
 	});
+
+	it('enables image generation on iOS with the image dialog', function () {
+		const image = MobileAiUiCatalog.getEntry('image_generate');
+		assert.ok(image);
+		assert.equal(image?.iosSupport, true);
+		assert.equal(image?.dialog, 'image');
+		assert.equal(MobileAiUiCatalog.canRun('image_generate', 'text'), true);
+	});
 });
