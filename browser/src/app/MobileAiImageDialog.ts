@@ -30,6 +30,7 @@ class MobileAiImageDialog {
 
 	constructor() {
 		this.bridge = MobileAiBridge.getInstance();
+		this.description = document.createElement('textarea');
 		const content = document.createElement('div');
 		this.sheet = new MobileAiSheet({
 			title: 'AI 图片',
