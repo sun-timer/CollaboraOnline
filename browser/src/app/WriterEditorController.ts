@@ -218,13 +218,20 @@ class WriterEditorController {
 	}
 
 	/** Applies a page watermark. Empty text removes it (matches Android). */
-	applyWatermark(text: string, angle: number, transparency: number): WriterEditorRunResult {
+	applyWatermark(
+		text: string,
+		angle: number,
+		transparency: number,
+		font?: string,
+	): WriterEditorRunResult {
 		const safeText = text || '';
 		const safeAngle = Math.max(0, Math.min(360, angle | 0));
 		const safeTransparency = Math.max(0, Math.min(100, transparency | 0));
+		const safeFont = font || 'Noto Serif CJK SC';
 		const command =
 			'.uno:Watermark {"Text":{"type":"string","value":' + JSON.stringify(safeText) +
-			'},"Font":{"type":"string","value":"Noto Serif CJK SC"},"Angle":{"type":"long","value":' +
+			'},"Font":{"type":"string","value":' + JSON.stringify(safeFont) +
+			'},"Angle":{"type":"long","value":' +
 			safeAngle + '},"Transparency":{"type":"long","value":' + safeTransparency +
 			'},"Color":{"type":"long","value":12632256}}';
 		this.adapter.sendUnoCommand(command);
@@ -237,6 +244,32 @@ class WriterEditorController {
 			return { dispatched: 'none', reason: 'empty_paper' };
 		}
 		const command = '.uno:AttributePageSize?PaperFormat:short=' + formatShort;
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
+	/**
+	 * Applies a custom paper size via AttributePageSize width/height (HMM).
+	 * cm is rounded like Android PaperSizePickerController.cmToHmm (L322-324).
+	 */
+	applyCustomPaperSize(widthCm: number, heightCm: number): WriterEditorRunResult {
+		if (!widthCm || !heightCm || widthCm <= 0 || heightCm <= 0) {
+			return { dispatched: 'none', reason: 'invalid_paper_size' };
+		}
+		const widthHmm = Math.round(widthCm * 1000);
+		const heightHmm = Math.round(heightCm * 1000);
+		const command =
+			'.uno:AttributePageSize?AttributePageSize.Width:long=' + widthHmm +
+			'&AttributePageSize.Height:long=' + heightHmm;
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
+	/** Enables or disables change tracking (Android TOGGLE semantics). */
+	trackChanges(enabled: boolean): WriterEditorRunResult {
+		const command = enabled
+			? '.uno:TrackChangesInAllViews'
+			: '.uno:TrackChanges?TrackChanges:bool=false';
 		this.adapter.sendUnoCommand(command);
 		return { dispatched: 'unocmd', command };
 	}

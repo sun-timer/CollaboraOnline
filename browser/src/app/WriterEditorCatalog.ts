@@ -30,7 +30,8 @@ type WriterEditorDialogType =
 	| 'paperSize' // AttributePageSize
 	| 'saveAs' // save-as dialog
 	| 'pageBreak' // page break options
-	| 'pageNumber'; // insert page number field
+	| 'pageNumber' // insert page number field
+	| 'trackChanges'; // enable / disable change tracking
 
 interface WriterEditorFeature {
 	id: string;
@@ -88,15 +89,99 @@ class WriterEditorCatalog {
 		WriterEditorCharHeightCN;
 	/**
 	 * Paper-format presets for `.uno:AttributePageSize?PaperFormat:short=N`.
-	 * The numeric values match the browser Paper enum (WriterLayoutCatalog
-	 * PAPER_SIZES offsets), as used by Android.
+	 * All 29 entries transcribe CO's PaperFormat enum (A4=4, A3=3, ...) via
+	 * Android WriterLayoutCatalog.PAPER_SIZES (L63-93); labels match Android.
 	 */
 	static readonly PAPER_FORMATS: { label: string; value: string }[] = [
+		{ label: 'A6', value: '56' },
+		{ label: 'A5', value: '5' },
 		{ label: 'A4', value: '4' },
 		{ label: 'A3', value: '3' },
-		{ label: 'A5', value: '5' },
-		{ label: 'Letter', value: '8' },
-		{ label: 'Legal', value: '9' },
+		{ label: 'B6（ISO）', value: '12' },
+		{ label: 'B5（ISO）', value: '7' },
+		{ label: 'B4（ISO）', value: '6' },
+		{ label: '信纸', value: '8' },
+		{ label: '法律专用纸', value: '9' },
+		{ label: '长债券纸', value: '24' },
+		{ label: '小报', value: '10' },
+		{ label: 'B6（JIS）', value: '36' },
+		{ label: 'B5（JIS）', value: '35' },
+		{ label: 'B4（JIS）', value: '34' },
+		{ label: '16开', value: '31' },
+		{ label: '32开', value: '32' },
+		{ label: '大32开', value: '33' },
+		{ label: 'DL 信封', value: '17' },
+		{ label: 'C6 信封', value: '15' },
+		{ label: 'C6/5 信封', value: '16' },
+		{ label: 'C5 信封', value: '14' },
+		{ label: 'C4 信封', value: '13' },
+		{ label: '6¾ 号信封', value: '26' },
+		{ label: '7¾ 号信封', value: '25' },
+		{ label: '9 号信封', value: '27' },
+		{ label: '10 号信封', value: '28' },
+		{ label: '11 号信封', value: '29' },
+		{ label: '12 号信封', value: '30' },
+		{ label: '日本明信片', value: '46' },
+	];
+
+	/**
+	 * Page-margin presets (hundredths of mm) dispatched via
+	 * `.uno:PageLRMargin` / `.uno:PageULMargin`. Transcribes Android
+	 * WriterLayoutCatalog.MARGINS (L44-60, CO pageMarginOptions + Figma
+	 * 5252:57102); field order follows applyMargins(left, right, top, bottom).
+	 */
+	static readonly MARGIN_PRESETS: {
+		id: string;
+		label: string;
+		left: number;
+		right: number;
+		top: number;
+		bottom: number;
+	}[] = [
+		{ id: 'none', label: '无', left: 0, right: 0, top: 0, bottom: 0 },
+		{ id: 'narrow', label: '窄', left: 1270, right: 1270, top: 1270, bottom: 1270 },
+		{ id: 'moderate', label: '适中', left: 1905, right: 1905, top: 2540, bottom: 2540 },
+		{ id: 'normal190', label: '正常（1.90 cm）', left: 1905, right: 1905, top: 1905, bottom: 1905 },
+		{ id: 'normal254', label: '正常（2.54 cm）', left: 2540, right: 2540, top: 2540, bottom: 2540 },
+		{ id: 'normal318', label: '正常（3.18 cm）', left: 3175, right: 3175, top: 3175, bottom: 3175 },
+		{ id: 'wide', label: '宽', left: 5080, right: 5080, top: 2540, bottom: 2540 },
+		{ id: 'mirrored', label: '镜像', left: 5080, right: 2540, top: 2540, bottom: 2540 },
+	];
+
+	/**
+	 * Paragraph-style picker ordering (Figma 5252:56110): the preferred styles
+	 * surface first with Chinese labels, everything else follows in CO order.
+	 * Transcribes Android FunctionPanelController.STYLE_ORDER (L1772-1781).
+	 */
+	static readonly STYLE_ORDER: { label: string; styleId: string }[] = [
+		{ label: '正文', styleId: 'Default Paragraph Style' },
+		{ label: '列表', styleId: 'List' },
+		{ label: '题注', styleId: 'Caption' },
+		{ label: '索引', styleId: 'Index' },
+		{ label: '标题1', styleId: 'Heading 1' },
+		{ label: '标题2', styleId: 'Heading 2' },
+		{ label: '标题3', styleId: 'Heading 3' },
+		{ label: 'caption', styleId: 'caption' },
+	];
+
+	/**
+	 * Common Windows font names → CO-bundled substitutes, applied before the
+	 * CharFontName dispatch so what the user picks is what core renders.
+	 * Transcribes Android FunctionPanelController.FONT_ALIAS_MAP (L1076-1080).
+	 */
+	static readonly FONT_ALIAS_MAP: { from: string; to: string }[] = [
+		{ from: 'Times New Roman', to: 'Liberation Serif' },
+		{ from: 'Arial', to: 'Liberation Sans' },
+		{ from: 'Courier New', to: 'Liberation Mono' },
+	];
+
+	/**
+	 * Fallback font options when `.uno:CharFontName` returns no list.
+	 * Transcribes Android FunctionPanelController.FALLBACK_FONT_OPTIONS
+	 * (L2124-2126).
+	 */
+	static readonly FONT_FALLBACK_OPTIONS: string[] = [
+		'Liberation Serif', 'Liberation Sans', 'Liberation Mono', 'Arial', 'Times New Roman',
 	];
 
 	static readonly FEATURES: WriterEditorFeature[] = [
@@ -360,7 +445,8 @@ class WriterEditorCatalog {
 			label: '追踪修订',
 			tab: 'review',
 			icon: 'track-changes',
-			kind: 'command',
+			kind: 'dialog',
+			dialog: 'trackChanges',
 			unocmd: '.uno:TrackChangesInAllViews',
 			group: 'review',
 		},
@@ -409,6 +495,57 @@ class WriterEditorCatalog {
 	static getTab(id: string): WriterEditorTabDefinition | null {
 		const found = WriterEditorCatalog.TABS.find((tab) => tab.id === id);
 		return found || null;
+	}
+
+	/**
+	 * Reorders CO paragraph styles: preferred styles (Figma 5252:56110) first
+	 * with their Chinese labels, remaining CO styles appended in CO order.
+	 * Mirrors Android FunctionPanelController.reorderStyles (L1809-1831) +
+	 * styleMatches (L1833-1848).
+	 */
+	static reorderStyleOptions(names: string[]): { label: string; value: string }[] {
+		const used: boolean[] = [];
+		names.forEach(() => used.push(false));
+		const result: { label: string; value: string }[] = [];
+		WriterEditorCatalog.STYLE_ORDER.forEach((preferred) => {
+			for (let i = 0; i < names.length; i++) {
+				if (!used[i] && WriterEditorCatalog.styleMatches(names[i], preferred.styleId)) {
+					result.push({ label: preferred.label, value: names[i] });
+					used[i] = true;
+					break;
+				}
+			}
+		});
+		for (let i = 0; i < names.length; i++) {
+			if (!used[i]) {
+				result.push({ label: names[i], value: names[i] });
+			}
+		}
+		return result;
+	}
+
+	/** Maps a Windows font name to its CO-bundled substitute (case-insensitive). */
+	static aliasFont(name: string): string {
+		const normalized = name.trim();
+		const found = WriterEditorCatalog.FONT_ALIAS_MAP.find(
+			(pair) => pair.from.toLowerCase() === normalized.toLowerCase(),
+		);
+		return found ? found.to : normalized;
+	}
+
+	private static styleMatches(styleId: string, target: string): boolean {
+		const s = styleId.trim();
+		if (s.toLowerCase() === target.toLowerCase()) {
+			return true;
+		}
+		const lower = s.toLowerCase();
+		if (target.toLowerCase() === 'list' && lower.indexOf('list') === 0) {
+			return true;
+		}
+		if (target.toLowerCase() === 'index' && lower.indexOf('index') === 0) {
+			return true;
+		}
+		return false;
 	}
 
 	/**

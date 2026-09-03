@@ -108,4 +108,103 @@ describe('WriterEditorCatalog', function () {
 			);
 		});
 	});
+	it('carries the full CO paper-format preset list (29 entries)', function () {
+		assert.equal(WriterEditorCatalog.PAPER_FORMATS.length, 29);
+		// Spot-check the LO PaperFormat enum values Android transcribes from CO.
+		const byLabel = {};
+		WriterEditorCatalog.PAPER_FORMATS.forEach((preset) => {
+			byLabel[preset.label] = preset.value;
+		});
+		assert.equal(byLabel['A4'], '4');
+		assert.equal(byLabel['A3'], '3');
+		assert.equal(byLabel['A5'], '5');
+		assert.equal(byLabel['信纸'], '8');
+		assert.equal(byLabel['法律专用纸'], '9');
+		assert.equal(byLabel['16开'], '31');
+		assert.equal(byLabel['日本明信片'], '46');
+		assert.equal(byLabel['10 号信封'], '28');
+		// No duplicates or empty entries.
+		const ids = WriterEditorCatalog.PAPER_FORMATS.map((preset) => preset.value);
+		assert.equal(new Set(ids).size, ids.length);
+		WriterEditorCatalog.PAPER_FORMATS.forEach((preset) => {
+			assert.ok(preset.label && preset.value);
+		});
+	});
+
+	it('carries the full CO page-margin preset list (8 entries)', function () {
+		assert.equal(WriterEditorCatalog.MARGIN_PRESETS.length, 8);
+		const labels = WriterEditorCatalog.MARGIN_PRESETS.map((m) => m.label);
+		assert.deepEqual(labels, ['无', '窄', '适中', '正常（1.90 cm）', '正常（2.54 cm）', '正常（3.18 cm）', '宽', '镜像']);
+		const wide = WriterEditorCatalog.MARGIN_PRESETS.find((m) => m.id === 'wide');
+		assert.ok(wide);
+		assert.deepEqual([wide.left, wide.right, wide.top, wide.bottom], [5080, 5080, 2540, 2540]);
+		const mirrored = WriterEditorCatalog.MARGIN_PRESETS.find((m) => m.id === 'mirrored');
+		assert.ok(mirrored);
+		assert.deepEqual([mirrored.left, mirrored.right, mirrored.top, mirrored.bottom], [5080, 2540, 2540, 2540]);
+		const none = WriterEditorCatalog.MARGIN_PRESETS.find((m) => m.id === 'none');
+		assert.ok(none);
+		assert.deepEqual([none.left, none.right, none.top, none.bottom], [0, 0, 0, 0]);
+	});
+
+	it('carries the Figma style ordering (8 entries with CO style ids)', function () {
+		assert.equal(WriterEditorCatalog.STYLE_ORDER.length, 8);
+		const ids = WriterEditorCatalog.STYLE_ORDER.map((s) => s.styleId);
+		assert.deepEqual(ids, [
+			'Default Paragraph Style', 'List', 'Caption', 'Index',
+			'Heading 1', 'Heading 2', 'Heading 3', 'caption',
+		]);
+		assert.equal(WriterEditorCatalog.STYLE_ORDER[0].label, '正文');
+		assert.equal(WriterEditorCatalog.STYLE_ORDER[4].label, '标题1');
+	});
+
+	it('reorders styles: preferred first in Figma order, rest kept in CO order', function () {
+		const reordered = WriterEditorCatalog.reorderStyleOptions([
+			'Heading 1', 'Text Body', 'Default Paragraph Style', 'List 1',
+		]);
+		assert.deepEqual(reordered, [
+			{ label: '正文', value: 'Default Paragraph Style' },
+			{ label: '列表', value: 'List 1' },
+			{ label: '标题1', value: 'Heading 1' },
+			{ label: 'Text Body', value: 'Text Body' },
+		]);
+	});
+
+	it('reorders styles: List/Index prefix matching and case-insensitive ids', function () {
+		const reordered = WriterEditorCatalog.reorderStyleOptions([
+			'INDEX Line', 'list', 'DEFAULT PARAGRAPH STYLE',
+		]);
+		assert.deepEqual(reordered, [
+			{ label: '正文', value: 'DEFAULT PARAGRAPH STYLE' },
+			{ label: '列表', value: 'list' },
+			{ label: '索引', value: 'INDEX Line' },
+		]);
+	});
+
+	it('reorders styles: a preferred id is only placed once', function () {
+		const reordered = WriterEditorCatalog.reorderStyleOptions(['List 1', 'List 2', 'List']);
+		assert.equal(reordered.length, 3);
+		assert.equal(reordered[0].label, '列表');
+		const preferred = reordered.filter((option) => option.label === '列表');
+		assert.equal(preferred.length, 1);
+	});
+
+	it('maps Windows font names to the CO-bundled substitutes', function () {
+		assert.equal(WriterEditorCatalog.aliasFont('Arial'), 'Liberation Sans');
+		assert.equal(WriterEditorCatalog.aliasFont('times new roman'), 'Liberation Serif');
+		assert.equal(WriterEditorCatalog.aliasFont('Courier New'), 'Liberation Mono');
+		assert.equal(WriterEditorCatalog.aliasFont('Noto Sans CJK SC'), 'Noto Sans CJK SC');
+	});
+
+	it('carries the fallback font list (5 entries)', function () {
+		assert.deepEqual(WriterEditorCatalog.FONT_FALLBACK_OPTIONS, [
+			'Liberation Serif', 'Liberation Sans', 'Liberation Mono', 'Arial', 'Times New Roman',
+		]);
+	});
+
+	it('exposes track-changes as a dialog feature (open/close choices)', function () {
+		const feature = WriterEditorCatalog.getFeature('track-changes');
+		assert.ok(feature);
+		assert.equal(feature.kind, 'dialog');
+		assert.equal(feature.dialog, 'trackChanges');
+	});
 });

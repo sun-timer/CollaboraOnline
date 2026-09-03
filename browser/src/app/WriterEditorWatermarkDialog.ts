@@ -10,12 +10,13 @@ class WriterEditorWatermarkDialog {
 	private readonly sheet: MobileAiSheet;
 	private readonly controller: WriterEditorController;
 	private readonly textInput: HTMLInputElement;
+	private readonly fontSelect: HTMLSelectElement;
 	private readonly angleInput: HTMLInputElement;
 	private readonly transparencyInput: HTMLInputElement;
 	private readonly angleValue: HTMLSpanElement;
 	private readonly transparencyValue: HTMLSpanElement;
 
-	constructor(controller: WriterEditorController) {
+	constructor(controller: WriterEditorController, fontOptions: string[]) {
 		this.controller = controller;
 		this.sheet = new MobileAiSheet({ title: '水印' });
 
@@ -33,6 +34,28 @@ class WriterEditorWatermarkDialog {
 			'padding:10px;border:1px solid #d8dde3;border-radius:8px;font:inherit;';
 		content.appendChild(this.textInput);
 
+		const fontLabel = document.createElement('label');
+		fontLabel.textContent = '字体';
+		fontLabel.style.cssText = 'font-size:14px;color:#5f6368;';
+		content.appendChild(fontLabel);
+		this.fontSelect = document.createElement('select');
+		const safeFonts = fontOptions && fontOptions.length ? fontOptions : ['Noto Serif CJK SC'];
+		const defaultFont = safeFonts.indexOf('Noto Serif CJK SC') >= 0
+			? 'Noto Serif CJK SC'
+			: safeFonts[0];
+		safeFonts.forEach((fontName) => {
+			const option = document.createElement('option');
+			option.value = fontName;
+			option.textContent = fontName;
+			if (fontName === defaultFont) {
+				option.selected = true;
+			}
+			this.fontSelect.appendChild(option);
+		});
+		this.fontSelect.style.cssText =
+			'padding:10px;border:1px solid #d8dde3;border-radius:8px;font:inherit;';
+		content.appendChild(this.fontSelect);
+
 		const angleRow = this.sliderRow(
 			'角度',
 			0,
@@ -48,7 +71,7 @@ class WriterEditorWatermarkDialog {
 			'透明度',
 			0,
 			100,
-			30,
+			50,
 			(value) => { this.transparencyValue.textContent = value + '%'; },
 		);
 		content.appendChild(transparencyRow.row);
@@ -76,12 +99,13 @@ class WriterEditorWatermarkDialog {
 			this.textInput.value,
 			parseInt(this.angleInput.value, 10),
 			parseInt(this.transparencyInput.value, 10),
+			this.fontSelect.value,
 		);
 		this.sheet.close();
 	}
 
 	private remove(): void {
-		this.controller.applyWatermark('', 45, 30);
+		this.controller.applyWatermark('', 45, 50);
 		this.sheet.close();
 	}
 

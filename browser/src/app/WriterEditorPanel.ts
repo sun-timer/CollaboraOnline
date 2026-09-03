@@ -26,6 +26,7 @@ class WriterEditorPanel {
 		'paperSize',
 		'image',
 		'saveAs',
+		'trackChanges',
 	];
 
 	private constructor() {
@@ -201,6 +202,8 @@ class WriterEditorPanel {
 				this.openImageDialog();
 			} else if (dialog === 'saveAs') {
 				this.openSaveAsDialog();
+			} else if (dialog === 'trackChanges') {
+				this.openTrackChangesDialog();
 			}
 			return;
 		}
@@ -219,15 +222,11 @@ class WriterEditorPanel {
 	}
 
 	private openFontNameDialog(): void {
-		const values = this.controller.getCommandValues('.uno:CharFontName');
-		const names = values ? Object.keys(values).filter((name) => !!name) : [];
-		if (!names.length) {
-			return;
-		}
-		const options = names.map((name) => ({ label: name, value: name }));
+		const options: WriterChooseOption[] = this.getFontOptions()
+			.map((name) => ({ label: name, value: name }));
 		this.sheet.close();
 		new WriterEditorChooseDialog('字体', options, (option) => {
-			this.controller.applyFontName(option.value);
+			this.controller.applyFontName(WriterEditorCatalog.aliasFont(option.value));
 		}).open();
 	}
 
@@ -264,11 +263,10 @@ class WriterEditorPanel {
 	}
 
 	private openMarginsDialog(): void {
-		const options: WriterChooseOption[] = [
-			{ label: '常规', value: '2540:2540:2540:2540' },
-			{ label: '较窄', value: '1270:1270:1270:1270' },
-			{ label: '较宽', value: '4191:4191:2540:2540' },
-		];
+		const options: WriterChooseOption[] = WriterEditorCatalog.MARGIN_PRESETS.map((preset) => ({
+			label: preset.label,
+			value: [preset.left, preset.right, preset.top, preset.bottom].join(':'),
+		}));
 		this.sheet.close();
 		new WriterEditorChooseDialog('页边距', options, (option) => {
 			const parts = option.value.split(':').map((part) => parseInt(part, 10));
@@ -301,7 +299,8 @@ class WriterEditorPanel {
 		if (!styles.length) {
 			return;
 		}
-		const options: WriterChooseOption[] = styles.map((name) => ({ label: name, value: name }));
+		const options: WriterChooseOption[] =
+			WriterEditorCatalog.reorderStyleOptions(styles);
 		this.sheet.close();
 		new WriterEditorChooseDialog('样式', options, (option) => {
 			this.controller.applyStyle(option.value);
@@ -309,18 +308,43 @@ class WriterEditorPanel {
 	}
 
 	private openWatermarkDialog(): void {
+		const fontOptions = this.getFontOptions()
+			.map((name) => WriterEditorCatalog.aliasFont(name));
 		this.sheet.close();
-		new WriterEditorWatermarkDialog(this.controller).open();
+		new WriterEditorWatermarkDialog(this.controller, fontOptions).open();
+	}
+
+	private getFontOptions(): string[] {
+		const values = this.controller.getCommandValues('.uno:CharFontName');
+		const names = values ? Object.keys(values).filter((name) => !!name) : [];
+		return names.length ? names : WriterEditorCatalog.FONT_FALLBACK_OPTIONS;
 	}
 
 	private openPaperSizeDialog(): void {
-		const options = WriterEditorCatalog.PAPER_FORMATS.map((preset) => ({
-			label: preset.label,
-			value: preset.value,
-		}));
+		const options: WriterChooseOption[] =
+			WriterEditorCatalog.PAPER_FORMATS.map((preset) => ({
+				label: preset.label,
+				value: preset.value,
+			}));
+		options.push({ label: '自定义尺寸…', value: 'custom' });
 		this.sheet.close();
 		new WriterEditorChooseDialog('纸张大小', options, (option) => {
+			if (option.value === 'custom') {
+				new WriterEditorPaperSizeDialog(this.controller).open();
+				return;
+			}
 			this.controller.applyPaperFormat(option.value);
+		}).open();
+	}
+
+	private openTrackChangesDialog(): void {
+		const options: WriterChooseOption[] = [
+			{ label: '开启追踪修订', value: 'on' },
+			{ label: '关闭追踪修订', value: 'off' },
+		];
+		this.sheet.close();
+		new WriterEditorChooseDialog('追踪修订', options, (option) => {
+			this.controller.trackChanges(option.value === 'on');
 		}).open();
 	}
 

@@ -392,4 +392,66 @@ describe('WriterEditorController', function () {
 		assert.equal(result.reason, 'empty_query');
 		assert.equal(adapter.calls.sendExecuteSearch.length, 0);
 	});
+	it('applies a custom paper size via AttributePageSize width/height', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.applyCustomPaperSize(21, 29.7);
+
+		assert.equal(result.dispatched, 'unocmd');
+		assert.deepEqual(adapter.calls.sendUnoCommand, [
+			'.uno:AttributePageSize?AttributePageSize.Width:long=21000&AttributePageSize.Height:long=29700',
+		]);
+	});
+
+	it('rounds custom paper cm to hundredths of mm', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		controller.applyCustomPaperSize(21.05, 5);
+
+		assert.deepEqual(adapter.calls.sendUnoCommand, [
+			'.uno:AttributePageSize?AttributePageSize.Width:long=21050&AttributePageSize.Height:long=5000',
+		]);
+	});
+
+	it('rejects invalid custom paper sizes without dispatching', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		assert.deepEqual(controller.applyCustomPaperSize(0, 10), { dispatched: 'none', reason: 'invalid_paper_size' });
+		assert.deepEqual(controller.applyCustomPaperSize(10, -1), { dispatched: 'none', reason: 'invalid_paper_size' });
+		assert.equal(adapter.calls.sendUnoCommand.length, 0);
+	});
+
+	it('applies a watermark with a chosen font', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.applyWatermark('内部', 45, 50, 'Liberation Sans');
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.ok(command.indexOf('"Font":{"type":"string","value":"Liberation Sans"}') >= 0);
+	});
+
+	it('enables change tracking via TrackChangesInAllViews', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.trackChanges(true);
+
+		assert.equal(result.dispatched, 'unocmd');
+		assert.deepEqual(adapter.calls.sendUnoCommand, ['.uno:TrackChangesInAllViews']);
+	});
+
+	it('disables change tracking via TrackChanges bool=false', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.trackChanges(false);
+
+		assert.equal(result.dispatched, 'unocmd');
+		assert.deepEqual(adapter.calls.sendUnoCommand, ['.uno:TrackChanges?TrackChanges:bool=false']);
+	});
 });
