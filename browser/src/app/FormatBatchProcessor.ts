@@ -25,6 +25,7 @@ class FormatBatchProcessor {
 		'消除超链接',
 	];
 
+	// eslint-disable-next-line @typescript-eslint/no-empty-function -- static utility class
 	private constructor() {}
 
 	/** Apply enabled rules in fixed order; options length must be RULE_COUNT. */
@@ -97,8 +98,22 @@ class FormatBatchProcessor {
 			.replace(/\r\n|\r/g, '\n')
 			.replace(/\n{3,}/g, '\n\n');
 		// Java String.trim() removes only chars <= U+0020; String.prototype.trim
-		// removes all Unicode whitespace. Keep Android parity explicitly.
-		return collapsed.replace(/^[\u0000-\u0020]+/, '').replace(/[\u0000-\u0020]+$/, '');
+		// removes all Unicode whitespace. Keep Android parity explicitly
+		// (code-point loop instead of a [\u0000-\u0020] literal regex, which
+		// eslint no-control-regex rejects).
+		return FormatBatchProcessor.trimJava(collapsed);
+	}
+
+	private static trimJava(text: string): string {
+		let start = 0;
+		while (start < text.length && text.charCodeAt(start) <= 0x20) {
+			start++;
+		}
+		let end = text.length;
+		while (end > start && text.charCodeAt(end - 1) <= 0x20) {
+			end--;
+		}
+		return text.slice(start, end);
 	}
 
 	private static removeWavyUnderlineArtifacts(text: string): string {
