@@ -189,7 +189,8 @@
                                requestId:(NSString *)requestId
                       documentSessionId:(NSString *)documentSessionId
                                   emit:(AIServiceEventEmitter)emit {
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    NSURL *endpointURL = [NSURL URLWithString:endpoint];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:endpointURL];
     request.HTTPMethod = @"POST";
     request.timeoutInterval = 60.0;
     [request setValue:@"application/json; charset=UTF-8" forHTTPHeaderField:@"Content-Type"];
@@ -198,6 +199,8 @@
         forHTTPHeaderField:@"Authorization"];
     NSString *size = [payload[@"size"] isKindOfClass:[NSString class]]
         ? payload[@"size"] : @"1024x1024";
+    NSString *prompt = [payload[@"prompt"] isKindOfClass:[NSString class]]
+        ? payload[@"prompt"] : @"";
     NSDictionary *body = @{
         @"model": model,
         @"prompt": prompt,
