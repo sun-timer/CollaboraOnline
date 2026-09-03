@@ -454,4 +454,49 @@ describe('WriterEditorController', function () {
 		assert.equal(result.dispatched, 'unocmd');
 		assert.deepEqual(adapter.calls.sendUnoCommand, ['.uno:TrackChanges?TrackChanges:bool=false']);
 	});
+	it('inserts a default chart (column) without a template override', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertChart('column');
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command,
+			'.uno:InsertObjectChart {"RangeList":{"type":"string","value":""},"InNewTable":{"type":"boolean","value":false}}');
+		assert.equal(adapter.calls.sendUnoCommand[0], command);
+	});
+
+	it('inserts a pie chart with its chart2 template', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertChart('pie');
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command,
+			'.uno:InsertObjectChart {"RangeList":{"type":"string","value":""},"InNewTable":{"type":"boolean","value":false},"ChartTemplate":{"type":"string","value":"com.sun.star.chart2.template.Pie"}}');
+	});
+
+	it('inserts a curved line chart with template and curve style', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertChart('line-curve');
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command,
+			'.uno:InsertObjectChart {"RangeList":{"type":"string","value":""},"InNewTable":{"type":"boolean","value":false},"ChartTemplate":{"type":"string","value":"com.sun.star.chart2.template.LineSymbol"},"ChartCurveStyle":{"type":"int32","value":1}}');
+	});
+
+	it('rejects an unknown chart type without dispatching', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		assert.deepEqual(controller.insertChart(''), { dispatched: 'none', reason: 'unknown_chart_type' });
+		assert.deepEqual(controller.insertChart('nope'), { dispatched: 'none', reason: 'unknown_chart_type' });
+		assert.equal(adapter.calls.sendUnoCommand.length, 0);
+	});
 });

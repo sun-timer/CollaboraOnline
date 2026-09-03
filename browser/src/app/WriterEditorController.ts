@@ -274,6 +274,35 @@ class WriterEditorController {
 		return { dispatched: 'unocmd', command };
 	}
 
+	/**
+	 * Inserts a chart of the given unoChartType via InsertObjectChart.
+	 * JSON args mirror Android CalcChartTypeMapper.buildInsertChartJson
+	 * (L56-73): empty RangeList, ChartTemplate when required, curve style for
+	 * the curved-line variant.
+	 */
+	insertChart(unoChartType: string): WriterEditorRunResult {
+		if (!unoChartType || !WriterEditorCatalog.chartTemplateService(unoChartType)) {
+			return { dispatched: 'none', reason: 'unknown_chart_type' };
+		}
+		const args: { [key: string]: any } = {
+			'RangeList': { type: 'string', value: '' },
+			'InNewTable': { type: 'boolean', value: false },
+		};
+		if (WriterEditorCatalog.needsChartTemplate(unoChartType)) {
+			args['ChartTemplate'] = {
+				type: 'string',
+				value: WriterEditorCatalog.chartTemplateService(unoChartType),
+			};
+			const curveStyle = WriterEditorCatalog.chartCurveStyle(unoChartType);
+			if (curveStyle >= 0) {
+				args['ChartCurveStyle'] = { type: 'int32', value: curveStyle };
+			}
+		}
+		const command = '.uno:InsertObjectChart ' + JSON.stringify(args);
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
 	/** Inserts an image as base64 over the mobile insertfile channel. */
 	insertImage(fileName: string, dataBase64: string): WriterEditorRunResult {
 		if (!dataBase64) {

@@ -31,7 +31,8 @@ type WriterEditorDialogType =
 	| 'saveAs' // save-as dialog
 	| 'pageBreak' // page break options
 	| 'pageNumber' // insert page number field
-	| 'trackChanges'; // enable / disable change tracking
+	| 'trackChanges' // enable / disable change tracking
+	| 'chart'; // insert chart (InsertObjectChart type picker)
 
 interface WriterEditorFeature {
 	id: string;
@@ -184,6 +185,40 @@ class WriterEditorCatalog {
 		'Liberation Serif', 'Liberation Sans', 'Liberation Mono', 'Arial', 'Times New Roman',
 	];
 
+	/**
+	 * Chart-type picker sections for `.uno:InsertObjectChart`.
+	 * Transcribes Android ChartTypePickerUi.TYPE_ROWS (L52-67, Figma
+	 * 258:10319); labels match Android.
+	 */
+	static readonly CHART_CATEGORIES: {
+		title: string;
+		types: { label: string; unoType: string }[];
+	}[] = [
+		{
+			title: '饼图',
+			types: [
+				{ label: '基础饼图', unoType: 'pie' },
+				{ label: '基础饼图(圆角)', unoType: 'pie-rounded' },
+				{ label: '变形饼图', unoType: 'pie-exploded' },
+			],
+		},
+		{
+			title: '线图',
+			types: [
+				{ label: '折线图', unoType: 'line' },
+				{ label: '曲线折线图', unoType: 'line-curve' },
+			],
+		},
+		{
+			title: '柱图',
+			types: [
+				{ label: '基础柱状图', unoType: 'column' },
+				{ label: '基础条形图', unoType: 'bar' },
+				{ label: '堆叠柱状图', unoType: 'column-stacked' },
+			],
+		},
+	];
+
 	static readonly FEATURES: WriterEditorFeature[] = [
 		// ---- 常用 (default) ----
 		{
@@ -333,6 +368,16 @@ class WriterEditorCatalog {
 			icon: 'image',
 			kind: 'dialog',
 			dialog: 'image',
+			group: 'insert',
+		},
+		{
+			id: 'insert-chart',
+			label: '图表',
+			tab: 'insert',
+			icon: 'chart',
+			kind: 'dialog',
+			dialog: 'chart',
+			unocmd: '.uno:InsertObjectChart',
 			group: 'insert',
 		},
 		{
@@ -534,11 +579,10 @@ class WriterEditorCatalog {
 	}
 
 	private static styleMatches(styleId: string, target: string): boolean {
-		const s = styleId.trim();
-		if (s.toLowerCase() === target.toLowerCase()) {
+		const lower = styleId.trim().toLowerCase();
+		if (lower === target.toLowerCase()) {
 			return true;
 		}
-		const lower = s.toLowerCase();
 		if (target.toLowerCase() === 'list' && lower.indexOf('list') === 0) {
 			return true;
 		}
@@ -546,6 +590,43 @@ class WriterEditorCatalog {
 			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Maps an app chart-type id to its LO chart2 template service name.
+	 * Transcribes Android CalcChartTypeMapper.toTemplateService (L14-38).
+	 */
+	static chartTemplateService(unoChartType: string): string {
+		const services: { [key: string]: string } = {
+			'pie': 'com.sun.star.chart2.template.Pie',
+			'pie-rounded': 'com.sun.star.chart2.template.Donut',
+			'pie-exploded': 'com.sun.star.chart2.template.PieAllExploded',
+			'line': 'com.sun.star.chart2.template.LineSymbol',
+			'line-curve': 'com.sun.star.chart2.template.LineSymbol',
+			'column': 'com.sun.star.chart2.template.Column',
+			'bar': 'com.sun.star.chart2.template.Bar',
+			'column-stacked': 'com.sun.star.chart2.template.StackedColumn',
+		};
+		return services[unoChartType] || '';
+	}
+
+	/** Curve style for InsertObjectChart; 1 = cubic splines, -1 = unset. */
+	static chartCurveStyle(unoChartType: string): number {
+		return unoChartType === 'line-curve' ? 1 : -1;
+	}
+
+	/**
+	 * Whether InsertObjectChart needs an explicit ChartTemplate argument.
+	 * Column is core's default so Android omits it; everything else passes
+	 * the template (Android CalcChartTypeMapper.needsCustomTemplate L47-54).
+	 */
+	static needsChartTemplate(unoChartType: string): boolean {
+		const template = WriterEditorCatalog.chartTemplateService(unoChartType);
+		if (!template) {
+			return false;
+		}
+		return template !== 'com.sun.star.chart2.template.Column' ||
+			WriterEditorCatalog.chartCurveStyle(unoChartType) >= 0;
 	}
 
 	/**

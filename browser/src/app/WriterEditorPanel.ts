@@ -27,6 +27,7 @@ class WriterEditorPanel {
 		'image',
 		'saveAs',
 		'trackChanges',
+		'chart',
 	];
 
 	private constructor() {
@@ -198,6 +199,8 @@ class WriterEditorPanel {
 				this.openWatermarkDialog();
 			} else if (dialog === 'paperSize') {
 				this.openPaperSizeDialog();
+			} else if (dialog === 'chart') {
+				this.openChartDialog();
 			} else if (dialog === 'image') {
 				this.openImageDialog();
 			} else if (dialog === 'saveAs') {
@@ -245,21 +248,8 @@ class WriterEditorPanel {
 	}
 
 	private openTableDialog(): void {
-		const options: WriterChooseOption[] = [
-			{ label: '2 × 2', value: '2:2' },
-			{ label: '3 × 3', value: '3:3' },
-			{ label: '4 × 3', value: '4:3' },
-			{ label: '4 × 5', value: '4:5' },
-		];
 		this.sheet.close();
-		new WriterEditorChooseDialog('插入表格', options, (option) => {
-			const parts = option.value.split(':');
-			const columns = parseInt(parts[0], 10);
-			const rows = parseInt(parts[1], 10);
-			if (!isNaN(columns) && !isNaN(rows)) {
-				this.controller.insertTable(columns, rows);
-			}
-		}).open();
+		new WriterEditorInsertTableDialog(this.controller).open();
 	}
 
 	private openMarginsDialog(): void {
@@ -277,18 +267,13 @@ class WriterEditorPanel {
 	}
 
 	private openShapeDialog(): void {
-		const options: WriterChooseOption[] = [
-			{ label: '矩形', value: 'rectangle' },
-			{ label: '椭圆', value: 'ellipse' },
-			{ label: '圆角矩形', value: 'round-rectangle' },
-			{ label: '等腰三角形', value: 'isosceles-triangle' },
-			{ label: '直线', value: 'line' },
-			{ label: '箭头', value: 'arrow' },
-		];
 		this.sheet.close();
-		new WriterEditorChooseDialog('插入形状', options, (option) => {
-			this.controller.insertShape(option.value);
-		}).open();
+		new WriterEditorShapeDialog(this.controller).open();
+	}
+
+	private openChartDialog(): void {
+		this.sheet.close();
+		new WriterEditorChartDialog(this.controller).open();
 	}
 
 	private openStyleDialog(): void {

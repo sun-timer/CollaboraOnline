@@ -207,4 +207,66 @@ describe('WriterEditorCatalog', function () {
 		assert.equal(feature.kind, 'dialog');
 		assert.equal(feature.dialog, 'trackChanges');
 	});
+	it('carries the CO chart-type table (8 entries, 3 sections)', function () {
+		assert.equal(WriterEditorCatalog.CHART_CATEGORIES.length, 3);
+		assert.deepEqual(WriterEditorCatalog.CHART_CATEGORIES.map((c) => c.title), ['饼图', '线图', '柱图']);
+		const flattened = WriterEditorCatalog.CHART_CATEGORIES.reduce(
+			(acc, category) => acc.concat(category.types), [] as { label: string; unoType: string }[],
+		);
+		assert.equal(flattened.length, 8);
+		assert.deepEqual(flattened.map((t) => t.unoType), [
+			'pie', 'pie-rounded', 'pie-exploded',
+			'line', 'line-curve',
+			'column', 'bar', 'column-stacked',
+		]);
+		assert.equal(flattened[0].label, '基础饼图');
+		assert.equal(flattened[5].label, '基础柱状图');
+	});
+
+	it('maps chart types to LO chart2 template services', function () {
+		const services: { [key: string]: string } = {};
+		WriterEditorCatalog.CHART_CATEGORIES.forEach((category) => {
+			category.types.forEach((type) => {
+				services[type.unoType] = WriterEditorCatalog.chartTemplateService(type.unoType);
+			});
+		});
+		assert.equal(services['pie'], 'com.sun.star.chart2.template.Pie');
+		assert.equal(services['pie-rounded'], 'com.sun.star.chart2.template.Donut');
+		assert.equal(services['pie-exploded'], 'com.sun.star.chart2.template.PieAllExploded');
+		assert.equal(services['line'], 'com.sun.star.chart2.template.LineSymbol');
+		assert.equal(services['line-curve'], 'com.sun.star.chart2.template.LineSymbol');
+		assert.equal(services['column'], 'com.sun.star.chart2.template.Column');
+		assert.equal(services['bar'], 'com.sun.star.chart2.template.Bar');
+		assert.equal(services['column-stacked'], 'com.sun.star.chart2.template.StackedColumn');
+		assert.equal(WriterEditorCatalog.chartTemplateService('unknown'), '');
+	});
+
+	it('maps curve style: only line-curve uses cubic splines', function () {
+		assert.equal(WriterEditorCatalog.chartCurveStyle('line-curve'), 1);
+		assert.equal(WriterEditorCatalog.chartCurveStyle('line'), -1);
+		assert.equal(WriterEditorCatalog.chartCurveStyle('pie'), -1);
+	});
+
+	it('decides when a custom chart template is required', function () {
+		assert.equal(WriterEditorCatalog.needsChartTemplate('pie'), true);
+		assert.equal(WriterEditorCatalog.needsChartTemplate('pie-exploded'), true);
+		assert.equal(WriterEditorCatalog.needsChartTemplate('bar'), true);
+		assert.equal(WriterEditorCatalog.needsChartTemplate('column-stacked'), true);
+		assert.equal(WriterEditorCatalog.needsChartTemplate('line-curve'), true);
+		assert.equal(WriterEditorCatalog.needsChartTemplate('column'), false);
+		assert.equal(WriterEditorCatalog.needsChartTemplate('unknown'), false);
+	});
+
+	it('registers insert-chart between image and table', function () {
+		const insertIds = WriterEditorCatalog.getFeatures('insert').map((f) => f.id);
+		assert.deepEqual(insertIds, [
+			'insert-image', 'insert-chart', 'insert-table', 'insert-shape',
+			'insert-comment', 'insert-page-number', 'insert-pagebreak',
+		]);
+		const feature = WriterEditorCatalog.getFeature('insert-chart');
+		assert.ok(feature);
+		assert.equal(feature.kind, 'dialog');
+		assert.equal(feature.dialog, 'chart');
+		assert.equal(feature.unocmd, '.uno:InsertObjectChart');
+	});
 });
