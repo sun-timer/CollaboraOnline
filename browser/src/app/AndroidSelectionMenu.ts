@@ -37,7 +37,11 @@ class AndroidSelectionMenu {
 	}
 
 	static hide(): void {
-		if (!window.ThisIsTheAndroidApp || typeof window.postMobileMessage !== 'function') {
+		if (AndroidSelectionMenu.isIOS()) {
+			MobileSelectionEvents.broadcastHide();
+			return;
+		}
+		if (!AndroidSelectionMenu.isAndroid() || typeof window.postMobileMessage !== 'function') {
 			return;
 		}
 		window.postMobileMessage('SELECTIONMENU hide');
@@ -45,6 +49,18 @@ class AndroidSelectionMenu {
 
 	static markNativeLongPress(): void {
 		// Reserved for native long-press guard extensions.
+	}
+
+	private static isAndroid(): boolean {
+		return !!((window as any).ThisIsTheAndroidApp);
+	}
+
+	private static isIOS(): boolean {
+		return !!((window as any).ThisIsTheiOSApp);
+	}
+
+	private static isMobileApp(): boolean {
+		return AndroidSelectionMenu.isAndroid() || AndroidSelectionMenu.isIOS();
 	}
 
 	private static isPreviewWriterMode(): boolean {
@@ -211,7 +227,7 @@ class AndroidSelectionMenu {
 	 * Uses the same selecttext reset+start path as long-press.
 	 */
 	static onDoubleTapAtSectionPoint(point: cool.SimplePoint): void {
-		if (!window.ThisIsTheAndroidApp || !AndroidSelectionMenu.isSelectionDoc()) {
+		if (!AndroidSelectionMenu.isMobileApp() || !AndroidSelectionMenu.isSelectionDoc()) {
 			return;
 		}
 
@@ -357,7 +373,7 @@ class AndroidSelectionMenu {
 	 * Invoked from LOActivity / COWebView only when native preview mode is active.
 	 */
 	static onLongPressAt(viewX: number, viewY: number): void {
-		if (!window.ThisIsTheAndroidApp || !AndroidSelectionMenu.isSelectionDoc()) {
+		if (!AndroidSelectionMenu.isMobileApp() || !AndroidSelectionMenu.isSelectionDoc()) {
 			return;
 		}
 
@@ -374,7 +390,11 @@ class AndroidSelectionMenu {
 	 * Only when TextSelections is active with a non-degenerate range.
 	 */
 	static tryShow(): void {
-		if (!window.ThisIsTheAndroidApp || typeof window.postMobileMessage !== 'function') {
+		if (AndroidSelectionMenu.isIOS()) {
+			AndroidSelectionMenu.tryShowIOS();
+			return;
+		}
+		if (!AndroidSelectionMenu.isAndroid() || typeof window.postMobileMessage !== 'function') {
 			return;
 		}
 		if (!app.map || typeof app.map.isReadOnlyMode !== 'function') {
@@ -434,6 +454,51 @@ class AndroidSelectionMenu {
 				Math.round(anchor.y * scale) +
 				' ' +
 				Math.round(anchor.bottomY * scale),
+		);
+		AndroidSelectionMenu.pendingLongPressSelection = false;
+		AndroidSelectionMenu.selectionStartTwips = null;
+	}
+
+	/** iOS: broadcast the selection to the DOM menu instead of a native popup. */
+	private static tryShowIOS(): void {
+		if (!AndroidSelectionMenu.isSelectionDoc() || !AndroidSelectionMenu.hasNonDegenerateSelection()) {
+			return;
+		}
+		const startRect = TextSelections.getStartRectangle();
+		const endRect = TextSelections.getEndRectangle();
+		if (!startRect || !endRect || !app.sectionContainer) {
+			return;
+		}
+		const topViewY = Math.min(startRect.v1Y, startRect.v2Y, endRect.v1Y, endRect.v2Y);
+		const leftViewX = Math.min(startRect.v1X, startRect.v3X, endRect.v1X, endRect.v3X);
+		const rightViewX = Math.max(startRect.v2X, startRect.v4X, endRect.v2X, endRect.v4X);
+		const bottomViewY = Math.max(startRect.v3Y, startRect.v4Y, endRect.v3Y, endRect.v4Y);
+		const canvasRect = app.sectionContainer.getCanvasBoundingClientRect();
+		const anchor = MobileSelectionEvents.computeAnchorCss({
+			topViewY,
+			leftViewX,
+			rightViewX,
+			bottomViewY,
+			canvasX: canvasRect.x,
+			canvasY: canvasRect.y,
+			scale: app.dpiScale || 1,
+		});
+		if (!anchor) {
+			return;
+		}
+		const clamped = AndroidSelectionMenu.clampAnchorInCss(
+			anchor.anchorX,
+			anchor.anchorY,
+			anchor.anchorBottomY,
+		);
+		const docLayer = app.map?._docLayer;
+		const text =
+			docLayer && typeof docLayer._selectedTextContent === 'string'
+				? docLayer._selectedTextContent
+				: '';
+		MobileSelectionEvents.broadcastShow(
+			{ anchorX: clamped.x, anchorY: clamped.y, anchorBottomY: clamped.bottomY },
+			text,
 		);
 		AndroidSelectionMenu.pendingLongPressSelection = false;
 		AndroidSelectionMenu.selectionStartTwips = null;
@@ -578,7 +643,7 @@ class AndroidSelectionMenu {
 
 	/** Install Android-only hooks without modifying upstream canvas/tile sources. */
 	static install(): void {
-		if (!window.ThisIsTheAndroidApp || AndroidSelectionMenu.hooksInstalled) {
+		if (!AndroidSelectionMenu.isMobileApp() || AndroidSelectionMenu.hooksInstalled) {
 			return;
 		}
 		AndroidSelectionMenu.hooksInstalled = true;
@@ -606,7 +671,7 @@ class AndroidSelectionMenu {
 				e: MouseEvent,
 			): void {
 				if (
-					window.ThisIsTheAndroidApp &&
+					AndroidSelectionMenu.isMobileApp() &&
 					AndroidSelectionMenu.shouldSuppressContextMenu()
 				) {
 					e.preventDefault();
@@ -622,7 +687,7 @@ class AndroidSelectionMenu {
 				e: MouseEvent,
 			): void {
 				if (
-					!window.ThisIsTheAndroidApp ||
+					!AndroidSelectionMenu.isMobileApp() ||
 					!app.map ||
 					!AndroidSelectionMenu.isSelectionDoc()
 				) {
@@ -796,10 +861,107 @@ class AndroidSelectionMenu {
 			};
 		};
 		installTextSelectionHook();
+		if (AndroidSelectionMenu.isIOS()) {
+			AndroidSelectionMenu.installIosLongPress();
+		}
+	}
+
+	/**
+	 * iOS has no native long-press bridge (Android drives onLongPressAt from
+	 * LOActivity); detect the gesture in the browser. Coordinates are CSS px,
+	 * converted to physical px for the shared twips math.
+	 */
+	private static installIosLongPress(): void {
+		let longPressTimer = 0;
+		let startX = 0;
+		let startY = 0;
+		const scale = () => app.dpiScale || 1;
+
+		const onTouchStart = (e: TouchEvent) => {
+			const touch = e.touches[0];
+			if (!touch || !AndroidSelectionMenu.isSelectionDoc()) {
+				return;
+			}
+			startX = touch.clientX;
+			startY = touch.clientY;
+			AndroidSelectionMenu.clearTryShowRetry();
+			longPressTimer = window.setTimeout(() => {
+				longPressTimer = 0;
+				AndroidSelectionMenu.onLongPressAt(
+					startX * scale(),
+					startY * scale(),
+				);
+			}, 600);
+		};
+
+		const onTouchMove = (e: TouchEvent) => {
+			const touch = e.touches[0];
+			if (!touch) {
+				return;
+			}
+			if (AndroidSelectionMenu.nativeSelectionDragActive) {
+				AndroidSelectionMenu.updateTextSelectionEndAt(
+					touch.clientX * scale(),
+					touch.clientY * scale(),
+				);
+				return;
+			}
+			// Movement beyond the slop means scrolling intent: cancel the pending long-press.
+			if (
+				longPressTimer &&
+				Math.abs(touch.clientX - startX) + Math.abs(touch.clientY - startY) > 12
+			) {
+				window.clearTimeout(longPressTimer);
+				longPressTimer = 0;
+			}
+		};
+
+		const onTouchEnd = (e: TouchEvent) => {
+			if (longPressTimer) {
+				window.clearTimeout(longPressTimer);
+				longPressTimer = 0;
+			}
+			if (AndroidSelectionMenu.nativeSelectionDragActive) {
+				const touch = e.changedTouches[0];
+				if (touch) {
+					AndroidSelectionMenu.finishTextSelectionDrag(
+						touch.clientX * scale(),
+						touch.clientY * scale(),
+					);
+				} else {
+					AndroidSelectionMenu.finishTextSelectionDrag();
+				}
+			}
+		};
+
+		const onTouchCancel = (e: TouchEvent) => {
+			// iOS 系统中断(控制中心/来电/应用切换)会发 touchcancel:
+			// 清定时器,拖拽中则收尾,避免残留手势状态。
+			if (longPressTimer) {
+				window.clearTimeout(longPressTimer);
+				longPressTimer = 0;
+			}
+			if (AndroidSelectionMenu.nativeSelectionDragActive) {
+				const touch = e.changedTouches[0];
+				if (touch) {
+					AndroidSelectionMenu.finishTextSelectionDrag(
+						touch.clientX * scale(),
+						touch.clientY * scale(),
+					);
+				} else {
+					AndroidSelectionMenu.finishTextSelectionDrag();
+				}
+			}
+		};
+
+		document.addEventListener('touchstart', onTouchStart, { passive: true });
+		document.addEventListener('touchmove', onTouchMove, { passive: true });
+		document.addEventListener('touchend', onTouchEnd, { passive: true });
+		document.addEventListener('touchcancel', onTouchCancel, { passive: true });
 	}
 }
 
 (window as any).AndroidSelectionMenu = AndroidSelectionMenu;
-if (window.ThisIsTheAndroidApp) {
+if ((window as any).ThisIsTheAndroidApp || (window as any).ThisIsTheiOSApp) {
 	AndroidSelectionMenu.install();
 }

@@ -261,6 +261,7 @@ COOL_JS_LST =\
 	src/app/GraphicSelectionMiddleware.ts \
 	src/app/TextSelectionMiddleware.ts \
 	src/app/AndroidFindReplaceBridge.ts \
+	src/app/MobileSelectionEvents.ts \
 	src/app/AndroidSelectionMenu.ts \
 	src/app/AndroidCalcTap.ts \
 	src/app/MobileNativeToolbar.ts \
@@ -278,6 +279,7 @@ COOL_JS_LST =\
 	src/app/MobileAiAssistantPanel.ts \
 	src/app/MobileAiOperationSheet.ts \
 	src/app/MobileAiOperationDialog.ts \
+	src/app/MobileSelectionMenu.ts \
 	src/app/MobileAiCalcDialog.ts \
 	src/app/MobileAiTranslateDialog.ts \
 	src/app/MobileAiResultRenderer.ts \
