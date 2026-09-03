@@ -296,6 +296,8 @@ COOL_JS_LST =\
 	src/app/WriterEditorWatermarkDialog.ts \
 	src/app/WriterEditorChartDialog.ts \
 	src/app/WriterEditorInsertTableDialog.ts \
+	src/app/WriterCharPanel.ts \
+	src/app/WriterColorPickerDialog.ts \
 	src/app/WriterEditorShapeDialog.ts \
 	src/app/AndroidCalcCellMenu.ts \
 	src/app/AndroidCalcHeaderMenu.ts \

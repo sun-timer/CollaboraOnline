@@ -499,4 +499,26 @@ describe('WriterEditorController', function () {
 		assert.deepEqual(controller.insertChart('nope'), { dispatched: 'none', reason: 'unknown_chart_type' });
 		assert.equal(adapter.calls.sendUnoCommand.length, 0);
 	});
+	it('applies a font color via FontColor.Color long arg', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.applyFontColor(0xE65D61);
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command, '.uno:FontColor {"FontColor.Color":{"type":"long","value":15097185}}');
+		assert.equal(adapter.calls.sendUnoCommand[0], command);
+	});
+
+	it('applies a highlight color via CharBackColor.Color long arg', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.applyHighlightColor(0xFFFF00);
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command, '.uno:CharBackColor {"CharBackColor.Color":{"type":"long","value":16776960}}');
+	});
 });

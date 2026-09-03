@@ -269,4 +269,19 @@ describe('WriterEditorCatalog', function () {
 		assert.equal(feature.dialog, 'chart');
 		assert.equal(feature.unocmd, '.uno:InsertObjectChart');
 	});
+	it('carries the shared 36-color palette (24 + 12 blocks)', function () {
+		assert.equal(WriterEditorCatalog.CHAR_COLOR_BLOCKS.length, 2);
+		assert.equal(WriterEditorCatalog.CHAR_COLOR_BLOCKS[0].length, 24);
+		assert.equal(WriterEditorCatalog.CHAR_COLOR_BLOCKS[1].length, 12);
+		const flat: number[] = [];
+		WriterEditorCatalog.CHAR_COLOR_BLOCKS.forEach((block) => block.forEach((rgb) => flat.push(rgb)));
+		assert.equal(flat.length, 36);
+		assert.equal(flat[0], 0x8ACFFF);
+		assert.equal(flat[23], 0x000000);
+		assert.equal(flat[24], 0xD20000);
+		assert.equal(flat[35], 0x000000);
+		flat.forEach((rgb) => {
+			assert.ok(rgb >= 0 && rgb <= 0xFFFFFF);
+		});
+	});
 });

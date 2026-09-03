@@ -303,6 +303,27 @@ class WriterEditorController {
 		return { dispatched: 'unocmd', command };
 	}
 
+	/**
+	 * Applies a font color (0xRRGGBB) via FontColor.Color long arg.
+	 * Matches Android buildColorUnoCommand (BottomToolbarController L845-847).
+	 */
+	applyFontColor(rgb: number): WriterEditorRunResult {
+		const command = '.uno:FontColor {"FontColor.Color":{"type":"long","value":' + rgb + '}}';
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
+	/**
+	 * Applies a text-highlight/background color (0xRRGGBB) via
+	 * CharBackColor.Color long arg (Android highlight color picker L750-752).
+	 */
+	applyHighlightColor(rgb: number): WriterEditorRunResult {
+		const command =
+			'.uno:CharBackColor {"CharBackColor.Color":{"type":"long","value":' + rgb + '}}';
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
 	/** Inserts an image as base64 over the mobile insertfile channel. */
 	insertImage(fileName: string, dataBase64: string): WriterEditorRunResult {
 		if (!dataBase64) {

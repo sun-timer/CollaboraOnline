@@ -1452,7 +1452,14 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)bottomToolbarDidPressCharacter
 {
-    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:Bold');}"];
+    if ([nativeDocumentType isEqualToString:@"text"]) {
+        // Writer: character quick panel (ticket 13). Calc keeps the direct
+        // Bold toggle below.
+        [self sendToolbarJavaScript:
+         @"if(window.__coolWriterCharPanel){window.__coolWriterCharPanel.open();}"];
+    } else {
+        [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:Bold');}"];
+    }
 }
 
 - (void)bottomToolbarDidPressParagraph

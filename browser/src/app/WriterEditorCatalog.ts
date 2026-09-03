@@ -219,6 +219,24 @@ class WriterEditorCatalog {
 		},
 	];
 
+	/**
+	 * Shared 36-color palette (24 + 12 blocks, 0xRRGGBB) for the font-color /
+	 * highlight pickers. Transcribes Android CalcFontColorCatalog.BLOCKS
+	 * (script-generated from Figma).
+	 */
+	static readonly CHAR_COLOR_BLOCKS: number[][] = [
+		[
+			0x8ACFFF, 0xD596FF, 0xBEFFC6, 0xFFC891, 0xFFE4E5, 0xFFFFFF,
+			0x009CFF, 0xA628FF, 0x00FF47, 0xFFC700, 0xE65D61, 0xC0C0C0,
+			0x0000FF, 0x7000D5, 0x89CD00, 0xFF9300, 0xA62900, 0x808080,
+			0x010086, 0x390069, 0x008200, 0xFF5700, 0x8C0000, 0x000000,
+		],
+		[
+			0xD20000, 0xFFBD00, 0x7ED330, 0x00B3F7, 0x792BA6, 0xFFFFFF,
+			0xFF0000, 0xFFFF00, 0x00B242, 0x0073C7, 0x002164, 0x000000,
+		],
+	];
+
 	static readonly FEATURES: WriterEditorFeature[] = [
 		// ---- 常用 (default) ----
 		{
