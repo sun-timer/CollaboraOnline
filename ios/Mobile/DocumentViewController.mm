@@ -1290,6 +1290,11 @@ static IMP standardImpOfInputAccessoryView = nil;
 - (void)applyNativeEditMode:(BOOL)editMode
 {
     nativeEditMode = editMode;
+    if (!editMode) {
+        // Leave edit mode: dismiss the DOM function panel if it is open.
+        [self sendToolbarJavaScript:
+         @"if(window.__coolWriterEditorPanel){window.__coolWriterEditorPanel.close();}"];
+    }
     [topToolbarController setEditMode:editMode];
     [bottomToolbarController setEditMode:editMode];
     [bottomToolbarController setCompact:NO];
@@ -1420,8 +1425,14 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)bottomToolbarDidPressFunction
 {
-    // Preview/edit shared sheet (Android preview 功能 parity). Do not open Writer editor panel.
-    [PreviewFunctionSheetController presentFrom:self delegate:self];
+    if (nativeEditMode && [nativeDocumentType isEqualToString:@"text"]) {
+        // Writer edit mode: full five-tab DOM function panel (ticket 12).
+        [self sendToolbarJavaScript:
+         @"if(window.__coolWriterEditorPanel){window.__coolWriterEditorPanel.open();}"];
+    } else {
+        // Preview mode / non-Writer docs: file operations + review sheet.
+        [PreviewFunctionSheetController presentFrom:self delegate:self];
+    }
 }
 
 - (void)bottomToolbarDidPressAIAssistant

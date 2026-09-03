@@ -93,6 +93,10 @@ class WriterFindReplaceDialog {
 		this.searchInput.focus();
 	}
 
+	close(): void {
+		this.sheet.close();
+	}
+
 	private makeModeButton(label: string, isFind: boolean): HTMLButtonElement {
 		const button = document.createElement('button');
 		button.type = 'button';

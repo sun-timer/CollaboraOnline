@@ -94,6 +94,10 @@ class WriterEditorWatermarkDialog {
 		this.textInput.focus();
 	}
 
+	close(): void {
+		this.sheet.close();
+	}
+
 	private apply(): void {
 		this.controller.applyWatermark(
 			this.textInput.value,

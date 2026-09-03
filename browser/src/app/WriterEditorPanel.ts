@@ -15,6 +15,8 @@ class WriterEditorPanel {
 	private readonly grid: HTMLDivElement;
 	private readonly controller: WriterEditorController;
 	private activeTab: WriterEditorTab = 'default';
+	/** Picker/dialog sheets opened from this panel, closed together with it. */
+	private readonly subDialogs: { close(): void }[] = [];
 	private static readonly SUPPORTED_DIALOGS: WriterEditorDialogType[] = [
 		'fontName',
 		'fontSize',
@@ -75,6 +77,20 @@ class WriterEditorPanel {
 		this.sheet.open();
 	}
 
+	/** Closes the panel and any picker/dialog sheets opened from it. */
+	close(): void {
+		const children = this.subDialogs.splice(0);
+		children.forEach((dialog) => dialog.close());
+		this.sheet.close();
+	}
+
+	private presentSub(dialog: { open(): void; close(): void }): void {
+		if (this.sheet.root.parentElement) {
+			this.sheet.close();
+		}
+		this.subDialogs.push(dialog);
+		dialog.open();
+	}
 	private renderTabs(): void {
 		this.tabBar.replaceChildren();
 		WriterEditorCatalog.TABS.forEach((tab) => {
@@ -227,29 +243,25 @@ class WriterEditorPanel {
 	private openFontNameDialog(): void {
 		const options: WriterChooseOption[] = this.getFontOptions()
 			.map((name) => ({ label: name, value: name }));
-		this.sheet.close();
-		new WriterEditorChooseDialog('字体', options, (option) => {
+		this.presentSub(new WriterEditorChooseDialog('字体', options, (option) => {
 			this.controller.applyFontName(WriterEditorCatalog.aliasFont(option.value));
-		}).open();
+		}));
 	}
 
 	private openFontSizeDialog(): void {
 		const table = WriterEditorCatalog.CHAR_HEIGHT_CN;
 		const options = Object.keys(table).map((label) => ({ label, value: table[label] }));
-		this.sheet.close();
-		new WriterEditorChooseDialog('字号', options, (option) => {
+		this.presentSub(new WriterEditorChooseDialog('字号', options, (option) => {
 			this.controller.applyFontSize(option.value);
-		}).open();
+		}));
 	}
 
 	private openFindReplaceDialog(): void {
-		this.sheet.close();
-		new WriterFindReplaceDialog(this.controller).open();
+		this.presentSub(new WriterFindReplaceDialog(this.controller));
 	}
 
 	private openTableDialog(): void {
-		this.sheet.close();
-		new WriterEditorInsertTableDialog(this.controller).open();
+		this.presentSub(new WriterEditorInsertTableDialog(this.controller));
 	}
 
 	private openMarginsDialog(): void {
@@ -257,23 +269,20 @@ class WriterEditorPanel {
 			label: preset.label,
 			value: [preset.left, preset.right, preset.top, preset.bottom].join(':'),
 		}));
-		this.sheet.close();
-		new WriterEditorChooseDialog('页边距', options, (option) => {
+		this.presentSub(new WriterEditorChooseDialog('页边距', options, (option) => {
 			const parts = option.value.split(':').map((part) => parseInt(part, 10));
 			if (parts.length === 4 && parts.every((part) => !isNaN(part))) {
 				this.controller.applyMargins(parts[0], parts[1], parts[2], parts[3]);
 			}
-		}).open();
+		}));
 	}
 
 	private openShapeDialog(): void {
-		this.sheet.close();
-		new WriterEditorShapeDialog(this.controller).open();
+		this.presentSub(new WriterEditorShapeDialog(this.controller));
 	}
 
 	private openChartDialog(): void {
-		this.sheet.close();
-		new WriterEditorChartDialog(this.controller).open();
+		this.presentSub(new WriterEditorChartDialog(this.controller));
 	}
 
 	private openStyleDialog(): void {
@@ -286,17 +295,15 @@ class WriterEditorPanel {
 		}
 		const options: WriterChooseOption[] =
 			WriterEditorCatalog.reorderStyleOptions(styles);
-		this.sheet.close();
-		new WriterEditorChooseDialog('样式', options, (option) => {
+		this.presentSub(new WriterEditorChooseDialog('样式', options, (option) => {
 			this.controller.applyStyle(option.value);
-		}).open();
+		}));
 	}
 
 	private openWatermarkDialog(): void {
 		const fontOptions = this.getFontOptions()
 			.map((name) => WriterEditorCatalog.aliasFont(name));
-		this.sheet.close();
-		new WriterEditorWatermarkDialog(this.controller, fontOptions).open();
+		this.presentSub(new WriterEditorWatermarkDialog(this.controller, fontOptions));
 	}
 
 	private getFontOptions(): string[] {
@@ -312,14 +319,13 @@ class WriterEditorPanel {
 				value: preset.value,
 			}));
 		options.push({ label: '自定义尺寸…', value: 'custom' });
-		this.sheet.close();
-		new WriterEditorChooseDialog('纸张大小', options, (option) => {
+		this.presentSub(new WriterEditorChooseDialog('纸张大小', options, (option) => {
 			if (option.value === 'custom') {
-				new WriterEditorPaperSizeDialog(this.controller).open();
+				this.presentSub(new WriterEditorPaperSizeDialog(this.controller));
 				return;
 			}
 			this.controller.applyPaperFormat(option.value);
-		}).open();
+		}));
 	}
 
 	private openTrackChangesDialog(): void {
@@ -327,10 +333,9 @@ class WriterEditorPanel {
 			{ label: '开启追踪修订', value: 'on' },
 			{ label: '关闭追踪修订', value: 'off' },
 		];
-		this.sheet.close();
-		new WriterEditorChooseDialog('追踪修订', options, (option) => {
+		this.presentSub(new WriterEditorChooseDialog('追踪修订', options, (option) => {
 			this.controller.trackChanges(option.value === 'on');
-		}).open();
+		}));
 	}
 
 	private openImageDialog(): void {
@@ -365,10 +370,9 @@ class WriterEditorPanel {
 			{ label: 'PDF (.pdf)', value: 'pdf' },
 			{ label: '纯文本 (.txt)', value: 'txt' },
 		];
-		this.sheet.close();
-		new WriterEditorChooseDialog('另存为', options, (option) => {
+		this.presentSub(new WriterEditorChooseDialog('另存为', options, (option) => {
 			this.controller.saveAs(option.value);
-		}).open();
+		}));
 	}
 
 	private groupLabel(group: string): string {

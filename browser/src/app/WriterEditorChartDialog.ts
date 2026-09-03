@@ -42,6 +42,10 @@ class WriterEditorChartDialog {
 		this.sheet.open();
 	}
 
+	close(): void {
+		this.sheet.close();
+	}
+
 	private card(label: string, unoType: string): HTMLButtonElement {
 		const button = document.createElement('button');
 		button.type = 'button';

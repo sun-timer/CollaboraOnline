@@ -40,6 +40,10 @@ class WriterEditorShapeDialog {
 		this.sheet.open();
 	}
 
+	close(): void {
+		this.sheet.close();
+	}
+
 	private card(label: string, name: string): HTMLButtonElement {
 		const button = document.createElement('button');
 		button.type = 'button';

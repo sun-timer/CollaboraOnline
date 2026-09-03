@@ -54,6 +54,10 @@ class WriterEditorInsertTableDialog {
 		this.sheet.open();
 	}
 
+	close(): void {
+		this.sheet.close();
+	}
+
 	private insert(): void {
 		this.controller.insertTable(this.columnCount, this.rowCount);
 		this.sheet.close();

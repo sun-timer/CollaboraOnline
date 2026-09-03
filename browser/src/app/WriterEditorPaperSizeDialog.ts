@@ -56,6 +56,10 @@ class WriterEditorPaperSizeDialog {
 		this.sheet.open();
 	}
 
+	close(): void {
+		this.sheet.close();
+	}
+
 	private apply(): void {
 		this.controller.applyCustomPaperSize(this.widthCm, this.heightCm);
 		this.sheet.close();
