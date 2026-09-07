@@ -128,12 +128,7 @@ static UIColor *WriterAIColorAccent(void) {
         title.textColor = WriterAIColorTextPrimary();
         [self addSubview:title];
 
-        UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
-        close.translatesAutoresizingMaskIntoConstraints = NO;
-        [close setImage:[UIImage writerIconNamed:@"close"] forState:UIControlStateNormal];
-        close.tintColor = WriterAIColorTextPrimary();
-        close.accessibilityLabel = @"关闭";
-        [close addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
+        UIButton *close = [WriterAICloseButton closeButtonWithTarget:self action:@selector(closeTapped)];
         [self addSubview:close];
 
         _scrollView = [[UIScrollView alloc] init];
@@ -173,8 +168,6 @@ static UIColor *WriterAIColorAccent(void) {
             [title.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:16],
             [close.centerYAnchor constraintEqualToAnchor:title.centerYAnchor],
             [close.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-16],
-            [close.widthAnchor constraintEqualToConstant:44],
-            [close.heightAnchor constraintEqualToConstant:44],
             [_scrollView.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:8],
             [_scrollView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
             [_scrollView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
@@ -522,6 +515,29 @@ static UIColor *WriterAIColorAccent(void) {
 @end
 
 // ---------------------------------------------------------------------------
+#pragma mark - WriterAICloseButton
+
+@implementation WriterAICloseButton
+
++ (instancetype)closeButtonWithTarget:(id)target action:(SEL)action
+{
+    WriterAICloseButton *close = [self buttonWithType:UIButtonTypeSystem];
+    close.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImage *icon = [UIImage writerIconNamed:@"close"];
+    if (icon != nil) {
+        [close setImage:icon forState:UIControlStateNormal];
+    }
+    close.tintColor = [UIColor colorWithWhite:0.35 alpha:1];
+    close.accessibilityLabel = @"关闭";
+    [close addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+    [close.widthAnchor constraintEqualToConstant:40].active = YES;
+    [close.heightAnchor constraintEqualToConstant:40].active = YES;
+    return close;
+}
+
+@end
+
+// ---------------------------------------------------------------------------
 #pragma mark - UIImage (WriterAIIcons) — Figma/Android-sourced shared icons
 
 #import "WriterAIIconPNG.h"
@@ -804,6 +820,25 @@ static UIColor *WriterAIIconColor(NSString *hex)
                         @{ @"d": @"M24 19H42", @"c": @"#101010" },
                         @{ @"d": @"M6 29H42", @"c": @"#101010" },
                         @{ @"d": @"M6 39H42", @"c": @"#101010" } ] },
+        @{ @"name": @"function-save", @"vb": @64.0, @"sw": @2.67, @"tint": @YES,
+           @"paths": @[
+               @{ @"d": @"M18.6667 8H12C9.79087 8 8 9.79087 8 12V52C8 54.2092 9.79087 56 12 56H52C54.2092 56 56 54.2092 56 52V17.6087L45.7085 8H32.0132M18.6667 8L18.6687 17.8461C18.6687 18.2993 19.2657 18.6667 20.0021 18.6667H30.6688C31.4051 18.6667 32.0021 18.2993 32.0021 17.8461L32.0132 8M18.6667 8H32.0132" },
+               @{ @"d": @"M18.6689 34.6665H45.3356" },
+               @{ @"d": @"M18.6689 45.3335H32.0133" },
+           ] },
+        @{ @"name": @"function-export-pdf", @"vb": @64.0, @"sw": @2.67, @"tint": @YES,
+           @"paths": @[
+               @{ @"d": @"M53.3337 30.6668V18.6668L41.3337 5.3335H13.3337C11.8609 5.3335 10.667 6.5274 10.667 8.00016V56.0002C10.667 57.473 11.8609 58.6668 13.3337 58.6668H29.3337" },
+               @{ @"d": @"M40 5.3335V18.6668H53.3333" },
+               @{ @"d": @"M32 47.0283H56" },
+               @{ @"d": @"M48 55.0283L56 47.0283L48 39.0283" },
+           ] },
+        @{ @"name": @"function-print", @"vb": @64.0, @"sw": @2.67, @"tint": @YES,
+           @"paths": @[
+               @{ @"d": @"M49.3356 42.6665H14.6689V58.6665H49.3356V42.6665Z" },
+               @{ @"d": @"M50.6644 5.3335H13.3311V26.6668H50.6644V5.3335Z" },
+               @{ @"d": @"M5.33105 26.6665H58.6644V50.6665H49.3541V42.6665H14.6384V50.6665H5.33105V26.6665Z" },
+           ] },
     ];
 }
 

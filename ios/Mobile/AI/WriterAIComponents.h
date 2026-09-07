@@ -51,6 +51,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Shared icons (Figma-sourced; replaces SF Symbols)
 
+@interface WriterAICloseButton : UIButton
++ (instancetype)closeButtonWithTarget:(id)target action:(SEL)action;
+@end
+
 @interface UIImage (WriterAIIcons)
 + (nullable UIImage *)writerIconNamed:(nonnull NSString *)name;
 @end

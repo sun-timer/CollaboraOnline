@@ -51,17 +51,7 @@
     title.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
     title.textAlignment = NSTextAlignmentCenter;
 
-    UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
-    close.translatesAutoresizingMaskIntoConstraints = NO;
-    UIImage *closeImage = [UIImage writerIconNamed:@"close"];
-    if (closeImage != nil) {
-        [close setImage:closeImage forState:UIControlStateNormal];
-    } else {
-        [close setTitle:@"关闭" forState:UIControlStateNormal];
-    }
-    close.tintColor = [UIColor colorWithWhite:0.35 alpha:1];
-    close.accessibilityLabel = @"关闭";
-    [close addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
+    WriterAICloseButton *close = [WriterAICloseButton closeButtonWithTarget:self action:@selector(closeTapped)];
 
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -90,8 +80,6 @@
         [title.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
         [close.centerYAnchor constraintEqualToAnchor:title.centerYAnchor],
         [close.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-12],
-        [close.widthAnchor constraintEqualToConstant:36],
-        [close.heightAnchor constraintEqualToConstant:36],
         [self.tableView.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:12],
         [self.tableView.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
