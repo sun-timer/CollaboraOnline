@@ -19,6 +19,7 @@ static UIColor *PreviewFunctionSheetColorRowText(void)
 }
 
 @interface PreviewFunctionSheetController ()
+@property (nonatomic, assign) BOOL showWordCount;
 @property (nonatomic, strong) UIButton *fileTabButton;
 @property (nonatomic, strong) UIButton *reviewTabButton;
 @property (nonatomic, strong) UIStackView *fileStack;
@@ -30,8 +31,16 @@ static UIColor *PreviewFunctionSheetColorRowText(void)
 + (instancetype)presentFrom:(UIViewController *)host
                    delegate:(id<PreviewFunctionSheetControllerDelegate>)delegate
 {
+    return [self presentFrom:host delegate:delegate showWordCount:YES];
+}
+
++ (instancetype)presentFrom:(UIViewController *)host
+                   delegate:(id<PreviewFunctionSheetControllerDelegate>)delegate
+              showWordCount:(BOOL)showWordCount
+{
     PreviewFunctionSheetController *sheet = [[PreviewFunctionSheetController alloc] init];
     sheet.actionDelegate = delegate;
+    sheet.showWordCount = showWordCount;
     sheet.modalPresentationStyle = UIModalPresentationPageSheet;
     if (@available(iOS 15.0, *)) {
         UISheetPresentationController *presentation = sheet.sheetPresentationController;
@@ -92,9 +101,7 @@ static UIColor *PreviewFunctionSheetColorRowText(void)
         @[ @"function-export-pdf", @"导出PDF", @"pdf" ],
         @[ @"function-print", @"打印", @"print" ],
     ]];
-    self.reviewStack = [self buildActionStack:@[
-        @[ @"search", @"查找替换", @"find" ],
-    ]];
+    self.reviewStack = [self buildActionStack:[self reviewActionDefs]];
     self.reviewStack.hidden = YES;
 
     [self.view addSubview:title];
@@ -154,6 +161,17 @@ static UIColor *PreviewFunctionSheetColorRowText(void)
     [self setTabSelected:!file forButton:self.reviewTabButton];
     self.fileStack.hidden = !file;
     self.reviewStack.hidden = file;
+}
+
+- (NSArray<NSArray<NSString *> *> *)reviewActionDefs
+{
+    if (self.showWordCount) {
+        return @[
+            @[ @"list", @"字数统计", @"wordcount" ],
+            @[ @"search", @"查找替换", @"find" ],
+        ];
+    }
+    return @[ @[ @"search", @"查找替换", @"find" ] ];
 }
 
 - (UIStackView *)buildActionStack:(NSArray<NSArray<NSString *> *> *)defs
@@ -223,6 +241,8 @@ static UIColor *PreviewFunctionSheetColorRowText(void)
             [row addTarget:self action:@selector(printTapped) forControlEvents:UIControlEventTouchUpInside];
         } else if ([def[2] isEqualToString:@"find"]) {
             [row addTarget:self action:@selector(findTapped) forControlEvents:UIControlEventTouchUpInside];
+        } else if ([def[2] isEqualToString:@"wordcount"]) {
+            [row addTarget:self action:@selector(wordCountTapped) forControlEvents:UIControlEventTouchUpInside];
         }
         [stack addArrangedSubview:row];
     }
@@ -259,6 +279,13 @@ static UIColor *PreviewFunctionSheetColorRowText(void)
 {
     [self dismissViewControllerAnimated:YES completion:^{
         [self.actionDelegate previewFunctionSheetDidRequestFindReplace];
+    }];
+}
+
+- (void)wordCountTapped
+{
+    [self dismissViewControllerAnimated:YES completion:^{
+        [self.actionDelegate previewFunctionSheetDidRequestWordCount];
     }];
 }
 

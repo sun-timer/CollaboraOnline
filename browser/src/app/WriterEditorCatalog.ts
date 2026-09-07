@@ -487,6 +487,15 @@ class WriterEditorCatalog {
 
 		// ---- 审阅 (review) ----
 		{
+			id: 'word-count',
+			label: '字数统计',
+			tab: 'review',
+			icon: 'list',
+			kind: 'command',
+			unocmd: '.uno:WordCountDialog',
+			group: 'review',
+		},
+		{
 			id: 'find-replace',
 			label: '查找替换',
 			tab: 'review',

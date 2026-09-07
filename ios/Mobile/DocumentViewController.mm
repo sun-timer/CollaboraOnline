@@ -1516,7 +1516,9 @@ static IMP standardImpOfInputAccessoryView = nil;
          @"if(window.__coolWriterEditorPanel){window.__coolWriterEditorPanel.open();}"];
     } else {
         // Preview mode / non-Writer docs: file operations + review sheet.
-        [PreviewFunctionSheetController presentFrom:self delegate:self];
+        [PreviewFunctionSheetController presentFrom:self
+                                          delegate:self
+                                     showWordCount:[nativeDocumentType isEqualToString:@"text"]];
     }
 }
 
@@ -1635,6 +1637,11 @@ static IMP standardImpOfInputAccessoryView = nil;
 - (void)previewFunctionSheetDidRequestFindReplace
 {
     [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SearchDialog');}"];
+}
+
+- (void)previewFunctionSheetDidRequestWordCount
+{
+    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:WordCountDialog');}"];
 }
 
 - (void)bottomToolbarDidPressInsertImage

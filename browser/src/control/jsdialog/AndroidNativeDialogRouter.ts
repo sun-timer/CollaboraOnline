@@ -1,6 +1,6 @@
 /* -*- js-indent-level: 8 -*- */
 /*
- * AndroidNativeDialogRouter - intercept core JSDialog on Android and delegate to native UI.
+ * MobileNativeDialogRouter - intercept core JSDialog on Android/iOS and delegate to native UI.
  */
 
 interface NativeDialogControl {
@@ -144,7 +144,27 @@ class AndroidNativeDialogRouter {
 		};
 	}
 
+	private isMobileApp(): boolean {
+		return !!(window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp);
+	}
+
+	private handlesDialogOnThisPlatform(dialogId: string): boolean {
+		if (window.ThisIsTheAndroidApp) {
+			return NATIVE_SPECIFIC_DIALOG_IDS.has(dialogId);
+		}
+		if (window.ThisIsTheiOSApp) {
+			return dialogId === 'WordCountDialog';
+		}
+		return false;
+	}
+
 	private postPayload(payload: NativeDialogPayload): void {
+		if (window.ThisIsTheiOSApp) {
+			if (payload.dialogId === 'WordCountDialog' || this.activeDialogIds.get(payload.windowId) === 'WordCountDialog') {
+				WriterWordCountSheet.handlePayload(payload as WriterWordCountPayload);
+			}
+			return;
+		}
 		if (!window.ThisIsTheAndroidApp || typeof window.postMobileMessage !== 'function') {
 			return;
 		}
@@ -156,7 +176,7 @@ class AndroidNativeDialogRouter {
 	}
 
 	public shouldIntercept(msgData: any): boolean {
-		if (!window.ThisIsTheAndroidApp || !msgData || msgData.id === undefined) {
+		if (!this.isMobileApp() || !msgData || msgData.id === undefined) {
 			return false;
 		}
 		if (msgData.action === 'close') {
@@ -170,9 +190,9 @@ class AndroidNativeDialogRouter {
 			return this.activeWindowIds.has(msgData.id);
 		}
 		if (msgData.type === 'messagebox') {
-			return true;
+			return !!window.ThisIsTheAndroidApp;
 		}
-		if (msgData.dialogid && NATIVE_SPECIFIC_DIALOG_IDS.has(msgData.dialogid)) {
+		if (msgData.dialogid && this.handlesDialogOnThisPlatform(msgData.dialogid)) {
 			return true;
 		}
 		return false;

@@ -14,6 +14,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)previewFunctionSheetDidRequestExportPDF;
 - (void)previewFunctionSheetDidRequestPrint;
 - (void)previewFunctionSheetDidRequestFindReplace;
+- (void)previewFunctionSheetDidRequestWordCount;
 @end
 
 /// Preview-mode「功能」sheet: 文件操作 + 审阅 (Android lolib_sheet_functions parity).
@@ -22,7 +23,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, weak, nullable) id<PreviewFunctionSheetControllerDelegate> actionDelegate;
 
 + (instancetype)presentFrom:(UIViewController *)host
-                   delegate:(id<PreviewFunctionSheetControllerDelegate>)delegate;
+                   delegate:(id<PreviewFunctionSheetControllerDelegate>)delegate
+              showWordCount:(BOOL)showWordCount;
 
 @end
 
