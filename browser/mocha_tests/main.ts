@@ -48,7 +48,9 @@
 /// <reference path="../src/app/WriterEditorWatermarkDialog.ts" />
 /// <reference path="../src/app/WriterEditorSheet.ts" />
 /// <reference path="../src/app/WriterEditorIcons.ts" />
+/// <reference path="../src/app/WriterEditorIcons.ts" />
 /// <reference path="../src/app/MobileWriterComments.ts" />
+/// <reference path="../src/app/WriterParagraphPanel.ts" />
 
 /// <reference path="./CanvasSectionContainer.test.ts" />
 /// <reference path="./CBounds.test.ts" />
@@ -77,3 +79,4 @@
 // NOTE: reference new tests here ...
 /// <reference path="./MobileSelectionMenu.test.ts" />
 /// <reference path="./MobileWriterComments.test.ts" />
+/// <reference path="./WriterParagraphPanel.test.ts" />

@@ -34,6 +34,7 @@ class WriterCharPanel {
 	}
 
 	open(): void {
+		this.closeSiblingPanels();
 		this.refreshToggles();
 		this.subscribeState();
 		this.sheet.open();
@@ -46,6 +47,13 @@ class WriterCharPanel {
 			this.colorPicker = null;
 		}
 		this.sheet.close();
+	}
+
+	private closeSiblingPanels(): void {
+		const paraPanel = (window as any).__coolWriterParaPanel;
+		if (paraPanel && typeof paraPanel.close === 'function') {
+			paraPanel.close();
+		}
 	}
 
 	private buildBody(): HTMLElement {

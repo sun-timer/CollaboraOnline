@@ -1549,7 +1549,8 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)bottomToolbarDidPressParagraph
 {
-    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:LeftPara');}"];
+    [self sendToolbarJavaScript:
+     @"if(window.__coolWriterParaPanel){window.__coolWriterParaPanel.open();}"];
 }
 
 - (void)bottomToolbarDidPressFillCell
