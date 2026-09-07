@@ -167,14 +167,18 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
         ];
         self.itemsStack.distribution = UIStackViewDistributionFillEqually;
         self.scrollView.scrollEnabled = NO;
+        self.scrollView.contentInset = UIEdgeInsetsZero;
         if (self.previewEqualWidthConstraint == nil) {
             self.previewEqualWidthConstraint =
                 [self.itemsStack.widthAnchor constraintEqualToAnchor:self.scrollView.frameLayoutGuide.widthAnchor];
         }
         self.previewEqualWidthConstraint.active = YES;
     } else {
+        // Align Android applyBottomToolbarMode: preview row (3) + edit common (3) + doc-type (2).
         NSMutableArray<NSArray<NSString *> *> *editItems = [NSMutableArray arrayWithArray:@[
+            @[@"mobile-preview", @"手机预览", [NSString stringWithFormat:@"%ld", (long)kMobilePreviewTag]],
             @[@"function", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
+            @[@"ai-assistant", @"AI助手", [NSString stringWithFormat:@"%ld", (long)kAIAssistantTag]],
             @[@"ai-feature", @"AI功能", [NSString stringWithFormat:@"%ld", (long)kAIFeaturesTag]],
             @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", (long)kKeyboardTag]],
             @[@"character", @"字符", [NSString stringWithFormat:@"%ld", (long)kCharacterTag]],
@@ -189,6 +193,7 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
         items = editItems;
         self.itemsStack.distribution = UIStackViewDistributionFill;
         self.scrollView.scrollEnabled = YES;
+        self.scrollView.contentInset = UIEdgeInsetsMake(0.0, 10.0, 0.0, 10.0);
         if (self.previewEqualWidthConstraint != nil) {
             self.previewEqualWidthConstraint.active = NO;
         }
