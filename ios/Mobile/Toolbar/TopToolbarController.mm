@@ -240,6 +240,12 @@ static UIView *toolbarSpacer(void)
     self.redoButton.alpha = redoEnabled ? 1.0 : 0.35;
 }
 
+- (void)setCommentCount:(NSInteger)commentCount
+{
+    _commentCount = commentCount;
+    self.commentBadge.hidden = commentCount <= 0;
+}
+
 - (void)setDocumentType:(NSString *)documentType
 {
     _documentType = [documentType copy];

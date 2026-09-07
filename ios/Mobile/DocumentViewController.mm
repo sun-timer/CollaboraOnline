@@ -37,6 +37,7 @@
 #import "Bridge/NativeBridgeHandler.h"
 #import "Toolbar/BottomToolbarController.h"
 #import "Toolbar/PreviewFunctionSheetController.h"
+#import "Toolbar/CommentListSheetController.h"
 #import "Toolbar/TopToolbarController.h"
 
 #import "DocumentViewController.h"
@@ -46,7 +47,7 @@
 #import <Poco/MemoryStream.h>
 #import <PhotosUI/PhotosUI.h>
 
-@interface DocumentViewController() <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, UIScrollViewDelegate, UIDocumentPickerDelegate, UIFontPickerViewControllerDelegate, PHPickerViewControllerDelegate, IOSTopToolbarControllerDelegate, IOSBottomToolbarControllerDelegate, PreviewFunctionSheetControllerDelegate> {
+@interface DocumentViewController() <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, UIScrollViewDelegate, UIDocumentPickerDelegate, UIFontPickerViewControllerDelegate, PHPickerViewControllerDelegate, IOSTopToolbarControllerDelegate, IOSBottomToolbarControllerDelegate, PreviewFunctionSheetControllerDelegate, CommentListSheetControllerDelegate> {
     int closeNotificationPipeForForwardingThread[2];
     NSURL *downloadAsTmpURL;
     NativeBridgeHandler *nativeBridgeHandler;
@@ -1109,6 +1110,9 @@ static IMP standardImpOfInputAccessoryView = nil;
         } else if ([message.body hasPrefix:@"UNDOREDO "]) {
             [self applyNativeUndoRedoState:message.body];
             return;
+        } else if ([message.body hasPrefix:@"COMMENTCOUNT "]) {
+            [self applyNativeCommentCount:message.body];
+            return;
         } else if ([message.body hasPrefix:@"CALC_CELL_TAP"]) {
             // Android-only diagnostic/gesture bridge message.  Older shared
             // Browser bundles may still emit it; never send it to Core.
@@ -1315,6 +1319,18 @@ static IMP standardImpOfInputAccessoryView = nil;
     topToolbarController.redoEnabled = redoEnabled;
 }
 
+- (void)applyNativeCommentCount:(NSString *)message
+{
+    NSInteger count = 0;
+    for (NSString *part in [message componentsSeparatedByString:@" "]) {
+        if ([part hasPrefix:@"n="]) {
+            count = [[part substringFromIndex:2] integerValue];
+            break;
+        }
+    }
+    topToolbarController.commentCount = count;
+}
+
 - (void)saveAfterReadOnlyTransition
 {
     if (self.document->fakeClientFd < 0) {
@@ -1408,7 +1424,76 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)topToolbarDidPressComment
 {
-    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:InsertAnnotation');}"];
+    NSString *script = @"(function(){"
+                        "if(typeof window.__coolFetchWriterComments==='function'){"
+                        "return window.__coolFetchWriterComments();"
+                        "}"
+                        "return '{\"comments\":[]}';"
+                        "})();";
+    [self.webView evaluateJavaScript:script
+                   completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+        if (error != nil) {
+            LOG_ERR("Fetch writer comments failed: " << [[error localizedDescription] UTF8String]);
+            [self presentWriterCommentList:@[]];
+            return;
+        }
+        NSString *json = [result isKindOfClass:[NSString class]] ? (NSString *)result : @"{\"comments\":[]}";
+        [self presentWriterCommentListFromJson:json];
+    }];
+}
+
+- (void)presentWriterCommentListFromJson:(NSString *)json
+{
+    NSData *data = [json dataUsingEncoding:NSUTF8StringEncoding];
+    if (data == nil) {
+        [self presentWriterCommentList:@[]];
+        return;
+    }
+    id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![parsed isKindOfClass:[NSDictionary class]]) {
+        [self presentWriterCommentList:@[]];
+        return;
+    }
+    NSArray *rawComments = ((NSDictionary *)parsed)[@"comments"];
+    if (![rawComments isKindOfClass:[NSArray class]]) {
+        [self presentWriterCommentList:@[]];
+        return;
+    }
+    NSMutableArray<WriterCommentListItem *> *items = [NSMutableArray array];
+    for (id entry in rawComments) {
+        if (![entry isKindOfClass:[NSDictionary class]]) {
+            continue;
+        }
+        NSDictionary *dict = (NSDictionary *)entry;
+        WriterCommentListItem *item = [[WriterCommentListItem alloc] init];
+        item.commentId = [dict[@"id"] isKindOfClass:[NSString class]] ? dict[@"id"] : @"";
+        item.author = [dict[@"author"] isKindOfClass:[NSString class]] ? dict[@"author"] : @"";
+        item.text = [dict[@"text"] isKindOfClass:[NSString class]] ? dict[@"text"] : @"";
+        item.dateTime = [dict[@"dateTime"] isKindOfClass:[NSString class]] ? dict[@"dateTime"] : @"";
+        if (item.commentId.length > 0) {
+            [items addObject:item];
+        }
+    }
+    [self presentWriterCommentList:items];
+}
+
+- (void)presentWriterCommentList:(NSArray<WriterCommentListItem *> *)comments
+{
+    [CommentListSheetController presentFrom:self comments:comments delegate:self];
+}
+
+- (void)commentListSheetDidSelectCommentId:(NSString *)commentId
+{
+    if (commentId.length == 0) {
+        return;
+    }
+    NSString *escaped = commentId;
+    escaped = [escaped stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
+    escaped = [escaped stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
+    NSString *script = [NSString stringWithFormat:
+        @"(function(){if(typeof window.__coolNavigateWriterComment==='function')"
+         "{return window.__coolNavigateWriterComment('%@');}return false;})();", escaped];
+    [self sendToolbarJavaScript:script];
 }
 
 - (void)bottomToolbarDidPressMobilePreview
