@@ -69,6 +69,7 @@
 		C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE272026082400000001 /* RecentDocumentsStore.mm */; };
 		C0FFEE292026082400000001 /* AIModelConfigStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */; };
 		C0FFEE2C2026082400000001 /* AISettingsDrawerController.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */; };
+		C0FFEE2E2026082400000002 /* AISettingsDrawerIcons.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2F2026082400000002 /* AISettingsDrawerIcons.mm */; };
 		C0FFEE302026091200000001 /* TypesetService.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE312026091200000001 /* TypesetService.mm */; };
 		C0FFEE342026091200000001 /* zip.c in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE352026091200000001 /* zip.c */; };
 		C0FFEE362026091200000001 /* unzip.c in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE372026091200000001 /* unzip.c */; };
@@ -951,6 +952,8 @@
 		C0FFEE372026091200000001 /* unzip.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = unzip.c; sourceTree = "<group>"; };
 		C0FFEE392026091200000001 /* ioapi.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ioapi.c; sourceTree = "<group>"; };
 		C0FFEE2E2026082400000001 /* AISettingsDrawerController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AISettingsDrawerController.h; sourceTree = "<group>"; };
+		C0FFEE2F2026082400000002 /* AISettingsDrawerIcons.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AISettingsDrawerIcons.mm; sourceTree = "<group>"; };
+		C0FFEE302026082400000002 /* AISettingsDrawerIcons.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AISettingsDrawerIcons.h; sourceTree = "<group>"; };
 		D0A020260814000000000011 /* TopToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TopToolbarController.h; sourceTree = "<group>"; };
 		D0A020260814000000000012 /* TopToolbarController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = TopToolbarController.mm; sourceTree = "<group>"; };
 		D0A020260814000000000013 /* BottomToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BottomToolbarController.h; sourceTree = "<group>"; };
@@ -2812,6 +2815,8 @@
 				C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */,
 				C0FFEE2E2026082400000001 /* AISettingsDrawerController.h */,
 				C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */,
+				C0FFEE302026082400000002 /* AISettingsDrawerIcons.h */,
+				C0FFEE2F2026082400000002 /* AISettingsDrawerIcons.mm */,
 			);
 			path = AI;
 			sourceTree = "<group>";
@@ -3975,6 +3980,7 @@
 				C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */,
 				C0FFEE292026082400000001 /* AIModelConfigStore.mm in Sources */,
 				C0FFEE2C2026082400000001 /* AISettingsDrawerController.mm in Sources */,
+				C0FFEE2E2026082400000002 /* AISettingsDrawerIcons.mm in Sources */,
 				C0FFEE302026091200000001 /* TypesetService.mm in Sources */,
 				C0FFEE342026091200000001 /* zip.c in Sources */,
 				C0FFEE362026091200000001 /* unzip.c in Sources */,

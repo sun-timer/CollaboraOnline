@@ -301,6 +301,8 @@ COOL_JS_LST =\
 	src/app/WriterEditorWatermarkDialog.ts \
 	src/app/WriterEditorChartDialog.ts \
 	src/app/WriterEditorInsertTableDialog.ts \
+	src/app/WriterEditorImageDialog.ts \
+	src/app/WriterEditorCommentDialog.ts \
 	src/app/WriterCharPanel.ts \
 	src/app/WriterParagraphPanel.ts \
 	src/app/WriterWordCountSheet.ts \

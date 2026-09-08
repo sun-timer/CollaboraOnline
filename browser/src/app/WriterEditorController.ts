@@ -415,6 +415,29 @@ class WriterEditorController {
 		return { dispatched: 'message', message };
 	}
 
+	/** Asks native iOS to open PHPicker for image insert. */
+	requestNativeImagePicker(): WriterEditorRunResult {
+		this.adapter.postMobileMessage('WRITER_OPEN_IMAGE_PICKER');
+		return { dispatched: 'message', message: 'WRITER_OPEN_IMAGE_PICKER' };
+	}
+
+	/** Inserts a Writer comment via InsertAnnotation Author/Text args. */
+	insertComment(text: string, author?: string): WriterEditorRunResult {
+		const content = (text || '').trim();
+		if (!content) {
+			return { dispatched: 'none', reason: 'empty_comment' };
+		}
+		const safeAuthor = (author || '用户昵称').trim() || '用户昵称';
+		const command =
+			'.uno:InsertAnnotation {"Author":{"type":"string","value":' +
+			JSON.stringify(safeAuthor) +
+			'},"Text":{"type":"string","value":' +
+			JSON.stringify(content) +
+			'}}';
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
 	/** Saves-as by dispatching a downloadas message (iOS picks the destination). */
 	saveAs(format: string): WriterEditorRunResult {
 		if (!format) {

@@ -1166,6 +1166,9 @@ static IMP standardImpOfInputAccessoryView = nil;
                                animated:YES
                              completion:nil];
             return;
+        } else if ([message.body isEqualToString:@"WRITER_OPEN_IMAGE_PICKER"]) {
+            [self bottomToolbarDidPressInsertImage];
+            return;
         } else if ([message.body hasPrefix:@"downloadas "]) {
             NSArray<NSString*> *messageBodyItems = [message.body componentsSeparatedByString:@" "];
             NSString *format = nil;

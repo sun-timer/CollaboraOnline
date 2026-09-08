@@ -1,0 +1,23 @@
+{
+  "images": [
+    {
+      "filename": "WriterIconSearch.png",
+      "idiom": "universal",
+      "scale": "1x"
+    },
+    {
+      "filename": "WriterIconSearch@2x.png",
+      "idiom": "universal",
+      "scale": "2x"
+    },
+    {
+      "filename": "WriterIconSearch@3x.png",
+      "idiom": "universal",
+      "scale": "3x"
+    }
+  ],
+  "info": {
+    "author": "generate-writer-function-icons",
+    "version": 1
+  }
+}

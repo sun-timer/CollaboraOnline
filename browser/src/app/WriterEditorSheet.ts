@@ -1,9 +1,10 @@
 /*
- * Writer editor function-panel bottom sheet (Figma: radius 24 top corners,
- * shadow 0 -2 105.4 #00000047, adaptive max-width, safe-area padded).
+ * Writer function-panel bottom sheet shell (Figma / PreviewFunctionSheet aligned).
  *
- * Separate from MobileAiSheet so the function panel can follow its own Figma
- * chrome (24pt radius) without affecting the b0d7fb AI panel (18px).
+ * White header, WriterAICloseButton-style icon close, 24px top radius,
+ * shadow 0 -2 105px rgba(0,0,0,.28). Styles live in writer-mobile.css.
+ *
+ * Separate from MobileAiSheet so AI panels keep their own chrome (18px radius).
  */
 
 class WriterEditorSheet {
@@ -17,10 +18,8 @@ class WriterEditorSheet {
 	constructor(title: string, onClose?: () => void) {
 		this.onClose = onClose;
 		this.root = document.createElement('div');
+		this.root.className = 'writer-function-sheet';
 		this.root.setAttribute('role', 'presentation');
-		this.root.style.cssText =
-			'position:fixed;inset:0;z-index:10001;display:flex;align-items:flex-end;justify-content:center;' +
-			'background:rgba(0,0,0,.32);padding-top:env(safe-area-inset-top);';
 		this.root.onclick = (event) => {
 			if (event.target === this.root) {
 				this.close();
@@ -28,33 +27,37 @@ class WriterEditorSheet {
 		};
 
 		this.panel = document.createElement('div');
+		this.panel.className = 'writer-function-sheet__panel';
 		this.panel.setAttribute('role', 'dialog');
 		this.panel.setAttribute('aria-modal', 'true');
-		this.panel.style.cssText =
-			'display:flex;flex-direction:column;width:100%;max-width:min(670px,calc(100vw - 40px));' +
-			'max-height:92dvh;margin:0 auto;background:var(--color-background,#fff);color:var(--color-text,#222);' +
-			'border-radius:24px 24px 0 0;box-shadow:0 -2px 105px rgba(0,0,0,.28);overflow:hidden;';
 		this.root.appendChild(this.panel);
 
+		const grabber = document.createElement('div');
+		grabber.className = 'writer-function-sheet__grabber';
+		grabber.setAttribute('aria-hidden', 'true');
+		this.panel.appendChild(grabber);
+
 		const header = document.createElement('header');
-		header.style.cssText =
-			'display:flex;align-items:center;min-height:56px;padding:8px 16px;' +
-			'background:linear-gradient(110deg,#f7e6ff,#dff2ff);';
-		this.title = document.createElement('strong');
+		header.className = 'writer-function-sheet__header';
+		this.title = document.createElement('h2');
+		this.title.className = 'writer-function-sheet__title';
 		this.title.textContent = title;
-		this.title.style.cssText = 'flex:1;text-align:center;font-size:20px;';
 		header.appendChild(this.title);
+
 		this.closeButton = document.createElement('button');
 		this.closeButton.type = 'button';
-		this.closeButton.textContent = '关闭';
+		this.closeButton.className = 'writer-function-sheet__close';
 		this.closeButton.setAttribute('aria-label', '关闭功能面板');
+		const closeIcon = WriterEditorIcons.get('close');
+		if (closeIcon) {
+			this.closeButton.innerHTML = closeIcon;
+		}
 		this.closeButton.onclick = () => this.close();
 		header.appendChild(this.closeButton);
 		this.panel.appendChild(header);
 
 		this.body = document.createElement('div');
-		this.body.style.cssText =
-			'overflow:auto;padding:12px 16px calc(16px + env(safe-area-inset-bottom));';
+		this.body.className = 'writer-function-sheet__body';
 		this.panel.appendChild(this.body);
 	}
 

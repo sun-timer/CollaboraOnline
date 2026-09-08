@@ -863,6 +863,22 @@ static UIColor *WriterAIIconColor(NSString *hex)
     ];
 }
 
++ (NSString *)writerAssetCatalogNameForIcon:(NSString *)name
+{
+    NSArray<NSString *> *parts = [name componentsSeparatedByCharactersInSet:
+        [NSCharacterSet characterSetWithCharactersInString:@"-_"]];
+    NSMutableString *asset = [NSMutableString stringWithString:@"WriterIcon"];
+    for (NSString *part in parts) {
+        if (part.length == 0) {
+            continue;
+        }
+        [asset appendFormat:@"%@%@",
+         [[part substringToIndex:1] uppercaseString],
+         part.length > 1 ? [part substringFromIndex:1] : @""];
+    }
+    return asset;
+}
+
 + (nullable UIImage *)writerIconNamed:(NSString *)name
 {
     static NSMutableDictionary<NSString *, UIImage *> *cache;
@@ -876,6 +892,14 @@ static UIColor *WriterAIIconColor(NSString *hex)
     UIImage *cached = cache[name];
     if (cached) {
         return cached;
+    }
+
+    NSString *assetName = [self writerAssetCatalogNameForIcon:name];
+    UIImage *catalog = [UIImage imageNamed:assetName];
+    if (catalog) {
+        catalog = [catalog imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        cache[name] = catalog;
+        return catalog;
     }
 
     // Bitmap icons (Android Figma exports).

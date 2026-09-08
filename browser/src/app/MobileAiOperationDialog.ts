@@ -151,13 +151,13 @@ class MobileAiOperationDialog {
 		this.copyButton.onclick = () => this.controller.copy();
 		resultActions.appendChild(this.copyButton);
 		this.regenerateButton = this.createButton('重新生成');
-		this.regenerateButton.onclick = () => this.controller.regenerate();
+		this.regenerateButton.onclick = () => this.regenerate();
 		resultActions.appendChild(this.regenerateButton);
 		this.applyButton = this.createButton('插入文档');
 		this.applyButton.onclick = () =>
 			this.controller.accept(MobileAiResultRenderer.toHtml(this.controller.getState().preview));
-		this.regenerateButton = this.createButton('重新生成');
-		this.regenerateButton.onclick = () => this.regenerate();
+		resultActions.appendChild(this.applyButton);
+		content.appendChild(resultActions);
 		this.sheet.setBody(content);
 		this.unsubscribe = this.controller.subscribe(() => this.render());
 	}

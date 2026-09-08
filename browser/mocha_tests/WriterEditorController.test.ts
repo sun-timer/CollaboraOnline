@@ -358,6 +358,44 @@ describe('WriterEditorController', function () {
 		assert.deepEqual(adapter.calls.postMobileMessage, ['insertfile name=pic.png type=graphic data=AAAA']);
 	});
 
+	it('requests native image picker over WRITER_OPEN_IMAGE_PICKER', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.requestNativeImagePicker();
+
+		assert.deepEqual(result, {
+			dispatched: 'message',
+			message: 'WRITER_OPEN_IMAGE_PICKER',
+		});
+		assert.deepEqual(adapter.calls.postMobileMessage, ['WRITER_OPEN_IMAGE_PICKER']);
+	});
+
+	it('inserts a comment via InsertAnnotation Author/Text', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertComment('你好', 'Alice');
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(
+			command,
+			'.uno:InsertAnnotation {"Author":{"type":"string","value":"Alice"},"Text":{"type":"string","value":"你好"}}',
+		);
+	});
+
+	it('rejects an empty comment without dispatching', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		assert.deepEqual(controller.insertComment('   '), {
+			dispatched: 'none',
+			reason: 'empty_comment',
+		});
+		assert.equal(adapter.calls.sendUnoCommand.length, 0);
+	});
+
 	it('saves as via a downloadas message', function () {
 		const adapter = createFakeAdapter('text');
 		const controller = new WriterEditorController(adapter);

@@ -1,0 +1,481 @@
+/*
+ * iOS Writer mobile function-panel chrome (Figma / PreviewFunctionSheet aligned).
+ * Used by WriterEditorSheet and WriterEditorPanel DOM surfaces.
+ */
+
+:root {
+	--writer-function-title: #15171a;
+	--writer-function-row-text: #333333;
+	--writer-function-tab-track: #f2f3f5;
+	--writer-function-tab-inactive: rgba(0, 0, 0, 0.42);
+	--writer-function-tile-bg: #f2f3f5;
+	--writer-function-accent: #1278d9;
+	--writer-function-hint-bg: #e6ebf2;
+	--writer-function-hint-text: #5f6368;
+	--writer-function-hint-selection: #188038;
+	--writer-function-divider: rgba(0, 0, 0, 0.08);
+	--writer-function-sheet-shadow: 0 -2px 105px rgba(0, 0, 0, 0.28);
+}
+
+.writer-function-sheet {
+	position: fixed;
+	inset: 0;
+	z-index: 10001;
+	display: flex;
+	align-items: flex-end;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.32);
+	padding-top: env(safe-area-inset-top);
+}
+
+.writer-function-sheet__panel {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	max-width: min(670px, calc(100vw - 40px));
+	max-height: 92dvh;
+	margin: 0 auto;
+	background: #fff;
+	color: #222;
+	border-radius: 24px 24px 0 0;
+	box-shadow: var(--writer-function-sheet-shadow);
+	overflow: hidden;
+}
+
+.writer-function-sheet__grabber {
+	flex-shrink: 0;
+	width: 36px;
+	height: 5px;
+	margin: 8px auto 0;
+	border-radius: 2.5px;
+	background: rgba(0, 0, 0, 0.16);
+}
+
+.writer-function-sheet__header {
+	display: grid;
+	grid-template-columns: 40px 1fr 40px;
+	align-items: center;
+	min-height: 48px;
+	padding: 7px 12px 0;
+	background: #fff;
+}
+
+.writer-function-sheet__title {
+	grid-column: 2;
+	margin: 0;
+	text-align: center;
+	font-size: 18px;
+	font-weight: 600;
+	color: var(--writer-function-title);
+}
+
+.writer-function-sheet__close {
+	grid-column: 3;
+	justify-self: end;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 40px;
+	height: 40px;
+	padding: 0;
+	border: none;
+	background: none;
+	cursor: pointer;
+	color: rgba(0, 0, 0, 0.35);
+}
+
+.writer-function-sheet__close svg {
+	width: 24px;
+	height: 24px;
+}
+
+.writer-function-sheet__body {
+	overflow: auto;
+	padding: 11px 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+.writer-function-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.writer-function-tab-bar {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-height: 44px;
+}
+
+.writer-function-tab-track {
+	flex: 1;
+	min-width: 0;
+	padding: 2px 4px;
+	border-radius: 12px;
+	background: var(--writer-function-tab-track);
+}
+
+.writer-function-tab-scroll {
+	display: flex;
+	gap: 4px;
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: none;
+}
+
+.writer-function-tab-scroll::-webkit-scrollbar {
+	display: none;
+}
+
+.writer-function-tab {
+	flex: 0 0 auto;
+	min-width: 0;
+	height: 30px;
+	padding: 0 12px;
+	border: none;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--writer-function-tab-inactive);
+	font: inherit;
+	font-size: 16px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.writer-function-tab--active {
+	background: #fff;
+	color: #000;
+}
+
+.writer-function-tab-divider {
+	flex-shrink: 0;
+	width: 1px;
+	height: 28px;
+	background: #d8dde3;
+}
+
+.writer-function-tab-actions {
+	display: flex;
+	flex-shrink: 0;
+	align-items: center;
+	gap: 0;
+}
+
+.writer-function-action-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	padding: 0;
+	border: none;
+	background: none;
+	cursor: pointer;
+	flex-shrink: 0;
+	color: var(--writer-function-row-text);
+}
+
+.writer-function-action-btn svg {
+	width: 24px;
+	height: 24px;
+}
+
+.writer-function-hint {
+	padding: 10px;
+	border-radius: 8px;
+	text-align: center;
+	background: var(--writer-function-hint-bg);
+	color: var(--writer-function-hint-text);
+	font-size: 14px;
+}
+
+.writer-function-hint--selection {
+	color: var(--writer-function-hint-selection);
+}
+
+.writer-function-hint--hidden {
+	display: none;
+}
+
+.writer-function-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+}
+
+.writer-function-grid--narrow {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.writer-function-grid__group-title {
+	grid-column: 1 / -1;
+	margin: 8px 0 0;
+	font-size: 18px;
+}
+
+.writer-function-tile {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	min-height: 96px;
+	padding: 12px 8px;
+	border: none;
+	border-radius: 24px;
+	background: var(--writer-function-tile-bg);
+	font: inherit;
+	cursor: pointer;
+}
+
+.writer-function-tile:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.writer-function-tile__icon {
+	width: 24px;
+	height: 24px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--writer-function-accent);
+}
+
+.writer-function-tile__label {
+	font-size: 14px;
+	color: #101010;
+	text-align: center;
+}
+
+.writer-function-toggle-row {
+	grid-column: 1 / -1;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 52px;
+	padding: 12px 16px;
+	border-radius: 12px;
+	background: var(--writer-function-tile-bg);
+}
+
+.writer-function-toggle-row__icon {
+	width: 24px;
+	height: 24px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	color: var(--writer-function-accent);
+}
+
+.writer-function-toggle-row__label {
+	flex: 1;
+	font-size: 16px;
+	color: #101010;
+}
+
+.writer-function-toggle-row__input {
+	width: 20px;
+	height: 20px;
+	flex-shrink: 0;
+	cursor: pointer;
+}
+
+/* File tab — PreviewFunctionSheet-aligned action rows (issue 14) */
+.writer-function-list {
+	display: flex;
+	flex-direction: column;
+	margin: 0 -16px;
+}
+
+.writer-function-list-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	min-height: 64px;
+	padding: 16px;
+	border: none;
+	background: transparent;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	color: var(--writer-function-row-text);
+}
+
+.writer-function-list-row:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.writer-function-list-row__icon {
+	width: 32px;
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	color: var(--writer-function-row-text);
+}
+
+.writer-function-list-row__label {
+	flex: 1;
+	font-size: 18px;
+	color: var(--writer-function-row-text);
+}
+
+.writer-function-list-divider {
+	height: 1px;
+	margin: 0 16px;
+	background: var(--writer-function-divider);
+}
+
+/* Insert tab — 2×3 card grid (issue 15) */
+.writer-function-grid--insert {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 12px 10px;
+}
+
+.writer-function-grid--insert .writer-function-tile {
+	min-height: 112px;
+	border-radius: 24px;
+}
+
+.writer-function-grid--insert .writer-function-grid__group-title {
+	display: none;
+}
+
+/* Comment insert sub-sheet (issue 15) */
+.writer-comment-sheet {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.writer-comment-card {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 16px;
+	border-radius: 16px;
+	background: var(--writer-function-tile-bg);
+}
+
+.writer-comment-author {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.writer-comment-author__avatar {
+	width: 40px;
+	height: 40px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	background: #fff;
+	color: var(--writer-function-accent);
+	flex-shrink: 0;
+}
+
+.writer-comment-author__avatar svg {
+	width: 24px;
+	height: 24px;
+}
+
+.writer-comment-author__meta {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.writer-comment-author__name {
+	font-size: 15px;
+	font-weight: 600;
+	color: #101010;
+}
+
+.writer-comment-author__date {
+	font-size: 12px;
+	color: #80868b;
+}
+
+.writer-comment-input {
+	width: 100%;
+	min-height: 96px;
+	padding: 12px;
+	border: 1px solid #e6e8eb;
+	border-radius: 12px;
+	background: #fff;
+	font: inherit;
+	font-size: 15px;
+	color: #101010;
+	resize: vertical;
+	box-sizing: border-box;
+}
+
+.writer-comment-input::placeholder {
+	color: #999;
+}
+
+.writer-comment-actions {
+	display: flex;
+	gap: 12px;
+}
+
+.writer-comment-btn {
+	flex: 1;
+	padding: 14px 16px;
+	border: none;
+	border-radius: 12px;
+	font: inherit;
+	font-size: 16px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.writer-comment-btn--cancel {
+	background: #f2f3f5;
+	color: #101010;
+}
+
+.writer-comment-btn--save {
+	background: linear-gradient(110deg, #c7f3ff, #f1d9ff);
+	color: #101010;
+}
+
+/* Image insert sub-sheet (issue 15) */
+.writer-image-sheet {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.writer-image-option {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	min-height: 56px;
+	padding: 14px 16px;
+	border: 1px solid #e6e8eb;
+	border-radius: 16px;
+	background: #fff;
+	font: inherit;
+	font-size: 16px;
+	color: #101010;
+	cursor: pointer;
+}
+
+.writer-image-option__icon {
+	width: 28px;
+	height: 28px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--writer-function-accent);
+	flex-shrink: 0;
+}

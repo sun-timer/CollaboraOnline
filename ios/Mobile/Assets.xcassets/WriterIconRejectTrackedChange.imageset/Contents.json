@@ -1,0 +1,23 @@
+{
+  "images": [
+    {
+      "filename": "WriterIconRejectTrackedChange.png",
+      "idiom": "universal",
+      "scale": "1x"
+    },
+    {
+      "filename": "WriterIconRejectTrackedChange@2x.png",
+      "idiom": "universal",
+      "scale": "2x"
+    },
+    {
+      "filename": "WriterIconRejectTrackedChange@3x.png",
+      "idiom": "universal",
+      "scale": "3x"
+    }
+  ],
+  "info": {
+    "author": "generate-writer-function-icons",
+    "version": 1
+  }
+}

@@ -32,7 +32,8 @@ type WriterEditorDialogType =
 	| 'saveAs' // save-as dialog
 	| 'pageBreak' // page break options
 	| 'pageNumber' // insert page number field
-	| 'chart'; // insert chart (InsertObjectChart type picker)
+	| 'chart' // insert chart (InsertObjectChart type picker)
+	| 'comment'; // insert annotation with Author/Text
 
 interface WriterEditorFeature {
 	id: string;
@@ -424,9 +425,9 @@ class WriterEditorCatalog {
 			label: '批注',
 			tab: 'insert',
 			icon: 'comment',
-			kind: 'command',
+			kind: 'dialog',
+			dialog: 'comment',
 			unocmd: '.uno:InsertAnnotation',
-			needsSelection: true,
 			group: 'insert',
 		},
 		{
