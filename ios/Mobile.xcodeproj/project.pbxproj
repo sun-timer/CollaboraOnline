@@ -73,6 +73,7 @@
 		D0A020260814000000000002 /* BottomToolbarController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000014 /* BottomToolbarController.mm */; };
 		D0A020260814000000000003 /* PreviewFunctionSheetController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000016 /* PreviewFunctionSheetController.mm */; };
 		D0A020260907010000000004 /* CommentListSheetController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260907010000000018 /* CommentListSheetController.mm */; };
+		D0A020260908120000000004 /* DocumentTabsSheetController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260908120000000018 /* DocumentTabsSheetController.mm */; };
 		BE8D77352136762500AC58EA /* CODocument.mm in Sources */ = {isa = PBXBuildFile; fileRef = BE8D77342136762500AC58EA /* CODocument.mm */; };
 		BE8D77382136762500AC58EA /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BE8D77362136762500AC58EA /* Main.storyboard */; };
 		BE8D773A2136762600AC58EA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BE8D77392136762600AC58EA /* Assets.xcassets */; };
@@ -948,6 +949,8 @@
 		D0A020260814000000000016 /* PreviewFunctionSheetController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = PreviewFunctionSheetController.mm; sourceTree = "<group>"; };
 		D0A020260907010000000017 /* CommentListSheetController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CommentListSheetController.h; sourceTree = "<group>"; };
 		D0A020260907010000000018 /* CommentListSheetController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CommentListSheetController.mm; sourceTree = "<group>"; };
+		D0A020260908120000000017 /* DocumentTabsSheetController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DocumentTabsSheetController.h; sourceTree = "<group>"; };
+		D0A020260908120000000018 /* DocumentTabsSheetController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DocumentTabsSheetController.mm; sourceTree = "<group>"; };
 		BE8D77332136762500AC58EA /* CODocument.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CODocument.h; sourceTree = "<group>"; };
 		BE8D77342136762500AC58EA /* CODocument.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objcpp; path = CODocument.mm; sourceTree = "<group>"; };
 		BE8D77372136762500AC58EA /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
@@ -2822,6 +2825,8 @@
 				D0A020260814000000000016 /* PreviewFunctionSheetController.mm */,
 				D0A020260907010000000017 /* CommentListSheetController.h */,
 				D0A020260907010000000018 /* CommentListSheetController.mm */,
+				D0A020260908120000000017 /* DocumentTabsSheetController.h */,
+				D0A020260908120000000018 /* DocumentTabsSheetController.mm */,
 			);
 			path = Toolbar;
 			sourceTree = "<group>";
@@ -3942,6 +3947,7 @@
 				D0A020260814000000000002 /* BottomToolbarController.mm in Sources */,
 				D0A020260814000000000003 /* PreviewFunctionSheetController.mm in Sources */,
 				D0A020260907010000000004 /* CommentListSheetController.mm in Sources */,
+				D0A020260908120000000004 /* DocumentTabsSheetController.mm in Sources */,
 				BE8D772C2136762500AC58EA /* AppDelegate.mm in Sources */,
 				AB1201002F000000000000D1 /* WriterAIComponents.mm in Sources */,
 			);

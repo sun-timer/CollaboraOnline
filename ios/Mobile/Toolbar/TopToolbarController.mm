@@ -19,6 +19,7 @@
 @property (nonatomic, strong) UIButton *redoButton;
 @property (nonatomic, strong) UIButton *commentButton;
 @property (nonatomic, strong) UIView *commentBadge;
+@property (nonatomic, strong) UILabel *openDocsCountLabel;
 @property (nonatomic, copy) NSString *documentType;
 @end
 
@@ -93,6 +94,18 @@ static UIView *toolbarSpacer(void)
     [previewDocumentsButton addTarget:self action:@selector(documentsPressed:)
                      forControlEvents:UIControlEventTouchUpInside];
     [_previewRow addSubview:previewDocumentsButton];
+
+    _openDocsCountLabel = [[UILabel alloc] init];
+    _openDocsCountLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _openDocsCountLabel.font = [UIFont systemFontOfSize:10 weight:UIFontWeightSemibold];
+    _openDocsCountLabel.textColor = [UIColor colorWithWhite:0.05 alpha:1.0];
+    _openDocsCountLabel.textAlignment = NSTextAlignmentCenter;
+    _openDocsCountLabel.text = @"1";
+    [previewDocumentsButton addSubview:_openDocsCountLabel];
+    [NSLayoutConstraint activateConstraints:@[
+        [_openDocsCountLabel.centerXAnchor constraintEqualToAnchor:previewDocumentsButton.centerXAnchor],
+        [_openDocsCountLabel.topAnchor constraintEqualToAnchor:previewDocumentsButton.topAnchor constant:18],
+    ]];
 
     _editRow = [[UIView alloc] init];
     _editRow.translatesAutoresizingMaskIntoConstraints = NO;
@@ -251,6 +264,13 @@ static UIView *toolbarSpacer(void)
 {
     _commentCount = commentCount;
     self.commentBadge.hidden = commentCount <= 0;
+}
+
+- (void)setOpenDocumentCount:(NSInteger)openDocumentCount
+{
+    _openDocumentCount = openDocumentCount;
+    NSInteger displayCount = MAX(openDocumentCount, 1);
+    self.openDocsCountLabel.text = [NSString stringWithFormat:@"%ld", (long)displayCount];
 }
 
 - (void)setDocumentType:(NSString *)documentType

@@ -32,6 +32,7 @@ typedef NS_ENUM(NSInteger, IOSTopToolbarMode) {
 @property (nonatomic, assign) BOOL undoEnabled;
 @property (nonatomic, assign) BOOL redoEnabled;
 @property (nonatomic, assign) NSInteger commentCount;
+@property (nonatomic, assign) NSInteger openDocumentCount;
 
 - (instancetype)initWithDelegate:(id<IOSTopToolbarControllerDelegate>)delegate;
 - (void)setEditMode:(BOOL)editMode;

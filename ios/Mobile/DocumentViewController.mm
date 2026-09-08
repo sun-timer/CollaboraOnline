@@ -38,6 +38,9 @@
 #import "Toolbar/BottomToolbarController.h"
 #import "Toolbar/PreviewFunctionSheetController.h"
 #import "Toolbar/CommentListSheetController.h"
+#import "Toolbar/DocumentTabsSheetController.h"
+#import "DocumentPresentation.h"
+#import "RecentDocumentsStore.h"
 #import "Toolbar/TopToolbarController.h"
 
 #import "DocumentViewController.h"
@@ -47,7 +50,7 @@
 #import <Poco/MemoryStream.h>
 #import <PhotosUI/PhotosUI.h>
 
-@interface DocumentViewController() <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, UIScrollViewDelegate, UIDocumentPickerDelegate, UIFontPickerViewControllerDelegate, PHPickerViewControllerDelegate, IOSTopToolbarControllerDelegate, IOSBottomToolbarControllerDelegate, PreviewFunctionSheetControllerDelegate, CommentListSheetControllerDelegate> {
+@interface DocumentViewController() <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, UIScrollViewDelegate, UIDocumentPickerDelegate, UIFontPickerViewControllerDelegate, PHPickerViewControllerDelegate, IOSTopToolbarControllerDelegate, IOSBottomToolbarControllerDelegate, PreviewFunctionSheetControllerDelegate, CommentListSheetControllerDelegate, DocumentTabsSheetControllerDelegate> {
     int closeNotificationPipeForForwardingThread[2];
     NSURL *downloadAsTmpURL;
     NativeBridgeHandler *nativeBridgeHandler;
@@ -74,6 +77,7 @@
     AISettingsDrawerController *aiDrawer;
     BOOL isClosing;
     BOOL kitConnectionTornDown;
+    BOOL documentPickerOpeningDocument;
 }
 
 @end
@@ -223,6 +227,7 @@ static IMP standardImpOfInputAccessoryView = nil;
         [[documentURL.lastPathComponent stringByDeletingPathExtension] copy]];
     [topToolbarController setDocumentType:nativeDocumentType];
     [bottomToolbarController setDocumentType:nativeDocumentType];
+    [self refreshOpenDocumentCount];
     [topToolbarContainer addSubview:topToolbarController.view];
     [bottomToolbarContainer addSubview:bottomToolbarController.view];
 
@@ -1201,11 +1206,23 @@ static IMP standardImpOfInputAccessoryView = nil;
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    if (documentPickerOpeningDocument) {
+        documentPickerOpeningDocument = NO;
+        NSURL *url = urls.firstObject;
+        if (url != nil) {
+            [self switchToDocumentAtURL:url];
+        }
+        return;
+    }
     std::remove([[downloadAsTmpURL path] UTF8String]);
     std::remove([[[downloadAsTmpURL URLByDeletingLastPathComponent] path] UTF8String]);
 }
 
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
+    if (documentPickerOpeningDocument) {
+        documentPickerOpeningDocument = NO;
+        return;
+    }
     std::remove([[downloadAsTmpURL path] UTF8String]);
     std::remove([[[downloadAsTmpURL URLByDeletingLastPathComponent] path] UTF8String]);
 }
@@ -1388,6 +1405,39 @@ static IMP standardImpOfInputAccessoryView = nil;
     });
 }
 
+- (void)viewDidAppear:(BOOL)animated
+{
+    [super viewDidAppear:animated];
+    [self refreshOpenDocumentCount];
+}
+
+- (void)refreshOpenDocumentCount
+{
+    RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
+    [topToolbarController setOpenDocumentCount:(NSInteger)store.openDocumentCount];
+}
+
+- (void)switchToDocumentAtURL:(NSURL *)url
+{
+    if (url == nil || self.document == nil) {
+        return;
+    }
+    NSURL *current = self.document->copyFileURL;
+    if (current != nil &&
+        [url.path.stringByStandardizingPath isEqualToString:current.path.stringByStandardizingPath]) {
+        return;
+    }
+    RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
+    [store recordURL:url];
+    UIViewController *presenter = self.presentingViewController;
+    if (presenter == nil) {
+        return;
+    }
+    [self requestCloseWithCompletion:^{
+        [DocumentPresentation presentDocumentAtURL:url from:presenter];
+    }];
+}
+
 - (void)showToolbarPlaceholder:(NSString *)message
 {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示"
@@ -1445,7 +1495,11 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)topToolbarDidPressDocuments
 {
-    [self showToolbarPlaceholder:@"已打开文档列表将在后续阶段接入。"];
+    RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
+    [DocumentTabsSheetController presentFrom:self
+                                       store:store
+                                  currentURL:self.document->copyFileURL
+                                    delegate:self];
 }
 
 - (void)topToolbarDidPressClose
@@ -1684,6 +1738,39 @@ static IMP standardImpOfInputAccessoryView = nil;
 - (void)previewFunctionSheetDidRequestSpellCheck
 {
     [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SpellDialog');}"];
+}
+
+#pragma mark - DocumentTabsSheetControllerDelegate
+
+- (NSURL *)currentDocumentURLForDocumentTabsSheet
+{
+    return self.document->copyFileURL;
+}
+
+- (void)documentTabsSheetDidSelectURL:(NSURL *)url
+{
+    [self switchToDocumentAtURL:url];
+}
+
+- (void)documentTabsSheetDidRequestOpenDocument
+{
+    UIDocumentPickerViewController *picker =
+        [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeItem ] asCopy:NO];
+    picker.delegate = self;
+    picker.allowsMultipleSelection = NO;
+    picker.shouldShowFileExtensions = YES;
+    documentPickerOpeningDocument = YES;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)documentTabsSheetDidChangeDocumentList
+{
+    [self refreshOpenDocumentCount];
+}
+
+- (void)documentTabsSheetDidDismiss
+{
+    [self refreshOpenDocumentCount];
 }
 
 - (void)bottomToolbarDidPressInsertImage
