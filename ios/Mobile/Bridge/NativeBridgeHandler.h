@@ -11,8 +11,14 @@
 
 typedef NSString * (^NativeBridgeSessionIdProvider)(void);
 typedef void (^NativeBridgeMessageEmitter)(NSDictionary *message);
+typedef NSURL * _Nullable (^NativeBridgeDocumentURLProvider)(void);
+typedef void (^NativeBridgeReloadDocumentHandler)(void);
 
 @interface NativeBridgeHandler : NSObject <WKScriptMessageHandler>
+
+@property (copy, nonatomic, nullable) NativeBridgeDocumentURLProvider documentFileURLProvider;
+@property (copy, nonatomic, nullable) NativeBridgeDocumentURLProvider originalDocumentURLProvider;
+@property (copy, nonatomic, nullable) NativeBridgeReloadDocumentHandler reloadDocumentHandler;
 
 - (instancetype)initWithSessionIdProvider:(NativeBridgeSessionIdProvider)sessionIdProvider
                                   emitter:(NativeBridgeMessageEmitter)emitter;

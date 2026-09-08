@@ -69,6 +69,10 @@
 		C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE272026082400000001 /* RecentDocumentsStore.mm */; };
 		C0FFEE292026082400000001 /* AIModelConfigStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */; };
 		C0FFEE2C2026082400000001 /* AISettingsDrawerController.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */; };
+		C0FFEE302026091200000001 /* TypesetService.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE312026091200000001 /* TypesetService.mm */; };
+		C0FFEE342026091200000001 /* zip.c in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE352026091200000001 /* zip.c */; };
+		C0FFEE362026091200000001 /* unzip.c in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE372026091200000001 /* unzip.c */; };
+		C0FFEE382026091200000001 /* ioapi.c in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE392026091200000001 /* ioapi.c */; };
 		D0A020260814000000000001 /* TopToolbarController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000012 /* TopToolbarController.mm */; };
 		D0A020260814000000000002 /* BottomToolbarController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000014 /* BottomToolbarController.mm */; };
 		D0A020260814000000000003 /* PreviewFunctionSheetController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000016 /* PreviewFunctionSheetController.mm */; };
@@ -940,6 +944,12 @@
 		C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AIModelConfigStore.mm; sourceTree = "<group>"; };
 		C0FFEE2B2026082400000001 /* AIModelConfigStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIModelConfigStore.h; sourceTree = "<group>"; };
 		C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AISettingsDrawerController.mm; sourceTree = "<group>"; };
+		C0FFEE312026091200000001 /* TypesetService.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = TypesetService.mm; sourceTree = "<group>"; };
+		C0FFEE322026091200000001 /* TypesetService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TypesetService.h; sourceTree = "<group>"; };
+		C0FFEE332026091200000001 /* TypesetTemplates.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TypesetTemplates.h; sourceTree = "<group>"; };
+		C0FFEE352026091200000001 /* zip.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = zip.c; sourceTree = "<group>"; };
+		C0FFEE372026091200000001 /* unzip.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = unzip.c; sourceTree = "<group>"; };
+		C0FFEE392026091200000001 /* ioapi.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ioapi.c; sourceTree = "<group>"; };
 		C0FFEE2E2026082400000001 /* AISettingsDrawerController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AISettingsDrawerController.h; sourceTree = "<group>"; };
 		D0A020260814000000000011 /* TopToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TopToolbarController.h; sourceTree = "<group>"; };
 		D0A020260814000000000012 /* TopToolbarController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = TopToolbarController.mm; sourceTree = "<group>"; };
@@ -2746,6 +2756,7 @@
 			children = (
 				C0FFEE1C2026081200000001 /* AI */,
 				C0FFEE032026081200000001 /* Bridge */,
+				C0FFEE3A2026091200000001 /* Typeset */,
 				D0A020260814000000000021 /* Toolbar */,
 				ACCACA1E3019CCE0003D0280 /* MobileDebug.entitlements */,
 				C792822F2DF89BB2001EA43B /* MobileSocket.h */,
@@ -2812,6 +2823,27 @@
 				C0FFEE002026081200000001 /* NativeBridgeHandler.mm */,
 			);
 			path = Bridge;
+			sourceTree = "<group>";
+		};
+		C0FFEE3A2026091200000001 /* Typeset */ = {
+			isa = PBXGroup;
+			children = (
+				C0FFEE322026091200000001 /* TypesetService.h */,
+				C0FFEE312026091200000001 /* TypesetService.mm */,
+				C0FFEE332026091200000001 /* TypesetTemplates.h */,
+				C0FFEE3B2026091200000001 /* minizip */,
+			);
+			path = Typeset;
+			sourceTree = "<group>";
+		};
+		C0FFEE3B2026091200000001 /* minizip */ = {
+			isa = PBXGroup;
+			children = (
+				C0FFEE352026091200000001 /* zip.c */,
+				C0FFEE372026091200000001 /* unzip.c */,
+				C0FFEE392026091200000001 /* ioapi.c */,
+			);
+			path = minizip;
 			sourceTree = "<group>";
 		};
 		D0A020260814000000000021 /* Toolbar */ = {
@@ -3943,6 +3975,10 @@
 				C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */,
 				C0FFEE292026082400000001 /* AIModelConfigStore.mm in Sources */,
 				C0FFEE2C2026082400000001 /* AISettingsDrawerController.mm in Sources */,
+				C0FFEE302026091200000001 /* TypesetService.mm in Sources */,
+				C0FFEE342026091200000001 /* zip.c in Sources */,
+				C0FFEE362026091200000001 /* unzip.c in Sources */,
+				C0FFEE382026091200000001 /* ioapi.c in Sources */,
 				D0A020260814000000000001 /* TopToolbarController.mm in Sources */,
 				D0A020260814000000000002 /* BottomToolbarController.mm in Sources */,
 				D0A020260814000000000003 /* PreviewFunctionSheetController.mm in Sources */,
@@ -4124,6 +4160,7 @@
 				GCC_WARN_64_TO_32_BIT_CONVERSION = NO;
 				HEADER_SEARCH_PATHS = (
 					"$(SOURCE_ROOT)/Mobile",
+					"$(SOURCE_ROOT)/Mobile/Typeset",
 					"$(SOURCE_ROOT)/../ios",
 					"$(SOURCE_ROOT)/..",
 					"$(SOURCE_ROOT)/../kit",
@@ -4196,6 +4233,7 @@
 				GCC_WARN_64_TO_32_BIT_CONVERSION = NO;
 				HEADER_SEARCH_PATHS = (
 					"$(SOURCE_ROOT)/Mobile",
+					"$(SOURCE_ROOT)/Mobile/Typeset",
 					"$(SOURCE_ROOT)/../ios",
 					"$(SOURCE_ROOT)/..",
 					"$(SOURCE_ROOT)/../kit",

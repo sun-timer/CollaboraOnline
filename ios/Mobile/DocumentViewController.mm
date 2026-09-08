@@ -162,6 +162,33 @@ static IMP standardImpOfInputAccessoryView = nil;
             [strongSelf.webView evaluateJavaScript:script completionHandler:nil];
         }
         aiService:aiService];
+    nativeBridgeHandler.documentFileURLProvider = ^NSURL * {
+        DocumentViewController *strongSelf = weakSelf;
+        return strongSelf.document ? strongSelf.document->copyFileURL : nil;
+    };
+    nativeBridgeHandler.originalDocumentURLProvider = ^NSURL * {
+        DocumentViewController *strongSelf = weakSelf;
+        return strongSelf.document.fileURL;
+    };
+    nativeBridgeHandler.reloadDocumentHandler = ^{
+        DocumentViewController *strongSelf = weakSelf;
+        if (!strongSelf.document) {
+            return;
+        }
+        NSURL *fileURL = strongSelf.document.fileURL;
+        NSURL *copyURL = strongSelf.document->copyFileURL;
+        if (fileURL && copyURL) {
+            [[NSFileManager defaultManager] removeItemAtURL:copyURL error:nil];
+            [[NSFileManager defaultManager] copyItemAtURL:fileURL toURL:copyURL error:nil];
+        }
+        UIViewController *presenter = strongSelf.presentingViewController;
+        if (!presenter || !fileURL) {
+            return;
+        }
+        [strongSelf requestCloseWithCompletion:^{
+            [DocumentPresentation presentDocumentAtURL:fileURL from:presenter];
+        }];
+    };
     [userContentController addScriptMessageHandler:nativeBridgeHandler name:@"nativeBridge"];
     [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"clipboard"];
     [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"aiConfiguration"];

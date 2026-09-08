@@ -757,7 +757,17 @@ didCompleteWithError:(NSError *)error {
     } else if ([taskType isEqualToString:@"typeset"]) {
         NSString *typesetType = [context[@"typesetType"] isKindOfClass:[NSString class]]
             ? context[@"typesetType"] : @"general";
-        NSDictionary *prompts = [self typesetPromptsForType:typesetType fullText:text];
+        NSString *typesetVersion = [context[@"typesetVersion"] isKindOfClass:[NSString class]]
+            ? context[@"typesetVersion"] : @"v1";
+        BOOL paragraphMode = [context[@"paragraphMode"] boolValue];
+        NSDictionary *prompts = nil;
+        if (paragraphMode) {
+            prompts = [self typesetParagraphPromptsForType:typesetType paragraphText:text];
+        } else if ([typesetVersion isEqualToString:@"v2"]) {
+            prompts = [self typesetV2PromptsForType:typesetType fullText:text];
+        } else {
+            prompts = [self typesetPromptsForType:typesetType fullText:text];
+        }
         systemPrompt = prompts[@"system"];
         userPrompt = prompts[@"user"];
     } else if ([taskType isEqualToString:@"text_extract"]) {
@@ -814,6 +824,58 @@ didCompleteWithError:(NSError *)error {
     }
     [messages addObject:userContent];
     return messages;
+}
+
+- (NSArray<NSString *> *)typesetSectionKeysForType:(NSString *)typesetType {
+    if ([typesetType isEqualToString:@"paper"]) {
+        return @[@"title", @"abstract", @"keywords", @"introduction", @"heading1", @"heading2",
+                 @"heading3", @"body", @"conclusion_body", @"ack_body"];
+    }
+    if ([typesetType isEqualToString:@"gov"]) {
+        return @[@"recipient", @"body", @"signature_org", @"signature_date", @"notes"];
+    }
+    if ([typesetType isEqualToString:@"contract"]) {
+        return @[@"title", @"contract_number", @"party_a", @"party_a_id", @"party_b", @"party_b_id",
+                 @"preamble", @"clause_title", @"clause_subtitle", @"clause_body"];
+    }
+    return @[@"title", @"heading1", @"heading2", @"heading3", @"body"];
+}
+
+- (NSDictionary *)typesetV2PromptsForType:(NSString *)typesetType fullText:(NSString *)fullText {
+    NSString *text = [fullText stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSArray<NSString *> *keys = [self typesetSectionKeysForType:typesetType ?: @"general"];
+    NSMutableString *sectionList = [NSMutableString string];
+    for (NSString *key in keys) {
+        [sectionList appendFormat:@"%@, ", key];
+    }
+    NSString *systemPrompt =
+        @"你是专业的文档排版助手。请从用户提供的原始文档中提取内容，"
+         "将原文各部分填入模板对应的分区中，以 JSON 格式返回。\n"
+         "重要原则：保持原文内容不变，不要改写、扩写、缩写或润色原文。"
+         "仅进行结构化拆分——把原文各部分分配到对应的模板分区。\n"
+         "返回格式：{\"sections\": {\"key\": \"content\", ...}}，不要包含 markdown 代码块。";
+    NSString *userPrompt = [NSString stringWithFormat:
+        @"请将以下原始文档内容按模板分区进行结构化拆分，返回 JSON。"
+         "不要修改原文内容，仅将各部分填入对应分区。\n\n"
+         "注意：原文中的图片已标记为[图1]、[图2]等占位符，请保留这些标记。\n\n"
+         "分区列表：%@\n\n原始文档内容：\n---\n%@\n---\n\n请直接返回 JSON。",
+        sectionList, text];
+    return @{@"system": systemPrompt, @"user": userPrompt};
+}
+
+- (NSDictionary *)typesetParagraphPromptsForType:(NSString *)typesetType paragraphText:(NSString *)paragraphText {
+    NSArray<NSString *> *keys = [self typesetSectionKeysForType:typesetType ?: @"general"];
+    NSMutableString *sectionList = [NSMutableString string];
+    for (NSString *key in keys) {
+        [sectionList appendFormat:@"%@, ", key];
+    }
+    NSString *systemPrompt =
+        @"你是文档段落分类助手。请判断每个段落属于模板中的哪个分区。"
+         "只返回 JSON 数组：[{\"paraIndex\":0,\"section\":\"body\"}, ...]，不要 markdown 代码块。";
+    NSString *userPrompt = [NSString stringWithFormat:
+        @"请为每个段落判断它属于模板中的哪个分区。\n\n可用分区：%@\n\n段落内容：\n---\n%@\n---",
+        sectionList, paragraphText ?: @""];
+    return @{@"system": systemPrompt, @"user": userPrompt};
 }
 
 - (NSDictionary *)typesetPromptsForType:(NSString *)typesetType fullText:(NSString *)fullText {

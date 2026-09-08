@@ -281,6 +281,9 @@ COOL_JS_LST =\
 	src/app/MobileAiOperationDialog.ts \
 	src/app/MobileAiTypesetDialog.ts \
 	src/app/MobileAiDocumentExtractor.ts \
+	src/app/TypesetSectionParser.ts \
+	src/app/TypesetPreviewHtml.ts \
+	src/app/TypesetBridge.ts \
 	src/app/MobileSelectionMenu.ts \
 	src/app/MobileAiCalcDialog.ts \
 	src/app/MobileAiTranslateDialog.ts \

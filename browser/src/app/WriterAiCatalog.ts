@@ -164,7 +164,7 @@ class WriterAiCatalog {
 			androidTaskType: 'typeset',
 			requiredInput: 'document',
 			resultMode: 'insertAtEnd',
-			allowedContextFields: ['typesetType'],
+			allowedContextFields: ['typesetType', 'typesetVersion', 'paragraphMode'],
 		},
 	};
 

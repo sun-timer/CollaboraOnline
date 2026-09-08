@@ -1,7 +1,5 @@
 /*
- * AI typeset dialog — type selection, full-text extraction, HTML preview, insert.
- *
- * Phase A (V1): HTML output from cloud LLM, pasted at document end.
+ * AI typeset dialog — V2 docx template flow with V1 HTML fallback.
  */
 
 class MobileAiTypesetDialog {
@@ -20,6 +18,13 @@ class MobileAiTypesetDialog {
 	private readonly typeCards: HTMLButtonElement[] = [];
 	private selectedType = 'paper';
 	private extracting = false;
+	private filling = false;
+	private inserting = false;
+	private paragraphs: string[] = [];
+	private paragraphMode = false;
+	private sections: { [key: string]: string } | null = null;
+	private docxPath = '';
+	private previewHtml = '';
 	private readonly unsubscribe: () => void;
 
 	constructor() {
@@ -33,7 +38,7 @@ class MobileAiTypesetDialog {
 		this.selectPanel.style.cssText =
 			'display:flex;flex-direction:column;gap:12px;';
 		const intro = document.createElement('p');
-		intro.textContent = '选择排版类型，AI 将按模板格式化当前文档全文。';
+		intro.textContent = '选择排版类型，AI 将按 docx 模板格式化当前文档全文。';
 		intro.style.cssText = 'margin:0;color:#5f6368;font-size:14px;line-height:1.5;';
 		this.selectPanel.appendChild(intro);
 
@@ -89,12 +94,13 @@ class MobileAiTypesetDialog {
 		this.content.appendChild(this.previewPanel);
 
 		this.sheet.setBody(this.content);
-		this.unsubscribe = this.controller.subscribe(() => this.render());
+		this.unsubscribe = this.controller.subscribe(() => this.onControllerState());
 		this.updateTypeSelection();
 	}
 
 	open(): void {
 		this.sheet.open();
+		this.resetResultState();
 		this.showSelectPanel();
 		this.render();
 	}
@@ -103,6 +109,16 @@ class MobileAiTypesetDialog {
 		this.controller.cancel();
 		this.unsubscribe();
 		this.sheet.close();
+	}
+
+	private resetResultState(): void {
+		this.sections = null;
+		this.docxPath = '';
+		this.previewHtml = '';
+		this.paragraphs = [];
+		this.paragraphMode = false;
+		this.filling = false;
+		this.inserting = false;
 	}
 
 	private selectType(typeKey: string): void {
@@ -138,45 +154,173 @@ class MobileAiTypesetDialog {
 		if (this.extracting) {
 			return;
 		}
+		this.resetResultState();
 		this.extracting = true;
 		this.status.textContent = '正在提取文档全文...';
 		this.showPreviewPanel();
 		this.startButton.disabled = true;
-		MobileAiDocumentExtractor.extractFullText()
-			.then((fullText) => {
-				this.extracting = false;
-				this.controller.request('typeset', { typesetType: this.selectedType }, fullText);
-				this.render();
-			})
-			.catch((error: Error) => {
-				this.extracting = false;
-				this.status.textContent =
-					error && error.message ? error.message : '文档全文提取失败';
-				this.startButton.disabled = false;
-				this.showSelectPanel();
+		const map = (window as any).app?.map;
+		if (map && typeof map.sendUnoCommand === 'function') {
+			map.sendUnoCommand('.uno:Save');
+		}
+		window.setTimeout(() => {
+			this.extractAndRequest()
+				.catch((error: Error) => {
+					this.extracting = false;
+					this.status.textContent =
+						error && error.message ? error.message : '文档全文提取失败';
+					this.startButton.disabled = false;
+					this.showSelectPanel();
+				})
+				.finally(() => {
+					this.extracting = false;
+					this.render();
+				});
+		}, 500);
+	}
+
+	private extractAndRequest(): Promise<void> {
+		const bridge = TypesetBridge.getInstance();
+		if (bridge.isAvailable()) {
+			return bridge.extractStructured().then((result) => {
+				this.paragraphs = result.paragraphs || [];
+				this.paragraphMode = this.paragraphs.length > 1;
+				const fullText = result.fullText || this.paragraphs.join('\n\n');
+				if (!fullText.trim()) {
+					throw new Error('文档全文提取失败');
+				}
+				this.controller.request(
+					'typeset',
+					{
+						typesetType: this.selectedType,
+						typesetVersion: 'v2',
+						paragraphMode: this.paragraphMode,
+					},
+					fullText,
+				);
 			});
+		}
+		return MobileAiDocumentExtractor.extractFullText().then((fullText) => {
+			this.controller.request(
+				'typeset',
+				{
+					typesetType: this.selectedType,
+					typesetVersion: 'v2',
+				},
+				fullText,
+			);
+		});
 	}
 
 	private regenerate(): void {
+		this.resetResultState();
 		this.controller.regenerate();
 	}
 
-	private applyResult(): void {
+	private onControllerState(): void {
 		const state = this.controller.getState();
-		const html = MobileAiResultRenderer.sanitizeTypesetHtml(state.preview);
+		if (state.state === 'ready' && state.preview && !this.sections && !this.filling) {
+			this.processAiResult(state.preview);
+			return;
+		}
+		this.render();
+	}
+
+	private processAiResult(raw: string): void {
+		let sections = TypesetSectionParser.parse(raw);
+		if (!sections && this.paragraphMode && this.paragraphs.length > 0) {
+			sections = TypesetSectionParser.parseParagraphClassifications(
+				raw,
+				this.paragraphs,
+			);
+		}
+		if (sections && TypesetBridge.getInstance().isAvailable()) {
+			this.sections = sections;
+			this.previewHtml = TypesetPreviewHtml.build(this.selectedType, sections);
+			this.preview.innerHTML = this.previewHtml;
+			this.fillTemplate(sections);
+			return;
+		}
+		this.previewHtml = '';
+		this.sections = null;
+		MobileAiResultRenderer.renderTypesetInto(this.preview, raw);
+		this.render();
+	}
+
+	private fillTemplate(sections: { [key: string]: string }): void {
+		if (!TypesetBridge.getInstance().isAvailable()) {
+			this.render();
+			return;
+		}
+		this.filling = true;
+		this.status.textContent = '正在填充 docx 模板...';
+		this.render();
+		TypesetBridge.getInstance()
+			.fillTemplate(this.selectedType, sections)
+			.then((result) => {
+				this.docxPath = result.docxPath || '';
+				this.filling = false;
+				this.render();
+			})
+			.catch((error: Error) => {
+				this.filling = false;
+				this.docxPath = '';
+				this.status.textContent =
+					(error && error.message ? error.message : '模板填充失败') +
+					'，将使用 HTML 方式插入';
+				this.render();
+			});
+	}
+
+	private applyResult(): void {
+		if (this.docxPath && TypesetBridge.getInstance().isAvailable()) {
+			this.inserting = true;
+			this.status.textContent = '正在写入排版文档...';
+			this.render();
+			TypesetBridge.getInstance()
+				.insertDocument(this.docxPath)
+				.then((ok) => {
+					this.inserting = false;
+					if (!ok) {
+						this.status.textContent = '插入文档失败';
+						this.render();
+						return;
+					}
+					this.status.textContent = '排版文档已写入，正在重新加载...';
+					this.sheet.close();
+				})
+				.catch(() => {
+					this.inserting = false;
+					this.status.textContent = '插入文档失败';
+					this.render();
+				});
+			return;
+		}
+		const state = this.controller.getState();
+		const html = this.previewHtml
+			? this.previewHtml
+			: MobileAiResultRenderer.sanitizeTypesetHtml(state.preview);
 		this.controller.accept(html);
 	}
 
 	private render(): void {
 		const state = this.controller.getState();
-		if (this.previewPanel.style.display !== 'none') {
+		if (
+			this.previewPanel.style.display !== 'none' &&
+			!this.previewHtml &&
+			state.preview
+		) {
 			MobileAiResultRenderer.renderTypesetInto(this.preview, state.preview);
 		}
 		const active =
 			this.extracting ||
+			this.filling ||
+			this.inserting ||
 			state.state === 'loading' ||
 			state.state === 'streaming';
-		const ready = state.state === 'ready' && !!state.preview;
+		const ready =
+			(state.state === 'ready' && !!state.preview && !this.filling) ||
+			(!!this.docxPath && !this.filling);
 		this.startButton.disabled = active;
 		this.stopButton.disabled = !active || this.extracting;
 		this.copyButton.disabled = !ready;
@@ -184,13 +328,19 @@ class MobileAiTypesetDialog {
 		this.applyButton.disabled = !ready || active;
 		if (this.extracting) {
 			this.status.textContent = '正在提取文档全文...';
+		} else if (this.filling) {
+			this.status.textContent = '正在填充 docx 模板...';
+		} else if (this.inserting) {
+			this.status.textContent = '正在写入排版文档...';
 		} else if (state.error) {
 			this.status.textContent = state.error;
 		} else if (active) {
 			this.status.textContent =
 				state.state === 'streaming' ? 'AI 正在排版...' : 'AI 正在生成...';
 		} else if (ready) {
-			this.status.textContent = '排版完成，可预览后插入文档';
+			this.status.textContent = this.docxPath
+				? '排版完成，可插入 docx 模板文档'
+				: '排版完成，可预览后插入文档';
 		} else {
 			this.status.textContent = '';
 		}
