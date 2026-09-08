@@ -15,6 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)previewFunctionSheetDidRequestPrint;
 - (void)previewFunctionSheetDidRequestFindReplace;
 - (void)previewFunctionSheetDidRequestWordCount;
+- (void)previewFunctionSheetDidRequestSpellCheck;
 @end
 
 /// Preview-mode「功能」sheet: 文件操作 + 审阅 (Android lolib_sheet_functions parity).

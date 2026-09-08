@@ -82,6 +82,13 @@ class WriterSpellingSheet {
 		panel.show(payload.windowId, payload.title || '拼写检查', payload.controls || []);
 	}
 
+	static closeActive(): void {
+		const panel = (window as any).__coolWriterSpellingSheet;
+		if (panel instanceof WriterSpellingSheet) {
+			panel.close(false);
+		}
+	}
+
 	static mount(): WriterSpellingSheet | null {
 		if (!(window as any).ThisIsTheiOSApp) {
 			return null;
@@ -483,4 +490,5 @@ class WriterSpellingSheet {
 
 if (typeof window !== 'undefined' && (window as any).ThisIsTheiOSApp) {
 	WriterSpellingSheet.mount();
+	(window as any).WriterSpellingSheet = WriterSpellingSheet;
 }

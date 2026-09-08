@@ -1297,14 +1297,28 @@ static IMP standardImpOfInputAccessoryView = nil;
 - (void)applyNativeEditMode:(BOOL)editMode
 {
     nativeEditMode = editMode;
-    if (!editMode) {
-        // Leave edit mode: dismiss the DOM function panel if it is open.
-        [self sendToolbarJavaScript:
-         @"if(window.__coolWriterEditorPanel){window.__coolWriterEditorPanel.close();}"];
-    }
+    [self dismissWriterOverlayUi];
     [topToolbarController setEditMode:editMode];
     [bottomToolbarController setEditMode:editMode];
     [bottomToolbarController setCompact:NO];
+}
+
+- (void)dismissWriterOverlayUi
+{
+    if ([self.presentedViewController isKindOfClass:[PreviewFunctionSheetController class]]) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
+    [self sendToolbarJavaScript:
+     @"(function(){"
+      "function c(o){if(o&&typeof o.close==='function'){o.close();}}"
+      "c(window.__coolWriterEditorPanel);"
+      "c(window.__coolWriterCharPanel);"
+      "c(window.__coolWriterParaPanel);"
+      "if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.close){window.__coolWriterFindReplace.close();}"
+      "if(window.WriterWordCountSheet&&WriterWordCountSheet.closeActive){WriterWordCountSheet.closeActive();}"
+      "if(window.WriterSpellingSheet&&WriterSpellingSheet.closeActive){WriterSpellingSheet.closeActive();}"
+      "c(window.__coolWriterAiPanel);"
+      "})();"];
 }
 
 - (void)applyNativeUndoRedoState:(NSString *)message
@@ -1357,6 +1371,7 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)finishNativeEditing
 {
+    [self dismissWriterOverlayUi];
     NSString *script = @"(function(){"
                         "if(window.app&&app.map){"
                         "if(typeof app.map.setPermission==='function'){"
@@ -1664,6 +1679,11 @@ static IMP standardImpOfInputAccessoryView = nil;
 - (void)previewFunctionSheetDidRequestWordCount
 {
     [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:WordCountDialog');}"];
+}
+
+- (void)previewFunctionSheetDidRequestSpellCheck
+{
+    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SpellDialog');}"];
 }
 
 - (void)bottomToolbarDidPressInsertImage

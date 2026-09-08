@@ -68,6 +68,13 @@ class WriterWordCountSheet {
 		panel.show(payload.windowId, payload.controls || []);
 	}
 
+	static closeActive(): void {
+		const panel = (window as any).__coolWriterWordCountSheet;
+		if (panel instanceof WriterWordCountSheet) {
+			panel.close(false);
+		}
+	}
+
 	static mount(): WriterWordCountSheet | null {
 		if (!(window as any).ThisIsTheiOSApp) {
 			return null;
@@ -167,4 +174,5 @@ class WriterWordCountSheet {
 
 if (typeof window !== 'undefined' && (window as any).ThisIsTheiOSApp) {
 	WriterWordCountSheet.mount();
+	(window as any).WriterWordCountSheet = WriterWordCountSheet;
 }

@@ -31,13 +31,23 @@ class WriterFindReplaceDialog {
 		dialog.show();
 	}
 
+	static closeActive(): void {
+		const bridge = (window as any).__coolWriterFindReplace;
+		if (bridge && bridge.instance instanceof WriterFindReplaceDialog) {
+			bridge.instance.close();
+		}
+	}
+
 	static mountBridge(): void {
 		if (!(window as any).ThisIsTheiOSApp) {
 			return;
 		}
-		(window as any).__coolWriterFindReplace = {
+		const bridge = {
+			instance: null as WriterFindReplaceDialog | null,
 			open: (): void => WriterFindReplaceDialog.open(),
+			close: (): void => WriterFindReplaceDialog.closeActive(),
 		};
+		(window as any).__coolWriterFindReplace = bridge;
 	}
 
 	constructor(controller: WriterEditorController) {
@@ -54,6 +64,10 @@ class WriterFindReplaceDialog {
 	}
 
 	private show(): void {
+		const bridge = (window as any).__coolWriterFindReplace;
+		if (bridge) {
+			bridge.instance = this;
+		}
 		this.sheet = new WriterEditorSheet('查找替换', () => this.close());
 		this.sheet.setBody(this.buildBody());
 		this.syncReplaceEnabled();
@@ -125,6 +139,10 @@ class WriterFindReplaceDialog {
 		if (this.sheet) {
 			this.sheet.close();
 			this.sheet = null;
+		}
+		const bridge = (window as any).__coolWriterFindReplace;
+		if (bridge && bridge.instance === this) {
+			bridge.instance = null;
 		}
 	}
 

@@ -168,6 +168,7 @@ static UIColor *PreviewFunctionSheetColorRowText(void)
     if (self.showWordCount) {
         return @[
             @[ @"list", @"字数统计", @"wordcount" ],
+            @[ @"ai-notice", @"拼写检查", @"spellcheck" ],
             @[ @"search", @"查找替换", @"find" ],
         ];
     }
@@ -243,6 +244,8 @@ static UIColor *PreviewFunctionSheetColorRowText(void)
             [row addTarget:self action:@selector(findTapped) forControlEvents:UIControlEventTouchUpInside];
         } else if ([def[2] isEqualToString:@"wordcount"]) {
             [row addTarget:self action:@selector(wordCountTapped) forControlEvents:UIControlEventTouchUpInside];
+        } else if ([def[2] isEqualToString:@"spellcheck"]) {
+            [row addTarget:self action:@selector(spellCheckTapped) forControlEvents:UIControlEventTouchUpInside];
         }
         [stack addArrangedSubview:row];
     }
@@ -307,6 +310,13 @@ static UIColor *PreviewFunctionSheetColorRowText(void)
 {
     [self dismissViewControllerAnimated:YES completion:^{
         [self.actionDelegate previewFunctionSheetDidRequestWordCount];
+    }];
+}
+
+- (void)spellCheckTapped
+{
+    [self dismissViewControllerAnimated:YES completion:^{
+        [self.actionDelegate previewFunctionSheetDidRequestSpellCheck];
     }];
 }
 
