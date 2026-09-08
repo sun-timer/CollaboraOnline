@@ -24,7 +24,7 @@ interface WriterFindReplaceOptions {
 type WriterEditorRunResult =
 	| { dispatched: 'unocmd'; command: string }
 	| { dispatched: 'save' }
-	| { dispatched: 'export'; kind: 'pdf' | 'print' }
+	| { dispatched: 'export'; kind: 'pdf' | 'print' | 'export' }
 	| { dispatched: 'dialog'; dialog: WriterEditorDialogType }
 	| { dispatched: 'findReplace' }
 	| { dispatched: 'message'; message: string }
@@ -350,6 +350,16 @@ class WriterEditorController {
 		const message = 'downloadas name=document.' + format + ' format=' + format + ' id=saveas';
 		this.adapter.postMobileMessage(message);
 		return { dispatched: 'message', message };
+	}
+
+	/** Exports the document in the given format (iOS document picker). */
+	exportAs(format: string): WriterEditorRunResult {
+		if (!format) {
+			return { dispatched: 'none', reason: 'empty_format' };
+		}
+		const message = 'downloadas name=export.' + format + ' format=' + format;
+		this.adapter.postMobileMessage(message);
+		return { dispatched: 'export', kind: format === 'pdf' ? 'pdf' : 'export' };
 	}
 
 	static buildSearchCmd(

@@ -1410,7 +1410,8 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)topToolbarDidPressSearch
 {
-    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SearchDialog');}"];
+    [self sendToolbarJavaScript:
+     @"(function(){if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open();}else if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SearchDialog');}})();"];
 }
 
 - (void)topToolbarDidPressShare
@@ -1638,10 +1639,15 @@ static IMP standardImpOfInputAccessoryView = nil;
     [self saveAfterReadOnlyTransition];
 }
 
-- (void)previewFunctionSheetDidRequestExportPDF
+- (void)previewFunctionSheetDidRequestExportAs:(NSString *)format
 {
-    [self sendToolbarJavaScript:
-     @"window.webkit.messageHandlers.lok.postMessage('downloadas name=export.pdf format=pdf');"];
+    if (format.length == 0) {
+        return;
+    }
+    NSString *js = [NSString stringWithFormat:
+        @"window.webkit.messageHandlers.lok.postMessage('downloadas name=export.%@ format=%@');",
+        format, format];
+    [self sendToolbarJavaScript:js];
 }
 
 - (void)previewFunctionSheetDidRequestPrint
@@ -1651,7 +1657,8 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)previewFunctionSheetDidRequestFindReplace
 {
-    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SearchDialog');}"];
+    [self sendToolbarJavaScript:
+     @"(function(){if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open();}else if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SearchDialog');}})();"];
 }
 
 - (void)previewFunctionSheetDidRequestWordCount

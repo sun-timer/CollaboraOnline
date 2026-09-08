@@ -363,7 +363,7 @@ class WriterEditorCatalog {
 		},
 		{
 			id: 'export-pdf',
-			label: '导出为 PDF',
+			label: '导出为',
 			tab: 'file',
 			icon: 'export-pdf',
 			kind: 'export',
@@ -490,7 +490,7 @@ class WriterEditorCatalog {
 			id: 'word-count',
 			label: '字数统计',
 			tab: 'review',
-			icon: 'list',
+			icon: 'bullet-list',
 			kind: 'command',
 			unocmd: '.uno:WordCountDialog',
 			group: 'review',

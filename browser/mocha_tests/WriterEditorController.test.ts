@@ -363,12 +363,23 @@ describe('WriterEditorController', function () {
 		assert.equal(adapter.calls.postMobileMessage[0], 'downloadas name=document.pdf format=pdf id=saveas');
 	});
 
+	it('exports via a downloadas message', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.exportAs('docx');
+
+		assert.equal(result.dispatched, 'export');
+		assert.equal(adapter.calls.postMobileMessage[0], 'downloadas name=export.docx format=docx');
+	});
+
 	it('rejects an empty image or format without dispatching', function () {
 		const adapter = createFakeAdapter('text');
 		const controller = new WriterEditorController(adapter);
 
 		assert.deepEqual(controller.insertImage('a.png', ''), { dispatched: 'none', reason: 'empty_image' });
 		assert.deepEqual(controller.saveAs(''), { dispatched: 'none', reason: 'empty_format' });
+		assert.deepEqual(controller.exportAs(''), { dispatched: 'none', reason: 'empty_format' });
 		assert.equal(adapter.calls.postMobileMessage.length, 0);
 	});
 	it('runs a forward find over the adapter with CMD_FIND', function () {

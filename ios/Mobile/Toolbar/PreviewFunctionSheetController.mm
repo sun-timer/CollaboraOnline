@@ -98,7 +98,7 @@ static UIColor *PreviewFunctionSheetColorRowText(void)
 
     self.fileStack = [self buildActionStack:@[
         @[ @"function-save", @"保存", @"save" ],
-        @[ @"function-export-pdf", @"导出PDF", @"pdf" ],
+        @[ @"function-export-pdf", @"导出为", @"export" ],
         @[ @"function-print", @"打印", @"print" ],
     ]];
     self.reviewStack = [self buildActionStack:[self reviewActionDefs]];
@@ -235,8 +235,8 @@ static UIColor *PreviewFunctionSheetColorRowText(void)
 
         if ([def[2] isEqualToString:@"save"]) {
             [row addTarget:self action:@selector(saveTapped) forControlEvents:UIControlEventTouchUpInside];
-        } else if ([def[2] isEqualToString:@"pdf"]) {
-            [row addTarget:self action:@selector(pdfTapped) forControlEvents:UIControlEventTouchUpInside];
+        } else if ([def[2] isEqualToString:@"export"]) {
+            [row addTarget:self action:@selector(exportTapped) forControlEvents:UIControlEventTouchUpInside];
         } else if ([def[2] isEqualToString:@"print"]) {
             [row addTarget:self action:@selector(printTapped) forControlEvents:UIControlEventTouchUpInside];
         } else if ([def[2] isEqualToString:@"find"]) {
@@ -261,11 +261,32 @@ static UIColor *PreviewFunctionSheetColorRowText(void)
     }];
 }
 
-- (void)pdfTapped
+- (void)exportTapped
 {
-    [self dismissViewControllerAnimated:YES completion:^{
-        [self.actionDelegate previewFunctionSheetDidRequestExportPDF];
-    }];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"导出为"
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    NSArray<NSString *> *formats = @[ @"pdf", @"odt", @"docx" ];
+    NSArray<NSString *> *labels = @[
+        @"PDF (.pdf)",
+        @"ODF 文本文档 (.odt)",
+        @"Word 文档 (.docx)",
+    ];
+    for (NSUInteger i = 0; i < formats.count; i++) {
+        NSString *format = formats[i];
+        NSString *label = labels[i];
+        [alert addAction:[UIAlertAction actionWithTitle:label
+                                                  style:UIAlertActionStyleDefault
+                                                handler:^(UIAlertAction *action) {
+            [self dismissViewControllerAnimated:YES completion:^{
+                [self.actionDelegate previewFunctionSheetDidRequestExportAs:format];
+            }];
+        }]];
+    }
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消"
+                                              style:UIAlertActionStyleCancel
+                                            handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)printTapped

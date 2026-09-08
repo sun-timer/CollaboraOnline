@@ -11,7 +11,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @protocol PreviewFunctionSheetControllerDelegate <NSObject>
 - (void)previewFunctionSheetDidRequestSave;
-- (void)previewFunctionSheetDidRequestExportPDF;
+- (void)previewFunctionSheetDidRequestExportAs:(NSString *)format;
 - (void)previewFunctionSheetDidRequestPrint;
 - (void)previewFunctionSheetDidRequestFindReplace;
 - (void)previewFunctionSheetDidRequestWordCount;

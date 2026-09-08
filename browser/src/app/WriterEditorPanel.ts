@@ -230,6 +230,10 @@ class WriterEditorPanel {
 			this.openFindReplaceDialog();
 			return;
 		}
+		if (feature.kind === 'export' && (window as any).ThisIsTheiOSApp) {
+			this.openExportFormatDialog();
+			return;
+		}
 		const result = this.controller.run(feature);
 		if (
 			result.dispatched === 'unocmd' ||
@@ -372,6 +376,17 @@ class WriterEditorPanel {
 		];
 		this.presentSub(new WriterEditorChooseDialog('另存为', options, (option) => {
 			this.controller.saveAs(option.value);
+		}));
+	}
+
+	private openExportFormatDialog(): void {
+		const options: WriterChooseOption[] = [
+			{ label: 'PDF (.pdf)', value: 'pdf' },
+			{ label: 'ODF 文本文档 (.odt)', value: 'odt' },
+			{ label: 'Word 文档 (.docx)', value: 'docx' },
+		];
+		this.presentSub(new WriterEditorChooseDialog('导出为', options, (option) => {
+			this.controller.exportAs(option.value);
 		}));
 	}
 
