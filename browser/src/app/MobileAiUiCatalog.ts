@@ -28,7 +28,8 @@ type MobileAiUiDialog =
 	| 'calc'
 	| 'unavailable'
 	| 'formatBatch'
-	| 'image';
+	| 'image'
+	| 'typeset';
 interface MobileAiUiEntry {
 	taskType: string;
 	androidTaskType: string;
@@ -209,8 +210,8 @@ class MobileAiUiCatalog {
 			documentTypes: ['text'],
 			requiredInput: 'document',
 			resultMode: 'insertAtEnd',
-			dialog: 'unavailable',
-			iosSupport: false,
+			dialog: 'typeset',
+			iosSupport: true,
 			selectionRequired: false,
 			includeInOperationSheet: true,
 		},

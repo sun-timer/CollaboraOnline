@@ -125,4 +125,40 @@ describe('Writer AI Catalog v1', function () {
 			true,
 		);
 	});
+
+	it('defines the typeset task with document text and typesetType context', function () {
+		const typeset = WriterAiCatalog.getTask('typeset');
+		assert.ok(typeset);
+		assert.equal(typeset.promptId, 'writer.typeset');
+		assert.equal(typeset.resultMode, 'insertAtEnd');
+		assert.equal(typeset.requiredInput, 'document');
+		assert.deepEqual(
+			WriterAiCatalog.TYPESET_TYPES.map((item) => item.key),
+			['paper', 'gov', 'contract', 'general'],
+		);
+		assert.equal(
+			WriterAiCatalog.validateRequest({
+				taskType: 'typeset',
+				selection: '文档全文',
+				context: { typesetType: 'paper' },
+			}).valid,
+			true,
+		);
+		assert.equal(
+			WriterAiCatalog.validateRequest({
+				taskType: 'typeset',
+				selection: '',
+				context: { typesetType: 'paper' },
+			}).errorCode,
+			'empty_document',
+		);
+		assert.equal(
+			WriterAiCatalog.validateRequest({
+				taskType: 'typeset',
+				selection: '文档全文',
+				context: { typesetType: 'unknown' },
+			}).errorCode,
+			'invalid_typeset_type',
+		);
+	});
 });

@@ -95,4 +95,12 @@ describe('Mobile AI UI Catalog', function () {
 		assert.equal(image?.dialog, 'image');
 		assert.equal(MobileAiUiCatalog.canRun('image_generate', 'text'), true);
 	});
+
+	it('enables typeset on iOS with the typeset dialog', function () {
+		const typeset = MobileAiUiCatalog.getEntry('typeset');
+		assert.ok(typeset);
+		assert.equal(typeset?.iosSupport, true);
+		assert.equal(typeset?.dialog, 'typeset');
+		assert.equal(MobileAiUiCatalog.canRun('typeset', 'text'), true);
+	});
 });

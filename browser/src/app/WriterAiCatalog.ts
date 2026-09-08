@@ -70,6 +70,13 @@ class WriterAiCatalog {
 		{ key: 'general', label: '通用文档' },
 	];
 
+	static readonly TYPESET_TYPES = [
+		{ key: 'paper', label: '论文' },
+		{ key: 'gov', label: '党政公文' },
+		{ key: 'contract', label: '合同协议' },
+		{ key: 'general', label: '通用文档' },
+	];
+
 	static readonly TASKS: { [taskType: string]: WriterAiTaskDefinition } = {
 		polish: {
 			taskType: 'polish',
@@ -150,6 +157,14 @@ class WriterAiCatalog {
 			requiredInput: 'prompt',
 			resultMode: 'insertAtEnd',
 			allowedContextFields: ['template', 'variables'],
+		},
+		typeset: {
+			taskType: 'typeset',
+			promptId: 'writer.typeset',
+			androidTaskType: 'typeset',
+			requiredInput: 'document',
+			resultMode: 'insertAtEnd',
+			allowedContextFields: ['typesetType'],
 		},
 	};
 
@@ -311,6 +326,22 @@ class WriterAiCatalog {
 				WriterAiCatalog.TRANSLATE_LANGUAGES.indexOf(context.targetLang) < 0
 			) {
 				return { valid: false, errorCode: 'invalid_target_language' };
+			}
+		}
+		if (taskType === 'typeset') {
+			if (
+				context.typesetType !== undefined &&
+				!WriterAiCatalog.TYPESET_TYPES.some(
+					(item) => item.key === context.typesetType,
+				)
+			) {
+				return { valid: false, errorCode: 'invalid_typeset_type' };
+			}
+			if (
+				typeof payload.selection !== 'string' ||
+				payload.selection.trim().length === 0
+			) {
+				return { valid: false, errorCode: 'empty_document' };
 			}
 		}
 		return { valid: true };
