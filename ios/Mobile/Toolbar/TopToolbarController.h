@@ -37,6 +37,8 @@ typedef NS_ENUM(NSInteger, IOSTopToolbarMode) {
 - (void)setEditMode:(BOOL)editMode;
 - (void)setDocumentType:(NSString *)documentType;
 - (void)setCommentCount:(NSInteger)commentCount;
+/** Optimistically enable undo after a native-shell edit (e.g. find/replace). Web UNDOREDO remains authoritative. */
+- (void)recordUndoableNativeEdit:(NSString *)reason;
 - (void)relayout;
 
 @end

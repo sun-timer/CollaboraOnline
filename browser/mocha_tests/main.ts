@@ -52,6 +52,7 @@
 /// <reference path="../src/app/MobileWriterComments.ts" />
 /// <reference path="../src/app/WriterParagraphPanel.ts" />
 /// <reference path="../src/app/WriterWordCountSheet.ts" />
+/// <reference path="../src/app/WriterSpellingSheet.ts" />
 
 /// <reference path="./CanvasSectionContainer.test.ts" />
 /// <reference path="./CBounds.test.ts" />
@@ -82,3 +83,4 @@
 /// <reference path="./MobileWriterComments.test.ts" />
 /// <reference path="./WriterParagraphPanel.test.ts" />
 /// <reference path="./WriterWordCountSheet.test.ts" />
+/// <reference path="./WriterSpellingSheet.test.ts" />

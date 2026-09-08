@@ -1110,6 +1110,9 @@ static IMP standardImpOfInputAccessoryView = nil;
         } else if ([message.body hasPrefix:@"UNDOREDO "]) {
             [self applyNativeUndoRedoState:message.body];
             return;
+        } else if ([message.body hasPrefix:@"NATIVE_UNDO_RECORD "]) {
+            [self recordNativeUndoableEdit:message.body];
+            return;
         } else if ([message.body hasPrefix:@"COMMENTCOUNT "]) {
             [self applyNativeCommentCount:message.body];
             return;
@@ -1317,6 +1320,18 @@ static IMP standardImpOfInputAccessoryView = nil;
     }
     topToolbarController.undoEnabled = undoEnabled;
     topToolbarController.redoEnabled = redoEnabled;
+}
+
+- (void)recordNativeUndoableEdit:(NSString *)message
+{
+    NSString *reason = @"native_edit";
+    for (NSString *part in [message componentsSeparatedByString:@" "]) {
+        if ([part hasPrefix:@"reason="]) {
+            reason = [part substringFromIndex:7];
+            break;
+        }
+    }
+    [topToolbarController recordUndoableNativeEdit:reason];
 }
 
 - (void)applyNativeCommentCount:(NSString *)message

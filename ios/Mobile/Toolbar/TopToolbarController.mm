@@ -240,6 +240,13 @@ static UIView *toolbarSpacer(void)
     self.redoButton.alpha = redoEnabled ? 1.0 : 0.35;
 }
 
+- (void)recordUndoableNativeEdit:(NSString *)reason
+{
+    self.undoEnabled = YES;
+    self.redoEnabled = NO;
+    NSLog(@"IOSTopToolbar undo_redo_record_edit reason=%@", reason ?: @"native_edit");
+}
+
 - (void)setCommentCount:(NSInteger)commentCount
 {
     _commentCount = commentCount;

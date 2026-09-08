@@ -153,15 +153,19 @@ class AndroidNativeDialogRouter {
 			return NATIVE_SPECIFIC_DIALOG_IDS.has(dialogId);
 		}
 		if (window.ThisIsTheiOSApp) {
-			return dialogId === 'WordCountDialog';
+			return dialogId === 'WordCountDialog' || dialogId === 'SpellingDialog';
 		}
 		return false;
 	}
 
 	private postPayload(payload: NativeDialogPayload): void {
 		if (window.ThisIsTheiOSApp) {
-			if (payload.dialogId === 'WordCountDialog' || this.activeDialogIds.get(payload.windowId) === 'WordCountDialog') {
+			const dialogId =
+				payload.dialogId || this.activeDialogIds.get(payload.windowId) || '';
+			if (dialogId === 'WordCountDialog') {
 				WriterWordCountSheet.handlePayload(payload as WriterWordCountPayload);
+			} else if (dialogId === 'SpellingDialog') {
+				WriterSpellingSheet.handlePayload(payload as WriterSpellingPayload);
 			}
 			return;
 		}
@@ -190,7 +194,13 @@ class AndroidNativeDialogRouter {
 			return this.activeWindowIds.has(msgData.id);
 		}
 		if (msgData.type === 'messagebox') {
-			return !!window.ThisIsTheAndroidApp;
+			if (window.ThisIsTheAndroidApp) {
+				return true;
+			}
+			if (window.ThisIsTheiOSApp && WriterSpellingSheet.shouldInterceptMessagebox(msgData)) {
+				return true;
+			}
+			return false;
 		}
 		if (msgData.dialogid && this.handlesDialogOnThisPlatform(msgData.dialogid)) {
 			return true;
@@ -201,6 +211,10 @@ class AndroidNativeDialogRouter {
 	public tryIntercept(msgData: any): boolean {
 		if (!this.shouldIntercept(msgData)) {
 			return false;
+		}
+
+		if (msgData.type === 'messagebox' && window.ThisIsTheiOSApp) {
+			return WriterSpellingSheet.handleMessagebox(msgData);
 		}
 
 		if (msgData.action === 'close') {

@@ -185,6 +185,19 @@ describe('WriterEditorController', function () {
 		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.SearchString'].value, 'abc');
 	});
 
+	it('records native undo on iOS after replace dispatch', function () {
+		(window as any).ThisIsTheiOSApp = true;
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		controller.runFindReplace('abc', 'def', true);
+
+		assert.deepEqual(adapter.calls.postMobileMessage, [
+			'NATIVE_UNDO_RECORD reason=find_replace_all',
+		]);
+		delete (window as any).ThisIsTheiOSApp;
+	});
+
 	it('rejects an empty query without dispatching', function () {
 		const adapter = createFakeAdapter('text');
 		const controller = new WriterEditorController(adapter);

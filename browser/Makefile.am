@@ -299,6 +299,7 @@ COOL_JS_LST =\
 	src/app/WriterCharPanel.ts \
 	src/app/WriterParagraphPanel.ts \
 	src/app/WriterWordCountSheet.ts \
+	src/app/WriterSpellingSheet.ts \
 	src/app/MobileWriterComments.ts \
 	src/app/WriterColorPickerDialog.ts \
 	src/app/WriterEditorShapeDialog.ts \

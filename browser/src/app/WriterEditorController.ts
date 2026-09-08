@@ -121,6 +121,7 @@ class WriterEditorController {
 			options,
 		);
 		this.adapter.sendExecuteSearch(searchCmd);
+		this.notifyNativeUndoRecord(replaceAll ? 'find_replace_all' : 'find_replace_one');
 		return { executed: true, command };
 	}
 
@@ -145,6 +146,13 @@ class WriterEditorController {
 		);
 		this.adapter.sendExecuteSearch(searchCmd);
 		return { executed: true, command: WriterEditorSearch.CMD_FIND };
+	}
+
+	private notifyNativeUndoRecord(reason: string): void {
+		if (!(window as any).ThisIsTheiOSApp) {
+			return;
+		}
+		this.adapter.postMobileMessage('NATIVE_UNDO_RECORD reason=' + reason);
 	}
 
 	/** Pure SearchItem payload builder (test seam). */
