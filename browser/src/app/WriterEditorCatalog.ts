@@ -13,6 +13,7 @@ type WriterEditorFeatureKind =
 	| 'queryCommand' // .uno:StyleApply?Style=..&FamilyName=..
 	| 'commandWithArgs' // .uno:InsertTable?Columns=..&Rows=..
 	| 'dialog' // opens a secondary dialog (watermark / margins / paper size)
+	| 'toggle' // on/off switch synced with CO command state
 	| 'findReplace' // opens the find/replace layer
 	| 'save' // .uno:Save special
 	| 'export' // app.map.downloadAs('pdf')
@@ -31,7 +32,6 @@ type WriterEditorDialogType =
 	| 'saveAs' // save-as dialog
 	| 'pageBreak' // page break options
 	| 'pageNumber' // insert page number field
-	| 'trackChanges' // enable / disable change tracking
 	| 'chart'; // insert chart (InsertObjectChart type picker)
 
 interface WriterEditorFeature {
@@ -46,6 +46,8 @@ interface WriterEditorFeature {
 	dialog?: WriterEditorDialogType;
 	needsSelection?: boolean;
 	group?: string;
+	/** Default on-state when CO has not reported command values yet. */
+	defaultOn?: boolean;
 }
 
 interface WriterEditorTabDefinition {
@@ -517,9 +519,9 @@ class WriterEditorCatalog {
 			label: '追踪修订',
 			tab: 'review',
 			icon: 'track-changes',
-			kind: 'dialog',
-			dialog: 'trackChanges',
-			unocmd: '.uno:TrackChangesInAllViews',
+			kind: 'toggle',
+			unocmd: '.uno:TrackChanges',
+			defaultOn: false,
 			group: 'review',
 		},
 		{
@@ -527,8 +529,9 @@ class WriterEditorCatalog {
 			label: '显示修订',
 			tab: 'review',
 			icon: 'show-tracked-changes',
-			kind: 'command',
+			kind: 'toggle',
 			unocmd: '.uno:ShowTrackedChanges',
+			defaultOn: true,
 			group: 'review',
 		},
 		{
@@ -674,7 +677,8 @@ class WriterEditorCatalog {
 		const commandLike =
 			feature.kind === 'command' ||
 			feature.kind === 'queryCommand' ||
-			feature.kind === 'commandWithArgs';
+			feature.kind === 'commandWithArgs' ||
+			feature.kind === 'toggle';
 		if (commandLike && !feature.unocmd) {
 			return { valid: false, errorCode: 'missing_unocmd' };
 		}
@@ -707,7 +711,8 @@ class WriterEditorCatalog {
 			const commandLike =
 				feature.kind === 'command' ||
 				feature.kind === 'queryCommand' ||
-				feature.kind === 'commandWithArgs';
+				feature.kind === 'commandWithArgs' ||
+				feature.kind === 'toggle';
 			if (commandLike && !feature.unocmd) {
 				return { valid: false, errorCode: 'missing_unocmd' };
 			}

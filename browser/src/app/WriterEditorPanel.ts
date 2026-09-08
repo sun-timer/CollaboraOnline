@@ -15,6 +15,9 @@ class WriterEditorPanel {
 	private readonly grid: HTMLDivElement;
 	private readonly controller: WriterEditorController;
 	private activeTab: WriterEditorTab = 'default';
+	/** Toggle inputs in the review tab, keyed by .uno command. */
+	private readonly reviewToggleInputs: { [command: string]: HTMLInputElement } = {};
+	private onReviewStateBound: ((event: any) => void) | null = null;
 	/** Picker/dialog sheets opened from this panel, closed together with it. */
 	private readonly subDialogs: { close(): void }[] = [];
 	private static readonly SUPPORTED_DIALOGS: WriterEditorDialogType[] = [
@@ -28,13 +31,12 @@ class WriterEditorPanel {
 		'paperSize',
 		'image',
 		'saveAs',
-		'trackChanges',
 		'chart',
 	];
 
 	private constructor() {
 		this.controller = WriterEditorController.getInstance();
-		this.sheet = new WriterEditorSheet('功能');
+		this.sheet = new WriterEditorSheet('功能', () => this.unsubscribeReviewState());
 
 		const content = document.createElement('div');
 		content.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
@@ -74,11 +76,13 @@ class WriterEditorPanel {
 	open(): void {
 		this.renderTabs();
 		this.renderGrid();
+		this.subscribeReviewState();
 		this.sheet.open();
 	}
 
 	/** Closes the panel and any picker/dialog sheets opened from it. */
 	close(): void {
+		this.unsubscribeReviewState();
 		const children = this.subDialogs.splice(0);
 		children.forEach((dialog) => dialog.close());
 		this.sheet.close();
@@ -118,7 +122,7 @@ class WriterEditorPanel {
 
 		const actionButtons: Array<{ icon: string; aria: string; handler: () => void }> = [
 			{ icon: 'find-replace', aria: '查找', handler: () => this.openFindReplaceDialog() },
-			{ icon: 'arrow-down', aria: '收起', handler: () => this.sheet.close() },
+			{ icon: 'arrow-down', aria: '收起', handler: () => this.close() },
 		];
 		actionButtons.forEach((action) => {
 			const button = document.createElement('button');
@@ -148,6 +152,9 @@ class WriterEditorPanel {
 			: '在文档中选中文字后可编辑';
 		this.hint.style.color = selection ? '#188038' : '#5f6368';
 		this.grid.replaceChildren();
+		Object.keys(this.reviewToggleInputs).forEach((command) => {
+			delete this.reviewToggleInputs[command];
+		});
 
 		const features = WriterEditorCatalog.getFeatures(this.activeTab);
 		let currentGroup = '';
@@ -158,6 +165,10 @@ class WriterEditorPanel {
 				title.textContent = this.groupLabel(feature.group || '');
 				title.style.cssText = 'grid-column:1/-1;margin:8px 0 0;font-size:18px;';
 				this.grid.appendChild(title);
+			}
+			if (feature.kind === 'toggle') {
+				this.grid.appendChild(this.createToggleRow(feature));
+				return;
 			}
 			const button = document.createElement('button');
 			button.type = 'button';
@@ -194,6 +205,96 @@ class WriterEditorPanel {
 			button.onclick = () => this.onFeature(feature);
 			this.grid.appendChild(button);
 		});
+		this.refreshReviewToggles();
+	}
+
+	private createToggleRow(feature: WriterEditorFeature): HTMLElement {
+		const command = feature.unocmd || '';
+		const row = document.createElement('div');
+		row.style.cssText =
+			'grid-column:1/-1;display:flex;align-items:center;gap:12px;' +
+			'min-height:52px;padding:12px 16px;border-radius:12px;background:#f2f3f5;';
+
+		if (feature.icon) {
+			const iconWrap = document.createElement('span');
+			iconWrap.style.cssText =
+				'width:24px;height:24px;display:flex;align-items:center;justify-content:center;' +
+				'flex-shrink:0;color:#1278D9;';
+			const icon = WriterEditorIcons.get(feature.icon);
+			if (icon) {
+				iconWrap.innerHTML = icon;
+			}
+			row.appendChild(iconWrap);
+		}
+
+		const label = document.createElement('span');
+		label.textContent = feature.label;
+		label.style.cssText = 'flex:1;font-size:16px;color:#101010;';
+		row.appendChild(label);
+
+		const toggle = document.createElement('input');
+		toggle.type = 'checkbox';
+		toggle.setAttribute('aria-label', feature.label);
+		toggle.style.cssText = 'width:20px;height:20px;flex-shrink:0;cursor:pointer;';
+		toggle.checked = this.controller.isCommandChecked(
+			command,
+			!!feature.defaultOn,
+		);
+		if (command) {
+			this.reviewToggleInputs[command] = toggle;
+		}
+		toggle.onchange = () => {
+			this.controller.runToggle(feature, toggle.checked);
+		};
+		row.appendChild(toggle);
+		return row;
+	}
+
+	private refreshReviewToggles(): void {
+		Object.keys(this.reviewToggleInputs).forEach((command) => {
+			const input = this.reviewToggleInputs[command];
+			const feature = WriterEditorCatalog.FEATURES.find(
+				(candidate) => candidate.unocmd === command && candidate.kind === 'toggle',
+			);
+			input.checked = this.controller.isCommandChecked(
+				command,
+				feature ? !!feature.defaultOn : false,
+			);
+		});
+	}
+
+	private subscribeReviewState(): void {
+		if (this.onReviewStateBound) {
+			return;
+		}
+		const map = (window as any).app && (window as any).app.map;
+		if (!map || typeof map.on !== 'function') {
+			return;
+		}
+		const onState = (event: any) => {
+			if (!event || typeof event.commandName !== 'string') {
+				return;
+			}
+			if (event.commandName in this.reviewToggleInputs) {
+				this.reviewToggleInputs[event.commandName].checked = event.state === 'true';
+			}
+		};
+		this.onReviewStateBound = onState;
+		map.on('commandstatechanged', onState);
+	}
+
+	private unsubscribeReviewState(): void {
+		if (!this.onReviewStateBound) {
+			return;
+		}
+		const map = (window as any).app && (window as any).app.map;
+		if (map && typeof map.off === 'function') {
+			map.off('commandstatechanged', this.onReviewStateBound);
+		}
+		this.onReviewStateBound = null;
+		Object.keys(this.reviewToggleInputs).forEach((command) => {
+			delete this.reviewToggleInputs[command];
+		});
 	}
 
 	private onFeature(feature: WriterEditorFeature): void {
@@ -221,9 +322,10 @@ class WriterEditorPanel {
 				this.openImageDialog();
 			} else if (dialog === 'saveAs') {
 				this.openSaveAsDialog();
-			} else if (dialog === 'trackChanges') {
-				this.openTrackChangesDialog();
 			}
+			return;
+		}
+		if (feature.kind === 'toggle') {
 			return;
 		}
 		if (feature.kind === 'findReplace') {
@@ -329,16 +431,6 @@ class WriterEditorPanel {
 				return;
 			}
 			this.controller.applyPaperFormat(option.value);
-		}));
-	}
-
-	private openTrackChangesDialog(): void {
-		const options: WriterChooseOption[] = [
-			{ label: '开启追踪修订', value: 'on' },
-			{ label: '关闭追踪修订', value: 'off' },
-		];
-		this.presentSub(new WriterEditorChooseDialog('追踪修订', options, (option) => {
-			this.controller.trackChanges(option.value === 'on');
 		}));
 	}
 

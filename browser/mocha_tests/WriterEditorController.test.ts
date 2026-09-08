@@ -15,6 +15,7 @@ describe('WriterEditorController', function () {
 			postMobileMessage: string[];
 			downloadAs: { name: string; format: string; options?: string; id?: string }[];
 		};
+		setToolbarCommandValues?(command: string, values: { [key: string]: any }): void;
 	}
 
 	function createFakeAdapter(docType: string): FakeWriterEditorAdapter {
@@ -24,13 +25,17 @@ describe('WriterEditorController', function () {
 			postMobileMessage: [],
 			downloadAs: [],
 		};
+		const commandValues: { [command: string]: { [key: string]: any } | undefined } = {};
 		return {
 			calls,
 			sendUnoCommand(command: string): void {
 				calls.sendUnoCommand.push(command);
 			},
-			getToolbarCommandValues(): { [key: string]: any } | undefined {
-				return undefined;
+			getToolbarCommandValues(command: string): { [key: string]: any } | undefined {
+				return commandValues[command];
+			},
+			setToolbarCommandValues(command: string, values: { [key: string]: any }): void {
+				commandValues[command] = values;
 			},
 			getDocType(): string {
 				return docType;
@@ -477,6 +482,43 @@ describe('WriterEditorController', function () {
 
 		assert.equal(result.dispatched, 'unocmd');
 		assert.deepEqual(adapter.calls.sendUnoCommand, ['.uno:TrackChanges?TrackChanges:bool=false']);
+	});
+
+	it('reads toggle state from getToolbarCommandValues', function () {
+		const adapter = createFakeAdapter('text');
+		adapter.setToolbarCommandValues!('.uno:TrackChanges', { checked: 'true' });
+		const controller = new WriterEditorController(adapter);
+
+		assert.equal(controller.isCommandChecked('.uno:TrackChanges', false), true);
+		assert.equal(controller.isCommandChecked('.uno:ShowTrackedChanges', true), true);
+	});
+
+	it('dispatches show tracked changes via runToggle', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+		const feature = WriterEditorCatalog.getFeature('show-tracked-changes');
+		assert.ok(feature);
+
+		const result = controller.runToggle(feature, true);
+
+		assert.deepEqual(result, {
+			dispatched: 'toggle',
+			command: '.uno:ShowTrackedChanges',
+			enabled: true,
+		});
+		assert.deepEqual(adapter.calls.sendUnoCommand, ['.uno:ShowTrackedChanges']);
+	});
+
+	it('dispatches track changes toggle via runToggle', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+		const feature = WriterEditorCatalog.getFeature('track-changes');
+		assert.ok(feature);
+
+		const result = controller.runToggle(feature, true);
+
+		assert.equal(result.dispatched, 'toggle');
+		assert.deepEqual(adapter.calls.sendUnoCommand, ['.uno:TrackChangesInAllViews']);
 	});
 	it('inserts a default chart (column) without a template override', function () {
 		const adapter = createFakeAdapter('text');

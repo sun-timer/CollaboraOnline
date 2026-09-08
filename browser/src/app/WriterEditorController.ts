@@ -27,6 +27,7 @@ type WriterEditorRunResult =
 	| { dispatched: 'export'; kind: 'pdf' | 'print' | 'export' }
 	| { dispatched: 'dialog'; dialog: WriterEditorDialogType }
 	| { dispatched: 'findReplace' }
+	| { dispatched: 'toggle'; command: string; enabled: boolean }
 	| { dispatched: 'message'; message: string }
 	| { dispatched: 'none'; reason: string };
 
@@ -92,9 +93,81 @@ class WriterEditorController {
 				return { dispatched: 'dialog', dialog: feature.dialog || 'fontName' };
 			case 'findReplace':
 				return { dispatched: 'findReplace' };
+			case 'toggle':
+				return { dispatched: 'toggle', command: feature.unocmd || '', enabled: false };
 			default:
 				return { dispatched: 'none', reason: 'unsupported_kind' };
 		}
+	}
+
+	/**
+	 * Reads a toggle command's on-state. Prefers getToolbarCommandValues, then
+	 * falls back to stateChangeHandler (Android FPC toggle row semantics).
+	 */
+	isCommandChecked(command: string, defaultOn = false): boolean {
+		const fromValues = WriterEditorController.readCheckedCommandValues(
+			this.getCommandValues(command),
+		);
+		if (fromValues !== undefined) {
+			return fromValues;
+		}
+		const map = (window as any).app?.map;
+		const state = map?.stateChangeHandler?.getItemValue(command);
+		if (state === 'true' || state === true) {
+			return true;
+		}
+		if (state === 'false' || state === false) {
+			return false;
+		}
+		return defaultOn;
+	}
+
+	/** Dispatches a toggle feature (track/show tracked changes). */
+	runToggle(feature: WriterEditorFeature, enabled: boolean): WriterEditorRunResult {
+		if (!this.isWriterDocument()) {
+			return { dispatched: 'none', reason: 'not_writer_document' };
+		}
+		if (feature.id === 'track-changes') {
+			const result = this.trackChanges(enabled);
+			if (result.dispatched === 'unocmd') {
+				return { dispatched: 'toggle', command: result.command, enabled };
+			}
+			return result;
+		}
+		if (feature.id === 'show-tracked-changes') {
+			const command = '.uno:ShowTrackedChanges';
+			this.adapter.sendUnoCommand(command);
+			return { dispatched: 'toggle', command, enabled };
+		}
+		if (feature.unocmd) {
+			this.adapter.sendUnoCommand(feature.unocmd);
+			return { dispatched: 'toggle', command: feature.unocmd, enabled };
+		}
+		return { dispatched: 'none', reason: 'missing_unocmd' };
+	}
+
+	static readCheckedCommandValues(
+		values: { [key: string]: any } | undefined,
+	): boolean | undefined {
+		if (values === undefined || values === null) {
+			return undefined;
+		}
+		if (typeof values === 'boolean') {
+			return values;
+		}
+		if (values.checked === true || values.checked === 'true') {
+			return true;
+		}
+		if (values.checked === false || values.checked === 'false') {
+			return false;
+		}
+		if (values.State === true || values.State === 'true') {
+			return true;
+		}
+		if (values.State === false || values.State === 'false') {
+			return false;
+		}
+		return undefined;
 	}
 
 	/** Dispatches an ExecuteSearch command via the adapter. */
