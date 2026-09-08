@@ -68,6 +68,7 @@
     AIService *aiService;
     IOSTopToolbarController *topToolbarController;
     IOSBottomToolbarController *bottomToolbarController;
+    UIView *bottomToolbarContainer;
     NSLayoutConstraint *webViewTopConstraint;
     NSLayoutConstraint *webViewBottomConstraint;
     NSLayoutConstraint *bottomToolbarBottomConstraint;
@@ -207,7 +208,7 @@ static IMP standardImpOfInputAccessoryView = nil;
                                                           alpha:1.0];
     [self.view addSubview:topToolbarContainer];
 
-    UIView *bottomToolbarContainer = [[UIView alloc] init];
+    bottomToolbarContainer = [[UIView alloc] init];
     bottomToolbarContainer.translatesAutoresizingMaskIntoConstraints = NO;
     bottomToolbarContainer.backgroundColor = UIColor.whiteColor;
     [self.view addSubview:bottomToolbarContainer];
@@ -339,8 +340,10 @@ static IMP standardImpOfInputAccessoryView = nil;
     [self.view addSubview:floatingAiButton];
     floatingAiButton.translatesAutoresizingMaskIntoConstraints = NO;
     [NSLayoutConstraint activateConstraints:@[
-        [floatingAiButton.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-8],
-        [floatingAiButton.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [floatingAiButton.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor
+                                                      constant:16.0],
+        [floatingAiButton.bottomAnchor constraintEqualToAnchor:bottomToolbarContainer.topAnchor
+                                                      constant:-16.0],
     ]];
 
     // Local AI requests use the ObjC AIService with per-request emit (see
@@ -351,22 +354,8 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)floatingAiTapped
 {
-    [self dismissLanguagePicker];
-    CGFloat width = MIN(self.view.bounds.size.width, 420.0);
-    if (self.view.bounds.size.width > 600.0) {
-        width = self.view.bounds.size.width * 750.0 / 750.0;
-    }
-    __weak DocumentViewController *weakSelf = self;
-    aiPanel = [[WriterAIPanelView alloc] initWithWidth:width
-        onTile:^(NSString *taskType) {
-            DocumentViewController *strongSelf = weakSelf;
-            [strongSelf aiTileTapped:taskType];
-        }
-        onClose:^{
-            DocumentViewController *strongSelf = weakSelf;
-            [strongSelf dismissAIPanel];
-        }];
-    [aiPanel showIn:self.view aboveBottomInset:keyboardHeight];
+    // Ticket 03: FAB mirrors bottom-bar「AI助手」→ doc_qa/chat assistant sheet.
+    [self bottomToolbarDidPressAIAssistant];
 }
 
 - (void)dismissAIPanel
@@ -1249,6 +1238,7 @@ static IMP standardImpOfInputAccessoryView = nil;
     bottomToolbarController.compact = keyboardVisible;
     bottomToolbarHeightConstraint.constant = bottomToolbarController.preferredHeight;
     bottomToolbarBottomConstraint.constant = bottomOffset;
+    floatingAiButton.hidden = keyboardVisible;
     [UIView animateWithDuration:duration
                           delay:0.0
                         options:options

@@ -10,6 +10,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Floating AI shortcut button
+/** Figma/Android AI assistant FAB (56 pt). Tap opens doc_qa/chat via `WriterAiPanel.openAssistant`, same as bottom-bar「AI助手」. */
 
 @interface WriterAFloatingAIButton : UIButton
 - (instancetype)initWithOnAction:(void (^)(NSString *action))onAction;

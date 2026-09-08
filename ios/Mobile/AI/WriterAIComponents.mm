@@ -29,16 +29,37 @@ static UIColor *WriterAIColorAccent(void) {
     void (^_onAction)(NSString *action);
 }
 
+static const CGFloat kWriterAIFabSize = 56.0;
+static const CGFloat kWriterAIFabLogoSize = 32.0;
+
 - (instancetype)initWithOnAction:(void (^)(NSString *action))onAction {
     self = [super initWithFrame:CGRectZero];
     if (self) {
         _onAction = [onAction copy];
-        self.backgroundColor = WriterAIColorAccent();
-        self.layer.cornerRadius = 28;
-        [self setTitle:@"AI" forState:UIControlStateNormal];
-        [self setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-        self.titleLabel.font = [UIFont boldSystemFontOfSize:17];
+        self.translatesAutoresizingMaskIntoConstraints = NO;
+        self.backgroundColor = UIColor.whiteColor;
+        self.layer.cornerRadius = kWriterAIFabSize / 2.0;
+        self.layer.shadowColor = UIColor.blackColor.CGColor;
+        self.layer.shadowOpacity = 0.16;
+        self.layer.shadowRadius = 8.0;
+        self.layer.shadowOffset = CGSizeMake(0.0, 2.0);
         self.accessibilityLabel = @"AI 助手";
+
+        UIImageView *logo = [[UIImageView alloc] initWithImage:[UIImage writerIconNamed:@"ai-assistant-logo"]];
+        logo.translatesAutoresizingMaskIntoConstraints = NO;
+        logo.contentMode = UIViewContentModeScaleAspectFit;
+        logo.userInteractionEnabled = NO;
+        [self addSubview:logo];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [self.widthAnchor constraintEqualToConstant:kWriterAIFabSize],
+            [self.heightAnchor constraintEqualToConstant:kWriterAIFabSize],
+            [logo.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+            [logo.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+            [logo.widthAnchor constraintEqualToConstant:kWriterAIFabLogoSize],
+            [logo.heightAnchor constraintEqualToConstant:kWriterAIFabLogoSize],
+        ]];
+
         [self addTarget:self action:@selector(tapped) forControlEvents:UIControlEventTouchUpInside];
     }
     return self;
@@ -862,6 +883,7 @@ static UIColor *WriterAIIconColor(NSString *hex)
         @"mobile-preview": WriterAIIconPNG_mobile_preview,
         @"function": WriterAIIconPNG_function,
         @"ai-feature": WriterAIIconPNG_ai_feature,
+        @"ai-assistant-logo": WriterAIIconPNG_ai_assistant_logo,
         @"character": WriterAIIconPNG_character,
         @"paragraph": WriterAIIconPNG_paragraph,
         @"recent": WriterAIIconPNG_recent,
