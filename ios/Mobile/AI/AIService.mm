@@ -163,6 +163,7 @@
     if (form.frequencyPenalty != 0) {
         body[@"frequency_penalty"] = @(form.frequencyPenalty);
     }
+    [body addEntriesFromDictionary:[self.modelStore samplingBodyFieldsForForm:form]];
     request.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
 
     AIServiceRequest *serviceRequest = [[AIServiceRequest alloc] init];

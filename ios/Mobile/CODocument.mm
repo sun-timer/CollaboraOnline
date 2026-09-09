@@ -26,6 +26,8 @@
 #import "ios.h"
 #import "AppDelegate.h"
 #import "CODocument.h"
+
+#import "Settings/AppThemeManager.h"
 #import "DocumentViewController.h"
 
 #import "ClientSession.hpp"
@@ -85,16 +87,19 @@ static std::atomic<unsigned> appDocIdCounter(1);
     NSURL *url = [[NSBundle mainBundle] URLForResource:@"cool" withExtension:@"html"];
     NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
     DocumentData::allocate(appDocId).coDocument = self;
-    components.queryItems = @[ [NSURLQueryItem queryItemWithName:@"file_path" value:[copyFileURL absoluteString]],
-                               [NSURLQueryItem queryItemWithName:@"closebutton" value:@"1"],
-                               [NSURLQueryItem queryItemWithName:@"permission" value:(readOnly ? @"readonly" : @"edit")],
-                               [NSURLQueryItem queryItemWithName:@"lang" value:app_locale],
-                               [NSURLQueryItem queryItemWithName:@"appdocid" value:[NSString stringWithFormat:@"%u", appDocId]],
-                               [NSURLQueryItem queryItemWithName:@"userinterfacemode" value:([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad ? @"notebookbar" : @"classic")],
-                               // Related to issue #5841: the iOS app sets the
-                               // base text direction via the "dir" parameter
-                               [NSURLQueryItem queryItemWithName:@"dir" value:app_text_direction],
-                             ];
+    NSMutableArray<NSURLQueryItem *> *queryItems = [NSMutableArray arrayWithArray:@[
+        [NSURLQueryItem queryItemWithName:@"file_path" value:[copyFileURL absoluteString]],
+        [NSURLQueryItem queryItemWithName:@"closebutton" value:@"1"],
+        [NSURLQueryItem queryItemWithName:@"permission" value:(readOnly ? @"readonly" : @"edit")],
+        [NSURLQueryItem queryItemWithName:@"lang" value:app_locale],
+        [NSURLQueryItem queryItemWithName:@"appdocid" value:[NSString stringWithFormat:@"%u", appDocId]],
+        [NSURLQueryItem queryItemWithName:@"userinterfacemode" value:([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad ? @"notebookbar" : @"classic")],
+        [NSURLQueryItem queryItemWithName:@"dir" value:app_text_direction],
+    ]];
+    if ([AppThemeManager isDarkModeActive]) {
+        [queryItems addObject:[NSURLQueryItem queryItemWithName:@"darkTheme" value:@"true"]];
+    }
+    components.queryItems = queryItems;
 
     NSURLRequest *request = [[NSURLRequest alloc]initWithURL:components.URL];
     [self.viewController.webView loadRequest:request];

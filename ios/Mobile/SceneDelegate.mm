@@ -13,6 +13,7 @@
 
 #import "DocumentPresentation.h"
 #import "SceneDelegate.h"
+#import "Settings/AppThemeManager.h"
 
 static UIViewController *bottomPresentedViewController(UIViewController *vc) {
     if ([vc presentedViewController] == nil)
@@ -35,6 +36,9 @@ static UIViewController *bottomPresentedViewController(UIViewController *vc) {
     }
     if ([connectionOptions.URLContexts count] > 0)
         [windowScene.windows[0] makeKeyAndVisible];
+    for (UIWindow *window in windowScene.windows) {
+        [AppThemeManager applyToWindow:window];
+    }
 }
 
 

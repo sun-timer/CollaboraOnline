@@ -7,11 +7,22 @@
 
 #import <UIKit/UIKit.h>
 
+@class DocumentPresentationLaunchOptions;
+
 NS_ASSUME_NONNULL_BEGIN
 
 @interface DocumentPresentation : NSObject
 
 + (void)presentDocumentAtURL:(NSURL *)documentURL from:(UIViewController *)presenter;
+
++ (void)presentDocumentAtURL:(NSURL *)documentURL
+                        from:(UIViewController *)presenter
+                     options:(nullable DocumentPresentationLaunchOptions *)options;
+
+/// Align Android `LibreOfficeUIActivity.buildAutoAiPromptForRequestCode`.
++ (NSString *)autoAiPromptForDocKind:(NSInteger)docKind
+                               title:(NSString *)title
+                     userDescription:(NSString *)userDescription;
 
 /// Copy a blank untitled.{odt|ods|odp} from the app bundle into Documents.
 /// Does not call LibreOfficeKit — same approach as Android createNewFileAsync.

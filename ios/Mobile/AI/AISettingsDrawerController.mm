@@ -9,8 +9,12 @@
 
 #import "AIModelConfigStore.h"
 #import "AISettingsDrawerIcons.h"
-
-#import <PhotosUI/PhotosUI.h>
+#import "Settings/AboutViewController.h"
+#import "Settings/AppIcons.h"
+#import "Settings/ClearCacheViewController.h"
+#import "LocalModelStore.h"
+#import "LocalModelViewController.h"
+#import "Settings/ProfileSettingsViewController.h"
 
 static const CGFloat kDrawerWidth = 320.0;
 
@@ -48,7 +52,7 @@ static UIView *AIDrawerHairline(void) {
 static NSString *const kProfileNameKey = @"USER_PROFILE_NAME";
 static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
 
-@interface AISettingsDrawerController () <PHPickerViewControllerDelegate, UITextFieldDelegate, UIGestureRecognizerDelegate>
+@interface AISettingsDrawerController () <UITextFieldDelegate, UIGestureRecognizerDelegate>
 @property (weak, nonatomic) UIViewController *host;
 @property (strong, nonatomic, readwrite) UIScreenEdgePanGestureRecognizer *edgePanGesture;
 @property (strong, nonatomic) AIModelConfigStore *modelStore;
@@ -68,6 +72,8 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
 @property (strong, nonatomic) NSMutableDictionary<NSNumber *, UILabel *> *modelValueLabels;
 @property (strong, nonatomic) NSMutableDictionary<NSNumber *, UIView *> *modelRowBackgrounds;
 @property (strong, nonatomic) UIButton *profileEditButton;
+@property (strong, nonatomic) UILabel *localStatusLabel;
+@property (strong, nonatomic) UIButton *localRowButton;
 @property (strong, nonatomic) UIStackView *configStack;
 @property (strong, nonatomic) UIButton *configCancelButton;
 @property (strong, nonatomic) UIButton *configSaveFooterButton;
@@ -175,6 +181,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     [self buildDrawerContent];
     [self buildConfigContent];
     [self reloadProfile];
+    [self reloadLocalModelStatus];
     [self reloadModelRows];
     self.modelsExpanded = YES;
     [self applyModelsExpandedStateAnimated:NO];
@@ -296,31 +303,34 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     localHint.textColor = AIDrawerColorTextSecondary();
     [self.modelsBody addSubview:localHint];
 
-    UIView *localRow = [[UIView alloc] init];
-    localRow.translatesAutoresizingMaskIntoConstraints = NO;
-    localRow.backgroundColor = UIColor.whiteColor;
-    localRow.layer.cornerRadius = 8;
-    localRow.alpha = 0.72;
-    [self.modelsBody addSubview:localRow];
+    self.localRowButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.localRowButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.localRowButton.backgroundColor = UIColor.whiteColor;
+    self.localRowButton.layer.cornerRadius = 8;
+    self.localRowButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    self.localRowButton.accessibilityIdentifier = @"aiDrawerLocalModel";
+    [self.localRowButton addTarget:self action:@selector(openLocalModel) forControlEvents:UIControlEventTouchUpInside];
+    [self.modelsBody addSubview:self.localRowButton];
 
     UIImageView *localIcon = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"model-vision" size:24]];
     localIcon.translatesAutoresizingMaskIntoConstraints = NO;
-    localIcon.alpha = 0.45;
-    [localRow addSubview:localIcon];
+    localIcon.userInteractionEnabled = NO;
+    [self.localRowButton addSubview:localIcon];
 
     UILabel *localTitle = [[UILabel alloc] init];
     localTitle.translatesAutoresizingMaskIntoConstraints = NO;
     localTitle.text = @"本地推理";
     localTitle.font = [UIFont systemFontOfSize:14];
     localTitle.textColor = AIDrawerColorTextPrimary();
-    [localRow addSubview:localTitle];
+    localTitle.userInteractionEnabled = NO;
+    [self.localRowButton addSubview:localTitle];
 
-    UILabel *localStatus = [[UILabel alloc] init];
-    localStatus.translatesAutoresizingMaskIntoConstraints = NO;
-    localStatus.text = @"未接入";
-    localStatus.font = [UIFont systemFontOfSize:12];
-    localStatus.textColor = AIDrawerColorTextSecondary();
-    [localRow addSubview:localStatus];
+    self.localStatusLabel = [[UILabel alloc] init];
+    self.localStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.localStatusLabel.font = [UIFont systemFontOfSize:12];
+    self.localStatusLabel.textColor = AIDrawerColorTextSecondary();
+    self.localStatusLabel.userInteractionEnabled = NO;
+    [self.localRowButton addSubview:self.localStatusLabel];
 
     UIView *footer = [[UIView alloc] init];
     footer.translatesAutoresizingMaskIntoConstraints = NO;
@@ -405,19 +415,19 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
         [rows.trailingAnchor constraintEqualToAnchor:self.modelsBody.trailingAnchor],
         [localHint.topAnchor constraintEqualToAnchor:rows.bottomAnchor constant:12],
         [localHint.leadingAnchor constraintEqualToAnchor:self.modelsBody.leadingAnchor],
-        [localRow.topAnchor constraintEqualToAnchor:localHint.bottomAnchor constant:8],
-        [localRow.leadingAnchor constraintEqualToAnchor:self.modelsBody.leadingAnchor],
-        [localRow.trailingAnchor constraintEqualToAnchor:self.modelsBody.trailingAnchor],
-        [localRow.heightAnchor constraintEqualToConstant:55],
-        [localRow.bottomAnchor constraintEqualToAnchor:self.modelsBody.bottomAnchor],
-        [localIcon.leadingAnchor constraintEqualToAnchor:localRow.leadingAnchor constant:12],
-        [localIcon.centerYAnchor constraintEqualToAnchor:localRow.centerYAnchor],
+        [self.localRowButton.topAnchor constraintEqualToAnchor:localHint.bottomAnchor constant:8],
+        [self.localRowButton.leadingAnchor constraintEqualToAnchor:self.modelsBody.leadingAnchor],
+        [self.localRowButton.trailingAnchor constraintEqualToAnchor:self.modelsBody.trailingAnchor],
+        [self.localRowButton.heightAnchor constraintEqualToConstant:55],
+        [self.localRowButton.bottomAnchor constraintEqualToAnchor:self.modelsBody.bottomAnchor],
+        [localIcon.leadingAnchor constraintEqualToAnchor:self.localRowButton.leadingAnchor constant:12],
+        [localIcon.centerYAnchor constraintEqualToAnchor:self.localRowButton.centerYAnchor],
         [localIcon.widthAnchor constraintEqualToConstant:24],
         [localIcon.heightAnchor constraintEqualToConstant:24],
         [localTitle.leadingAnchor constraintEqualToAnchor:localIcon.trailingAnchor constant:12],
-        [localTitle.centerYAnchor constraintEqualToAnchor:localRow.centerYAnchor],
-        [localStatus.trailingAnchor constraintEqualToAnchor:localRow.trailingAnchor constant:-12],
-        [localStatus.centerYAnchor constraintEqualToAnchor:localRow.centerYAnchor],
+        [localTitle.centerYAnchor constraintEqualToAnchor:self.localRowButton.centerYAnchor],
+        [self.localStatusLabel.trailingAnchor constraintEqualToAnchor:self.localRowButton.trailingAnchor constant:-12],
+        [self.localStatusLabel.centerYAnchor constraintEqualToAnchor:self.localRowButton.centerYAnchor],
     ]];
     self.modelsBodyHeight = [self.modelsBody.heightAnchor constraintEqualToConstant:0];
     self.modelsBodyHeight.active = NO;
@@ -800,6 +810,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     self.view.userInteractionEnabled = YES;
     self.open = YES;
     [self reloadProfile];
+    [self reloadLocalModelStatus];
     [self reloadModelRows];
     [self.view layoutIfNeeded];
     [UIView animateWithDuration:0.25 animations:^{
@@ -933,206 +944,50 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 
 - (void)reloadProfile {
     NSString *name = [[NSUserDefaults standardUserDefaults] stringForKey:kProfileNameKey];
-    self.nameLabel.text = name.length > 0 ? name : @"用户";
+    self.nameLabel.text = name.length > 0 ? name : @"orangepi";
     UIImage *image = [UIImage imageWithContentsOfFile:[self avatarURL].path];
     if (image == nil) {
-        image = [UIImage imageNamed:@"HomeAvatar"];
+        image = [AppIcons iconNamed:@"avatar"];
     }
     self.avatarView.image = image;
 }
 
-- (void)editProfile {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"编辑头像和昵称"
-                                                                   message:nil
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
-        field.text = [[NSUserDefaults standardUserDefaults] stringForKey:kProfileNameKey];
-        field.placeholder = @"昵称";
-    }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"更换头像" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *name = alert.textFields.firstObject.text;
-        if (name.length > 0) {
-            [[NSUserDefaults standardUserDefaults] setObject:name forKey:kProfileNameKey];
-        }
-        PHPickerConfiguration *config = [[PHPickerConfiguration alloc] init];
-        config.selectionLimit = 1;
-        config.filter = [PHPickerFilter imagesFilter];
-        PHPickerViewController *picker = [[PHPickerViewController alloc] initWithConfiguration:config];
-        picker.delegate = self;
-        [self presentViewController:picker animated:YES completion:nil];
-    }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"保存昵称" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *name = alert.textFields.firstObject.text ?: @"";
-        [[NSUserDefaults standardUserDefaults] setObject:name forKey:kProfileNameKey];
-        [self reloadProfile];
-    }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+- (void)reloadLocalModelStatus {
+    self.localStatusLabel.text = [[LocalModelStore shared] drawerStatusText];
+    BOOL supported = [LocalModelStore isDeviceSupported];
+    self.localRowButton.alpha = supported ? 1.0 : 0.72;
+    self.localRowButton.enabled = supported;
 }
 
-- (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results {
-    [picker dismissViewControllerAnimated:YES completion:nil];
-    PHPickerResult *result = results.firstObject;
-    if (result == nil) {
-        [self reloadProfile];
-        return;
-    }
-    [result.itemProvider loadObjectOfClass:[UIImage class] completionHandler:^(id object, NSError *error) {
-        UIImage *image = (UIImage *)object;
-        if (![image isKindOfClass:[UIImage class]]) {
-            return;
-        }
-        NSData *data = UIImageJPEGRepresentation(image, 0.85);
-        [data writeToURL:[self avatarURL] atomically:YES];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self reloadProfile];
-        });
-    }];
-}
-
-- (void)clearCache {
-    __weak AISettingsDrawerController *weakSelf = self;
-
-    UIViewController *page = [[UIViewController alloc] init];
-    page.view.backgroundColor = UIColor.whiteColor;
-    page.modalPresentationStyle = UIModalPresentationPageSheet;
-
-    UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
-    back.translatesAutoresizingMaskIntoConstraints = NO;
-    [back setTitle:@"‹ 返回" forState:UIControlStateNormal];
-    [back addAction:[UIAction actionWithTitle:@"返回" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-        [page dismissViewControllerAnimated:YES completion:nil];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [page.view addSubview:back];
-
-    UILabel *title = [[UILabel alloc] init];
-    title.translatesAutoresizingMaskIntoConstraints = NO;
-    title.text = @"清理缓存";
-    title.font = [UIFont boldSystemFontOfSize:17];
-    title.textColor = UIColor.blackColor;
-    [page.view addSubview:title];
-
-    UILabel *modeLabel = [[UILabel alloc] init];
-    modeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    modeLabel.text = @"选择清理模式";
-    modeLabel.font = [UIFont systemFontOfSize:15];
-    modeLabel.textColor = [UIColor colorWithWhite:0.42 alpha:1];
-    [page.view addSubview:modeLabel];
-
-    UIView *card = [[UIView alloc] init];
-    card.translatesAutoresizingMaskIntoConstraints = NO;
-    card.layer.cornerRadius = 20;
-    card.layer.cornerCurve = kCACornerCurveContinuous;
-    card.layer.masksToBounds = YES;
-    card.backgroundColor = [UIColor colorWithRed:255.0 / 255.0 green:234.0 / 255.0 blue:216.0 / 255.0 alpha:1];
-    [page.view addSubview:card];
-
-    __block UIButton *clearButton = nil;
-    UIButton *lastOption = nil;
-    NSArray<NSString *> *options = @[ @"临时文件", @"文档缓存", @"全部缓存" ];
-    for (NSUInteger i = 0; i < options.count; i++) {
-        UIButton *option = [UIButton buttonWithType:UIButtonTypeCustom];
-        option.translatesAutoresizingMaskIntoConstraints = NO;
-        option.backgroundColor = UIColor.whiteColor;
-        option.layer.cornerRadius = 12;
-        [option setTitle:options[i] forState:UIControlStateNormal];
-        [option setTitleColor:UIColor.blackColor forState:UIControlStateNormal];
-        option.titleLabel.font = [UIFont systemFontOfSize:15];
-        option.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
-        option.contentEdgeInsets = UIEdgeInsetsMake(0, 16, 0, 16);
-        [option addAction:[UIAction actionWithTitle:options[i] image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-            for (UIView *sub in card.subviews) {
-                if ([sub isKindOfClass:[UIButton class]] && sub != option) {
-                    ((UIButton *)sub).layer.borderWidth = 0;
-                }
-            }
-            option.layer.borderColor = [weakSelf accentColor].CGColor;
-            option.layer.borderWidth = 2;
-            if (clearButton != nil) {
-                clearButton.backgroundColor = [weakSelf accentColor];
-                clearButton.enabled = YES;
-            }
-        }] forControlEvents:UIControlEventTouchUpInside];
-        [card addSubview:option];
-        [option.heightAnchor constraintEqualToConstant:56].active = YES;
-        [option.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16].active = YES;
-        [option.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-16].active = YES;
-        if (lastOption == nil) {
-            [option.topAnchor constraintEqualToAnchor:card.topAnchor constant:16].active = YES;
-        } else {
-            [option.topAnchor constraintEqualToAnchor:lastOption.bottomAnchor constant:12].active = YES;
-        }
-        lastOption = option;
-    }
-
-    clearButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    clearButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [clearButton setTitle:@"清理" forState:UIControlStateNormal];
-    clearButton.backgroundColor = [UIColor colorWithWhite:0.8 alpha:1];
-    clearButton.layer.cornerRadius = 28;
-    clearButton.enabled = NO;
-    [clearButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    [clearButton addAction:[UIAction actionWithTitle:@"清理" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-        [weakSelf runCacheCleanOnPage:page button:clearButton];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [page.view addSubview:clearButton];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [back.topAnchor constraintEqualToAnchor:page.view.safeAreaLayoutGuide.topAnchor constant:8],
-        [back.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:12],
-        [title.centerYAnchor constraintEqualToAnchor:back.centerYAnchor],
-        [title.centerXAnchor constraintEqualToAnchor:page.view.centerXAnchor],
-        [modeLabel.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:24],
-        [modeLabel.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:32],
-        [card.topAnchor constraintEqualToAnchor:modeLabel.bottomAnchor constant:16],
-        [card.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:32],
-        [card.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-32],
-        [card.bottomAnchor constraintEqualToAnchor:lastOption.bottomAnchor constant:16],
-        [clearButton.topAnchor constraintEqualToAnchor:card.bottomAnchor constant:24],
-        [clearButton.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:64],
-        [clearButton.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-64],
-        [clearButton.heightAnchor constraintEqualToConstant:56],
-    ]];
+- (void)openLocalModel {
+    LocalModelViewController *page = [[LocalModelViewController alloc] init];
+    __weak __typeof(self) weakSelf = self;
+    page.onDismiss = ^{
+        [weakSelf reloadLocalModelStatus];
+    };
     [self presentViewController:page animated:YES completion:nil];
 }
 
-- (void)runCacheCleanOnPage:(UIViewController *)page button:(UIButton *)button {
-    [button setTitle:@"清理中..." forState:UIControlStateNormal];
-    button.enabled = NO;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        NSFileManager *fm = [NSFileManager defaultManager];
-        NSArray<NSURL *> *roots = @[
-            [fm URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].lastObject,
-            [NSURL fileURLWithPath:NSTemporaryDirectory()],
-        ];
-        for (NSURL *root in roots) {
-            NSArray<NSURL *> *children = [fm contentsOfDirectoryAtURL:root includingPropertiesForKeys:nil options:0 error:nil];
-            for (NSURL *child in children) {
-                [fm removeItemAtURL:child error:nil];
-            }
-        }
-        [button setTitle:@"清理完毕" forState:UIControlStateNormal];
-        button.backgroundColor = [UIColor colorWithRed:59.0 / 255.0 green:128.0 / 255.0 blue:64.0 / 255.0 alpha:1];
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"清理完毕"
-                                                                       message:@"已清理缓存，刷新页面以生效。"
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"刷新页面" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
-            [page dismissViewControllerAnimated:YES completion:nil];
-        }]];
-        [alert addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleCancel handler:nil]];
-        [page presentViewController:alert animated:YES completion:nil];
-    });
+- (void)editProfile {
+    ProfileSettingsViewController *page = [[ProfileSettingsViewController alloc] init];
+    page.modalPresentationStyle = UIModalPresentationFullScreen;
+    __weak __typeof(self) weakSelf = self;
+    page.onProfileChanged = ^{
+        [weakSelf reloadProfile];
+    };
+    [self presentViewController:page animated:YES completion:nil];
+}
+
+- (void)clearCache {
+    ClearCacheViewController *page = [[ClearCacheViewController alloc] init];
+    page.modalPresentationStyle = UIModalPresentationFullScreen;
+    [self presentViewController:page animated:YES completion:nil];
 }
 
 - (void)showAbout {
-    NSString *version = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"";
-    NSString *build = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"] ?: @"";
-    NSString *message = [NSString stringWithFormat:@"Orange Office %@ (%@)", version, build];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"关于"
-                                                                   message:message
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    AboutViewController *page = [[AboutViewController alloc] init];
+    page.modalPresentationStyle = UIModalPresentationFullScreen;
+    [self presentViewController:page animated:YES completion:nil];
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {

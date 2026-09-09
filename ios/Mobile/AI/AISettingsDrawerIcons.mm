@@ -8,6 +8,7 @@
 #import "AISettingsDrawerIcons.h"
 
 #import "AIModelConfigStore.h"
+#import "Settings/AppIcons.h"
 
 static UIColor *AIDrawerIconColor(NSString *hex) {
     if (hex.length == 7 && [hex hasPrefix:@"#"]) {
@@ -70,18 +71,9 @@ static UIImage *AIDrawerRender(NSString *cacheKey, CGFloat size, void (^draw)(CG
 @implementation AISettingsDrawerIcons
 
 + (UIImage *)iconNamed:(NSString *)name size:(CGFloat)size {
-    NSDictionary<NSString *, NSString *> *assetMap = @{
-        @"model-base": @"AiModelBase",
-        @"model-think": @"AiModelThink",
-        @"model-image": @"AiModelImage",
-        @"config-header": @"AiConfigHeader",
-    };
-    NSString *asset = assetMap[name];
-    if (asset.length > 0) {
-        UIImage *image = [UIImage imageNamed:asset];
-        if (image) {
-            return image;
-        }
+    UIImage *shared = [AppIcons iconNamed:name size:size];
+    if (shared != nil) {
+        return shared;
     }
 
     if ([name isEqualToString:@"chevron-right"]) {

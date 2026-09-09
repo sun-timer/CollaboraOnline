@@ -14,8 +14,11 @@
 
 #import "CODocument.h"
 
+@class DocumentPresentationLaunchOptions;
+
 @interface DocumentViewController : UIViewController
 
+@property (strong, nullable) DocumentPresentationLaunchOptions *launchOptions;
 @property (strong) CODocument *document;
 @property (strong) WKWebView *webView;
 @property void *schemeHandler;

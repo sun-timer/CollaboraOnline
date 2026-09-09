@@ -120,6 +120,27 @@
 		D49B580F2D1077F700E0E607 /* UniformTypeIdentifiers.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D49B580E2D1077F700E0E607 /* UniformTypeIdentifiers.framework */; };
 		C0FFEE2F2026082400000001 /* PhotosUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE302026082400000001 /* PhotosUI.framework */; };
 		D4A0F3D72D64E86C00472DEE /* CoolURLSchemeHandler.mm in Sources */ = {isa = PBXBuildFile; fileRef = D4A0F3D62D64E86C00472DEE /* CoolURLSchemeHandler.mm */; };
+		E2B010011026090900000001 /* AppThemeManager.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010031026090900000001 /* AppThemeManager.mm */; };
+		E2B010051026090900000001 /* AboutViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010051026090900000002 /* AboutViewController.mm */; };
+		E2B010071026090900000001 /* ThemeSettingsViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010071026090900000002 /* ThemeSettingsViewController.mm */; };
+		E2B010091026090900000001 /* HTMLAssetViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010091026090900000002 /* HTMLAssetViewController.mm */; };
+		E2B0100B1026090900000001 /* ClearCacheHelper.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0100B1026090900000002 /* ClearCacheHelper.mm */; };
+		E2B0100D1026090900000001 /* ClearCacheViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0100D1026090900000002 /* ClearCacheViewController.mm */; };
+		E2B0100F1026090900000001 /* FeedbackRecord.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0100F1026090900000002 /* FeedbackRecord.mm */; };
+		E2B010111026090900000001 /* FeedbackStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010111026090900000002 /* FeedbackStore.mm */; };
+		E2B010131026090900000001 /* FeedbackViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010131026090900000002 /* FeedbackViewController.mm */; };
+		E2B010151026090900000001 /* notice.txt in Resources */ = {isa = PBXBuildFile; fileRef = E2B010151026090900000002 /* notice.txt */; };
+		E2B010171026090900000001 /* license.html in Resources */ = {isa = PBXBuildFile; fileRef = E2B010171026090900000002 /* license.html */; };
+		E2B010191026090900000001 /* AppIcons.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010191026090900000002 /* AppIcons.mm */; };
+		E2B0101B1026090900000001 /* AppChromeHelper.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0101B1026090900000002 /* AppChromeHelper.mm */; };
+		E2B0101D1026090900000001 /* AIQuickCreateViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0101D1026090900000002 /* AIQuickCreateViewController.mm */; };
+		E2B0101F1026090900000001 /* CreateFileBottomSheetController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0101F1026090900000002 /* CreateFileBottomSheetController.mm */; };
+		E2B010211026090900000001 /* DocumentPresentationLaunchOptions.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010211026090900000002 /* DocumentPresentationLaunchOptions.mm */; };
+		E2B010231026090900000001 /* HomeCardDialogPresenter.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010231026090900000002 /* HomeCardDialogPresenter.mm */; };
+		E2B010251026090900000001 /* ProfileSettingsViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010251026090900000002 /* ProfileSettingsViewController.mm */; };
+		E2B010271026090900000001 /* LocalModelStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010271026090900000002 /* LocalModelStore.mm */; };
+		E2B010291026090900000001 /* LocalModelViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010291026090900000002 /* LocalModelViewController.mm */; };
+		E2B0102B1026090900000001 /* AppToastPresenter.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0102B1026090900000002 /* AppToastPresenter.mm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1574,6 +1595,46 @@
 		C0FFEE302026082400000001 /* PhotosUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PhotosUI.framework; path = System/Library/Frameworks/PhotosUI.framework; sourceTree = SDKROOT; };
 		D4A0F3D62D64E86C00472DEE /* CoolURLSchemeHandler.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CoolURLSchemeHandler.mm; sourceTree = "<group>"; };
 		D4A0F3D82D663A0000472DEE /* CoolURLSchemeHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CoolURLSchemeHandler.h; sourceTree = "<group>"; };
+		E2B010021026090900000001 /* AppThemeManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppThemeManager.h; sourceTree = "<group>"; };
+		E2B010031026090900000001 /* AppThemeManager.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppThemeManager.mm; sourceTree = "<group>"; };
+		E2B010041026090900000001 /* AboutViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AboutViewController.h; sourceTree = "<group>"; };
+		E2B010051026090900000002 /* AboutViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AboutViewController.mm; sourceTree = "<group>"; };
+		E2B010061026090900000001 /* ThemeSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ThemeSettingsViewController.h; sourceTree = "<group>"; };
+		E2B010071026090900000002 /* ThemeSettingsViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ThemeSettingsViewController.mm; sourceTree = "<group>"; };
+		E2B010081026090900000001 /* HTMLAssetViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HTMLAssetViewController.h; sourceTree = "<group>"; };
+		E2B010091026090900000002 /* HTMLAssetViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = HTMLAssetViewController.mm; sourceTree = "<group>"; };
+		E2B0100A1026090900000001 /* ClearCacheHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ClearCacheHelper.h; sourceTree = "<group>"; };
+		E2B0100B1026090900000002 /* ClearCacheHelper.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ClearCacheHelper.mm; sourceTree = "<group>"; };
+		E2B0100C1026090900000001 /* ClearCacheViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ClearCacheViewController.h; sourceTree = "<group>"; };
+		E2B0100D1026090900000002 /* ClearCacheViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ClearCacheViewController.mm; sourceTree = "<group>"; };
+		E2B0100E1026090900000001 /* FeedbackRecord.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackRecord.h; sourceTree = "<group>"; };
+		E2B0100F1026090900000002 /* FeedbackRecord.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackRecord.mm; sourceTree = "<group>"; };
+		E2B010101026090900000001 /* FeedbackStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackStore.h; sourceTree = "<group>"; };
+		E2B010111026090900000002 /* FeedbackStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackStore.mm; sourceTree = "<group>"; };
+		E2B010121026090900000001 /* FeedbackViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackViewController.h; sourceTree = "<group>"; };
+		E2B010131026090900000002 /* FeedbackViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackViewController.mm; sourceTree = "<group>"; };
+		E2B010151026090900000002 /* notice.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = notice.txt; sourceTree = "<group>"; };
+		E2B010171026090900000002 /* license.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = license.html; sourceTree = "<group>"; };
+		E2B010181026090900000001 /* AppIcons.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppIcons.h; sourceTree = "<group>"; };
+		E2B010191026090900000002 /* AppIcons.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppIcons.mm; sourceTree = "<group>"; };
+		E2B0101A1026090900000001 /* AppChromeHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppChromeHelper.h; sourceTree = "<group>"; };
+		E2B0101B1026090900000002 /* AppChromeHelper.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppChromeHelper.mm; sourceTree = "<group>"; };
+		E2B0101C1026090900000001 /* AIQuickCreateViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIQuickCreateViewController.h; sourceTree = "<group>"; };
+		E2B0101D1026090900000002 /* AIQuickCreateViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AIQuickCreateViewController.mm; sourceTree = "<group>"; };
+		E2B0101E1026090900000001 /* CreateFileBottomSheetController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CreateFileBottomSheetController.h; sourceTree = "<group>"; };
+		E2B0101F1026090900000002 /* CreateFileBottomSheetController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CreateFileBottomSheetController.mm; sourceTree = "<group>"; };
+		E2B010201026090900000001 /* DocumentPresentationLaunchOptions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DocumentPresentationLaunchOptions.h; sourceTree = "<group>"; };
+		E2B010211026090900000002 /* DocumentPresentationLaunchOptions.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DocumentPresentationLaunchOptions.mm; sourceTree = "<group>"; };
+		E2B010221026090900000001 /* HomeCardDialogPresenter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HomeCardDialogPresenter.h; sourceTree = "<group>"; };
+		E2B010231026090900000002 /* HomeCardDialogPresenter.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = HomeCardDialogPresenter.mm; sourceTree = "<group>"; };
+		E2B010241026090900000001 /* ProfileSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ProfileSettingsViewController.h; sourceTree = "<group>"; };
+		E2B010251026090900000002 /* ProfileSettingsViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ProfileSettingsViewController.mm; sourceTree = "<group>"; };
+		E2B010261026090900000001 /* LocalModelStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LocalModelStore.h; sourceTree = "<group>"; };
+		E2B010271026090900000002 /* LocalModelStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = LocalModelStore.mm; sourceTree = "<group>"; };
+		E2B010281026090900000001 /* LocalModelViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LocalModelViewController.h; sourceTree = "<group>"; };
+		E2B010291026090900000002 /* LocalModelViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = LocalModelViewController.mm; sourceTree = "<group>"; };
+		E2B0102A1026090900000001 /* AppToastPresenter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppToastPresenter.h; sourceTree = "<group>"; };
+		E2B0102B1026090900000002 /* AppToastPresenter.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppToastPresenter.mm; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -1605,9 +1666,57 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		E2B020011026090900000001 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				E2B010021026090900000001 /* AppThemeManager.h */,
+				E2B010031026090900000001 /* AppThemeManager.mm */,
+				E2B010041026090900000001 /* AboutViewController.h */,
+				E2B010051026090900000002 /* AboutViewController.mm */,
+				E2B010061026090900000001 /* ThemeSettingsViewController.h */,
+				E2B010071026090900000002 /* ThemeSettingsViewController.mm */,
+				E2B010081026090900000001 /* HTMLAssetViewController.h */,
+				E2B010091026090900000002 /* HTMLAssetViewController.mm */,
+				E2B0100A1026090900000001 /* ClearCacheHelper.h */,
+				E2B0100B1026090900000002 /* ClearCacheHelper.mm */,
+				E2B0100C1026090900000001 /* ClearCacheViewController.h */,
+				E2B0100D1026090900000002 /* ClearCacheViewController.mm */,
+				E2B010181026090900000001 /* AppIcons.h */,
+				E2B010191026090900000002 /* AppIcons.mm */,
+				E2B0101A1026090900000001 /* AppChromeHelper.h */,
+				E2B0101B1026090900000002 /* AppChromeHelper.mm */,
+				E2B0101C1026090900000001 /* AIQuickCreateViewController.h */,
+				E2B0101D1026090900000002 /* AIQuickCreateViewController.mm */,
+				E2B0101E1026090900000001 /* CreateFileBottomSheetController.h */,
+				E2B0101F1026090900000002 /* CreateFileBottomSheetController.mm */,
+				E2B010221026090900000001 /* HomeCardDialogPresenter.h */,
+				E2B010231026090900000002 /* HomeCardDialogPresenter.mm */,
+				E2B010241026090900000001 /* ProfileSettingsViewController.h */,
+				E2B010251026090900000002 /* ProfileSettingsViewController.mm */,
+				E2B0102A1026090900000001 /* AppToastPresenter.h */,
+				E2B0102B1026090900000002 /* AppToastPresenter.mm */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		E2B020021026090900000001 /* Feedback */ = {
+			isa = PBXGroup;
+			children = (
+				E2B0100E1026090900000001 /* FeedbackRecord.h */,
+				E2B0100F1026090900000002 /* FeedbackRecord.mm */,
+				E2B010101026090900000001 /* FeedbackStore.h */,
+				E2B010111026090900000002 /* FeedbackStore.mm */,
+				E2B010121026090900000001 /* FeedbackViewController.h */,
+				E2B010131026090900000002 /* FeedbackViewController.mm */,
+			);
+			path = Feedback;
+			sourceTree = "<group>";
+		};
 		BE00F8922139494E001CE2D4 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				E2B010151026090900000002 /* notice.txt */,
+				E2B010171026090900000002 /* license.html */,
 				BE7D6A6A23FAA8B500C2E605 /* coolkitconfig.xcu */,
 				BE18C7DD226DE09A001AD27E /* Branding */,
 				BEB0E5D821C7CA800085A0CF /* Settings.bundle */,
@@ -2758,6 +2867,8 @@
 			isa = PBXGroup;
 			children = (
 				C0FFEE1C2026081200000001 /* AI */,
+				E2B020011026090900000001 /* Settings */,
+				E2B020021026090900000001 /* Feedback */,
 				C0FFEE032026081200000001 /* Bridge */,
 				C0FFEE3A2026091200000001 /* Typeset */,
 				D0A020260814000000000021 /* Toolbar */,
@@ -2779,6 +2890,8 @@
 				C0FFEE212026082400000001 /* HomeViewController.mm */,
 				C0FFEE252026082400000001 /* DocumentPresentation.h */,
 				C0FFEE242026082400000001 /* DocumentPresentation.mm */,
+				E2B010201026090900000001 /* DocumentPresentationLaunchOptions.h */,
+				E2B010211026090900000002 /* DocumentPresentationLaunchOptions.mm */,
 				C0FFEE282026082400000001 /* RecentDocumentsStore.h */,
 				C0FFEE272026082400000001 /* RecentDocumentsStore.mm */,
 				BE8D77302136762500AC58EA /* DocumentViewController.h */,
@@ -2817,6 +2930,10 @@
 				C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */,
 				C0FFEE302026082400000002 /* AISettingsDrawerIcons.h */,
 				C0FFEE2F2026082400000002 /* AISettingsDrawerIcons.mm */,
+				E2B010261026090900000001 /* LocalModelStore.h */,
+				E2B010271026090900000002 /* LocalModelStore.mm */,
+				E2B010281026090900000001 /* LocalModelViewController.h */,
+				E2B010291026090900000002 /* LocalModelViewController.mm */,
 			);
 			path = AI;
 			sourceTree = "<group>";
@@ -3870,6 +3987,8 @@
 				BE00F8A021396585001CE2D4 /* cool.html in Resources */,
 				BE8D85CA214055F3009F1860 /* offapi.rdb in Resources */,
 				BE8D773A2136762600AC58EA /* Assets.xcassets in Resources */,
+				E2B010151026090900000001 /* notice.txt in Resources */,
+				E2B010171026090900000001 /* license.html in Resources */,
 				BE8D85CC214055F3009F1860 /* config in Resources */,
 				BE00F8A321396585001CE2D4 /* bundle.js in Resources */,
 				BE8D77382136762500AC58EA /* Main.storyboard in Resources */,
@@ -3992,6 +4111,25 @@
 				D0A020260908120000000004 /* DocumentTabsSheetController.mm in Sources */,
 				BE8D772C2136762500AC58EA /* AppDelegate.mm in Sources */,
 				AB1201002F000000000000D1 /* WriterAIComponents.mm in Sources */,
+				E2B010011026090900000001 /* AppThemeManager.mm in Sources */,
+				E2B010051026090900000001 /* AboutViewController.mm in Sources */,
+				E2B010071026090900000001 /* ThemeSettingsViewController.mm in Sources */,
+				E2B010091026090900000001 /* HTMLAssetViewController.mm in Sources */,
+				E2B0100B1026090900000001 /* ClearCacheHelper.mm in Sources */,
+				E2B0100D1026090900000001 /* ClearCacheViewController.mm in Sources */,
+				E2B0100F1026090900000001 /* FeedbackRecord.mm in Sources */,
+				E2B010111026090900000001 /* FeedbackStore.mm in Sources */,
+				E2B010131026090900000001 /* FeedbackViewController.mm in Sources */,
+				E2B010191026090900000001 /* AppIcons.mm in Sources */,
+				E2B0101B1026090900000001 /* AppChromeHelper.mm in Sources */,
+				E2B0101D1026090900000001 /* AIQuickCreateViewController.mm in Sources */,
+				E2B0101F1026090900000001 /* CreateFileBottomSheetController.mm in Sources */,
+				E2B010211026090900000001 /* DocumentPresentationLaunchOptions.mm in Sources */,
+				E2B010231026090900000001 /* HomeCardDialogPresenter.mm in Sources */,
+				E2B010251026090900000001 /* ProfileSettingsViewController.mm in Sources */,
+				E2B010271026090900000001 /* LocalModelStore.mm in Sources */,
+				E2B010291026090900000001 /* LocalModelViewController.mm in Sources */,
+				E2B0102B1026090900000001 /* AppToastPresenter.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

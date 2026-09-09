@@ -40,6 +40,7 @@
 #import "Toolbar/CommentListSheetController.h"
 #import "Toolbar/DocumentTabsSheetController.h"
 #import "DocumentPresentation.h"
+#import "DocumentPresentationLaunchOptions.h"
 #import "RecentDocumentsStore.h"
 #import "Toolbar/TopToolbarController.h"
 
@@ -79,6 +80,7 @@
     BOOL isClosing;
     BOOL kitConnectionTornDown;
     BOOL documentPickerOpeningDocument;
+    BOOL pendingAutoGenerateHandled;
 }
 
 @end
@@ -535,6 +537,130 @@ static IMP standardImpOfInputAccessoryView = nil;
 {
     [aiResultModal dismiss];
     aiResultModal = nil;
+}
+
+- (void)maybeAutoGenerateAiContentAfterLoad
+{
+    if (pendingAutoGenerateHandled || self.launchOptions == nil || !self.launchOptions.autoGenerateAiContent) {
+        return;
+    }
+    pendingAutoGenerateHandled = YES;
+    DocumentPresentationLaunchOptions *opts = self.launchOptions;
+    self.launchOptions = nil;
+
+    if (opts.autoIsCalcNewTable) {
+        [self startAutoGenerateCalcNewTable:opts.autoUserDescription ?: @""];
+        return;
+    }
+    NSString *prompt = opts.autoAiPrompt.length > 0
+        ? opts.autoAiPrompt
+        : @"请先生成文档大纲（章节标题），再基于大纲输出完整正文，风格专业、结构清晰。";
+    [self startAutoGenerateChatPrompt:prompt title:@"AI 生成内容"];
+}
+
+- (void)startAutoGenerateCalcNewTable:(NSString *)userDescription
+{
+    aiTaskTitle = @"生成表格";
+    lastTaskType = @"calc_new_table";
+    aiRequestId = [[NSUUID UUID] UUIDString];
+    aiFullText = @"";
+    [self dismissAIPanel];
+    __weak DocumentViewController *weakSelf = self;
+    aiResultModal = [[WriterAAIResultModal alloc] initWithTitle:aiTaskTitle
+        onClose:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf cancelAIGeneration];
+            [strongSelf dismissAIResultModal];
+        }
+        onStop:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf cancelAIGeneration];
+            if (strongSelf->aiResultModal) {
+                [strongSelf->aiResultModal setReadyWithFullText:strongSelf->aiFullText ?: @""];
+            }
+        }
+        onRetry:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf retryAIGeneration];
+        }
+        onInsert:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf insertAIText];
+        }
+        onCopy:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf copyAIText];
+        }];
+    [aiResultModal showIn:self.view];
+    NSDictionary *payload = @{
+        @"taskType": @"calc_new_table",
+        @"selection": userDescription,
+        @"modelMode": @"cloud",
+    };
+    __weak DocumentViewController *aiWeakSelf = self;
+    [self->aiService startRequest:payload
+                       requestId:aiRequestId
+              documentSessionId:@"ai-panel-local"
+                           emit:^(NSString *type, NSString *reqId, NSString *dsid, NSDictionary *eventPayload) {
+        DocumentViewController *strongSelf = aiWeakSelf;
+        if (strongSelf) {
+            [strongSelf aiEventReceived:type requestId:reqId payload:eventPayload];
+        }
+    }];
+}
+
+- (void)startAutoGenerateChatPrompt:(NSString *)prompt title:(NSString *)title
+{
+    aiTaskTitle = title;
+    lastTaskType = @"chat";
+    aiRequestId = [[NSUUID UUID] UUIDString];
+    aiFullText = @"";
+    [self dismissAIPanel];
+    [self bottomToolbarDidPressAIAssistant];
+    __weak DocumentViewController *weakSelf = self;
+    aiResultModal = [[WriterAAIResultModal alloc] initWithTitle:title
+        onClose:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf cancelAIGeneration];
+            [strongSelf dismissAIResultModal];
+        }
+        onStop:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf cancelAIGeneration];
+            if (strongSelf->aiResultModal) {
+                [strongSelf->aiResultModal setReadyWithFullText:strongSelf->aiFullText ?: @""];
+            }
+        }
+        onRetry:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf dismissAIResultModal];
+            [strongSelf startAutoGenerateChatPrompt:prompt title:title];
+        }
+        onInsert:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf insertAIText];
+        }
+        onCopy:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf copyAIText];
+        }];
+    [aiResultModal showIn:self.view];
+    NSDictionary *payload = @{
+        @"taskType": @"chat",
+        @"selection": @"",
+        @"modelMode": @"cloud",
+        @"context": @{ @"prompt": prompt },
+    };
+    __weak DocumentViewController *aiWeakSelf = self;
+    [self->aiService startRequest:payload
+                       requestId:aiRequestId
+              documentSessionId:@"ai-panel-local"
+                           emit:^(NSString *type, NSString *reqId, NSString *dsid, NSDictionary *eventPayload) {
+        DocumentViewController *strongSelf = aiWeakSelf;
+        if (strongSelf) {
+            [strongSelf aiEventReceived:type requestId:reqId payload:eventPayload];
+        }
+    }];
 }
 
 - (void)showLanguagePickerForTranslateWithTitle:(NSString *)title
@@ -1136,6 +1262,9 @@ static IMP standardImpOfInputAccessoryView = nil;
             return;
         } else if ([message.body hasPrefix:@"NATIVE_UNDO_RECORD "]) {
             [self recordNativeUndoableEdit:message.body];
+            return;
+        } else if ([message.body isEqualToString:@"hideProgressbar"]) {
+            [self maybeAutoGenerateAiContentAfterLoad];
             return;
         } else if ([message.body hasPrefix:@"COMMENTCOUNT "]) {
             [self applyNativeCommentCount:message.body];

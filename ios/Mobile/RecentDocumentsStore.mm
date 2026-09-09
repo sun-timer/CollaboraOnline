@@ -56,8 +56,15 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
     return self.openedAt ?: [NSDate date];
 }
 
+- (NSDate *)effectiveDisplayDate {
+    if (self.openedAt != nil) {
+        return self.openedAt;
+    }
+    return [self effectiveLastModified];
+}
+
 - (NSString *)displaySubtitle {
-    return [RecentDocumentItem formatModified:[self effectiveLastModified]];
+    return [RecentDocumentItem formatModified:[self effectiveDisplayDate]];
 }
 
 - (NSString *)displayTitle {
@@ -89,7 +96,7 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
     timeFormatter.dateFormat = @"HH:mm";
     NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
     dateFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
-    dateFormatter.dateFormat = @"yyyy/MM/dd";
+    dateFormatter.dateFormat = @"yyyy/M/d";
     NSCalendar *calendar = [NSCalendar currentCalendar];
     if ([calendar isDateInToday:date]) {
         return [timeFormatter stringFromDate:date];
@@ -256,7 +263,10 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
     NSURL *url = [item resolvedURL];
     if (url != nil) {
         NSString *ext = url.pathExtension;
-        NSString *newName = ext.length > 0 ? [trimmed stringByAppendingPathExtension:ext] : trimmed;
+        NSString *newName = trimmed;
+        if (ext.length > 0 && trimmed.pathExtension.length == 0) {
+            newName = [trimmed stringByAppendingPathExtension:ext];
+        }
         NSURL *dir = [url URLByDeletingLastPathComponent];
         NSURL *newURL = [dir URLByAppendingPathComponent:newName];
         if (![newURL.path isEqualToString:url.path]) {
