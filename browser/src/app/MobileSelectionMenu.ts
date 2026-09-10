@@ -1,16 +1,38 @@
 /*
- * iOS HTML selection menu.
+ * iOS HTML selection menu (ticket 05 — 5+5+2 parity).
  *
- * Renders the text-selection action bar for iOS (Android keeps its native
- * popup). It subscribes to the fabric selection events broadcast by the
- * shared AndroidSelectionMenu gesture state machine and routes taps into the
- * existing WriterAiPanel AI dialogs, so no new request plumbing is needed.
+ * Renders the Writer text-selection popup for iOS. Android keeps its native
+ * SelectionMenuController; iOS consumes fabric selection events here.
  */
+
+interface MobileSelectionMenuItemSpec {
+	id: string;
+	label: string;
+	iconKey: string;
+	kind: 'clipboard' | 'ai';
+	androidTaskType?: string;
+	catalogTaskType?: string;
+}
+
+interface MobileSelectionShowDetail {
+	anchorX: number;
+	anchorY: number;
+	anchorBottomY?: number;
+	text: string;
+}
 
 class MobileSelectionMenu {
 	static readonly MENU_CLASS = 'fabric-selection-menu';
+	static readonly OVERLAY_CLASS = 'fabric-selection-menu-overlay';
+	private static readonly POPUP_MARGIN_PX = 16;
+	private static readonly POPUP_ANCHOR_GAP_PX = 12;
+	private static readonly POPUP_SELECTION_GAP_PX = 24;
+	private static readonly POPUP_MAX_WIDTH_PX = 301;
+	private static readonly BOTTOM_TOOLBAR_PX = 82;
 
+	private overlay: HTMLDivElement | null = null;
 	private container: HTMLDivElement | null = null;
+	private anchorBottomY = 0;
 	private readonly onShow: (event: Event) => void;
 	private readonly onHide: (event: Event) => void;
 
@@ -21,15 +43,89 @@ class MobileSelectionMenu {
 		window.addEventListener(MobileSelectionEvents.HIDE_EVENT, this.onHide);
 	}
 
-	/** 选区型 + iOS 可执行 + 操作单内的 AI 入口（本地批处理工具除外）。 */
+	/** Fixed Writer edit layout (Android lolib_selection_popup.xml). */
+	static editMenuItems(): MobileSelectionMenuItemSpec[] {
+		return [
+			{ id: 'copy', label: '复制', iconKey: 'copy', kind: 'clipboard' },
+			{ id: 'cut', label: '剪切', iconKey: 'cut', kind: 'clipboard' },
+			{ id: 'paste', label: '粘贴', iconKey: 'paste', kind: 'clipboard' },
+			{ id: 'select_all', label: '全选', iconKey: 'select_all', kind: 'clipboard' },
+			{
+				id: 'translate',
+				label: '翻译',
+				iconKey: 'translate',
+				kind: 'ai',
+				androidTaskType: 'translate',
+				catalogTaskType: 'translate',
+			},
+			{
+				id: 'outline',
+				label: '总结大纲',
+				iconKey: 'outline',
+				kind: 'ai',
+				androidTaskType: 'outline',
+				catalogTaskType: 'outline',
+			},
+			{
+				id: 'continue_write',
+				label: '文案续写',
+				iconKey: 'continue_write',
+				kind: 'ai',
+				androidTaskType: 'continue_write',
+				catalogTaskType: 'continue',
+			},
+			{
+				id: 'article_generate',
+				label: '文案生成',
+				iconKey: 'article_generate',
+				kind: 'ai',
+				androidTaskType: 'article_generate',
+				catalogTaskType: 'article_generate',
+			},
+			{
+				id: 'expand',
+				label: '文案扩写',
+				iconKey: 'expand',
+				kind: 'ai',
+				androidTaskType: 'expand',
+				catalogTaskType: 'expand',
+			},
+			{
+				id: 'polish',
+				label: '文案润色',
+				iconKey: 'polish',
+				kind: 'ai',
+				androidTaskType: 'polish',
+				catalogTaskType: 'polish',
+			},
+			{
+				id: 'condense',
+				label: '文案缩写',
+				iconKey: 'condense',
+				kind: 'ai',
+				androidTaskType: 'condense',
+				catalogTaskType: 'condense',
+			},
+			{
+				id: 'rewrite',
+				label: '文案重写',
+				iconKey: 'rewrite',
+				kind: 'ai',
+				androidTaskType: 'rewrite',
+				catalogTaskType: 'rewrite',
+			},
+		];
+	}
+
+	static aiTaskTypes(): string[] {
+		return MobileSelectionMenu.editMenuItems()
+			.filter((item) => item.kind === 'ai' && item.catalogTaskType)
+			.map((item) => item.catalogTaskType as string);
+	}
+
+	/** @deprecated Use aiTaskTypes(); kept for existing tests during migration. */
 	static menuTaskTypes(): string[] {
-		return MobileAiUiCatalog.ENTRIES.filter(
-			(entry) =>
-				entry.iosSupport &&
-				entry.selectionRequired &&
-				entry.includeInOperationSheet &&
-				entry.dialog !== 'formatBatch',
-		).map((entry) => entry.taskType);
+		return MobileSelectionMenu.aiTaskTypes();
 	}
 
 	static install(): MobileSelectionMenu | null {
@@ -51,63 +147,284 @@ class MobileSelectionMenu {
 		this.hide();
 	}
 
+	hide(): void {
+		if (this.overlay && this.overlay.parentNode) {
+			this.overlay.parentNode.removeChild(this.overlay);
+		}
+		if (this.container && this.container.parentNode) {
+			this.container.parentNode.removeChild(this.container);
+		}
+		this.overlay = null;
+		this.container = null;
+	}
+
 	private show(event: CustomEvent): void {
-		const detail = event.detail;
+		const detail = event.detail as MobileSelectionShowDetail;
 		if (!detail || typeof detail.anchorX !== 'number' || typeof detail.text !== 'string') {
 			return;
 		}
 		this.hide();
+		WriterQuickActionBar.closeAll();
+		this.closeFunctionSheets();
+
 		const docType = (window as any).app?.map?.getDocType?.() || 'text';
-		const taskTypes = MobileSelectionMenu.menuTaskTypes().filter((taskType) => {
-			const entry = MobileAiUiCatalog.getEntry(taskType);
-			return !!entry && entry.documentTypes.indexOf(docType) >= 0;
-		});
-		if (taskTypes.length === 0) {
+		if (docType !== 'text') {
 			return;
 		}
 
-		const container = document.createElement('div');
-		container.className = MobileSelectionMenu.MENU_CLASS;
-		container.style.cssText =
-			'position:fixed;z-index:10002;display:flex;flex-wrap:wrap;gap:8px;' +
-			'padding:8px;border-radius:12px;background:#fff;' +
-			'box-shadow:0 4px 16px rgba(0,0,0,0.18);max-width:90vw;';
-		taskTypes.forEach((taskType) => {
-			const entry = MobileAiUiCatalog.getEntry(taskType);
-			const button = document.createElement('button');
-			button.type = 'button';
-			button.textContent = entry?.label || taskType;
-			button.onclick = () => {
-				this.hide();
-				const panel = (window as any).__coolWriterAiPanel;
-				if (panel && typeof panel.openTask === 'function') {
-					panel.openTask(taskType);
-				}
-			};
-			container.appendChild(button);
+		this.anchorBottomY =
+			typeof detail.anchorBottomY === 'number' ? detail.anchorBottomY : detail.anchorY;
+
+		const overlay = document.createElement('div');
+		overlay.className = MobileSelectionMenu.OVERLAY_CLASS;
+		overlay.onclick = () => this.hide();
+
+		const panel = document.createElement('div');
+		panel.className = MobileSelectionMenu.MENU_CLASS;
+		panel.onclick = (e) => e.stopPropagation();
+
+		const editMode = MobileSelectionMenu.isEditModeActive();
+		const editable = MobileSelectionMenu.isDocEditable();
+		const rows = MobileSelectionMenu.buildRows(editMode, editable);
+		rows.forEach((row) => panel.appendChild(row));
+
+		document.body.appendChild(overlay);
+		document.body.appendChild(panel);
+		this.overlay = overlay;
+		this.container = panel;
+		window.requestAnimationFrame(() => {
+			this.positionNearAnchor(detail.anchorX, detail.anchorY);
 		});
-		document.body.appendChild(container);
-
-		container.style.left = this.clampX(detail.anchorX, container.offsetWidth) + 'px';
-		container.style.top =
-			this.clampY(detail.anchorY - container.offsetHeight - 8, container.offsetHeight) +
-			'px';
-		this.container = container;
 	}
 
-	private hide(): void {
-		if (this.container && this.container.parentNode) {
-			this.container.parentNode.removeChild(this.container);
+	private static buildRows(editMode: boolean, editable: boolean): HTMLElement[] {
+		const items = MobileSelectionMenu.editMenuItems();
+		const row1Ids = ['copy', 'cut', 'paste', 'select_all', 'translate'];
+		const row2Ids = [
+			'outline',
+			'continue_write',
+			'article_generate',
+			'expand',
+			'polish',
+		];
+		const row3Ids = ['condense', 'rewrite'];
+
+		const rows: HTMLElement[] = [];
+		const row1 = MobileSelectionMenu.buildButtonRow(
+			items.filter((item) => row1Ids.indexOf(item.id) >= 0),
+			{ editMode, editable },
+		);
+		rows.push(row1);
+
+		if (editMode) {
+			rows.push(MobileSelectionMenu.buildDivider());
+			rows.push(MobileSelectionMenu.buildButtonRow(items.filter((item) => row2Ids.indexOf(item.id) >= 0), {
+				editMode,
+				editable,
+			}));
+			rows.push(MobileSelectionMenu.buildDivider());
+			const row3 = MobileSelectionMenu.buildButtonRow(
+				items.filter((item) => row3Ids.indexOf(item.id) >= 0),
+				{ editMode, editable },
+			);
+			const spacer = document.createElement('div');
+			spacer.className = 'fabric-selection-menu__spacer';
+			row3.appendChild(spacer);
+			rows.push(row3);
 		}
-		this.container = null;
+		return rows;
 	}
 
-	private clampX(x: number, width: number): number {
-		return Math.max(8, Math.min(x, (window.innerWidth || 320) - width - 8));
+	private static buildDivider(): HTMLElement {
+		const divider = document.createElement('div');
+		divider.className = 'fabric-selection-menu__divider';
+		return divider;
 	}
 
-	private clampY(top: number, height: number): number {
-		return Math.max(8, Math.min(top, (window.innerHeight || 480) - height - 8));
+	private static buildButtonRow(
+		items: MobileSelectionMenuItemSpec[],
+		ctx: { editMode: boolean; editable: boolean },
+	): HTMLElement {
+		const row = document.createElement('div');
+		row.className = 'fabric-selection-menu__row';
+		items.forEach((item) => {
+			if (!MobileSelectionMenu.isItemVisible(item, ctx)) {
+				return;
+			}
+			row.appendChild(MobileSelectionMenu.createButton(item));
+		});
+		return row;
+	}
+
+	private static isItemVisible(
+		item: MobileSelectionMenuItemSpec,
+		ctx: { editMode: boolean; editable: boolean },
+	): boolean {
+		if (item.id === 'paste' || item.id === 'cut') {
+			return ctx.editable;
+		}
+		if (item.id === 'translate') {
+			return ctx.editMode;
+		}
+		if (item.kind === 'ai') {
+			return ctx.editMode;
+		}
+		return true;
+	}
+
+	private static createButton(item: MobileSelectionMenuItemSpec): HTMLButtonElement {
+		const button = document.createElement('button');
+		button.type = 'button';
+		button.className = 'fabric-selection-menu__button';
+		button.setAttribute('aria-label', item.label);
+
+		const icon = document.createElement('span');
+		icon.className = 'fabric-selection-menu__icon';
+		icon.innerHTML = MobileSelectionMenuIcons.get(item.iconKey);
+		button.appendChild(icon);
+
+		const label = document.createElement('span');
+		label.className = 'fabric-selection-menu__label';
+		label.textContent = item.label;
+		button.appendChild(label);
+
+		button.onclick = () => MobileSelectionMenu.onItemTap(item);
+		return button;
+	}
+
+	private static onItemTap(item: MobileSelectionMenuItemSpec): void {
+		const menu = (window as any).__coolMobileSelectionMenu as MobileSelectionMenu;
+		if (item.kind === 'clipboard') {
+			MobileSelectionMenu.runClipboardAction(item.id);
+			menu?.hide();
+			return;
+		}
+		menu?.hide();
+		if (item.catalogTaskType) {
+			const panel = (window as any).__coolWriterAiPanel;
+			if (panel && typeof panel.openTask === 'function') {
+				panel.openTask(item.catalogTaskType);
+			}
+		}
+	}
+
+	private static runClipboardAction(actionId: string): void {
+		const map = (window as any).app?.map;
+		if (!map) {
+			return;
+		}
+		if (actionId === 'select_all') {
+			map.sendUnoCommand('.uno:SelectAll');
+			return;
+		}
+		const clip = map._clip;
+		if (!clip || typeof clip._execCopyCutPaste !== 'function') {
+			return;
+		}
+		if (actionId === 'copy') {
+			clip._execCopyCutPaste('copy');
+		} else if (actionId === 'cut') {
+			if (!MobileSelectionMenu.isDocEditable()) {
+				return;
+			}
+			const run = () => clip._execCopyCutPaste('cut');
+			if (MobileSelectionMenu.isEditModeActive()) {
+				run();
+			} else if (typeof map.setEditMode === 'function') {
+				map.setEditMode(true);
+				window.setTimeout(run, 0);
+			}
+		} else if (actionId === 'paste') {
+			if (!MobileSelectionMenu.isDocEditable()) {
+				return;
+			}
+			const run = () => clip._execCopyCutPaste('paste');
+			if (MobileSelectionMenu.isEditModeActive()) {
+				run();
+			} else if (typeof map.setEditMode === 'function') {
+				map.setEditMode(true);
+				window.setTimeout(run, 0);
+			}
+		}
+	}
+
+	private static isDocEditable(): boolean {
+		const appRef = (window as any).app;
+		if (!appRef) {
+			return false;
+		}
+		if (typeof appRef.isReadOnly === 'function' && appRef.isReadOnly()) {
+			return false;
+		}
+		return true;
+	}
+
+	private static isEditModeActive(): boolean {
+		const map = (window as any).app?.map;
+		return !!(map && typeof map.isEditMode === 'function' && map.isEditMode());
+	}
+
+	private closeFunctionSheets(): void {
+		const editorPanel = (window as any).__coolWriterEditorPanel;
+		if (editorPanel && typeof editorPanel.close === 'function') {
+			editorPanel.close();
+		}
+	}
+
+	private positionNearAnchor(anchorX: number, anchorY: number): void {
+		if (!this.container) {
+			return;
+		}
+		const width = Math.min(
+			MobileSelectionMenu.POPUP_MAX_WIDTH_PX,
+			window.innerWidth - MobileSelectionMenu.POPUP_MARGIN_PX * 2,
+		);
+		this.container.style.width = width + 'px';
+
+		const menuWidth = this.container.offsetWidth || width;
+		const menuHeight = this.container.offsetHeight || 200;
+		const margin = MobileSelectionMenu.POPUP_MARGIN_PX;
+		const bottomReserved =
+			MobileSelectionMenu.BOTTOM_TOOLBAR_PX +
+			MobileSelectionMenu.readSafeAreaBottom();
+		const maxContentBottom = window.innerHeight - bottomReserved - margin;
+
+		let x = anchorX - menuWidth / 2;
+		x = Math.max(margin, Math.min(x, window.innerWidth - menuWidth - margin));
+
+		const selectionCenterY = (anchorY + this.anchorBottomY) / 2;
+		const spaceAbove = selectionCenterY - margin;
+		const spaceBelow = maxContentBottom - selectionCenterY;
+		const aboveTop = anchorY - menuHeight - MobileSelectionMenu.POPUP_ANCHOR_GAP_PX;
+		const belowTop = this.anchorBottomY + MobileSelectionMenu.POPUP_SELECTION_GAP_PX;
+		const canPlaceAbove = aboveTop >= margin;
+		const canPlaceBelow = belowTop + menuHeight <= maxContentBottom;
+		const preferAbove = spaceAbove >= spaceBelow;
+
+		let y: number;
+		if (preferAbove && canPlaceAbove) {
+			y = aboveTop;
+		} else if (canPlaceBelow) {
+			y = belowTop;
+		} else if (canPlaceAbove) {
+			y = aboveTop;
+		} else {
+			y = Math.max(margin, Math.min(belowTop, maxContentBottom - menuHeight));
+		}
+		y = Math.max(margin, Math.min(y, maxContentBottom - menuHeight));
+
+		this.container.style.left = Math.round(x) + 'px';
+		this.container.style.top = Math.round(y) + 'px';
+	}
+
+	private static readSafeAreaBottom(): number {
+		const probe = document.createElement('div');
+		probe.style.cssText =
+			'position:fixed;left:0;bottom:0;height:0;padding-bottom:env(safe-area-inset-bottom);visibility:hidden;';
+		document.body.appendChild(probe);
+		const value = parseFloat(window.getComputedStyle(probe).paddingBottom || '0') || 0;
+		document.body.removeChild(probe);
+		return value;
 	}
 }
 

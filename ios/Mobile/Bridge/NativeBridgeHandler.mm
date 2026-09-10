@@ -249,9 +249,14 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
                                      ? payload[@"sections"] : @{};
         NSString *sourceName = [payload[@"sourceName"] isKindOfClass:[NSString class]]
                                    ? payload[@"sourceName"] : @"";
+        NSDictionary *images = [payload[@"images"] isKindOfClass:[NSDictionary class]]
+                                   ? payload[@"images"] : nil;
         NSURL *filled = [TypesetService fillTemplateWithType:typesetType
                                                     sections:sections
                                                   sourceName:sourceName];
+        if (filled && images.count > 0) {
+            [TypesetService insertImages:images intoDocxAtURL:filled];
+        }
         if (!filled) {
             [self emitErrorType:@"typeset.fill.error"
                       requestId:requestId

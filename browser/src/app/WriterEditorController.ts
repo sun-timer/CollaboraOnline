@@ -276,14 +276,21 @@ class WriterEditorController {
 		return { dispatched: 'unocmd', command: cmdLR };
 	}
 
+	/** Inserts a shape via a full UNO command (ImpressShapeCatalog parity). */
+	insertShapeUno(command: string): WriterEditorRunResult {
+		if (!command) {
+			return { dispatched: 'none', reason: 'empty_shape' };
+		}
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
 	/** Inserts a basic shape via the BasicShapes UNO command. */
 	insertShape(name: string): WriterEditorRunResult {
 		if (!name) {
 			return { dispatched: 'none', reason: 'empty_shape' };
 		}
-		const command = '.uno:BasicShapes.' + name;
-		this.adapter.sendUnoCommand(command);
-		return { dispatched: 'unocmd', command };
+		return this.insertShapeUno('.uno:BasicShapes.' + name);
 	}
 
 	/** Applies a Writer paragraph style via StyleApply (FamilyName ParagraphStyles). */

@@ -14,6 +14,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 import org.libreoffice.androidapp.R;
+import org.libreoffice.androidlib.AppThemeManager;
 import org.libreoffice.androidlib.SystemUiHelper;
 import org.libreoffice.androidlib.ai.AiModelConfigStore;
 
@@ -45,6 +46,7 @@ public class AiModelConfigActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
+        AppThemeManager.applyStoredNightMode(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_ai_model_config);
         if (getSupportActionBar() != null) {

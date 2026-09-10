@@ -41,8 +41,26 @@ static UIColor *topToolbarIconTintColor(void)
 @property (nonatomic, strong) UIButton *searchButton;
 @property (nonatomic, strong) UIView *commentBadge;
 @property (nonatomic, strong) UILabel *openDocsCountLabel;
+@property (nonatomic, strong) UIButton *editDocumentsButton;
+@property (nonatomic, strong) UILabel *editOpenDocsCountLabel;
 @property (nonatomic, copy) NSString *documentType;
 @end
+
+static void attachOpenDocsCountLabel(UIButton *button, UILabel **labelOut)
+{
+    UILabel *label = [[UILabel alloc] init];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.font = [UIFont systemFontOfSize:10 weight:UIFontWeightSemibold];
+    label.textColor = topToolbarIconTintColor();
+    label.textAlignment = NSTextAlignmentCenter;
+    label.text = @"1";
+    [button addSubview:label];
+    [NSLayoutConstraint activateConstraints:@[
+        [label.centerXAnchor constraintEqualToAnchor:button.centerXAnchor],
+        [label.topAnchor constraintEqualToAnchor:button.topAnchor constant:18.0],
+    ]];
+    *labelOut = label;
+}
 
 static void configureIconButton(UIButton *button, UIImage *image, UIEdgeInsets contentInsets)
 {
@@ -144,18 +162,7 @@ static UIView *toolbarSpacer(void)
     [previewDocumentsButton addTarget:self action:@selector(documentsPressed:)
                      forControlEvents:UIControlEventTouchUpInside];
     [_previewRow addSubview:previewDocumentsButton];
-
-    _openDocsCountLabel = [[UILabel alloc] init];
-    _openDocsCountLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _openDocsCountLabel.font = [UIFont systemFontOfSize:10 weight:UIFontWeightSemibold];
-    _openDocsCountLabel.textColor = topToolbarIconTintColor();
-    _openDocsCountLabel.textAlignment = NSTextAlignmentCenter;
-    _openDocsCountLabel.text = @"1";
-    [previewDocumentsButton addSubview:_openDocsCountLabel];
-    [NSLayoutConstraint activateConstraints:@[
-        [_openDocsCountLabel.centerXAnchor constraintEqualToAnchor:previewDocumentsButton.centerXAnchor],
-        [_openDocsCountLabel.topAnchor constraintEqualToAnchor:previewDocumentsButton.topAnchor constant:18.0],
-    ]];
+    attachOpenDocsCountLabel(previewDocumentsButton, &_openDocsCountLabel);
 
     _editRow = [[UIView alloc] init];
     _editRow.translatesAutoresizingMaskIntoConstraints = NO;
@@ -196,6 +203,14 @@ static UIView *toolbarSpacer(void)
     _commentBadge.layer.cornerRadius = 4.0;
     _commentBadge.hidden = YES;
     [_editRow addSubview:_commentBadge];
+
+    _editDocumentsButton = toolbarIconButton(@"open-docs",
+                                             @"已打开文档",
+                                             UIEdgeInsetsMake(12.0, 12.0, 12.0, 12.0));
+    [_editDocumentsButton addTarget:self action:@selector(documentsPressed:)
+                   forControlEvents:UIControlEventTouchUpInside];
+    [_editRow addSubview:_editDocumentsButton];
+    attachOpenDocsCountLabel(_editDocumentsButton, &_editOpenDocsCountLabel);
 
     UIButton *closeButton = toolbarCloseButton(@"关闭编辑");
     [closeButton addTarget:self action:@selector(closePressed:) forControlEvents:UIControlEventTouchUpInside];
@@ -267,7 +282,9 @@ static UIView *toolbarSpacer(void)
         [rightSpacer.leadingAnchor constraintEqualToAnchor:_redoButton.trailingAnchor],
         [_commentButton.leadingAnchor constraintEqualToAnchor:rightSpacer.trailingAnchor],
         [_commentButton.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
-        [closeButton.leadingAnchor constraintEqualToAnchor:_commentButton.trailingAnchor],
+        [_editDocumentsButton.leadingAnchor constraintEqualToAnchor:_commentButton.trailingAnchor],
+        [_editDocumentsButton.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
+        [closeButton.leadingAnchor constraintEqualToAnchor:_editDocumentsButton.trailingAnchor],
         [closeButton.trailingAnchor constraintEqualToAnchor:_editRow.trailingAnchor
                                                    constant:-kTopToolbarEditPaddingEnd],
         [closeButton.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
@@ -334,7 +351,9 @@ static UIView *toolbarSpacer(void)
 {
     _openDocumentCount = openDocumentCount;
     NSInteger displayCount = MAX(openDocumentCount, 1);
-    self.openDocsCountLabel.text = [NSString stringWithFormat:@"%ld", (long)displayCount];
+    NSString *text = [NSString stringWithFormat:@"%ld", (long)displayCount];
+    self.openDocsCountLabel.text = text;
+    self.editOpenDocsCountLabel.text = text;
 }
 
 - (void)setDocumentType:(NSString *)documentType

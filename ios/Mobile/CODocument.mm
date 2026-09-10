@@ -84,6 +84,11 @@ static std::atomic<unsigned> appDocIdCounter(1);
     if (error != nil)
         return NO;
 
+    typesetSourceBackupURL = [copyFileDirectory URLByAppendingPathComponent:
+        [NSString stringWithFormat:@"typeset_src_%u", appDocId]];
+    [[NSFileManager defaultManager] removeItemAtURL:typesetSourceBackupURL error:nil];
+    [[NSFileManager defaultManager] copyItemAtURL:copyFileURL toURL:typesetSourceBackupURL error:nil];
+
     NSURL *url = [[NSBundle mainBundle] URLForResource:@"cool" withExtension:@"html"];
     NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
     DocumentData::allocate(appDocId).coDocument = self;

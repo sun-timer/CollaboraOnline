@@ -61,6 +61,10 @@ public class FunctionPanelController {
                       boolean bold, boolean italic, boolean underline, boolean strikethrough);
     }
 
+    public interface UnoToggleCallback {
+        void onResult(Boolean checked);
+    }
+
     public interface Host {
         android.content.Context getContext();
 
@@ -104,6 +108,8 @@ public class FunctionPanelController {
         void fetchFontList(StringListCallback callback);
 
         void fetchCurrentFormatting(FormattingCallback callback);
+
+        void fetchUnoToggleState(String unoCommand, UnoToggleCallback callback);
 
         void showAiOperationSheet();
 
@@ -264,6 +270,7 @@ public class FunctionPanelController {
         buildTabBar();
         selectTab(0);
         syncCurrentFormatting();
+        syncReviewToggleStates();
 
         dialog = new BottomSheetDialog(host.getContext());
         dialog.setContentView(panel);
@@ -350,8 +357,11 @@ public class FunctionPanelController {
             tabView.setBackgroundColor(Color.TRANSPARENT);
             tabView.setTextColor(selected ? COLOR_TAB_ACTIVE_TEXT : COLOR_TAB_INACTIVE_TEXT);
         }
-        // Update indicator position to center under the selected tab
-        renderTabContent(tabs.get(index));
+        if (isReviewTabIndex(index)) {
+            syncReviewToggleStates();
+        } else {
+            renderTabContent(tabs.get(index));
+        }
         if (contentContainer != null) {
             contentContainer.scrollTo(0, 0);
         }
@@ -1178,6 +1188,26 @@ public class FunctionPanelController {
         });
     }
 
+    private boolean isReviewTabIndex(int index) {
+        return index >= 0 && index < tabs.size() && "review".equals(tabs.get(index).id);
+    }
+
+    private void syncReviewToggleStates() {
+        host.fetchUnoToggleState(".uno:TrackChanges", trackOn -> {
+            if (trackOn != null) {
+                toggleStates.put("track_changes", trackOn);
+            }
+            host.fetchUnoToggleState(".uno:ShowTrackedChanges", showOn -> {
+                if (showOn != null) {
+                    toggleStates.put("show_changes", showOn);
+                }
+                if (dialog != null && dialog.isShowing() && isReviewTabIndex(selectedTabIndex)) {
+                    renderTabContent(tabs.get(selectedTabIndex));
+                }
+            });
+        });
+    }
+
     private void applyCurrentFormatting(String styleName, String fontName, String fontSizePt,
             String paragraphAlignment) {
         if (styleName != null && !styleName.trim().isEmpty()) {
@@ -1930,7 +1960,12 @@ public class FunctionPanelController {
                 host.executeUnoCommand(enabled ? ".uno:TrackChangesInAllViews" : ".uno:TrackChanges?TrackChanges:bool=false");
                 break;
             case "show_changes":
-                host.executeUnoCommand(".uno:ShowTrackedChanges");
+                host.fetchUnoToggleState(".uno:ShowTrackedChanges", current -> {
+                    boolean isOn = Boolean.TRUE.equals(current);
+                    if (isOn != enabled) {
+                        host.executeUnoCommand(".uno:ShowTrackedChanges");
+                    }
+                });
                 break;
             default:
                 if (item.unoCommand != null && !item.unoCommand.isEmpty()) {
@@ -2104,6 +2139,8 @@ public class FunctionPanelController {
         result.add(new FunctionTab("layout", "布局", layoutItems));
 
         List<FunctionItem> reviewItems = new ArrayList<>();
+        reviewItems.add(new FunctionItem(ItemType.ACTION, "word_count", "字数统计",
+                R.drawable.lolib_ic_function_word_count, ".uno:WordCountDialog"));
         reviewItems.add(new FunctionItem(ItemType.ACTION, "spell_check", "拼写检查",
                 R.drawable.lolib_ic_calc_spell_check, ".uno:SpellDialog"));
         reviewItems.add(new FunctionItem(ItemType.TOGGLE, "track_changes", "追踪修订", "",

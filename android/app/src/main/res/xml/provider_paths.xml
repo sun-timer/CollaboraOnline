@@ -2,4 +2,6 @@
 <paths>
         <cache-path name="cache_dir" path="/"/>
         <external-path name="external_dir" path="/"/>
+        <external-files-path name="external_app_documents" path="Documents/"/>
+        <files-path name="internal_documents" path="documents/"/>
 </paths>

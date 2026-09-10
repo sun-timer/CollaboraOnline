@@ -129,6 +129,7 @@
 		E2B0100F1026090900000001 /* FeedbackRecord.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0100F1026090900000002 /* FeedbackRecord.mm */; };
 		E2B010111026090900000001 /* FeedbackStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010111026090900000002 /* FeedbackStore.mm */; };
 		E2B010131026090900000001 /* FeedbackViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010131026090900000002 /* FeedbackViewController.mm */; };
+		E2B010331026090900000001 /* FeedbackAppearance.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010331026090900000002 /* FeedbackAppearance.mm */; };
 		E2B010151026090900000001 /* notice.txt in Resources */ = {isa = PBXBuildFile; fileRef = E2B010151026090900000002 /* notice.txt */; };
 		E2B010171026090900000001 /* license.html in Resources */ = {isa = PBXBuildFile; fileRef = E2B010171026090900000002 /* license.html */; };
 		E2B010191026090900000001 /* AppIcons.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010191026090900000002 /* AppIcons.mm */; };
@@ -1613,6 +1614,8 @@
 		E2B010111026090900000002 /* FeedbackStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackStore.mm; sourceTree = "<group>"; };
 		E2B010121026090900000001 /* FeedbackViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackViewController.h; sourceTree = "<group>"; };
 		E2B010131026090900000002 /* FeedbackViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackViewController.mm; sourceTree = "<group>"; };
+		E2B010331026090900000002 /* FeedbackAppearance.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackAppearance.mm; sourceTree = "<group>"; };
+		E2B010331026090900000003 /* FeedbackAppearance.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackAppearance.h; sourceTree = "<group>"; };
 		E2B010151026090900000002 /* notice.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = notice.txt; sourceTree = "<group>"; };
 		E2B010171026090900000002 /* license.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = license.html; sourceTree = "<group>"; };
 		E2B010181026090900000001 /* AppIcons.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppIcons.h; sourceTree = "<group>"; };
@@ -1708,6 +1711,8 @@
 				E2B010111026090900000002 /* FeedbackStore.mm */,
 				E2B010121026090900000001 /* FeedbackViewController.h */,
 				E2B010131026090900000002 /* FeedbackViewController.mm */,
+				E2B010331026090900000003 /* FeedbackAppearance.h */,
+				E2B010331026090900000002 /* FeedbackAppearance.mm */,
 			);
 			path = Feedback;
 			sourceTree = "<group>";
@@ -4120,6 +4125,7 @@
 				E2B0100F1026090900000001 /* FeedbackRecord.mm in Sources */,
 				E2B010111026090900000001 /* FeedbackStore.mm in Sources */,
 				E2B010131026090900000001 /* FeedbackViewController.mm in Sources */,
+				E2B010331026090900000001 /* FeedbackAppearance.mm in Sources */,
 				E2B010191026090900000001 /* AppIcons.mm in Sources */,
 				E2B0101B1026090900000001 /* AppChromeHelper.mm in Sources */,
 				E2B0101D1026090900000001 /* AIQuickCreateViewController.mm in Sources */,

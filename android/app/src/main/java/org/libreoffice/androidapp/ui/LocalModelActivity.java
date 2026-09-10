@@ -18,6 +18,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 
 import org.libreoffice.androidapp.R;
+import org.libreoffice.androidlib.AppThemeManager;
 import org.libreoffice.androidlib.ai.LocalDeviceCapability;
 import org.libreoffice.androidlib.ai.LocalModelManager;
 
@@ -38,6 +39,7 @@ public class LocalModelActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
+        AppThemeManager.applyStoredNightMode(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_local_model);
         setupBottomSheetWindow();

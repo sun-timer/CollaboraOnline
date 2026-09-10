@@ -23,6 +23,7 @@ class MobileAiTypesetDialog {
 	private paragraphs: string[] = [];
 	private paragraphMode = false;
 	private sections: { [key: string]: string } | null = null;
+	private typesetImages: { [marker: string]: TypesetImagePayload } | null = null;
 	private docxPath = '';
 	private previewHtml = '';
 	private readonly unsubscribe: () => void;
@@ -87,7 +88,7 @@ class MobileAiTypesetDialog {
 		this.regenerateButton = this.createButton('重新生成');
 		this.regenerateButton.onclick = () => this.regenerate();
 		actions.appendChild(this.regenerateButton);
-		this.applyButton = this.createButton('插入文档');
+		this.applyButton = this.createButton('覆盖文档');
 		this.applyButton.onclick = () => this.applyResult();
 		actions.appendChild(this.applyButton);
 		this.previewPanel.appendChild(actions);
@@ -113,6 +114,7 @@ class MobileAiTypesetDialog {
 
 	private resetResultState(): void {
 		this.sections = null;
+		this.typesetImages = null;
 		this.docxPath = '';
 		this.previewHtml = '';
 		this.paragraphs = [];
@@ -184,6 +186,7 @@ class MobileAiTypesetDialog {
 		if (bridge.isAvailable()) {
 			return bridge.extractStructured().then((result) => {
 				this.paragraphs = result.paragraphs || [];
+				this.typesetImages = result.images || null;
 				this.paragraphMode = this.paragraphs.length > 1;
 				const fullText = result.fullText || this.paragraphs.join('\n\n');
 				if (!fullText.trim()) {
@@ -256,7 +259,12 @@ class MobileAiTypesetDialog {
 		this.status.textContent = '正在填充 docx 模板...';
 		this.render();
 		TypesetBridge.getInstance()
-			.fillTemplate(this.selectedType, sections)
+			.fillTemplate(
+				this.selectedType,
+				sections,
+				'',
+				this.typesetImages || undefined,
+			)
 			.then((result) => {
 				this.docxPath = result.docxPath || '';
 				this.filling = false;
@@ -339,8 +347,9 @@ class MobileAiTypesetDialog {
 				state.state === 'streaming' ? 'AI 正在排版...' : 'AI 正在生成...';
 		} else if (ready) {
 			this.status.textContent = this.docxPath
-				? '排版完成，可插入 docx 模板文档'
-				: '排版完成，可预览后插入文档';
+				? '排版完成，可覆盖当前文档'
+				: '排版完成，可预览后插入文档（HTML 回退）';
+			this.applyButton.textContent = this.docxPath ? '覆盖文档' : '插入文档';
 		} else {
 			this.status.textContent = '';
 		}

@@ -18,6 +18,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import org.libreoffice.androidapp.R;
+import org.libreoffice.androidlib.RecentDocumentTypeStore;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -30,18 +31,30 @@ import androidx.recyclerview.widget.RecyclerView;
 
 class RecentFilesAdapter extends RecyclerView.Adapter<RecentFilesAdapter.ViewHolder> {
 
+    private static final int VIEW_TYPE_LIST = 0;
+    private static final int VIEW_TYPE_GRID = 1;
+
     private final LibreOfficeUIActivity mActivity;
+    private final boolean gridMode;
     private ArrayList<RecentFile> recentFiles;
 
-    RecentFilesAdapter(LibreOfficeUIActivity activity, List<Uri> recentUris) {
+    RecentFilesAdapter(LibreOfficeUIActivity activity, List<Uri> recentUris, boolean gridMode) {
         this.mActivity = activity;
+        this.gridMode = gridMode;
         initRecentFiles(recentUris);
     }
 
     @Override
+    public int getItemViewType(int position) {
+        return gridMode ? VIEW_TYPE_GRID : VIEW_TYPE_LIST;
+    }
+
+    @Override
     public ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
-        View item = LayoutInflater.from(parent.getContext())
-                .inflate(R.layout.item_home_recent_file, parent, false);
+        int layout = viewType == VIEW_TYPE_GRID
+                ? R.layout.item_home_recent_file_grid
+                : R.layout.item_home_recent_file;
+        View item = LayoutInflater.from(parent.getContext()).inflate(layout, parent, false);
         return new ViewHolder(item);
     }
 
@@ -119,17 +132,25 @@ class RecentFilesAdapter extends RecyclerView.Adapter<RecentFilesAdapter.ViewHol
         holder.filenameView.setOnClickListener(clickListener);
         holder.itemView.setOnClickListener(clickListener);
 
-        holder.fileActionsImageView.setOnClickListener(view ->
-                mActivity.showRecentFileActionsPopup(view, file.uri));
+        if (holder.fileActionsImageView != null && holder.fileActionsImageView.getVisibility() == View.VISIBLE) {
+            holder.fileActionsImageView.setOnClickListener(view ->
+                    mActivity.showRecentFileActionsPopup(view, file.uri));
+        } else {
+            holder.itemView.setOnLongClickListener(view -> {
+                mActivity.showRecentFileActionsPopup(view, file.uri);
+                return true;
+            });
+        }
 
         holder.filenameView.setText(file.filename);
-        bindFileTypeIcon(holder.imageView, file.filename);
+        bindFileTypeIcon(holder.imageView, file.uri, file.filename);
         holder.fileDateView.setText(formatOpenedAt(file.openedAt));
     }
 
-    private void bindFileTypeIcon(ImageView iconView, String filename) {
+    private void bindFileTypeIcon(ImageView iconView, Uri uri, String filename) {
+        int fileType = resolveRecentFileType(uri, filename);
         int iconRes = R.drawable.ic_file_type_writer;
-        switch (FileUtilities.getType(filename)) {
+        switch (fileType) {
             case FileUtilities.CALC:
                 iconRes = R.drawable.ic_file_type_calc;
                 break;
@@ -142,6 +163,24 @@ class RecentFilesAdapter extends RecyclerView.Adapter<RecentFilesAdapter.ViewHol
                 break;
         }
         iconView.setImageResource(iconRes);
+    }
+
+    private int resolveRecentFileType(Uri uri, String filename) {
+        String cached = RecentDocumentTypeStore.getNormalizedType(mActivity, uri);
+        if (cached != null) {
+            switch (cached) {
+                case "spreadsheet":
+                    return FileUtilities.CALC;
+                case "presentation":
+                    return FileUtilities.IMPRESS;
+                case "drawing":
+                    return FileUtilities.DRAWING;
+                case "text":
+                default:
+                    return FileUtilities.DOC;
+            }
+        }
+        return FileUtilities.getType(filename);
     }
 
     private String formatOpenedAt(long openedAt) {

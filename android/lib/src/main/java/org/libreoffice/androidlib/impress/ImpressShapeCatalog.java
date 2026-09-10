@@ -210,7 +210,7 @@ public final class ImpressShapeCatalog {
             new Entry(189, R.drawable.lolib_ic_impress_shape_189, ".uno:StarShapes.signet"),
             new Entry(190, R.drawable.lolib_ic_impress_shape_190, ".uno:StarShapes.doorplate"),
             new Entry(191, R.drawable.lolib_ic_impress_shape_191, ".uno:StarShapes.concave-star6"),
-            new Entry(192, R.drawable.lolib_ic_impress_shape_192, ".uno:StarShapes.star5"),
+            new Entry(192, R.drawable.lolib_ic_impress_shape_192, ".uno:StarShapes.star4"),
             null,
             null,
             null,

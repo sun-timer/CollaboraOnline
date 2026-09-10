@@ -312,6 +312,29 @@ describe('WriterEditorController', function () {
 		assert.deepEqual(result, { dispatched: 'none', reason: 'empty_shape' });
 		assert.equal(adapter.calls.sendUnoCommand.length, 0);
 	});
+
+	it('inserts a catalog shape via insertShapeUno', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertShapeUno('.uno:Line');
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command, '.uno:Line');
+		assert.equal(adapter.calls.sendUnoCommand[0], '.uno:Line');
+	});
+
+	it('inserts ArrowShapes via insertShapeUno', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertShapeUno('.uno:ArrowShapes.right-arrow');
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command, '.uno:ArrowShapes.right-arrow');
+	});
 	it('applies a paragraph style via StyleApply', function () {
 		const adapter = createFakeAdapter('text');
 		const controller = new WriterEditorController(adapter);

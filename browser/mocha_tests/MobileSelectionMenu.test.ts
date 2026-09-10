@@ -8,17 +8,41 @@
 var assert = require('assert').strict;
 
 describe('Mobile Selection Menu', function () {
-	it('lists selection-based AI tasks enabled on iOS', function () {
-		const types = MobileSelectionMenu.menuTaskTypes();
-		assert.ok(types.indexOf('polish') >= 0);
-		assert.ok(types.indexOf('translate') >= 0);
-		assert.ok(types.indexOf('expand') >= 0);
-		assert.ok(types.indexOf('condense') >= 0);
-		assert.ok(types.indexOf('rewrite') >= 0);
-		assert.ok(types.indexOf('continue') >= 0);
-		// 非选区输入的任务不进选区菜单。
-		assert.ok(types.indexOf('outline') < 0);
-		assert.ok(types.indexOf('text_extract') < 0);
-		assert.ok(types.indexOf('format_batch') < 0);
+	it('lists all Writer edit-mode AI task types aligned with Android', function () {
+		const types = MobileSelectionMenu.aiTaskTypes();
+		assert.deepEqual(types, [
+			'translate',
+			'outline',
+			'continue',
+			'article_generate',
+			'expand',
+			'polish',
+			'condense',
+			'rewrite',
+		]);
+	});
+
+	it('edit menu exposes clipboard + AI ids in 5+5+2 order', function () {
+		const ids = MobileSelectionMenu.editMenuItems().map((item) => item.id);
+		assert.deepEqual(ids, [
+			'copy',
+			'cut',
+			'paste',
+			'select_all',
+			'translate',
+			'outline',
+			'continue_write',
+			'article_generate',
+			'expand',
+			'polish',
+			'condense',
+			'rewrite',
+		]);
+	});
+
+	it('ships Figma/Android icons for every menu item', function () {
+		MobileSelectionMenu.editMenuItems().forEach((item) => {
+			assert.ok(MobileSelectionMenuIcons.has(item.iconKey), item.iconKey);
+		});
 	});
 });

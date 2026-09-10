@@ -19,6 +19,9 @@
     <string name="create_empty_text_document">创建空白文档</string>
     <string name="create_empty_spreadsheet">创建空白表格</string>
     <string name="create_empty_presentation">创建空白演示</string>
+    <string name="default_untitled_writer">未命名文档</string>
+    <string name="default_untitled_calc">未命名表格</string>
+    <string name="default_untitled_impress">未命名演示</string>
     <string name="ai_generating_label">正在使用AI生成</string>
     <string name="action_cancel">取消</string>
     <string name="negative_cancel">取消</string>

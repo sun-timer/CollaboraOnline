@@ -28,6 +28,7 @@ import org.libreoffice.androidapp.R;
 import org.libreoffice.androidapp.feedback.FeedbackApi;
 import org.libreoffice.androidapp.feedback.FeedbackRecord;
 import org.libreoffice.androidapp.feedback.FeedbackStore;
+import org.libreoffice.androidlib.AppThemeManager;
 import org.libreoffice.androidlib.SystemUiHelper;
 
 import java.io.FileNotFoundException;
@@ -75,6 +76,7 @@ public class FeedbackActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
+        AppThemeManager.applyStoredNightMode(this);
         super.onCreate(savedInstanceState);
         showForm();
     }

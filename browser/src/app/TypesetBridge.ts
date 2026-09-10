@@ -2,10 +2,18 @@
  * Browser facade for native typeset V2 operations (extract / fill / insert).
  */
 
+interface TypesetImagePayload {
+	base64: string;
+	mimeType: string;
+	extension: string;
+	cx?: number;
+	cy?: number;
+}
+
 interface TypesetStructuredExtract {
 	fullText: string;
 	paragraphs: string[];
-	imageMarkers?: { [marker: string]: string };
+	images?: { [marker: string]: TypesetImagePayload };
 }
 
 interface TypesetFillResult {
@@ -79,12 +87,17 @@ class TypesetBridge {
 		typesetType: string,
 		sections: { [key: string]: string },
 		sourceName?: string,
+		images?: { [marker: string]: TypesetImagePayload },
 	): Promise<TypesetFillResult> {
-		return this.request('typeset.fill', {
+		const payload: { [key: string]: any } = {
 			typesetType,
 			sections,
 			sourceName: sourceName || '',
-		});
+		};
+		if (images && Object.keys(images).length > 0) {
+			payload.images = images;
+		}
+		return this.request('typeset.fill', payload);
 	}
 
 	insertDocument(docxPath: string): Promise<boolean> {

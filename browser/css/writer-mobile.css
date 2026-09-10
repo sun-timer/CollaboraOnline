@@ -479,3 +479,217 @@
 	color: var(--writer-function-accent);
 	flex-shrink: 0;
 }
+
+/* ── iOS selection menu (5+5+2) ── */
+.fabric-selection-menu-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 10001;
+	background: transparent;
+}
+
+.fabric-selection-menu {
+	position: fixed;
+	z-index: 10002;
+	max-width: min(301px, calc(100vw - 32px));
+	padding: 8px;
+	border-radius: 16px;
+	background: #fff;
+	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+}
+
+.fabric-selection-menu__row {
+	display: flex;
+	align-items: stretch;
+	min-height: 56px;
+}
+
+.fabric-selection-menu__divider {
+	height: 1px;
+	margin: 2px 0;
+	background: rgba(0, 0, 0, 0.08);
+}
+
+.fabric-selection-menu__button {
+	flex: 1 1 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+	padding: 4px 2px;
+	border: 0;
+	background: transparent;
+	cursor: pointer;
+}
+
+.fabric-selection-menu__icon {
+	width: 20px;
+	height: 20px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.fabric-selection-menu__icon svg {
+	width: 20px;
+	height: 20px;
+	display: block;
+}
+
+.fabric-selection-menu__label {
+	font-size: 10px;
+	line-height: 1.2;
+	color: #333;
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 100%;
+}
+
+.fabric-selection-menu__spacer {
+	flex: 3 1 0;
+	min-width: 0;
+}
+
+/* ── iOS char/para quick bar ── */
+.writer-quick-action-bar {
+	position: fixed;
+	left: 24px;
+	right: 24px;
+	bottom: calc(82px + env(safe-area-inset-bottom, 0px) + 10px);
+	z-index: 10000;
+	min-height: 56px;
+	padding: 8px 10px;
+	border-radius: 16px;
+	background: #fff;
+	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.16);
+}
+
+.writer-quick-action-bar__scroll {
+	overflow-x: auto;
+	overflow-y: hidden;
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: none;
+}
+
+.writer-quick-action-bar__scroll::-webkit-scrollbar {
+	display: none;
+}
+
+.writer-quick-action-bar__row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 12px;
+	min-height: 40px;
+}
+
+.writer-quick-action-bar__button {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+	border: 0;
+	border-radius: 10px;
+	background: transparent;
+	cursor: pointer;
+}
+
+.writer-quick-action-bar__button--active {
+	background: #eaf2ff;
+	outline: 1px solid #1278d9;
+}
+
+.writer-quick-action-bar__icon {
+	width: 24px;
+	height: 24px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.writer-quick-action-bar__icon svg {
+	width: 24px;
+	height: 24px;
+	display: block;
+}
+
+/* ImpressShapeCatalog picker — Android ImpressShapePickerController parity */
+.writer-shape-picker {
+	display: flex;
+	flex-direction: column;
+	overflow-y: auto;
+	max-height: min(72dvh, 640px);
+	padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.writer-shape-picker__section-title {
+	margin: 0;
+	padding: 16px 16px 8px;
+	font-size: 16px;
+	font-weight: 400;
+	color: #101010;
+}
+
+.writer-shape-picker__grid-card {
+	margin: 0 16px 8px;
+	padding: 8px;
+	border-radius: 12px;
+	background: var(--writer-function-tile-bg);
+}
+
+.writer-shape-picker__row {
+	display: grid;
+	grid-template-columns: repeat(6, minmax(0, 1fr));
+	gap: 4px;
+	min-height: 48px;
+}
+
+.writer-shape-picker__row + .writer-shape-picker__row {
+	margin-top: 4px;
+}
+
+.writer-shape-picker__cell {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 48px;
+}
+
+.writer-shape-picker__btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 48px;
+	padding: 0;
+	border: none;
+	border-radius: 8px;
+	background: transparent;
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.writer-shape-picker__btn:active {
+	background: rgba(18, 120, 217, 0.12);
+}
+
+.writer-shape-picker__icon {
+	width: 32px;
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.writer-shape-picker__icon svg {
+	width: 32px;
+	height: 32px;
+	display: block;
+}

@@ -40,5 +40,16 @@
 
     <color name="toolbar_background">#ffffff</color>
 
+    <color name="home_surface">#ffffff</color>
+    <color name="home_text_primary">#333333</color>
+    <color name="home_text_secondary">#6f7378</color>
+    <color name="home_text_hint">#999999</color>
+    <color name="home_icon_tint">#434343</color>
+    <color name="home_card_background">#ffffff</color>
+    <color name="home_page_background">#f2f2f2</color>
+    <color name="about_text_primary">#101010</color>
+    <color name="about_text_secondary">#333333</color>
+    <color name="about_text_muted">#b5b5b5</color>
+
 </resources>
 

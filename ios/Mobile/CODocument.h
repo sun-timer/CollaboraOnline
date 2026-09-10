@@ -22,6 +22,8 @@
 @public
     int fakeClientFd;
     NSURL *copyFileURL;
+    /** Unmodified copy of the opened file for typeset extract (before LOKit save). */
+    NSURL *typesetSourceBackupURL;
     unsigned appDocId;
     bool readOnly;
 }

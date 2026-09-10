@@ -166,7 +166,14 @@ static IMP standardImpOfInputAccessoryView = nil;
         aiService:aiService];
     nativeBridgeHandler.documentFileURLProvider = ^NSURL * {
         DocumentViewController *strongSelf = weakSelf;
-        return strongSelf.document ? strongSelf.document->copyFileURL : nil;
+        if (!strongSelf.document) {
+            return nil;
+        }
+        NSURL *backup = strongSelf.document->typesetSourceBackupURL;
+        if (backup && [[NSFileManager defaultManager] fileExistsAtPath:backup.path]) {
+            return backup;
+        }
+        return strongSelf.document->copyFileURL;
     };
     nativeBridgeHandler.originalDocumentURLProvider = ^NSURL * {
         DocumentViewController *strongSelf = weakSelf;

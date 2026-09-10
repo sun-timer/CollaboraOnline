@@ -285,6 +285,8 @@ COOL_JS_LST =\
 	src/app/TypesetPreviewHtml.ts \
 	src/app/TypesetBridge.ts \
 	src/app/MobileSelectionMenu.ts \
+	src/app/MobileSelectionMenuIcons.ts \
+	src/app/WriterQuickActionBar.ts \
 	src/app/MobileAiCalcDialog.ts \
 	src/app/MobileAiTranslateDialog.ts \
 	src/app/MobileAiResultRenderer.ts \
@@ -309,6 +311,8 @@ COOL_JS_LST =\
 	src/app/WriterSpellingSheet.ts \
 	src/app/MobileWriterComments.ts \
 	src/app/WriterColorPickerDialog.ts \
+	src/app/WriterEditorShapeCatalog.ts \
+	src/app/WriterEditorShapeIcons.ts \
 	src/app/WriterEditorShapeDialog.ts \
 	src/app/AndroidCalcCellMenu.ts \
 	src/app/AndroidCalcHeaderMenu.ts \

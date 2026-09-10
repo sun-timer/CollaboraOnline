@@ -15,6 +15,8 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable NSURL *)fillTemplateWithType:(NSString *)typesetType
                                sections:(NSDictionary<NSString *, NSString *> *)sections
                              sourceName:(nullable NSString *)sourceName;
++ (BOOL)insertImages:(NSDictionary<NSString *, NSDictionary *> *)images
+       intoDocxAtURL:(NSURL *)docxURL;
 + (BOOL)copyDocxToOriginalURL:(NSURL *)docxURL originalURL:(nullable NSURL *)originalURL;
 
 @end

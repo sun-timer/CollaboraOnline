@@ -30,6 +30,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 
 import org.libreoffice.androidapp.R;
+import org.libreoffice.androidlib.AppThemeManager;
 import org.libreoffice.androidlib.SystemUiHelper;
 
 import java.io.File;
@@ -47,6 +48,7 @@ public class AiProfileSettingsActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
+        AppThemeManager.applyStoredNightMode(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_ai_profile_settings);
         if (getSupportActionBar() != null) {
