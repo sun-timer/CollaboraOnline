@@ -989,11 +989,8 @@ public class LOActivity extends AppCompatActivity {
         return context.getPackageManager().hasSystemFeature("org.chromium.arc.device_management");
     }
 
-    private Boolean lastSyncedDocumentDarkTheme;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        AppThemeManager.applyStoredNightMode(this);
         super.onCreate(savedInstanceState);
         ExitDiagHelper.installOnce();
         ExitDiagHelper.logPreviousProcessDeaths(this);
@@ -1958,28 +1955,11 @@ public class LOActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (AppThemeManager.consumeThemeChangePending()) {
-            recreate();
-            return;
-        }
         refreshDocumentSettingsDrawer();
-        syncDocumentDarkThemeIfNeeded();
         if (documentLoaded) {
             recoverVisibleTilesAfterEditMode("activity_resume");
         }
         Log.i(TAG, "onResume..");
-    }
-
-    private void syncDocumentDarkThemeIfNeeded() {
-        if (mWebView == null || !documentLoaded) {
-            return;
-        }
-        boolean dark = AppThemeManager.isDarkModeActive(this);
-        if (lastSyncedDocumentDarkTheme != null && lastSyncedDocumentDarkTheme == dark) {
-            return;
-        }
-        lastSyncedDocumentDarkTheme = dark;
-        mWebView.evaluateJavascript(AppThemeManager.buildCoolDarkThemeSyncScript(dark), null);
     }
 
     @Override
@@ -2672,7 +2652,7 @@ public class LOActivity extends AppCompatActivity {
         if (isLargeScreen() && !isChromeOS())
             finalUrlToLoad += "&userinterfacemode=notebookbar";
 
-        if (AppThemeManager.isDarkModeActive(this)) {
+        if (isDarkMode()) {
             finalUrlToLoad += "&darkTheme=true";
         }
 
@@ -2703,6 +2683,22 @@ public class LOActivity extends AppCompatActivity {
         }
 
         loadDocumentMillis = android.os.SystemClock.uptimeMillis();
+    }
+
+    private boolean isDarkMode() {
+        SharedPreferences recentPrefs = getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
+        int mode = recentPrefs.getInt(NIGHT_MODE_KEY, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
+        switch (mode) {
+            case -1:
+                int darkModeFlag = getBaseContext().getResources().getConfiguration().uiMode
+                        & Configuration.UI_MODE_NIGHT_MASK;
+                return darkModeFlag == Configuration.UI_MODE_NIGHT_YES;
+            case 1:
+                return false;
+            case 2:
+                return true;
+        }
+        return false;
     }
 
     static {
@@ -4810,10 +4806,6 @@ public class LOActivity extends AppCompatActivity {
                         + " hintApplied=" + mDocumentTypeHintApplied);
                 ensureBottomToolbarController().updateDocumentType(mIsCalcDocument, mIsImpressDocument);
                 ensureTopToolbarController().updateDocumentType(mIsCalcDocument, mIsImpressDocument);
-                Uri docUri = getIntent() != null ? getIntent().getData() : null;
-                if (docUri != null) {
-                    RecentDocumentTypeStore.save(LOActivity.this, docUri, docType);
-                }
                 if (mIsImpressDocument) {
                     hideImpressSlideComments("doc_type_detected");
                     getMainHandler().postDelayed(() -> hideImpressSlideComments("doc_type_retry_1s"), 1000L);
@@ -11105,7 +11097,8 @@ public class LOActivity extends AppCompatActivity {
                 postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1")));
         if (downloadAction != null) downloadAction.setOnClickListener(v -> runFunctionAction(this::downloadCurrentTextDocumentAsPdf));
         if (printAction != null) printAction.setOnClickListener(v -> runFunctionAction(this::initiatePrint));
-        if (findAction != null) findAction.setOnClickListener(v -> runFunctionAction(this::showFindReplaceSheet));
+        if (findAction != null) findAction.setOnClickListener(v -> runFunctionAction(() ->
+                executeUnoCommand(".uno:SearchDialog?InitialFocusReplace:bool=true")));
         // 字数统计：仅 Writer 文档显示；打开 core 对话框并由 Native WordCountDialogHandler 展示原生底部弹窗
         if (wordCountAction != null) {
             wordCountAction.setVisibility(
@@ -11490,12 +11483,6 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void fetchCurrentFormatting(FunctionPanelController.FormattingCallback callback) {
                     LOActivity.this.fetchCurrentFormattingAsync(callback);
-                }
-
-                @Override
-                public void fetchUnoToggleState(String unoCommand,
-                        FunctionPanelController.UnoToggleCallback callback) {
-                    LOActivity.this.fetchUnoToggleStateAsync(unoCommand, callback);
                 }
 
                 @Override
@@ -12724,62 +12711,6 @@ public class LOActivity extends AppCompatActivity {
                 final boolean finalStrike = strikethrough;
                 runOnUiThread(() -> callback.onResult(finalStyle, finalFont, finalSize, finalAlign,
                         finalBold, finalItalic, finalUnderline, finalStrike));
-            }
-        });
-    }
-
-    void fetchUnoToggleStateAsync(String unoCommand, FunctionPanelController.UnoToggleCallback callback) {
-        if (unoCommand == null || unoCommand.isEmpty()) {
-            if (callback != null) {
-                runOnUiThread(() -> callback.onResult(null));
-            }
-            return;
-        }
-        String escaped = unoCommand.replace("\\", "\\\\").replace("'", "\\'");
-        runWebJs("(function(){try{"
-                + "var cmd='" + escaped + "';"
-                + "function parseChecked(v){"
-                + "if(v===undefined||v===null){return null;}"
-                + "if(v===true||v==='true'||v==='1'||v==='checked'||v==='selected'){return true;}"
-                + "if(v===false||v==='false'||v==='0'){return false;}"
-                + "if(typeof v==='object'){"
-                + "if(v.checked===true||v.checked==='true'){return true;}"
-                + "if(v.checked===false||v.checked==='false'){return false;}"
-                + "if(v.State===true||v.State==='true'){return true;}"
-                + "if(v.State===false||v.State==='false'){return false;}"
-                + "}"
-                + "return null;}"
-                + "if(!window.app||!app.map){return 'null';}"
-                + "if(typeof app.map.getToolbarCommandValues==='function'){"
-                + "var fromValues=parseChecked(app.map.getToolbarCommandValues(cmd));"
-                + "if(fromValues!==null){return JSON.stringify({checked:fromValues});}"
-                + "}"
-                + "var sch=app.map.stateChangeHandler||app.map['stateChangeHandler'];"
-                + "if(sch&&typeof sch.getItemValue==='function'){"
-                + "var fromState=parseChecked(sch.getItemValue(cmd));"
-                + "if(fromState!==null){return JSON.stringify({checked:fromState});}"
-                + "}"
-                + "return 'null';"
-                + "}catch(e){return 'null';}})();", value -> {
-            Boolean checked = null;
-            String trimmed = value == null ? "" : value.trim();
-            if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
-                trimmed = trimmed.substring(1, trimmed.length() - 1);
-                trimmed = trimmed.replace("\\\"", "\"").replace("\\\\", "\\");
-            }
-            if (!"null".equals(trimmed) && !trimmed.isEmpty()) {
-                try {
-                    JSONObject obj = new JSONObject(trimmed);
-                    if (obj.has("checked") && !obj.isNull("checked")) {
-                        checked = obj.getBoolean("checked");
-                    }
-                } catch (JSONException e) {
-                    Log.w(TAG, "function_toggle_state_parse_failed cmd=" + unoCommand, e);
-                }
-            }
-            final Boolean finalChecked = checked;
-            if (callback != null) {
-                runOnUiThread(() -> callback.onResult(finalChecked));
             }
         });
     }

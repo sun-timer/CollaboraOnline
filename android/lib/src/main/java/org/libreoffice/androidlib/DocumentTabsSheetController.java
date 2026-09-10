@@ -205,7 +205,7 @@ public class DocumentTabsSheetController {
             displayName = uri.getLastPathSegment();
         }
         if (icon != null) {
-            icon.setImageResource(fileTypeIconRes(host.getContext(), uri, displayName));
+            icon.setImageResource(fileTypeIconRes(displayName));
         }
         title.setText(stripDisplayExtension(displayName));
         subtitle.setText(formatSubtitle(uri));
@@ -234,21 +234,7 @@ public class DocumentTabsSheetController {
         });
     }
 
-    private static int fileTypeIconRes(android.content.Context context, Uri uri, String name) {
-        String cached = RecentDocumentTypeStore.getNormalizedType(context, uri);
-        if (cached != null) {
-            switch (cached) {
-                case "spreadsheet":
-                    return R.drawable.lolib_ic_file_type_calc;
-                case "presentation":
-                    return R.drawable.lolib_ic_file_type_impress;
-                case "drawing":
-                    return R.drawable.lolib_ic_file_type_writer;
-                case "text":
-                default:
-                    return R.drawable.lolib_ic_file_type_writer;
-            }
-        }
+    private static int fileTypeIconRes(String name) {
         if (TextUtils.isEmpty(name)) {
             return R.drawable.lolib_ic_file_type_writer;
         }

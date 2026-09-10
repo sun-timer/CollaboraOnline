@@ -20,8 +20,7 @@ public final class FunctionPanelSpellCheckHelper {
             return false;
         }
         return ".uno:SpellDialog".equals(unoCommand)
-                || ".uno:SpellingAndGrammarDialog".equals(unoCommand)
-                || ".uno:WordCountDialog".equals(unoCommand);
+                || ".uno:SpellingAndGrammarDialog".equals(unoCommand);
     }
 
     public static void runPanelActionAndDismiss(Runnable dismissPanel, String unoCommand,

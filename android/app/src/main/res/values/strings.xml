@@ -238,9 +238,6 @@
     <string name="create_empty_text_document">Create Empty Text Document</string>
     <string name="create_empty_spreadsheet">Create Empty Spreadsheet</string>
     <string name="create_empty_presentation">Create Empty Presentation</string>
-    <string name="default_untitled_writer">Untitled document</string>
-    <string name="default_untitled_calc">Untitled spreadsheet</string>
-    <string name="default_untitled_impress">Untitled presentation</string>
     <string name="ai_generating_label">Generating with AI</string>
     <string name="enter_filename">Please enter the file name:</string>
     <string name="action_create">Create</string>

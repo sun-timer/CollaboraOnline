@@ -33,7 +33,6 @@ import android.hardware.usb.UsbManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.preference.PreferenceManager;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
@@ -71,12 +70,10 @@ import org.libreoffice.androidapp.ui.AboutActivity;
 import org.libreoffice.androidapp.R;
 import org.libreoffice.androidapp.SettingsActivity;
 import org.libreoffice.androidapp.SettingsListenerModel;
-import org.libreoffice.androidlib.AppThemeManager;
 import org.libreoffice.androidlib.LOActivity;
 import org.libreoffice.androidlib.SafeAreaInsets;
 import org.libreoffice.androidlib.SystemUiHelper;
 import org.libreoffice.androidlib.ExitDiagHelper;
-import org.libreoffice.androidlib.RecentDocumentTypeStore;
 import org.libreoffice.androidlib.ai.AiModelConfigStore;
 import org.libreoffice.androidlib.ai.LocalModelManager;
 
@@ -101,11 +98,9 @@ import android.widget.FrameLayout;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.core.content.FileProvider;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
-import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -227,7 +222,8 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         setTheme(R.style.LibreOfficeTheme);
         PreferenceManager.setDefaultValues(this, R.xml.documentprovider_preferences, false);
         readPreferences();
-        AppThemeManager.applyStoredNightMode(this);
+        int mode = prefs.getInt(NIGHT_MODE_KEY, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
+        AppCompatDelegate.setDefaultNightMode(mode);
         // 仅冷启动显示欢迎图；进程被杀后 savedInstanceState!=null 时不铺 splash，避免退出回首页闪屏
         if (savedInstanceState == null) {
             getWindow().setBackgroundDrawable(getDrawable(R.drawable.lolib_splash_bg));
@@ -271,33 +267,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         }
         final ArrayList<Uri> filteredUris = filterRecentUris(recentUris, currentSearchQuery);
 
-        applyRecentFilesLayoutManager();
-        recentRecyclerView.setAdapter(new RecentFilesAdapter(this, filteredUris, !isViewModeList()));
+        recentRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        recentRecyclerView.setAdapter(new RecentFilesAdapter(this, filteredUris));
         updateEmptyState(recentUris.size(), filteredUris.size());
-    }
-
-    private void applyRecentFilesLayoutManager() {
-        if (recentRecyclerView == null) {
-            return;
-        }
-        if (isViewModeList()) {
-            recentRecyclerView.setLayoutManager(new LinearLayoutManager(this));
-        } else {
-            recentRecyclerView.setLayoutManager(new GridLayoutManager(this, 2));
-        }
-    }
-
-    private void updateRecentLayoutToggleIcon() {
-        if (mRecentFilesListOrGrid == null) {
-            return;
-        }
-        if (isViewModeList()) {
-            mRecentFilesListOrGrid.setImageResource(R.drawable.ic_view_grid_24dp);
-            mRecentFilesListOrGrid.setContentDescription(getString(R.string.grid_view));
-        } else {
-            mRecentFilesListOrGrid.setImageResource(R.drawable.ic_list_black_24dp);
-            mRecentFilesListOrGrid.setContentDescription(getString(R.string.list_view));
-        }
     }
 
     private ArrayList<Uri> filterRecentUris(ArrayList<Uri> source, String query) {
@@ -1087,12 +1059,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         // Icon to switch showing the recent files as list vs. as grid
         mRecentFilesListOrGrid = (ImageView) findViewById(R.id.recent_list_or_grid);
         if (mRecentFilesListOrGrid != null) {
-            updateRecentLayoutToggleIcon();
-            mRecentFilesListOrGrid.setOnClickListener(v -> {
-                toggleViewMode();
-                updateRecentLayoutToggleIcon();
-                updateRecentFiles();
-            });
+            mRecentFilesListOrGrid.setVisibility(View.GONE);
         }
 
         updateRecentFiles();
@@ -1149,19 +1116,19 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         if (writerRow != null) {
             writerRow.setOnClickListener(v -> {
                 collapseFabMenu();
-                createNewFileInputDialog(CREATE_DOCUMENT_REQUEST_CODE);
+                createNewFileInputDialog(getString(R.string.new_textdocument) + FileUtilities.DEFAULT_WRITER_EXTENSION, "application/vnd.oasis.opendocument.text", CREATE_DOCUMENT_REQUEST_CODE);
             });
         }
         if (calcRow != null) {
             calcRow.setOnClickListener(v -> {
                 collapseFabMenu();
-                createNewFileInputDialog(CREATE_SPREADSHEET_REQUEST_CODE);
+                createNewFileInputDialog(getString(R.string.new_spreadsheet) + FileUtilities.DEFAULT_SPREADSHEET_EXTENSION, "application/vnd.oasis.opendocument.spreadsheet", CREATE_SPREADSHEET_REQUEST_CODE);
             });
         }
         if (impressRow != null) {
             impressRow.setOnClickListener(v -> {
                 collapseFabMenu();
-                createNewFileInputDialog(CREATE_PRESENTATION_REQUEST_CODE);
+                createNewFileInputDialog(getString(R.string.new_presentation) + FileUtilities.DEFAULT_IMPRESS_EXTENSION, "application/vnd.oasis.opendocument.presentation", CREATE_PRESENTATION_REQUEST_CODE);
             });
         }
     }
@@ -1628,13 +1595,13 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         startActivityForResult(i, LO_ACTIVITY_REQUEST_CODE);
     }
 
-    /** Opens the in-app create sheet (no system save picker). */
-    private void createNewFileInputDialog(final int requestCode) {
+    /** Opens an Input dialog to get the name of new file. */
+    private void createNewFileInputDialog(final String defaultFileName, final String mimeType, final int requestCode) {
         collapseFabMenu();
-        showCreateFileBottomSheet(requestCode);
+        showCreateFileBottomSheet(defaultFileName, mimeType, requestCode);
     }
 
-    private void showCreateFileBottomSheet(final int requestCode) {
+    private void showCreateFileBottomSheet(final String defaultFileName, final String mimeType, final int requestCode) {
         final Dialog dialog = new Dialog(this);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.dialog_create_file_shell);
@@ -1678,7 +1645,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         });
 
         final String extension = getExtensionForRequestCode(requestCode);
-        final String baseName = allocateUniqueDefaultBaseName(requestCode);
+        final String baseName = trimFileExtension(defaultFileName);
         final CreateSheetStyle style = getCreateSheetStyle(requestCode);
 
         createTitle.setText(style.titleResId);
@@ -1720,12 +1687,8 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             }
 
             String finalFileName = ensureExtension(name, extension);
-            final boolean autoOpenAi = aiSwitchChecked[0];
-            final String autoAiPrompt = pendingAutoAiPrompt;
-            final String autoUserDescription = pendingAutoUserDescription;
             dialog.dismiss();
-            createBlankDocumentInAppAndOpen(finalFileName, extension, requestCode,
-                    autoOpenAi, autoAiPrompt, autoUserDescription);
+            LOActivity.createNewFileInputDialog(this, finalFileName, mimeType, requestCode);
         });
 
         ResponsiveUiHelper.applyAdaptiveSheetWindow(this, dialog);
@@ -1948,60 +1911,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             default:
                 return FileUtilities.DEFAULT_WRITER_EXTENSION;
         }
-    }
-
-    /** App-private documents directory (no system CREATE_DOCUMENT picker). */
-    private File getAppDocumentsDirectory() {
-        File dir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
-        if (dir == null) {
-            dir = new File(getFilesDir(), "documents");
-        }
-        if (!dir.exists()) {
-            dir.mkdirs();
-        }
-        return dir;
-    }
-
-    private String getDefaultBaseNameForRequestCode(int requestCode) {
-        switch (requestCode) {
-            case CREATE_SPREADSHEET_REQUEST_CODE:
-                return getString(R.string.default_untitled_calc);
-            case CREATE_PRESENTATION_REQUEST_CODE:
-                return getString(R.string.default_untitled_impress);
-            case CREATE_DOCUMENT_REQUEST_CODE:
-            default:
-                return getString(R.string.default_untitled_writer);
-        }
-    }
-
-    /** Returns base name without extension, e.g. {@code 未命名文档1}. */
-    private String allocateUniqueDefaultBaseName(int requestCode) {
-        String base = getDefaultBaseNameForRequestCode(requestCode);
-        String extension = getExtensionForRequestCode(requestCode);
-        String normalizedExtension = extension.startsWith(".") ? extension.substring(1) : extension;
-        File dir = getAppDocumentsDirectory();
-        int suffix = 1;
-        while (new File(dir, base + suffix + "." + normalizedExtension).exists()) {
-            suffix++;
-        }
-        return base + suffix;
-    }
-
-    private void createBlankDocumentInAppAndOpen(final String fileNameWithExtension, final String extension,
-            final int requestCode, final boolean autoOpenAi, final String autoAiPrompt,
-            final String autoUserDescription) {
-        File dir = getAppDocumentsDirectory();
-        File outFile = new File(dir, fileNameWithExtension);
-        final Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", outFile);
-        if (autoOpenAi) {
-            showAiGeneratingDialog();
-        } else {
-            dismissAiGeneratingDialog();
-        }
-        createNewFileAsync(uri, extension, () -> {
-            dismissAiGeneratingDialog();
-            open(uri, autoOpenAi, autoAiPrompt, true, autoUserDescription, requestCode);
-        });
     }
 
     private String trimFileExtension(String fileName) {
@@ -2465,10 +2374,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     @Override
     protected void onResume() {
         super.onResume();
-        if (AppThemeManager.consumeThemeChangePending()) {
-            recreate();
-            return;
-        }
         logHomeLifecycle("onResume_enter", null);
         getWindow().setBackgroundDrawable(null);
         final long resumeStart = System.currentTimeMillis();
@@ -2540,29 +2445,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         return (int) (dp * scale + 0.5f);
     }
 
-    private int resolveRecentFileTypeForShortcut(String pathString) {
-        try {
-            Uri uri = Uri.parse(pathString);
-            String cached = RecentDocumentTypeStore.getNormalizedType(this, uri);
-            if (cached != null) {
-                switch (cached) {
-                    case "spreadsheet":
-                        return FileUtilities.CALC;
-                    case "presentation":
-                        return FileUtilities.IMPRESS;
-                    case "drawing":
-                        return FileUtilities.DRAWING;
-                    case "text":
-                    default:
-                        return FileUtilities.DOC;
-                }
-            }
-        } catch (RuntimeException ignored) {
-            // fall through to extension
-        }
-        return FileUtilities.getType(pathString);
-    }
-
     private void addDocumentToRecents(Uri uri) {
         String newRecent = uri.toString();
 
@@ -2608,7 +2490,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
                 // Find the appropriate drawable
                 int drawable = 0;
-                switch (resolveRecentFileTypeForShortcut(pathString)) {
+                switch (FileUtilities.getType(pathString)) {
                     case FileUtilities.DOC:
                         drawable = R.drawable.writer;
                         break;

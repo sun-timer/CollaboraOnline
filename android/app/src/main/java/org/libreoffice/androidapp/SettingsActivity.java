@@ -16,7 +16,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
-import org.libreoffice.androidlib.AppThemeManager;
+import org.libreoffice.androidapp.ui.LibreOfficeUIActivity;
+import org.libreoffice.androidlib.LOActivity;
 import org.libreoffice.androidlib.SystemUiHelper;
 
 public class SettingsActivity extends AppCompatActivity {
@@ -25,7 +26,6 @@ public class SettingsActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        AppThemeManager.applyStoredNightMode(this);
         setTheme(R.style.LibreOfficeTheme_Base);
         super.onCreate(savedInstanceState);
 
@@ -36,7 +36,7 @@ public class SettingsActivity extends AppCompatActivity {
 
         SystemUiHelper.applySecondaryActivityChrome(this, findViewById(android.R.id.content), 0, 0);
 
-        prefs = getSharedPreferences(org.libreoffice.androidlib.LOActivity.EXPLORER_PREFS_KEY, MODE_PRIVATE);
+        prefs = getSharedPreferences(LibreOfficeUIActivity.EXPLORER_PREFS_KEY, MODE_PRIVATE);
     }
 
     public static class SettingsFragment extends PreferenceFragmentCompat implements SharedPreferences.OnSharedPreferenceChangeListener {
@@ -89,7 +89,9 @@ public class SettingsActivity extends AppCompatActivity {
                                     dayNightMode = AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM;
                                     break;
                             }
-                            AppThemeManager.setMode(getActivity(), dayNightMode);
+                            AppCompatDelegate.setDefaultNightMode(dayNightMode);
+                            prefs.edit().putInt(LibreOfficeUIActivity.NIGHT_MODE_KEY, dayNightMode).commit();
+                            prefs.edit().putInt(LOActivity.NIGHT_MODE_KEY, dayNightMode).commit();
                             getActivity().recreate();
 
                         }

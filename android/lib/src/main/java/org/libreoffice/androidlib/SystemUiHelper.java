@@ -9,7 +9,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 
-import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -76,14 +75,10 @@ public final class SystemUiHelper {
     }
 
     public static void applyDocumentSystemBarColors(Window window, boolean lightMode, boolean imeVisible) {
-        Context context = window.getContext();
-        int statusPlate = chromeStatusPlateColor(context);
-        int toolbar = chromeToolbarColor(context);
-        int imeNav = chromeImeNavColor(context);
-        window.setStatusBarColor(statusPlate);
+        window.setStatusBarColor(CHROME_STATUS_PLATE);
         window.setNavigationBarColor(imeVisible
-                ? (lightMode ? imeNav : Color.BLACK)
-                : toolbar);
+                ? (lightMode ? CHROME_IME_NAV : Color.BLACK)
+                : CHROME_TOOLBAR);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.setNavigationBarContrastEnforced(false);
         }
@@ -99,23 +94,11 @@ public final class SystemUiHelper {
             return;
         }
         window.setStatusBarColor(Color.TRANSPARENT);
-        window.setNavigationBarColor(chromeToolbarColor(window.getContext()));
+        window.setNavigationBarColor(CHROME_TOOLBAR);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.setNavigationBarContrastEnforced(false);
         }
         applyLightSystemBarIcons(window, lightMode);
-    }
-
-    public static int chromeToolbarColor(Context context) {
-        return ContextCompat.getColor(context, R.color.lolib_chrome_toolbar);
-    }
-
-    public static int chromeStatusPlateColor(Context context) {
-        return ContextCompat.getColor(context, R.color.lolib_chrome_status_plate);
-    }
-
-    public static int chromeImeNavColor(Context context) {
-        return ContextCompat.getColor(context, R.color.lolib_chrome_ime_nav);
     }
 
     public static void applyBottomSheetChrome(Context context, Window window) {

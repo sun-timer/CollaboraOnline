@@ -12,14 +12,12 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import org.libreoffice.androidapp.R;
 import org.libreoffice.androidapp.ShowHTMLActivity;
-import org.libreoffice.androidlib.AppThemeManager;
 import org.libreoffice.androidlib.SystemUiHelper;
 
 /** Full-screen About page (replaces legacy {@code AboutDialogFragment}). */
 public class AboutActivity extends AppCompatActivity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
-        AppThemeManager.applyStoredNightMode(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.about);
         if (getSupportActionBar() != null) {
