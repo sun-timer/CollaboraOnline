@@ -12,6 +12,30 @@
 #import "minizip/zip.h"
 #import <zlib.h>
 
+#include <Poco/AutoPtr.h>
+#include <Poco/DOM/DOMParser.h>
+#include <Poco/DOM/DOMWriter.h>
+#include <Poco/DOM/Document.h>
+#include <Poco/DOM/Element.h>
+#include <Poco/DOM/Node.h>
+#include <Poco/DOM/NodeList.h>
+#include <Poco/DOM/Text.h>
+#include <Poco/Exception.h>
+#include <Poco/XML/XMLWriter.h>
+
+#include <sstream>
+#include <string>
+#include <vector>
+
+using Poco::AutoPtr;
+using Poco::XML::DOMParser;
+using Poco::XML::DOMWriter;
+using Poco::XML::Document;
+using Poco::XML::Element;
+using Poco::XML::Node;
+using Poco::XML::NodeList;
+using Poco::XML::XMLWriter;
+
 static NSString * const kTypesetWordNS = @"http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 static NSString * const kTypesetDrawingNS = @"http://schemas.openxmlformats.org/drawingml/2006/main";
 static NSString * const kTypesetWpNS = @"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
@@ -20,6 +44,133 @@ static NSString * const kTypesetRelOfficeNS = @"http://schemas.openxmlformats.or
 static NSString * const kTypesetPicNS = @"http://schemas.openxmlformats.org/drawingml/2006/picture";
 static NSString * const kTypesetContentTypesNS = @"http://schemas.openxmlformats.org/package/2006/content-types";
 static const long kTypesetDefaultEmu = 5L * 914400L;
+
+static std::string TypesetUTF8(NSString *value) {
+    return value ? std::string(value.UTF8String ?: "") : std::string();
+}
+
+static NSString *TypesetNSString(const std::string& value) {
+    return [[NSString alloc] initWithBytes:value.data()
+                                   length:value.size()
+                                 encoding:NSUTF8StringEncoding] ?: @"";
+}
+
+static AutoPtr<Document> TypesetParseXml(NSData *data) {
+    if (!data) return nullptr;
+    try {
+        DOMParser parser;
+        return AutoPtr<Document>(parser.parseMemory(static_cast<const char *>(data.bytes), data.length));
+    } catch (const Poco::Exception&) {
+        return nullptr;
+    } catch (const std::exception&) {
+        return nullptr;
+    }
+}
+
+static AutoPtr<Document> TypesetParseXmlString(NSString *xml) {
+    NSData *data = [xml dataUsingEncoding:NSUTF8StringEncoding];
+    return TypesetParseXml(data);
+}
+
+static NSData *TypesetSerializeXml(Document *document) {
+    if (!document) return nil;
+    try {
+        std::ostringstream stream;
+        DOMWriter writer;
+        writer.setOptions(XMLWriter::PRETTY_PRINT);
+        writer.writeNode(stream, document);
+        const std::string xml = stream.str();
+        return [NSData dataWithBytes:xml.data() length:xml.size()];
+    } catch (const Poco::Exception&) {
+        return nil;
+    } catch (const std::exception&) {
+        return nil;
+    }
+}
+
+static std::vector<Element *> TypesetElements(Node *node, NSString *localName, NSString *namespaceURI) {
+    std::vector<Element *> elements;
+    if (!node) return elements;
+    AutoPtr<NodeList> list;
+    if (node->nodeType() == Node::DOCUMENT_NODE) {
+        list = static_cast<Document *>(node)->getElementsByTagNameNS(TypesetUTF8(namespaceURI),
+                                                                     TypesetUTF8(localName));
+    } else if (node->nodeType() == Node::ELEMENT_NODE) {
+        list = static_cast<Element *>(node)->getElementsByTagNameNS(TypesetUTF8(namespaceURI),
+                                                                    TypesetUTF8(localName));
+    }
+    if (!list) return elements;
+    elements.reserve(list->length());
+    for (unsigned long i = 0; i < list->length(); ++i) {
+        Node *item = list->item(i);
+        if (item && item->nodeType() == Node::ELEMENT_NODE) {
+            elements.push_back(static_cast<Element *>(item));
+        }
+    }
+    return elements;
+}
+
+static NSString *TypesetLocalName(Node *node) {
+    return node ? TypesetNSString(node->localName()) : nil;
+}
+
+static NSString *TypesetStringValue(Node *node) {
+    return node ? TypesetNSString(node->innerText()) : nil;
+}
+
+static void TypesetSetStringValue(Element *element, NSString *value) {
+    if (!element) return;
+    while (Node *child = element->firstChild()) {
+        element->removeChild(child);
+    }
+    Document *document = element->ownerDocument();
+    element->appendChild(document->createTextNode(TypesetUTF8(value ?: @"")));
+}
+
+static NSString *TypesetAttribute(Element *element, NSString *name) {
+    return element ? TypesetNSString(element->getAttribute(TypesetUTF8(name))) : nil;
+}
+
+static NSString *TypesetAttributeNS(Element *element, NSString *localName, NSString *namespaceURI) {
+    return element ? TypesetNSString(element->getAttributeNS(TypesetUTF8(namespaceURI),
+                                                              TypesetUTF8(localName))) : nil;
+}
+
+static Element *TypesetCreateElement(Document *document, NSString *qualifiedName, NSString *namespaceURI) {
+    return document ? document->createElementNS(TypesetUTF8(namespaceURI), TypesetUTF8(qualifiedName)) : nullptr;
+}
+
+static void TypesetSetAttribute(Element *element, NSString *qualifiedName, NSString *value) {
+    if (element) element->setAttribute(TypesetUTF8(qualifiedName), TypesetUTF8(value));
+}
+
+static void TypesetSetAttributeNS(Element *element,
+                                  NSString *qualifiedName,
+                                  NSString *namespaceURI,
+                                  NSString *value) {
+    if (element) {
+        element->setAttributeNS(TypesetUTF8(namespaceURI), TypesetUTF8(qualifiedName), TypesetUTF8(value));
+    }
+}
+
+static NSUInteger TypesetIndexOfChild(Node *parent, Node *child) {
+    NSUInteger index = 0;
+    for (Node *current = parent ? parent->firstChild() : nullptr;
+         current;
+         current = current->nextSibling(), ++index) {
+        if (current == child) return index;
+    }
+    return NSNotFound;
+}
+
+static void TypesetInsertChild(Node *parent, Node *child, NSUInteger index) {
+    if (!parent || !child) return;
+    Node *reference = parent->firstChild();
+    for (NSUInteger i = 0; reference && i < index; ++i) {
+        reference = reference->nextSibling();
+    }
+    parent->insertBefore(child, reference);
+}
 
 static NSDictionary<NSString *, NSArray<NSDictionary *> *> *TypesetPlaceholderMap(void) {
     static NSDictionary *map = nil;
@@ -92,43 +243,45 @@ static NSString *TypesetMatchPlaceholder(NSString *text, NSArray<NSDictionary *>
     return nil;
 }
 
-static NSString *TypesetParagraphText(NSXMLElement *paragraph) {
+static NSString *TypesetParagraphText(Element *paragraph) {
     NSMutableString *text = [NSMutableString string];
-    for (NSXMLElement *node in [paragraph elementsForLocalName:@"t" URI:kTypesetWordNS]) {
-        if (node.stringValue.length > 0) {
-            [text appendString:node.stringValue];
+    for (Element *node : TypesetElements(paragraph, @"t", kTypesetWordNS)) {
+        NSString *value = TypesetStringValue(node);
+        if (value.length > 0) {
+            [text appendString:value];
         }
     }
     return [[text copy] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 }
 
-static void TypesetReplaceParagraphText(NSXMLElement *paragraph, NSString *newText) {
-    NSArray<NSXMLElement *> *runs = [paragraph elementsForLocalName:@"r" URI:kTypesetWordNS];
-    NSXMLElement *templateRun = runs.firstObject;
-    NSXMLElement *templateRPr = nil;
+static void TypesetReplaceParagraphText(Element *paragraph, NSString *newText) {
+    std::vector<Element *> runs = TypesetElements(paragraph, @"r", kTypesetWordNS);
+    Element *templateRun = runs.empty() ? nullptr : runs.front();
+    Element *templateRPr = nullptr;
     if (templateRun) {
-        NSArray<NSXMLElement *> *rPrs = [templateRun elementsForLocalName:@"rPr" URI:kTypesetWordNS];
-        templateRPr = rPrs.firstObject;
+        std::vector<Element *> rPrs = TypesetElements(templateRun, @"rPr", kTypesetWordNS);
+        templateRPr = rPrs.empty() ? nullptr : rPrs.front();
     }
-    for (NSXMLElement *run in [runs copy]) {
-        [paragraph removeChildAtIndex:[paragraph indexOfChild:run]];
+    for (Element *run : runs) {
+        if (run->parentNode() == paragraph) paragraph->removeChild(run);
     }
-    NSXMLElement *newRun = [NSXMLElement elementWithName:@"w:r" URI:kTypesetWordNS];
+    Document *document = paragraph->ownerDocument();
+    Element *newRun = TypesetCreateElement(document, @"w:r", kTypesetWordNS);
     if (templateRPr) {
-        [newRun addChild:[templateRPr copy]];
+        newRun->appendChild(templateRPr->cloneNode(true));
     }
-    NSXMLElement *textNode = [NSXMLElement elementWithName:@"w:t" URI:kTypesetWordNS];
-    [textNode addAttribute:[NSXMLNode attributeWithName:@"xml:space" stringValue:@"preserve"]];
-    [textNode setStringValue:newText ?: @""];
-    [newRun addChild:textNode];
-    [paragraph addChild:newRun];
+    Element *textNode = TypesetCreateElement(document, @"w:t", kTypesetWordNS);
+    TypesetSetAttributeNS(textNode, @"xml:space", @"http://www.w3.org/XML/1998/namespace", @"preserve");
+    TypesetSetStringValue(textNode, newText ?: @"");
+    newRun->appendChild(textNode);
+    paragraph->appendChild(newRun);
 }
 
-static NSXMLElement *TypesetCloneParagraph(NSXMLElement *source, NSString *text) {
-    NSXMLElement *newP = [NSXMLElement elementWithName:@"w:p" URI:kTypesetWordNS];
-    NSArray<NSXMLElement *> *pPrs = [source elementsForLocalName:@"pPr" URI:kTypesetWordNS];
-    if (pPrs.firstObject) {
-        [newP addChild:[pPrs.firstObject copy]];
+static Element *TypesetCloneParagraph(Element *source, NSString *text) {
+    Element *newP = TypesetCreateElement(source->ownerDocument(), @"w:p", kTypesetWordNS);
+    std::vector<Element *> pPrs = TypesetElements(source, @"pPr", kTypesetWordNS);
+    if (!pPrs.empty()) {
+        newP->appendChild(pPrs.front()->cloneNode(true));
     }
     TypesetReplaceParagraphText(newP, text);
     return newP;
@@ -138,21 +291,20 @@ static BOOL TypesetFillDocumentXml(NSData *documentXml,
                                    NSString *typesetType,
                                    NSDictionary<NSString *, NSString *> *sections,
                                    NSData **outData) {
-    NSError *error = nil;
-    NSXMLDocument *doc = [[NSXMLDocument alloc] initWithData:documentXml options:0 error:&error];
+    AutoPtr<Document> doc = TypesetParseXml(documentXml);
     if (!doc) return NO;
-    NSArray<NSXMLElement *> *bodies = [doc elementsForLocalName:@"body" URI:kTypesetWordNS];
-    NSXMLElement *body = bodies.firstObject;
+    std::vector<Element *> bodies = TypesetElements(doc, @"body", kTypesetWordNS);
+    Element *body = bodies.empty() ? nullptr : bodies.front();
     if (!body) return NO;
     NSArray<NSDictionary *> *entries = TypesetPlaceholderMap()[typesetType] ?: TypesetPlaceholderMap()[@"general"];
     NSMutableSet<NSString *> *usedKeys = [NSMutableSet set];
-    NSMutableArray<NSXMLElement *> *paragraphs = [NSMutableArray array];
-    for (NSXMLNode *child in body.children) {
-        if (child.kind == NSXMLElementKind && [child.localName isEqualToString:@"p"]) {
-            [paragraphs addObject:(NSXMLElement *)child];
+    std::vector<Element *> paragraphs;
+    for (Node *child = body->firstChild(); child; child = child->nextSibling()) {
+        if (child->nodeType() == Node::ELEMENT_NODE && [TypesetLocalName(child) isEqualToString:@"p"]) {
+            paragraphs.push_back(static_cast<Element *>(child));
         }
     }
-    for (NSXMLElement *paragraph in paragraphs) {
+    for (Element *paragraph : paragraphs) {
         NSString *paraText = TypesetParagraphText(paragraph);
         if (paraText.length == 0) continue;
         NSString *sectionKey = TypesetMatchPlaceholder(paraText, entries, usedKeys);
@@ -162,16 +314,16 @@ static BOOL TypesetFillDocumentXml(NSData *documentXml,
         if (content.length == 0) continue;
         NSArray<NSString *> *parts = [content componentsSeparatedByString:@"\n\n"];
         TypesetReplaceParagraphText(paragraph, parts.firstObject ?: @"");
-        NSXMLElement *anchor = paragraph;
+        Element *anchor = paragraph;
         for (NSUInteger i = 1; i < parts.count; i++) {
             NSString *segment = [parts[i] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
             if (segment.length == 0) continue;
-            NSXMLElement *newP = TypesetCloneParagraph(paragraph, segment);
-            [body insertChild:newP atIndex:[body indexOfChild:anchor] + 1];
+            Element *newP = TypesetCloneParagraph(paragraph, segment);
+            TypesetInsertChild(body, newP, TypesetIndexOfChild(body, anchor) + 1);
             anchor = newP;
         }
     }
-    NSData *xmlData = [doc XMLDataWithOptions:NSXMLNodePrettyPrint];
+    NSData *xmlData = TypesetSerializeXml(doc);
     if (!xmlData) return NO;
     *outData = xmlData;
     return YES;
@@ -234,14 +386,13 @@ static BOOL TypesetWriteZip(NSDictionary<NSString *, NSData *> *entries, NSURL *
 
 static NSDictionary<NSString *, NSString *> *TypesetBuildImageRelMap(NSData *relsXml) {
     if (!relsXml) return @{};
-    NSError *error = nil;
-    NSXMLDocument *relsDoc = [[NSXMLDocument alloc] initWithData:relsXml options:0 error:&error];
+    AutoPtr<Document> relsDoc = TypesetParseXml(relsXml);
     if (!relsDoc) return @{};
     NSMutableDictionary<NSString *, NSString *> *relMap = [NSMutableDictionary dictionary];
-    for (NSXMLElement *rel in [relsDoc.rootElement elementsForLocalName:@"Relationship" URI:kTypesetRelNS]) {
-        NSString *type = [[rel attributeForName:@"Type"] stringValue];
-        NSString *target = [[rel attributeForName:@"Target"] stringValue];
-        NSString *relId = [[rel attributeForName:@"Id"] stringValue];
+    for (Element *rel : TypesetElements(relsDoc->documentElement(), @"Relationship", kTypesetRelNS)) {
+        NSString *type = TypesetAttribute(rel, @"Type");
+        NSString *target = TypesetAttribute(rel, @"Target");
+        NSString *relId = TypesetAttribute(rel, @"Id");
         if (relId.length > 0 && target.length > 0 && [type containsString:@"image"]) {
             relMap[relId] = target;
         }
@@ -258,21 +409,22 @@ static NSString *TypesetMimeForExtension(NSString *ext) {
     return @"application/octet-stream";
 }
 
-static void TypesetCollectParagraphContent(NSXMLElement *paragraph,
+static void TypesetCollectParagraphContent(Element *paragraph,
                                            NSDictionary<NSString *, NSString *> *relMap,
                                            NSDictionary<NSString *, NSData *> *entries,
                                            NSMutableString *paraText,
                                            NSMutableDictionary<NSString *, NSDictionary *> *images,
                                            int *imgCounter) {
-    for (NSXMLElement *run in [paragraph elementsForLocalName:@"r" URI:kTypesetWordNS]) {
-        for (NSXMLElement *textNode in [run elementsForLocalName:@"t" URI:kTypesetWordNS]) {
-            if (textNode.stringValue.length > 0) {
-                [paraText appendString:textNode.stringValue];
+    for (Element *run : TypesetElements(paragraph, @"r", kTypesetWordNS)) {
+        for (Element *textNode : TypesetElements(run, @"t", kTypesetWordNS)) {
+            NSString *value = TypesetStringValue(textNode);
+            if (value.length > 0) {
+                [paraText appendString:value];
             }
         }
-        for (NSXMLElement *drawing in [run elementsForLocalName:@"drawing" URI:kTypesetWordNS]) {
-            for (NSXMLElement *blip in [drawing elementsForLocalName:@"blip" URI:kTypesetDrawingNS]) {
-                NSString *embed = [[blip attributeForName:@"embed" URI:kTypesetRelOfficeNS] stringValue];
+        for (Element *drawing : TypesetElements(run, @"drawing", kTypesetWordNS)) {
+            for (Element *blip : TypesetElements(drawing, @"blip", kTypesetDrawingNS)) {
+                NSString *embed = TypesetAttributeNS(blip, @"embed", kTypesetRelOfficeNS);
                 if (embed.length == 0) continue;
                 NSString *target = relMap[embed];
                 if (target.length == 0) continue;
@@ -298,10 +450,10 @@ static void TypesetCollectParagraphContent(NSXMLElement *paragraph,
 static NSDictionary *TypesetExtractStructuredFromEntries(NSDictionary<NSString *, NSData *> *entries) {
     NSData *documentXml = entries[@"word/document.xml"];
     if (!documentXml) return nil;
-    NSError *error = nil;
-    NSXMLDocument *doc = [[NSXMLDocument alloc] initWithData:documentXml options:0 error:&error];
+    AutoPtr<Document> doc = TypesetParseXml(documentXml);
     if (!doc) return nil;
-    NSXMLElement *body = [[doc elementsForLocalName:@"body" URI:kTypesetWordNS] firstObject];
+    std::vector<Element *> bodies = TypesetElements(doc, @"body", kTypesetWordNS);
+    Element *body = bodies.empty() ? nullptr : bodies.front();
     if (!body) return nil;
     NSDictionary<NSString *, NSString *> *relMap =
         TypesetBuildImageRelMap(entries[@"word/_rels/document.xml.rels"]);
@@ -309,10 +461,10 @@ static NSDictionary *TypesetExtractStructuredFromEntries(NSDictionary<NSString *
     NSMutableString *fullText = [NSMutableString string];
     NSMutableDictionary<NSString *, NSDictionary *> *images = [NSMutableDictionary dictionary];
     int imgCounter = 0;
-    for (NSXMLNode *child in body.children) {
-        if (child.kind != NSXMLElementKind || ![child.localName isEqualToString:@"p"]) continue;
+    for (Node *child = body->firstChild(); child; child = child->nextSibling()) {
+        if (child->nodeType() != Node::ELEMENT_NODE || ![TypesetLocalName(child) isEqualToString:@"p"]) continue;
         NSMutableString *paraText = [NSMutableString string];
-        TypesetCollectParagraphContent((NSXMLElement *)child, relMap, entries,
+        TypesetCollectParagraphContent(static_cast<Element *>(child), relMap, entries,
                                        paraText, images, &imgCounter);
         NSString *para = [[paraText copy] stringByTrimmingCharactersInSet:
             [NSCharacterSet whitespaceAndNewlineCharacterSet]];
@@ -381,10 +533,10 @@ static NSDictionary *TypesetExtractStructuredFromEntries(NSDictionary<NSString *
     return outputURL;
 }
 
-static int TypesetMaxRId(NSXMLDocument *relsDoc) {
+static int TypesetMaxRId(Document *relsDoc) {
     int max = 0;
-    for (NSXMLElement *rel in [relsDoc.rootElement elementsForLocalName:@"Relationship" URI:kTypesetRelNS]) {
-        NSString *relId = [[rel attributeForName:@"Id"] stringValue];
+    for (Element *rel : TypesetElements(relsDoc->documentElement(), @"Relationship", kTypesetRelNS)) {
+        NSString *relId = TypesetAttribute(rel, @"Id");
         if ([relId hasPrefix:@"rId"]) {
             max = MAX(max, [[relId substringFromIndex:3] intValue]);
         }
@@ -392,10 +544,10 @@ static int TypesetMaxRId(NSXMLDocument *relsDoc) {
     return max;
 }
 
-static int TypesetMaxDocPrId(NSXMLDocument *docXml) {
+static int TypesetMaxDocPrId(Document *docXml) {
     int max = 0;
-    for (NSXMLElement *docPr in [docXml elementsForLocalName:@"docPr" URI:kTypesetWpNS]) {
-        max = MAX(max, [[[docPr attributeForName:@"id"] stringValue] intValue]);
+    for (Element *docPr : TypesetElements(docXml, @"docPr", kTypesetWpNS)) {
+        max = MAX(max, [TypesetAttribute(docPr, @"id") intValue]);
     }
     return max;
 }
@@ -414,7 +566,12 @@ static int TypesetMediaFileCount(NSDictionary<NSString *, NSData *> *entries) {
     return max;
 }
 
-static NSXMLElement *TypesetBuildDrawingElement(NSString *rId, int docPrId, NSString *name, long cx, long cy) {
+static Element *TypesetBuildDrawingElement(Document *document,
+                                           NSString *rId,
+                                           int docPrId,
+                                           NSString *name,
+                                           long cx,
+                                           long cy) {
     NSString *xml = [NSString stringWithFormat:
         @"<w:drawing xmlns:w=\"%@\" xmlns:wp=\"%@\" xmlns:a=\"%@\" xmlns:r=\"%@\" xmlns:pic=\"%@\">"
          "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
@@ -430,57 +587,62 @@ static NSXMLElement *TypesetBuildDrawingElement(NSString *rId, int docPrId, NSSt
          "</wp:inline></w:drawing>",
         kTypesetWordNS, kTypesetWpNS, kTypesetDrawingNS, kTypesetRelOfficeNS, kTypesetPicNS,
         cx, cy, docPrId, name, docPrId, name, rId, cx, cy];
-    NSXMLDocument *temp = [[NSXMLDocument alloc] initWithXMLString:xml options:0 error:nil];
-    return temp.rootElement;
+    AutoPtr<Document> temp = TypesetParseXmlString(xml);
+    if (!temp || !temp->documentElement()) return nullptr;
+    return static_cast<Element *>(document->importNode(temp->documentElement(), true));
 }
 
-static NSXMLElement *TypesetCloneRunWithDrawing(NSXMLElement *templateRun, NSXMLElement *drawing) {
-    NSXMLElement *newRun = [NSXMLElement elementWithName:@"w:r" URI:kTypesetWordNS];
-    NSXMLElement *templateRPr = [[templateRun elementsForLocalName:@"rPr" URI:kTypesetWordNS] firstObject];
+static Element *TypesetCloneRunWithDrawing(Element *templateRun, Element *drawing) {
+    Element *newRun = TypesetCreateElement(templateRun->ownerDocument(), @"w:r", kTypesetWordNS);
+    std::vector<Element *> rPrs = TypesetElements(templateRun, @"rPr", kTypesetWordNS);
+    Element *templateRPr = rPrs.empty() ? nullptr : rPrs.front();
     if (templateRPr) {
-        [newRun addChild:[templateRPr copy]];
+        newRun->appendChild(templateRPr->cloneNode(true));
     }
     if (drawing) {
-        [newRun addChild:drawing];
+        newRun->appendChild(drawing);
     }
     return newRun;
 }
 
-static NSXMLElement *TypesetCloneRunWithText(NSXMLElement *templateRun, NSString *text) {
-    NSXMLElement *newRun = [NSXMLElement elementWithName:@"w:r" URI:kTypesetWordNS];
-    NSXMLElement *templateRPr = [[templateRun elementsForLocalName:@"rPr" URI:kTypesetWordNS] firstObject];
+static Element *TypesetCloneRunWithText(Element *templateRun, NSString *text) {
+    Document *document = templateRun->ownerDocument();
+    Element *newRun = TypesetCreateElement(document, @"w:r", kTypesetWordNS);
+    std::vector<Element *> rPrs = TypesetElements(templateRun, @"rPr", kTypesetWordNS);
+    Element *templateRPr = rPrs.empty() ? nullptr : rPrs.front();
     if (templateRPr) {
-        [newRun addChild:[templateRPr copy]];
+        newRun->appendChild(templateRPr->cloneNode(true));
     }
-    NSXMLElement *textNode = [NSXMLElement elementWithName:@"w:t" URI:kTypesetWordNS];
-    [textNode addAttribute:[NSXMLNode attributeWithName:@"xml:space" stringValue:@"preserve"]];
-    [textNode setStringValue:text ?: @""];
-    [newRun addChild:textNode];
+    Element *textNode = TypesetCreateElement(document, @"w:t", kTypesetWordNS);
+    TypesetSetAttributeNS(textNode, @"xml:space", @"http://www.w3.org/XML/1998/namespace", @"preserve");
+    TypesetSetStringValue(textNode, text ?: @"");
+    newRun->appendChild(textNode);
     return newRun;
 }
 
-static void TypesetAddImageRelationship(NSXMLDocument *relsDoc, NSString *rId, NSString *target) {
-    NSXMLElement *rel = [NSXMLElement elementWithName:@"Relationship" URI:kTypesetRelNS];
-    [rel addAttribute:[NSXMLNode attributeWithName:@"Id" stringValue:rId]];
-    [rel addAttribute:[NSXMLNode attributeWithName:@"Type"
-                                      stringValue:@"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"]];
-    [rel addAttribute:[NSXMLNode attributeWithName:@"Target"
-                                      stringValue:[@"media/" stringByAppendingString:target]]];
-    [relsDoc.rootElement addChild:rel];
+static void TypesetAddImageRelationship(Document *relsDoc, NSString *rId, NSString *target) {
+    Element *rel = TypesetCreateElement(relsDoc, @"Relationship", kTypesetRelNS);
+    TypesetSetAttribute(rel, @"Id", rId);
+    TypesetSetAttribute(rel, @"Type",
+                        @"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image");
+    TypesetSetAttribute(rel, @"Target", [@"media/" stringByAppendingString:target]);
+    relsDoc->documentElement()->appendChild(rel);
 }
 
-static void TypesetAddContentTypeIfNeeded(NSXMLDocument *ctDoc, NSString *extension, NSString *mimeType) {
+static void TypesetAddContentTypeIfNeeded(Document *ctDoc, NSString *extension, NSString *mimeType) {
     if (!ctDoc) return;
-    for (NSXMLElement *node in ctDoc.rootElement.children) {
-        if (![node.localName isEqualToString:@"Default"]) continue;
-        if ([[[node attributeForName:@"Extension"] stringValue] caseInsensitiveCompare:extension] == NSOrderedSame) {
+    Element *root = ctDoc->documentElement();
+    for (Node *child = root->firstChild(); child; child = child->nextSibling()) {
+        if (child->nodeType() != Node::ELEMENT_NODE || ![TypesetLocalName(child) isEqualToString:@"Default"]) continue;
+        Element *node = static_cast<Element *>(child);
+        if ([TypesetAttribute(node, @"Extension") caseInsensitiveCompare:extension] == NSOrderedSame) {
             return;
         }
     }
-    NSXMLElement *defaultEl = [NSXMLElement elementWithName:@"Default" URI:kTypesetContentTypesNS];
-    [defaultEl addAttribute:[NSXMLNode attributeWithName:@"Extension" stringValue:extension]];
-    [defaultEl addAttribute:[NSXMLNode attributeWithName:@"ContentType" stringValue:mimeType]];
-    [ctDoc.rootElement addChild:defaultEl];
+    Element *defaultEl = TypesetCreateElement(ctDoc, @"Default", kTypesetContentTypesNS);
+    TypesetSetAttribute(defaultEl, @"Extension", extension);
+    TypesetSetAttribute(defaultEl, @"ContentType", mimeType);
+    root->appendChild(defaultEl);
 }
 
 + (BOOL)insertImages:(NSDictionary<NSString *, NSDictionary *> *)images intoDocxAtURL:(NSURL *)docxURL {
@@ -495,12 +657,9 @@ static void TypesetAddContentTypeIfNeeded(NSXMLDocument *ctDoc, NSString *extens
     NSData *documentXml = entries[@"word/document.xml"];
     NSData *relsXml = entries[@"word/_rels/document.xml.rels"];
     if (!documentXml || !relsXml) return NO;
-    NSError *error = nil;
-    NSXMLDocument *docXml = [[NSXMLDocument alloc] initWithData:documentXml options:0 error:&error];
-    NSXMLDocument *relsDoc = [[NSXMLDocument alloc] initWithData:relsXml options:0 error:&error];
-    NSXMLDocument *ctDoc = entries[@"[Content_Types].xml"]
-        ? [[NSXMLDocument alloc] initWithData:entries[@"[Content_Types].xml"] options:0 error:nil]
-        : nil;
+    AutoPtr<Document> docXml = TypesetParseXml(documentXml);
+    AutoPtr<Document> relsDoc = TypesetParseXml(relsXml);
+    AutoPtr<Document> ctDoc = TypesetParseXml(entries[@"[Content_Types].xml"]);
     if (!docXml || !relsDoc) return NO;
     int nextRId = TypesetMaxRId(relsDoc) + 1;
     int nextDocPrId = TypesetMaxDocPrId(docXml) + 1;
@@ -508,8 +667,8 @@ static void TypesetAddContentTypeIfNeeded(NSXMLDocument *ctDoc, NSString *extens
     NSRegularExpression *markerRe = [NSRegularExpression regularExpressionWithPattern:@"\\[图(\\d+)\\]"
                                                                                options:0 error:nil];
     int inserted = 0;
-    for (NSXMLElement *textNode in [docXml elementsForLocalName:@"t" URI:kTypesetWordNS]) {
-        NSString *text = textNode.stringValue;
+    for (Element *textNode : TypesetElements(docXml, @"t", kTypesetWordNS)) {
+        NSString *text = TypesetStringValue(textNode);
         if (text.length == 0) continue;
         NSTextCheckingResult *match = [markerRe firstMatchInString:text options:0
                                                              range:NSMakeRange(0, text.length)];
@@ -536,11 +695,15 @@ static void TypesetAddContentTypeIfNeeded(NSXMLDocument *ctDoc, NSString *extens
         if (cx <= 0) cx = kTypesetDefaultEmu;
         if (cy <= 0) cy = kTypesetDefaultEmu;
 
-        NSXMLElement *runElem = (NSXMLElement *)textNode.parent;
-        while (runElem && ![runElem.localName isEqualToString:@"r"]) {
-            runElem = (NSXMLElement *)runElem.parent;
+        Node *runNode = textNode->parentNode();
+        while (runNode && ![TypesetLocalName(runNode) isEqualToString:@"r"]) {
+            runNode = runNode->parentNode();
         }
-        NSXMLElement *paraElem = runElem ? (NSXMLElement *)runElem.parent : nil;
+        Element *runElem = runNode && runNode->nodeType() == Node::ELEMENT_NODE
+            ? static_cast<Element *>(runNode) : nullptr;
+        Node *paraNode = runElem ? runElem->parentNode() : nullptr;
+        Element *paraElem = paraNode && paraNode->nodeType() == Node::ELEMENT_NODE
+            ? static_cast<Element *>(paraNode) : nullptr;
         if (!runElem || !paraElem) continue;
 
         NSString *fullMarker = [text substringWithRange:match.range];
@@ -549,20 +712,20 @@ static void TypesetAddContentTypeIfNeeded(NSXMLDocument *ctDoc, NSString *extens
         NSString *rId = [NSString stringWithFormat:@"rId%d", nextRId++];
         int docPrId = nextDocPrId++;
         NSString *imageFileName = [NSString stringWithFormat:@"image%d.%@", nextImageIndex++, extension];
-        NSXMLElement *drawing = TypesetBuildDrawingElement(rId, docPrId, fullMarker, cx, cy);
+        Element *drawing = TypesetBuildDrawingElement(docXml, rId, docPrId, fullMarker, cx, cy);
         if (!drawing) continue;
 
-        NSUInteger insertIndex = [paraElem indexOfChild:runElem] + 1;
+        NSUInteger insertIndex = TypesetIndexOfChild(paraElem, runElem) + 1;
         if (afterText.length > 0) {
-            NSXMLElement *afterRun = TypesetCloneRunWithText(runElem, afterText);
-            [paraElem insertChild:afterRun atIndex:insertIndex++];
+            Element *afterRun = TypesetCloneRunWithText(runElem, afterText);
+            TypesetInsertChild(paraElem, afterRun, insertIndex++);
         }
-        NSXMLElement *drawRun = TypesetCloneRunWithDrawing(runElem, drawing);
-        [paraElem insertChild:drawRun atIndex:insertIndex];
+        Element *drawRun = TypesetCloneRunWithDrawing(runElem, drawing);
+        TypesetInsertChild(paraElem, drawRun, insertIndex);
         if (beforeText.length > 0) {
-            [textNode setStringValue:beforeText];
+            TypesetSetStringValue(textNode, beforeText);
         } else {
-            [paraElem removeChildAtIndex:[paraElem indexOfChild:runElem]];
+            paraElem->removeChild(runElem);
         }
         TypesetAddImageRelationship(relsDoc, rId, imageFileName);
         TypesetAddContentTypeIfNeeded(ctDoc, extension, mimeType);
@@ -570,10 +733,10 @@ static void TypesetAddContentTypeIfNeeded(NSXMLDocument *ctDoc, NSString *extens
         inserted++;
     }
     if (inserted == 0) return YES;
-    entries[@"word/document.xml"] = [docXml XMLDataWithOptions:NSXMLNodePrettyPrint];
-    entries[@"word/_rels/document.xml.rels"] = [relsDoc XMLDataWithOptions:NSXMLNodePrettyPrint];
+    entries[@"word/document.xml"] = TypesetSerializeXml(docXml);
+    entries[@"word/_rels/document.xml.rels"] = TypesetSerializeXml(relsDoc);
     if (ctDoc) {
-        entries[@"[Content_Types].xml"] = [ctDoc XMLDataWithOptions:NSXMLNodePrettyPrint];
+        entries[@"[Content_Types].xml"] = TypesetSerializeXml(ctDoc);
     }
     [[NSFileManager defaultManager] removeItemAtURL:docxURL error:nil];
     return TypesetWriteZip(entries, docxURL);

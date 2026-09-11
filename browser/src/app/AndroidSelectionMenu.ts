@@ -461,7 +461,19 @@ class AndroidSelectionMenu {
 
 	/** iOS: broadcast the selection to the DOM menu instead of a native popup. */
 	private static tryShowIOS(): void {
-		if (!AndroidSelectionMenu.isSelectionDoc() || !AndroidSelectionMenu.hasNonDegenerateSelection()) {
+		if (
+			!app.map ||
+			!AndroidSelectionMenu.isSelectionDoc() ||
+			!AndroidSelectionMenu.hasNonDegenerateSelection()
+		) {
+			return;
+		}
+		// Text selection in a read-only Writer preview remains available for the
+		// existing Writer flow.  iOS Impress selection AI is edit-only.
+		const isReadOnly =
+			typeof app.map.isReadOnlyMode === 'function' && app.map.isReadOnlyMode();
+		if (app.map.getDocType() === 'presentation' && isReadOnly) {
+			MobileSelectionEvents.broadcastHide();
 			return;
 		}
 		const startRect = TextSelections.getStartRectangle();

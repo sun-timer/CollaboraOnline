@@ -1,45 +1,60 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-if [ $# -eq 0 ]; then
-    echo "build-zstd-ios.sh <abs-path-to-build-top-dir>"
-    exit;
+set -euo pipefail
+
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+    echo "Usage: build-zstd-ios.sh <abs-path-to-build-top-dir> [OS64|SIMULATORARM64]" >&2
+    exit 2
 fi
 
-BUILD_PATH=$1 # for instance $PWD/zstd-build-dir
+BUILD_PATH=$1
+PLATFORM=${2:-OS64}
 
-# Then when running the configure script, pass the following additional options:
-# -with-zstd-libs=$PWD/zstd-build-dir/ios-zstd/install/OS64/lib --with-zstd-includes=$PWD/zstd-build-dir/ios-zstd/lib
+case "$PLATFORM" in
+    OS64)
+        DEPLOYMENT_TARGET=13.6
+        ;;
+    SIMULATORARM64)
+        DEPLOYMENT_TARGET=14.5
+        ;;
+    *)
+        echo "Unsupported iOS platform: $PLATFORM" >&2
+        exit 2
+        ;;
+esac
 
-PLATFORMS="OS64"
-
-mkdir -p $BUILD_PATH
-cd $BUILD_PATH
-if ! test -f ios-cmake/.git/config; then
-	git clone https://github.com/leetal/ios-cmake.git ios-cmake
+if [[ "$BUILD_PATH" != /* ]]; then
+    echo "Build top directory must be an absolute path: $BUILD_PATH" >&2
+    exit 2
 fi
-if ! test -f ios-zstd/.git/config; then
-	git clone https://github.com/facebook/zstd.git ios-zstd
-fi
-cd ios-zstd
 
-TOP_PATH=$BUILD_PATH/ios-zstd
-rm -Rf $TOP_PATH/install
-mkdir -p $TOP_PATH/install
-for p in $PLATFORMS; do
-    echo "Building $p:"
-    mkdir -p $TOP_PATH/install/$p
-    cd $TOP_PATH/install/$p
-    rm -f CMakeCache.txt
-    CFLAGS="-isysroot `xcode-select -print-path`/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
-    CXXFLAGS="-isysroot `xcode-select -print-path`/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
-    cmake \
-	-DCMAKE_TOOLCHAIN_FILE=$BUILD_PATH/ios-cmake/ios.toolchain.cmake -DPLATFORM=$p \
-	-DENABLE_BITCODE=OFF \
-    -DCMAKE_C_FLAGS="$CFLAGS" \
-    -DCMAKE_CXX_FLAGS="$CFLAGS" \
-    -DDEPLOYMENT_TARGET=13.6 \
-        -DCMAKE_BUILD_TYPE=Release \
-        $TOP_PATH/build/cmake || exit 1;
-#    cmake --build . --config Release
-    make -j4 libzstd_static
-done
+# Device and Simulator outputs are intentionally isolated. Never remove the
+# shared install directory: install/OS64 may contain the shipping Device build.
+ZSTD_SOURCE="$BUILD_PATH/ios-zstd"
+TOOLCHAIN="$BUILD_PATH/ios-cmake/ios.toolchain.cmake"
+BUILD_DIR="$ZSTD_SOURCE/build-$PLATFORM"
+INSTALL_DIR="$ZSTD_SOURCE/install/$PLATFORM"
+
+if [[ ! -f "$TOOLCHAIN" || ! -f "$ZSTD_SOURCE/build/cmake/CMakeLists.txt" ]]; then
+    echo "Expected existing ios-cmake and ios-zstd checkouts under $BUILD_PATH" >&2
+    exit 1
+fi
+
+cmake \
+    -S "$ZSTD_SOURCE/build/cmake" \
+    -B "$BUILD_DIR" \
+    -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+    -DPLATFORM="$PLATFORM" \
+    -DDEPLOYMENT_TARGET="$DEPLOYMENT_TARGET" \
+    -DENABLE_BITCODE=OFF \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
+    -DZSTD_BUILD_PROGRAMS=OFF \
+    -DZSTD_BUILD_SHARED=OFF \
+    -DZSTD_BUILD_STATIC=ON \
+    -DZSTD_BUILD_TESTS=OFF
+
+cmake --build "$BUILD_DIR" --target libzstd_static --parallel 4
+cmake --install "$BUILD_DIR"
+
+echo "zstd $PLATFORM installed in $INSTALL_DIR"

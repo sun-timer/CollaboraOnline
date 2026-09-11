@@ -23,13 +23,19 @@ class MobileSelectionMenu {
 
 	/** 选区型 + iOS 可执行 + 操作单内的 AI 入口（本地批处理工具除外）。 */
 	static menuTaskTypes(): string[] {
-		return MobileAiUiCatalog.ENTRIES.filter(
-			(entry) =>
-				entry.iosSupport &&
-				entry.selectionRequired &&
-				entry.includeInOperationSheet &&
-				entry.dialog !== 'formatBatch',
-		).map((entry) => entry.taskType);
+		return MobileAiUiCatalog.getSelectionEntries('text').map(
+			(entry) => entry.taskType,
+		);
+	}
+
+	/** Selection menu entries allowed for a document and its current mode. */
+	static menuTaskTypesForDocument(
+		documentType: MobileAiDocumentType,
+		isReadOnly: boolean,
+	): string[] {
+		return MobileAiUiCatalog.getSelectionEntries(documentType, !isReadOnly).map(
+			(entry) => entry.taskType,
+		);
 	}
 
 	static install(): MobileSelectionMenu | null {
@@ -57,11 +63,14 @@ class MobileSelectionMenu {
 			return;
 		}
 		this.hide();
-		const docType = (window as any).app?.map?.getDocType?.() || 'text';
-		const taskTypes = MobileSelectionMenu.menuTaskTypes().filter((taskType) => {
-			const entry = MobileAiUiCatalog.getEntry(taskType);
-			return !!entry && entry.documentTypes.indexOf(docType) >= 0;
-		});
+		const map = (window as any).app?.map;
+		const docType = map?.getDocType?.() || 'text';
+		const isReadOnly =
+			typeof map?.isReadOnlyMode === 'function' && !!map.isReadOnlyMode();
+		const taskTypes = MobileSelectionMenu.menuTaskTypesForDocument(
+			docType,
+			isReadOnly,
+		);
 		if (taskTypes.length === 0) {
 			return;
 		}

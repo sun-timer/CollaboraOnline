@@ -63,6 +63,7 @@
 /// <reference path="./WriterAiCatalog.test.ts" />
 /// <reference path="./CalcAiCatalog.test.ts" />
 /// <reference path="./MobileAiUiCatalog.test.ts" />
+/// <reference path="./MobileAiOperationSheet.test.ts" />
 /// <reference path="./MobileNativeToolbar.test.ts" />
 /// <reference path="./WriterAiController.test.ts" />
 /// <reference path="./CalcAiController.test.ts" />

@@ -76,7 +76,7 @@ class MobileAiUiCatalog {
 			androidTaskType: 'continue_write',
 			label: 'AI 续写',
 			group: 'writerGeneration',
-			documentTypes: ['text'],
+			documentTypes: ['text', 'presentation'],
 			requiredInput: 'selection',
 			resultMode: 'appendAfterSelection',
 			dialog: 'continue',
@@ -115,7 +115,7 @@ class MobileAiUiCatalog {
 			androidTaskType: 'polish',
 			label: '文案润色',
 			group: 'writerProcessing',
-			documentTypes: ['text'],
+			documentTypes: ['text', 'presentation'],
 			requiredInput: 'selection',
 			resultMode: 'replaceSelection',
 			dialog: 'operation',
@@ -128,7 +128,7 @@ class MobileAiUiCatalog {
 			androidTaskType: 'expand',
 			label: '文案扩写',
 			group: 'writerProcessing',
-			documentTypes: ['text'],
+			documentTypes: ['text', 'presentation'],
 			requiredInput: 'selection',
 			resultMode: 'replaceSelection',
 			dialog: 'operation',
@@ -141,7 +141,7 @@ class MobileAiUiCatalog {
 			androidTaskType: 'condense',
 			label: '文案缩写',
 			group: 'writerProcessing',
-			documentTypes: ['text'],
+			documentTypes: ['text', 'presentation'],
 			requiredInput: 'selection',
 			resultMode: 'replaceSelection',
 			dialog: 'operation',
@@ -154,7 +154,7 @@ class MobileAiUiCatalog {
 			androidTaskType: 'rewrite',
 			label: '文案重写',
 			group: 'writerProcessing',
-			documentTypes: ['text'],
+			documentTypes: ['text', 'presentation'],
 			requiredInput: 'selection',
 			resultMode: 'replaceSelection',
 			dialog: 'operation',
@@ -167,7 +167,7 @@ class MobileAiUiCatalog {
 			androidTaskType: 'translate',
 			label: '文案翻译',
 			group: 'writerProcessing',
-			documentTypes: ['text'],
+			documentTypes: ['text', 'presentation'],
 			requiredInput: 'selection',
 			resultMode: 'replaceSelection',
 			dialog: 'translate',
@@ -368,5 +368,40 @@ class MobileAiUiCatalog {
 	static canRun(taskType: string, documentType: MobileAiDocumentType): boolean {
 		const entry = MobileAiUiCatalog.getEntry(taskType);
 		return !!entry && entry.iosSupport && entry.documentTypes.indexOf(documentType) >= 0;
+	}
+
+	/** Operation-sheet entries allowed for a document and its current mode. */
+	static getOperationEntries(
+		documentType: MobileAiDocumentType,
+		editable = true,
+	): MobileAiUiEntry[] {
+		return MobileAiUiCatalog.getEntries(documentType).filter(
+			(entry) =>
+				!(documentType === 'presentation' && !editable && entry.selectionRequired),
+		);
+	}
+
+	/**
+	 * Returns the iOS text-selection operations for a document mode.
+	 *
+	 * Impress selection AI is an editing feature.  Read-only presentation
+	 * previews must not expose these entries even though the document itself is
+	 * otherwise presentation-compatible.
+	 */
+	static getSelectionEntries(
+		documentType: MobileAiDocumentType,
+		editable = true,
+	): MobileAiUiEntry[] {
+		if (documentType === 'presentation' && !editable) {
+			return [];
+		}
+		return MobileAiUiCatalog.ENTRIES.filter(
+			(entry) =>
+				entry.iosSupport &&
+				entry.selectionRequired &&
+				entry.includeInOperationSheet &&
+				entry.dialog !== 'formatBatch' &&
+				entry.documentTypes.indexOf(documentType) >= 0,
+		);
 	}
 }

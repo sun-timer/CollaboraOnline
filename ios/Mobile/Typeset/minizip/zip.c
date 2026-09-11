@@ -30,6 +30,9 @@
 #include "zlib.h"
 #include "zip.h"
 
+/* DOCX output is never password protected; iOS does not ship minizip's crypt.h. */
+#define NOCRYPT
+
 #ifdef STDC
 #  include <stddef.h>
 #endif

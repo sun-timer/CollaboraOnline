@@ -10,6 +10,23 @@ class MobileAiOperationSheet {
 	private readonly grid: HTMLDivElement;
 	private readonly hint: HTMLDivElement;
 
+	static resolveDocumentType(
+		nativeDocumentType?: string,
+		mapDocumentType?: string,
+	): MobileAiDocumentType {
+		if (
+			nativeDocumentType === 'spreadsheet' ||
+			nativeDocumentType === 'presentation' ||
+			nativeDocumentType === 'text'
+		) {
+			return nativeDocumentType;
+		}
+		if (mapDocumentType === 'spreadsheet' || mapDocumentType === 'presentation') {
+			return mapDocumentType;
+		}
+		return 'text';
+	}
+
 	constructor(onSelect: MobileAiOperationSelectHandler) {
 		this.onSelect = onSelect;
 		this.sheet = new MobileAiSheet({ title: 'AI 功能' });
@@ -36,7 +53,10 @@ class MobileAiOperationSheet {
 
 	private render(): void {
 		const documentType = this.getDocumentType();
-		const entries = MobileAiUiCatalog.getEntries(documentType);
+		const map = (window as any).app?.map;
+		const isReadOnly =
+			typeof map?.isReadOnlyMode === 'function' && !!map.isReadOnlyMode();
+		const entries = MobileAiUiCatalog.getOperationEntries(documentType, !isReadOnly);
 		const selection = MobileAiBridge.getInstance().getSelectedText().trim();
 		const calcRange =
 			documentType === 'spreadsheet' ? CalcAiContext.getSelectedRange() : '';
@@ -95,11 +115,9 @@ class MobileAiOperationSheet {
 	}
 
 	private getDocumentType(): MobileAiDocumentType {
+		const nativeDocumentType = (window as any).MobileNativeDocumentType;
 		const docType = (window as any).app?.map?.getDocType?.();
-		if (docType === 'spreadsheet' || docType === 'presentation') {
-			return docType;
-		}
-		return 'text';
+		return MobileAiOperationSheet.resolveDocumentType(nativeDocumentType, docType);
 	}
 
 	private groupLabel(group: MobileAiUiGroup): string {

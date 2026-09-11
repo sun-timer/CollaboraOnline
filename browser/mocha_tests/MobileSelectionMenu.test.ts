@@ -21,4 +21,17 @@ describe('Mobile Selection Menu', function () {
 		assert.ok(types.indexOf('text_extract') < 0);
 		assert.ok(types.indexOf('format_batch') < 0);
 	});
+
+	it('shows the six tasks only for editable Impress and never for Calc or preview', function () {
+		assert.deepEqual(MobileSelectionMenu.menuTaskTypesForDocument('presentation', false), [
+			'continue',
+			'polish',
+			'expand',
+			'condense',
+			'rewrite',
+			'translate',
+		]);
+		assert.deepEqual(MobileSelectionMenu.menuTaskTypesForDocument('presentation', true), []);
+		assert.deepEqual(MobileSelectionMenu.menuTaskTypesForDocument('spreadsheet', false), []);
+	});
 });

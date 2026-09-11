@@ -47,7 +47,6 @@
 		BE5EB5D421400DC100E0826C /* DocumentBroker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5D321400DC100E0826C /* DocumentBroker.cpp */; };
 		BE5EB5D621401E0F00E0826C /* Storage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5D521401E0F00E0826C /* Storage.cpp */; };
 		BE5EB5DA2140363100E0826C /* ios.mm in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5D92140363100E0826C /* ios.mm */; };
-		BE5EB5DC2140480B00E0826C /* ICU.dat in Resources */ = {isa = PBXBuildFile; fileRef = BE5EB5DB2140480B00E0826C /* ICU.dat */; };
 		BE5EB5E721401E0F00E0826C /* RequestVettingStation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE5EB5E621401E0F00E0826C /* RequestVettingStation.cpp */; };
 		BE6362C22153B5B500F4237E /* CoreServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BE6362C12153B5B500F4237E /* CoreServices.framework */; };
 		BE7228E22417BC9F000ADABD /* StringVector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE7228E02417BC9F000ADABD /* StringVector.cpp */; };
@@ -69,25 +68,21 @@
 		C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE272026082400000001 /* RecentDocumentsStore.mm */; };
 		C0FFEE292026082400000001 /* AIModelConfigStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */; };
 		C0FFEE2C2026082400000001 /* AISettingsDrawerController.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */; };
+		C0FFEE2E2026082400000002 /* AISettingsDrawerIcons.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2F2026082400000002 /* AISettingsDrawerIcons.mm */; };
+		C0FFEE302026091200000001 /* TypesetService.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE312026091200000001 /* TypesetService.mm */; };
+		C0FFEE342026091200000001 /* zip.c in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE352026091200000001 /* zip.c */; };
+		C0FFEE362026091200000001 /* unzip.c in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE372026091200000001 /* unzip.c */; };
+		C0FFEE382026091200000001 /* ioapi.c in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE392026091200000001 /* ioapi.c */; };
 		D0A020260814000000000001 /* TopToolbarController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000012 /* TopToolbarController.mm */; };
 		D0A020260814000000000002 /* BottomToolbarController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000014 /* BottomToolbarController.mm */; };
 		D0A020260814000000000003 /* PreviewFunctionSheetController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000016 /* PreviewFunctionSheetController.mm */; };
+		D0A020260907010000000004 /* CommentListSheetController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260907010000000018 /* CommentListSheetController.mm */; };
+		D0A020260908120000000004 /* DocumentTabsSheetController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260908120000000018 /* DocumentTabsSheetController.mm */; };
 		BE8D77352136762500AC58EA /* CODocument.mm in Sources */ = {isa = PBXBuildFile; fileRef = BE8D77342136762500AC58EA /* CODocument.mm */; };
 		BE8D77382136762500AC58EA /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BE8D77362136762500AC58EA /* Main.storyboard */; };
 		BE8D773A2136762600AC58EA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BE8D77392136762600AC58EA /* Assets.xcassets */; };
 		BE8D773D2136762600AC58EA /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BE8D773B2136762600AC58EA /* LaunchScreen.storyboard */; };
 		BE8D77402136762600AC58EA /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = BE8D773F2136762600AC58EA /* main.m */; };
-		BE8D85CA214055F3009F1860 /* offapi.rdb in Resources */ = {isa = PBXBuildFile; fileRef = BE8D85BC214055F2009F1860 /* offapi.rdb */; };
-		BE8D85CB214055F3009F1860 /* share in Resources */ = {isa = PBXBuildFile; fileRef = BE8D85BD214055F2009F1860 /* share */; };
-		BE8D85CC214055F3009F1860 /* config in Resources */ = {isa = PBXBuildFile; fileRef = BE8D85BE214055F2009F1860 /* config */; };
-		BE8D85CE214055F3009F1860 /* oovbaapi.rdb in Resources */ = {isa = PBXBuildFile; fileRef = BE8D85C0214055F2009F1860 /* oovbaapi.rdb */; };
-		BE8D85CF214055F3009F1860 /* udkapi.rdb in Resources */ = {isa = PBXBuildFile; fileRef = BE8D85C1214055F2009F1860 /* udkapi.rdb */; };
-		BE8D85D0214055F3009F1860 /* services in Resources */ = {isa = PBXBuildFile; fileRef = BE8D85C2214055F2009F1860 /* services */; };
-		BE8D85D1214055F3009F1860 /* services.rdb in Resources */ = {isa = PBXBuildFile; fileRef = BE8D85C3214055F2009F1860 /* services.rdb */; };
-		BE8D85D2214055F3009F1860 /* program in Resources */ = {isa = PBXBuildFile; fileRef = BE8D85C4214055F3009F1860 /* program */; };
-		BE8D85D4214055F3009F1860 /* fundamentalrc in Resources */ = {isa = PBXBuildFile; fileRef = BE8D85C6214055F3009F1860 /* fundamentalrc */; };
-		BE8D85D5214055F3009F1860 /* unorc in Resources */ = {isa = PBXBuildFile; fileRef = BE8D85C7214055F3009F1860 /* unorc */; };
-		BE8D85D6214055F3009F1860 /* rc in Resources */ = {isa = PBXBuildFile; fileRef = BE8D85C8214055F3009F1860 /* rc */; };
 		BE980C532CE3499900FED7BC /* Util-unix.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE980C522CE3499900FED7BC /* Util-unix.cpp */; };
 		BE980C552CE5EDE800FED7BC /* FileUtil-unix.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BE980C542CE5EDE800FED7BC /* FileUtil-unix.cpp */; };
 		BE980C592CEB557A00FED7BC /* FileUtil-apple.mm in Sources */ = {isa = PBXBuildFile; fileRef = BE980C582CEB557A00FED7BC /* FileUtil-apple.mm */; };
@@ -113,6 +108,28 @@
 		D49B580F2D1077F700E0E607 /* UniformTypeIdentifiers.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D49B580E2D1077F700E0E607 /* UniformTypeIdentifiers.framework */; };
 		C0FFEE2F2026082400000001 /* PhotosUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE302026082400000001 /* PhotosUI.framework */; };
 		D4A0F3D72D64E86C00472DEE /* CoolURLSchemeHandler.mm in Sources */ = {isa = PBXBuildFile; fileRef = D4A0F3D62D64E86C00472DEE /* CoolURLSchemeHandler.mm */; };
+		E2B010011026090900000001 /* AppThemeManager.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010031026090900000001 /* AppThemeManager.mm */; };
+		E2B010051026090900000001 /* AboutViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010051026090900000002 /* AboutViewController.mm */; };
+		E2B010071026090900000001 /* ThemeSettingsViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010071026090900000002 /* ThemeSettingsViewController.mm */; };
+		E2B010091026090900000001 /* HTMLAssetViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010091026090900000002 /* HTMLAssetViewController.mm */; };
+		E2B0100B1026090900000001 /* ClearCacheHelper.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0100B1026090900000002 /* ClearCacheHelper.mm */; };
+		E2B0100D1026090900000001 /* ClearCacheViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0100D1026090900000002 /* ClearCacheViewController.mm */; };
+		E2B0100F1026090900000001 /* FeedbackRecord.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0100F1026090900000002 /* FeedbackRecord.mm */; };
+		E2B010111026090900000001 /* FeedbackStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010111026090900000002 /* FeedbackStore.mm */; };
+		E2B010131026090900000001 /* FeedbackViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010131026090900000002 /* FeedbackViewController.mm */; };
+		E2B010331026090900000001 /* FeedbackAppearance.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010331026090900000002 /* FeedbackAppearance.mm */; };
+		E2B010151026090900000001 /* notice.txt in Resources */ = {isa = PBXBuildFile; fileRef = E2B010151026090900000002 /* notice.txt */; };
+		E2B010171026090900000001 /* license.html in Resources */ = {isa = PBXBuildFile; fileRef = E2B010171026090900000002 /* license.html */; };
+		E2B010191026090900000001 /* AppIcons.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010191026090900000002 /* AppIcons.mm */; };
+		E2B0101B1026090900000001 /* AppChromeHelper.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0101B1026090900000002 /* AppChromeHelper.mm */; };
+		E2B0101D1026090900000001 /* AIQuickCreateViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0101D1026090900000002 /* AIQuickCreateViewController.mm */; };
+		E2B0101F1026090900000001 /* CreateFileBottomSheetController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0101F1026090900000002 /* CreateFileBottomSheetController.mm */; };
+		E2B010211026090900000001 /* DocumentPresentationLaunchOptions.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010211026090900000002 /* DocumentPresentationLaunchOptions.mm */; };
+		E2B010231026090900000001 /* HomeCardDialogPresenter.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010231026090900000002 /* HomeCardDialogPresenter.mm */; };
+		E2B010251026090900000001 /* ProfileSettingsViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010251026090900000002 /* ProfileSettingsViewController.mm */; };
+		E2B010271026090900000001 /* LocalModelStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010271026090900000002 /* LocalModelStore.mm */; };
+		E2B010291026090900000001 /* LocalModelViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010291026090900000002 /* LocalModelViewController.mm */; };
+		E2B0102B1026090900000001 /* AppToastPresenter.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0102B1026090900000002 /* AppToastPresenter.mm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -938,13 +955,25 @@
 		C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AIModelConfigStore.mm; sourceTree = "<group>"; };
 		C0FFEE2B2026082400000001 /* AIModelConfigStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIModelConfigStore.h; sourceTree = "<group>"; };
 		C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AISettingsDrawerController.mm; sourceTree = "<group>"; };
+		C0FFEE312026091200000001 /* TypesetService.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = TypesetService.mm; sourceTree = "<group>"; };
+		C0FFEE322026091200000001 /* TypesetService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TypesetService.h; sourceTree = "<group>"; };
+		C0FFEE332026091200000001 /* TypesetTemplates.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TypesetTemplates.h; sourceTree = "<group>"; };
+		C0FFEE352026091200000001 /* zip.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = zip.c; sourceTree = "<group>"; };
+		C0FFEE372026091200000001 /* unzip.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = unzip.c; sourceTree = "<group>"; };
+		C0FFEE392026091200000001 /* ioapi.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ioapi.c; sourceTree = "<group>"; };
 		C0FFEE2E2026082400000001 /* AISettingsDrawerController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AISettingsDrawerController.h; sourceTree = "<group>"; };
+		C0FFEE2F2026082400000002 /* AISettingsDrawerIcons.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AISettingsDrawerIcons.mm; sourceTree = "<group>"; };
+		C0FFEE302026082400000002 /* AISettingsDrawerIcons.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AISettingsDrawerIcons.h; sourceTree = "<group>"; };
 		D0A020260814000000000011 /* TopToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TopToolbarController.h; sourceTree = "<group>"; };
 		D0A020260814000000000012 /* TopToolbarController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = TopToolbarController.mm; sourceTree = "<group>"; };
 		D0A020260814000000000013 /* BottomToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BottomToolbarController.h; sourceTree = "<group>"; };
 		D0A020260814000000000014 /* BottomToolbarController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = BottomToolbarController.mm; sourceTree = "<group>"; };
 		D0A020260814000000000015 /* PreviewFunctionSheetController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PreviewFunctionSheetController.h; sourceTree = "<group>"; };
 		D0A020260814000000000016 /* PreviewFunctionSheetController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = PreviewFunctionSheetController.mm; sourceTree = "<group>"; };
+		D0A020260907010000000017 /* CommentListSheetController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CommentListSheetController.h; sourceTree = "<group>"; };
+		D0A020260907010000000018 /* CommentListSheetController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CommentListSheetController.mm; sourceTree = "<group>"; };
+		D0A020260908120000000017 /* DocumentTabsSheetController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DocumentTabsSheetController.h; sourceTree = "<group>"; };
+		D0A020260908120000000018 /* DocumentTabsSheetController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DocumentTabsSheetController.mm; sourceTree = "<group>"; };
 		BE8D77332136762500AC58EA /* CODocument.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CODocument.h; sourceTree = "<group>"; };
 		BE8D77342136762500AC58EA /* CODocument.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objcpp; path = CODocument.mm; sourceTree = "<group>"; };
 		BE8D77372136762500AC58EA /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
@@ -1555,6 +1584,48 @@
 		C0FFEE302026082400000001 /* PhotosUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PhotosUI.framework; path = System/Library/Frameworks/PhotosUI.framework; sourceTree = SDKROOT; };
 		D4A0F3D62D64E86C00472DEE /* CoolURLSchemeHandler.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CoolURLSchemeHandler.mm; sourceTree = "<group>"; };
 		D4A0F3D82D663A0000472DEE /* CoolURLSchemeHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CoolURLSchemeHandler.h; sourceTree = "<group>"; };
+		E2B010021026090900000001 /* AppThemeManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppThemeManager.h; sourceTree = "<group>"; };
+		E2B010031026090900000001 /* AppThemeManager.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppThemeManager.mm; sourceTree = "<group>"; };
+		E2B010041026090900000001 /* AboutViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AboutViewController.h; sourceTree = "<group>"; };
+		E2B010051026090900000002 /* AboutViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AboutViewController.mm; sourceTree = "<group>"; };
+		E2B010061026090900000001 /* ThemeSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ThemeSettingsViewController.h; sourceTree = "<group>"; };
+		E2B010071026090900000002 /* ThemeSettingsViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ThemeSettingsViewController.mm; sourceTree = "<group>"; };
+		E2B010081026090900000001 /* HTMLAssetViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HTMLAssetViewController.h; sourceTree = "<group>"; };
+		E2B010091026090900000002 /* HTMLAssetViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = HTMLAssetViewController.mm; sourceTree = "<group>"; };
+		E2B0100A1026090900000001 /* ClearCacheHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ClearCacheHelper.h; sourceTree = "<group>"; };
+		E2B0100B1026090900000002 /* ClearCacheHelper.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ClearCacheHelper.mm; sourceTree = "<group>"; };
+		E2B0100C1026090900000001 /* ClearCacheViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ClearCacheViewController.h; sourceTree = "<group>"; };
+		E2B0100D1026090900000002 /* ClearCacheViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ClearCacheViewController.mm; sourceTree = "<group>"; };
+		E2B0100E1026090900000001 /* FeedbackRecord.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackRecord.h; sourceTree = "<group>"; };
+		E2B0100F1026090900000002 /* FeedbackRecord.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackRecord.mm; sourceTree = "<group>"; };
+		E2B010101026090900000001 /* FeedbackStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackStore.h; sourceTree = "<group>"; };
+		E2B010111026090900000002 /* FeedbackStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackStore.mm; sourceTree = "<group>"; };
+		E2B010121026090900000001 /* FeedbackViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackViewController.h; sourceTree = "<group>"; };
+		E2B010131026090900000002 /* FeedbackViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackViewController.mm; sourceTree = "<group>"; };
+		E2B010331026090900000002 /* FeedbackAppearance.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackAppearance.mm; sourceTree = "<group>"; };
+		E2B010331026090900000003 /* FeedbackAppearance.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackAppearance.h; sourceTree = "<group>"; };
+		E2B010151026090900000002 /* notice.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = notice.txt; sourceTree = "<group>"; };
+		E2B010171026090900000002 /* license.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = license.html; sourceTree = "<group>"; };
+		E2B010181026090900000001 /* AppIcons.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppIcons.h; sourceTree = "<group>"; };
+		E2B010191026090900000002 /* AppIcons.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppIcons.mm; sourceTree = "<group>"; };
+		E2B0101A1026090900000001 /* AppChromeHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppChromeHelper.h; sourceTree = "<group>"; };
+		E2B0101B1026090900000002 /* AppChromeHelper.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppChromeHelper.mm; sourceTree = "<group>"; };
+		E2B0101C1026090900000001 /* AIQuickCreateViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIQuickCreateViewController.h; sourceTree = "<group>"; };
+		E2B0101D1026090900000002 /* AIQuickCreateViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AIQuickCreateViewController.mm; sourceTree = "<group>"; };
+		E2B0101E1026090900000001 /* CreateFileBottomSheetController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CreateFileBottomSheetController.h; sourceTree = "<group>"; };
+		E2B0101F1026090900000002 /* CreateFileBottomSheetController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CreateFileBottomSheetController.mm; sourceTree = "<group>"; };
+		E2B010201026090900000001 /* DocumentPresentationLaunchOptions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DocumentPresentationLaunchOptions.h; sourceTree = "<group>"; };
+		E2B010211026090900000002 /* DocumentPresentationLaunchOptions.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DocumentPresentationLaunchOptions.mm; sourceTree = "<group>"; };
+		E2B010221026090900000001 /* HomeCardDialogPresenter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HomeCardDialogPresenter.h; sourceTree = "<group>"; };
+		E2B010231026090900000002 /* HomeCardDialogPresenter.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = HomeCardDialogPresenter.mm; sourceTree = "<group>"; };
+		E2B010241026090900000001 /* ProfileSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ProfileSettingsViewController.h; sourceTree = "<group>"; };
+		E2B010251026090900000002 /* ProfileSettingsViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ProfileSettingsViewController.mm; sourceTree = "<group>"; };
+		E2B010261026090900000001 /* LocalModelStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LocalModelStore.h; sourceTree = "<group>"; };
+		E2B010271026090900000002 /* LocalModelStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = LocalModelStore.mm; sourceTree = "<group>"; };
+		E2B010281026090900000001 /* LocalModelViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LocalModelViewController.h; sourceTree = "<group>"; };
+		E2B010291026090900000002 /* LocalModelViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = LocalModelViewController.mm; sourceTree = "<group>"; };
+		E2B0102A1026090900000001 /* AppToastPresenter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppToastPresenter.h; sourceTree = "<group>"; };
+		E2B0102B1026090900000002 /* AppToastPresenter.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppToastPresenter.mm; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -1586,9 +1657,59 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		E2B020011026090900000001 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				E2B010021026090900000001 /* AppThemeManager.h */,
+				E2B010031026090900000001 /* AppThemeManager.mm */,
+				E2B010041026090900000001 /* AboutViewController.h */,
+				E2B010051026090900000002 /* AboutViewController.mm */,
+				E2B010061026090900000001 /* ThemeSettingsViewController.h */,
+				E2B010071026090900000002 /* ThemeSettingsViewController.mm */,
+				E2B010081026090900000001 /* HTMLAssetViewController.h */,
+				E2B010091026090900000002 /* HTMLAssetViewController.mm */,
+				E2B0100A1026090900000001 /* ClearCacheHelper.h */,
+				E2B0100B1026090900000002 /* ClearCacheHelper.mm */,
+				E2B0100C1026090900000001 /* ClearCacheViewController.h */,
+				E2B0100D1026090900000002 /* ClearCacheViewController.mm */,
+				E2B010181026090900000001 /* AppIcons.h */,
+				E2B010191026090900000002 /* AppIcons.mm */,
+				E2B0101A1026090900000001 /* AppChromeHelper.h */,
+				E2B0101B1026090900000002 /* AppChromeHelper.mm */,
+				E2B0101C1026090900000001 /* AIQuickCreateViewController.h */,
+				E2B0101D1026090900000002 /* AIQuickCreateViewController.mm */,
+				E2B0101E1026090900000001 /* CreateFileBottomSheetController.h */,
+				E2B0101F1026090900000002 /* CreateFileBottomSheetController.mm */,
+				E2B010221026090900000001 /* HomeCardDialogPresenter.h */,
+				E2B010231026090900000002 /* HomeCardDialogPresenter.mm */,
+				E2B010241026090900000001 /* ProfileSettingsViewController.h */,
+				E2B010251026090900000002 /* ProfileSettingsViewController.mm */,
+				E2B0102A1026090900000001 /* AppToastPresenter.h */,
+				E2B0102B1026090900000002 /* AppToastPresenter.mm */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		E2B020021026090900000001 /* Feedback */ = {
+			isa = PBXGroup;
+			children = (
+				E2B0100E1026090900000001 /* FeedbackRecord.h */,
+				E2B0100F1026090900000002 /* FeedbackRecord.mm */,
+				E2B010101026090900000001 /* FeedbackStore.h */,
+				E2B010111026090900000002 /* FeedbackStore.mm */,
+				E2B010121026090900000001 /* FeedbackViewController.h */,
+				E2B010131026090900000002 /* FeedbackViewController.mm */,
+				E2B010331026090900000003 /* FeedbackAppearance.h */,
+				E2B010331026090900000002 /* FeedbackAppearance.mm */,
+			);
+			path = Feedback;
+			sourceTree = "<group>";
+		};
 		BE00F8922139494E001CE2D4 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				E2B010151026090900000002 /* notice.txt */,
+				E2B010171026090900000002 /* license.html */,
 				BE7D6A6A23FAA8B500C2E605 /* coolkitconfig.xcu */,
 				BE18C7DD226DE09A001AD27E /* Branding */,
 				BEB0E5D821C7CA800085A0CF /* Settings.bundle */,
@@ -2739,7 +2860,10 @@
 			isa = PBXGroup;
 			children = (
 				C0FFEE1C2026081200000001 /* AI */,
+				E2B020011026090900000001 /* Settings */,
+				E2B020021026090900000001 /* Feedback */,
 				C0FFEE032026081200000001 /* Bridge */,
+				C0FFEE3A2026091200000001 /* Typeset */,
 				D0A020260814000000000021 /* Toolbar */,
 				ACCACA1E3019CCE0003D0280 /* MobileDebug.entitlements */,
 				C792822F2DF89BB2001EA43B /* MobileSocket.h */,
@@ -2759,6 +2883,8 @@
 				C0FFEE212026082400000001 /* HomeViewController.mm */,
 				C0FFEE252026082400000001 /* DocumentPresentation.h */,
 				C0FFEE242026082400000001 /* DocumentPresentation.mm */,
+				E2B010201026090900000001 /* DocumentPresentationLaunchOptions.h */,
+				E2B010211026090900000002 /* DocumentPresentationLaunchOptions.mm */,
 				C0FFEE282026082400000001 /* RecentDocumentsStore.h */,
 				C0FFEE272026082400000001 /* RecentDocumentsStore.mm */,
 				BE8D77302136762500AC58EA /* DocumentViewController.h */,
@@ -2795,6 +2921,12 @@
 				C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */,
 				C0FFEE2E2026082400000001 /* AISettingsDrawerController.h */,
 				C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */,
+				C0FFEE302026082400000002 /* AISettingsDrawerIcons.h */,
+				C0FFEE2F2026082400000002 /* AISettingsDrawerIcons.mm */,
+				E2B010261026090900000001 /* LocalModelStore.h */,
+				E2B010271026090900000002 /* LocalModelStore.mm */,
+				E2B010281026090900000001 /* LocalModelViewController.h */,
+				E2B010291026090900000002 /* LocalModelViewController.mm */,
 			);
 			path = AI;
 			sourceTree = "<group>";
@@ -2808,6 +2940,27 @@
 			path = Bridge;
 			sourceTree = "<group>";
 		};
+		C0FFEE3A2026091200000001 /* Typeset */ = {
+			isa = PBXGroup;
+			children = (
+				C0FFEE322026091200000001 /* TypesetService.h */,
+				C0FFEE312026091200000001 /* TypesetService.mm */,
+				C0FFEE332026091200000001 /* TypesetTemplates.h */,
+				C0FFEE3B2026091200000001 /* minizip */,
+			);
+			path = Typeset;
+			sourceTree = "<group>";
+		};
+		C0FFEE3B2026091200000001 /* minizip */ = {
+			isa = PBXGroup;
+			children = (
+				C0FFEE352026091200000001 /* zip.c */,
+				C0FFEE372026091200000001 /* unzip.c */,
+				C0FFEE392026091200000001 /* ioapi.c */,
+			);
+			path = minizip;
+			sourceTree = "<group>";
+		};
 		D0A020260814000000000021 /* Toolbar */ = {
 			isa = PBXGroup;
 			children = (
@@ -2817,6 +2970,10 @@
 				D0A020260814000000000014 /* BottomToolbarController.mm */,
 				D0A020260814000000000015 /* PreviewFunctionSheetController.h */,
 				D0A020260814000000000016 /* PreviewFunctionSheetController.mm */,
+				D0A020260907010000000017 /* CommentListSheetController.h */,
+				D0A020260907010000000018 /* CommentListSheetController.mm */,
+				D0A020260908120000000017 /* DocumentTabsSheetController.h */,
+				D0A020260908120000000018 /* DocumentTabsSheetController.mm */,
 			);
 			path = Toolbar;
 			sourceTree = "<group>";
@@ -3716,6 +3873,7 @@
 				BE8D77232136762500AC58EA /* Sources */,
 				BE8D77242136762500AC58EA /* Frameworks */,
 				BE8D77252136762500AC58EA /* Resources */,
+				C0D2A0012026091000000001 /* Copy LibreOffice Runtime Resources */,
 				3F88490F29943B7600FBB3E9 /* ShellScript */,
 			);
 			buildRules = (
@@ -3802,32 +3960,22 @@
 			buildActionMask = 2147483647;
 			files = (
 				C78C8ED62E90027E0011B574 /* data in Resources */,
-				BE8D85D6214055F3009F1860 /* rc in Resources */,
 				BECD984124336DD400016117 /* device-tablet.css in Resources */,
-				BE8D85D0214055F3009F1860 /* services in Resources */,
-				BE8D85D4214055F3009F1860 /* fundamentalrc in Resources */,
 				BECD984024336DD400016117 /* device-mobile.css in Resources */,
 				BE80E43221AD92F700859C97 /* Fonts in Resources */,
 				BE00F8A821396585001CE2D4 /* images in Resources */,
-				BE5EB5DC2140480B00E0826C /* ICU.dat in Resources */,
-				BE8D85CE214055F3009F1860 /* oovbaapi.rdb in Resources */,
 				BE00F8A721396585001CE2D4 /* cool-help.html in Resources */,
 				BE8D773D2136762600AC58EA /* LaunchScreen.storyboard in Resources */,
 				BE00F8A121396585001CE2D4 /* bundle.css in Resources */,
 				BE7D6A6B23FAA8B500C2E605 /* coolkitconfig.xcu in Resources */,
-				BE8D85CF214055F3009F1860 /* udkapi.rdb in Resources */,
 				BE18C7DE226DE09A001AD27E /* Branding in Resources */,
-				BE8D85D5214055F3009F1860 /* unorc in Resources */,
-				BE8D85D1214055F3009F1860 /* services.rdb in Resources */,
 				3F3A77D22C59B04000947249 /* global.js in Resources */,
 				BE00F8A021396585001CE2D4 /* cool.html in Resources */,
-				BE8D85CA214055F3009F1860 /* offapi.rdb in Resources */,
 				BE8D773A2136762600AC58EA /* Assets.xcassets in Resources */,
-				BE8D85CC214055F3009F1860 /* config in Resources */,
+				E2B010151026090900000001 /* notice.txt in Resources */,
+				E2B010171026090900000001 /* license.html in Resources */,
 				BE00F8A321396585001CE2D4 /* bundle.js in Resources */,
 				BE8D77382136762500AC58EA /* Main.storyboard in Resources */,
-				BE8D85D2214055F3009F1860 /* program in Resources */,
-				BE8D85CB214055F3009F1860 /* share in Resources */,
 				BE80E46821B7066D00859C97 /* Templates in Resources */,
 				BEB0E5D921C7CA800085A0CF /* Settings.bundle in Resources */,
 			);
@@ -3843,6 +3991,48 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		C0D2A0012026091000000001 /* Copy LibreOffice Runtime Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(LO_RESOURCE_ROOT)/offapi.rdb",
+				"$(LO_RESOURCE_ROOT)/share",
+				"$(LO_RESOURCE_ROOT)/config",
+				"$(LO_RESOURCE_ROOT)/oovbaapi.rdb",
+				"$(LO_RESOURCE_ROOT)/udkapi.rdb",
+				"$(LO_RESOURCE_ROOT)/services",
+				"$(LO_RESOURCE_ROOT)/services.rdb",
+				"$(LO_RESOURCE_ROOT)/program",
+				"$(LO_RESOURCE_ROOT)/fundamentalrc",
+				"$(LO_RESOURCE_ROOT)/unorc",
+				"$(LO_RESOURCE_ROOT)/rc",
+				"$(LO_RESOURCE_ROOT)/icudt75l.dat",
+			);
+			name = "Copy LibreOffice Runtime Resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/offapi.rdb",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/share",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/config",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/oovbaapi.rdb",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/udkapi.rdb",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/services",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/services.rdb",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/program",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/fundamentalrc",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/unorc",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/rc",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ICU.dat",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\n\nsource_root=\"${LO_RESOURCE_ROOT}\"\ndestination_root=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\n\nrequire_path()\n{\n    if [ ! -e \"$1\" ]; then\n        echo \"error: required LibreOffice runtime resource is missing: $1\" >&2\n        exit 1\n    fi\n}\n\nfor name in offapi.rdb share config oovbaapi.rdb udkapi.rdb services services.rdb program fundamentalrc unorc rc icudt75l.dat; do\n    require_path \"${source_root}/${name}\"\ndone\n\n/bin/mkdir -p \"${destination_root}\"\n\nfor name in share config services program; do\n    /bin/rm -rf \"${destination_root}/${name}\"\n    /usr/bin/ditto \"${source_root}/${name}\" \"${destination_root}/${name}\"\ndone\n\nfor name in offapi.rdb oovbaapi.rdb udkapi.rdb services.rdb fundamentalrc unorc rc; do\n    /bin/cp -f \"${source_root}/${name}\" \"${destination_root}/${name}\"\ndone\n\n/bin/cp -f \"${source_root}/icudt75l.dat\" \"${destination_root}/ICU.dat\"\n";
+		};
 		3F88490F29943B7600FBB3E9 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -3933,11 +4123,38 @@
 				C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */,
 				C0FFEE292026082400000001 /* AIModelConfigStore.mm in Sources */,
 				C0FFEE2C2026082400000001 /* AISettingsDrawerController.mm in Sources */,
+				C0FFEE2E2026082400000002 /* AISettingsDrawerIcons.mm in Sources */,
+				C0FFEE302026091200000001 /* TypesetService.mm in Sources */,
+				C0FFEE342026091200000001 /* zip.c in Sources */,
+				C0FFEE362026091200000001 /* unzip.c in Sources */,
+				C0FFEE382026091200000001 /* ioapi.c in Sources */,
 				D0A020260814000000000001 /* TopToolbarController.mm in Sources */,
 				D0A020260814000000000002 /* BottomToolbarController.mm in Sources */,
 				D0A020260814000000000003 /* PreviewFunctionSheetController.mm in Sources */,
+				D0A020260907010000000004 /* CommentListSheetController.mm in Sources */,
+				D0A020260908120000000004 /* DocumentTabsSheetController.mm in Sources */,
 				BE8D772C2136762500AC58EA /* AppDelegate.mm in Sources */,
 				AB1201002F000000000000D1 /* WriterAIComponents.mm in Sources */,
+				E2B010011026090900000001 /* AppThemeManager.mm in Sources */,
+				E2B010051026090900000001 /* AboutViewController.mm in Sources */,
+				E2B010071026090900000001 /* ThemeSettingsViewController.mm in Sources */,
+				E2B010091026090900000001 /* HTMLAssetViewController.mm in Sources */,
+				E2B0100B1026090900000001 /* ClearCacheHelper.mm in Sources */,
+				E2B0100D1026090900000001 /* ClearCacheViewController.mm in Sources */,
+				E2B0100F1026090900000001 /* FeedbackRecord.mm in Sources */,
+				E2B010111026090900000001 /* FeedbackStore.mm in Sources */,
+				E2B010131026090900000001 /* FeedbackViewController.mm in Sources */,
+				E2B010331026090900000001 /* FeedbackAppearance.mm in Sources */,
+				E2B010191026090900000001 /* AppIcons.mm in Sources */,
+				E2B0101B1026090900000001 /* AppChromeHelper.mm in Sources */,
+				E2B0101D1026090900000001 /* AIQuickCreateViewController.mm in Sources */,
+				E2B0101F1026090900000001 /* CreateFileBottomSheetController.mm in Sources */,
+				E2B010211026090900000001 /* DocumentPresentationLaunchOptions.mm in Sources */,
+				E2B010231026090900000001 /* HomeCardDialogPresenter.mm in Sources */,
+				E2B010251026090900000001 /* ProfileSettingsViewController.mm in Sources */,
+				E2B010271026090900000001 /* LocalModelStore.mm in Sources */,
+				E2B010291026090900000001 /* LocalModelViewController.mm in Sources */,
+				E2B0102B1026090900000001 /* AppToastPresenter.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -4031,7 +4248,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.5;
-				LOSRCDIR = "$(SOURCE_ROOT)/../lobuilddir-symlink";
+				LOSRCDIR = "$(LO_CORE_ROOT)";
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -4085,7 +4302,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.5;
-				LOSRCDIR = "$(SOURCE_ROOT)/../lobuilddir-symlink";
+				LOSRCDIR = "$(LO_CORE_ROOT)";
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				VALIDATE_PRODUCT = YES;
@@ -4110,23 +4327,35 @@
 					"NUM_PRESPAWN_CHILDREN='\"1\"'",
 				);
 				GCC_WARN_64_TO_32_BIT_CONVERSION = NO;
+				"LO_CORE_ROOT[sdk=iphoneos*]" = "$(SOURCE_ROOT)/../../lo-core";
+				"LO_CORE_ROOT[sdk=iphonesimulator*]" = "$(SOURCE_ROOT)/../../lo-core-simulator";
+				LOSRCDIR = "$(LO_CORE_ROOT)";
+				LO_IOS_ROOT = "$(LO_CORE_ROOT)/workdir/CustomTarget/ios";
+				LO_RESOURCE_ROOT = "$(LO_IOS_ROOT)/resources";
+				LO_STATIC_LIBS = "$(LO_IOS_ROOT)/ios-all-static-libs.list";
+				"POCO_ROOT[sdk=iphoneos*]" = "$(SOURCE_ROOT)/../../build-deps-ios/ios-poco/install/OS64";
+				"POCO_ROOT[sdk=iphonesimulator*]" = "$(SOURCE_ROOT)/../../build-deps-ios/ios-poco/install/SIMULATORARM64";
+				"ZSTD_ROOT[sdk=iphoneos*]" = "$(SOURCE_ROOT)/../../build-deps-ios/ios-zstd/install/OS64";
+				"ZSTD_ROOT[sdk=iphonesimulator*]" = "$(SOURCE_ROOT)/../../build-deps-ios/ios-zstd/install/SIMULATORARM64";
+				ZSTD_INCLUDE_ROOT = "$(SOURCE_ROOT)/../../build-deps-ios/ios-zstd/lib";
 				HEADER_SEARCH_PATHS = (
 					"$(SOURCE_ROOT)/Mobile",
+					"$(SOURCE_ROOT)/Mobile/Typeset",
 					"$(SOURCE_ROOT)/../ios",
 					"$(SOURCE_ROOT)/..",
 					"$(SOURCE_ROOT)/../kit",
 					"$(SOURCE_ROOT)/../common",
 					"$(SOURCE_ROOT)/../wsd",
 					"$(SOURCE_ROOT)/../net",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink/config_host",
+					"$(LOSRCDIR)/config_host",
 					"$(LOSRCDIR)/include",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink/workdir/CustomTarget/ios",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink/workdir/UnpackedTarball/boost",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink/workdir/UnpackedTarball/libpng",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink/workdir/UnoApiHeadersTarget/udkapi/comprehensive",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink/workdir/UnoApiHeadersTarget/offapi/comprehensive",
-					"$(SOURCE_ROOT)/../pocoinclude-symlink",
-					"$(SOURCE_ROOT)/../zstdinclude-symlink",
+					"$(LO_IOS_ROOT)",
+					"$(LOSRCDIR)/workdir/UnpackedTarball/boost",
+					"$(LOSRCDIR)/workdir/UnpackedTarball/libpng",
+					"$(LOSRCDIR)/workdir/UnoApiHeadersTarget/udkapi/comprehensive",
+					"$(LOSRCDIR)/workdir/UnoApiHeadersTarget/offapi/comprehensive",
+					"$(POCO_ROOT)/include",
+					"$(ZSTD_INCLUDE_ROOT)",
 				);
 				INFOPLIST_FILE = Mobile/Info.plist;
 				SWIFT_VERSION = 5.0;
@@ -4144,16 +4373,16 @@
 				);
 				OTHER_LDFLAGS = (
 					"-filelist",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink/workdir/CustomTarget/ios/ios-all-static-libs.list",
+					"$(LO_STATIC_LIBS)",
 					"-L",
-					"$(SOURCE_ROOT)/../pocolib-symlink",
+					"$(POCO_ROOT)/lib",
 					"-lPocoFoundationd",
 					"-lPocoUtild",
 					"-lPocoXMLd",
 					"-lPocoJSONd",
 					"-lPocoNetd",
 					"-L",
-					"$(SOURCE_ROOT)/../zstdlib-symlink",
+					"$(ZSTD_ROOT)/lib",
 					"-lzstd",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.xunlong.xloffice;
@@ -4182,23 +4411,35 @@
 					"NUM_PRESPAWN_CHILDREN='\"1\"'",
 				);
 				GCC_WARN_64_TO_32_BIT_CONVERSION = NO;
+				"LO_CORE_ROOT[sdk=iphoneos*]" = "$(SOURCE_ROOT)/../../lo-core";
+				"LO_CORE_ROOT[sdk=iphonesimulator*]" = "$(SOURCE_ROOT)/../../lo-core-simulator";
+				LOSRCDIR = "$(LO_CORE_ROOT)";
+				LO_IOS_ROOT = "$(LO_CORE_ROOT)/workdir/CustomTarget/ios";
+				LO_RESOURCE_ROOT = "$(LO_IOS_ROOT)/resources";
+				LO_STATIC_LIBS = "$(LO_IOS_ROOT)/ios-all-static-libs.list";
+				"POCO_ROOT[sdk=iphoneos*]" = "$(SOURCE_ROOT)/../../build-deps-ios/ios-poco/install/OS64";
+				"POCO_ROOT[sdk=iphonesimulator*]" = "$(SOURCE_ROOT)/../../build-deps-ios/ios-poco/install/SIMULATORARM64";
+				"ZSTD_ROOT[sdk=iphoneos*]" = "$(SOURCE_ROOT)/../../build-deps-ios/ios-zstd/install/OS64";
+				"ZSTD_ROOT[sdk=iphonesimulator*]" = "$(SOURCE_ROOT)/../../build-deps-ios/ios-zstd/install/SIMULATORARM64";
+				ZSTD_INCLUDE_ROOT = "$(SOURCE_ROOT)/../../build-deps-ios/ios-zstd/lib";
 				HEADER_SEARCH_PATHS = (
 					"$(SOURCE_ROOT)/Mobile",
+					"$(SOURCE_ROOT)/Mobile/Typeset",
 					"$(SOURCE_ROOT)/../ios",
 					"$(SOURCE_ROOT)/..",
 					"$(SOURCE_ROOT)/../kit",
 					"$(SOURCE_ROOT)/../common",
 					"$(SOURCE_ROOT)/../wsd",
 					"$(SOURCE_ROOT)/../net",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink/config_host",
+					"$(LOSRCDIR)/config_host",
 					"$(LOSRCDIR)/include",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink/workdir/CustomTarget/ios",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink/workdir/UnpackedTarball/boost",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink/workdir/UnpackedTarball/libpng",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink/workdir/UnoApiHeadersTarget/udkapi/comprehensive",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink/workdir/UnoApiHeadersTarget/offapi/comprehensive",
-					"$(SOURCE_ROOT)/../pocoinclude-symlink",
-					"$(SOURCE_ROOT)/../zstdinclude-symlink",
+					"$(LO_IOS_ROOT)",
+					"$(LOSRCDIR)/workdir/UnpackedTarball/boost",
+					"$(LOSRCDIR)/workdir/UnpackedTarball/libpng",
+					"$(LOSRCDIR)/workdir/UnoApiHeadersTarget/udkapi/comprehensive",
+					"$(LOSRCDIR)/workdir/UnoApiHeadersTarget/offapi/comprehensive",
+					"$(POCO_ROOT)/include",
+					"$(ZSTD_INCLUDE_ROOT)",
 				);
 				INFOPLIST_FILE = Mobile/Info.plist;
 				SWIFT_VERSION = 5.0;
@@ -4216,16 +4457,16 @@
 				);
 				OTHER_LDFLAGS = (
 					"-filelist",
-					"$(SOURCE_ROOT)/../lobuilddir-symlink//workdir/CustomTarget/ios/ios-all-static-libs.list",
+					"$(LO_STATIC_LIBS)",
 					"-L",
-					"$(SOURCE_ROOT)/../pocolib-symlink",
+					"$(POCO_ROOT)/lib",
 					"-lPocoFoundationd",
 					"-lPocoUtild",
 					"-lPocoXMLd",
 					"-lPocoJSONd",
 					"-lPocoNetd",
 					"-L",
-					"$(SOURCE_ROOT)/../zstdlib-symlink",
+					"$(ZSTD_ROOT)/lib",
 					"-lzstd",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.xunlong.xloffice;

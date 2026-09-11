@@ -114,6 +114,97 @@ describe('WriterAiController', function () {
 		assert.deepEqual(inserted, ['续写内容']);
 	});
 
+	it('uses presentation replacement semantics for all five processing tasks', function () {
+		const previousWindow = (global as any).window;
+		const pastedHtml: Array<{ html: string; plainText: string }> = [];
+		const pastedPlainText: string[] = [];
+		(global as any).window = {
+			app: {
+				map: {
+					getDocType: () => 'presentation',
+					_clip: {
+						pasteAiTextAsHtml(html: string, plainText: string) {
+							pastedHtml.push({ html, plainText });
+							return true;
+						},
+						pastePlainText(text: string) {
+							pastedPlainText.push(text);
+							return true;
+						},
+					},
+				},
+			},
+		};
+		try {
+			['polish', 'expand', 'condense', 'rewrite', 'translate'].forEach((taskType) => {
+				const bridge = createFakeBridge('幻灯片选区');
+				const controller = new WriterAiController(bridge);
+				controller.request(taskType);
+				assert.equal(bridge.calls.request[0].selection, '幻灯片选区');
+				bridge.emit(aiMessage('ai.done', { fullText: taskType + '结果' }));
+				assert.equal(controller.accept('<p>' + taskType + '结果</p>'), true);
+				assert.deepEqual(pastedHtml, [
+					{ html: '<p>' + taskType + '结果</p>', plainText: taskType + '结果' },
+				]);
+				assert.deepEqual(pastedPlainText, []);
+				pastedHtml.length = 0;
+			});
+		} finally {
+			(global as any).window = previousWindow;
+		}
+	});
+
+	it('appends PPT continuation while preserving the selected text', function () {
+		const previousWindow = (global as any).window;
+		const pasted: string[] = [];
+		(global as any).window = {
+			app: {
+				map: {
+					getDocType: () => 'presentation',
+					_clip: {
+						pastePlainText(text: string) {
+							pasted.push(text);
+							return true;
+						},
+					},
+				},
+			},
+		};
+		try {
+			const bridge = createFakeBridge('原始幻灯片文本');
+			const controller = new WriterAiController(bridge);
+			controller.request('continue');
+			bridge.emit(aiMessage('ai.done', { fullText: '续写内容' }));
+			assert.equal(controller.accept(), true);
+			assert.deepEqual(pasted, ['原始幻灯片文本续写内容']);
+		} finally {
+			(global as any).window = previousWindow;
+		}
+	});
+
+	it('keeps Writer continuation fallback unchanged', function () {
+		const previousWindow = (global as any).window;
+		(global as any).window = {
+			app: { map: { getDocType: () => 'text' } },
+		};
+		try {
+			const bridge = createFakeBridge('原始段落');
+			const inserted: string[] = [];
+			const controller = new WriterAiController(bridge, {
+				pastePlainText(text: string) {
+					inserted.push(text);
+					return true;
+				},
+			});
+			controller.request('continue');
+			bridge.emit(aiMessage('ai.done', { fullText: '续写内容' }));
+			assert.equal(controller.accept(), true);
+			assert.deepEqual(inserted, ['续写内容']);
+		} finally {
+			(global as any).window = previousWindow;
+		}
+	});
+
 	it('regenerates with the same task and context and ignores the old request', function () {
 		const bridge = createFakeBridge('原始文本');
 		const controller = new WriterAiController(bridge, {

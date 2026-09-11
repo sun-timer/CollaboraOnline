@@ -18,7 +18,7 @@ interface WriterAiDocumentAdapter {
 	pastePlainText(text: string): boolean;
 	pasteHtml?(html: string, plainText: string): boolean;
 	replaceSelection?(text: string): boolean;
-	appendAfterSelection?(text: string): boolean;
+	appendAfterSelection?(text: string, originalSelection?: string): boolean;
 	insertAtEnd?(text: string): boolean;
 	copyText?(text: string): boolean;
 }
@@ -233,9 +233,13 @@ class WriterAiController {
 			pasted = this.documentAdapter.pasteHtml(html, text);
 		} else if (
 			this.resultMode === 'appendAfterSelection' &&
+			this.isPresentationDocument() &&
 			this.documentAdapter.appendAfterSelection
 		) {
-			pasted = this.documentAdapter.appendAfterSelection(text);
+			pasted = this.documentAdapter.appendAfterSelection(
+				text,
+				this.originalSelection,
+			);
 		} else if (
 			this.resultMode === 'replaceSelection' &&
 			this.documentAdapter.replaceSelection
@@ -355,6 +359,11 @@ class WriterAiController {
 		return messages[errorCode] || 'Writer AI 请求参数无效';
 	}
 
+	private isPresentationDocument(): boolean {
+		const map = typeof window !== 'undefined' ? (window as any).app?.map : null;
+		return !!map && typeof map.getDocType === 'function' && map.getDocType() === 'presentation';
+	}
+
 	private notify(): void {
 		const snapshot = this.getState();
 		this.listeners.slice().forEach((listener) => listener(snapshot));
@@ -419,6 +428,21 @@ class WriterAiController {
 					}
 					clipboard.writeText(text);
 					return true;
+				} catch (_error) {
+					return false;
+				}
+			},
+			appendAfterSelection(text: string, originalSelection = ''): boolean {
+				try {
+					const clip = (window as any).app?.map?._clip;
+					if (!clip || typeof clip.pastePlainText !== 'function') {
+						return false;
+					}
+					// LOK pastes over the active range.  Replacing that range with the
+					// original text followed by the continuation preserves the selected
+					// text and produces the required append-at-selection-end result in
+					// Impress without changing Writer's existing fallback behavior.
+					return clip.pastePlainText(originalSelection + text);
 				} catch (_error) {
 					return false;
 				}

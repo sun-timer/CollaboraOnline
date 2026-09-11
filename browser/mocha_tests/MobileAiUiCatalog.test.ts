@@ -95,4 +95,38 @@ describe('Mobile AI UI Catalog', function () {
 		assert.equal(image?.dialog, 'image');
 		assert.equal(MobileAiUiCatalog.canRun('image_generate', 'text'), true);
 	});
+
+	it('enables only the six selection tasks for editable presentations', function () {
+		const selectionTypes = [
+			'continue',
+			'polish',
+			'expand',
+			'condense',
+			'rewrite',
+			'translate',
+		];
+		selectionTypes.forEach(function (taskType) {
+			assert.equal(MobileAiUiCatalog.canRun(taskType, 'presentation'), true);
+			assert.equal(MobileAiUiCatalog.canRun(taskType, 'spreadsheet'), false);
+		});
+		assert.deepEqual(
+			MobileAiUiCatalog.getSelectionEntries('presentation', true).map(function (entry) {
+				return entry.taskType;
+			}),
+			selectionTypes,
+		);
+		assert.deepEqual(MobileAiUiCatalog.getSelectionEntries('presentation', false), []);
+		const previewEntries = MobileAiUiCatalog.getOperationEntries('presentation', false);
+		assert.equal(
+			previewEntries.some(function (entry) {
+				return selectionTypes.indexOf(entry.taskType) >= 0;
+			}),
+			false,
+		);
+		assert.ok(
+			MobileAiUiCatalog.getOperationEntries('presentation', true).some(function (entry) {
+				return entry.taskType === 'polish';
+			}),
+		);
+	});
 });
