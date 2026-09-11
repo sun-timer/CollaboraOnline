@@ -120,9 +120,7 @@
 		D49B580F2D1077F700E0E607 /* UniformTypeIdentifiers.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D49B580E2D1077F700E0E607 /* UniformTypeIdentifiers.framework */; };
 		C0FFEE2F2026082400000001 /* PhotosUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE302026082400000001 /* PhotosUI.framework */; };
 		D4A0F3D72D64E86C00472DEE /* CoolURLSchemeHandler.mm in Sources */ = {isa = PBXBuildFile; fileRef = D4A0F3D62D64E86C00472DEE /* CoolURLSchemeHandler.mm */; };
-		E2B010011026090900000001 /* AppThemeManager.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010031026090900000001 /* AppThemeManager.mm */; };
 		E2B010051026090900000001 /* AboutViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010051026090900000002 /* AboutViewController.mm */; };
-		E2B010071026090900000001 /* ThemeSettingsViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010071026090900000002 /* ThemeSettingsViewController.mm */; };
 		E2B010091026090900000001 /* HTMLAssetViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010091026090900000002 /* HTMLAssetViewController.mm */; };
 		E2B0100B1026090900000001 /* ClearCacheHelper.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0100B1026090900000002 /* ClearCacheHelper.mm */; };
 		E2B0100D1026090900000001 /* ClearCacheViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0100D1026090900000002 /* ClearCacheViewController.mm */; };
@@ -1596,12 +1594,8 @@
 		C0FFEE302026082400000001 /* PhotosUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PhotosUI.framework; path = System/Library/Frameworks/PhotosUI.framework; sourceTree = SDKROOT; };
 		D4A0F3D62D64E86C00472DEE /* CoolURLSchemeHandler.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CoolURLSchemeHandler.mm; sourceTree = "<group>"; };
 		D4A0F3D82D663A0000472DEE /* CoolURLSchemeHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CoolURLSchemeHandler.h; sourceTree = "<group>"; };
-		E2B010021026090900000001 /* AppThemeManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppThemeManager.h; sourceTree = "<group>"; };
-		E2B010031026090900000001 /* AppThemeManager.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AppThemeManager.mm; sourceTree = "<group>"; };
 		E2B010041026090900000001 /* AboutViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AboutViewController.h; sourceTree = "<group>"; };
 		E2B010051026090900000002 /* AboutViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AboutViewController.mm; sourceTree = "<group>"; };
-		E2B010061026090900000001 /* ThemeSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ThemeSettingsViewController.h; sourceTree = "<group>"; };
-		E2B010071026090900000002 /* ThemeSettingsViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ThemeSettingsViewController.mm; sourceTree = "<group>"; };
 		E2B010081026090900000001 /* HTMLAssetViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HTMLAssetViewController.h; sourceTree = "<group>"; };
 		E2B010091026090900000002 /* HTMLAssetViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = HTMLAssetViewController.mm; sourceTree = "<group>"; };
 		E2B0100A1026090900000001 /* ClearCacheHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ClearCacheHelper.h; sourceTree = "<group>"; };
@@ -1672,12 +1666,8 @@
 		E2B020011026090900000001 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
-				E2B010021026090900000001 /* AppThemeManager.h */,
-				E2B010031026090900000001 /* AppThemeManager.mm */,
 				E2B010041026090900000001 /* AboutViewController.h */,
 				E2B010051026090900000002 /* AboutViewController.mm */,
-				E2B010061026090900000001 /* ThemeSettingsViewController.h */,
-				E2B010071026090900000002 /* ThemeSettingsViewController.mm */,
 				E2B010081026090900000001 /* HTMLAssetViewController.h */,
 				E2B010091026090900000002 /* HTMLAssetViewController.mm */,
 				E2B0100A1026090900000001 /* ClearCacheHelper.h */,
@@ -4116,9 +4106,7 @@
 				D0A020260908120000000004 /* DocumentTabsSheetController.mm in Sources */,
 				BE8D772C2136762500AC58EA /* AppDelegate.mm in Sources */,
 				AB1201002F000000000000D1 /* WriterAIComponents.mm in Sources */,
-				E2B010011026090900000001 /* AppThemeManager.mm in Sources */,
 				E2B010051026090900000001 /* AboutViewController.mm in Sources */,
-				E2B010071026090900000001 /* ThemeSettingsViewController.mm in Sources */,
 				E2B010091026090900000001 /* HTMLAssetViewController.mm in Sources */,
 				E2B0100B1026090900000001 /* ClearCacheHelper.mm in Sources */,
 				E2B0100D1026090900000001 /* ClearCacheViewController.mm in Sources */,

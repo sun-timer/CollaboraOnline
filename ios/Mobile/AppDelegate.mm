@@ -25,7 +25,6 @@
 #import "AppDelegate.h"
 #import "HomeViewController.h"
 #import "DocumentPresentation.h"
-#import "Settings/AppThemeManager.h"
 
 #import "FakeSocket.hpp"
 #import "Kit.hpp"
@@ -165,7 +164,6 @@ NSString *app_text_direction;
                        NSLog(@"lolwsd->run() unexpectedly returned");
                        std::abort();
                    });
-    [AppThemeManager applyToAllWindows];
     return YES;
 }
 
