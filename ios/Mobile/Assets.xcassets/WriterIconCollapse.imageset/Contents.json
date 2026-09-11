@@ -1,0 +1,23 @@
+{
+  "images": [
+    {
+      "filename": "WriterIconCollapse.png",
+      "idiom": "universal",
+      "scale": "1x"
+    },
+    {
+      "filename": "WriterIconCollapse@2x.png",
+      "idiom": "universal",
+      "scale": "2x"
+    },
+    {
+      "filename": "WriterIconCollapse@3x.png",
+      "idiom": "universal",
+      "scale": "3x"
+    }
+  ],
+  "info": {
+    "author": "generate-writer-function-icons",
+    "version": 1
+  }
+}

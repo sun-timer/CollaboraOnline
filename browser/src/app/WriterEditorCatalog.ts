@@ -13,6 +13,7 @@ type WriterEditorFeatureKind =
 	| 'queryCommand' // .uno:StyleApply?Style=..&FamilyName=..
 	| 'commandWithArgs' // .uno:InsertTable?Columns=..&Rows=..
 	| 'dialog' // opens a secondary dialog (watermark / margins / paper size)
+	| 'toggle' // on/off switch synced with CO command state
 	| 'findReplace' // opens the find/replace layer
 	| 'save' // .uno:Save special
 	| 'export' // app.map.downloadAs('pdf')
@@ -31,8 +32,8 @@ type WriterEditorDialogType =
 	| 'saveAs' // save-as dialog
 	| 'pageBreak' // page break options
 	| 'pageNumber' // insert page number field
-	| 'trackChanges' // enable / disable change tracking
-	| 'chart'; // insert chart (InsertObjectChart type picker)
+	| 'chart' // insert chart (InsertObjectChart type picker)
+	| 'comment'; // insert annotation with Author/Text
 
 interface WriterEditorFeature {
 	id: string;
@@ -46,6 +47,8 @@ interface WriterEditorFeature {
 	dialog?: WriterEditorDialogType;
 	needsSelection?: boolean;
 	group?: string;
+	/** Default on-state when CO has not reported command values yet. */
+	defaultOn?: boolean;
 }
 
 interface WriterEditorTabDefinition {
@@ -363,7 +366,7 @@ class WriterEditorCatalog {
 		},
 		{
 			id: 'export-pdf',
-			label: '导出为 PDF',
+			label: '导出为',
 			tab: 'file',
 			icon: 'export-pdf',
 			kind: 'export',
@@ -422,9 +425,9 @@ class WriterEditorCatalog {
 			label: '批注',
 			tab: 'insert',
 			icon: 'comment',
-			kind: 'command',
+			kind: 'dialog',
+			dialog: 'comment',
 			unocmd: '.uno:InsertAnnotation',
-			needsSelection: true,
 			group: 'insert',
 		},
 		{
@@ -487,6 +490,15 @@ class WriterEditorCatalog {
 
 		// ---- 审阅 (review) ----
 		{
+			id: 'word-count',
+			label: '字数统计',
+			tab: 'review',
+			icon: 'bullet-list',
+			kind: 'command',
+			unocmd: '.uno:WordCountDialog',
+			group: 'review',
+		},
+		{
 			id: 'find-replace',
 			label: '查找替换',
 			tab: 'review',
@@ -508,9 +520,9 @@ class WriterEditorCatalog {
 			label: '追踪修订',
 			tab: 'review',
 			icon: 'track-changes',
-			kind: 'dialog',
-			dialog: 'trackChanges',
-			unocmd: '.uno:TrackChangesInAllViews',
+			kind: 'toggle',
+			unocmd: '.uno:TrackChanges',
+			defaultOn: false,
 			group: 'review',
 		},
 		{
@@ -518,8 +530,9 @@ class WriterEditorCatalog {
 			label: '显示修订',
 			tab: 'review',
 			icon: 'show-tracked-changes',
-			kind: 'command',
+			kind: 'toggle',
 			unocmd: '.uno:ShowTrackedChanges',
+			defaultOn: true,
 			group: 'review',
 		},
 		{
@@ -665,7 +678,8 @@ class WriterEditorCatalog {
 		const commandLike =
 			feature.kind === 'command' ||
 			feature.kind === 'queryCommand' ||
-			feature.kind === 'commandWithArgs';
+			feature.kind === 'commandWithArgs' ||
+			feature.kind === 'toggle';
 		if (commandLike && !feature.unocmd) {
 			return { valid: false, errorCode: 'missing_unocmd' };
 		}
@@ -698,7 +712,8 @@ class WriterEditorCatalog {
 			const commandLike =
 				feature.kind === 'command' ||
 				feature.kind === 'queryCommand' ||
-				feature.kind === 'commandWithArgs';
+				feature.kind === 'commandWithArgs' ||
+				feature.kind === 'toggle';
 			if (commandLike && !feature.unocmd) {
 				return { valid: false, errorCode: 'missing_unocmd' };
 			}

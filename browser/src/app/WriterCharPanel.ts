@@ -1,23 +1,19 @@
 /*
  * Writer character quick panel (iOS).
  *
- * 粗体/斜体/下划线/删除线/字色/高亮, mirroring Android
- * BottomToolbarController CHARACTER_QUICK_ACTION_ITEMS (L75-82). Toggles
- * dispatch their .uno commands; 字色/高亮 open the shared color picker.
+ * 粗体/斜体/下划线/删除线/字色/高亮 — Android BottomToolbarController
+ * CHARACTER_QUICK_ACTION_ITEMS as a floating horizontal bar above the bottom toolbar.
  */
 
 class WriterCharPanel {
-	private readonly sheet: WriterEditorSheet;
+	private readonly bar: WriterQuickActionBar;
 	private readonly controller: WriterEditorController;
 	private colorPicker: WriterColorPickerDialog | null = null;
-	/** Toggle buttons keyed by .uno command for activation-state feedback. */
-	private readonly toggleButtons: { [command: string]: HTMLButtonElement } = {};
-	private onStateBound: ((event: any) => void) | null = null;
 
 	private constructor() {
 		this.controller = WriterEditorController.getInstance();
-		this.sheet = new WriterEditorSheet('字符');
-		this.sheet.setBody(this.buildBody());
+		this.bar = new WriterQuickActionBar();
+		this.bar.setActions(this.buildItems());
 	}
 
 	static mount(): WriterCharPanel | null {
@@ -34,61 +30,62 @@ class WriterCharPanel {
 	}
 
 	open(): void {
-		this.refreshToggles();
-		this.subscribeState();
-		this.sheet.open();
+		this.closeSiblingPanels();
+		this.bar.open();
 	}
 
 	close(): void {
-		this.unsubscribeState();
 		if (this.colorPicker) {
 			this.colorPicker.close();
 			this.colorPicker = null;
 		}
-		this.sheet.close();
+		this.bar.close();
 	}
 
-	private buildBody(): HTMLElement {
-		const content = document.createElement('div');
-		content.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+	private closeSiblingPanels(): void {
+		const paraPanel = (window as any).__coolWriterParaPanel;
+		if (paraPanel && typeof paraPanel.close === 'function') {
+			paraPanel.close();
+		}
+	}
 
-		const items: { label: string; icon: string; command?: string; onTap: () => void }[] = [
-			{ label: '粗体', icon: WriterCharPanelIcons.bold, command: '.uno:Bold', onTap: () => this.run('.uno:Bold') },
-			{ label: '斜体', icon: WriterCharPanelIcons.italic, command: '.uno:Italic', onTap: () => this.run('.uno:Italic') },
-			{ label: '下划线', icon: WriterCharPanelIcons.underline, command: '.uno:Underline', onTap: () => this.run('.uno:Underline') },
-			{ label: '删除线', icon: WriterCharPanelIcons.strikeout, command: '.uno:Strikeout', onTap: () => this.run('.uno:Strikeout') },
-			{ label: '字色', icon: WriterCharPanelIcons.fontColor, onTap: () => this.openColor('字体颜色', 'fontColor') },
-			{ label: '高亮', icon: WriterCharPanelIcons.highlight, onTap: () => this.openColor('荧光颜色', 'highlight') },
+	private buildItems(): WriterQuickActionSpec[] {
+		return [
+			{
+				label: '粗体',
+				iconHtml: WriterCharPanelIcons.bold,
+				command: '.uno:Bold',
+				onTap: () => this.run('.uno:Bold'),
+			},
+			{
+				label: '斜体',
+				iconHtml: WriterCharPanelIcons.italic,
+				command: '.uno:Italic',
+				onTap: () => this.run('.uno:Italic'),
+			},
+			{
+				label: '下划线',
+				iconHtml: WriterCharPanelIcons.underline,
+				command: '.uno:Underline',
+				onTap: () => this.run('.uno:Underline'),
+			},
+			{
+				label: '删除线',
+				iconHtml: WriterCharPanelIcons.strikeout,
+				command: '.uno:Strikeout',
+				onTap: () => this.run('.uno:Strikeout'),
+			},
+			{
+				label: '字色',
+				iconHtml: WriterCharPanelIcons.fontColor,
+				onTap: () => this.openColor('字体颜色', 'fontColor'),
+			},
+			{
+				label: '高亮',
+				iconHtml: WriterCharPanelIcons.highlight,
+				onTap: () => this.openColor('荧光颜色', 'highlight'),
+			},
 		];
-
-		const grid = document.createElement('div');
-		grid.style.cssText =
-			'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;';
-		items.forEach((item) => {
-			const button = document.createElement('button');
-			button.type = 'button';
-			button.setAttribute('aria-label', item.label);
-			button.style.cssText =
-				'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-				'gap:6px;min-height:76px;border:1px solid #E6E8EB;border-radius:12px;' +
-				'background:#fff;cursor:pointer;';
-			const icon = document.createElement('span');
-			icon.style.cssText =
-				'width:24px;height:24px;display:flex;align-items:center;justify-content:center;';
-			icon.innerHTML = item.icon;
-			button.appendChild(icon);
-			const label = document.createElement('span');
-			label.textContent = item.label;
-			label.style.cssText = 'font-size:12px;color:#101010;';
-			button.appendChild(label);
-			if (item.command) {
-				this.toggleButtons[item.command] = button;
-			}
-			button.onclick = item.onTap;
-			grid.appendChild(button);
-		});
-		content.appendChild(grid);
-		return content;
 	}
 
 	private run(command: string): void {
@@ -100,9 +97,7 @@ class WriterCharPanel {
 			kind: 'command',
 			unocmd: command,
 		});
-		// Keep the panel open so bold + italic + colour can be applied in one
-		// session (Android quick-bar behaviour); the sheet closes via its own
-		// close button or backdrop tap.
+		this.bar.refreshToggles();
 	}
 
 	private openColor(title: string, kind: 'fontColor' | 'highlight'): void {
@@ -117,61 +112,8 @@ class WriterCharPanel {
 			}
 		});
 		this.colorPicker = picker;
-		this.sheet.close();
+		this.close();
 		picker.open();
-	}
-
-	/** Reads current toggle states (stateChangeHandler) and paints the grid. */
-	private refreshToggles(): void {
-		const map = (window as any).app && (window as any).app.map;
-		const handler = map && map.stateChangeHandler;
-		if (!handler) {
-			return;
-		}
-		Object.keys(this.toggleButtons).forEach((command) => {
-			const active = handler.getItemValue(command) === 'true';
-			this.setToggleActive(command, active);
-		});
-	}
-
-	private subscribeState(): void {
-		if (this.onStateBound) {
-			return;
-		}
-		const map = (window as any).app && (window as any).app.map;
-		if (!map || typeof map.on !== 'function') {
-			return;
-		}
-		const onState = (event: any) => {
-			if (!event || typeof event.commandName !== 'string') {
-				return;
-			}
-			if (event.commandName in this.toggleButtons) {
-				this.setToggleActive(event.commandName, event.state === 'true');
-			}
-		};
-		this.onStateBound = onState;
-		map.on('commandstatechanged', onState);
-	}
-
-	private unsubscribeState(): void {
-		if (!this.onStateBound) {
-			return;
-		}
-		const map = (window as any).app && (window as any).app.map;
-		if (map && typeof map.off === 'function') {
-			map.off('commandstatechanged', this.onStateBound);
-		}
-		this.onStateBound = null;
-	}
-
-	private setToggleActive(command: string, active: boolean): void {
-		const button = this.toggleButtons[command];
-		if (!button) {
-			return;
-		}
-		button.style.background = active ? '#EAF2FF' : '#fff';
-		button.style.borderColor = active ? '#1278D9' : '#E6E8EB';
 	}
 }
 

@@ -8,6 +8,7 @@
 #import "RecentDocumentsStore.h"
 
 static NSString *const RecentDocumentsStoreKey = @"RECENT_DOCUMENTS_BOOKMARKS";
+static NSString *const RecentlyClosedDocumentsStoreKey = @"RECENTLY_CLOSED_DOCUMENTS_BOOKMARKS";
 static const NSUInteger RecentDocumentsStoreMaxItems = 30;
 
 @implementation RecentDocumentItem
@@ -55,8 +56,35 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
     return self.openedAt ?: [NSDate date];
 }
 
+- (NSDate *)effectiveDisplayDate {
+    if (self.openedAt != nil) {
+        return self.openedAt;
+    }
+    return [self effectiveLastModified];
+}
+
 - (NSString *)displaySubtitle {
-    return [RecentDocumentItem formatModified:[self effectiveLastModified]];
+    return [RecentDocumentItem formatModified:[self effectiveDisplayDate]];
+}
+
+- (NSString *)displayTitle {
+    return [RecentDocumentItem stripExtensionFromFilename:self.title ?: @""];
+}
+
++ (NSString *)stripExtensionFromFilename:(NSString *)filename {
+    if (filename.length == 0) {
+        return filename;
+    }
+    NSString *ext = filename.pathExtension.lowercaseString;
+    NSSet<NSString *> *known = [NSSet setWithArray:@[
+        @"odt", @"ods", @"odp", @"odg", @"odf",
+        @"doc", @"docx", @"xls", @"xlsx", @"ppt", @"pptx",
+        @"pdf", @"txt", @"rtf", @"csv",
+    ]];
+    if (ext.length == 0 || ![known containsObject:ext]) {
+        return filename;
+    }
+    return filename.stringByDeletingPathExtension;
 }
 
 + (NSString *)formatModified:(NSDate *)date {
@@ -68,7 +96,7 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
     timeFormatter.dateFormat = @"HH:mm";
     NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
     dateFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
-    dateFormatter.dateFormat = @"yyyy/MM/dd";
+    dateFormatter.dateFormat = @"yyyy/M/d";
     NSCalendar *calendar = [NSCalendar currentCalendar];
     if ([calendar isDateInToday:date]) {
         return [timeFormatter stringFromDate:date];
@@ -83,6 +111,7 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
 
 @interface RecentDocumentsStore ()
 @property (strong, nonatomic) NSMutableArray<RecentDocumentItem *> *records;
+@property (strong, nonatomic) NSMutableArray<RecentDocumentItem *> *closedRecords;
 @end
 
 @implementation RecentDocumentsStore
@@ -90,9 +119,18 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _records = [[self loadRecords] mutableCopy];
+        _records = [[self loadRecordsForKey:RecentDocumentsStoreKey] mutableCopy];
+        _closedRecords = [[self loadRecordsForKey:RecentlyClosedDocumentsStoreKey] mutableCopy];
     }
     return self;
+}
+
+- (NSArray<RecentDocumentItem *> *)recentlyClosedItems {
+    return [self.closedRecords copy];
+}
+
+- (NSUInteger)openDocumentCount {
+    return MAX((NSUInteger)1, self.records.count);
 }
 
 - (NSArray<RecentDocumentItem *> *)items {
@@ -147,12 +185,75 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
         [next removeLastObject];
     }
     self.records = next;
-    [self persist];
+    [self persistRecords:self.records forKey:RecentDocumentsStoreKey];
 }
 
 - (void)removeItem:(RecentDocumentItem *)item {
     [self.records removeObject:item];
-    [self persist];
+    [self persistRecords:self.records forKey:RecentDocumentsStoreKey];
+}
+
+- (void)moveItemToRecentlyClosed:(RecentDocumentItem *)item {
+    if (item == nil) {
+        return;
+    }
+    NSMutableArray<RecentDocumentItem *> *nextOpen = [NSMutableArray array];
+    for (RecentDocumentItem *existing in self.records) {
+        if (existing != item && ![self item:existing matchesItem:item]) {
+            [nextOpen addObject:existing];
+        }
+    }
+    self.records = nextOpen;
+
+    NSMutableArray<RecentDocumentItem *> *nextClosed = [NSMutableArray arrayWithObject:item];
+    for (RecentDocumentItem *existing in self.closedRecords) {
+        if (![self item:existing matchesItem:item]) {
+            [nextClosed addObject:existing];
+        }
+    }
+    while (nextClosed.count > RecentDocumentsStoreMaxItems) {
+        [nextClosed removeLastObject];
+    }
+    self.closedRecords = nextClosed;
+    [self persistRecords:self.records forKey:RecentDocumentsStoreKey];
+    [self persistRecords:self.closedRecords forKey:RecentlyClosedDocumentsStoreKey];
+}
+
+- (void)restoreFromRecentlyClosed:(RecentDocumentItem *)item {
+    if (item == nil) {
+        return;
+    }
+    [self.closedRecords removeObject:item];
+    NSMutableArray<RecentDocumentItem *> *nextClosed = [NSMutableArray array];
+    for (RecentDocumentItem *existing in self.closedRecords) {
+        if (![self item:existing matchesItem:item]) {
+            [nextClosed addObject:existing];
+        }
+    }
+    self.closedRecords = nextClosed;
+    [self persistRecords:self.closedRecords forKey:RecentlyClosedDocumentsStoreKey];
+    NSURL *url = [item resolvedURL];
+    if (url != nil) {
+        [self recordURL:url];
+    }
+}
+
+- (BOOL)item:(RecentDocumentItem *)item matchesURL:(NSURL *)url {
+    if (item == nil || url == nil) {
+        return NO;
+    }
+    NSURL *resolved = [item resolvedURL];
+    if (resolved == nil) {
+        return NO;
+    }
+    return [resolved.path.stringByStandardizingPath isEqualToString:url.path.stringByStandardizingPath];
+}
+
+- (BOOL)item:(RecentDocumentItem *)left matchesItem:(RecentDocumentItem *)right {
+    if (left.path.length > 0 && right.path.length > 0) {
+        return [left.path.stringByStandardizingPath isEqualToString:right.path.stringByStandardizingPath];
+    }
+    return [left.title isEqualToString:right.title];
 }
 - (void)renameItem:(RecentDocumentItem *)item toTitle:(NSString *)title {
     NSString *trimmed = [title stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
@@ -162,7 +263,10 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
     NSURL *url = [item resolvedURL];
     if (url != nil) {
         NSString *ext = url.pathExtension;
-        NSString *newName = ext.length > 0 ? [trimmed stringByAppendingPathExtension:ext] : trimmed;
+        NSString *newName = trimmed;
+        if (ext.length > 0 && trimmed.pathExtension.length == 0) {
+            newName = [trimmed stringByAppendingPathExtension:ext];
+        }
         NSURL *dir = [url URLByDeletingLastPathComponent];
         NSURL *newURL = [dir URLByAppendingPathComponent:newName];
         if (![newURL.path isEqualToString:url.path]) {
@@ -175,14 +279,14 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
                                    includingResourceValuesForKeys:nil
                                                     relativeToURL:nil
                                                             error:nil];
-                [self persist];
+                [self persistRecords:self.records forKey:RecentDocumentsStoreKey];
                 return;
             }
         }
     }
     // 文件不可用时仅更新记录标题
     item.title = trimmed;
-    [self persist];
+    [self persistRecords:self.records forKey:RecentDocumentsStoreKey];
 }
 
 - (void)importLocalTestFiles {
@@ -221,7 +325,11 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
 }
 
 - (NSArray<RecentDocumentItem *> *)loadRecords {
-    NSArray *raw = [[NSUserDefaults standardUserDefaults] arrayForKey:RecentDocumentsStoreKey];
+    return [self loadRecordsForKey:RecentDocumentsStoreKey];
+}
+
+- (NSArray<RecentDocumentItem *> *)loadRecordsForKey:(NSString *)key {
+    NSArray *raw = [[NSUserDefaults standardUserDefaults] arrayForKey:key];
     NSMutableArray<RecentDocumentItem *> *items = [NSMutableArray array];
     if (![raw isKindOfClass:[NSArray class]]) {
         return items;
@@ -254,8 +362,12 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
 }
 
 - (void)persist {
+    [self persistRecords:self.records forKey:RecentDocumentsStoreKey];
+}
+
+- (void)persistRecords:(NSArray<RecentDocumentItem *> *)records forKey:(NSString *)key {
     NSMutableArray *raw = [NSMutableArray array];
-    for (RecentDocumentItem *item in self.records) {
+    for (RecentDocumentItem *item in records) {
         NSMutableDictionary *dict = [@{
             @"title": item.title ?: @"",
             @"ext": item.pathExtension ?: @"",
@@ -274,7 +386,7 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
         }
         [raw addObject:dict];
     }
-    [[NSUserDefaults standardUserDefaults] setObject:raw forKey:RecentDocumentsStoreKey];
+    [[NSUserDefaults standardUserDefaults] setObject:raw forKey:key];
 }
 
 @end

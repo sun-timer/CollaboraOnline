@@ -9,6 +9,7 @@
 
 #import "CODocument.h"
 #import "DocumentPresentation.h"
+#import "DocumentPresentationLaunchOptions.h"
 #import "DocumentViewController.h"
 #import "RecentDocumentsStore.h"
 #import "MobileApp.hpp"
@@ -20,6 +21,42 @@ static const int kKitIdlePollIntervalMs = 50;
 @implementation DocumentPresentation
 
 + (void)presentDocumentAtURL:(NSURL *)documentURL from:(UIViewController *)presenter {
+    [self presentDocumentAtURL:documentURL from:presenter options:nil];
+}
+
++ (NSString *)autoAiPromptForDocKind:(NSInteger)docKind
+                               title:(NSString *)title
+                     userDescription:(NSString *)userDescription {
+    BOOL hasTitle = title.length > 0;
+    BOOL hasDesc = userDescription.length > 0;
+    NSMutableString *sb = [NSMutableString string];
+    if (hasTitle) {
+        [sb appendFormat:@"主题：《%@》", title];
+    }
+    if (hasDesc) {
+        if (hasTitle) {
+            [sb appendString:@"，"];
+        }
+        [sb appendFormat:@"用户要求：%@", userDescription];
+    }
+    NSString *prefix = (hasTitle || hasDesc)
+        ? [NSString stringWithFormat:@"%@。请围绕以上要求，", sb]
+        : @"请";
+    if (docKind == 1) {
+        return [prefix stringByAppendingString:
+            @"先给出一个清晰的数据表结构大纲（列名和用途），再输出可直接粘贴到电子表格的完整示例内容，至少包含10行数据。"];
+    }
+    if (docKind == 2) {
+        return [prefix stringByAppendingString:
+            @"先生成一份6页演示的大纲（每页标题+要点），再输出可直接用于演示文稿的完整正文内容。"];
+    }
+    return [prefix stringByAppendingString:
+        @"直接输出完整的纯文本正文，风格专业、结构清晰。不要使用 Markdown 格式（不要使用 #、*、- 等标记符号）。"];
+}
+
++ (void)presentDocumentAtURL:(NSURL *)documentURL
+                        from:(UIViewController *)presenter
+                     options:(DocumentPresentationLaunchOptions *)options {
     if (documentURL == nil || presenter == nil) {
         return;
     }
@@ -29,27 +66,28 @@ static const int kKitIdlePollIntervalMs = 50;
         if ([existing isKindOfClass:[DocumentViewController class]]) {
             DocumentViewController *documentVC = (DocumentViewController *)existing;
             [documentVC requestCloseWithCompletion:^{
-                [self waitForKitIdleThenPresent:documentURL from:presenter attempt:0];
+                [self waitForKitIdleThenPresent:documentURL from:presenter options:options attempt:0];
             }];
         } else {
             [existing dismissViewControllerAnimated:NO completion:^{
-                [self waitForKitIdleThenPresent:documentURL from:presenter attempt:0];
+                [self waitForKitIdleThenPresent:documentURL from:presenter options:options attempt:0];
             }];
         }
         return;
     }
 
-    [self waitForKitIdleThenPresent:documentURL from:presenter attempt:0];
+    [self waitForKitIdleThenPresent:documentURL from:presenter options:options attempt:0];
 }
 
 + (void)waitForKitIdleThenPresent:(NSURL *)documentURL
                              from:(UIViewController *)presenter
+                          options:(DocumentPresentationLaunchOptions *)options
                           attempt:(int)attempt {
     if (presenter.presentedViewController != nil && attempt < kKitIdlePollAttempts) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
                                      (int64_t)(kKitIdlePollIntervalMs * NSEC_PER_MSEC)),
                        dispatch_get_main_queue(), ^{
-            [self waitForKitIdleThenPresent:documentURL from:presenter attempt:attempt + 1];
+            [self waitForKitIdleThenPresent:documentURL from:presenter options:options attempt:attempt + 1];
         });
         return;
     }
@@ -58,15 +96,17 @@ static const int kKitIdlePollIntervalMs = 50;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
                                      (int64_t)(kKitIdlePollIntervalMs * NSEC_PER_MSEC)),
                        dispatch_get_main_queue(), ^{
-            [self waitForKitIdleThenPresent:documentURL from:presenter attempt:attempt + 1];
+            [self waitForKitIdleThenPresent:documentURL from:presenter options:options attempt:attempt + 1];
         });
         return;
     }
 
-    [self presentDocumentNowAtURL:documentURL from:presenter];
+    [self presentDocumentNowAtURL:documentURL from:presenter options:options];
 }
 
-+ (void)presentDocumentNowAtURL:(NSURL *)documentURL from:(UIViewController *)presenter {
++ (void)presentDocumentNowAtURL:(NSURL *)documentURL
+                           from:(UIViewController *)presenter
+                        options:(DocumentPresentationLaunchOptions *)options {
     [documentURL startAccessingSecurityScopedResource];
     RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
     [store recordURL:documentURL];
@@ -78,6 +118,7 @@ static const int kKitIdlePollIntervalMs = 50;
     documentViewController.document->fakeClientFd = -1;
     documentViewController.document->readOnly = false;
     documentViewController.document.viewController = documentViewController;
+    documentViewController.launchOptions = options;
     documentViewController.modalPresentationStyle = UIModalPresentationFullScreen;
     [presenter presentViewController:documentViewController animated:YES completion:nil];
 }

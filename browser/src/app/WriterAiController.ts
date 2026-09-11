@@ -20,6 +20,7 @@ interface WriterAiDocumentAdapter {
 	replaceSelection?(text: string): boolean;
 	appendAfterSelection?(text: string, originalSelection?: string): boolean;
 	insertAtEnd?(text: string): boolean;
+	insertHtmlAtEnd?(html: string, plainText: string): boolean;
 	copyText?(text: string): boolean;
 }
 
@@ -221,6 +222,12 @@ class WriterAiController {
 		const text = this.state.preview;
 		let pasted = false;
 		if (
+			html &&
+			this.resultMode === 'insertAtEnd' &&
+			this.documentAdapter.insertHtmlAtEnd
+		) {
+			pasted = this.documentAdapter.insertHtmlAtEnd(html, text);
+		} else if (
 			this.resultMode === 'insertAtEnd' &&
 			this.documentAdapter.insertAtEnd
 		) {
@@ -355,6 +362,8 @@ class WriterAiController {
 			invalid_target_language: '目标语言无效',
 			invalid_context_field: '当前任务不支持该参数',
 			unsupported_task_type: '不支持的 Writer AI 任务',
+			empty_document: '文档全文提取失败',
+			invalid_typeset_type: '排版类型无效',
 		};
 		return messages[errorCode] || 'Writer AI 请求参数无效';
 	}
@@ -409,6 +418,34 @@ class WriterAiController {
 						() => {
 							try {
 								map._clip.pastePlainText(text);
+							} catch (_error) {
+								// Best-effort insertion; caller already accepted.
+							}
+						},
+						300,
+					);
+					return true;
+				} catch (_error) {
+					return false;
+				}
+			},
+			insertHtmlAtEnd(html: string, plainText: string): boolean {
+				try {
+					const map = (window as any).app?.map;
+					const clip = map?._clip;
+					if (
+						!map ||
+						typeof map.sendUnoCommand !== 'function' ||
+						!clip ||
+						typeof clip.pasteAiTextAsHtml !== 'function'
+					) {
+						return false;
+					}
+					map.sendUnoCommand('.uno:GoToEndOfDoc');
+					window.setTimeout(
+						() => {
+							try {
+								clip.pasteAiTextAsHtml(html, plainText);
 							} catch (_error) {
 								// Best-effort insertion; caller already accepted.
 							}

@@ -41,6 +41,15 @@ class NativeBridge {
 		'ai.stream': true,
 		'ai.done': true,
 		'ai.error': true,
+		'typeset.extract': true,
+		'typeset.fill': true,
+		'typeset.insert': true,
+		'typeset.extract.done': true,
+		'typeset.extract.error': true,
+		'typeset.fill.done': true,
+		'typeset.fill.error': true,
+		'typeset.insert.done': true,
+		'typeset.insert.error': true,
 	};
 
 	private static instance: NativeBridge | null = null;
@@ -102,7 +111,10 @@ class NativeBridge {
 				value.type === 'ai.state' ||
 				value.type === 'ai.stream' ||
 				value.type === 'ai.done' ||
-				value.type === 'ai.error') &&
+				value.type === 'ai.error' ||
+				value.type === 'typeset.extract' ||
+				value.type === 'typeset.fill' ||
+				value.type === 'typeset.insert') &&
 			(typeof value.requestId !== 'string' || value.requestId.trim() === '')
 		) {
 			return { valid: false, errorCode: 'missing_request_id' };

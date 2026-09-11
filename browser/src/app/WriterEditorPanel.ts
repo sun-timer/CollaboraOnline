@@ -15,6 +15,9 @@ class WriterEditorPanel {
 	private readonly grid: HTMLDivElement;
 	private readonly controller: WriterEditorController;
 	private activeTab: WriterEditorTab = 'default';
+	/** Toggle inputs in the review tab, keyed by .uno command. */
+	private readonly reviewToggleInputs: { [command: string]: HTMLInputElement } = {};
+	private onReviewStateBound: ((event: any) => void) | null = null;
 	/** Picker/dialog sheets opened from this panel, closed together with it. */
 	private readonly subDialogs: { close(): void }[] = [];
 	private static readonly SUPPORTED_DIALOGS: WriterEditorDialogType[] = [
@@ -28,31 +31,27 @@ class WriterEditorPanel {
 		'paperSize',
 		'image',
 		'saveAs',
-		'trackChanges',
 		'chart',
+		'comment',
 	];
 
 	private constructor() {
 		this.controller = WriterEditorController.getInstance();
-		this.sheet = new WriterEditorSheet('功能');
+		this.sheet = new WriterEditorSheet('功能', () => this.unsubscribeReviewState());
 
 		const content = document.createElement('div');
-		content.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+		content.className = 'writer-function-panel';
 
 		this.tabBar = document.createElement('div');
-		this.tabBar.style.cssText =
-			'display:flex;gap:4px;border-bottom:1px solid #d8dde3;padding-bottom:8px;';
+		this.tabBar.className = 'writer-function-tab-bar';
 		content.appendChild(this.tabBar);
 
 		this.hint = document.createElement('div');
-		this.hint.style.cssText =
-			'padding:10px;border-radius:8px;text-align:center;background:#e6ebf2;' +
-			'color:#5f6368;font-size:14px;';
+		this.hint.className = 'writer-function-hint';
 		content.appendChild(this.hint);
 
 		this.grid = document.createElement('div');
-		this.grid.style.cssText =
-			'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;';
+		this.grid.className = 'writer-function-grid';
 		content.appendChild(this.grid);
 
 		this.sheet.setBody(content);
@@ -74,11 +73,13 @@ class WriterEditorPanel {
 	open(): void {
 		this.renderTabs();
 		this.renderGrid();
+		this.subscribeReviewState();
 		this.sheet.open();
 	}
 
 	/** Closes the panel and any picker/dialog sheets opened from it. */
 	close(): void {
+		this.unsubscribeReviewState();
 		const children = this.subDialogs.splice(0);
 		children.forEach((dialog) => dialog.close());
 		this.sheet.close();
@@ -93,61 +94,99 @@ class WriterEditorPanel {
 	}
 	private renderTabs(): void {
 		this.tabBar.replaceChildren();
+
+		const track = document.createElement('div');
+		track.className = 'writer-function-tab-track';
+		const scroll = document.createElement('div');
+		scroll.className = 'writer-function-tab-scroll';
 		WriterEditorCatalog.TABS.forEach((tab) => {
 			const button = document.createElement('button');
 			button.type = 'button';
 			button.textContent = tab.label;
 			button.setAttribute('aria-label', tab.label);
 			const active = tab.id === this.activeTab;
-			button.style.cssText =
-				'flex:1;padding:10px 4px;background:none;border:none;border-bottom:4px solid ' +
-				(active ? '#1278D9' : 'transparent') +
-				';color:' + (active ? '#1278D9' : '#5f6368') +
-				';font:inherit;font-size:15px;cursor:pointer;';
+			button.className =
+				'writer-function-tab' + (active ? ' writer-function-tab--active' : '');
 			button.onclick = () => {
 				this.activeTab = tab.id;
 				this.renderTabs();
 				this.renderGrid();
 			};
-			this.tabBar.appendChild(button);
+			scroll.appendChild(button);
 		});
+		track.appendChild(scroll);
+		this.tabBar.appendChild(track);
 
 		const divider = document.createElement('div');
-		divider.style.cssText = 'width:1px;align-self:flex-end;height:28px;background:#d8dde3;';
+		divider.className = 'writer-function-tab-divider';
+		divider.setAttribute('aria-hidden', 'true');
 		this.tabBar.appendChild(divider);
 
+		const actions = document.createElement('div');
+		actions.className = 'writer-function-tab-actions';
 		const actionButtons: Array<{ icon: string; aria: string; handler: () => void }> = [
-			{ icon: 'find-replace', aria: '查找', handler: () => this.openFindReplaceDialog() },
-			{ icon: 'arrow-down', aria: '收起', handler: () => this.sheet.close() },
+			{ icon: 'ai-sparkle', aria: 'AI功能', handler: () => this.openAiFeatures() },
+			{ icon: 'keyboard', aria: '呼出键盘', handler: () => this.showKeyboard() },
+			{ icon: 'collapse', aria: '收起', handler: () => this.close() },
 		];
 		actionButtons.forEach((action) => {
 			const button = document.createElement('button');
 			button.type = 'button';
+			button.className = 'writer-function-action-btn';
 			button.setAttribute('aria-label', action.aria);
-			button.style.cssText =
-				'width:44px;height:44px;display:flex;align-items:center;justify-content:center;' +
-				'background:none;border:none;cursor:pointer;flex-shrink:0;';
 			const icon = WriterEditorIcons.get(action.icon);
 			if (icon) {
 				button.innerHTML = icon;
 			}
 			button.onclick = action.handler;
-			this.tabBar.appendChild(button);
+			actions.appendChild(button);
 		});
+		this.tabBar.appendChild(actions);
+	}
+
+	private openAiFeatures(): void {
+		this.close();
+		const panel = (window as any).__coolWriterAiPanel;
+		if (panel && typeof panel.openOperationSheet === 'function') {
+			panel.openOperationSheet();
+		}
+	}
+
+	private showKeyboard(): void {
+		this.close();
+		const map = (window as any).app && (window as any).app.map;
+		if (map && typeof map.focus === 'function') {
+			map.focus(true);
+		}
 	}
 
 	private renderGrid(): void {
 		const selection = this.controller.getSelectedText().trim();
 		const viewportWidth = document.documentElement.clientWidth;
-		this.grid.style.gridTemplateColumns =
-			viewportWidth < 420
-				? 'repeat(2,minmax(0,1fr))'
-				: 'repeat(3,minmax(0,1fr))';
-		this.hint.textContent = selection
-			? `已选中 ${selection.length} 字`
-			: '在文档中选中文字后可编辑';
-		this.hint.style.color = selection ? '#188038' : '#5f6368';
+		const isFileTab = this.activeTab === 'file';
+		const isInsertTab = this.activeTab === 'insert';
+		this.grid.className =
+			'writer-function-grid' +
+			(isInsertTab ? ' writer-function-grid--insert' : '') +
+			(!isInsertTab && viewportWidth < 420 ? ' writer-function-grid--narrow' : '');
+		this.hint.textContent = isFileTab
+			? ''
+			: selection
+				? `已选中 ${selection.length} 字`
+				: '在文档中选中文字后可编辑';
+		this.hint.className =
+			'writer-function-hint' +
+			(isFileTab ? ' writer-function-hint--hidden' : '') +
+			(selection ? ' writer-function-hint--selection' : '');
 		this.grid.replaceChildren();
+		Object.keys(this.reviewToggleInputs).forEach((command) => {
+			delete this.reviewToggleInputs[command];
+		});
+
+		if (isFileTab) {
+			this.renderFileList();
+			return;
+		}
 
 		const features = WriterEditorCatalog.getFeatures(this.activeTab);
 		let currentGroup = '';
@@ -156,27 +195,27 @@ class WriterEditorPanel {
 				currentGroup = feature.group || '';
 				const title = document.createElement('h3');
 				title.textContent = this.groupLabel(feature.group || '');
-				title.style.cssText = 'grid-column:1/-1;margin:8px 0 0;font-size:18px;';
+				title.className = 'writer-function-grid__group-title';
 				this.grid.appendChild(title);
+			}
+			if (feature.kind === 'toggle') {
+				this.grid.appendChild(this.createToggleRow(feature));
+				return;
 			}
 			const button = document.createElement('button');
 			button.type = 'button';
+			button.className = 'writer-function-tile';
 			button.setAttribute('aria-label', feature.label);
-			button.style.cssText =
-				'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-				'gap:8px;min-height:96px;padding:12px 8px;border:none;border-radius:24px;' +
-				'background:#f2f3f5;font:inherit;cursor:pointer;';
 			const icon = WriterEditorIcons.get(feature.icon);
 			if (icon) {
 				const iconWrap = document.createElement('span');
-				iconWrap.style.cssText =
-					'width:24px;height:24px;display:flex;align-items:center;justify-content:center;color:#1278D9;';
+				iconWrap.className = 'writer-function-tile__icon';
 				iconWrap.innerHTML = icon;
 				button.appendChild(iconWrap);
 			}
 			const tileLabel = document.createElement('span');
 			tileLabel.textContent = feature.label;
-			tileLabel.style.cssText = 'font-size:14px;color:#101010;text-align:center;';
+			tileLabel.className = 'writer-function-tile__label';
 			button.appendChild(tileLabel);
 
 			const isDialog = feature.kind === 'dialog';
@@ -193,6 +232,136 @@ class WriterEditorPanel {
 			}
 			button.onclick = () => this.onFeature(feature);
 			this.grid.appendChild(button);
+		});
+		this.refreshReviewToggles();
+	}
+
+	private renderFileList(): void {
+		this.grid.className = 'writer-function-list';
+		const features = WriterEditorCatalog.getFeatures('file');
+		features.forEach((feature, index) => {
+			const row = document.createElement('button');
+			row.type = 'button';
+			row.className = 'writer-function-list-row';
+			row.setAttribute('aria-label', feature.label);
+
+			const iconWrap = document.createElement('span');
+			iconWrap.className = 'writer-function-list-row__icon';
+			const icon = WriterEditorIcons.get(feature.icon);
+			if (icon) {
+				iconWrap.innerHTML = icon;
+			}
+			row.appendChild(iconWrap);
+
+			const label = document.createElement('span');
+			label.className = 'writer-function-list-row__label';
+			label.textContent = feature.label;
+			row.appendChild(label);
+
+			const isDialog = feature.kind === 'dialog';
+			const dialogReady =
+				isDialog &&
+				!!feature.dialog &&
+				WriterEditorPanel.SUPPORTED_DIALOGS.indexOf(feature.dialog) >= 0;
+			const gated = isDialog && !dialogReady;
+			row.disabled = gated;
+			if (gated) {
+				row.title = '即将支持';
+			}
+			row.onclick = () => this.onFeature(feature);
+			this.grid.appendChild(row);
+
+			if (index + 1 < features.length) {
+				const divider = document.createElement('div');
+				divider.className = 'writer-function-list-divider';
+				divider.setAttribute('aria-hidden', 'true');
+				this.grid.appendChild(divider);
+			}
+		});
+	}
+
+	private createToggleRow(feature: WriterEditorFeature): HTMLElement {
+		const command = feature.unocmd || '';
+		const row = document.createElement('div');
+		row.className = 'writer-function-toggle-row';
+
+		if (feature.icon) {
+			const iconWrap = document.createElement('span');
+			iconWrap.className = 'writer-function-toggle-row__icon';
+			const icon = WriterEditorIcons.get(feature.icon);
+			if (icon) {
+				iconWrap.innerHTML = icon;
+			}
+			row.appendChild(iconWrap);
+		}
+
+		const label = document.createElement('span');
+		label.textContent = feature.label;
+		label.className = 'writer-function-toggle-row__label';
+		row.appendChild(label);
+
+		const toggle = document.createElement('input');
+		toggle.type = 'checkbox';
+		toggle.className = 'writer-function-toggle-row__input';
+		toggle.setAttribute('aria-label', feature.label);
+		toggle.checked = this.controller.isCommandChecked(
+			command,
+			!!feature.defaultOn,
+		);
+		if (command) {
+			this.reviewToggleInputs[command] = toggle;
+		}
+		toggle.onchange = () => {
+			this.controller.runToggle(feature, toggle.checked);
+		};
+		row.appendChild(toggle);
+		return row;
+	}
+
+	private refreshReviewToggles(): void {
+		Object.keys(this.reviewToggleInputs).forEach((command) => {
+			const input = this.reviewToggleInputs[command];
+			const feature = WriterEditorCatalog.FEATURES.find(
+				(candidate) => candidate.unocmd === command && candidate.kind === 'toggle',
+			);
+			input.checked = this.controller.isCommandChecked(
+				command,
+				feature ? !!feature.defaultOn : false,
+			);
+		});
+	}
+
+	private subscribeReviewState(): void {
+		if (this.onReviewStateBound) {
+			return;
+		}
+		const map = (window as any).app && (window as any).app.map;
+		if (!map || typeof map.on !== 'function') {
+			return;
+		}
+		const onState = (event: any) => {
+			if (!event || typeof event.commandName !== 'string') {
+				return;
+			}
+			if (event.commandName in this.reviewToggleInputs) {
+				this.reviewToggleInputs[event.commandName].checked = event.state === 'true';
+			}
+		};
+		this.onReviewStateBound = onState;
+		map.on('commandstatechanged', onState);
+	}
+
+	private unsubscribeReviewState(): void {
+		if (!this.onReviewStateBound) {
+			return;
+		}
+		const map = (window as any).app && (window as any).app.map;
+		if (map && typeof map.off === 'function') {
+			map.off('commandstatechanged', this.onReviewStateBound);
+		}
+		this.onReviewStateBound = null;
+		Object.keys(this.reviewToggleInputs).forEach((command) => {
+			delete this.reviewToggleInputs[command];
 		});
 	}
 
@@ -221,13 +390,20 @@ class WriterEditorPanel {
 				this.openImageDialog();
 			} else if (dialog === 'saveAs') {
 				this.openSaveAsDialog();
-			} else if (dialog === 'trackChanges') {
-				this.openTrackChangesDialog();
+			} else if (dialog === 'comment') {
+				this.openCommentDialog();
 			}
+			return;
+		}
+		if (feature.kind === 'toggle') {
 			return;
 		}
 		if (feature.kind === 'findReplace') {
 			this.openFindReplaceDialog();
+			return;
+		}
+		if (feature.kind === 'export' && (window as any).ThisIsTheiOSApp) {
+			this.openExportFormatDialog();
 			return;
 		}
 		const result = this.controller.run(feature);
@@ -328,39 +504,12 @@ class WriterEditorPanel {
 		}));
 	}
 
-	private openTrackChangesDialog(): void {
-		const options: WriterChooseOption[] = [
-			{ label: '开启追踪修订', value: 'on' },
-			{ label: '关闭追踪修订', value: 'off' },
-		];
-		this.presentSub(new WriterEditorChooseDialog('追踪修订', options, (option) => {
-			this.controller.trackChanges(option.value === 'on');
-		}));
+	private openImageDialog(): void {
+		this.presentSub(new WriterEditorImageDialog(this.controller));
 	}
 
-	private openImageDialog(): void {
-		const input = document.createElement('input');
-		input.type = 'file';
-		input.accept = 'image/*';
-		const onImageSelected = () => {
-			const file = input.files && input.files[0];
-			if (!file) {
-				return;
-			}
-			const reader = new FileReader();
-			reader.onload = () => {
-				const bytes = new Uint8Array(reader.result as ArrayBuffer);
-				let str = '';
-				for (let i = 0; i < bytes.length; i++) {
-					str += String.fromCharCode(bytes[i]);
-				}
-				this.controller.insertImage(file.name, window.btoa(str));
-			};
-			reader.readAsArrayBuffer(file);
-		};
-		input.onchange = onImageSelected;
-		this.sheet.close();
-		input.click();
+	private openCommentDialog(): void {
+		this.presentSub(new WriterEditorCommentDialog(this.controller));
 	}
 
 	private openSaveAsDialog(): void {
@@ -372,6 +521,17 @@ class WriterEditorPanel {
 		];
 		this.presentSub(new WriterEditorChooseDialog('另存为', options, (option) => {
 			this.controller.saveAs(option.value);
+		}));
+	}
+
+	private openExportFormatDialog(): void {
+		const options: WriterChooseOption[] = [
+			{ label: 'PDF (.pdf)', value: 'pdf' },
+			{ label: 'ODF 文本文档 (.odt)', value: 'odt' },
+			{ label: 'Word 文档 (.docx)', value: 'docx' },
+		];
+		this.presentSub(new WriterEditorChooseDialog('导出为', options, (option) => {
+			this.controller.exportAs(option.value);
 		}));
 	}
 

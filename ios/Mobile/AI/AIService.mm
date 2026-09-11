@@ -163,6 +163,7 @@
     if (form.frequencyPenalty != 0) {
         body[@"frequency_penalty"] = @(form.frequencyPenalty);
     }
+    [body addEntriesFromDictionary:[self.modelStore samplingBodyFieldsForForm:form]];
     request.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
 
     AIServiceRequest *serviceRequest = [[AIServiceRequest alloc] init];
@@ -754,6 +755,22 @@ didCompleteWithError:(NSError *)error {
         }
         systemPrompt = sys;
         userPrompt = [NSString stringWithFormat:@"文档主题：%@", text];
+    } else if ([taskType isEqualToString:@"typeset"]) {
+        NSString *typesetType = [context[@"typesetType"] isKindOfClass:[NSString class]]
+            ? context[@"typesetType"] : @"general";
+        NSString *typesetVersion = [context[@"typesetVersion"] isKindOfClass:[NSString class]]
+            ? context[@"typesetVersion"] : @"v1";
+        BOOL paragraphMode = [context[@"paragraphMode"] boolValue];
+        NSDictionary *prompts = nil;
+        if (paragraphMode) {
+            prompts = [self typesetParagraphPromptsForType:typesetType paragraphText:text];
+        } else if ([typesetVersion isEqualToString:@"v2"]) {
+            prompts = [self typesetV2PromptsForType:typesetType fullText:text];
+        } else {
+            prompts = [self typesetPromptsForType:typesetType fullText:text];
+        }
+        systemPrompt = prompts[@"system"];
+        userPrompt = prompts[@"user"];
     } else if ([taskType isEqualToString:@"text_extract"]) {
         systemPrompt =
             @"你是文字识别专家。请识别并提取图片中的所有文字，保持原始排版和段落结构，只返回提取的文字内容，不要添加解释。";
@@ -808,6 +825,132 @@ didCompleteWithError:(NSError *)error {
     }
     [messages addObject:userContent];
     return messages;
+}
+
+- (NSArray<NSString *> *)typesetSectionKeysForType:(NSString *)typesetType {
+    if ([typesetType isEqualToString:@"paper"]) {
+        return @[@"title", @"abstract", @"keywords", @"introduction", @"heading1", @"heading2",
+                 @"heading3", @"body", @"conclusion_body", @"ack_body"];
+    }
+    if ([typesetType isEqualToString:@"gov"]) {
+        return @[@"recipient", @"body", @"signature_org", @"signature_date", @"notes"];
+    }
+    if ([typesetType isEqualToString:@"contract"]) {
+        return @[@"title", @"contract_number", @"party_a", @"party_a_id", @"party_b", @"party_b_id",
+                 @"preamble", @"clause_title", @"clause_subtitle", @"clause_body"];
+    }
+    return @[@"title", @"heading1", @"heading2", @"heading3", @"body"];
+}
+
+- (NSDictionary *)typesetV2PromptsForType:(NSString *)typesetType fullText:(NSString *)fullText {
+    NSString *text = [fullText stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSArray<NSString *> *keys = [self typesetSectionKeysForType:typesetType ?: @"general"];
+    NSMutableString *sectionList = [NSMutableString string];
+    for (NSString *key in keys) {
+        [sectionList appendFormat:@"%@, ", key];
+    }
+    NSString *systemPrompt =
+        @"你是专业的文档排版助手。请从用户提供的原始文档中提取内容，"
+         "将原文各部分填入模板对应的分区中，以 JSON 格式返回。\n"
+         "重要原则：保持原文内容不变，不要改写、扩写、缩写或润色原文。"
+         "仅进行结构化拆分——把原文各部分分配到对应的模板分区。\n"
+         "返回格式：{\"sections\": {\"key\": \"content\", ...}}，不要包含 markdown 代码块。";
+    NSString *userPrompt = [NSString stringWithFormat:
+        @"请将以下原始文档内容按模板分区进行结构化拆分，返回 JSON。"
+         "不要修改原文内容，仅将各部分填入对应分区。\n\n"
+         "注意：原文中的图片已标记为[图1]、[图2]等占位符，请保留这些标记。\n\n"
+         "分区列表：%@\n\n原始文档内容：\n---\n%@\n---\n\n请直接返回 JSON。",
+        sectionList, text];
+    return @{@"system": systemPrompt, @"user": userPrompt};
+}
+
+- (NSDictionary *)typesetParagraphPromptsForType:(NSString *)typesetType paragraphText:(NSString *)paragraphText {
+    NSArray<NSString *> *keys = [self typesetSectionKeysForType:typesetType ?: @"general"];
+    NSMutableString *sectionList = [NSMutableString string];
+    for (NSString *key in keys) {
+        [sectionList appendFormat:@"%@, ", key];
+    }
+    NSString *systemPrompt =
+        @"你是文档段落分类助手。请判断每个段落属于模板中的哪个分区。"
+         "只返回 JSON 数组：[{\"paraIndex\":0,\"section\":\"body\"}, ...]，不要 markdown 代码块。";
+    NSString *userPrompt = [NSString stringWithFormat:
+        @"请为每个段落判断它属于模板中的哪个分区。\n\n可用分区：%@\n\n段落内容：\n---\n%@\n---",
+        sectionList, paragraphText ?: @""];
+    return @{@"system": systemPrompt, @"user": userPrompt};
+}
+
+- (NSDictionary *)typesetPromptsForType:(NSString *)typesetType fullText:(NSString *)fullText {
+    NSString *text = [fullText stringByTrimmingCharactersInSet:
+        [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSString *systemPrompt = nil;
+    NSString *userPrompt = nil;
+
+    if ([typesetType isEqualToString:@"paper"]) {
+        systemPrompt =
+            @"你是学术论文排版专家。你的任务是将用户提供的论文全文内容按照标准学术论文格式进行排版，并返回完整的 HTML 格式结果。\n\n"
+             "排版规范：\n"
+             "1. 标题层级：使用 <h1> 作为论文标题，<h2> 作为章节标题，<h3> 作为小节标题\n"
+             "2. 摘要：用 <p><strong>摘要：</strong> 包裹摘要内容\n"
+             "3. 关键词：用 <p><strong>关键词：</strong> 列出关键词，用顿号分隔\n"
+             "4. 正文：用 <p> 包裹段落，段首不缩进\n"
+             "5. 图表：用 <table> 制作表格，<caption> 作为表格标题\n"
+             "6. 参考文献：用 <ol> 编号列表，每个文献用 <li> 包裹\n"
+             "7. 公式：简单公式用 <sub>/<sup>，复杂公式用文本描述\n\n"
+             "请只返回排版后的 HTML，不要包含任何其他说明文字或代码块标记。不要使用 CSS 样式，只用 HTML 语义化标签。";
+        userPrompt = [NSString stringWithFormat:
+            @"请将以下论文内容按照标准学术论文格式排版，返回完整的 HTML：\n\n---\n%@\n---\n\n请直接返回排版后的 HTML，不要包含任何其他说明文字。",
+            text];
+    } else if ([typesetType isEqualToString:@"gov"]) {
+        systemPrompt =
+            @"你是党政公文排版专家。你的任务是将用户提供的公文内容按照标准党政公文格式（GB/T 9704-2012）进行排版，并返回完整的 HTML 格式结果。\n\n"
+             "排版规范：\n"
+             "1. 发文机关标志：用 <div align=\"center\"><h1> 发文机关名称 </h1></div>\n"
+             "2. 发文字号：用 <div align=\"center\"><p> ××发〔2026〕×号 </p></div>\n"
+             "3. 标题：用 <div align=\"center\"><h2> 公文标题 </h2></div>\n"
+             "4. 主送机关：用 <p><strong>×××：</strong></p>，顶格\n"
+             "5. 正文：用 <p> 包裹段落，首行不缩进\n"
+             "6. 附件说明：用 <p> 附件：1.××× </p>\n"
+             "7. 发文机关署名：用 <div align=\"right\"><p> ×××局 </p></div>\n"
+             "8. 成文日期：用 <div align=\"right\"><p> 2026年6月18日 </p></div>\n"
+             "9. 版记：用分隔线 <hr>，抄送用 <p>\n\n"
+             "请只返回排版后的 HTML，不要使用 CSS，只用 HTML 属性（align, font size）和语义化标签。";
+        userPrompt = [NSString stringWithFormat:
+            @"请按照标准党政公文格式排版以下内容，返回完整的 HTML：\n\n---\n%@\n---\n\n请直接返回排版后的 HTML。",
+            text];
+    } else if ([typesetType isEqualToString:@"contract"]) {
+        systemPrompt =
+            @"你是合同协议排版专家。你的任务是将用户提供的合同内容按照标准合同格式进行排版，并返回完整的 HTML 格式结果。\n\n"
+             "排版规范：\n"
+             "1. 合同标题：用 <h1> 合同名称 </h1>，居中\n"
+             "2. 合同编号：用 <p> 合同编号：××× </p>\n"
+             "3. 甲乙双方：用 <p> 甲方：××× </p> 和 <p> 乙方：××× </p>\n"
+             "4. 日期地点：用 <p> 签订日期：×××年××月××日 </p> 和 <p> 签订地点：××× </p>\n"
+             "5. 条款标题：用 <h3> 第一条 ××× </h3>，或用 <ol> 编号列表\n"
+             "6. 条款内容：用 <p> 包裹每一条款内容\n"
+             "7. 子项：用 <ul> 或 <ol> 列表\n"
+             "8. 签名区：用 <hr> 分隔，然后用 <div align=\"right\"><p> 甲方（签字）：_________ </p></div>\n\n"
+             "请只返回排版后的 HTML，不使用 CSS。";
+        userPrompt = [NSString stringWithFormat:
+            @"请按照合同协议标准格式排版以下内容，返回完整的 HTML：\n\n---\n%@\n---\n\n请直接返回排版后的 HTML。",
+            text];
+    } else {
+        systemPrompt =
+            @"你是通用文档排版专家。你的任务是将用户提供的文档内容进行清晰的格式化排版，并返回完整的 HTML 格式结果。\n\n"
+             "排版原则：\n"
+             "1. 自动识别标题层级，将短小且独立的行设为 <h2> 或 <h3>\n"
+             "2. 正常段落用 <p>\n"
+             "3. 列表项用 <ul> 或 <ol>\n"
+             "4. 表格用 <table>\n"
+             "5. 强调内容用 <strong> 或 <em>\n"
+             "6. 保持原有内容顺序，不增删内容\n"
+             "7. 使文档结构清晰、易于阅读\n\n"
+             "请只返回排版后的 HTML，不使用 CSS。";
+        userPrompt = [NSString stringWithFormat:
+            @"请对以下内容进行清晰的格式化排版，返回完整的 HTML：\n\n---\n%@\n---\n\n请直接返回排版后的 HTML。",
+            text];
+    }
+
+    return @{@"system": systemPrompt ?: @"", @"user": userPrompt ?: @""};
 }
 
 - (NSString *)promptWithText:(NSString *)text

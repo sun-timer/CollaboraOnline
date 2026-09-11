@@ -8,14 +8,51 @@
 #import "AISettingsDrawerController.h"
 
 #import "AIModelConfigStore.h"
-
-#import <PhotosUI/PhotosUI.h>
+#import "AISettingsDrawerIcons.h"
+#import "Settings/AboutViewController.h"
+#import "Settings/AppIcons.h"
+#import "Settings/ClearCacheViewController.h"
+#import "LocalModelStore.h"
+#import "LocalModelViewController.h"
+#import "Settings/ProfileSettingsViewController.h"
 
 static const CGFloat kDrawerWidth = 320.0;
+
+static UIColor *AIDrawerColorPanelBg(void) {
+    return [UIColor colorWithRed:243.0 / 255.0 green:243.0 / 255.0 blue:243.0 / 255.0 alpha:1];
+}
+static UIColor *AIDrawerColorCardBg(void) {
+    return [UIColor colorWithRed:242.0 / 255.0 green:243.0 / 255.0 blue:245.0 / 255.0 alpha:1];
+}
+static UIColor *AIDrawerColorOrange(void) {
+    return [UIColor colorWithRed:250.0 / 255.0 green:98.0 / 255.0 blue:0 alpha:1];
+}
+static UIColor *AIDrawerColorTextPrimary(void) {
+    return [UIColor colorWithRed:16.0 / 255.0 green:16.0 / 255.0 blue:16.0 / 255.0 alpha:1];
+}
+static UIColor *AIDrawerColorTextSecondary(void) {
+    return [UIColor colorWithRed:106.0 / 255.0 green:106.0 / 255.0 blue:106.0 / 255.0 alpha:1];
+}
+
+static UIView *AIDrawerDivider(void) {
+    UIView *line = [[UIView alloc] init];
+    line.translatesAutoresizingMaskIntoConstraints = NO;
+    line.backgroundColor = [UIColor colorWithWhite:0 alpha:0.1];
+    [line.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
+    return line;
+}
+
+static UIView *AIDrawerHairline(void) {
+    UIView *line = [[UIView alloc] init];
+    line.translatesAutoresizingMaskIntoConstraints = NO;
+    line.backgroundColor = [UIColor colorWithRed:216.0 / 255.0 green:216.0 / 255.0 blue:216.0 / 255.0 alpha:1];
+    [line.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
+    return line;
+}
 static NSString *const kProfileNameKey = @"USER_PROFILE_NAME";
 static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
 
-@interface AISettingsDrawerController () <PHPickerViewControllerDelegate, UITextFieldDelegate, UIGestureRecognizerDelegate>
+@interface AISettingsDrawerController () <UITextFieldDelegate, UIGestureRecognizerDelegate>
 @property (weak, nonatomic) UIViewController *host;
 @property (strong, nonatomic, readwrite) UIScreenEdgePanGestureRecognizer *edgePanGesture;
 @property (strong, nonatomic) AIModelConfigStore *modelStore;
@@ -31,9 +68,15 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
 @property (strong, nonatomic) UILabel *nameLabel;
 @property (strong, nonatomic) UIView *modelsBody;
 @property (strong, nonatomic) NSLayoutConstraint *modelsBodyHeight;
-@property (strong, nonatomic) NSLayoutConstraint *modelsBodyBottom;
-@property (strong, nonatomic) UILabel *chevronLabel;
+@property (strong, nonatomic) UIImageView *chevronView;
 @property (strong, nonatomic) NSMutableDictionary<NSNumber *, UILabel *> *modelValueLabels;
+@property (strong, nonatomic) NSMutableDictionary<NSNumber *, UIView *> *modelRowBackgrounds;
+@property (strong, nonatomic) UIButton *profileEditButton;
+@property (strong, nonatomic) UILabel *localStatusLabel;
+@property (strong, nonatomic) UIButton *localRowButton;
+@property (strong, nonatomic) UIStackView *configStack;
+@property (strong, nonatomic) UIButton *configCancelButton;
+@property (strong, nonatomic) UIButton *configSaveFooterButton;
 @property (strong, nonatomic) UILabel *configTitleLabel;
 @property (strong, nonatomic) UITextField *configNameField;
 @property (strong, nonatomic) UITextField *providerField;
@@ -61,6 +104,7 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
     drawer.host = host;
     drawer.modelStore = [[AIModelConfigStore alloc] init];
     drawer.modelValueLabels = [NSMutableDictionary dictionary];
+    drawer.modelRowBackgrounds = [NSMutableDictionary dictionary];
     [host addChildViewController:drawer];
     drawer.view.frame = host.view.bounds;
     drawer.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -108,7 +152,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     CGFloat width = MIN(kDrawerWidth, [UIScreen mainScreen].bounds.size.width * 0.92);
     self.panelView = [[UIView alloc] init];
     self.panelView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.panelView.backgroundColor = UIColor.whiteColor;
+    self.panelView.backgroundColor = AIDrawerColorPanelBg();
     [self.view addSubview:self.panelView];
 
     self.configPanel = [[UIView alloc] init];
@@ -137,11 +181,14 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     [self buildDrawerContent];
     [self buildConfigContent];
     [self reloadProfile];
+    [self reloadLocalModelStatus];
     [self reloadModelRows];
+    self.modelsExpanded = YES;
+    [self applyModelsExpandedStateAnimated:NO];
 }
 
 - (UIColor *)accentColor {
-    return [UIColor colorWithRed:254.0 / 255.0 green:58.0 / 255.0 blue:58.0 / 255.0 alpha:1];
+    return AIDrawerColorOrange();
 }
 
 - (void)buildDrawerContent {
@@ -149,14 +196,13 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 
     UIView *profile = [[UIView alloc] init];
     profile.translatesAutoresizingMaskIntoConstraints = NO;
+    profile.backgroundColor = UIColor.whiteColor;
     profile.accessibilityIdentifier = @"aiDrawerProfile";
     [self.panelView addSubview:profile];
-    UITapGestureRecognizer *editProfile = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(editProfile)];
-    [profile addGestureRecognizer:editProfile];
 
     self.avatarView = [[UIImageView alloc] init];
     self.avatarView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.avatarView.backgroundColor = [self accentColor];
+    self.avatarView.backgroundColor = AIDrawerColorOrange();
     self.avatarView.layer.cornerRadius = 20;
     self.avatarView.clipsToBounds = YES;
     self.avatarView.contentMode = UIViewContentModeScaleAspectFill;
@@ -165,8 +211,19 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     self.nameLabel = [[UILabel alloc] init];
     self.nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.nameLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
-    self.nameLabel.textColor = [UIColor colorWithWhite:0.08 alpha:1];
+    self.nameLabel.textColor = AIDrawerColorTextPrimary();
     [profile addSubview:self.nameLabel];
+
+    self.profileEditButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.profileEditButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.profileEditButton setImage:[AISettingsDrawerIcons iconNamed:@"profile-edit" size:28]
+                            forState:UIControlStateNormal];
+    self.profileEditButton.accessibilityLabel = @"编辑昵称";
+    [self.profileEditButton addTarget:self action:@selector(editProfile) forControlEvents:UIControlEventTouchUpInside];
+    [profile addSubview:self.profileEditButton];
+
+    UIView *profileDivider = AIDrawerHairline();
+    [profile addSubview:profileDivider];
 
     UIScrollView *scroll = [[UIScrollView alloc] init];
     scroll.translatesAutoresizingMaskIntoConstraints = NO;
@@ -174,48 +231,64 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 
     UIView *card = [[UIView alloc] init];
     card.translatesAutoresizingMaskIntoConstraints = NO;
-    card.layer.cornerRadius = 12;
-    card.backgroundColor = [UIColor colorWithWhite:0.97 alpha:1];
+    card.layer.cornerRadius = 8;
+    card.backgroundColor = AIDrawerColorCardBg();
     [scroll addSubview:card];
 
-    UIButton *header = [UIButton buttonWithType:UIButtonTypeSystem];
+    UIButton *header = [UIButton buttonWithType:UIButtonTypeCustom];
     header.translatesAutoresizingMaskIntoConstraints = NO;
     header.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
     [header addTarget:self action:@selector(toggleModels) forControlEvents:UIControlEventTouchUpInside];
     [card addSubview:header];
 
+    UIImageView *headerIcon = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"config-header" size:48]];
+    headerIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    headerIcon.contentMode = UIViewContentModeScaleAspectFit;
+    headerIcon.userInteractionEnabled = NO;
+    [header addSubview:headerIcon];
+
     UILabel *title = [[UILabel alloc] init];
     title.translatesAutoresizingMaskIntoConstraints = NO;
     title.text = @"AI 模型配置";
-    title.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
-    title.textColor = [UIColor colorWithWhite:0.06 alpha:1];
+    title.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    title.textColor = AIDrawerColorTextPrimary();
     title.userInteractionEnabled = NO;
     [header addSubview:title];
 
     UILabel *desc = [[UILabel alloc] init];
     desc.translatesAutoresizingMaskIntoConstraints = NO;
     desc.text = @"点击展开以添加或编辑模型";
-    desc.font = [UIFont systemFontOfSize:12];
-    desc.textColor = [UIColor colorWithWhite:0.42 alpha:1];
+    desc.font = [UIFont systemFontOfSize:10];
+    desc.textColor = AIDrawerColorTextSecondary();
     desc.numberOfLines = 2;
     desc.userInteractionEnabled = NO;
     [header addSubview:desc];
 
-    self.chevronLabel = [[UILabel alloc] init];
-    self.chevronLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.chevronLabel.text = @"▾";
-    self.chevronLabel.font = [UIFont systemFontOfSize:20];
-    self.chevronLabel.textColor = [UIColor colorWithWhite:0.4 alpha:1];
-    [header addSubview:self.chevronLabel];
+    self.chevronView = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"chevron-up" size:20]];
+    self.chevronView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.chevronView.contentMode = UIViewContentModeCenter;
+    self.chevronView.userInteractionEnabled = NO;
+    [header addSubview:self.chevronView];
+
+    UIView *headerDivider = AIDrawerDivider();
+    [card addSubview:headerDivider];
 
     self.modelsBody = [[UIView alloc] init];
     self.modelsBody.translatesAutoresizingMaskIntoConstraints = NO;
     self.modelsBody.clipsToBounds = YES;
     [card addSubview:self.modelsBody];
 
+    UILabel *hint = [[UILabel alloc] init];
+    hint.translatesAutoresizingMaskIntoConstraints = NO;
+    hint.text = @"请选择要配置的模型";
+    hint.font = [UIFont systemFontOfSize:12];
+    hint.textColor = AIDrawerColorTextSecondary();
+    [self.modelsBody addSubview:hint];
+
     UIStackView *rows = [[UIStackView alloc] init];
     rows.translatesAutoresizingMaskIntoConstraints = NO;
     rows.axis = UILayoutConstraintAxisVertical;
+    rows.spacing = 4;
     [self.modelsBody addSubview:rows];
 
     NSArray *types = @[ @(AIModelTypeBase), @(AIModelTypeThink), @(AIModelTypeImage), @(AIModelTypeVision) ];
@@ -223,32 +296,45 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
         [rows addArrangedSubview:[self modelRowForType:(AIModelType)boxed.integerValue]];
     }
 
-    UIView *local = [[UIView alloc] init];
-    local.translatesAutoresizingMaskIntoConstraints = NO;
-    local.alpha = 0.45;
-    [rows addArrangedSubview:local];
+    UILabel *localHint = [[UILabel alloc] init];
+    localHint.translatesAutoresizingMaskIntoConstraints = NO;
+    localHint.text = @"本地模型";
+    localHint.font = [UIFont systemFontOfSize:12];
+    localHint.textColor = AIDrawerColorTextSecondary();
+    [self.modelsBody addSubview:localHint];
+
+    self.localRowButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.localRowButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.localRowButton.backgroundColor = UIColor.whiteColor;
+    self.localRowButton.layer.cornerRadius = 8;
+    self.localRowButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    self.localRowButton.accessibilityIdentifier = @"aiDrawerLocalModel";
+    [self.localRowButton addTarget:self action:@selector(openLocalModel) forControlEvents:UIControlEventTouchUpInside];
+    [self.modelsBody addSubview:self.localRowButton];
+
+    UIImageView *localIcon = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"model-vision" size:24]];
+    localIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    localIcon.userInteractionEnabled = NO;
+    [self.localRowButton addSubview:localIcon];
+
     UILabel *localTitle = [[UILabel alloc] init];
     localTitle.translatesAutoresizingMaskIntoConstraints = NO;
-    localTitle.text = @"本地模型";
-    localTitle.font = [UIFont systemFontOfSize:15];
-    [local addSubview:localTitle];
-    UILabel *localStatus = [[UILabel alloc] init];
-    localStatus.translatesAutoresizingMaskIntoConstraints = NO;
-    localStatus.text = @"后续阶段接入";
-    localStatus.font = [UIFont systemFontOfSize:12];
-    localStatus.textColor = [UIColor colorWithWhite:0.45 alpha:1];
-    [local addSubview:localStatus];
-    local.userInteractionEnabled = NO;
-    [NSLayoutConstraint activateConstraints:@[
-        [local.heightAnchor constraintEqualToConstant:56],
-        [localTitle.leadingAnchor constraintEqualToAnchor:local.leadingAnchor constant:4],
-        [localTitle.topAnchor constraintEqualToAnchor:local.topAnchor constant:8],
-        [localStatus.leadingAnchor constraintEqualToAnchor:localTitle.leadingAnchor],
-        [localStatus.topAnchor constraintEqualToAnchor:localTitle.bottomAnchor constant:2],
-    ]];
+    localTitle.text = @"本地推理";
+    localTitle.font = [UIFont systemFontOfSize:14];
+    localTitle.textColor = AIDrawerColorTextPrimary();
+    localTitle.userInteractionEnabled = NO;
+    [self.localRowButton addSubview:localTitle];
+
+    self.localStatusLabel = [[UILabel alloc] init];
+    self.localStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.localStatusLabel.font = [UIFont systemFontOfSize:12];
+    self.localStatusLabel.textColor = AIDrawerColorTextSecondary();
+    self.localStatusLabel.userInteractionEnabled = NO;
+    [self.localRowButton addSubview:self.localStatusLabel];
 
     UIView *footer = [[UIView alloc] init];
     footer.translatesAutoresizingMaskIntoConstraints = NO;
+    footer.backgroundColor = AIDrawerColorPanelBg();
     [self.panelView addSubview:footer];
     UIButton *cache = [self footerButton:@"清理缓存" action:@selector(clearCache)];
     cache.accessibilityIdentifier = @"aiDrawerClearCache";
@@ -258,17 +344,23 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     [footer addSubview:about];
 
     [NSLayoutConstraint activateConstraints:@[
-        [profile.topAnchor constraintEqualToAnchor:safe.topAnchor constant:12],
+        [profile.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [profile.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor],
         [profile.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor],
-        [profile.heightAnchor constraintEqualToConstant:64],
-        [self.avatarView.leadingAnchor constraintEqualToAnchor:profile.leadingAnchor constant:16],
-        [self.avatarView.centerYAnchor constraintEqualToAnchor:profile.centerYAnchor],
+        [self.avatarView.leadingAnchor constraintEqualToAnchor:profile.leadingAnchor constant:20],
+        [self.avatarView.topAnchor constraintEqualToAnchor:profile.topAnchor constant:16],
         [self.avatarView.widthAnchor constraintEqualToConstant:40],
         [self.avatarView.heightAnchor constraintEqualToConstant:40],
-        [self.nameLabel.leadingAnchor constraintEqualToAnchor:self.avatarView.trailingAnchor constant:12],
-        [self.nameLabel.centerYAnchor constraintEqualToAnchor:profile.centerYAnchor],
-        [self.nameLabel.trailingAnchor constraintEqualToAnchor:profile.trailingAnchor constant:-16],
+        [self.nameLabel.leadingAnchor constraintEqualToAnchor:self.avatarView.trailingAnchor constant:8],
+        [self.nameLabel.centerYAnchor constraintEqualToAnchor:self.avatarView.centerYAnchor],
+        [self.profileEditButton.trailingAnchor constraintEqualToAnchor:profile.trailingAnchor constant:-20],
+        [self.profileEditButton.centerYAnchor constraintEqualToAnchor:self.avatarView.centerYAnchor],
+        [self.profileEditButton.widthAnchor constraintEqualToConstant:28],
+        [self.profileEditButton.heightAnchor constraintEqualToConstant:28],
+        [profileDivider.leadingAnchor constraintEqualToAnchor:profile.leadingAnchor],
+        [profileDivider.trailingAnchor constraintEqualToAnchor:profile.trailingAnchor],
+        [profileDivider.topAnchor constraintEqualToAnchor:self.avatarView.bottomAnchor constant:16],
+        [profileDivider.bottomAnchor constraintEqualToAnchor:profile.bottomAnchor],
         [footer.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor],
         [footer.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor],
         [footer.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
@@ -286,74 +378,126 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
         [scroll.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor],
         [scroll.bottomAnchor constraintEqualToAnchor:footer.topAnchor],
         [card.topAnchor constraintEqualToAnchor:scroll.topAnchor constant:12],
-        [card.leadingAnchor constraintEqualToAnchor:scroll.leadingAnchor constant:12],
-        [card.trailingAnchor constraintEqualToAnchor:scroll.trailingAnchor constant:-12],
+        [card.leadingAnchor constraintEqualToAnchor:scroll.leadingAnchor constant:20],
+        [card.trailingAnchor constraintEqualToAnchor:scroll.trailingAnchor constant:-20],
         [card.bottomAnchor constraintEqualToAnchor:scroll.bottomAnchor constant:-12],
-        [card.widthAnchor constraintEqualToAnchor:scroll.widthAnchor constant:-24],
+        [card.widthAnchor constraintEqualToAnchor:scroll.widthAnchor constant:-40],
         [header.topAnchor constraintEqualToAnchor:card.topAnchor constant:12],
         [header.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:12],
         [header.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-12],
-        [title.topAnchor constraintEqualToAnchor:header.topAnchor],
-        [title.leadingAnchor constraintEqualToAnchor:header.leadingAnchor],
-        [title.trailingAnchor constraintEqualToAnchor:self.chevronLabel.leadingAnchor constant:-8],
+        [headerIcon.leadingAnchor constraintEqualToAnchor:header.leadingAnchor],
+        [headerIcon.topAnchor constraintEqualToAnchor:header.topAnchor],
+        [headerIcon.widthAnchor constraintEqualToConstant:48],
+        [headerIcon.heightAnchor constraintEqualToConstant:48],
+        [title.leadingAnchor constraintEqualToAnchor:headerIcon.trailingAnchor constant:12],
+        [title.topAnchor constraintEqualToAnchor:header.topAnchor constant:4],
+        [title.trailingAnchor constraintEqualToAnchor:self.chevronView.leadingAnchor constant:-8],
         [desc.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:4],
         [desc.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
         [desc.trailingAnchor constraintEqualToAnchor:title.trailingAnchor],
-        [desc.bottomAnchor constraintEqualToAnchor:header.bottomAnchor],
-        [self.chevronLabel.centerYAnchor constraintEqualToAnchor:header.centerYAnchor],
-        [self.chevronLabel.trailingAnchor constraintEqualToAnchor:header.trailingAnchor],
-        [self.modelsBody.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:8],
-        [self.modelsBody.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:8],
-        [self.modelsBody.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-8],
-        [self.modelsBody.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-8],
-        [rows.topAnchor constraintEqualToAnchor:self.modelsBody.topAnchor],
+        [desc.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-4],
+        [self.chevronView.centerYAnchor constraintEqualToAnchor:headerIcon.centerYAnchor],
+        [self.chevronView.trailingAnchor constraintEqualToAnchor:header.trailingAnchor],
+        [self.chevronView.widthAnchor constraintEqualToConstant:20],
+        [self.chevronView.heightAnchor constraintEqualToConstant:20],
+        [headerDivider.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:12],
+        [headerDivider.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:12],
+        [headerDivider.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-12],
+        [self.modelsBody.topAnchor constraintEqualToAnchor:headerDivider.bottomAnchor],
+        [self.modelsBody.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:12],
+        [self.modelsBody.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-12],
+        [self.modelsBody.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-12],
+        [hint.topAnchor constraintEqualToAnchor:self.modelsBody.topAnchor constant:12],
+        [hint.leadingAnchor constraintEqualToAnchor:self.modelsBody.leadingAnchor],
+        [hint.trailingAnchor constraintEqualToAnchor:self.modelsBody.trailingAnchor],
+        [rows.topAnchor constraintEqualToAnchor:hint.bottomAnchor constant:8],
         [rows.leadingAnchor constraintEqualToAnchor:self.modelsBody.leadingAnchor],
         [rows.trailingAnchor constraintEqualToAnchor:self.modelsBody.trailingAnchor],
+        [localHint.topAnchor constraintEqualToAnchor:rows.bottomAnchor constant:12],
+        [localHint.leadingAnchor constraintEqualToAnchor:self.modelsBody.leadingAnchor],
+        [self.localRowButton.topAnchor constraintEqualToAnchor:localHint.bottomAnchor constant:8],
+        [self.localRowButton.leadingAnchor constraintEqualToAnchor:self.modelsBody.leadingAnchor],
+        [self.localRowButton.trailingAnchor constraintEqualToAnchor:self.modelsBody.trailingAnchor],
+        [self.localRowButton.heightAnchor constraintEqualToConstant:55],
+        [self.localRowButton.bottomAnchor constraintEqualToAnchor:self.modelsBody.bottomAnchor],
+        [localIcon.leadingAnchor constraintEqualToAnchor:self.localRowButton.leadingAnchor constant:12],
+        [localIcon.centerYAnchor constraintEqualToAnchor:self.localRowButton.centerYAnchor],
+        [localIcon.widthAnchor constraintEqualToConstant:24],
+        [localIcon.heightAnchor constraintEqualToConstant:24],
+        [localTitle.leadingAnchor constraintEqualToAnchor:localIcon.trailingAnchor constant:12],
+        [localTitle.centerYAnchor constraintEqualToAnchor:self.localRowButton.centerYAnchor],
+        [self.localStatusLabel.trailingAnchor constraintEqualToAnchor:self.localRowButton.trailingAnchor constant:-12],
+        [self.localStatusLabel.centerYAnchor constraintEqualToAnchor:self.localRowButton.centerYAnchor],
     ]];
     self.modelsBodyHeight = [self.modelsBody.heightAnchor constraintEqualToConstant:0];
-    self.modelsBodyBottom = [self.modelsBody.bottomAnchor constraintEqualToAnchor:rows.bottomAnchor];
-    self.modelsBodyHeight.active = YES;
-    self.modelsBodyBottom.active = NO;
+    self.modelsBodyHeight.active = NO;
 }
 
 - (UIView *)modelRowForType:(AIModelType)type {
-    UIButton *row = [UIButton buttonWithType:UIButtonTypeSystem];
+    UIButton *row = [UIButton buttonWithType:UIButtonTypeCustom];
     row.tag = type;
     row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
     [row addTarget:self action:@selector(openModel:) forControlEvents:UIControlEventTouchUpInside];
     row.accessibilityIdentifier = [NSString stringWithFormat:@"aiModelRow-%ld", (long)type];
 
+    UIView *bg = [[UIView alloc] init];
+    bg.translatesAutoresizingMaskIntoConstraints = NO;
+    bg.userInteractionEnabled = NO;
+    bg.layer.cornerRadius = 8;
+    bg.backgroundColor = UIColor.whiteColor;
+    if (type == AIModelTypeBase) {
+        bg.layer.borderWidth = 2;
+        bg.layer.borderColor = AIDrawerColorOrange().CGColor;
+    }
+    [row insertSubview:bg atIndex:0];
+    self.modelRowBackgrounds[@(type)] = bg;
+
+    UIImageView *icon = [[UIImageView alloc] initWithImage:
+        [AISettingsDrawerIcons iconNamed:[AISettingsDrawerIcons modelIconNameForType:type] size:24]];
+    icon.translatesAutoresizingMaskIntoConstraints = NO;
+    icon.contentMode = UIViewContentModeScaleAspectFit;
+    icon.userInteractionEnabled = NO;
+    [row addSubview:icon];
+
     UILabel *title = [[UILabel alloc] init];
     title.translatesAutoresizingMaskIntoConstraints = NO;
     title.text = [self.modelStore defaultTitleForModelType:type];
-    title.font = [UIFont systemFontOfSize:15];
-    title.textColor = [UIColor colorWithWhite:0.1 alpha:1];
+    title.font = [UIFont systemFontOfSize:14];
+    title.textColor = [UIColor colorWithRed:51.0 / 255.0 green:51.0 / 255.0 blue:51.0 / 255.0 alpha:1];
     title.userInteractionEnabled = NO;
     [row addSubview:title];
 
     UILabel *value = [[UILabel alloc] init];
     value.translatesAutoresizingMaskIntoConstraints = NO;
     value.font = [UIFont systemFontOfSize:12];
-    value.textColor = [UIColor colorWithWhite:0.45 alpha:1];
+    value.textColor = AIDrawerColorTextSecondary();
     value.userInteractionEnabled = NO;
     [row addSubview:value];
     self.modelValueLabels[@(type)] = value;
 
-    UILabel *arrow = [[UILabel alloc] init];
+    UIImageView *arrow = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"chevron-right" size:16]];
     arrow.translatesAutoresizingMaskIntoConstraints = NO;
-    arrow.text = @">";
-    arrow.textColor = [UIColor colorWithWhite:0.55 alpha:1];
     arrow.userInteractionEnabled = NO;
     [row addSubview:arrow];
 
     [NSLayoutConstraint activateConstraints:@[
-        [row.heightAnchor constraintEqualToConstant:52],
-        [title.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:4],
-        [title.topAnchor constraintEqualToAnchor:row.topAnchor constant:8],
+        [row.heightAnchor constraintEqualToConstant:55],
+        [bg.topAnchor constraintEqualToAnchor:row.topAnchor],
+        [bg.bottomAnchor constraintEqualToAnchor:row.bottomAnchor],
+        [bg.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
+        [bg.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
+        [icon.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:12],
+        [icon.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        [icon.widthAnchor constraintEqualToConstant:24],
+        [icon.heightAnchor constraintEqualToConstant:24],
+        [title.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:12],
+        [title.topAnchor constraintEqualToAnchor:row.topAnchor constant:10],
         [value.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
-        [value.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:2],
+        [value.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:4],
         [arrow.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
-        [arrow.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-4],
+        [arrow.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12],
+        [arrow.widthAnchor constraintEqualToConstant:16],
+        [arrow.heightAnchor constraintEqualToConstant:16],
     ]];
     return row;
 }
@@ -370,36 +514,100 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     return button;
 }
 
+- (UIView *)makeSettingsCard {
+    UIView *card = [[UIView alloc] init];
+    card.translatesAutoresizingMaskIntoConstraints = NO;
+    card.backgroundColor = UIColor.whiteColor;
+    card.layer.cornerRadius = 8;
+    card.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    card.layer.borderColor = [UIColor colorWithRed:203.0 / 255.0 green:209.0 / 255.0 blue:215.0 / 255.0 alpha:1].CGColor;
+    return card;
+}
+
+- (UILabel *)makeSectionTitle:(NSString *)text icon:(NSString *)iconName {
+    UILabel *label = [[UILabel alloc] init];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.text = text;
+    label.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+    label.textColor = AIDrawerColorOrange();
+    label.tag = 9001;
+    return label;
+}
+
 - (void)buildConfigContent {
     UILayoutGuide *safe = self.configPanel.safeAreaLayoutGuide;
-    UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
+
+    UIView *header = [[UIView alloc] init];
+    header.translatesAutoresizingMaskIntoConstraints = NO;
+    header.backgroundColor = UIColor.whiteColor;
+    [self.configPanel addSubview:header];
+
+    UIButton *back = [UIButton buttonWithType:UIButtonTypeCustom];
     back.translatesAutoresizingMaskIntoConstraints = NO;
-    [back setTitle:@"‹ 保存并返回" forState:UIControlStateNormal];
+    [back setImage:[AISettingsDrawerIcons iconNamed:@"config-back" size:24] forState:UIControlStateNormal];
     back.accessibilityIdentifier = @"aiModelConfigBack";
     [back addTarget:self action:@selector(saveAndCloseConfig) forControlEvents:UIControlEventTouchUpInside];
-    [self.configPanel addSubview:back];
+    [header addSubview:back];
 
     self.configTitleLabel = [[UILabel alloc] init];
     self.configTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.configTitleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
-    [self.configPanel addSubview:self.configTitleLabel];
+    self.configTitleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightSemibold];
+    self.configTitleLabel.textColor = AIDrawerColorTextPrimary();
+    [header addSubview:self.configTitleLabel];
+
+    UIView *headerDivider = AIDrawerHairline();
+    [self.configPanel addSubview:headerDivider];
 
     UIScrollView *scroll = [[UIScrollView alloc] init];
     scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    scroll.backgroundColor = UIColor.whiteColor;
     [self.configPanel addSubview:scroll];
-    UIStackView *stack = [[UIStackView alloc] init];
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    stack.axis = UILayoutConstraintAxisVertical;
-    stack.spacing = 10;
-    [scroll addSubview:stack];
 
-    self.configNameField = [self addField:@"配置名称" to:stack];
-    self.providerField = [self addField:@"供应商" to:stack];
-    self.urlField = [self addField:@"URL" to:stack];
+    self.configStack = [[UIStackView alloc] init];
+    self.configStack.translatesAutoresizingMaskIntoConstraints = NO;
+    self.configStack.axis = UILayoutConstraintAxisVertical;
+    self.configStack.spacing = 20;
+    [scroll addSubview:self.configStack];
+
+    UIView *connectionCard = [self makeSettingsCard];
+    UIStackView *connectionStack = [[UIStackView alloc] init];
+    connectionStack.translatesAutoresizingMaskIntoConstraints = NO;
+    connectionStack.axis = UILayoutConstraintAxisVertical;
+    connectionStack.spacing = 12;
+    [connectionCard addSubview:connectionStack];
+
+    UIStackView *connectionTitleRow = [[UIStackView alloc] init];
+    connectionTitleRow.axis = UILayoutConstraintAxisHorizontal;
+    connectionTitleRow.spacing = 8;
+    connectionTitleRow.alignment = UIStackViewAlignmentCenter;
+    UIImageView *connectionIcon = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"ai-connection" size:20]];
+    [connectionTitleRow addArrangedSubview:connectionIcon];
+    [connectionTitleRow addArrangedSubview:[self makeSectionTitle:@"连接配置" icon:@"ai-connection"]];
+    [connectionStack addArrangedSubview:connectionTitleRow];
+
+    self.configNameField = [self addField:@"配置名称" placeholder:@"我的 OpenAI 配置" to:connectionStack];
+    self.providerField = [self addField:@"供应商" placeholder:@"OpenAI" to:connectionStack];
+    self.urlField = [self addField:@"URL" placeholder:@"https://api.openai.com/v1/chat/completions" to:connectionStack];
     self.urlField.keyboardType = UIKeyboardTypeURL;
-    self.apiKeyField = [self addField:@"API Key" to:stack];
+    self.apiKeyField = [self addField:@"API Key" placeholder:@"sk-..." to:connectionStack];
     self.apiKeyField.secureTextEntry = YES;
-    self.modelNameField = [self addField:@"模型名称" to:stack];
+    self.modelNameField = [self addField:@"模型名称" placeholder:@"gpt-4o-mini" to:connectionStack];
+
+    UIView *paramsCard = [self makeSettingsCard];
+    UIStackView *paramsStack = [[UIStackView alloc] init];
+    paramsStack.translatesAutoresizingMaskIntoConstraints = NO;
+    paramsStack.axis = UILayoutConstraintAxisVertical;
+    paramsStack.spacing = 14;
+    [paramsCard addSubview:paramsStack];
+
+    UIStackView *paramsTitleRow = [[UIStackView alloc] init];
+    paramsTitleRow.axis = UILayoutConstraintAxisHorizontal;
+    paramsTitleRow.spacing = 8;
+    paramsTitleRow.alignment = UIStackViewAlignmentCenter;
+    UIImageView *paramsIcon = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"ai-params" size:20]];
+    [paramsTitleRow addArrangedSubview:paramsIcon];
+    [paramsTitleRow addArrangedSubview:[self makeSectionTitle:@"参数配置" icon:@"ai-params"]];
+    [paramsStack addArrangedSubview:paramsTitleRow];
 
     UILabel *topPValue = nil;
     UILabel *temperatureValue = nil;
@@ -407,12 +615,12 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     UILabel *frequencyValue = nil;
     UILabel *maxTokensValue = nil;
     UILabel *seedValue = nil;
-    self.topPSlider = [self addSlider:@"top_p" valueLabel:&topPValue to:stack];
-    self.temperatureSlider = [self addSlider:@"temperature" valueLabel:&temperatureValue to:stack];
-    self.presenceSlider = [self addSlider:@"presence_penalty" valueLabel:&presenceValue to:stack];
-    self.frequencySlider = [self addSlider:@"frequency_penalty" valueLabel:&frequencyValue to:stack];
-    self.maxTokensSlider = [self addSlider:@"max_tokens" valueLabel:&maxTokensValue to:stack];
-    self.seedSlider = [self addSlider:@"seed" valueLabel:&seedValue to:stack];
+    self.topPSlider = [self addSlider:@"top_p" valueLabel:&topPValue to:paramsStack];
+    self.temperatureSlider = [self addSlider:@"temperature" valueLabel:&temperatureValue to:paramsStack];
+    self.presenceSlider = [self addSlider:@"presence_penalty" valueLabel:&presenceValue to:paramsStack];
+    self.frequencySlider = [self addSlider:@"frequency_penalty" valueLabel:&frequencyValue to:paramsStack];
+    self.maxTokensSlider = [self addSlider:@"max_tokens" valueLabel:&maxTokensValue to:paramsStack];
+    self.seedSlider = [self addSlider:@"seed" valueLabel:&seedValue to:paramsStack];
     self.topPValue = topPValue;
     self.temperatureValue = temperatureValue;
     self.presenceValue = presenceValue;
@@ -420,45 +628,112 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     self.maxTokensValue = maxTokensValue;
     self.seedValue = seedValue;
 
-    UIButton *save = [UIButton buttonWithType:UIButtonTypeSystem];
-    [save setTitle:@"保存" forState:UIControlStateNormal];
-    save.backgroundColor = [self accentColor];
-    [save setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    save.layer.cornerRadius = 8;
-    save.accessibilityIdentifier = @"aiModelConfigSave";
-    [save addTarget:self action:@selector(saveAndCloseConfig) forControlEvents:UIControlEventTouchUpInside];
-    save.translatesAutoresizingMaskIntoConstraints = NO;
-    [stack addArrangedSubview:save];
-    [save.heightAnchor constraintEqualToConstant:44].active = YES;
+    [self.configStack addArrangedSubview:connectionCard];
+    [self.configStack addArrangedSubview:paramsCard];
 
     [NSLayoutConstraint activateConstraints:@[
-        [back.topAnchor constraintEqualToAnchor:safe.topAnchor constant:8],
-        [back.leadingAnchor constraintEqualToAnchor:self.configPanel.leadingAnchor constant:12],
-        [self.configTitleLabel.centerYAnchor constraintEqualToAnchor:back.centerYAnchor],
-        [self.configTitleLabel.leadingAnchor constraintEqualToAnchor:back.trailingAnchor constant:12],
-        [scroll.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:8],
+        [connectionStack.topAnchor constraintEqualToAnchor:connectionCard.topAnchor constant:16],
+        [connectionStack.leadingAnchor constraintEqualToAnchor:connectionCard.leadingAnchor constant:16],
+        [connectionStack.trailingAnchor constraintEqualToAnchor:connectionCard.trailingAnchor constant:-16],
+        [connectionStack.bottomAnchor constraintEqualToAnchor:connectionCard.bottomAnchor constant:-16],
+        [paramsStack.topAnchor constraintEqualToAnchor:paramsCard.topAnchor constant:16],
+        [paramsStack.leadingAnchor constraintEqualToAnchor:paramsCard.leadingAnchor constant:16],
+        [paramsStack.trailingAnchor constraintEqualToAnchor:paramsCard.trailingAnchor constant:-16],
+        [paramsStack.bottomAnchor constraintEqualToAnchor:paramsCard.bottomAnchor constant:-16],
+    ]];
+
+    UIView *footerDivider = AIDrawerHairline();
+    [self.configPanel addSubview:footerDivider];
+
+    UIView *footer = [[UIView alloc] init];
+    footer.translatesAutoresizingMaskIntoConstraints = NO;
+    footer.backgroundColor = UIColor.whiteColor;
+    [self.configPanel addSubview:footer];
+
+    self.configCancelButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.configCancelButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.configCancelButton setTitle:@"取消" forState:UIControlStateNormal];
+    [self.configCancelButton setTitleColor:[UIColor colorWithWhite:0 alpha:0.9] forState:UIControlStateNormal];
+    self.configCancelButton.backgroundColor = UIColor.whiteColor;
+    self.configCancelButton.layer.cornerRadius = 17.5;
+    self.configCancelButton.layer.borderWidth = 1;
+    self.configCancelButton.layer.borderColor = [UIColor colorWithWhite:0.85 alpha:1].CGColor;
+    [self.configCancelButton addTarget:self action:@selector(cancelConfig) forControlEvents:UIControlEventTouchUpInside];
+    [footer addSubview:self.configCancelButton];
+
+    self.configSaveFooterButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.configSaveFooterButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.configSaveFooterButton setTitle:@"保存" forState:UIControlStateNormal];
+    [self.configSaveFooterButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    self.configSaveFooterButton.backgroundColor = AIDrawerColorOrange();
+    self.configSaveFooterButton.layer.cornerRadius = 17.5;
+    self.configSaveFooterButton.accessibilityIdentifier = @"aiModelConfigSave";
+    [self.configSaveFooterButton addTarget:self action:@selector(saveAndCloseConfig) forControlEvents:UIControlEventTouchUpInside];
+    [footer addSubview:self.configSaveFooterButton];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [header.topAnchor constraintEqualToAnchor:safe.topAnchor],
+        [header.leadingAnchor constraintEqualToAnchor:self.configPanel.leadingAnchor],
+        [header.trailingAnchor constraintEqualToAnchor:self.configPanel.trailingAnchor],
+        [header.heightAnchor constraintEqualToConstant:56],
+        [back.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:8],
+        [back.centerYAnchor constraintEqualToAnchor:header.centerYAnchor],
+        [back.widthAnchor constraintEqualToConstant:40],
+        [back.heightAnchor constraintEqualToConstant:40],
+        [self.configTitleLabel.leadingAnchor constraintEqualToAnchor:back.trailingAnchor constant:8],
+        [self.configTitleLabel.centerYAnchor constraintEqualToAnchor:header.centerYAnchor],
+        [headerDivider.topAnchor constraintEqualToAnchor:header.bottomAnchor],
+        [headerDivider.leadingAnchor constraintEqualToAnchor:self.configPanel.leadingAnchor],
+        [headerDivider.trailingAnchor constraintEqualToAnchor:self.configPanel.trailingAnchor],
+        [scroll.topAnchor constraintEqualToAnchor:headerDivider.bottomAnchor],
         [scroll.leadingAnchor constraintEqualToAnchor:self.configPanel.leadingAnchor],
         [scroll.trailingAnchor constraintEqualToAnchor:self.configPanel.trailingAnchor],
-        [scroll.bottomAnchor constraintEqualToAnchor:self.configPanel.bottomAnchor],
-        [stack.topAnchor constraintEqualToAnchor:scroll.topAnchor constant:12],
-        [stack.leadingAnchor constraintEqualToAnchor:scroll.leadingAnchor constant:16],
-        [stack.trailingAnchor constraintEqualToAnchor:scroll.trailingAnchor constant:-16],
-        [stack.bottomAnchor constraintEqualToAnchor:scroll.bottomAnchor constant:-24],
-        [stack.widthAnchor constraintEqualToAnchor:scroll.widthAnchor constant:-32],
+        [scroll.bottomAnchor constraintEqualToAnchor:footerDivider.topAnchor],
+        [self.configStack.topAnchor constraintEqualToAnchor:scroll.topAnchor constant:16],
+        [self.configStack.leadingAnchor constraintEqualToAnchor:scroll.leadingAnchor constant:16],
+        [self.configStack.trailingAnchor constraintEqualToAnchor:scroll.trailingAnchor constant:-16],
+        [self.configStack.bottomAnchor constraintEqualToAnchor:scroll.bottomAnchor constant:-16],
+        [self.configStack.widthAnchor constraintEqualToAnchor:scroll.widthAnchor constant:-32],
+        [footerDivider.leadingAnchor constraintEqualToAnchor:self.configPanel.leadingAnchor],
+        [footerDivider.trailingAnchor constraintEqualToAnchor:self.configPanel.trailingAnchor],
+        [footerDivider.bottomAnchor constraintEqualToAnchor:footer.topAnchor],
+        [footer.leadingAnchor constraintEqualToAnchor:self.configPanel.leadingAnchor],
+        [footer.trailingAnchor constraintEqualToAnchor:self.configPanel.trailingAnchor],
+        [footer.bottomAnchor constraintEqualToAnchor:self.configPanel.bottomAnchor],
+        [footer.heightAnchor constraintEqualToConstant:72],
+        [self.configCancelButton.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor constant:20],
+        [self.configCancelButton.centerYAnchor constraintEqualToAnchor:footer.centerYAnchor constant:-8],
+        [self.configCancelButton.heightAnchor constraintEqualToConstant:35],
+        [self.configSaveFooterButton.trailingAnchor constraintEqualToAnchor:footer.trailingAnchor constant:-20],
+        [self.configSaveFooterButton.centerYAnchor constraintEqualToAnchor:footer.centerYAnchor constant:-8],
+        [self.configSaveFooterButton.heightAnchor constraintEqualToConstant:35],
+        [self.configSaveFooterButton.leadingAnchor constraintEqualToAnchor:self.configCancelButton.trailingAnchor constant:20],
+        [self.configCancelButton.widthAnchor constraintEqualToAnchor:self.configSaveFooterButton.widthAnchor],
     ]];
 }
 
-- (UITextField *)addField:(NSString *)placeholder to:(UIStackView *)stack {
+- (void)cancelConfig {
+    [self hideConfigAnimated:YES];
+}
+
+- (UITextField *)addField:(NSString *)labelText placeholder:(NSString *)placeholder to:(UIStackView *)stack {
     UILabel *label = [[UILabel alloc] init];
-    label.text = placeholder;
-    label.font = [UIFont systemFontOfSize:12];
-    label.textColor = [UIColor colorWithWhite:0.4 alpha:1];
+    label.text = labelText;
+    label.font = [UIFont systemFontOfSize:13];
+    label.textColor = AIDrawerColorTextPrimary();
     [stack addArrangedSubview:label];
     UITextField *field = [[UITextField alloc] init];
-    field.borderStyle = UITextBorderStyleRoundedRect;
-    field.font = [UIFont systemFontOfSize:15];
+    field.placeholder = placeholder;
+    field.font = [UIFont systemFontOfSize:14];
+    field.textColor = AIDrawerColorTextSecondary();
     field.delegate = self;
     field.translatesAutoresizingMaskIntoConstraints = NO;
+    field.backgroundColor = AIDrawerColorCardBg();
+    field.layer.cornerRadius = 8;
+    field.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 1)];
+    field.leftViewMode = UITextFieldViewModeAlways;
+    field.rightView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 1)];
+    field.rightViewMode = UITextFieldViewModeAlways;
     [field.heightAnchor constraintEqualToConstant:40].active = YES;
     [stack addArrangedSubview:field];
     return field;
@@ -471,6 +746,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     name.translatesAutoresizingMaskIntoConstraints = NO;
     name.text = title;
     name.font = [UIFont systemFontOfSize:13];
+    name.textColor = AIDrawerColorTextPrimary();
     [row addSubview:name];
     UILabel *value = [[UILabel alloc] init];
     value.translatesAutoresizingMaskIntoConstraints = NO;
@@ -534,6 +810,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     self.view.userInteractionEnabled = YES;
     self.open = YES;
     [self reloadProfile];
+    [self reloadLocalModelStatus];
     [self reloadModelRows];
     [self.view layoutIfNeeded];
     [UIView animateWithDuration:0.25 animations:^{
@@ -558,12 +835,21 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 
 - (void)toggleModels {
     self.modelsExpanded = !self.modelsExpanded;
+    [self applyModelsExpandedStateAnimated:YES];
+}
+
+- (void)applyModelsExpandedStateAnimated:(BOOL)animated {
     self.modelsBodyHeight.active = !self.modelsExpanded;
-    self.modelsBodyBottom.active = self.modelsExpanded;
-    self.chevronLabel.text = self.modelsExpanded ? @"▴" : @"▾";
-    [UIView animateWithDuration:0.2 animations:^{
+    self.chevronView.image = [AISettingsDrawerIcons iconNamed:self.modelsExpanded ? @"chevron-up" : @"chevron-down"
+                                                         size:20];
+    void (^work)(void) = ^{
         [self.view layoutIfNeeded];
-    }];
+    };
+    if (animated) {
+        [UIView animateWithDuration:0.2 animations:work];
+    } else {
+        work();
+    }
 }
 
 - (void)openModel:(UIButton *)sender {
@@ -658,206 +944,50 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 
 - (void)reloadProfile {
     NSString *name = [[NSUserDefaults standardUserDefaults] stringForKey:kProfileNameKey];
-    self.nameLabel.text = name.length > 0 ? name : @"用户";
+    self.nameLabel.text = name.length > 0 ? name : @"orangepi";
     UIImage *image = [UIImage imageWithContentsOfFile:[self avatarURL].path];
     if (image == nil) {
-        image = [UIImage imageNamed:@"HomeAvatar"];
+        image = [AppIcons iconNamed:@"avatar"];
     }
     self.avatarView.image = image;
 }
 
-- (void)editProfile {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"编辑头像和昵称"
-                                                                   message:nil
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
-        field.text = [[NSUserDefaults standardUserDefaults] stringForKey:kProfileNameKey];
-        field.placeholder = @"昵称";
-    }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"更换头像" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *name = alert.textFields.firstObject.text;
-        if (name.length > 0) {
-            [[NSUserDefaults standardUserDefaults] setObject:name forKey:kProfileNameKey];
-        }
-        PHPickerConfiguration *config = [[PHPickerConfiguration alloc] init];
-        config.selectionLimit = 1;
-        config.filter = [PHPickerFilter imagesFilter];
-        PHPickerViewController *picker = [[PHPickerViewController alloc] initWithConfiguration:config];
-        picker.delegate = self;
-        [self presentViewController:picker animated:YES completion:nil];
-    }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"保存昵称" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *name = alert.textFields.firstObject.text ?: @"";
-        [[NSUserDefaults standardUserDefaults] setObject:name forKey:kProfileNameKey];
-        [self reloadProfile];
-    }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+- (void)reloadLocalModelStatus {
+    self.localStatusLabel.text = [[LocalModelStore shared] drawerStatusText];
+    BOOL supported = [LocalModelStore isDeviceSupported];
+    self.localRowButton.alpha = supported ? 1.0 : 0.72;
+    self.localRowButton.enabled = supported;
 }
 
-- (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results {
-    [picker dismissViewControllerAnimated:YES completion:nil];
-    PHPickerResult *result = results.firstObject;
-    if (result == nil) {
-        [self reloadProfile];
-        return;
-    }
-    [result.itemProvider loadObjectOfClass:[UIImage class] completionHandler:^(id object, NSError *error) {
-        UIImage *image = (UIImage *)object;
-        if (![image isKindOfClass:[UIImage class]]) {
-            return;
-        }
-        NSData *data = UIImageJPEGRepresentation(image, 0.85);
-        [data writeToURL:[self avatarURL] atomically:YES];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self reloadProfile];
-        });
-    }];
-}
-
-- (void)clearCache {
-    __weak AISettingsDrawerController *weakSelf = self;
-
-    UIViewController *page = [[UIViewController alloc] init];
-    page.view.backgroundColor = UIColor.whiteColor;
-    page.modalPresentationStyle = UIModalPresentationPageSheet;
-
-    UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
-    back.translatesAutoresizingMaskIntoConstraints = NO;
-    [back setTitle:@"‹ 返回" forState:UIControlStateNormal];
-    [back addAction:[UIAction actionWithTitle:@"返回" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-        [page dismissViewControllerAnimated:YES completion:nil];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [page.view addSubview:back];
-
-    UILabel *title = [[UILabel alloc] init];
-    title.translatesAutoresizingMaskIntoConstraints = NO;
-    title.text = @"清理缓存";
-    title.font = [UIFont boldSystemFontOfSize:17];
-    title.textColor = UIColor.blackColor;
-    [page.view addSubview:title];
-
-    UILabel *modeLabel = [[UILabel alloc] init];
-    modeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    modeLabel.text = @"选择清理模式";
-    modeLabel.font = [UIFont systemFontOfSize:15];
-    modeLabel.textColor = [UIColor colorWithWhite:0.42 alpha:1];
-    [page.view addSubview:modeLabel];
-
-    UIView *card = [[UIView alloc] init];
-    card.translatesAutoresizingMaskIntoConstraints = NO;
-    card.layer.cornerRadius = 20;
-    card.layer.cornerCurve = kCACornerCurveContinuous;
-    card.layer.masksToBounds = YES;
-    card.backgroundColor = [UIColor colorWithRed:255.0 / 255.0 green:234.0 / 255.0 blue:216.0 / 255.0 alpha:1];
-    [page.view addSubview:card];
-
-    __block UIButton *clearButton = nil;
-    UIButton *lastOption = nil;
-    NSArray<NSString *> *options = @[ @"临时文件", @"文档缓存", @"全部缓存" ];
-    for (NSUInteger i = 0; i < options.count; i++) {
-        UIButton *option = [UIButton buttonWithType:UIButtonTypeCustom];
-        option.translatesAutoresizingMaskIntoConstraints = NO;
-        option.backgroundColor = UIColor.whiteColor;
-        option.layer.cornerRadius = 12;
-        [option setTitle:options[i] forState:UIControlStateNormal];
-        [option setTitleColor:UIColor.blackColor forState:UIControlStateNormal];
-        option.titleLabel.font = [UIFont systemFontOfSize:15];
-        option.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
-        option.contentEdgeInsets = UIEdgeInsetsMake(0, 16, 0, 16);
-        [option addAction:[UIAction actionWithTitle:options[i] image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-            for (UIView *sub in card.subviews) {
-                if ([sub isKindOfClass:[UIButton class]] && sub != option) {
-                    ((UIButton *)sub).layer.borderWidth = 0;
-                }
-            }
-            option.layer.borderColor = [weakSelf accentColor].CGColor;
-            option.layer.borderWidth = 2;
-            if (clearButton != nil) {
-                clearButton.backgroundColor = [weakSelf accentColor];
-                clearButton.enabled = YES;
-            }
-        }] forControlEvents:UIControlEventTouchUpInside];
-        [card addSubview:option];
-        [option.heightAnchor constraintEqualToConstant:56].active = YES;
-        [option.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16].active = YES;
-        [option.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-16].active = YES;
-        if (lastOption == nil) {
-            [option.topAnchor constraintEqualToAnchor:card.topAnchor constant:16].active = YES;
-        } else {
-            [option.topAnchor constraintEqualToAnchor:lastOption.bottomAnchor constant:12].active = YES;
-        }
-        lastOption = option;
-    }
-
-    clearButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    clearButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [clearButton setTitle:@"清理" forState:UIControlStateNormal];
-    clearButton.backgroundColor = [UIColor colorWithWhite:0.8 alpha:1];
-    clearButton.layer.cornerRadius = 28;
-    clearButton.enabled = NO;
-    [clearButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    [clearButton addAction:[UIAction actionWithTitle:@"清理" image:nil identifier:[[NSUUID UUID] UUIDString] handler:^(UIAction *action) {
-        [weakSelf runCacheCleanOnPage:page button:clearButton];
-    }] forControlEvents:UIControlEventTouchUpInside];
-    [page.view addSubview:clearButton];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [back.topAnchor constraintEqualToAnchor:page.view.safeAreaLayoutGuide.topAnchor constant:8],
-        [back.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:12],
-        [title.centerYAnchor constraintEqualToAnchor:back.centerYAnchor],
-        [title.centerXAnchor constraintEqualToAnchor:page.view.centerXAnchor],
-        [modeLabel.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:24],
-        [modeLabel.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:32],
-        [card.topAnchor constraintEqualToAnchor:modeLabel.bottomAnchor constant:16],
-        [card.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:32],
-        [card.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-32],
-        [card.bottomAnchor constraintEqualToAnchor:lastOption.bottomAnchor constant:16],
-        [clearButton.topAnchor constraintEqualToAnchor:card.bottomAnchor constant:24],
-        [clearButton.leadingAnchor constraintEqualToAnchor:page.view.leadingAnchor constant:64],
-        [clearButton.trailingAnchor constraintEqualToAnchor:page.view.trailingAnchor constant:-64],
-        [clearButton.heightAnchor constraintEqualToConstant:56],
-    ]];
+- (void)openLocalModel {
+    LocalModelViewController *page = [[LocalModelViewController alloc] init];
+    __weak __typeof(self) weakSelf = self;
+    page.onDismiss = ^{
+        [weakSelf reloadLocalModelStatus];
+    };
     [self presentViewController:page animated:YES completion:nil];
 }
 
-- (void)runCacheCleanOnPage:(UIViewController *)page button:(UIButton *)button {
-    [button setTitle:@"清理中..." forState:UIControlStateNormal];
-    button.enabled = NO;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        NSFileManager *fm = [NSFileManager defaultManager];
-        NSArray<NSURL *> *roots = @[
-            [fm URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].lastObject,
-            [NSURL fileURLWithPath:NSTemporaryDirectory()],
-        ];
-        for (NSURL *root in roots) {
-            NSArray<NSURL *> *children = [fm contentsOfDirectoryAtURL:root includingPropertiesForKeys:nil options:0 error:nil];
-            for (NSURL *child in children) {
-                [fm removeItemAtURL:child error:nil];
-            }
-        }
-        [button setTitle:@"清理完毕" forState:UIControlStateNormal];
-        button.backgroundColor = [UIColor colorWithRed:59.0 / 255.0 green:128.0 / 255.0 blue:64.0 / 255.0 alpha:1];
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"清理完毕"
-                                                                       message:@"已清理缓存，刷新页面以生效。"
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"刷新页面" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
-            [page dismissViewControllerAnimated:YES completion:nil];
-        }]];
-        [alert addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleCancel handler:nil]];
-        [page presentViewController:alert animated:YES completion:nil];
-    });
+- (void)editProfile {
+    ProfileSettingsViewController *page = [[ProfileSettingsViewController alloc] init];
+    page.modalPresentationStyle = UIModalPresentationFullScreen;
+    __weak __typeof(self) weakSelf = self;
+    page.onProfileChanged = ^{
+        [weakSelf reloadProfile];
+    };
+    [self presentViewController:page animated:YES completion:nil];
+}
+
+- (void)clearCache {
+    ClearCacheViewController *page = [[ClearCacheViewController alloc] init];
+    page.modalPresentationStyle = UIModalPresentationFullScreen;
+    [self presentViewController:page animated:YES completion:nil];
 }
 
 - (void)showAbout {
-    NSString *version = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"";
-    NSString *build = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"] ?: @"";
-    NSString *message = [NSString stringWithFormat:@"Orange Office %@ (%@)", version, build];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"关于"
-                                                                   message:message
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    AboutViewController *page = [[AboutViewController alloc] init];
+    page.modalPresentationStyle = UIModalPresentationFullScreen;
+    [self presentViewController:page animated:YES completion:nil];
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {

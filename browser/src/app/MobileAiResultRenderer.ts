@@ -41,6 +41,27 @@ class MobileAiResultRenderer {
 		target.innerHTML = MobileAiResultRenderer.toHtml(markdown);
 	}
 
+	static sanitizeTypesetHtml(raw: string): string {
+		let html = typeof raw === 'string' ? raw.trim() : '';
+		html = html.replace(/^```(?:html)?\s*\n?/i, '');
+		html = html.replace(/\n?```\s*$/, '');
+		return html.trim();
+	}
+
+	static isLikelyHtml(value: string): boolean {
+		const trimmed = MobileAiResultRenderer.sanitizeTypesetHtml(value);
+		return /^<[a-z][\s\S]*>/i.test(trimmed);
+	}
+
+	static renderTypesetInto(target: HTMLElement, raw: string): void {
+		const html = MobileAiResultRenderer.sanitizeTypesetHtml(raw);
+		if (MobileAiResultRenderer.isLikelyHtml(html)) {
+			target.innerHTML = html;
+			return;
+		}
+		MobileAiResultRenderer.renderInto(target, raw);
+	}
+
 	private static inline(value: string): string {
 		return value
 			.replace(/`([^`]+)`/g, '<code>$1</code>')

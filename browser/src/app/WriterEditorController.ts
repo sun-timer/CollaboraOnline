@@ -24,9 +24,10 @@ interface WriterFindReplaceOptions {
 type WriterEditorRunResult =
 	| { dispatched: 'unocmd'; command: string }
 	| { dispatched: 'save' }
-	| { dispatched: 'export'; kind: 'pdf' | 'print' }
+	| { dispatched: 'export'; kind: 'pdf' | 'print' | 'export' }
 	| { dispatched: 'dialog'; dialog: WriterEditorDialogType }
 	| { dispatched: 'findReplace' }
+	| { dispatched: 'toggle'; command: string; enabled: boolean }
 	| { dispatched: 'message'; message: string }
 	| { dispatched: 'none'; reason: string };
 
@@ -92,9 +93,81 @@ class WriterEditorController {
 				return { dispatched: 'dialog', dialog: feature.dialog || 'fontName' };
 			case 'findReplace':
 				return { dispatched: 'findReplace' };
+			case 'toggle':
+				return { dispatched: 'toggle', command: feature.unocmd || '', enabled: false };
 			default:
 				return { dispatched: 'none', reason: 'unsupported_kind' };
 		}
+	}
+
+	/**
+	 * Reads a toggle command's on-state. Prefers getToolbarCommandValues, then
+	 * falls back to stateChangeHandler (Android FPC toggle row semantics).
+	 */
+	isCommandChecked(command: string, defaultOn = false): boolean {
+		const fromValues = WriterEditorController.readCheckedCommandValues(
+			this.getCommandValues(command),
+		);
+		if (fromValues !== undefined) {
+			return fromValues;
+		}
+		const map = (window as any).app?.map;
+		const state = map?.stateChangeHandler?.getItemValue(command);
+		if (state === 'true' || state === true) {
+			return true;
+		}
+		if (state === 'false' || state === false) {
+			return false;
+		}
+		return defaultOn;
+	}
+
+	/** Dispatches a toggle feature (track/show tracked changes). */
+	runToggle(feature: WriterEditorFeature, enabled: boolean): WriterEditorRunResult {
+		if (!this.isWriterDocument()) {
+			return { dispatched: 'none', reason: 'not_writer_document' };
+		}
+		if (feature.id === 'track-changes') {
+			const result = this.trackChanges(enabled);
+			if (result.dispatched === 'unocmd') {
+				return { dispatched: 'toggle', command: result.command, enabled };
+			}
+			return result;
+		}
+		if (feature.id === 'show-tracked-changes') {
+			const command = '.uno:ShowTrackedChanges';
+			this.adapter.sendUnoCommand(command);
+			return { dispatched: 'toggle', command, enabled };
+		}
+		if (feature.unocmd) {
+			this.adapter.sendUnoCommand(feature.unocmd);
+			return { dispatched: 'toggle', command: feature.unocmd, enabled };
+		}
+		return { dispatched: 'none', reason: 'missing_unocmd' };
+	}
+
+	static readCheckedCommandValues(
+		values: { [key: string]: any } | undefined,
+	): boolean | undefined {
+		if (values === undefined || values === null) {
+			return undefined;
+		}
+		if (typeof values === 'boolean') {
+			return values;
+		}
+		if (values.checked === true || values.checked === 'true') {
+			return true;
+		}
+		if (values.checked === false || values.checked === 'false') {
+			return false;
+		}
+		if (values.State === true || values.State === 'true') {
+			return true;
+		}
+		if (values.State === false || values.State === 'false') {
+			return false;
+		}
+		return undefined;
 	}
 
 	/** Dispatches an ExecuteSearch command via the adapter. */
@@ -121,6 +194,7 @@ class WriterEditorController {
 			options,
 		);
 		this.adapter.sendExecuteSearch(searchCmd);
+		this.notifyNativeUndoRecord(replaceAll ? 'find_replace_all' : 'find_replace_one');
 		return { executed: true, command };
 	}
 
@@ -145,6 +219,13 @@ class WriterEditorController {
 		);
 		this.adapter.sendExecuteSearch(searchCmd);
 		return { executed: true, command: WriterEditorSearch.CMD_FIND };
+	}
+
+	private notifyNativeUndoRecord(reason: string): void {
+		if (!(window as any).ThisIsTheiOSApp) {
+			return;
+		}
+		this.adapter.postMobileMessage('NATIVE_UNDO_RECORD reason=' + reason);
 	}
 
 	/** Pure SearchItem payload builder (test seam). */
@@ -195,14 +276,21 @@ class WriterEditorController {
 		return { dispatched: 'unocmd', command: cmdLR };
 	}
 
+	/** Inserts a shape via a full UNO command (ImpressShapeCatalog parity). */
+	insertShapeUno(command: string): WriterEditorRunResult {
+		if (!command) {
+			return { dispatched: 'none', reason: 'empty_shape' };
+		}
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
 	/** Inserts a basic shape via the BasicShapes UNO command. */
 	insertShape(name: string): WriterEditorRunResult {
 		if (!name) {
 			return { dispatched: 'none', reason: 'empty_shape' };
 		}
-		const command = '.uno:BasicShapes.' + name;
-		this.adapter.sendUnoCommand(command);
-		return { dispatched: 'unocmd', command };
+		return this.insertShapeUno('.uno:BasicShapes.' + name);
 	}
 
 	/** Applies a Writer paragraph style via StyleApply (FamilyName ParagraphStyles). */
@@ -334,6 +422,29 @@ class WriterEditorController {
 		return { dispatched: 'message', message };
 	}
 
+	/** Asks native iOS to open PHPicker for image insert. */
+	requestNativeImagePicker(): WriterEditorRunResult {
+		this.adapter.postMobileMessage('WRITER_OPEN_IMAGE_PICKER');
+		return { dispatched: 'message', message: 'WRITER_OPEN_IMAGE_PICKER' };
+	}
+
+	/** Inserts a Writer comment via InsertAnnotation Author/Text args. */
+	insertComment(text: string, author?: string): WriterEditorRunResult {
+		const content = (text || '').trim();
+		if (!content) {
+			return { dispatched: 'none', reason: 'empty_comment' };
+		}
+		const safeAuthor = (author || '用户昵称').trim() || '用户昵称';
+		const command =
+			'.uno:InsertAnnotation {"Author":{"type":"string","value":' +
+			JSON.stringify(safeAuthor) +
+			'},"Text":{"type":"string","value":' +
+			JSON.stringify(content) +
+			'}}';
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
 	/** Saves-as by dispatching a downloadas message (iOS picks the destination). */
 	saveAs(format: string): WriterEditorRunResult {
 		if (!format) {
@@ -342,6 +453,16 @@ class WriterEditorController {
 		const message = 'downloadas name=document.' + format + ' format=' + format + ' id=saveas';
 		this.adapter.postMobileMessage(message);
 		return { dispatched: 'message', message };
+	}
+
+	/** Exports the document in the given format (iOS document picker). */
+	exportAs(format: string): WriterEditorRunResult {
+		if (!format) {
+			return { dispatched: 'none', reason: 'empty_format' };
+		}
+		const message = 'downloadas name=export.' + format + ' format=' + format;
+		this.adapter.postMobileMessage(message);
+		return { dispatched: 'export', kind: format === 'pdf' ? 'pdf' : 'export' };
 	}
 
 	static buildSearchCmd(

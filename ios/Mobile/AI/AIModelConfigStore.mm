@@ -229,4 +229,18 @@ static NSString *const AIModelDefaultEndpoint = @"https://api.openai.com/v1/chat
     return MAX(0.0f, MIN(1.0f, value));
 }
 
+- (NSDictionary<NSString *, id> *)samplingBodyFieldsForForm:(AIModelConfigForm *)form {
+    static const int kMaxTokensCap = 8192;
+    static const int kMaxSeed = 999999;
+    float maxRatio = [self clamp:form.maxTokensRatio];
+    int maxTokens = MAX(1, (int)lround(maxRatio * kMaxTokensCap));
+    float seedRatio = [self clamp:form.seedRatio];
+    NSMutableDictionary<NSString *, id> *fields = [NSMutableDictionary dictionary];
+    fields[@"max_tokens"] = @(maxTokens);
+    if (seedRatio > 0.001f) {
+        fields[@"seed"] = @(MAX(1, (int)lround(seedRatio * kMaxSeed)));
+    }
+    return fields;
+}
+
 @end

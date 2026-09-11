@@ -279,7 +279,14 @@ COOL_JS_LST =\
 	src/app/MobileAiAssistantPanel.ts \
 	src/app/MobileAiOperationSheet.ts \
 	src/app/MobileAiOperationDialog.ts \
+	src/app/MobileAiTypesetDialog.ts \
+	src/app/MobileAiDocumentExtractor.ts \
+	src/app/TypesetSectionParser.ts \
+	src/app/TypesetPreviewHtml.ts \
+	src/app/TypesetBridge.ts \
 	src/app/MobileSelectionMenu.ts \
+	src/app/MobileSelectionMenuIcons.ts \
+	src/app/WriterQuickActionBar.ts \
 	src/app/MobileAiCalcDialog.ts \
 	src/app/MobileAiTranslateDialog.ts \
 	src/app/MobileAiResultRenderer.ts \
@@ -296,8 +303,16 @@ COOL_JS_LST =\
 	src/app/WriterEditorWatermarkDialog.ts \
 	src/app/WriterEditorChartDialog.ts \
 	src/app/WriterEditorInsertTableDialog.ts \
+	src/app/WriterEditorImageDialog.ts \
+	src/app/WriterEditorCommentDialog.ts \
 	src/app/WriterCharPanel.ts \
+	src/app/WriterParagraphPanel.ts \
+	src/app/WriterWordCountSheet.ts \
+	src/app/WriterSpellingSheet.ts \
+	src/app/MobileWriterComments.ts \
 	src/app/WriterColorPickerDialog.ts \
+	src/app/WriterEditorShapeCatalog.ts \
+	src/app/WriterEditorShapeIcons.ts \
 	src/app/WriterEditorShapeDialog.ts \
 	src/app/AndroidCalcCellMenu.ts \
 	src/app/AndroidCalcHeaderMenu.ts \

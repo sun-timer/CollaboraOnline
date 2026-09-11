@@ -8,6 +8,7 @@
 #import "NativeBridgeHandler.h"
 
 #import "../AI/AIService.h"
+#import "../Typeset/TypesetService.h"
 
 static const NSInteger kNativeBridgeProtocolVersion = 1;
 
@@ -117,7 +118,8 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
 
     NSSet<NSString *> *supportedTypes = [NSSet setWithArray:@[
         @"native.ready", @"ai.request", @"ai.cancel", @"ai.accept",
-        @"ai.state", @"ai.stream", @"ai.done", @"ai.error"
+        @"ai.state", @"ai.stream", @"ai.done", @"ai.error",
+        @"typeset.extract", @"typeset.fill", @"typeset.insert",
     ]];
     if (![supportedTypes containsObject:type]) {
         [self emitErrorType:@"native.error"
@@ -135,12 +137,12 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
                     message:@"API credentials must remain in the native secure store"];
         return;
     }
-    if ([type hasPrefix:@"ai."] && requestId.length == 0) {
+    if (([type hasPrefix:@"ai."] || [type hasPrefix:@"typeset."]) && requestId.length == 0) {
         [self emitErrorType:@"native.error"
                   requestId:nil
             documentSessionId:documentSessionId
                        code:@"missing_request_id"
-                    message:@"AI messages require requestId"];
+                    message:@"AI/typeset messages require requestId"];
         return;
     }
 
@@ -218,6 +220,80 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
                                payload:@{@"state": @"ready", @"accepted": @YES}];
         }
         [self.requestSessions removeObjectForKey:requestId];
+        return;
+    }
+
+    if ([type isEqualToString:@"typeset.extract"]) {
+        NSURL *fileURL = self.documentFileURLProvider ? self.documentFileURLProvider() : nil;
+        NSDictionary *result = fileURL ? [TypesetService extractStructuredFromFile:fileURL] : nil;
+        if (!result) {
+            [self emitErrorType:@"typeset.extract.error"
+                      requestId:requestId
+                documentSessionId:documentSessionId
+                           code:@"extract_failed"
+                        message:@"文档结构化提取失败"];
+            return;
+        }
+        [self emitEnvelopeType:@"typeset.extract.done"
+                     requestId:requestId
+               documentSessionId:documentSessionId
+                          payload:result];
+        return;
+    }
+    if ([type isEqualToString:@"typeset.fill"]) {
+        NSDictionary *payload = [envelope[@"payload"] isKindOfClass:[NSDictionary class]]
+                                    ? envelope[@"payload"] : @{};
+        NSString *typesetType = [payload[@"typesetType"] isKindOfClass:[NSString class]]
+                                    ? payload[@"typesetType"] : @"general";
+        NSDictionary *sections = [payload[@"sections"] isKindOfClass:[NSDictionary class]]
+                                     ? payload[@"sections"] : @{};
+        NSString *sourceName = [payload[@"sourceName"] isKindOfClass:[NSString class]]
+                                   ? payload[@"sourceName"] : @"";
+        NSDictionary *images = [payload[@"images"] isKindOfClass:[NSDictionary class]]
+                                   ? payload[@"images"] : nil;
+        NSURL *filled = [TypesetService fillTemplateWithType:typesetType
+                                                    sections:sections
+                                                  sourceName:sourceName];
+        if (filled && images.count > 0) {
+            [TypesetService insertImages:images intoDocxAtURL:filled];
+        }
+        if (!filled) {
+            [self emitErrorType:@"typeset.fill.error"
+                      requestId:requestId
+                documentSessionId:documentSessionId
+                           code:@"fill_failed"
+                        message:@"docx 模板填充失败"];
+            return;
+        }
+        [self emitEnvelopeType:@"typeset.fill.done"
+                     requestId:requestId
+               documentSessionId:documentSessionId
+                          payload:@{@"docxPath": filled.path ?: @""}];
+        return;
+    }
+    if ([type isEqualToString:@"typeset.insert"]) {
+        NSDictionary *payload = [envelope[@"payload"] isKindOfClass:[NSDictionary class]]
+                                    ? envelope[@"payload"] : @{};
+        NSString *docxPath = [payload[@"docxPath"] isKindOfClass:[NSString class]]
+                               ? payload[@"docxPath"] : @"";
+        NSURL *docxURL = docxPath.length > 0 ? [NSURL fileURLWithPath:docxPath] : nil;
+        NSURL *originalURL = self.originalDocumentURLProvider ? self.originalDocumentURLProvider() : nil;
+        BOOL replaced = [TypesetService copyDocxToOriginalURL:docxURL originalURL:originalURL];
+        if (!replaced) {
+            [self emitErrorType:@"typeset.insert.error"
+                      requestId:requestId
+                documentSessionId:documentSessionId
+                           code:@"insert_failed"
+                        message:@"无法将排版文档写回原文件"];
+            return;
+        }
+        if (self.reloadDocumentHandler) {
+            self.reloadDocumentHandler();
+        }
+        [self emitEnvelopeType:@"typeset.insert.done"
+                     requestId:requestId
+               documentSessionId:documentSessionId
+                          payload:@{@"replaced": @YES}];
         return;
     }
 

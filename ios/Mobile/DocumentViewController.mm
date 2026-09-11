@@ -37,6 +37,11 @@
 #import "Bridge/NativeBridgeHandler.h"
 #import "Toolbar/BottomToolbarController.h"
 #import "Toolbar/PreviewFunctionSheetController.h"
+#import "Toolbar/CommentListSheetController.h"
+#import "Toolbar/DocumentTabsSheetController.h"
+#import "DocumentPresentation.h"
+#import "DocumentPresentationLaunchOptions.h"
+#import "RecentDocumentsStore.h"
 #import "Toolbar/TopToolbarController.h"
 
 #import "DocumentViewController.h"
@@ -46,7 +51,7 @@
 #import <Poco/MemoryStream.h>
 #import <PhotosUI/PhotosUI.h>
 
-@interface DocumentViewController() <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, UIScrollViewDelegate, UIDocumentPickerDelegate, UIFontPickerViewControllerDelegate, PHPickerViewControllerDelegate, IOSTopToolbarControllerDelegate, IOSBottomToolbarControllerDelegate, PreviewFunctionSheetControllerDelegate> {
+@interface DocumentViewController() <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply, UIScrollViewDelegate, UIDocumentPickerDelegate, UIFontPickerViewControllerDelegate, PHPickerViewControllerDelegate, IOSTopToolbarControllerDelegate, IOSBottomToolbarControllerDelegate, PreviewFunctionSheetControllerDelegate, CommentListSheetControllerDelegate, DocumentTabsSheetControllerDelegate> {
     int closeNotificationPipeForForwardingThread[2];
     NSURL *downloadAsTmpURL;
     NativeBridgeHandler *nativeBridgeHandler;
@@ -64,6 +69,7 @@
     AIService *aiService;
     IOSTopToolbarController *topToolbarController;
     IOSBottomToolbarController *bottomToolbarController;
+    UIView *bottomToolbarContainer;
     NSLayoutConstraint *webViewTopConstraint;
     NSLayoutConstraint *webViewBottomConstraint;
     NSLayoutConstraint *bottomToolbarBottomConstraint;
@@ -73,6 +79,8 @@
     AISettingsDrawerController *aiDrawer;
     BOOL isClosing;
     BOOL kitConnectionTornDown;
+    BOOL documentPickerOpeningDocument;
+    BOOL pendingAutoGenerateHandled;
 }
 
 @end
@@ -156,6 +164,40 @@ static IMP standardImpOfInputAccessoryView = nil;
             [strongSelf.webView evaluateJavaScript:script completionHandler:nil];
         }
         aiService:aiService];
+    nativeBridgeHandler.documentFileURLProvider = ^NSURL * {
+        DocumentViewController *strongSelf = weakSelf;
+        if (!strongSelf.document) {
+            return nil;
+        }
+        NSURL *backup = strongSelf.document->typesetSourceBackupURL;
+        if (backup && [[NSFileManager defaultManager] fileExistsAtPath:backup.path]) {
+            return backup;
+        }
+        return strongSelf.document->copyFileURL;
+    };
+    nativeBridgeHandler.originalDocumentURLProvider = ^NSURL * {
+        DocumentViewController *strongSelf = weakSelf;
+        return strongSelf.document.fileURL;
+    };
+    nativeBridgeHandler.reloadDocumentHandler = ^{
+        DocumentViewController *strongSelf = weakSelf;
+        if (!strongSelf.document) {
+            return;
+        }
+        NSURL *fileURL = strongSelf.document.fileURL;
+        NSURL *copyURL = strongSelf.document->copyFileURL;
+        if (fileURL && copyURL) {
+            [[NSFileManager defaultManager] removeItemAtURL:copyURL error:nil];
+            [[NSFileManager defaultManager] copyItemAtURL:fileURL toURL:copyURL error:nil];
+        }
+        UIViewController *presenter = strongSelf.presentingViewController;
+        if (!presenter || !fileURL) {
+            return;
+        }
+        [strongSelf requestCloseWithCompletion:^{
+            [DocumentPresentation presentDocumentAtURL:fileURL from:presenter];
+        }];
+    };
     [userContentController addScriptMessageHandler:nativeBridgeHandler name:@"nativeBridge"];
     [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"clipboard"];
     [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"aiConfiguration"];
@@ -196,10 +238,13 @@ static IMP standardImpOfInputAccessoryView = nil;
 
     UIView *topToolbarContainer = [[UIView alloc] init];
     topToolbarContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    topToolbarContainer.backgroundColor = UIColor.whiteColor;
+    topToolbarContainer.backgroundColor = [UIColor colorWithRed:242.0 / 255.0
+                                                          green:242.0 / 255.0
+                                                           blue:242.0 / 255.0
+                                                          alpha:1.0];
     [self.view addSubview:topToolbarContainer];
 
-    UIView *bottomToolbarContainer = [[UIView alloc] init];
+    bottomToolbarContainer = [[UIView alloc] init];
     bottomToolbarContainer.translatesAutoresizingMaskIntoConstraints = NO;
     bottomToolbarContainer.backgroundColor = UIColor.whiteColor;
     [self.view addSubview:bottomToolbarContainer];
@@ -222,6 +267,7 @@ static IMP standardImpOfInputAccessoryView = nil;
         [[documentURL.lastPathComponent stringByDeletingPathExtension] copy]];
     [topToolbarController setDocumentType:nativeDocumentType];
     [bottomToolbarController setDocumentType:nativeDocumentType];
+    [self refreshOpenDocumentCount];
     [topToolbarContainer addSubview:topToolbarController.view];
     [bottomToolbarContainer addSubview:bottomToolbarController.view];
 
@@ -330,8 +376,10 @@ static IMP standardImpOfInputAccessoryView = nil;
     [self.view addSubview:floatingAiButton];
     floatingAiButton.translatesAutoresizingMaskIntoConstraints = NO;
     [NSLayoutConstraint activateConstraints:@[
-        [floatingAiButton.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-8],
-        [floatingAiButton.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [floatingAiButton.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor
+                                                      constant:16.0],
+        [floatingAiButton.bottomAnchor constraintEqualToAnchor:bottomToolbarContainer.topAnchor
+                                                      constant:-16.0],
     ]];
 
     // Local AI requests use the ObjC AIService with per-request emit (see
@@ -342,22 +390,8 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)floatingAiTapped
 {
-    [self dismissLanguagePicker];
-    CGFloat width = MIN(self.view.bounds.size.width, 420.0);
-    if (self.view.bounds.size.width > 600.0) {
-        width = self.view.bounds.size.width * 750.0 / 750.0;
-    }
-    __weak DocumentViewController *weakSelf = self;
-    aiPanel = [[WriterAIPanelView alloc] initWithWidth:width
-        onTile:^(NSString *taskType) {
-            DocumentViewController *strongSelf = weakSelf;
-            [strongSelf aiTileTapped:taskType];
-        }
-        onClose:^{
-            DocumentViewController *strongSelf = weakSelf;
-            [strongSelf dismissAIPanel];
-        }];
-    [aiPanel showIn:self.view aboveBottomInset:keyboardHeight];
+    // Ticket 03: FAB mirrors bottom-bar「AI助手」→ doc_qa/chat assistant sheet.
+    [self bottomToolbarDidPressAIAssistant];
 }
 
 - (void)dismissAIPanel
@@ -510,6 +544,130 @@ static IMP standardImpOfInputAccessoryView = nil;
 {
     [aiResultModal dismiss];
     aiResultModal = nil;
+}
+
+- (void)maybeAutoGenerateAiContentAfterLoad
+{
+    if (pendingAutoGenerateHandled || self.launchOptions == nil || !self.launchOptions.autoGenerateAiContent) {
+        return;
+    }
+    pendingAutoGenerateHandled = YES;
+    DocumentPresentationLaunchOptions *opts = self.launchOptions;
+    self.launchOptions = nil;
+
+    if (opts.autoIsCalcNewTable) {
+        [self startAutoGenerateCalcNewTable:opts.autoUserDescription ?: @""];
+        return;
+    }
+    NSString *prompt = opts.autoAiPrompt.length > 0
+        ? opts.autoAiPrompt
+        : @"请先生成文档大纲（章节标题），再基于大纲输出完整正文，风格专业、结构清晰。";
+    [self startAutoGenerateChatPrompt:prompt title:@"AI 生成内容"];
+}
+
+- (void)startAutoGenerateCalcNewTable:(NSString *)userDescription
+{
+    aiTaskTitle = @"生成表格";
+    lastTaskType = @"calc_new_table";
+    aiRequestId = [[NSUUID UUID] UUIDString];
+    aiFullText = @"";
+    [self dismissAIPanel];
+    __weak DocumentViewController *weakSelf = self;
+    aiResultModal = [[WriterAAIResultModal alloc] initWithTitle:aiTaskTitle
+        onClose:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf cancelAIGeneration];
+            [strongSelf dismissAIResultModal];
+        }
+        onStop:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf cancelAIGeneration];
+            if (strongSelf->aiResultModal) {
+                [strongSelf->aiResultModal setReadyWithFullText:strongSelf->aiFullText ?: @""];
+            }
+        }
+        onRetry:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf retryAIGeneration];
+        }
+        onInsert:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf insertAIText];
+        }
+        onCopy:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf copyAIText];
+        }];
+    [aiResultModal showIn:self.view];
+    NSDictionary *payload = @{
+        @"taskType": @"calc_new_table",
+        @"selection": userDescription,
+        @"modelMode": @"cloud",
+    };
+    __weak DocumentViewController *aiWeakSelf = self;
+    [self->aiService startRequest:payload
+                       requestId:aiRequestId
+              documentSessionId:@"ai-panel-local"
+                           emit:^(NSString *type, NSString *reqId, NSString *dsid, NSDictionary *eventPayload) {
+        DocumentViewController *strongSelf = aiWeakSelf;
+        if (strongSelf) {
+            [strongSelf aiEventReceived:type requestId:reqId payload:eventPayload];
+        }
+    }];
+}
+
+- (void)startAutoGenerateChatPrompt:(NSString *)prompt title:(NSString *)title
+{
+    aiTaskTitle = title;
+    lastTaskType = @"chat";
+    aiRequestId = [[NSUUID UUID] UUIDString];
+    aiFullText = @"";
+    [self dismissAIPanel];
+    [self bottomToolbarDidPressAIAssistant];
+    __weak DocumentViewController *weakSelf = self;
+    aiResultModal = [[WriterAAIResultModal alloc] initWithTitle:title
+        onClose:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf cancelAIGeneration];
+            [strongSelf dismissAIResultModal];
+        }
+        onStop:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf cancelAIGeneration];
+            if (strongSelf->aiResultModal) {
+                [strongSelf->aiResultModal setReadyWithFullText:strongSelf->aiFullText ?: @""];
+            }
+        }
+        onRetry:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf dismissAIResultModal];
+            [strongSelf startAutoGenerateChatPrompt:prompt title:title];
+        }
+        onInsert:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf insertAIText];
+        }
+        onCopy:^{
+            DocumentViewController *strongSelf = weakSelf;
+            [strongSelf copyAIText];
+        }];
+    [aiResultModal showIn:self.view];
+    NSDictionary *payload = @{
+        @"taskType": @"chat",
+        @"selection": @"",
+        @"modelMode": @"cloud",
+        @"context": @{ @"prompt": prompt },
+    };
+    __weak DocumentViewController *aiWeakSelf = self;
+    [self->aiService startRequest:payload
+                       requestId:aiRequestId
+              documentSessionId:@"ai-panel-local"
+                           emit:^(NSString *type, NSString *reqId, NSString *dsid, NSDictionary *eventPayload) {
+        DocumentViewController *strongSelf = aiWeakSelf;
+        if (strongSelf) {
+            [strongSelf aiEventReceived:type requestId:reqId payload:eventPayload];
+        }
+    }];
 }
 
 - (void)showLanguagePickerForTranslateWithTitle:(NSString *)title
@@ -1109,6 +1267,15 @@ static IMP standardImpOfInputAccessoryView = nil;
         } else if ([message.body hasPrefix:@"UNDOREDO "]) {
             [self applyNativeUndoRedoState:message.body];
             return;
+        } else if ([message.body hasPrefix:@"NATIVE_UNDO_RECORD "]) {
+            [self recordNativeUndoableEdit:message.body];
+            return;
+        } else if ([message.body isEqualToString:@"hideProgressbar"]) {
+            [self maybeAutoGenerateAiContentAfterLoad];
+            return;
+        } else if ([message.body hasPrefix:@"COMMENTCOUNT "]) {
+            [self applyNativeCommentCount:message.body];
+            return;
         } else if ([message.body hasPrefix:@"CALC_CELL_TAP"]) {
             // Android-only diagnostic/gesture bridge message.  Older shared
             // Browser bundles may still emit it; never send it to Core.
@@ -1134,6 +1301,9 @@ static IMP standardImpOfInputAccessoryView = nil;
             [self presentViewController:picker
                                animated:YES
                              completion:nil];
+            return;
+        } else if ([message.body isEqualToString:@"WRITER_OPEN_IMAGE_PICKER"]) {
+            [self bottomToolbarDidPressInsertImage];
             return;
         } else if ([message.body hasPrefix:@"downloadas "]) {
             NSArray<NSString*> *messageBodyItems = [message.body componentsSeparatedByString:@" "];
@@ -1194,11 +1364,23 @@ static IMP standardImpOfInputAccessoryView = nil;
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    if (documentPickerOpeningDocument) {
+        documentPickerOpeningDocument = NO;
+        NSURL *url = urls.firstObject;
+        if (url != nil) {
+            [self switchToDocumentAtURL:url];
+        }
+        return;
+    }
     std::remove([[downloadAsTmpURL path] UTF8String]);
     std::remove([[[downloadAsTmpURL URLByDeletingLastPathComponent] path] UTF8String]);
 }
 
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
+    if (documentPickerOpeningDocument) {
+        documentPickerOpeningDocument = NO;
+        return;
+    }
     std::remove([[downloadAsTmpURL path] UTF8String]);
     std::remove([[[downloadAsTmpURL URLByDeletingLastPathComponent] path] UTF8String]);
 }
@@ -1222,6 +1404,7 @@ static IMP standardImpOfInputAccessoryView = nil;
     bottomToolbarController.compact = keyboardVisible;
     bottomToolbarHeightConstraint.constant = bottomToolbarController.preferredHeight;
     bottomToolbarBottomConstraint.constant = bottomOffset;
+    floatingAiButton.hidden = keyboardVisible;
     [UIView animateWithDuration:duration
                           delay:0.0
                         options:options
@@ -1290,14 +1473,28 @@ static IMP standardImpOfInputAccessoryView = nil;
 - (void)applyNativeEditMode:(BOOL)editMode
 {
     nativeEditMode = editMode;
-    if (!editMode) {
-        // Leave edit mode: dismiss the DOM function panel if it is open.
-        [self sendToolbarJavaScript:
-         @"if(window.__coolWriterEditorPanel){window.__coolWriterEditorPanel.close();}"];
-    }
+    [self dismissWriterOverlayUi];
     [topToolbarController setEditMode:editMode];
     [bottomToolbarController setEditMode:editMode];
     [bottomToolbarController setCompact:NO];
+}
+
+- (void)dismissWriterOverlayUi
+{
+    if ([self.presentedViewController isKindOfClass:[PreviewFunctionSheetController class]]) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
+    [self sendToolbarJavaScript:
+     @"(function(){"
+      "function c(o){if(o&&typeof o.close==='function'){o.close();}}"
+      "c(window.__coolWriterEditorPanel);"
+      "c(window.__coolWriterCharPanel);"
+      "c(window.__coolWriterParaPanel);"
+      "if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.close){window.__coolWriterFindReplace.close();}"
+      "if(window.WriterWordCountSheet&&WriterWordCountSheet.closeActive){WriterWordCountSheet.closeActive();}"
+      "if(window.WriterSpellingSheet&&WriterSpellingSheet.closeActive){WriterSpellingSheet.closeActive();}"
+      "c(window.__coolWriterAiPanel);"
+      "})();"];
 }
 
 - (void)applyNativeUndoRedoState:(NSString *)message
@@ -1315,6 +1512,30 @@ static IMP standardImpOfInputAccessoryView = nil;
     topToolbarController.redoEnabled = redoEnabled;
 }
 
+- (void)recordNativeUndoableEdit:(NSString *)message
+{
+    NSString *reason = @"native_edit";
+    for (NSString *part in [message componentsSeparatedByString:@" "]) {
+        if ([part hasPrefix:@"reason="]) {
+            reason = [part substringFromIndex:7];
+            break;
+        }
+    }
+    [topToolbarController recordUndoableNativeEdit:reason];
+}
+
+- (void)applyNativeCommentCount:(NSString *)message
+{
+    NSInteger count = 0;
+    for (NSString *part in [message componentsSeparatedByString:@" "]) {
+        if ([part hasPrefix:@"n="]) {
+            count = [[part substringFromIndex:2] integerValue];
+            break;
+        }
+    }
+    topToolbarController.commentCount = count;
+}
+
 - (void)saveAfterReadOnlyTransition
 {
     if (self.document->fakeClientFd < 0) {
@@ -1326,6 +1547,7 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)finishNativeEditing
 {
+    [self dismissWriterOverlayUi];
     NSString *script = @"(function(){"
                         "if(window.app&&app.map){"
                         "if(typeof app.map.setPermission==='function'){"
@@ -1340,6 +1562,39 @@ static IMP standardImpOfInputAccessoryView = nil;
                    dispatch_get_main_queue(), ^{
         [self saveAfterReadOnlyTransition];
     });
+}
+
+- (void)viewDidAppear:(BOOL)animated
+{
+    [super viewDidAppear:animated];
+    [self refreshOpenDocumentCount];
+}
+
+- (void)refreshOpenDocumentCount
+{
+    RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
+    [topToolbarController setOpenDocumentCount:(NSInteger)store.openDocumentCount];
+}
+
+- (void)switchToDocumentAtURL:(NSURL *)url
+{
+    if (url == nil || self.document == nil) {
+        return;
+    }
+    NSURL *current = self.document->copyFileURL;
+    if (current != nil &&
+        [url.path.stringByStandardizingPath isEqualToString:current.path.stringByStandardizingPath]) {
+        return;
+    }
+    RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
+    [store recordURL:url];
+    UIViewController *presenter = self.presentingViewController;
+    if (presenter == nil) {
+        return;
+    }
+    [self requestCloseWithCompletion:^{
+        [DocumentPresentation presentDocumentAtURL:url from:presenter];
+    }];
 }
 
 - (void)showToolbarPlaceholder:(NSString *)message
@@ -1379,7 +1634,8 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)topToolbarDidPressSearch
 {
-    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SearchDialog');}"];
+    [self sendToolbarJavaScript:
+     @"(function(){if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open();}else if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SearchDialog');}})();"];
 }
 
 - (void)topToolbarDidPressShare
@@ -1398,7 +1654,11 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)topToolbarDidPressDocuments
 {
-    [self showToolbarPlaceholder:@"已打开文档列表将在后续阶段接入。"];
+    RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
+    [DocumentTabsSheetController presentFrom:self
+                                       store:store
+                                  currentURL:self.document->copyFileURL
+                                    delegate:self];
 }
 
 - (void)topToolbarDidPressClose
@@ -1408,7 +1668,76 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)topToolbarDidPressComment
 {
-    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:InsertAnnotation');}"];
+    NSString *script = @"(function(){"
+                        "if(typeof window.__coolFetchWriterComments==='function'){"
+                        "return window.__coolFetchWriterComments();"
+                        "}"
+                        "return '{\"comments\":[]}';"
+                        "})();";
+    [self.webView evaluateJavaScript:script
+                   completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+        if (error != nil) {
+            LOG_ERR("Fetch writer comments failed: " << [[error localizedDescription] UTF8String]);
+            [self presentWriterCommentList:@[]];
+            return;
+        }
+        NSString *json = [result isKindOfClass:[NSString class]] ? (NSString *)result : @"{\"comments\":[]}";
+        [self presentWriterCommentListFromJson:json];
+    }];
+}
+
+- (void)presentWriterCommentListFromJson:(NSString *)json
+{
+    NSData *data = [json dataUsingEncoding:NSUTF8StringEncoding];
+    if (data == nil) {
+        [self presentWriterCommentList:@[]];
+        return;
+    }
+    id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![parsed isKindOfClass:[NSDictionary class]]) {
+        [self presentWriterCommentList:@[]];
+        return;
+    }
+    NSArray *rawComments = ((NSDictionary *)parsed)[@"comments"];
+    if (![rawComments isKindOfClass:[NSArray class]]) {
+        [self presentWriterCommentList:@[]];
+        return;
+    }
+    NSMutableArray<WriterCommentListItem *> *items = [NSMutableArray array];
+    for (id entry in rawComments) {
+        if (![entry isKindOfClass:[NSDictionary class]]) {
+            continue;
+        }
+        NSDictionary *dict = (NSDictionary *)entry;
+        WriterCommentListItem *item = [[WriterCommentListItem alloc] init];
+        item.commentId = [dict[@"id"] isKindOfClass:[NSString class]] ? dict[@"id"] : @"";
+        item.author = [dict[@"author"] isKindOfClass:[NSString class]] ? dict[@"author"] : @"";
+        item.text = [dict[@"text"] isKindOfClass:[NSString class]] ? dict[@"text"] : @"";
+        item.dateTime = [dict[@"dateTime"] isKindOfClass:[NSString class]] ? dict[@"dateTime"] : @"";
+        if (item.commentId.length > 0) {
+            [items addObject:item];
+        }
+    }
+    [self presentWriterCommentList:items];
+}
+
+- (void)presentWriterCommentList:(NSArray<WriterCommentListItem *> *)comments
+{
+    [CommentListSheetController presentFrom:self comments:comments delegate:self];
+}
+
+- (void)commentListSheetDidSelectCommentId:(NSString *)commentId
+{
+    if (commentId.length == 0) {
+        return;
+    }
+    NSString *escaped = commentId;
+    escaped = [escaped stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
+    escaped = [escaped stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
+    NSString *script = [NSString stringWithFormat:
+        @"(function(){if(typeof window.__coolNavigateWriterComment==='function')"
+         "{return window.__coolNavigateWriterComment('%@');}return false;})();", escaped];
+    [self sendToolbarJavaScript:script];
 }
 
 - (void)bottomToolbarDidPressMobilePreview
@@ -1431,7 +1760,9 @@ static IMP standardImpOfInputAccessoryView = nil;
          @"if(window.__coolWriterEditorPanel){window.__coolWriterEditorPanel.open();}"];
     } else {
         // Preview mode / non-Writer docs: file operations + review sheet.
-        [PreviewFunctionSheetController presentFrom:self delegate:self];
+        [PreviewFunctionSheetController presentFrom:self
+                                          delegate:self
+                                     showWordCount:[nativeDocumentType isEqualToString:@"text"]];
     }
 }
 
@@ -1464,7 +1795,8 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)bottomToolbarDidPressParagraph
 {
-    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:LeftPara');}"];
+    [self sendToolbarJavaScript:
+     @"if(window.__coolWriterParaPanel){window.__coolWriterParaPanel.open();}"];
 }
 
 - (void)bottomToolbarDidPressFillCell
@@ -1535,10 +1867,15 @@ static IMP standardImpOfInputAccessoryView = nil;
     [self saveAfterReadOnlyTransition];
 }
 
-- (void)previewFunctionSheetDidRequestExportPDF
+- (void)previewFunctionSheetDidRequestExportAs:(NSString *)format
 {
-    [self sendToolbarJavaScript:
-     @"window.webkit.messageHandlers.lok.postMessage('downloadas name=export.pdf format=pdf');"];
+    if (format.length == 0) {
+        return;
+    }
+    NSString *js = [NSString stringWithFormat:
+        @"window.webkit.messageHandlers.lok.postMessage('downloadas name=export.%@ format=%@');",
+        format, format];
+    [self sendToolbarJavaScript:js];
 }
 
 - (void)previewFunctionSheetDidRequestPrint
@@ -1548,7 +1885,51 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)previewFunctionSheetDidRequestFindReplace
 {
-    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SearchDialog');}"];
+    [self sendToolbarJavaScript:
+     @"(function(){if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open();}else if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SearchDialog');}})();"];
+}
+
+- (void)previewFunctionSheetDidRequestWordCount
+{
+    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:WordCountDialog');}"];
+}
+
+- (void)previewFunctionSheetDidRequestSpellCheck
+{
+    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SpellDialog');}"];
+}
+
+#pragma mark - DocumentTabsSheetControllerDelegate
+
+- (NSURL *)currentDocumentURLForDocumentTabsSheet
+{
+    return self.document->copyFileURL;
+}
+
+- (void)documentTabsSheetDidSelectURL:(NSURL *)url
+{
+    [self switchToDocumentAtURL:url];
+}
+
+- (void)documentTabsSheetDidRequestOpenDocument
+{
+    UIDocumentPickerViewController *picker =
+        [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeItem ] asCopy:NO];
+    picker.delegate = self;
+    picker.allowsMultipleSelection = NO;
+    picker.shouldShowFileExtensions = YES;
+    documentPickerOpeningDocument = YES;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)documentTabsSheetDidChangeDocumentList
+{
+    [self refreshOpenDocumentCount];
+}
+
+- (void)documentTabsSheetDidDismiss
+{
+    [self refreshOpenDocumentCount];
 }
 
 - (void)bottomToolbarDidPressInsertImage

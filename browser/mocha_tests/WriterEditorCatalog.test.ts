@@ -201,11 +201,18 @@ describe('WriterEditorCatalog', function () {
 		]);
 	});
 
-	it('exposes track-changes as a dialog feature (open/close choices)', function () {
-		const feature = WriterEditorCatalog.getFeature('track-changes');
-		assert.ok(feature);
-		assert.equal(feature.kind, 'dialog');
-		assert.equal(feature.dialog, 'trackChanges');
+	it('exposes review toggles for track/show tracked changes', function () {
+		const track = WriterEditorCatalog.getFeature('track-changes');
+		assert.ok(track);
+		assert.equal(track.kind, 'toggle');
+		assert.equal(track.unocmd, '.uno:TrackChanges');
+		assert.equal(track.defaultOn, false);
+
+		const show = WriterEditorCatalog.getFeature('show-tracked-changes');
+		assert.ok(show);
+		assert.equal(show.kind, 'toggle');
+		assert.equal(show.unocmd, '.uno:ShowTrackedChanges');
+		assert.equal(show.defaultOn, true);
 	});
 	it('carries the CO chart-type table (8 entries, 3 sections)', function () {
 		assert.equal(WriterEditorCatalog.CHART_CATEGORIES.length, 3);

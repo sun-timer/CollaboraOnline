@@ -96,6 +96,14 @@ describe('Mobile AI UI Catalog', function () {
 		assert.equal(MobileAiUiCatalog.canRun('image_generate', 'text'), true);
 	});
 
+	it('enables typeset on iOS with the typeset dialog', function () {
+		const typeset = MobileAiUiCatalog.getEntry('typeset');
+		assert.ok(typeset);
+		assert.equal(typeset?.iosSupport, true);
+		assert.equal(typeset?.dialog, 'typeset');
+		assert.equal(MobileAiUiCatalog.canRun('typeset', 'text'), true);
+	});
+
 	it('enables only the six selection tasks for editable presentations', function () {
 		const selectionTypes = [
 			'continue',

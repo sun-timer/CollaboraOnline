@@ -29,16 +29,37 @@ static UIColor *WriterAIColorAccent(void) {
     void (^_onAction)(NSString *action);
 }
 
+static const CGFloat kWriterAIFabSize = 56.0;
+static const CGFloat kWriterAIFabLogoSize = 32.0;
+
 - (instancetype)initWithOnAction:(void (^)(NSString *action))onAction {
     self = [super initWithFrame:CGRectZero];
     if (self) {
         _onAction = [onAction copy];
-        self.backgroundColor = WriterAIColorAccent();
-        self.layer.cornerRadius = 28;
-        [self setTitle:@"AI" forState:UIControlStateNormal];
-        [self setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-        self.titleLabel.font = [UIFont boldSystemFontOfSize:17];
+        self.translatesAutoresizingMaskIntoConstraints = NO;
+        self.backgroundColor = UIColor.whiteColor;
+        self.layer.cornerRadius = kWriterAIFabSize / 2.0;
+        self.layer.shadowColor = UIColor.blackColor.CGColor;
+        self.layer.shadowOpacity = 0.16;
+        self.layer.shadowRadius = 8.0;
+        self.layer.shadowOffset = CGSizeMake(0.0, 2.0);
         self.accessibilityLabel = @"AI 助手";
+
+        UIImageView *logo = [[UIImageView alloc] initWithImage:[UIImage writerIconNamed:@"ai-assistant-logo"]];
+        logo.translatesAutoresizingMaskIntoConstraints = NO;
+        logo.contentMode = UIViewContentModeScaleAspectFit;
+        logo.userInteractionEnabled = NO;
+        [self addSubview:logo];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [self.widthAnchor constraintEqualToConstant:kWriterAIFabSize],
+            [self.heightAnchor constraintEqualToConstant:kWriterAIFabSize],
+            [logo.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+            [logo.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+            [logo.widthAnchor constraintEqualToConstant:kWriterAIFabLogoSize],
+            [logo.heightAnchor constraintEqualToConstant:kWriterAIFabLogoSize],
+        ]];
+
         [self addTarget:self action:@selector(tapped) forControlEvents:UIControlEventTouchUpInside];
     }
     return self;
@@ -128,12 +149,7 @@ static UIColor *WriterAIColorAccent(void) {
         title.textColor = WriterAIColorTextPrimary();
         [self addSubview:title];
 
-        UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
-        close.translatesAutoresizingMaskIntoConstraints = NO;
-        [close setImage:[UIImage writerIconNamed:@"close"] forState:UIControlStateNormal];
-        close.tintColor = WriterAIColorTextPrimary();
-        close.accessibilityLabel = @"关闭";
-        [close addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
+        UIButton *close = [WriterAICloseButton closeButtonWithTarget:self action:@selector(closeTapped)];
         [self addSubview:close];
 
         _scrollView = [[UIScrollView alloc] init];
@@ -173,8 +189,6 @@ static UIColor *WriterAIColorAccent(void) {
             [title.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:16],
             [close.centerYAnchor constraintEqualToAnchor:title.centerYAnchor],
             [close.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-16],
-            [close.widthAnchor constraintEqualToConstant:44],
-            [close.heightAnchor constraintEqualToConstant:44],
             [_scrollView.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:8],
             [_scrollView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
             [_scrollView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
@@ -522,6 +536,29 @@ static UIColor *WriterAIColorAccent(void) {
 @end
 
 // ---------------------------------------------------------------------------
+#pragma mark - WriterAICloseButton
+
+@implementation WriterAICloseButton
+
++ (instancetype)closeButtonWithTarget:(id)target action:(SEL)action
+{
+    WriterAICloseButton *close = [self buttonWithType:UIButtonTypeSystem];
+    close.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImage *icon = [UIImage writerIconNamed:@"close"];
+    if (icon != nil) {
+        [close setImage:icon forState:UIControlStateNormal];
+    }
+    close.tintColor = [UIColor colorWithWhite:0.35 alpha:1];
+    close.accessibilityLabel = @"关闭";
+    [close addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+    [close.widthAnchor constraintEqualToConstant:40].active = YES;
+    [close.heightAnchor constraintEqualToConstant:40].active = YES;
+    return close;
+}
+
+@end
+
+// ---------------------------------------------------------------------------
 #pragma mark - UIImage (WriterAIIcons) — Figma/Android-sourced shared icons
 
 #import "WriterAIIconPNG.h"
@@ -720,6 +757,13 @@ static UIColor *WriterAIIconColor(NSString *hex)
            @"paths": @[ @{ @"d": @"M28,6H42V20" },
                         @{ @"d": @"M25.8,22.2L41.1,6.9" },
                         @{ @"d": @"M42,28.5V36C42,39.314 39.314,42 36,42H12C8.686,42 6,39.314 6,36V12C6,8.686 8.686,6 12,6H19.5" } ] },
+        @{ @"name": @"action-rename", @"vb": @48.0, @"sw": @2.0, @"tint": @YES,
+           @"paths": @[ @{ @"d": @"M24.6002,7.2001H9.6003C7.612,7.2001 6.0002,8.8118 6.0002,10.8001V38.4001C6.0002,40.3883 7.612,42.0001 9.6002,42.0001H38.4002C40.3885,42.0001 42.0002,40.3883 42.0002,38.4001V20.4001" },
+                        @{ @"d": @"M17.1511,31.1071C16.4395,31.1446 15.8522,30.5573 15.8897,29.8457L16.1955,24.0359C16.2266,23.4438 16.4758,22.8842 16.8951,22.465L34.063,5.2971C35.0002,4.3598 36.5198,4.3598 37.4571,5.2971L41.6997,9.5397C42.637,10.477 42.637,11.9966 41.6997,12.9338L24.5318,30.1017C24.1126,30.521 23.553,30.7702 22.9609,30.8013L17.1511,31.1071Z" },
+                        @{ @"d": @"M17.0923,22.2676L24.729,29.9043" },
+                        @{ @"d": @"M30.6689,8.6912L38.3057,16.328" } ] },
+        @{ @"name": @"action-remove", @"vb": @48.0, @"fill": @YES, @"tint": @YES,
+           @"paths": @[ @{ @"d": @"M45,10C45.5523,10 46,10.4477 46,11C46,11.5523 45.5523,12 45,12H39.501V42.667L39.4912,42.8975C39.4471,43.4314 39.2513,43.9336 38.9336,44.3164L38.791,44.4717C38.4464,44.8116 38.0128,44.9999 37.5635,45H10.4385C9.92474,45 9.43169,44.7538 9.06836,44.3164C8.75057,43.9336 8.55483,43.4314 8.51074,42.8975L8.50098,42.667V12H3C2.44772,12 2,11.5523 2,11C2,10.4477 2.44772,10 3,10H45ZM10.501,42.667C10.5011,42.8228 10.5443,42.9367 10.5811,43H37.4209C37.4577,42.9367 37.5009,42.8227 37.501,42.667V12H10.501V42.667ZM19,20C19.5523,20 20,20.4477 20,21V32C20,32.5523 19.5523,33 19,33C18.4477,33 18,32.5523 18,32V21C18,20.4477 18.4477,20 19,20ZM29,20C29.5523,20 30,20.4477 30,21V32C30,32.5523 29.5523,33 29,33C28.4477,33 28,32.5523 28,32V21C28,20.4477 28.4477,20 29,20ZM33,4C33.5523,4 34,4.4477 34,5C34,5.5523 33.5523,6 33,6H15C14.4477,6 14,5.5523 14,5C14,4.4477 14.4477,4 15,4H33Z" } ] },
         @{ @"name": @"open-docs", @"vb": @48.0, @"sw": @2.0, @"tint": @YES,
            @"paths": @[ @{ @"d": @"M1.948,38.5L29.219,38.5C30.295,38.5 31.167,37.638 31.167,36.575L31.181,11.917L20.472,11.917L20.472,0L1.948,0C0.872,0 0,0.862 0,1.925L0,36.575C0,37.638 0.872,38.5 1.948,38.5Z" },
                         @{ @"d": @"M20.472,0L31.181,11.917" } ] },
@@ -804,7 +848,42 @@ static UIColor *WriterAIIconColor(NSString *hex)
                         @{ @"d": @"M24 19H42", @"c": @"#101010" },
                         @{ @"d": @"M6 29H42", @"c": @"#101010" },
                         @{ @"d": @"M6 39H42", @"c": @"#101010" } ] },
+        @{ @"name": @"function-save", @"vb": @64.0, @"sw": @2.67, @"tint": @YES,
+           @"paths": @[
+               @{ @"d": @"M18.6667 8H12C9.79087 8 8 9.79087 8 12V52C8 54.2092 9.79087 56 12 56H52C54.2092 56 56 54.2092 56 52V17.6087L45.7085 8H32.0132M18.6667 8L18.6687 17.8461C18.6687 18.2993 19.2657 18.6667 20.0021 18.6667H30.6688C31.4051 18.6667 32.0021 18.2993 32.0021 17.8461L32.0132 8M18.6667 8H32.0132" },
+               @{ @"d": @"M18.6689 34.6665H45.3356" },
+               @{ @"d": @"M18.6689 45.3335H32.0133" },
+           ] },
+        @{ @"name": @"function-export-pdf", @"vb": @64.0, @"sw": @2.67, @"tint": @YES,
+           @"paths": @[
+               @{ @"d": @"M53.3337 30.6668V18.6668L41.3337 5.3335H13.3337C11.8609 5.3335 10.667 6.5274 10.667 8.00016V56.0002C10.667 57.473 11.8609 58.6668 13.3337 58.6668H29.3337" },
+               @{ @"d": @"M40 5.3335V18.6668H53.3333" },
+               @{ @"d": @"M32 47.0283H56" },
+               @{ @"d": @"M48 55.0283L56 47.0283L48 39.0283" },
+           ] },
+        @{ @"name": @"function-print", @"vb": @64.0, @"sw": @2.67, @"tint": @YES,
+           @"paths": @[
+               @{ @"d": @"M49.3356 42.6665H14.6689V58.6665H49.3356V42.6665Z" },
+               @{ @"d": @"M50.6644 5.3335H13.3311V26.6668H50.6644V5.3335Z" },
+               @{ @"d": @"M5.33105 26.6665H58.6644V50.6665H49.3541V42.6665H14.6384V50.6665H5.33105V26.6665Z" },
+           ] },
     ];
+}
+
++ (NSString *)writerAssetCatalogNameForIcon:(NSString *)name
+{
+    NSArray<NSString *> *parts = [name componentsSeparatedByCharactersInSet:
+        [NSCharacterSet characterSetWithCharactersInString:@"-_"]];
+    NSMutableString *asset = [NSMutableString stringWithString:@"WriterIcon"];
+    for (NSString *part in parts) {
+        if (part.length == 0) {
+            continue;
+        }
+        [asset appendFormat:@"%@%@",
+         [[part substringToIndex:1] uppercaseString],
+         part.length > 1 ? [part substringFromIndex:1] : @""];
+    }
+    return asset;
 }
 
 + (nullable UIImage *)writerIconNamed:(NSString *)name
@@ -822,11 +901,20 @@ static UIColor *WriterAIIconColor(NSString *hex)
         return cached;
     }
 
+    NSString *assetName = [self writerAssetCatalogNameForIcon:name];
+    UIImage *catalog = [UIImage imageNamed:assetName];
+    if (catalog) {
+        catalog = [catalog imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        cache[name] = catalog;
+        return catalog;
+    }
+
     // Bitmap icons (Android Figma exports).
     NSDictionary<NSString *, NSString *> *pngSources = @{
         @"mobile-preview": WriterAIIconPNG_mobile_preview,
         @"function": WriterAIIconPNG_function,
         @"ai-feature": WriterAIIconPNG_ai_feature,
+        @"ai-assistant-logo": WriterAIIconPNG_ai_assistant_logo,
         @"character": WriterAIIconPNG_character,
         @"paragraph": WriterAIIconPNG_paragraph,
         @"recent": WriterAIIconPNG_recent,

@@ -3974,6 +3974,7 @@
 				BE8D773A2136762600AC58EA /* Assets.xcassets in Resources */,
 				E2B010151026090900000001 /* notice.txt in Resources */,
 				E2B010171026090900000001 /* license.html in Resources */,
+				BE8D85CC214055F3009F1860 /* config in Resources */,
 				BE00F8A321396585001CE2D4 /* bundle.js in Resources */,
 				BE8D77382136762500AC58EA /* Main.storyboard in Resources */,
 				BE80E46821B7066D00859C97 /* Templates in Resources */,

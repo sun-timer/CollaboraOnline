@@ -15,6 +15,7 @@ describe('WriterEditorController', function () {
 			postMobileMessage: string[];
 			downloadAs: { name: string; format: string; options?: string; id?: string }[];
 		};
+		setToolbarCommandValues?(command: string, values: { [key: string]: any }): void;
 	}
 
 	function createFakeAdapter(docType: string): FakeWriterEditorAdapter {
@@ -24,13 +25,17 @@ describe('WriterEditorController', function () {
 			postMobileMessage: [],
 			downloadAs: [],
 		};
+		const commandValues: { [command: string]: { [key: string]: any } | undefined } = {};
 		return {
 			calls,
 			sendUnoCommand(command: string): void {
 				calls.sendUnoCommand.push(command);
 			},
-			getToolbarCommandValues(): { [key: string]: any } | undefined {
-				return undefined;
+			getToolbarCommandValues(command: string): { [key: string]: any } | undefined {
+				return commandValues[command];
+			},
+			setToolbarCommandValues(command: string, values: { [key: string]: any }): void {
+				commandValues[command] = values;
 			},
 			getDocType(): string {
 				return docType;
@@ -185,6 +190,19 @@ describe('WriterEditorController', function () {
 		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.SearchString'].value, 'abc');
 	});
 
+	it('records native undo on iOS after replace dispatch', function () {
+		(window as any).ThisIsTheiOSApp = true;
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		controller.runFindReplace('abc', 'def', true);
+
+		assert.deepEqual(adapter.calls.postMobileMessage, [
+			'NATIVE_UNDO_RECORD reason=find_replace_all',
+		]);
+		delete (window as any).ThisIsTheiOSApp;
+	});
+
 	it('rejects an empty query without dispatching', function () {
 		const adapter = createFakeAdapter('text');
 		const controller = new WriterEditorController(adapter);
@@ -294,6 +312,29 @@ describe('WriterEditorController', function () {
 		assert.deepEqual(result, { dispatched: 'none', reason: 'empty_shape' });
 		assert.equal(adapter.calls.sendUnoCommand.length, 0);
 	});
+
+	it('inserts a catalog shape via insertShapeUno', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertShapeUno('.uno:Line');
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command, '.uno:Line');
+		assert.equal(adapter.calls.sendUnoCommand[0], '.uno:Line');
+	});
+
+	it('inserts ArrowShapes via insertShapeUno', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertShapeUno('.uno:ArrowShapes.right-arrow');
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(command, '.uno:ArrowShapes.right-arrow');
+	});
 	it('applies a paragraph style via StyleApply', function () {
 		const adapter = createFakeAdapter('text');
 		const controller = new WriterEditorController(adapter);
@@ -340,6 +381,44 @@ describe('WriterEditorController', function () {
 		assert.deepEqual(adapter.calls.postMobileMessage, ['insertfile name=pic.png type=graphic data=AAAA']);
 	});
 
+	it('requests native image picker over WRITER_OPEN_IMAGE_PICKER', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.requestNativeImagePicker();
+
+		assert.deepEqual(result, {
+			dispatched: 'message',
+			message: 'WRITER_OPEN_IMAGE_PICKER',
+		});
+		assert.deepEqual(adapter.calls.postMobileMessage, ['WRITER_OPEN_IMAGE_PICKER']);
+	});
+
+	it('inserts a comment via InsertAnnotation Author/Text', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.insertComment('你好', 'Alice');
+
+		assert.equal(result.dispatched, 'unocmd');
+		const command = result.dispatched === 'unocmd' ? result.command : '';
+		assert.equal(
+			command,
+			'.uno:InsertAnnotation {"Author":{"type":"string","value":"Alice"},"Text":{"type":"string","value":"你好"}}',
+		);
+	});
+
+	it('rejects an empty comment without dispatching', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		assert.deepEqual(controller.insertComment('   '), {
+			dispatched: 'none',
+			reason: 'empty_comment',
+		});
+		assert.equal(adapter.calls.sendUnoCommand.length, 0);
+	});
+
 	it('saves as via a downloadas message', function () {
 		const adapter = createFakeAdapter('text');
 		const controller = new WriterEditorController(adapter);
@@ -350,12 +429,23 @@ describe('WriterEditorController', function () {
 		assert.equal(adapter.calls.postMobileMessage[0], 'downloadas name=document.pdf format=pdf id=saveas');
 	});
 
+	it('exports via a downloadas message', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+
+		const result = controller.exportAs('docx');
+
+		assert.equal(result.dispatched, 'export');
+		assert.equal(adapter.calls.postMobileMessage[0], 'downloadas name=export.docx format=docx');
+	});
+
 	it('rejects an empty image or format without dispatching', function () {
 		const adapter = createFakeAdapter('text');
 		const controller = new WriterEditorController(adapter);
 
 		assert.deepEqual(controller.insertImage('a.png', ''), { dispatched: 'none', reason: 'empty_image' });
 		assert.deepEqual(controller.saveAs(''), { dispatched: 'none', reason: 'empty_format' });
+		assert.deepEqual(controller.exportAs(''), { dispatched: 'none', reason: 'empty_format' });
 		assert.equal(adapter.calls.postMobileMessage.length, 0);
 	});
 	it('runs a forward find over the adapter with CMD_FIND', function () {
@@ -453,6 +543,43 @@ describe('WriterEditorController', function () {
 
 		assert.equal(result.dispatched, 'unocmd');
 		assert.deepEqual(adapter.calls.sendUnoCommand, ['.uno:TrackChanges?TrackChanges:bool=false']);
+	});
+
+	it('reads toggle state from getToolbarCommandValues', function () {
+		const adapter = createFakeAdapter('text');
+		adapter.setToolbarCommandValues!('.uno:TrackChanges', { checked: 'true' });
+		const controller = new WriterEditorController(adapter);
+
+		assert.equal(controller.isCommandChecked('.uno:TrackChanges', false), true);
+		assert.equal(controller.isCommandChecked('.uno:ShowTrackedChanges', true), true);
+	});
+
+	it('dispatches show tracked changes via runToggle', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+		const feature = WriterEditorCatalog.getFeature('show-tracked-changes');
+		assert.ok(feature);
+
+		const result = controller.runToggle(feature, true);
+
+		assert.deepEqual(result, {
+			dispatched: 'toggle',
+			command: '.uno:ShowTrackedChanges',
+			enabled: true,
+		});
+		assert.deepEqual(adapter.calls.sendUnoCommand, ['.uno:ShowTrackedChanges']);
+	});
+
+	it('dispatches track changes toggle via runToggle', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+		const feature = WriterEditorCatalog.getFeature('track-changes');
+		assert.ok(feature);
+
+		const result = controller.runToggle(feature, true);
+
+		assert.equal(result.dispatched, 'toggle');
+		assert.deepEqual(adapter.calls.sendUnoCommand, ['.uno:TrackChangesInAllViews']);
 	});
 	it('inserts a default chart (column) without a template override', function () {
 		const adapter = createFakeAdapter('text');

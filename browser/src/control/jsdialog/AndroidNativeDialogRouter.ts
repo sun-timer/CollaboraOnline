@@ -1,6 +1,6 @@
 /* -*- js-indent-level: 8 -*- */
 /*
- * AndroidNativeDialogRouter - intercept core JSDialog on Android and delegate to native UI.
+ * MobileNativeDialogRouter - intercept core JSDialog on Android/iOS and delegate to native UI.
  */
 
 interface NativeDialogControl {
@@ -144,7 +144,31 @@ class AndroidNativeDialogRouter {
 		};
 	}
 
+	private isMobileApp(): boolean {
+		return !!(window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp);
+	}
+
+	private handlesDialogOnThisPlatform(dialogId: string): boolean {
+		if (window.ThisIsTheAndroidApp) {
+			return NATIVE_SPECIFIC_DIALOG_IDS.has(dialogId);
+		}
+		if (window.ThisIsTheiOSApp) {
+			return dialogId === 'WordCountDialog' || dialogId === 'SpellingDialog';
+		}
+		return false;
+	}
+
 	private postPayload(payload: NativeDialogPayload): void {
+		if (window.ThisIsTheiOSApp) {
+			const dialogId =
+				payload.dialogId || this.activeDialogIds.get(payload.windowId) || '';
+			if (dialogId === 'WordCountDialog') {
+				WriterWordCountSheet.handlePayload(payload as WriterWordCountPayload);
+			} else if (dialogId === 'SpellingDialog') {
+				WriterSpellingSheet.handlePayload(payload as WriterSpellingPayload);
+			}
+			return;
+		}
 		if (!window.ThisIsTheAndroidApp || typeof window.postMobileMessage !== 'function') {
 			return;
 		}
@@ -156,7 +180,7 @@ class AndroidNativeDialogRouter {
 	}
 
 	public shouldIntercept(msgData: any): boolean {
-		if (!window.ThisIsTheAndroidApp || !msgData || msgData.id === undefined) {
+		if (!this.isMobileApp() || !msgData || msgData.id === undefined) {
 			return false;
 		}
 		if (msgData.action === 'close') {
@@ -170,9 +194,15 @@ class AndroidNativeDialogRouter {
 			return this.activeWindowIds.has(msgData.id);
 		}
 		if (msgData.type === 'messagebox') {
-			return true;
+			if (window.ThisIsTheAndroidApp) {
+				return true;
+			}
+			if (window.ThisIsTheiOSApp && WriterSpellingSheet.shouldInterceptMessagebox(msgData)) {
+				return true;
+			}
+			return false;
 		}
-		if (msgData.dialogid && NATIVE_SPECIFIC_DIALOG_IDS.has(msgData.dialogid)) {
+		if (msgData.dialogid && this.handlesDialogOnThisPlatform(msgData.dialogid)) {
 			return true;
 		}
 		return false;
@@ -181,6 +211,10 @@ class AndroidNativeDialogRouter {
 	public tryIntercept(msgData: any): boolean {
 		if (!this.shouldIntercept(msgData)) {
 			return false;
+		}
+
+		if (msgData.type === 'messagebox' && window.ThisIsTheiOSApp) {
+			return WriterSpellingSheet.handleMessagebox(msgData);
 		}
 
 		if (msgData.action === 'close') {

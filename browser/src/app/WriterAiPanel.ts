@@ -15,6 +15,7 @@ class WriterAiPanel {
 		| MobileAiFormatBatchDialog
 		| MobileAiCalcDialog
 		| MobileAiImageDialog
+		| MobileAiTypesetDialog
 		| null = null;
 
 	private constructor() {
@@ -68,6 +69,8 @@ class WriterAiPanel {
 			this.activeDialog = new MobileAiFormatBatchDialog();
 		} else if (entry.dialog === 'image') {
 			this.activeDialog = new MobileAiImageDialog();
+		} else if (entry.dialog === 'typeset') {
+			this.activeDialog = new MobileAiTypesetDialog();
 		} else {
 			this.activeDialog = new MobileAiOperationDialog(taskType);
 		}
