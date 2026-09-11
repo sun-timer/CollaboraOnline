@@ -12,9 +12,9 @@ class WriterFindReplaceDialog {
 	private mode: 'find' | 'replace' = 'find';
 	private readonly searchInput: HTMLInputElement;
 	private readonly replaceInput: HTMLInputElement;
-	private ignoreCheckbox: HTMLInputElement;
-	private caseCheckbox: HTMLInputElement;
-	private wholeCheckbox: HTMLInputElement;
+	private ignoreCheckbox!: HTMLInputElement;
+	private caseCheckbox!: HTMLInputElement;
+	private wholeCheckbox!: HTMLInputElement;
 	private readonly replaceRow: HTMLDivElement;
 	private readonly findModeBtn: HTMLButtonElement;
 	private readonly replaceModeBtn: HTMLButtonElement;

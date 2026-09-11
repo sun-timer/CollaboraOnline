@@ -9,10 +9,8 @@
 
 #import "Settings/AppChromeHelper.h"
 #import "Settings/AppIcons.h"
-#import "Settings/AppThemeManager.h"
 #import "Feedback/FeedbackViewController.h"
 #import "Settings/HTMLAssetViewController.h"
-#import "Settings/ThemeSettingsViewController.h"
 
 static UIColor *AboutCardColor(void) {
     return UIColor.whiteColor;
@@ -64,7 +62,6 @@ static UIColor *AboutCardColor(void) {
 
     [rows addArrangedSubview:[self infoCardWithTitle:versionText action:nil]];
     [rows addArrangedSubview:[self menuCardWithTitle:@"问题和建议" action:@selector(openFeedback)]];
-    [rows addArrangedSubview:[self menuCardWithTitle:@"主题设置" subtitle:[AppThemeManager displayNameForMode:[AppThemeManager currentMode]] action:@selector(openTheme)]];
     [rows addArrangedSubview:[self menuCardWithTitle:@"开源许可" action:@selector(openLicense)]];
     [rows addArrangedSubview:[self menuCardWithTitle:@"法律声明" action:@selector(openNotice)]];
 
@@ -183,13 +180,6 @@ static UIColor *AboutCardColor(void) {
 
 - (void)openFeedback {
     FeedbackViewController *vc = [[FeedbackViewController alloc] init];
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
-    nav.modalPresentationStyle = UIModalPresentationFullScreen;
-    [self presentViewController:nav animated:YES completion:nil];
-}
-
-- (void)openTheme {
-    ThemeSettingsViewController *vc = [[ThemeSettingsViewController alloc] init];
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
     nav.modalPresentationStyle = UIModalPresentationFullScreen;
     [self presentViewController:nav animated:YES completion:nil];

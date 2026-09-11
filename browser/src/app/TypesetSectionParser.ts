@@ -7,7 +7,7 @@ class TypesetSectionParser {
 		if (!raw || typeof raw !== 'string') {
 			return null;
 		}
-		let json = TypesetSectionParser.stripMarkdownFences(raw.trim());
+		const json = TypesetSectionParser.stripMarkdownFences(raw.trim());
 		try {
 			const root = JSON.parse(json);
 			if (!root || typeof root !== 'object' || Array.isArray(root)) {
@@ -43,7 +43,7 @@ class TypesetSectionParser {
 		if (!paragraphs || paragraphs.length === 0) {
 			return null;
 		}
-		let json = TypesetSectionParser.stripMarkdownFences(raw.trim());
+		const json = TypesetSectionParser.stripMarkdownFences(raw.trim());
 		try {
 			const parsed = JSON.parse(json);
 			const items = Array.isArray(parsed)
