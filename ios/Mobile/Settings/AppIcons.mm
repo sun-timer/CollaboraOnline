@@ -22,8 +22,6 @@
             @"search": @"HomeSearch",
             @"folder": @"HomeFolder",
             @"more": @"HomeMoreDots",
-            @"fab": @"HomeFab",
-            @"fab-close": @"HomeFabClose",
             @"avatar": @"HomeAvatar",
             @"file-writer": @"HomeFileWriter",
             @"file-calc": @"HomeFileCalc",
@@ -43,8 +41,22 @@
             return image;
         }
     }
-    if ([name isEqualToString:@"action-share"]) {
+    static NSDictionary<NSString *, NSString *> *vectorAliases;
+    static dispatch_once_t aliasOnce;
+    dispatch_once(&aliasOnce, ^{
+        vectorAliases = @{
+            @"fab": @"fab-plus",
+            @"fab-close": @"fab-close",
+            @"folder": @"folder",
+        };
+    });
+    NSString *vectorName = vectorAliases[name] ?: name;
+    if ([vectorName isEqualToString:@"action-share"]) {
         return [UIImage writerIconNamed:@"share"];
+    }
+    UIImage *vector = [UIImage writerIconNamed:vectorName];
+    if (vector != nil) {
+        return vector;
     }
     return [UIImage writerIconNamed:name];
 }

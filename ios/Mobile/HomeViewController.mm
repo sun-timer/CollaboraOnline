@@ -455,13 +455,13 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
     stack.layoutMarginsRelativeArrangement = YES;
     [self.fabMenuCard addSubview:stack];
 
-    [stack addArrangedSubview:[self newDocRowWithTitle:@"文本文档"
+    [stack addArrangedSubview:[self newDocRowWithTitle:@"新建文稿 (Word)"
                                                   icon:@"file-writer"
                                                 action:@selector(createWriter)]];
-    [stack addArrangedSubview:[self newDocRowWithTitle:@"电子表格"
+    [stack addArrangedSubview:[self newDocRowWithTitle:@"新建表格 (Excel)"
                                                   icon:@"file-calc"
                                                 action:@selector(createCalc)]];
-    [stack addArrangedSubview:[self newDocRowWithTitle:@"演示文稿"
+    [stack addArrangedSubview:[self newDocRowWithTitle:@"新建演示 (PPT)"
                                                   icon:@"file-impress"
                                                 action:@selector(createImpress)]];
 
@@ -475,12 +475,14 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 
     self.fabButton = [UIButton buttonWithType:UIButtonTypeCustom];
     self.fabButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.fabButton.backgroundColor = [self fabAccentColor];
-    self.fabButton.layer.cornerRadius = 30;
-    self.fabButton.clipsToBounds = YES;
-    UIImage *fabIcon = [[self scaledIconNamed:@"fab" size:17] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    self.fabButton.backgroundColor = UIColor.clearColor;
+    self.fabButton.clipsToBounds = NO;
+    self.fabButton.layer.shadowColor = UIColor.blackColor.CGColor;
+    self.fabButton.layer.shadowOpacity = 0.25;
+    self.fabButton.layer.shadowRadius = 10;
+    self.fabButton.layer.shadowOffset = CGSizeMake(0, 4);
+    UIImage *fabIcon = [AppIcons iconNamed:@"fab" size:60];
     [self.fabButton setImage:fabIcon forState:UIControlStateNormal];
-    self.fabButton.tintColor = UIColor.whiteColor;
     self.fabButton.imageView.contentMode = UIViewContentModeScaleAspectFit;
     self.fabButton.accessibilityIdentifier = @"homeFab";
     self.fabButton.accessibilityLabel = @"新建文档";
@@ -489,15 +491,17 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 
     self.fabCloseButton = [UIButton buttonWithType:UIButtonTypeCustom];
     self.fabCloseButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.fabCloseButton.backgroundColor = [self fabAccentColor];
-    self.fabCloseButton.layer.cornerRadius = 30;
-    self.fabCloseButton.clipsToBounds = YES;
+    self.fabCloseButton.backgroundColor = UIColor.clearColor;
+    self.fabCloseButton.clipsToBounds = NO;
+    self.fabCloseButton.layer.shadowColor = UIColor.blackColor.CGColor;
+    self.fabCloseButton.layer.shadowOpacity = 0.25;
+    self.fabCloseButton.layer.shadowRadius = 10;
+    self.fabCloseButton.layer.shadowOffset = CGSizeMake(0, 4);
     self.fabCloseButton.hidden = YES;
     self.fabCloseButton.accessibilityIdentifier = @"homeFabClose";
     self.fabCloseButton.accessibilityLabel = @"关闭新建菜单";
-    UIImage *closeIcon = [[self scaledIconNamed:@"fab-close" size:17] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    UIImage *closeIcon = [AppIcons iconNamed:@"fab-close" size:60];
     [self.fabCloseButton setImage:closeIcon forState:UIControlStateNormal];
-    self.fabCloseButton.tintColor = UIColor.whiteColor;
     self.fabCloseButton.imageView.contentMode = UIViewContentModeScaleAspectFit;
     [self.fabCloseButton addTarget:self action:@selector(closeFabMenu) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.fabCloseButton];
@@ -767,6 +771,10 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
                                                                   aiPrompt:prompt
                                                            userDescription:aiUserDescription
                                                                 calcNewTable:(docKind == CreateFileDocKindCalc)];
+        if (docKind == CreateFileDocKindImpress) {
+            options.autoGenerateAiContent = NO;
+            options.autoOpenImpressOutline = YES;
+        }
     }
     [DocumentPresentation presentDocumentAtURL:url from:self options:options];
 }

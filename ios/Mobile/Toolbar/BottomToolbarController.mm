@@ -18,6 +18,12 @@ static const NSInteger kParagraphTag = 7;
 static const NSInteger kInsertImageTag = 8;
 static const NSInteger kFillCellTag = 9;
 static const NSInteger kMergeCellTag = 10;
+static const NSInteger kSlideshowTag = 11;
+
+static UIColor *bottomToolbarIconTintColor(void)
+{
+    return [UIColor colorWithRed:32.0 / 255.0 green:33.0 / 255.0 blue:36.0 / 255.0 alpha:1.0];
+}
 
 @interface IOSBottomToolbarController ()
 @property (nonatomic, strong, readwrite) UIView *view;
@@ -46,7 +52,7 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
 
     UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage writerIconNamed:iconName]];
     icon.translatesAutoresizingMaskIntoConstraints = NO;
-    icon.tintColor = [UIColor colorWithRed:0.12 green:0.12 blue:0.13 alpha:1.0];
+    icon.tintColor = bottomToolbarIconTintColor();
     icon.contentMode = UIViewContentModeScaleAspectFit;
     [icon.widthAnchor constraintEqualToConstant:24.0].active = YES;
     [icon.heightAnchor constraintEqualToConstant:24.0].active = YES;
@@ -54,7 +60,7 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
     UILabel *label = [[UILabel alloc] init];
     label.translatesAutoresizingMaskIntoConstraints = NO;
     label.text = title;
-    label.textColor = [UIColor colorWithRed:0.12 green:0.12 blue:0.13 alpha:1.0];
+    label.textColor = bottomToolbarIconTintColor();
     label.font = [UIFont systemFontOfSize:14.0];
     label.textAlignment = NSTextAlignmentCenter;
 
@@ -147,6 +153,57 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
     [self rebuildItems];
 }
 
+- (NSArray<NSArray<NSString *> *> *)previewItems
+{
+    return @[
+        @[@"mobile-preview", @"手机预览", [NSString stringWithFormat:@"%ld", (long)kMobilePreviewTag]],
+        @[@"function", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
+        @[@"ai-assistant", @"AI助手", [NSString stringWithFormat:@"%ld", (long)kAIAssistantTag]],
+    ];
+}
+
+- (NSArray<NSArray<NSString *> *> *)sharedEditPrefixItems
+{
+    return @[
+        @[@"mobile-preview", @"手机预览", [NSString stringWithFormat:@"%ld", (long)kMobilePreviewTag]],
+        @[@"function", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
+        @[@"ai-assistant", @"AI助手", [NSString stringWithFormat:@"%ld", (long)kAIAssistantTag]],
+        @[@"ai-feature", @"AI功能", [NSString stringWithFormat:@"%ld", (long)kAIFeaturesTag]],
+        @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", (long)kKeyboardTag]],
+        @[@"character", @"字符", [NSString stringWithFormat:@"%ld", (long)kCharacterTag]],
+    ];
+}
+
+- (NSArray<NSArray<NSString *> *> *)editItemsForDocumentType
+{
+    BOOL isCalc = [self.documentType isEqualToString:@"spreadsheet"];
+    BOOL isPresentation = [self.documentType isEqualToString:@"presentation"];
+
+    if (isPresentation) {
+        return @[
+            @[@"function", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
+            @[@"ai-assistant", @"AI助手", [NSString stringWithFormat:@"%ld", (long)kAIAssistantTag]],
+            @[@"ai-feature", @"AI功能", [NSString stringWithFormat:@"%ld", (long)kAIFeaturesTag]],
+            @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", (long)kKeyboardTag]],
+            @[@"character", @"字符", [NSString stringWithFormat:@"%ld", (long)kCharacterTag]],
+            @[@"paragraph", @"段落", [NSString stringWithFormat:@"%ld", (long)kParagraphTag]],
+            @[@"insert-image", @"插入图片", [NSString stringWithFormat:@"%ld", (long)kInsertImageTag]],
+            @[@"slideshow-play", @"幻灯片播放", [NSString stringWithFormat:@"%ld", (long)kSlideshowTag]],
+        ];
+    }
+
+    NSMutableArray<NSArray<NSString *> *> *items =
+        [NSMutableArray arrayWithArray:[self sharedEditPrefixItems]];
+    if (isCalc) {
+        [items addObject:@[@"fill-cell", @"填充单元格", [NSString stringWithFormat:@"%ld", (long)kFillCellTag]]];
+        [items addObject:@[@"merge-cell", @"合并单元格", [NSString stringWithFormat:@"%ld", (long)kMergeCellTag]]];
+    } else {
+        [items addObject:@[@"paragraph", @"段落", [NSString stringWithFormat:@"%ld", (long)kParagraphTag]]];
+        [items addObject:@[@"insert-image", @"插入图片", [NSString stringWithFormat:@"%ld", (long)kInsertImageTag]]];
+    }
+    return items;
+}
+
 - (void)rebuildItems
 {
     for (UIView *view in self.itemsStack.arrangedSubviews.copy) {
@@ -155,16 +212,10 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
     }
 
     BOOL isPreview = (self.mode == IOSBottomToolbarModePreview);
-    BOOL isCalc = [self.documentType isEqualToString:@"spreadsheet"];
-    NSArray<NSArray<NSString *> *> *items = nil;
+    NSArray<NSArray<NSString *> *> *items =
+        isPreview ? [self previewItems] : [self editItemsForDocumentType];
 
     if (isPreview) {
-        // Align Android preview: three equal tabs.
-        items = @[
-            @[@"mobile-preview", @"手机预览", [NSString stringWithFormat:@"%ld", (long)kMobilePreviewTag]],
-            @[@"function", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
-            @[@"ai-assistant", @"AI助手", [NSString stringWithFormat:@"%ld", (long)kAIAssistantTag]],
-        ];
         self.itemsStack.distribution = UIStackViewDistributionFillEqually;
         self.scrollView.scrollEnabled = NO;
         self.scrollView.contentInset = UIEdgeInsetsZero;
@@ -174,23 +225,6 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
         }
         self.previewEqualWidthConstraint.active = YES;
     } else {
-        // Align Android applyBottomToolbarMode: preview row (3) + edit common (3) + doc-type (2).
-        NSMutableArray<NSArray<NSString *> *> *editItems = [NSMutableArray arrayWithArray:@[
-            @[@"mobile-preview", @"手机预览", [NSString stringWithFormat:@"%ld", (long)kMobilePreviewTag]],
-            @[@"function", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
-            @[@"ai-assistant", @"AI助手", [NSString stringWithFormat:@"%ld", (long)kAIAssistantTag]],
-            @[@"ai-feature", @"AI功能", [NSString stringWithFormat:@"%ld", (long)kAIFeaturesTag]],
-            @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", (long)kKeyboardTag]],
-            @[@"character", @"字符", [NSString stringWithFormat:@"%ld", (long)kCharacterTag]],
-        ]];
-        if (isCalc) {
-            [editItems addObject:@[@"ai-expand", @"填充", [NSString stringWithFormat:@"%ld", (long)kFillCellTag]]];
-            [editItems addObject:@[@"list", @"合并", [NSString stringWithFormat:@"%ld", (long)kMergeCellTag]]];
-        } else {
-            [editItems addObject:@[@"paragraph", @"段落", [NSString stringWithFormat:@"%ld", (long)kParagraphTag]]];
-            [editItems addObject:@[@"insert-image", @"插入图片", [NSString stringWithFormat:@"%ld", (long)kInsertImageTag]]];
-        }
-        items = editItems;
         self.itemsStack.distribution = UIStackViewDistributionFill;
         self.scrollView.scrollEnabled = YES;
         self.scrollView.contentInset = UIEdgeInsetsMake(0.0, 10.0, 0.0, 10.0);
@@ -255,6 +289,9 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
             break;
         case kMergeCellTag:
             [self.delegate bottomToolbarDidPressMergeCell];
+            break;
+        case kSlideshowTag:
+            [self.delegate bottomToolbarDidPressSlideshow];
             break;
         default:
             break;

@@ -137,4 +137,23 @@ describe('Mobile AI UI Catalog', function () {
 			}),
 		);
 	});
+
+	it('enables impress outline on iOS with the native overlay dialog', function () {
+		const outline = MobileAiUiCatalog.getEntry('impress_outline');
+		assert.ok(outline);
+		assert.equal(outline?.iosSupport, true);
+		assert.equal(outline?.dialog, 'impressOutline');
+		assert.equal(MobileAiUiCatalog.canRun('impress_outline', 'presentation'), true);
+		assert.equal(MobileAiUiCatalog.canRun('impress_outline', 'text'), false);
+		assert.ok(
+			MobileAiUiCatalog.getOperationEntries('presentation', true).some(function (entry) {
+				return entry.taskType === 'impress_outline';
+			}),
+		);
+		const generate = MobileAiUiCatalog.getEntry('impress_generate');
+		assert.ok(generate);
+		assert.equal(generate?.iosSupport, true);
+		assert.equal(generate?.includeInOperationSheet, false);
+		assert.equal(MobileAiUiCatalog.canRun('impress_generate', 'presentation'), true);
+	});
 });

@@ -71,6 +71,11 @@ class WriterAiPanel {
 			this.activeDialog = new MobileAiImageDialog();
 		} else if (entry.dialog === 'typeset') {
 			this.activeDialog = new MobileAiTypesetDialog();
+		} else if (entry.dialog === 'impressOutline') {
+			if (typeof (window as any).postMobileMessage === 'function') {
+				(window as any).postMobileMessage('IMPRESS_OPEN_OUTLINE');
+			}
+			return;
 		} else {
 			this.activeDialog = new MobileAiOperationDialog(taskType);
 		}

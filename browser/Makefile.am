@@ -297,6 +297,9 @@ COOL_JS_LST =\
 	src/app/WriterEditorSheet.ts \
 	src/app/WriterEditorIcons.ts \
 	src/app/WriterEditorPanel.ts \
+	src/app/ImpressEditorCatalog.ts \
+	src/app/ImpressEditorHyperlinkDialog.ts \
+	src/app/ImpressEditorPanel.ts \
 	src/app/WriterEditorChooseDialog.ts \
 	src/app/WriterFindReplaceDialog.ts \
 	src/app/WriterEditorPaperSizeDialog.ts \

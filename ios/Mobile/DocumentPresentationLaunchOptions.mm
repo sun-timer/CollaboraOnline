@@ -15,6 +15,7 @@
                       calcNewTable:(BOOL)calcNewTable {
     DocumentPresentationLaunchOptions *options = [[DocumentPresentationLaunchOptions alloc] init];
     options.autoGenerateAiContent = autoGenerate;
+    options.autoOpenImpressOutline = NO;
     options.autoAiPrompt = [aiPrompt copy];
     options.autoUserDescription = [userDescription copy];
     options.autoIsCalcNewTable = calcNewTable;

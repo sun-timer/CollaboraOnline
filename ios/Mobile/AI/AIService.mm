@@ -490,7 +490,9 @@ didCompleteWithError:(NSError *)error {
             [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
     BOOL isDocumentLevelTask = [taskType isEqualToString:@"outline"]
         || [taskType isEqualToString:@"article_generate"]
-        || [taskType isEqualToString:@"text_extract"];
+        || [taskType isEqualToString:@"text_extract"]
+        || [taskType isEqualToString:@"impress_outline"]
+        || [taskType isEqualToString:@"impress_generate"];
     if (text.length == 0 && !isDocumentLevelTask
         && (!isConversation || conversationPrompt.length == 0)) {
         if (error != NULL) {
@@ -771,6 +773,40 @@ didCompleteWithError:(NSError *)error {
         }
         systemPrompt = prompts[@"system"];
         userPrompt = prompts[@"user"];
+    } else if ([taskType isEqualToString:@"impress_outline"]) {
+        NSString *inputType = [context[@"inputType"] isKindOfClass:[NSString class]]
+            ? context[@"inputType"] : @"quick";
+        NSString *userInput = [context[@"userInput"] isKindOfClass:[NSString class]]
+            ? [context[@"userInput"] stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]] : text;
+        NSInteger pageRange = [context[@"pageRange"] respondsToSelector:@selector(integerValue)]
+            ? [context[@"pageRange"] integerValue] : 10;
+        if (pageRange <= 0) {
+            pageRange = 10;
+        }
+        NSString *audience = [context[@"audience"] isKindOfClass:[NSString class]]
+            ? context[@"audience"] : @"大众";
+        NSString *style = [context[@"style"] isKindOfClass:[NSString class]]
+            ? context[@"style"] : @"通用";
+        NSDictionary *prompts = [self impressOutlinePromptsForInputType:inputType
+                                                             userInput:userInput
+                                                             pageRange:pageRange
+                                                              audience:audience
+                                                                 style:style];
+        systemPrompt = prompts[@"system"];
+        userPrompt = prompts[@"user"];
+        if (userPrompt.length == 0) {
+            if (error != NULL) {
+                *error = [NSError errorWithDomain:@"com.xunlong.xloffice.ai"
+                                             code:1
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Request text is empty"}];
+            }
+            return nil;
+        }
+    } else if ([taskType isEqualToString:@"impress_generate"]) {
+        NSDictionary *prompts = [self impressGeneratePromptsForContext:context];
+        systemPrompt = prompts[@"system"];
+        userPrompt = prompts[@"user"];
     } else if ([taskType isEqualToString:@"text_extract"]) {
         systemPrompt =
             @"你是文字识别专家。请识别并提取图片中的所有文字，保持原始排版和段落结构，只返回提取的文字内容，不要添加解释。";
@@ -840,6 +876,110 @@ didCompleteWithError:(NSError *)error {
                  @"preamble", @"clause_title", @"clause_subtitle", @"clause_body"];
     }
     return @[@"title", @"heading1", @"heading2", @"heading3", @"body"];
+}
+
+- (NSDictionary *)impressOutlinePromptsForInputType:(NSString *)inputType
+                                         userInput:(NSString *)userInput
+                                         pageRange:(NSInteger)pageRange
+                                          audience:(NSString *)audience
+                                             style:(NSString *)style {
+    NSString *inputLabel = @"大纲";
+    if ([inputType isEqualToString:@"quick"]) {
+        inputLabel = @"主题";
+    } else if ([inputType isEqualToString:@"document"]) {
+        inputLabel = @"文档内容";
+    }
+    NSString *systemPrompt = [NSString stringWithFormat:
+        @"你是一个专业PPT大纲生成助手。根据用户提供的%@、页数范围、听众类型和风格，生成结构化JSON大纲。\n\n"
+         "输出格式要求（严格JSON，不要额外文字）：\n"
+         "{\n"
+         "  \"slides\": [\n"
+         "    {\"page\": 1, \"type\": \"cover\", \"title\": \"标题\", \"content\": \"副标题/附加信息\"},\n"
+         "    {\"page\": 2, \"type\": \"toc\", \"title\": \"目录\", \"content\": \"1. XX\\n2. XX\\n3. XX\"},\n"
+         "    {\"page\": 3, \"type\": \"section_divider\", \"title\": \"第一章标题\", \"content\": \"本章概述（1-2句）\"},\n"
+         "    {\"page\": 4, \"type\": \"section\", \"title\": \"章节标题\", \"content\": \"• 要点1\\n• 要点2\"},\n"
+         "    {\"page\": \"N\", \"type\": \"end\", \"title\": \"谢谢\", \"content\": \"结束语\"}\n"
+         "  ]\n"
+         "}\n\n"
+         "type枚举：cover(封面)、toc(目录)、section_divider(章节分割页)、section(章节正文)、end(结尾)\n"
+         "每章结构：先一条 section_divider（title=章名，content=本章概述），再一条或多条 section（正文页）\n"
+         "title: 每页标题（简洁有力）\n"
+         "content: 内容要点（Markdown格式，用•开头的列表）\n"
+         "页数不超过%ld页\n"
+         "风格：%@\n"
+         "听众：%@",
+        inputLabel, (long)pageRange, style ?: @"通用", audience ?: @"大众"];
+    NSString *userPrompt = nil;
+    if ([inputType isEqualToString:@"quick"]) {
+        userPrompt = [NSString stringWithFormat:@"请为主题生成PPT大纲：\n%@", userInput ?: @""];
+    } else if ([inputType isEqualToString:@"document"]) {
+        userPrompt = [NSString stringWithFormat:@"请根据以下文档内容生成PPT大纲：\n%@", userInput ?: @""];
+    } else {
+        userPrompt = [NSString stringWithFormat:@"请根据以下大纲整理为PPT结构：\n%@", userInput ?: @""];
+    }
+    return @{@"system": systemPrompt, @"user": userPrompt};
+}
+
+- (NSDictionary *)impressGeneratePromptsForContext:(NSDictionary *)context {
+    NSString *templateId = [context[@"templateId"] isKindOfClass:[NSString class]]
+        ? context[@"templateId"] : @"";
+    NSInteger batchIndex = [context[@"batchIndex"] respondsToSelector:@selector(integerValue)]
+        ? [context[@"batchIndex"] integerValue] : 0;
+    NSInteger totalBatches = [context[@"totalBatches"] respondsToSelector:@selector(integerValue)]
+        ? [context[@"totalBatches"] integerValue] : 1;
+    if (totalBatches <= 0) {
+        totalBatches = 1;
+    }
+    id outlineSlides = context[@"outlineSlides"];
+    id batchSlides = context[@"batchSlides"];
+    NSString *outlineJson = @"";
+    NSString *batchJson = @"";
+    if ([NSJSONSerialization isValidJSONObject:outlineSlides]) {
+        NSData *data = [NSJSONSerialization dataWithJSONObject:outlineSlides options:NSJSONWritingPrettyPrinted error:nil];
+        if (data) {
+            outlineJson = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+        }
+    } else if ([outlineSlides isKindOfClass:[NSString class]]) {
+        outlineJson = outlineSlides;
+    }
+    if ([NSJSONSerialization isValidJSONObject:batchSlides]) {
+        NSData *data = [NSJSONSerialization dataWithJSONObject:batchSlides options:NSJSONWritingPrettyPrinted error:nil];
+        if (data) {
+            batchJson = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+        }
+    } else if ([batchSlides isKindOfClass:[NSString class]]) {
+        batchJson = batchSlides;
+    }
+    NSString *systemPrompt =
+        @"你是专业PPT内容生成助手。根据用户大纲，生成当前批次的详细内容。\n\n"
+         "输出格式（严格JSON，不要额外文字，不要代码块）：\n"
+         "{\n"
+         "  \"slides\": [\n"
+         "    {\n"
+         "      \"page\": 1,\n"
+         "      \"type\": \"cover|toc|section_divider|section|end\",\n"
+         "      \"title\": \"页面标题\",\n"
+         "      \"subtitle\": \"副标题字符串\",\n"
+         "      \"content_points\": [\"要点1\", \"要点2\"],\n"
+         "      \"detailed_content\": [\"详细内容1\", \"详细内容2\"]\n"
+         "    }\n"
+         "  ]\n"
+         "}\n\n"
+         "要求：\n"
+         "1. slides 数组长度必须恰好为 1，只输出本批次那一页\n"
+         "2. subtitle 必须是字符串；无副标题时写 \"subtitle\": \"\"，禁止 \"subtitle\":, 或省略值\n"
+         "3. content_points 数量必须与模板该页要点槽位一致（2/3/4 等），优先 3 或 4 个\n"
+         "4. detailed_content 与 content_points 一一对应，每个要点展开1-3句详细说明\n"
+         "5. 内容要丰富、专业、有深度，不要笼统空泛\n"
+         "6. cover页只输出title+subtitle，content_points 和 detailed_content 用 []\n"
+         "7. toc页的content_points列出目录项，detailed_content 用 []\n"
+         "8. end页的content_points为致谢信息，subtitle 可为联系方式\n"
+         "9. section页必须输出 section_title 与 title 相同\n"
+         "10. 每个要点以换行符\\n分隔（在 JSON 字符串中用 \\n 表示）";
+    NSString *userPrompt = [NSString stringWithFormat:
+        @"当前批次 %ld/%ld\n模板：%@\n\n完整大纲（仅供参考，不要为其他页生成内容）：\n%@\n\n本批次必须生成的页（只输出这一页）：\n%@",
+        (long)(batchIndex + 1), (long)totalBatches, templateId, outlineJson, batchJson];
+    return @{@"system": systemPrompt, @"user": userPrompt};
 }
 
 - (NSDictionary *)typesetV2PromptsForType:(NSString *)typesetType fullText:(NSString *)fullText {

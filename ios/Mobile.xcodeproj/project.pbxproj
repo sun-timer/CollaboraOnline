@@ -63,6 +63,9 @@
 		C0FFEE132026081200000001 /* AIConfigurationStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE112026081200000001 /* AIConfigurationStore.mm */; };
 		C0FFEE142026081200000001 /* AIRequestSession.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE152026081200000001 /* AIRequestSession.mm */; };
 		C0FFEE162026081200000001 /* AIService.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE172026081200000001 /* AIService.mm */; };
+		C0FFEE402026091500000001 /* ImpressOutlineOverlayController.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE412026091500000001 /* ImpressOutlineOverlayController.mm */; };
+		C0FFEE432026091500000001 /* PptxTemplateService.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE442026091500000001 /* PptxTemplateService.mm */; };
+		C0FFEE462026091500000001 /* impress-templates in Resources */ = {isa = PBXBuildFile; fileRef = C0FFEE472026091500000001 /* impress-templates */; };
 		C0FFEE202026082400000001 /* HomeViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE212026082400000001 /* HomeViewController.mm */; };
 		C0FFEE232026082400000001 /* DocumentPresentation.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE242026082400000001 /* DocumentPresentation.mm */; };
 		C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE272026082400000001 /* RecentDocumentsStore.mm */; };
@@ -944,6 +947,11 @@
 		C0FFEE192026081200000001 /* AIConfigurationStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIConfigurationStore.h; sourceTree = "<group>"; };
 		C0FFEE1A2026081200000001 /* AIRequestSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIRequestSession.h; sourceTree = "<group>"; };
 		C0FFEE1B2026081200000001 /* AIService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIService.h; sourceTree = "<group>"; };
+		C0FFEE412026091500000001 /* ImpressOutlineOverlayController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ImpressOutlineOverlayController.mm; sourceTree = "<group>"; };
+		C0FFEE422026091500000001 /* ImpressOutlineOverlayController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ImpressOutlineOverlayController.h; sourceTree = "<group>"; };
+		C0FFEE442026091500000001 /* PptxTemplateService.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = PptxTemplateService.mm; sourceTree = "<group>"; };
+		C0FFEE452026091500000001 /* PptxTemplateService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PptxTemplateService.h; sourceTree = "<group>"; };
+		C0FFEE472026091500000001 /* impress-templates */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "impress-templates"; path = "../android/lib/src/main/assets/templates/impress"; sourceTree = SOURCE_ROOT; };
 		C0FFEE212026082400000001 /* HomeViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = HomeViewController.mm; sourceTree = "<group>"; };
 		C0FFEE222026082400000001 /* HomeViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HomeViewController.h; sourceTree = "<group>"; };
 		C0FFEE242026082400000001 /* DocumentPresentation.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DocumentPresentation.mm; sourceTree = "<group>"; };
@@ -1704,6 +1712,7 @@
 				BE18C7DD226DE09A001AD27E /* Branding */,
 				BEB0E5D821C7CA800085A0CF /* Settings.bundle */,
 				BE80E46721B7066C00859C97 /* Templates */,
+				C0FFEE472026091500000001 /* impress-templates */,
 				BE80E43121AD92F600859C97 /* Fonts */,
 				BE8D85BE214055F2009F1860 /* config */,
 				BE8D85C6214055F3009F1860 /* fundamentalrc */,
@@ -2907,6 +2916,8 @@
 				C0FFEE152026081200000001 /* AIRequestSession.mm */,
 				C0FFEE1B2026081200000001 /* AIService.h */,
 				C0FFEE172026081200000001 /* AIService.mm */,
+				C0FFEE422026091500000001 /* ImpressOutlineOverlayController.h */,
+				C0FFEE412026091500000001 /* ImpressOutlineOverlayController.mm */,
 				C0FFEE2B2026082400000001 /* AIModelConfigStore.h */,
 				C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */,
 				C0FFEE2E2026082400000001 /* AISettingsDrawerController.h */,
@@ -2935,6 +2946,8 @@
 			children = (
 				C0FFEE322026091200000001 /* TypesetService.h */,
 				C0FFEE312026091200000001 /* TypesetService.mm */,
+				C0FFEE452026091500000001 /* PptxTemplateService.h */,
+				C0FFEE442026091500000001 /* PptxTemplateService.mm */,
 				C0FFEE332026091200000001 /* TypesetTemplates.h */,
 				C0FFEE3B2026091200000001 /* minizip */,
 			);
@@ -3968,6 +3981,7 @@
 				BE00F8A321396585001CE2D4 /* bundle.js in Resources */,
 				BE8D77382136762500AC58EA /* Main.storyboard in Resources */,
 				BE80E46821B7066D00859C97 /* Templates in Resources */,
+				C0FFEE462026091500000001 /* impress-templates in Resources */,
 				BEB0E5D921C7CA800085A0CF /* Settings.bundle in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -4109,6 +4123,7 @@
 				C0FFEE132026081200000001 /* AIConfigurationStore.mm in Sources */,
 				C0FFEE142026081200000001 /* AIRequestSession.mm in Sources */,
 				C0FFEE162026081200000001 /* AIService.mm in Sources */,
+				C0FFEE402026091500000001 /* ImpressOutlineOverlayController.mm in Sources */,
 				C0FFEE202026082400000001 /* HomeViewController.mm in Sources */,
 				C0FFEE232026082400000001 /* DocumentPresentation.mm in Sources */,
 				C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */,
@@ -4116,6 +4131,7 @@
 				C0FFEE2C2026082400000001 /* AISettingsDrawerController.mm in Sources */,
 				C0FFEE2E2026082400000002 /* AISettingsDrawerIcons.mm in Sources */,
 				C0FFEE302026091200000001 /* TypesetService.mm in Sources */,
+				C0FFEE432026091500000001 /* PptxTemplateService.mm in Sources */,
 				C0FFEE342026091200000001 /* zip.c in Sources */,
 				C0FFEE362026091200000001 /* unzip.c in Sources */,
 				C0FFEE382026091200000001 /* ioapi.c in Sources */,

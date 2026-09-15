@@ -563,6 +563,11 @@ describe('Writer AI integration', function () {
 					opened.push('typeset');
 				};
 
+				const posted: string[] = [];
+				(global as any).window.postMobileMessage = function (message: string) {
+					posted.push(message);
+				};
+
 				panel!.openTask('polish');
 				panel!.openTask('translate');
 				panel!.openTask('format_batch');
@@ -575,9 +580,10 @@ describe('Writer AI integration', function () {
 					'formatBatch',
 					'typeset',
 				]);
+				assert.deepEqual(posted, ['IMPRESS_OPEN_OUTLINE']);
 				assert.equal(
-					dom.window.document.body.querySelector('[role="status"]')?.textContent,
-					'PPT 大纲：iOS 尚未支持',
+					dom.window.document.body.querySelector('[role="status"]'),
+					null,
 				);
 
 				MobileAiOperationDialog.prototype.open = originalOperation;

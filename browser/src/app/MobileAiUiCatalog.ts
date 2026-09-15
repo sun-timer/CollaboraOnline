@@ -29,7 +29,8 @@ type MobileAiUiDialog =
 	| 'unavailable'
 	| 'formatBatch'
 	| 'image'
-	| 'typeset';
+	| 'typeset'
+	| 'impressOutline';
 interface MobileAiUiEntry {
 	taskType: string;
 	androidTaskType: string;
@@ -327,8 +328,8 @@ class MobileAiUiCatalog {
 			documentTypes: ['presentation'],
 			requiredInput: 'prompt',
 			resultMode: 'insertAtEnd',
-			dialog: 'unavailable',
-			iosSupport: false,
+			dialog: 'impressOutline',
+			iosSupport: true,
 			selectionRequired: false,
 			includeInOperationSheet: true,
 		},
@@ -340,10 +341,10 @@ class MobileAiUiCatalog {
 			documentTypes: ['presentation'],
 			requiredInput: 'prompt',
 			resultMode: 'insertAtEnd',
-			dialog: 'unavailable',
-			iosSupport: false,
+			dialog: 'impressOutline',
+			iosSupport: true,
 			selectionRequired: false,
-			includeInOperationSheet: true,
+			includeInOperationSheet: false,
 		},
 	];
 

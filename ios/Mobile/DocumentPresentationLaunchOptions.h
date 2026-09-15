@@ -13,6 +13,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface DocumentPresentationLaunchOptions : NSObject
 
 @property (assign, nonatomic) BOOL autoGenerateAiContent;
+@property (assign, nonatomic) BOOL autoOpenImpressOutline;
 @property (copy, nonatomic, nullable) NSString *autoAiPrompt;
 @property (copy, nonatomic, nullable) NSString *autoUserDescription;
 @property (assign, nonatomic) BOOL autoIsCalcNewTable;

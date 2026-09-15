@@ -23,6 +23,7 @@ typedef NS_ENUM(NSInteger, IOSBottomToolbarMode) {
 - (void)bottomToolbarDidPressInsertImage;
 - (void)bottomToolbarDidPressFillCell;
 - (void)bottomToolbarDidPressMergeCell;
+- (void)bottomToolbarDidPressSlideshow;
 @end
 
 @interface IOSBottomToolbarController : NSObject

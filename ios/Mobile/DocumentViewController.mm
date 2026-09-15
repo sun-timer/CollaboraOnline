@@ -46,6 +46,7 @@
 
 #import "DocumentViewController.h"
 #import "AI/WriterAIComponents.h"
+#import "AI/ImpressOutlineOverlayController.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <Poco/MemoryStream.h>
@@ -81,6 +82,7 @@
     BOOL kitConnectionTornDown;
     BOOL documentPickerOpeningDocument;
     BOOL pendingAutoGenerateHandled;
+    ImpressOutlineOverlayController *impressOutlineOverlay;
 }
 
 @end
@@ -164,6 +166,9 @@ static IMP standardImpOfInputAccessoryView = nil;
             [strongSelf.webView evaluateJavaScript:script completionHandler:nil];
         }
         aiService:aiService];
+    impressOutlineOverlay = [[ImpressOutlineOverlayController alloc]
+        initWithHostViewController:self
+                         aiService:aiService];
     nativeBridgeHandler.documentFileURLProvider = ^NSURL * {
         DocumentViewController *strongSelf = weakSelf;
         if (!strongSelf.document) {
@@ -548,7 +553,18 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)maybeAutoGenerateAiContentAfterLoad
 {
-    if (pendingAutoGenerateHandled || self.launchOptions == nil || !self.launchOptions.autoGenerateAiContent) {
+    if (pendingAutoGenerateHandled || self.launchOptions == nil) {
+        return;
+    }
+    if (self.launchOptions.autoOpenImpressOutline) {
+        pendingAutoGenerateHandled = YES;
+        DocumentPresentationLaunchOptions *opts = self.launchOptions;
+        self.launchOptions = nil;
+        NSString *prefill = opts.autoAiPrompt.length > 0 ? opts.autoAiPrompt : @"";
+        [impressOutlineOverlay showWithPrefill:prefill];
+        return;
+    }
+    if (!self.launchOptions.autoGenerateAiContent) {
         return;
     }
     pendingAutoGenerateHandled = YES;
@@ -1302,6 +1318,9 @@ static IMP standardImpOfInputAccessoryView = nil;
                                animated:YES
                              completion:nil];
             return;
+        } else if ([message.body isEqualToString:@"IMPRESS_OPEN_OUTLINE"]) {
+            [impressOutlineOverlay showWithPrefill:@""];
+            return;
         } else if ([message.body isEqualToString:@"WRITER_OPEN_IMAGE_PICKER"]) {
             [self bottomToolbarDidPressInsertImage];
             return;
@@ -1488,6 +1507,7 @@ static IMP standardImpOfInputAccessoryView = nil;
      @"(function(){"
       "function c(o){if(o&&typeof o.close==='function'){o.close();}}"
       "c(window.__coolWriterEditorPanel);"
+      "c(window.__coolImpressEditorPanel);"
       "c(window.__coolWriterCharPanel);"
       "c(window.__coolWriterParaPanel);"
       "if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.close){window.__coolWriterFindReplace.close();}"
@@ -1754,16 +1774,20 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)bottomToolbarDidPressFunction
 {
+    if (nativeEditMode && [nativeDocumentType isEqualToString:@"presentation"]) {
+        [self sendToolbarJavaScript:
+         @"if(window.__coolImpressEditorPanel){window.__coolImpressEditorPanel.open();}"];
+        return;
+    }
     if (nativeEditMode && [nativeDocumentType isEqualToString:@"text"]) {
         // Writer edit mode: full five-tab DOM function panel (ticket 12).
         [self sendToolbarJavaScript:
          @"if(window.__coolWriterEditorPanel){window.__coolWriterEditorPanel.open();}"];
-    } else {
-        // Preview mode / non-Writer docs: file operations + review sheet.
-        [PreviewFunctionSheetController presentFrom:self
-                                          delegate:self
-                                     showWordCount:[nativeDocumentType isEqualToString:@"text"]];
+        return;
     }
+    [PreviewFunctionSheetController presentFrom:self
+                                      delegate:self
+                                 showWordCount:[nativeDocumentType isEqualToString:@"text"]];
 }
 
 - (void)bottomToolbarDidPressAIAssistant
@@ -1783,14 +1807,13 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)bottomToolbarDidPressCharacter
 {
-    if ([nativeDocumentType isEqualToString:@"text"]) {
-        // Writer: character quick panel (ticket 13). Calc keeps the direct
-        // Bold toggle below.
+    if ([nativeDocumentType isEqualToString:@"text"]
+        || [nativeDocumentType isEqualToString:@"presentation"]) {
         [self sendToolbarJavaScript:
          @"if(window.__coolWriterCharPanel){window.__coolWriterCharPanel.open();}"];
-    } else {
-        [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:Bold');}"];
+        return;
     }
+    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:Bold');}"];
 }
 
 - (void)bottomToolbarDidPressParagraph
@@ -1932,6 +1955,18 @@ static IMP standardImpOfInputAccessoryView = nil;
     [self refreshOpenDocumentCount];
 }
 
+- (void)bottomToolbarDidPressSlideshow
+{
+    [self sendToolbarJavaScript:
+     @"(function(){try{"
+      "if(window.app&&app.map&&app.map.slideShow){"
+      "app.map.slideShow._startFullscreenSlideshow();"
+      "}else if(window.L&&window.L.Map&&window.app&&app.map){"
+      "app.map.downloadAs('slideshow.svg','svg',null,'slideshow');"
+      "}"
+      "}catch(e){console.error('slideshow_error',e);}})();"];
+}
+
 - (void)bottomToolbarDidPressInsertImage
 {
     PHPickerConfiguration *config = [[PHPickerConfiguration alloc] init];
@@ -1969,6 +2004,7 @@ static IMP standardImpOfInputAccessoryView = nil;
         return;
     }
     isClosing = YES;
+    [impressOutlineOverlay dismiss];
 
     [self tearDownKitConnectionIfNeeded];
     [self removeDocumentCopyIfNeeded];
