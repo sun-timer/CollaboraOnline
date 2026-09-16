@@ -23,57 +23,6 @@ static UIColor *WriterAIColorAccent(void) {
 }
 
 // ---------------------------------------------------------------------------
-#pragma mark - WriterAFloatingAIButton
-
-@implementation WriterAFloatingAIButton {
-    void (^_onAction)(NSString *action);
-}
-
-static const CGFloat kWriterAIFabSize = 56.0;
-static const CGFloat kWriterAIFabLogoSize = 32.0;
-
-- (instancetype)initWithOnAction:(void (^)(NSString *action))onAction {
-    self = [super initWithFrame:CGRectZero];
-    if (self) {
-        _onAction = [onAction copy];
-        self.translatesAutoresizingMaskIntoConstraints = NO;
-        self.backgroundColor = UIColor.whiteColor;
-        self.layer.cornerRadius = kWriterAIFabSize / 2.0;
-        self.layer.shadowColor = UIColor.blackColor.CGColor;
-        self.layer.shadowOpacity = 0.16;
-        self.layer.shadowRadius = 8.0;
-        self.layer.shadowOffset = CGSizeMake(0.0, 2.0);
-        self.accessibilityLabel = @"AI 助手";
-
-        UIImageView *logo = [[UIImageView alloc] initWithImage:[UIImage writerIconNamed:@"ai-assistant-logo"]];
-        logo.translatesAutoresizingMaskIntoConstraints = NO;
-        logo.contentMode = UIViewContentModeScaleAspectFit;
-        logo.userInteractionEnabled = NO;
-        [self addSubview:logo];
-
-        [NSLayoutConstraint activateConstraints:@[
-            [self.widthAnchor constraintEqualToConstant:kWriterAIFabSize],
-            [self.heightAnchor constraintEqualToConstant:kWriterAIFabSize],
-            [logo.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
-            [logo.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
-            [logo.widthAnchor constraintEqualToConstant:kWriterAIFabLogoSize],
-            [logo.heightAnchor constraintEqualToConstant:kWriterAIFabLogoSize],
-        ]];
-
-        [self addTarget:self action:@selector(tapped) forControlEvents:UIControlEventTouchUpInside];
-    }
-    return self;
-}
-
-- (void)tapped {
-    if (_onAction) {
-        _onAction(@"tap");
-    }
-}
-
-@end
-
-// ---------------------------------------------------------------------------
 #pragma mark - WriterAITileCard
 
 @interface WriterAITileCard : UIButton
@@ -789,10 +738,21 @@ static UIColor *WriterAIIconColor(NSString *hex)
         @{ @"name": @"empty-doc", @"vb": @40.0, @"sw": @2.0, @"tint": @YES,
            @"paths": @[ @{ @"d": @"M32.2704 19.0078V9.84437C32.2704 8.67649 31.3237 7.72974 30.1558 7.72974H6.82899C5.66111 7.72974 4.71436 8.67649 4.71436 9.84437V31.1712C4.71436 32.339 5.66111 33.2858 6.82899 33.2858H20.9924" },
                         @{ @"d": @"M25.5833 21.75L35.7916 27.2917L30.2499 27.875L27.3317 32.8333L25.5833 21.75Z" } ] },
-        @{ @"name": @"ai-assistant", @"vb": @64.0, @"sw": @3.2,
-           @"paths": @[ @{ @"d": @"M38.019,36.837H60.099", @"c": @"#EC5D1F" },
-                        @{ @"d": @"M35.46,42.917H47.3", @"c": @"#EC5D1F" },
-                        @{ @"d": @"M31.94,48.997H62.98", @"c": @"#EC5D1F" } ] },
+        @{ @"name": @"fab-plus", @"vb": @120.0, @"sw": @8.0, @"tint": @NO, @"px": @120.0,
+           @"paths": @[
+               @{ @"shape": @"circle", @"c": @"#fa6200", @"fill": @YES },
+               @{ @"d": @"M43,60 H77", @"c": @"#ffffff" },
+               @{ @"d": @"M60,43 V77", @"c": @"#ffffff" },
+           ] },
+        @{ @"name": @"fab-close", @"vb": @120.0, @"sw": @8.0, @"tint": @NO, @"px": @120.0,
+           @"paths": @[
+               @{ @"shape": @"circle", @"c": @"#fe3a3a", @"fill": @YES },
+               @{ @"d": @"M43,43 L77,77", @"c": @"#ffffff" },
+               @{ @"d": @"M77,43 L43,77", @"c": @"#ffffff" },
+           ] },
+        @{ @"name": @"folder", @"vb": @48.0, @"sw": @3.25, @"tint": @YES,
+           @"paths": @[ @{ @"d": @"M4,9V41L9,21H39.5V15C39.5,13.8954,38.6046,13,37.5,13H24L19,7H6C4.8954,7,4,7.8954,4,9Z" },
+                        @{ @"d": @"M40,41L44,21H8.8126L4,41H40Z" } ] },
         @{ @"name": @"ai-quick", @"vb": @48.0, @"sw": @2.0,
            @"paths": @[ @{ @"d": @"M29.5 4L34 8L39.0161 5.0549L36.5 10.5L41 14.5L35 14L32.75 19L31.5 13.5L25.5002 13L30.7541 9.825L29.5 4Z", @"c": @"#1278D9" },
                         @{ @"d": @"M24 21.0103L31.5 13.5", @"c": @"#1278D9" },
@@ -867,6 +827,28 @@ static UIColor *WriterAIIconColor(NSString *hex)
                @{ @"d": @"M50.6644 5.3335H13.3311V26.6668H50.6644V5.3335Z" },
                @{ @"d": @"M5.33105 26.6665H58.6644V50.6665H49.3541V42.6665H14.6384V50.6665H5.33105V26.6665Z" },
            ] },
+        @{ @"name": @"fill-cell", @"vb": @48.0, @"sw": @2.0, @"tint": @YES,
+           @"paths": @[
+               @{ @"d": @"M39 6H9C7.34315 6 6 7.34315 6 9V39C6 40.6569 7.34315 42 9 42H39C40.6569 42 42 40.6569 42 39V9C42 7.34315 40.6569 6 39 6Z" },
+               @{ @"d": @"M34 24H14" },
+               @{ @"d": @"M34 15H14" },
+               @{ @"d": @"M34 33H14" },
+               @{ @"d": @"M18 33L30 21" },
+           ] },
+        @{ @"name": @"merge-cell", @"vb": @48.0, @"sw": @2.0, @"tint": @YES,
+           @"paths": @[
+               @{ @"d": @"M6 14H42" },
+               @{ @"d": @"M6 34H42" },
+               @{ @"d": @"M18 6V42" },
+               @{ @"d": @"M30 6V42" },
+               @{ @"d": @"M24 18V30" },
+               @{ @"d": @"M18 24H30" },
+           ] },
+        @{ @"name": @"slideshow-play", @"vb": @48.0, @"sw": @2.0, @"tint": @YES,
+           @"paths": @[
+               @{ @"d": @"M8 10H40C41.1046 10 42 10.8954 42 12V36C42 37.1046 41.1046 38 40 38H8C6.89543 38 6 37.1046 6 36V12C6 10.8954 6.89543 10 8 10Z" },
+               @{ @"d": @"M20 16L32 24L20 32V16Z", @"fill": @YES },
+           ] },
     ];
 }
 
@@ -914,6 +896,7 @@ static UIColor *WriterAIIconColor(NSString *hex)
         @"mobile-preview": WriterAIIconPNG_mobile_preview,
         @"function": WriterAIIconPNG_function,
         @"ai-feature": WriterAIIconPNG_ai_feature,
+        @"ai-assistant": @"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",
         @"ai-assistant-logo": WriterAIIconPNG_ai_assistant_logo,
         @"character": WriterAIIconPNG_character,
         @"paragraph": WriterAIIconPNG_paragraph,
@@ -962,25 +945,34 @@ static UIColor *WriterAIIconColor(NSString *hex)
     }
 
     double viewBox = [spec[@"vb"] doubleValue];
-    double scale = 24.0 / viewBox;
+    double outputPx = spec[@"px"] != nil ? [spec[@"px"] doubleValue] : 24.0;
+    double scale = outputPx / viewBox;
     double strokeWidth = [spec[@"sw"] doubleValue] * scale;
-    BOOL fill = [spec[@"fill"] boolValue];
+    BOOL defaultFill = [spec[@"fill"] boolValue];
     BOOL tint = [spec[@"tint"] boolValue];
 
-    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(24, 24)];
+    UIGraphicsImageRenderer *renderer =
+        [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(outputPx, outputPx)];
     UIImage *image = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
         CGContextRef c = ctx.CGContext;
         CGContextSetLineCap(c, kCGLineCapRound);
         CGContextSetLineJoin(c, kCGLineJoinRound);
         for (NSDictionary *pathSpec in spec[@"paths"]) {
-            UIBezierPath *path = [UIBezierPath bezierPath];
-            if (!WriterAIIconAppendPath(path, pathSpec[@"d"])) {
-                continue;
-            }
-            [path applyTransform:CGAffineTransformMakeScale(scale, scale)];
             NSString *hex = pathSpec[@"c"] ?: @"#101010";
             UIColor *color = WriterAIIconColor(hex);
-            if (fill) {
+            BOOL pathFill = pathSpec[@"fill"] != nil ? [pathSpec[@"fill"] boolValue] : defaultFill;
+            UIBezierPath *path = nil;
+            if ([pathSpec[@"shape"] isEqualToString:@"circle"]) {
+                CGRect bounds = CGRectMake(0, 0, viewBox * scale, viewBox * scale);
+                path = [UIBezierPath bezierPathWithOvalInRect:bounds];
+            } else {
+                path = [UIBezierPath bezierPath];
+                if (!WriterAIIconAppendPath(path, pathSpec[@"d"])) {
+                    continue;
+                }
+                [path applyTransform:CGAffineTransformMakeScale(scale, scale)];
+            }
+            if (pathFill) {
                 [color setFill];
                 [path fill];
             } else {

@@ -33,6 +33,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSUInteger)openDocumentCount;
 - (NSArray<RecentDocumentItem *> *)itemsMatchingQuery:(NSString *)query;
 - (void)recordURL:(NSURL *)url;
+/** Re-read RECENT_* keys from NSUserDefaults (other screens persist via new store instances). */
+- (void)reloadFromPersistentStorage;
 - (void)importLocalTestFiles;
 - (void)removeItem:(RecentDocumentItem *)item;
 - (void)renameItem:(RecentDocumentItem *)item toTitle:(NSString *)title;

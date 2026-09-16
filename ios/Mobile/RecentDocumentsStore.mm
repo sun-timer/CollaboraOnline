@@ -151,6 +151,11 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
     return filtered;
 }
 
+- (void)reloadFromPersistentStorage {
+    self.records = [[self loadRecordsForKey:RecentDocumentsStoreKey] mutableCopy];
+    self.closedRecords = [[self loadRecordsForKey:RecentlyClosedDocumentsStoreKey] mutableCopy];
+}
+
 - (void)recordURL:(NSURL *)url {
     if (url == nil || !url.isFileURL) {
         return;

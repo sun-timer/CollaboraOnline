@@ -488,6 +488,16 @@ didCompleteWithError:(NSError *)error {
     NSString *conversationPrompt = [context[@"prompt"] isKindOfClass:[NSString class]]
         ? [context[@"prompt"] stringByTrimmingCharactersInSet:
             [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+    BOOL docQaFirstTurn = [payload[@"docQaFirstTurn"] respondsToSelector:@selector(boolValue)]
+        ? [payload[@"docQaFirstTurn"] boolValue] : NO;
+    if ([taskType isEqualToString:@"doc_qa"] && docQaFirstTurn && text.length == 0) {
+        if (error != NULL) {
+            *error = [NSError errorWithDomain:@"com.xunlong.xloffice.ai"
+                                         code:1
+                                     userInfo:@{NSLocalizedDescriptionKey: @"文档全文提取失败"}];
+        }
+        return nil;
+    }
     BOOL isDocumentLevelTask = [taskType isEqualToString:@"outline"]
         || [taskType isEqualToString:@"article_generate"]
         || [taskType isEqualToString:@"text_extract"]
@@ -506,15 +516,22 @@ didCompleteWithError:(NSError *)error {
     NSString *systemPrompt = nil;
     NSString *userPrompt = nil;
     if (isConversation) {
-        systemPrompt = [taskType isEqualToString:@"doc_qa"]
-            ? @"你是文档问答助手。只根据提供的文档上下文回答问题；如果上下文不足，请明确说明。"
-            : @"你是办公助手，请清晰、准确地回答用户消息。";
-        NSMutableString *prompt = [NSMutableString stringWithString:conversationPrompt];
-        if (text.length > 0) {
-            [prompt insertString:[NSString stringWithFormat:@"\n\n文档上下文：\n---\n%@\n---", text]
-                          atIndex:0];
+        if ([taskType isEqualToString:@"doc_qa"] && docQaFirstTurn && text.length > 0) {
+            systemPrompt =
+                @"你是文档问答助手，请只基于以下文档内容回答问题；若文档未包含答案，请明确说明。";
+            userPrompt = [NSString stringWithFormat:@"【全文内容】\n%@\n\n【用户问题】\n%@",
+                text, conversationPrompt];
+        } else {
+            systemPrompt = [taskType isEqualToString:@"doc_qa"]
+                ? @"你是文档问答助手。只根据提供的文档上下文回答问题；如果上下文不足，请明确说明。"
+                : @"你是办公助手，请清晰、准确地回答用户消息。";
+            NSMutableString *prompt = [NSMutableString stringWithString:conversationPrompt];
+            if (text.length > 0) {
+                [prompt insertString:[NSString stringWithFormat:@"\n\n文档上下文：\n---\n%@\n---", text]
+                              atIndex:0];
+            }
+            userPrompt = prompt;
         }
-        userPrompt = prompt;
     } else if ([taskType isEqualToString:@"calc_formula"]) {
         NSString *cellAddress = [context[@"cellAddress"] isKindOfClass:[NSString class]]
             ? [context[@"cellAddress"] stringByTrimmingCharactersInSet:

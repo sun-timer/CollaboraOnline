@@ -61,7 +61,7 @@ static NSString *PptxSafeType(id value) {
 @property (strong, nonatomic) UIView *completedGroup;
 @property (strong, nonatomic) UIScrollView *completedScroll;
 @property (strong, nonatomic) UIStackView *cardStack;
-@property (strong, nonatomic) UIButton *copyBtn;
+@property (strong, nonatomic) UIButton *outlineCopyButton;
 @property (strong, nonatomic) UIButton *regenerateBtn;
 @property (strong, nonatomic) UIButton *templateBtn;
 @property (strong, nonatomic) UIView *errorGroup;
@@ -285,10 +285,10 @@ static NSString *PptxSafeType(id value) {
         [self.cardStack.bottomAnchor constraintEqualToAnchor:self.completedScroll.contentLayoutGuide.bottomAnchor],
         [self.cardStack.widthAnchor constraintEqualToAnchor:self.completedScroll.frameLayoutGuide.widthAnchor],
     ]];
-    self.copyBtn = [self secondaryButton:@"复制" action:@selector(copyOutline)];
+    self.outlineCopyButton = [self secondaryButton:@"复制" action:@selector(copyOutline)];
     self.regenerateBtn = [self secondaryButton:@"重新生成" action:@selector(onGenerate)];
     self.templateBtn = [self primaryButton:@"选择模板" action:@selector(openTemplateSelect)];
-    UIStackView *doneBar = [[UIStackView alloc] initWithArrangedSubviews:@[self.copyBtn, self.regenerateBtn, self.templateBtn]];
+    UIStackView *doneBar = [[UIStackView alloc] initWithArrangedSubviews:@[self.outlineCopyButton, self.regenerateBtn, self.templateBtn]];
     doneBar.axis = UILayoutConstraintAxisHorizontal;
     doneBar.spacing = 8;
     doneBar.distribution = UIStackViewDistributionFillEqually;
@@ -514,7 +514,7 @@ static NSString *PptxSafeType(id value) {
 }
 
 - (void)setState:(ImpressOutlineState)state {
-    self.state = state;
+    _state = state;
     self.inputGroup.hidden = state != ImpressOutlineStateInput;
     self.generatingGroup.hidden = state != ImpressOutlineStateGenerating;
     self.completedGroup.hidden = state != ImpressOutlineStateCompleted;

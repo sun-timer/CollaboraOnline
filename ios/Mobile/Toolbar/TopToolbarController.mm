@@ -25,7 +25,18 @@ static UIColor *topToolbarChromeColor(void)
 
 static UIColor *topToolbarIconTintColor(void)
 {
-    return [UIColor colorWithRed:16.0 / 255.0 green:16.0 / 255.0 blue:16.0 / 255.0 alpha:1.0];
+    return [UIColor colorWithRed:32.0 / 255.0 green:33.0 / 255.0 blue:36.0 / 255.0 alpha:1.0];
+}
+
+static UIColor *topToolbarDoneColorForDocumentType(NSString *documentType)
+{
+    if ([documentType isEqualToString:@"spreadsheet"]) {
+        return [UIColor colorWithRed:59.0 / 255.0 green:128.0 / 255.0 blue:64.0 / 255.0 alpha:1.0];
+    }
+    if ([documentType isEqualToString:@"presentation"]) {
+        return [UIColor colorWithRed:236.0 / 255.0 green:93.0 / 255.0 blue:31.0 / 255.0 alpha:1.0];
+    }
+    return [UIColor colorWithRed:26.0 / 255.0 green:115.0 / 255.0 blue:232.0 / 255.0 alpha:1.0];
 }
 
 @interface IOSTopToolbarController ()
@@ -37,9 +48,8 @@ static UIColor *topToolbarIconTintColor(void)
 @property (nonatomic, strong) UIButton *doneButton;
 @property (nonatomic, strong) UIButton *undoButton;
 @property (nonatomic, strong) UIButton *redoButton;
-@property (nonatomic, strong) UIButton *commentButton;
 @property (nonatomic, strong) UIButton *searchButton;
-@property (nonatomic, strong) UIView *commentBadge;
+@property (nonatomic, strong) UIButton *editSearchButton;
 @property (nonatomic, strong) UILabel *openDocsCountLabel;
 @property (nonatomic, strong) UIButton *editDocumentsButton;
 @property (nonatomic, strong) UILabel *editOpenDocsCountLabel;
@@ -193,18 +203,12 @@ static UIView *toolbarSpacer(void)
     [_redoButton addTarget:self action:@selector(redoPressed:) forControlEvents:UIControlEventTouchUpInside];
     [_editRow addSubview:_redoButton];
 
-    _commentButton = toolbarIconButton(@"comment",
-                                       @"批注",
-                                       UIEdgeInsetsMake(8.0, 8.0, 8.0, 8.0));
-    [_commentButton addTarget:self action:@selector(commentPressed:) forControlEvents:UIControlEventTouchUpInside];
-    [_editRow addSubview:_commentButton];
-
-    _commentBadge = [[UIView alloc] init];
-    _commentBadge.translatesAutoresizingMaskIntoConstraints = NO;
-    _commentBadge.backgroundColor = [UIColor colorWithRed:1.0 green:59.0 / 255.0 blue:48.0 / 255.0 alpha:1.0];
-    _commentBadge.layer.cornerRadius = 4.0;
-    _commentBadge.hidden = YES;
-    [_editRow addSubview:_commentBadge];
+    _editSearchButton = toolbarIconButton(@"search",
+                                          @"查找替换",
+                                          UIEdgeInsetsMake(8.0, 8.0, 8.0, 8.0));
+    [_editSearchButton addTarget:self action:@selector(searchPressed:)
+                forControlEvents:UIControlEventTouchUpInside];
+    [_editRow addSubview:_editSearchButton];
 
     _editDocumentsButton = toolbarIconButton(@"open-docs",
                                              @"已打开文档",
@@ -284,9 +288,9 @@ static UIView *toolbarSpacer(void)
         [_redoButton.leadingAnchor constraintEqualToAnchor:_undoButton.trailingAnchor],
         [_redoButton.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
         [rightSpacer.leadingAnchor constraintEqualToAnchor:_redoButton.trailingAnchor],
-        [_commentButton.leadingAnchor constraintEqualToAnchor:rightSpacer.trailingAnchor],
-        [_commentButton.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
-        [_editDocumentsButton.leadingAnchor constraintEqualToAnchor:_commentButton.trailingAnchor],
+        [_editSearchButton.leadingAnchor constraintEqualToAnchor:rightSpacer.trailingAnchor],
+        [_editSearchButton.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
+        [_editDocumentsButton.leadingAnchor constraintEqualToAnchor:_editSearchButton.trailingAnchor],
         [_editDocumentsButton.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
         [closeButton.leadingAnchor constraintEqualToAnchor:_editDocumentsButton.trailingAnchor],
         [closeButton.trailingAnchor constraintEqualToAnchor:_editRow.trailingAnchor
@@ -294,10 +298,6 @@ static UIView *toolbarSpacer(void)
         [closeButton.centerYAnchor constraintEqualToAnchor:_editRow.centerYAnchor],
         [leftSpacer.leadingAnchor constraintEqualToAnchor:_doneButton.trailingAnchor],
         [rightSpacer.widthAnchor constraintEqualToAnchor:leftSpacer.widthAnchor],
-        [_commentBadge.topAnchor constraintEqualToAnchor:_commentButton.topAnchor constant:4.0],
-        [_commentBadge.trailingAnchor constraintEqualToAnchor:_commentButton.trailingAnchor constant:-4.0],
-        [_commentBadge.widthAnchor constraintEqualToConstant:8.0],
-        [_commentBadge.heightAnchor constraintEqualToConstant:8.0],
     ]];
 }
 
@@ -348,7 +348,6 @@ static UIView *toolbarSpacer(void)
 - (void)setCommentCount:(NSInteger)commentCount
 {
     _commentCount = commentCount;
-    self.commentBadge.hidden = commentCount <= 0;
 }
 
 - (void)setOpenDocumentCount:(NSInteger)openDocumentCount
@@ -363,19 +362,18 @@ static UIView *toolbarSpacer(void)
 - (void)setDocumentType:(NSString *)documentType
 {
     _documentType = [documentType copy];
-    UIColor *color = [UIColor colorWithRed:26.0 / 255.0 green:115.0 / 255.0 blue:232.0 / 255.0 alpha:1.0];
-    if ([_documentType isEqualToString:@"spreadsheet"]) {
-        color = [UIColor colorWithRed:59.0 / 255.0 green:128.0 / 255.0 blue:64.0 / 255.0 alpha:1.0];
-    } else if ([_documentType isEqualToString:@"presentation"]) {
-        color = [UIColor colorWithRed:236.0 / 255.0 green:93.0 / 255.0 blue:31.0 / 255.0 alpha:1.0];
-    }
-    self.doneButton.backgroundColor = color;
+    self.doneButton.backgroundColor = topToolbarDoneColorForDocumentType(_documentType);
     BOOL hideSearch = [_documentType isEqualToString:@"presentation"];
-    self.searchButton.hidden = hideSearch;
-    self.searchButton.userInteractionEnabled = !hideSearch;
-    for (NSLayoutConstraint *constraint in self.searchButton.constraints) {
-        if (constraint.firstAttribute == NSLayoutAttributeWidth) {
-            constraint.constant = hideSearch ? 0.0 : kTopToolbarIconButtonSize;
+    for (UIButton *searchBtn in @[ self.searchButton, self.editSearchButton ]) {
+        if (!searchBtn) {
+            continue;
+        }
+        searchBtn.hidden = hideSearch;
+        searchBtn.userInteractionEnabled = !hideSearch;
+        for (NSLayoutConstraint *constraint in searchBtn.constraints) {
+            if (constraint.firstAttribute == NSLayoutAttributeWidth) {
+                constraint.constant = hideSearch ? 0.0 : kTopToolbarIconButtonSize;
+            }
         }
     }
 }

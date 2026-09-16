@@ -8,6 +8,7 @@
 #import "NativeBridgeHandler.h"
 
 #import "../AI/AIService.h"
+#import "../AI/AiConversationStore.h"
 #import "../Typeset/TypesetService.h"
 
 static const NSInteger kNativeBridgeProtocolVersion = 1;
@@ -119,6 +120,7 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
     NSSet<NSString *> *supportedTypes = [NSSet setWithArray:@[
         @"native.ready", @"ai.request", @"ai.cancel", @"ai.accept",
         @"ai.state", @"ai.stream", @"ai.done", @"ai.error",
+        @"ai.conversation.load", @"ai.conversation.save", @"ai.conversation.clear",
         @"typeset.extract", @"typeset.fill", @"typeset.insert",
     ]];
     if (![supportedTypes containsObject:type]) {
@@ -220,6 +222,55 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
                                payload:@{@"state": @"ready", @"accepted": @YES}];
         }
         [self.requestSessions removeObjectForKey:requestId];
+        return;
+    }
+
+    if ([type isEqualToString:@"ai.conversation.load"]
+        || [type isEqualToString:@"ai.conversation.save"]
+        || [type isEqualToString:@"ai.conversation.clear"]) {
+        if (![envelope[@"payload"] isKindOfClass:[NSDictionary class]]) {
+            [self emitErrorType:@"native.error"
+                      requestId:requestId
+                documentSessionId:documentSessionId
+                           code:@"invalid_payload"
+                        message:@"ai.conversation payload must be an object"];
+            return;
+        }
+        AiConversationStore *store = self.conversationStoreProvider ? self.conversationStoreProvider() : nil;
+        NSDictionary *payload = envelope[@"payload"];
+        NSString *mode = [payload[@"mode"] isKindOfClass:[NSString class]] ? payload[@"mode"] : @"";
+        if ([type isEqualToString:@"ai.conversation.load"]) {
+            NSArray *messages = store ? [store loadHistoryForMode:mode] : @[];
+            [self emitEnvelopeType:@"ai.conversation.loaded"
+                           requestId:requestId
+                     documentSessionId:documentSessionId
+                                payload:@{@"mode": mode, @"messages": messages}];
+            return;
+        }
+        if ([type isEqualToString:@"ai.conversation.save"]) {
+            NSArray *messages = [payload[@"messages"] isKindOfClass:[NSArray class]]
+                                    ? payload[@"messages"] : @[];
+            if (store) {
+                [store saveHistoryForMode:mode messages:messages];
+            }
+            [self emitEnvelopeType:@"ai.conversation.saved"
+                           requestId:requestId
+                     documentSessionId:documentSessionId
+                                payload:@{@"mode": mode}];
+            return;
+        }
+        BOOL clearAll = [payload[@"all"] boolValue];
+        if (store) {
+            if (clearAll) {
+                [store clearHistoriesForCurrentDocument];
+            } else {
+                [store clearHistoryForMode:mode];
+            }
+        }
+        [self emitEnvelopeType:@"ai.conversation.cleared"
+                       requestId:requestId
+                 documentSessionId:documentSessionId
+                            payload:@{@"mode": mode, @"all": @(clearAll)}];
         return;
     }
 

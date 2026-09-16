@@ -20,6 +20,7 @@
 
 #include <comphelper/lok.hxx>
 #include <i18nlangtag/languagetag.hxx>
+#include <rtl/bootstrap.hxx>
 
 #import "ios.h"
 #import "AppDelegate.h"
@@ -108,7 +109,18 @@ NSString *app_text_direction;
     else
         app_text_direction = @"";
 
+    // LO bootstrap uses UserInstallation=$SYSUSERHOME from program/bootstraprc. On the iOS
+    // Simulator, osl_getCurrentSecurity()/getHomeDir can fail so SYSUSERHOME never expands and
+    // userinstall::finalize() aborts with BE_USERINSTALL_FAILED ("安装无法完成").
+    // Do not pass the profile URL to lok_init_2() — that path also rewires BRAND_BASE_DIR incorrectly.
+    NSURL *userInstallURL = [NSURL fileURLWithPath:userDirectory isDirectory:YES];
+    OUString userInstallOUString(OUString::fromUtf8(
+        OString([[userInstallURL absoluteString] UTF8String])));
+    rtl::Bootstrap::set(u"UserInstallation"_ustr, userInstallOUString);
+
     lo_kit = lok_init_2(nullptr, nullptr);
+    if (!lo_kit)
+        NSLog(@"lok_init_2 failed (UserInstallation: %s)", [[userInstallURL absoluteString] UTF8String]);
 
     comphelper::LibreOfficeKit::setLanguageTag(LanguageTag(OUString::fromUtf8(OString([app_locale UTF8String])), true));
 

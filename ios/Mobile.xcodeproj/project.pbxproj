@@ -66,6 +66,7 @@
 		C0FFEE402026091500000001 /* ImpressOutlineOverlayController.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE412026091500000001 /* ImpressOutlineOverlayController.mm */; };
 		C0FFEE432026091500000001 /* PptxTemplateService.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE442026091500000001 /* PptxTemplateService.mm */; };
 		C0FFEE462026091500000001 /* impress-templates in Resources */ = {isa = PBXBuildFile; fileRef = C0FFEE472026091500000001 /* impress-templates */; };
+		A1C0NV012026091400000001 /* AiConversationStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = A1C0NV002026091400000001 /* AiConversationStore.mm */; };
 		C0FFEE202026082400000001 /* HomeViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE212026082400000001 /* HomeViewController.mm */; };
 		C0FFEE232026082400000001 /* DocumentPresentation.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE242026082400000001 /* DocumentPresentation.mm */; };
 		C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE272026082400000001 /* RecentDocumentsStore.mm */; };
@@ -943,6 +944,8 @@
 		C0FFEE112026081200000001 /* AIConfigurationStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AIConfigurationStore.mm; sourceTree = "<group>"; };
 		C0FFEE152026081200000001 /* AIRequestSession.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AIRequestSession.mm; sourceTree = "<group>"; };
 		C0FFEE172026081200000001 /* AIService.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AIService.mm; sourceTree = "<group>"; };
+		A1C0NV002026091400000001 /* AiConversationStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AiConversationStore.mm; sourceTree = "<group>"; };
+		A1C0NV022026091400000001 /* AiConversationStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AiConversationStore.h; sourceTree = "<group>"; };
 		C0FFEE182026081200000001 /* KeychainStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeychainStore.h; sourceTree = "<group>"; };
 		C0FFEE192026081200000001 /* AIConfigurationStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIConfigurationStore.h; sourceTree = "<group>"; };
 		C0FFEE1A2026081200000001 /* AIRequestSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AIRequestSession.h; sourceTree = "<group>"; };
@@ -2918,6 +2921,8 @@
 				C0FFEE172026081200000001 /* AIService.mm */,
 				C0FFEE422026091500000001 /* ImpressOutlineOverlayController.h */,
 				C0FFEE412026091500000001 /* ImpressOutlineOverlayController.mm */,
+				A1C0NV022026091400000001 /* AiConversationStore.h */,
+				A1C0NV002026091400000001 /* AiConversationStore.mm */,
 				C0FFEE2B2026082400000001 /* AIModelConfigStore.h */,
 				C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */,
 				C0FFEE2E2026082400000001 /* AISettingsDrawerController.h */,
@@ -4124,6 +4129,7 @@
 				C0FFEE142026081200000001 /* AIRequestSession.mm in Sources */,
 				C0FFEE162026081200000001 /* AIService.mm in Sources */,
 				C0FFEE402026091500000001 /* ImpressOutlineOverlayController.mm in Sources */,
+				A1C0NV012026091400000001 /* AiConversationStore.mm in Sources */,
 				C0FFEE202026082400000001 /* HomeViewController.mm in Sources */,
 				C0FFEE232026082400000001 /* DocumentPresentation.mm in Sources */,
 				C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */,

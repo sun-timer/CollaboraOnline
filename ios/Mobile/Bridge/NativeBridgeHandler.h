@@ -8,8 +8,10 @@
 #import <WebKit/WebKit.h>
 
 @class AIService;
+@class AiConversationStore;
 
 typedef NSString * (^NativeBridgeSessionIdProvider)(void);
+typedef AiConversationStore * _Nullable (^NativeBridgeConversationStoreProvider)(void);
 typedef void (^NativeBridgeMessageEmitter)(NSDictionary *message);
 typedef NSURL * _Nullable (^NativeBridgeDocumentURLProvider)(void);
 typedef void (^NativeBridgeReloadDocumentHandler)(void);
@@ -19,6 +21,7 @@ typedef void (^NativeBridgeReloadDocumentHandler)(void);
 @property (copy, nonatomic, nullable) NativeBridgeDocumentURLProvider documentFileURLProvider;
 @property (copy, nonatomic, nullable) NativeBridgeDocumentURLProvider originalDocumentURLProvider;
 @property (copy, nonatomic, nullable) NativeBridgeReloadDocumentHandler reloadDocumentHandler;
+@property (copy, nonatomic, nullable) NativeBridgeConversationStoreProvider conversationStoreProvider;
 
 - (instancetype)initWithSessionIdProvider:(NativeBridgeSessionIdProvider)sessionIdProvider
                                   emitter:(NativeBridgeMessageEmitter)emitter;

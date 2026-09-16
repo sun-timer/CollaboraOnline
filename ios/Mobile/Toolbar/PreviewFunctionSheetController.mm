@@ -169,10 +169,10 @@ static UIColor *PreviewFunctionSheetColorRowText(void)
         return @[
             @[ @"list", @"字数统计", @"wordcount" ],
             @[ @"ai-notice", @"拼写检查", @"spellcheck" ],
-            @[ @"search", @"查找替换", @"find" ],
+            @[ @"search", @"查找", @"find" ],
         ];
     }
-    return @[ @[ @"search", @"查找替换", @"find" ] ];
+    return @[ @[ @"search", @"查找", @"find" ] ];
 }
 
 - (UIStackView *)buildActionStack:(NSArray<NSArray<NSString *> *> *)defs

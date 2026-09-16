@@ -194,6 +194,7 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    [self.recentStore reloadFromPersistentStorage];
     [self.recentStore importLocalTestFiles];
     [self reloadAvatar];
     [self reloadRecents];
