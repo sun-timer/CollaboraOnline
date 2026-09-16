@@ -108,6 +108,17 @@ window.L.Control.AlertDialog = window.L.Control.extend({
 		} else if (e.cmd && e.kind) {
 			this._map.fire('hidebusy');
 
+			if (
+				(window.ThisIsTheiOSApp || window.ThisIsTheAndroidApp) &&
+				e.cmd === 'tile' &&
+				e.kind === 'invalid'
+			) {
+				window.app.console.warn(
+					'AlertDialog: ignored transient tile invalid on mobile',
+				);
+				return;
+			}
+
 			var msg = _('The server encountered a {0} error while parsing the {1} command.');
 			msg = msg.replace('{0}', e.kind);
 			msg = msg.replace('{1}', e.cmd);

@@ -162,6 +162,61 @@ class UIManager extends window.L.Control {
 		return !shouldUseClassic;
 	}
 
+	private scheduleIOSFirstPaintRecover(): void {
+		const recover = (): void => {
+			try {
+				if (!this.map || typeof this.map.invalidateSize !== 'function') {
+					return;
+				}
+				(this.map as any)._sizeChanged = true;
+				if (!(this.map as any)._loaded) {
+					return;
+				}
+				this.map.invalidateSize(false);
+				const size =
+					typeof this.map.getSize === 'function' ? this.map.getSize() : null;
+				const tileSize = (window as any).app?.tile?.size;
+				if (!size || size.x < 1 || size.y < 1) {
+					return;
+				}
+				if (!tileSize || tileSize.x < 1 || tileSize.y < 1) {
+					return;
+				}
+				const layer = (this.map as any)._docLayer;
+				if (layer && typeof layer._resetClientVisArea === 'function') {
+					layer._resetClientVisArea();
+				}
+				if (layer && typeof layer._requestNewTiles === 'function') {
+					layer._requestNewTiles();
+				}
+				if (
+					typeof (window as any).TileManager !== 'undefined' &&
+					typeof (window as any).TileManager.update === 'function'
+				) {
+					(window as any).TileManager.update();
+				}
+			} catch (_e) {
+				// Best-effort recover when map container size was stale on first paint.
+			}
+		};
+
+		const onStatusIndicator = (e: StatusIndicatorEvent): void => {
+			if (
+				e.statusType === 'initializationcomplete' ||
+				e.statusType === 'coolloaded'
+			) {
+				recover();
+			}
+		};
+
+		this.map.on('statusindicator', onStatusIndicator);
+		this.map.on('docloaded', recover);
+		window.setTimeout(recover, 0);
+		window.setTimeout(recover, 180);
+		window.setTimeout(recover, 520);
+		window.setTimeout(recover, 980);
+	}
+
 	private shouldUseNativeMobileBottomToolbar(): boolean {
 		return shouldUseNativeMobileToolbar({
 			android: !!window.ThisIsTheAndroidApp,
@@ -716,6 +771,10 @@ class UIManager extends window.L.Control {
 		else
 			this.map.on('docloaded', startPresentation);
 		this.map.contextToolbar = new ContextToolbar(this.map);
+
+		if (window.ThisIsTheiOSApp) {
+			this.scheduleIOSFirstPaintRecover();
+		}
 
 		app.serverConnectionService.onSpecializedUI(docType);
 	}

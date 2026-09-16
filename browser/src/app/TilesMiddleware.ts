@@ -674,10 +674,13 @@ class TileManager {
 		);
 
 		// Read-only views can much more agressively pre-load
-		return (
+		let count =
 			Math.ceil((viewTileWidth * viewTileHeight) / 4) *
-			(!this._hasEditPerm ? 4 : 1)
-		);
+			(!this._hasEditPerm ? 4 : 1);
+		if ((window as any).ThisIsTheiOSApp) {
+			count = Math.min(count, this._hasEditPerm ? 6 : 12);
+		}
+		return count;
 	}
 
 	private static updateProperties() {
@@ -1190,6 +1193,22 @@ class TileManager {
 		tileWids: number[],
 		addedSize: number,
 	) {
+		if (
+			!addedSize ||
+			this.tileSize <= 0 ||
+			!app.tile?.size ||
+			app.tile.size.x <= 0 ||
+			app.tile.size.y <= 0 ||
+			part < 0 ||
+			mode < 0
+		) {
+			return;
+		}
+		for (let i = 0; i < tilePositionsX.length; i++) {
+			if (!(tilePositionsX[i] >= 0) || !(tilePositionsY[i] >= 0)) {
+				return;
+			}
+		}
 		var msg =
 			'tilecombine ' +
 			'nviewid=0 ' +
@@ -1654,6 +1673,10 @@ class TileManager {
 
 		var interval = 250;
 		var idleTime = 750;
+		if ((window as any).ThisIsTheiOSApp) {
+			interval = 900;
+			idleTime = 1600;
+		}
 		this._preFetchPart = this._docLayer._selectedPart;
 		this._preFetchMode = app.activeDocument.activeModes;
 		this._preFetchIdle = setTimeout(

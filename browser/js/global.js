@@ -603,8 +603,15 @@ function getInitializerClass() {
 						if (method === 'error') {
 							var log = 'jserror ';
 							for (var arg = 0; arg < arguments.length; arg++) {
-								if (typeof arguments[arg] === 'string')
+								if (typeof arguments[arg] === 'string') {
 									log += arguments[arg] + '\n';
+								} else {
+									try {
+										log += JSON.stringify(arguments[arg]) + '\n';
+									} catch (stringifyError) {
+										log += String(arguments[arg]) + '\n';
+									}
+								}
 							}
 							global.logServer(log);
 						}

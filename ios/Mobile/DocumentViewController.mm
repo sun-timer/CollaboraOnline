@@ -46,6 +46,7 @@
 
 #import "DocumentViewController.h"
 #import "AI/WriterAIComponents.h"
+#import "AI/AiConversationStore.h"
 #import "AI/ImpressOutlineOverlayController.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -59,7 +60,6 @@
     WriterAIPanelView *aiPanel;
     WriterAAIResultModal *aiResultModal;
     WriterALanguagePicker *languagePicker;
-    WriterAFloatingAIButton *floatingAiButton;
     NSString *lastSelection;
     NSString *lastTaskType;
     NSString *aiTaskTitle;
@@ -82,7 +82,12 @@
     BOOL kitConnectionTornDown;
     BOOL documentPickerOpeningDocument;
     BOOL pendingAutoGenerateHandled;
+    AiConversationStore *aiConversationStore;
     ImpressOutlineOverlayController *impressOutlineOverlay;
+    CGSize lastWebViewLayoutSize;
+    int documentCanvasRecoverAttempts;
+    BOOL documentCanvasRecoverSucceeded;
+    BOOL documentCanvasRecoverInFlight;
 }
 
 @end
@@ -134,6 +139,10 @@ static IMP standardImpOfInputAccessoryView = nil;
     closeNotificationPipeForForwardingThread[1] = -1;
     isClosing = NO;
     kitConnectionTornDown = NO;
+    lastWebViewLayoutSize = CGSizeZero;
+    documentCanvasRecoverAttempts = 0;
+    documentCanvasRecoverSucceeded = NO;
+    documentCanvasRecoverInFlight = NO;
 
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     WKUserContentController *userContentController = [[WKUserContentController alloc] init];
@@ -202,6 +211,16 @@ static IMP standardImpOfInputAccessoryView = nil;
         [strongSelf requestCloseWithCompletion:^{
             [DocumentPresentation presentDocumentAtURL:fileURL from:presenter];
         }];
+    };
+    long long loadDocumentMillis = (long long)([NSDate date].timeIntervalSince1970 * 1000.0);
+    aiConversationStore = [[AiConversationStore alloc]
+        initWithDocumentCopyURL:self.document ? self.document->copyFileURL : nil
+           originalDocumentURL:self.document.fileURL
+                     urlToLoad:nil
+              loadDocumentMillis:loadDocumentMillis];
+    nativeBridgeHandler.conversationStoreProvider = ^AiConversationStore * {
+        DocumentViewController *strongSelf = weakSelf;
+        return strongSelf ? strongSelf->aiConversationStore : nil;
     };
     [userContentController addScriptMessageHandler:nativeBridgeHandler name:@"nativeBridge"];
     [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"clipboard"];
@@ -373,31 +392,12 @@ static IMP standardImpOfInputAccessoryView = nil;
     ]];
     aiDrawer = [AISettingsDrawerController attachToHost:self];
     [aiDrawer requireFailureOfScrollViewGestures:self.webView.scrollView];
-    // Ticket 07 (phase3): floating AI shortcut bar + local AI events.
-    floatingAiButton = [[WriterAFloatingAIButton alloc] initWithOnAction:^(NSString *action) {
-        DocumentViewController *strongSelf = weakSelf;
-        [strongSelf floatingAiTapped];
-    }];
-    [self.view addSubview:floatingAiButton];
-    floatingAiButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [NSLayoutConstraint activateConstraints:@[
-        [floatingAiButton.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor
-                                                      constant:16.0],
-        [floatingAiButton.bottomAnchor constraintEqualToAnchor:bottomToolbarContainer.topAnchor
-                                                      constant:-16.0],
-    ]];
 
     // Local AI requests use the ObjC AIService with per-request emit (see
     // launchAIRequestWithTaskType:); no global event emitter needed.
 }
 
 #pragma mark - Ticket 07: AI panel, result modal, language picker
-
-- (void)floatingAiTapped
-{
-    // Ticket 03: FAB mirrors bottom-bar「AI助手」→ doc_qa/chat assistant sheet.
-    [self bottomToolbarDidPressAIAssistant];
-}
 
 - (void)dismissAIPanel
 {
@@ -770,7 +770,36 @@ static IMP standardImpOfInputAccessoryView = nil;
     self.webView = nil;
 }
 
+- (void)notifyWebViewAiConversationDocumentReady {
+    if (self.webView == nil) {
+        return;
+    }
+    NSString *script =
+        @"(function(){try{if(window.MobileAiConversationController&&"
+         "typeof MobileAiConversationController.shared==='function'){"
+         "MobileAiConversationController.shared().onDocumentOpened();}"
+         "}catch(e){}})();";
+    [self.webView evaluateJavaScript:script completionHandler:nil];
+}
+
+- (void)notifyWebViewAiConversationDocumentClosed {
+    if (self.webView == nil) {
+        return;
+    }
+    NSString *script =
+        @"(function(){try{if(window.MobileAiConversationController&&"
+         "typeof MobileAiConversationController.shared==='function'){"
+         "MobileAiConversationController.shared().clearDocumentSession();}"
+         "}catch(e){}})();";
+    [self.webView evaluateJavaScript:script completionHandler:nil];
+}
+
 - (void)finishDocumentUiCloseWithCompletion:(void (^)(void))completion {
+    [self notifyWebViewAiConversationDocumentClosed];
+    if (aiConversationStore != nil) {
+        [aiConversationStore clearHistoriesForCurrentDocument];
+        aiConversationStore = nil;
+    }
     [nativeBridgeHandler cancelAllRequests];
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                     name:UIKeyboardWillChangeFrameNotification
@@ -839,6 +868,8 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     LOG_TRC("didFinishNavigation: " << [[navigation description] UTF8String]);
+    [self notifyWebViewAiConversationDocumentReady];
+    [self scheduleDocumentCanvasRecover];
 }
 
 - (void)webView:(WKWebView *)webView didReceiveServerRedirectForProvisionalNavigation:(WKNavigation *)navigation {
@@ -1423,7 +1454,6 @@ static IMP standardImpOfInputAccessoryView = nil;
     bottomToolbarController.compact = keyboardVisible;
     bottomToolbarHeightConstraint.constant = bottomToolbarController.preferredHeight;
     bottomToolbarBottomConstraint.constant = bottomOffset;
-    floatingAiButton.hidden = keyboardVisible;
     [UIView animateWithDuration:duration
                           delay:0.0
                         options:options
@@ -1477,6 +1507,78 @@ static IMP standardImpOfInputAccessoryView = nil;
              }
          ];
     }
+}
+
+- (NSString *)documentCanvasRecoverJavaScript
+{
+    return @"(function(){try{"
+            "var map=window.app&&app.map;"
+            "if(!map||typeof map.invalidateSize!=='function'){return 'nomap';}"
+            "if(!map._loaded){return 'notloaded';}"
+            "map._sizeChanged=true;"
+            "map.invalidateSize(false);"
+            "var size=typeof map.getSize==='function'?map.getSize():null;"
+            "var ts=window.app&&app.tile&&app.tile.size;"
+            "if(!size||size.x<1||size.y<1){return 'zerosize';}"
+            "if(!ts||ts.x<1||ts.y<1){return 'notile';}"
+            "var layer=map._docLayer;"
+            "if(layer&&typeof layer._resetClientVisArea==='function'){layer._resetClientVisArea();}"
+            "if(layer&&typeof layer._requestNewTiles==='function'){layer._requestNewTiles();}"
+            "if(window.TileManager&&typeof TileManager.update==='function'){TileManager.update();}"
+            "return 'ok';"
+            "}catch(e){console.error('canvas_recover '+String(e&&e.message||e));return 'err';}})();";
+}
+
+- (void)evaluateDocumentCanvasRecoverOnce
+{
+    if (isClosing || self.webView == nil) {
+        return;
+    }
+    [self sendToolbarJavaScript:[self documentCanvasRecoverJavaScript]];
+}
+
+- (void)scheduleDocumentCanvasRecover
+{
+    if (isClosing || self.webView == nil || documentCanvasRecoverSucceeded
+        || documentCanvasRecoverInFlight) {
+        return;
+    }
+    CGSize boundsSize = self.webView.bounds.size;
+    if (boundsSize.width < 1.0 || boundsSize.height < 1.0) {
+        return;
+    }
+    if (documentCanvasRecoverAttempts >= 24) {
+        LOG_ERR("document canvas recover gave up after 24 attempts");
+        return;
+    }
+    documentCanvasRecoverAttempts += 1;
+    documentCanvasRecoverInFlight = YES;
+    __weak DocumentViewController *weakSelf = self;
+    [self.webView evaluateJavaScript:[self documentCanvasRecoverJavaScript]
+                   completionHandler:^(id result, NSError *error) {
+        DocumentViewController *strongSelf = weakSelf;
+        if (strongSelf == nil || strongSelf->isClosing) {
+            return;
+        }
+        strongSelf->documentCanvasRecoverInFlight = NO;
+        if (error) {
+            LOG_ERR("document canvas recover JS failed: "
+                    << [[error localizedDescription] UTF8String]);
+        }
+        NSString *status = [result isKindOfClass:[NSString class]] ? (NSString *)result : @"err";
+        if ([status isEqualToString:@"ok"]) {
+            strongSelf->documentCanvasRecoverSucceeded = YES;
+            return;
+        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            DocumentViewController *retrySelf = weakSelf;
+            if (retrySelf == nil || retrySelf->isClosing) {
+                return;
+            }
+            [retrySelf scheduleDocumentCanvasRecover];
+        });
+    }];
 }
 
 - (void)sendToolbarJavaScript:(NSString *)script
@@ -1565,8 +1667,26 @@ static IMP standardImpOfInputAccessoryView = nil;
     fakeSocketWriteQueue(self.document->fakeClientFd, saveMessage, strlen(saveMessage));
 }
 
+- (void)dismissDocumentKeyboard
+{
+    [self.view endEditing:YES];
+    [self.webView endEditing:YES];
+    [self sendToolbarJavaScript:
+     @"(function(){"
+      "function c(o){if(o&&typeof o.close==='function'){o.close();}}"
+      "c(window.__coolWriterAiPanel);"
+      "var ae=document.activeElement;"
+      "if(ae&&ae!==document.body&&typeof ae.blur==='function'){ae.blur();}"
+      "try{"
+      "var ta=window.app&&app.map&&app.map._textInput&&app.map._textInput._textArea;"
+      "if(ta&&typeof ta.blur==='function'){ta.blur();}"
+      "}catch(e){}"
+      "})();"];
+}
+
 - (void)finishNativeEditing
 {
+    [self dismissDocumentKeyboard];
     [self dismissWriterOverlayUi];
     NSString *script = @"(function(){"
                         "if(window.app&&app.map){"
@@ -1584,10 +1704,31 @@ static IMP standardImpOfInputAccessoryView = nil;
     });
 }
 
+- (void)viewDidLayoutSubviews
+{
+    [super viewDidLayoutSubviews];
+    if (self.webView == nil) {
+        return;
+    }
+    CGSize currentSize = self.webView.bounds.size;
+    const BOOL firstValidLayout =
+        lastWebViewLayoutSize.width < 1.0 || lastWebViewLayoutSize.height < 1.0;
+    if (currentSize.width < 1.0 || currentSize.height < 1.0) {
+        return;
+    }
+    if (firstValidLayout) {
+        lastWebViewLayoutSize = currentSize;
+        [self scheduleDocumentCanvasRecover];
+        return;
+    }
+    lastWebViewLayoutSize = currentSize;
+}
+
 - (void)viewDidAppear:(BOOL)animated
 {
     [super viewDidAppear:animated];
     [self refreshOpenDocumentCount];
+    [self scheduleDocumentCanvasRecover];
 }
 
 - (void)refreshOpenDocumentCount
@@ -1654,8 +1795,13 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)topToolbarDidPressSearch
 {
-    [self sendToolbarJavaScript:
-     @"(function(){if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open();}else if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SearchDialog');}})();"];
+    if (nativeEditMode) {
+        [self sendToolbarJavaScript:
+         @"if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open({replaceEnabled:true});}"];
+    } else {
+        [self sendToolbarJavaScript:
+         @"if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open({replaceEnabled:false});}"];
+    }
 }
 
 - (void)topToolbarDidPressShare
@@ -1760,16 +1906,76 @@ static IMP standardImpOfInputAccessoryView = nil;
     [self sendToolbarJavaScript:script];
 }
 
+- (void)scheduleMobilePhonePreviewRelayout
+{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (isClosing) {
+            return;
+        }
+        [self sendToolbarJavaScript:
+         @"if(window.MobilePhonePreview){window.MobilePhonePreview.relayout();}"];
+    });
+}
+
+- (void)presentMobilePhonePreviewAfterChromeSettled
+{
+    [self sendToolbarJavaScript:
+     @"if(window.MobilePhonePreview){window.MobilePhonePreview.show();}"];
+    [self scheduleMobilePhonePreviewRelayout];
+    [self evaluateDocumentCanvasRecoverOnce];
+}
+
 - (void)bottomToolbarDidPressMobilePreview
 {
-    if (nativeEditMode) {
-        [self finishNativeEditing];
-    }
-    [self sendToolbarJavaScript:
-     @"if(window.MobilePhonePreview){"
-      "if(document.body.classList.contains('mobile-phone-preview-active')){window.MobilePhonePreview.hide();}"
-      "else{window.MobilePhonePreview.show();}"
-      "}"];
+    [self dismissDocumentKeyboard];
+    __weak DocumentViewController *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.28 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        DocumentViewController *strongSelf = weakSelf;
+        if (strongSelf == nil || strongSelf->isClosing) {
+            return;
+        }
+        NSString *toggleScript =
+            @"(function(){"
+             "if(!window.MobilePhonePreview){return 'missing';}"
+             "if(document.body.classList.contains('mobile-phone-preview-active')){"
+             "window.MobilePhonePreview.hide();return 'hidden';}"
+             "return 'show';})();";
+        [strongSelf.webView evaluateJavaScript:toggleScript
+                               completionHandler:^(id result, NSError *error) {
+            DocumentViewController *selfRef = weakSelf;
+            if (selfRef == nil || selfRef->isClosing) {
+                return;
+            }
+            if (error) {
+                LOG_ERR("Mobile phone preview toggle failed: "
+                        << [[error localizedDescription] UTF8String]);
+                return;
+            }
+            NSString *action = @"show";
+            if ([result isKindOfClass:[NSString class]]) {
+                action = (NSString *)result;
+            }
+            if ([action isEqualToString:@"hidden"] || [action isEqualToString:@"missing"]) {
+                return;
+            }
+            BOOL leavingEdit = selfRef->nativeEditMode;
+            if (leavingEdit) {
+                [selfRef finishNativeEditing];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{
+                    DocumentViewController *settledSelf = weakSelf;
+                    if (settledSelf == nil || settledSelf->isClosing) {
+                        return;
+                    }
+                    [settledSelf presentMobilePhonePreviewAfterChromeSettled];
+                });
+            } else {
+                [selfRef presentMobilePhonePreviewAfterChromeSettled];
+            }
+        }];
+    });
 }
 
 - (void)bottomToolbarDidPressFunction
@@ -1792,7 +1998,15 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)bottomToolbarDidPressAIAssistant
 {
-    [self sendToolbarJavaScript:@"if(window.__coolWriterAiPanel){window.__coolWriterAiPanel.openAssistant();}"];
+    [self.webView evaluateJavaScript:
+     @"if(window.__coolWriterAiPanel){window.__coolWriterAiPanel.openAssistant();}"
+                   completionHandler:^(id _Nullable obj, NSError * _Nullable error) {
+        if (error) {
+            LOG_ERR("Toolbar JavaScript failed: " << [[error localizedDescription] UTF8String]);
+            return;
+        }
+        [self.webView becomeFirstResponder];
+    }];
 }
 
 - (void)bottomToolbarDidPressAIFeatures
@@ -1909,7 +2123,7 @@ static IMP standardImpOfInputAccessoryView = nil;
 - (void)previewFunctionSheetDidRequestFindReplace
 {
     [self sendToolbarJavaScript:
-     @"(function(){if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open();}else if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SearchDialog');}})();"];
+     @"if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open({replaceEnabled:false});}"];
 }
 
 - (void)previewFunctionSheetDidRequestWordCount
