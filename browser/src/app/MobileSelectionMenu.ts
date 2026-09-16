@@ -9,9 +9,10 @@ interface MobileSelectionMenuItemSpec {
 	id: string;
 	label: string;
 	iconKey: string;
-	kind: 'clipboard' | 'ai';
+	kind: 'clipboard' | 'ai' | 'action';
 	androidTaskType?: string;
 	catalogTaskType?: string;
+	unoCommand?: string;
 }
 
 interface MobileSelectionShowDetail {
@@ -19,6 +20,7 @@ interface MobileSelectionShowDetail {
 	anchorY: number;
 	anchorBottomY?: number;
 	text: string;
+	mode?: 'text' | 'calc' | 'graphic';
 }
 
 class MobileSelectionMenu {
@@ -33,6 +35,7 @@ class MobileSelectionMenu {
 	private overlay: HTMLDivElement | null = null;
 	private container: HTMLDivElement | null = null;
 	private anchorBottomY = 0;
+	private menuMode: 'text' | 'calc' | 'graphic' = 'text';
 	private readonly onShow: (event: Event) => void;
 	private readonly onHide: (event: Event) => void;
 
@@ -117,6 +120,59 @@ class MobileSelectionMenu {
 		];
 	}
 
+	/** Calc cell text selection (Android SelectionMenuController calcMode). */
+	static calcMenuItems(): MobileSelectionMenuItemSpec[] {
+		return [
+			{ id: 'copy', label: '复制', iconKey: 'copy', kind: 'clipboard' },
+			{ id: 'paste', label: '粘贴', iconKey: 'paste', kind: 'clipboard' },
+			{ id: 'cut', label: '剪切', iconKey: 'cut', kind: 'clipboard' },
+			{
+				id: 'clear',
+				label: '清除',
+				iconKey: 'clear',
+				kind: 'action',
+				unoCommand: '.uno:ClearContents',
+			},
+			{
+				id: 'translate',
+				label: '翻译',
+				iconKey: 'translate',
+				kind: 'ai',
+				androidTaskType: 'translate',
+				catalogTaskType: 'translate',
+			},
+		];
+	}
+
+	/** Impress graphic selection compact row. */
+	static graphicMenuItems(): MobileSelectionMenuItemSpec[] {
+		return [
+			{ id: 'copy', label: '复制', iconKey: 'copy', kind: 'clipboard' },
+			{ id: 'cut', label: '剪切', iconKey: 'cut', kind: 'clipboard' },
+			{ id: 'paste', label: '粘贴', iconKey: 'paste', kind: 'clipboard' },
+			{
+				id: 'delete',
+				label: '删除',
+				iconKey: 'delete',
+				kind: 'action',
+				unoCommand: '.uno:Delete',
+			},
+			{
+				id: 'image_edit',
+				label: '图片编辑',
+				iconKey: 'image_edit',
+				kind: 'action',
+				unoCommand: '.uno:Crop',
+			},
+			{
+				id: 'save',
+				label: '保存',
+				iconKey: 'save',
+				kind: 'action',
+			},
+		];
+	}
+
 	static aiTaskTypes(): string[] {
 		return MobileSelectionMenu.editMenuItems()
 			.filter((item) => item.kind === 'ai' && item.catalogTaskType)
@@ -170,7 +226,7 @@ class MobileSelectionMenu {
 
 	private show(event: CustomEvent): void {
 		const detail = event.detail as MobileSelectionShowDetail;
-		if (!detail || typeof detail.anchorX !== 'number' || typeof detail.text !== 'string') {
+		if (!detail || typeof detail.anchorX !== 'number') {
 			return;
 		}
 		this.hide();
@@ -181,17 +237,22 @@ class MobileSelectionMenu {
 		const docType = map?.getDocType?.() || 'text';
 		const isReadOnly =
 			typeof map?.isReadOnlyMode === 'function' && !!map.isReadOnlyMode();
-		if (docType === 'spreadsheet') {
-			return;
-		}
-		if (docType === 'presentation') {
-			if (
-				MobileSelectionMenu.menuTaskTypesForDocument(docType, isReadOnly)
-					.length === 0
-			) {
+
+		this.menuMode = detail.mode || 'text';
+		if (this.menuMode === 'text') {
+			if (docType === 'spreadsheet') {
+				this.menuMode = 'calc';
+			} else if (docType === 'presentation' && isReadOnly) {
+				if (
+					MobileSelectionMenu.menuTaskTypesForDocument(docType, isReadOnly)
+						.length === 0
+				) {
+					return;
+				}
+			} else if (docType !== 'text' && docType !== 'presentation') {
 				return;
 			}
-		} else if (docType !== 'text') {
+		} else if (this.menuMode === 'graphic' && docType === 'spreadsheet') {
 			return;
 		}
 
@@ -204,11 +265,14 @@ class MobileSelectionMenu {
 
 		const panel = document.createElement('div');
 		panel.className = MobileSelectionMenu.MENU_CLASS;
+		if (this.menuMode === 'graphic') {
+			panel.classList.add('fabric-selection-menu--graphic');
+		}
 		panel.onclick = (e) => e.stopPropagation();
 
 		const editMode = MobileSelectionMenu.isEditModeActive();
 		const editable = MobileSelectionMenu.isDocEditable();
-		const rows = MobileSelectionMenu.buildRows(editMode, editable);
+		const rows = MobileSelectionMenu.buildRows(this.menuMode, editMode, editable);
 		rows.forEach((row) => panel.appendChild(row));
 
 		document.body.appendChild(overlay);
@@ -220,7 +284,30 @@ class MobileSelectionMenu {
 		});
 	}
 
-	private static buildRows(editMode: boolean, editable: boolean): HTMLElement[] {
+	private static buildRows(
+		mode: 'text' | 'calc' | 'graphic',
+		editMode: boolean,
+		editable: boolean,
+	): HTMLElement[] {
+		if (mode === 'calc') {
+			return [
+				MobileSelectionMenu.buildButtonRow(MobileSelectionMenu.calcMenuItems(), {
+					editMode,
+					editable,
+					mode,
+				}),
+			];
+		}
+		if (mode === 'graphic') {
+			return [
+				MobileSelectionMenu.buildButtonRow(MobileSelectionMenu.graphicMenuItems(), {
+					editMode,
+					editable,
+					mode,
+				}),
+			];
+		}
+
 		const items = MobileSelectionMenu.editMenuItems();
 		const row1Ids = ['copy', 'cut', 'paste', 'select_all', 'translate'];
 		const row2Ids = [
@@ -235,20 +322,22 @@ class MobileSelectionMenu {
 		const rows: HTMLElement[] = [];
 		const row1 = MobileSelectionMenu.buildButtonRow(
 			items.filter((item) => row1Ids.indexOf(item.id) >= 0),
-			{ editMode, editable },
+			{ editMode, editable, mode },
 		);
 		rows.push(row1);
 
 		if (editMode) {
 			rows.push(MobileSelectionMenu.buildDivider());
-			rows.push(MobileSelectionMenu.buildButtonRow(items.filter((item) => row2Ids.indexOf(item.id) >= 0), {
-				editMode,
-				editable,
-			}));
+			rows.push(
+				MobileSelectionMenu.buildButtonRow(
+					items.filter((item) => row2Ids.indexOf(item.id) >= 0),
+					{ editMode, editable, mode },
+				),
+			);
 			rows.push(MobileSelectionMenu.buildDivider());
 			const row3 = MobileSelectionMenu.buildButtonRow(
 				items.filter((item) => row3Ids.indexOf(item.id) >= 0),
-				{ editMode, editable },
+				{ editMode, editable, mode },
 			);
 			const spacer = document.createElement('div');
 			spacer.className = 'fabric-selection-menu__spacer';
@@ -266,10 +355,13 @@ class MobileSelectionMenu {
 
 	private static buildButtonRow(
 		items: MobileSelectionMenuItemSpec[],
-		ctx: { editMode: boolean; editable: boolean },
+		ctx: { editMode: boolean; editable: boolean; mode: 'text' | 'calc' | 'graphic' },
 	): HTMLElement {
 		const row = document.createElement('div');
 		row.className = 'fabric-selection-menu__row';
+		if (ctx.mode === 'graphic') {
+			row.classList.add('fabric-selection-menu__row--scroll');
+		}
 		items.forEach((item) => {
 			if (!MobileSelectionMenu.isItemVisible(item, ctx)) {
 				return;
@@ -281,8 +373,26 @@ class MobileSelectionMenu {
 
 	private static isItemVisible(
 		item: MobileSelectionMenuItemSpec,
-		ctx: { editMode: boolean; editable: boolean },
+		ctx: { editMode: boolean; editable: boolean; mode: 'text' | 'calc' | 'graphic' },
 	): boolean {
+		if (ctx.mode === 'calc') {
+			if (item.id === 'paste') {
+				return ctx.editable;
+			}
+			if (item.id === 'cut' || item.id === 'clear') {
+				return ctx.editable && ctx.editMode;
+			}
+			if (item.id === 'translate') {
+				return ctx.editMode;
+			}
+			return true;
+		}
+		if (ctx.mode === 'graphic') {
+			if (item.id === 'paste' || item.id === 'cut' || item.id === 'delete' || item.id === 'image_edit') {
+				return ctx.editable;
+			}
+			return true;
+		}
 		if (item.id === 'paste' || item.id === 'cut') {
 			return ctx.editable;
 		}
@@ -299,6 +409,9 @@ class MobileSelectionMenu {
 		const button = document.createElement('button');
 		button.type = 'button';
 		button.className = 'fabric-selection-menu__button';
+		if (item.id === 'save' || item.id === 'image_edit' || item.id === 'clear' || item.id === 'delete') {
+			button.classList.add('fabric-selection-menu__button--compact');
+		}
 		button.setAttribute('aria-label', item.label);
 
 		const icon = document.createElement('span');
@@ -322,12 +435,40 @@ class MobileSelectionMenu {
 			menu?.hide();
 			return;
 		}
+		if (item.kind === 'action') {
+			menu?.hide();
+			MobileSelectionMenu.runAction(item);
+			return;
+		}
 		menu?.hide();
 		if (item.catalogTaskType) {
 			const panel = (window as any).__coolWriterAiPanel;
 			if (panel && typeof panel.openTask === 'function') {
 				panel.openTask(item.catalogTaskType);
 			}
+		}
+	}
+
+	private static runAction(item: MobileSelectionMenuItemSpec): void {
+		const map = (window as any).app?.map;
+		if (!map) {
+			return;
+		}
+		if (item.id === 'save') {
+			if (map.socket && typeof map.socket.sendMessage === 'function') {
+				map.socket.sendMessage('save dontTerminateEdit=1 dontSaveIfUnmodified=0');
+			}
+			return;
+		}
+		if (!item.unoCommand) {
+			return;
+		}
+		const run = () => map.sendUnoCommand(item.unoCommand as string);
+		if (MobileSelectionMenu.isEditModeActive()) {
+			run();
+		} else if (typeof map.setEditMode === 'function') {
+			map.setEditMode(true);
+			window.setTimeout(run, 0);
 		}
 	}
 
@@ -399,7 +540,9 @@ class MobileSelectionMenu {
 			return;
 		}
 		const width = Math.min(
-			MobileSelectionMenu.POPUP_MAX_WIDTH_PX,
+			this.menuMode === 'graphic'
+				? window.innerWidth - MobileSelectionMenu.POPUP_MARGIN_PX * 2
+				: MobileSelectionMenu.POPUP_MAX_WIDTH_PX,
 			window.innerWidth - MobileSelectionMenu.POPUP_MARGIN_PX * 2,
 		);
 		this.container.style.width = width + 'px';

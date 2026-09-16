@@ -145,15 +145,24 @@ describe('Mobile AI UI Catalog', function () {
 		assert.equal(outline?.dialog, 'impressOutline');
 		assert.equal(MobileAiUiCatalog.canRun('impress_outline', 'presentation'), true);
 		assert.equal(MobileAiUiCatalog.canRun('impress_outline', 'text'), false);
-		assert.ok(
+		assert.equal(
 			MobileAiUiCatalog.getOperationEntries('presentation', true).some(function (entry) {
 				return entry.taskType === 'impress_outline';
 			}),
+			false,
 		);
 		const generate = MobileAiUiCatalog.getEntry('impress_generate');
 		assert.ok(generate);
 		assert.equal(generate?.iosSupport, true);
-		assert.equal(generate?.includeInOperationSheet, false);
+		assert.equal(generate?.includeInOperationSheet, true);
+		assert.equal(generate?.label, '生成PPT');
 		assert.equal(MobileAiUiCatalog.canRun('impress_generate', 'presentation'), true);
+		assert.ok(
+			MobileAiUiCatalog.getOperationEntries('presentation', true).some(function (entry) {
+				return entry.taskType === 'impress_generate';
+			}),
+		);
+		assert.equal(MobileAiUiCatalog.canRun('article_generate', 'presentation'), true);
+		assert.equal(MobileAiUiCatalog.canRun('typeset', 'presentation'), true);
 	});
 });

@@ -104,7 +104,7 @@ class MobileAiUiCatalog {
 			androidTaskType: 'article_generate',
 			label: '文案生成',
 			group: 'writerGeneration',
-			documentTypes: ['text'],
+			documentTypes: ['text', 'presentation'],
 			requiredInput: 'prompt',
 			resultMode: 'insertAtEnd',
 			dialog: 'article',
@@ -208,7 +208,7 @@ class MobileAiUiCatalog {
 			androidTaskType: 'typeset',
 			label: 'AI 排版',
 			group: 'other',
-			documentTypes: ['text'],
+			documentTypes: ['text', 'presentation'],
 			requiredInput: 'document',
 			resultMode: 'insertAtEnd',
 			dialog: 'typeset',
@@ -331,12 +331,12 @@ class MobileAiUiCatalog {
 			dialog: 'impressOutline',
 			iosSupport: true,
 			selectionRequired: false,
-			includeInOperationSheet: true,
+			includeInOperationSheet: false,
 		},
 		{
 			taskType: 'impress_generate',
 			androidTaskType: 'impress_generate',
-			label: '生成 PPT',
+			label: '生成PPT',
 			group: 'impress',
 			documentTypes: ['presentation'],
 			requiredInput: 'prompt',
@@ -344,7 +344,7 @@ class MobileAiUiCatalog {
 			dialog: 'impressOutline',
 			iosSupport: true,
 			selectionRequired: false,
-			includeInOperationSheet: false,
+			includeInOperationSheet: true,
 		},
 	];
 
@@ -377,10 +377,15 @@ class MobileAiUiCatalog {
 		documentType: MobileAiDocumentType,
 		editable = true,
 	): MobileAiUiEntry[] {
-		return MobileAiUiCatalog.getEntries(documentType).filter(
-			(entry) =>
-				!(documentType === 'presentation' && !editable && entry.selectionRequired),
-		);
+		return MobileAiUiCatalog.getEntries(documentType).filter((entry) => {
+			if (documentType === 'presentation' && !editable && entry.selectionRequired) {
+				return false;
+			}
+			if (documentType === 'presentation' && entry.taskType === 'translate') {
+				return false;
+			}
+			return true;
+		});
 	}
 
 	/**

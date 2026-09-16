@@ -176,6 +176,35 @@ class MobileAiBridge {
 		});
 	}
 
+	loadConversationHistory(
+		mode: 'doc_qa' | 'chat',
+	): Promise<MobileAiConversationMessage[]> {
+		return this.postConversationMessage('ai.conversation.load', { mode }).then(
+			(payload) => this.normalizeConversationMessages(payload?.messages),
+		);
+	}
+
+	saveConversationHistory(
+		mode: 'doc_qa' | 'chat',
+		messages: MobileAiConversationMessage[],
+	): Promise<void> {
+		return this.postConversationMessage('ai.conversation.save', {
+			mode,
+			messages: messages.map((message) => ({ ...message })),
+		}).then(() => undefined);
+	}
+
+	clearConversationHistory(mode: 'doc_qa' | 'chat'): Promise<void> {
+		return this.postConversationMessage('ai.conversation.clear', {
+			mode,
+			all: false,
+		}).then(() => undefined);
+	}
+
+	conversationPersistenceAvailable(): boolean {
+		return this.nativeBridge.isAvailable();
+	}
+
 	getSelectedText(): string {
 		try {
 			const docLayer = (window as any).app?.map?._docLayer;
@@ -184,15 +213,29 @@ class MobileAiBridge {
 				typeof docLayer._selectedTextContent === 'string' &&
 				docLayer._selectedTextContent
 			) {
-				return docLayer._selectedTextContent;
+				return MobileAiDocumentExtractor.toPlainText(
+					docLayer._selectedTextContent,
+				);
 			}
 			const clip = (window as any).app?.map?._clip;
-			if (
-				clip &&
-				typeof clip._selectionPlainTextContent === 'string' &&
-				clip._selectionPlainTextContent
-			) {
-				return clip._selectionPlainTextContent;
+			if (clip) {
+				if (
+					typeof clip._selectionPlainTextContent === 'string' &&
+					clip._selectionPlainTextContent
+				) {
+					return clip._selectionPlainTextContent.trim();
+				}
+				if (
+					typeof clip._selectionContent === 'string' &&
+					clip._selectionContent
+				) {
+					const plain = MobileAiDocumentExtractor.toPlainText(
+						clip._selectionContent,
+					);
+					if (plain) {
+						return plain;
+					}
+				}
 			}
 			const selection = window.getSelection();
 			if (selection && selection.toString && selection.toString().trim()) {
@@ -202,6 +245,75 @@ class MobileAiBridge {
 			// Selection is best effort and must not break document editing.
 		}
 		return '';
+	}
+
+	extractFullText(): Promise<string> {
+		return MobileAiDocumentExtractor.extractFullText();
+	}
+
+	private normalizeConversationMessages(
+		value: any,
+	): MobileAiConversationMessage[] {
+		if (!Array.isArray(value)) {
+			return [];
+		}
+		const messages: MobileAiConversationMessage[] = [];
+		value.forEach((item) => {
+			if (!item || typeof item !== 'object') {
+				return;
+			}
+			const role = item.role === 'assistant' ? 'assistant' : 'user';
+			const content =
+				typeof item.content === 'string' ? item.content : String(item.content || '');
+			messages.push({ role, content });
+		});
+		return messages;
+	}
+
+	private postConversationMessage(
+		type: string,
+		payload: { [key: string]: any },
+	): Promise<{ [key: string]: any }> {
+		if (!this.nativeBridge.isAvailable()) {
+			return Promise.resolve({});
+		}
+		const requestId = NativeBridge.createId('conv');
+		const documentSessionId = this.nativeBridge.getDocumentSessionId();
+		const doneType =
+			type === 'ai.conversation.load'
+				? 'ai.conversation.loaded'
+				: type === 'ai.conversation.save'
+					? 'ai.conversation.saved'
+					: 'ai.conversation.cleared';
+		return new Promise((resolve) => {
+			const unsubscribe = this.nativeBridge.subscribe((message) => {
+				if (message.requestId !== requestId) {
+					return;
+				}
+				if (message.type === doneType) {
+					unsubscribe();
+					resolve(message.payload || {});
+					return;
+				}
+				if (message.type === 'ai.error' || message.type === 'native.error') {
+					unsubscribe();
+					resolve({});
+				}
+			});
+			const posted = this.nativeBridge.postMessage({
+				protocolVersion: NativeBridge.PROTOCOL_VERSION,
+				channel: 'native',
+				type,
+				requestId,
+				documentSessionId,
+				targetPlatform: 'any',
+				payload,
+			});
+			if (!posted) {
+				unsubscribe();
+				resolve({});
+			}
+		});
 	}
 
 	private handleNativeMessage(message: NativeBridgeEnvelope): void {

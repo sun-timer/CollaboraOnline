@@ -6,15 +6,9 @@ class MobileAiCalcDialog {
 	private readonly taskType: string;
 	private readonly controller: CalcAiController;
 	private readonly sheet: MobileAiSheet;
+	private readonly layout: MobileAiTaskDialogControls;
 	private readonly hint: HTMLDivElement;
 	private readonly promptInput: HTMLTextAreaElement;
-	private readonly preview: HTMLDivElement;
-	private readonly status: HTMLDivElement;
-	private readonly generateButton: HTMLButtonElement;
-	private readonly stopButton: HTMLButtonElement;
-	private readonly copyButton: HTMLButtonElement;
-	private readonly regenerateButton: HTMLButtonElement;
-	private readonly applyButton: HTMLButtonElement | null;
 	private readonly unsubscribe: () => void;
 	private readonly resultMode: 'insertFormula' | 'conversation' | 'mutateConfirm';
 
@@ -24,20 +18,23 @@ class MobileAiCalcDialog {
 		const entry = MobileAiUiCatalog.getEntry(taskType);
 		const task = CalcAiCatalog.getTask(taskType);
 		this.resultMode = task?.resultMode || 'conversation';
-		this.sheet = new MobileAiSheet({ title: entry?.label || 'Calc AI' });
-
-		const content = document.createElement('div');
-		content.style.cssText =
-			'display:flex;flex-direction:column;gap:12px;min-height:300px;';
+		this.layout = MobileAiTaskDialogLayout.create({ generateLabel: '生成' });
+		if (this.resultMode === 'insertFormula') {
+			this.layout.applyButton.textContent = '插入单元格';
+		} else if (this.resultMode === 'mutateConfirm') {
+			this.layout.applyButton.textContent = '确认执行';
+		}
+		this.sheet = new MobileAiSheet({
+			title: entry?.label || 'Calc AI',
+			presentation: 'writer',
+			taskType,
+		});
 
 		this.hint = document.createElement('div');
-		this.hint.style.cssText =
-			'padding:10px;border-radius:8px;background:#e6ebf2;color:#5f6368;font-size:14px;';
-		content.appendChild(this.hint);
+		this.hint.className = 'mobile-ai-task-dialog__status';
+		this.layout.inputSlot.appendChild(this.hint);
 
-		this.promptInput = document.createElement('textarea');
-		this.promptInput.rows = 3;
-		this.promptInput.placeholder =
+		this.promptInput = MobileAiTaskDialogLayout.multilineInput(
 			taskType === 'calc_formula'
 				? '例如：计算 A1 到 A10 的平均值'
 				: taskType === 'calc_cond_format'
@@ -48,56 +45,25 @@ class MobileAiCalcDialog {
 							? '例如：用选中数据做柱状图'
 							: taskType === 'calc_new_table'
 								? '例如：生成一份销售周报样例表'
-								: '例如：总结这组数据的趋势和异常值';
-		this.promptInput.setAttribute('aria-label', 'AI 需求');
-		this.promptInput.style.cssText =
-			'width:100%;box-sizing:border-box;padding:10px;border:1px solid #d8dde3;' +
-			'border-radius:8px;font:inherit;resize:vertical;';
-		content.appendChild(this.promptInput);
+								: '例如：总结这组数据的趋势和异常值',
+			'AI 需求',
+			3,
+		);
+		this.layout.inputSlot.appendChild(
+			MobileAiTaskDialogLayout.cardField('', this.promptInput),
+		);
 
-		this.status = document.createElement('div');
-		this.status.setAttribute('role', 'status');
-		content.appendChild(this.status);
-
-		this.preview = document.createElement('div');
-		this.preview.setAttribute('aria-live', 'polite');
-		this.preview.style.cssText =
-			'min-height:160px;max-height:42dvh;overflow:auto;padding:16px;' +
-			'border:1px solid #d8dde3;border-radius:8px;line-height:1.6;white-space:pre-wrap;';
-		content.appendChild(this.preview);
-
-		const inputActions = document.createElement('div');
-		inputActions.style.cssText = 'display:flex;gap:8px;';
-		this.generateButton = this.createButton('开始生成');
-		this.generateButton.onclick = () => this.request();
-		inputActions.appendChild(this.generateButton);
-		this.stopButton = this.createButton('停止生成');
-		this.stopButton.onclick = () => this.controller.cancel();
-		inputActions.appendChild(this.stopButton);
-		content.appendChild(inputActions);
-
-		const resultActions = document.createElement('div');
-		resultActions.style.cssText = 'display:flex;gap:8px;';
-		this.copyButton = this.createButton('复制');
-		this.copyButton.onclick = () => this.controller.copy();
-		resultActions.appendChild(this.copyButton);
-		this.regenerateButton = this.createButton('重新生成');
-		this.regenerateButton.onclick = () => this.controller.regenerate();
-		resultActions.appendChild(this.regenerateButton);
-		if (this.resultMode === 'insertFormula') {
-			this.applyButton = this.createButton('插入单元格');
-			this.applyButton.onclick = () => this.controller.accept();
-			resultActions.appendChild(this.applyButton);
-		} else if (this.resultMode === 'mutateConfirm') {
-			this.applyButton = this.createButton('确认执行');
-			this.applyButton.onclick = () => this.controller.accept();
-			resultActions.appendChild(this.applyButton);
+		this.layout.generateButton.onclick = () => this.request();
+		this.layout.stopButton.onclick = () => this.controller.cancel();
+		this.layout.copyRow.onclick = () => this.controller.copy();
+		this.layout.regenerateButton.onclick = () => this.controller.regenerate();
+		if (this.resultMode === 'insertFormula' || this.resultMode === 'mutateConfirm') {
+			this.layout.applyButton.onclick = () => this.controller.accept();
 		} else {
-			this.applyButton = null;
+			this.layout.applyButton.hidden = true;
 		}
-		content.appendChild(resultActions);
 
-		this.sheet.setBody(content);
+		this.sheet.setBody(this.layout.root);
 		this.unsubscribe = this.controller.subscribe(() => this.render());
 	}
 
@@ -136,36 +102,36 @@ class MobileAiCalcDialog {
 
 	private render(): void {
 		const state = this.controller.getState();
-		this.preview.textContent = state.preview || '';
+		this.layout.resultPreview.textContent = state.preview || '';
 		const active = state.state === 'loading' || state.state === 'streaming';
 		const ready = state.state === 'ready' && !!state.preview;
+		if (ready) {
+			this.layout.setStage('result');
+		} else if (active) {
+			this.layout.setStage('generating');
+		} else {
+			this.layout.setStage('input');
+		}
 		const canGenerate =
 			!active &&
 			(this.taskType === 'calc_formula' ||
 				this.taskType === 'calc_new_table' ||
 				!!CalcAiContext.getSelectedRange());
-		this.generateButton.disabled = !canGenerate;
-		this.stopButton.disabled = !active;
-		this.copyButton.disabled = !ready;
-		this.regenerateButton.disabled = !ready;
-		if (this.applyButton) {
-			this.applyButton.disabled = !ready;
+		this.layout.generateButton.disabled = !canGenerate;
+		this.layout.stopButton.disabled = !active;
+		this.layout.copyRow.disabled = !ready;
+		this.layout.regenerateButton.disabled = !ready;
+		if (!this.layout.applyButton.hidden) {
+			this.layout.applyButton.disabled = !ready;
 		}
-		this.status.textContent =
+		this.layout.status.textContent =
 			state.error ||
 			(active
 				? state.state === 'streaming'
-					? 'AI 正在输出...'
-					: 'AI 正在生成...'
+					? 'AI 正在输出…'
+					: 'AI 正在生成…'
 				: ready
 					? '生成完成'
 					: '');
-	}
-
-	private createButton(label: string): HTMLButtonElement {
-		const button = document.createElement('button');
-		button.type = 'button';
-		button.textContent = label;
-		return button;
 	}
 }

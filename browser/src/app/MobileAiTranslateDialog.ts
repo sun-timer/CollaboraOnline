@@ -5,78 +5,57 @@
 class MobileAiTranslateDialog {
 	private readonly controller: WriterAiController;
 	private readonly sheet: MobileAiSheet;
+	private readonly layout: MobileAiTaskDialogControls;
 	private readonly sourceLanguage: HTMLSelectElement;
 	private readonly targetLanguage: HTMLSelectElement;
 	private readonly sourceText: HTMLTextAreaElement;
-	private readonly result: HTMLDivElement;
-	private readonly status: HTMLDivElement;
-	private readonly generateButton: HTMLButtonElement;
-	private readonly stopButton: HTMLButtonElement;
-	private readonly copyButton: HTMLButtonElement;
-	private readonly regenerateButton: HTMLButtonElement;
-	private readonly applyButton: HTMLButtonElement;
 	private readonly unsubscribe: () => void;
 
 	constructor() {
 		this.controller = WriterAiController.getInstance();
-		this.sheet = new MobileAiSheet({ title: 'AI 翻译' });
-		const content = document.createElement('div');
-		content.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
+		this.layout = MobileAiTaskDialogLayout.create({
+			generateLabel: '开始翻译',
+			keepInputOnResult: true,
+		});
+		this.sheet = new MobileAiSheet({
+			title: 'AI 翻译',
+			presentation: 'writer',
+			taskType: 'translate',
+		});
 
 		const languageRow = document.createElement('div');
-		languageRow.style.cssText = 'display:flex;gap:8px;align-items:center;';
+		languageRow.className = 'mobile-ai-task-dialog__lang-row';
 		this.sourceLanguage = this.createLanguageSelect('源语言');
 		this.targetLanguage = this.createLanguageSelect('目标语言');
-		const swapButton = this.createButton('交换');
+		const swapButton = document.createElement('button');
+		swapButton.type = 'button';
+		swapButton.className = 'mobile-ai-task-dialog__lang-swap';
+		swapButton.textContent = '交换';
 		swapButton.onclick = () => this.swapLanguages();
 		languageRow.appendChild(this.sourceLanguage);
 		languageRow.appendChild(swapButton);
 		languageRow.appendChild(this.targetLanguage);
-		content.appendChild(languageRow);
+		this.layout.inputSlot.appendChild(languageRow);
 
-		this.sourceText = document.createElement('textarea');
-		this.sourceText.rows = 6;
-		this.sourceText.placeholder = '请输入或编辑原文';
-		this.sourceText.setAttribute('aria-label', '原文');
-		this.sourceText.style.cssText = 'width:100%;box-sizing:border-box;resize:vertical;';
-		content.appendChild(this.sourceText);
+		this.sourceText = MobileAiTaskDialogLayout.multilineInput(
+			'请输入或编辑原文',
+			'原文',
+			6,
+		);
+		this.layout.inputSlot.appendChild(
+			MobileAiTaskDialogLayout.cardField('', this.sourceText),
+		);
 
-		this.result = document.createElement('div');
-		this.result.style.cssText =
-			'min-height:140px;max-height:32dvh;overflow:auto;padding:16px;' +
-			'border:1px solid #d8dde3;border-radius:8px;line-height:1.6;';
-		this.result.setAttribute('aria-live', 'polite');
-		content.appendChild(this.result);
+		this.layout.generateButton.onclick = () => this.request();
+		this.layout.stopButton.onclick = () => this.controller.cancel();
+		this.layout.copyRow.onclick = () => this.controller.copy();
+		this.layout.regenerateButton.onclick = () => this.request();
+		this.layout.applyButton.onclick = () =>
+			this.controller.accept(
+				MobileAiResultRenderer.toHtml(this.controller.getState().preview),
+			);
 
-		this.status = document.createElement('div');
-		this.status.setAttribute('role', 'status');
-		content.appendChild(this.status);
-
-		const requestRow = document.createElement('div');
-		requestRow.style.cssText = 'display:flex;gap:8px;';
-		this.generateButton = this.createButton('开始翻译');
-		this.generateButton.onclick = () => this.request();
-		requestRow.appendChild(this.generateButton);
-		this.stopButton = this.createButton('停止生成');
-		this.stopButton.onclick = () => this.controller.cancel();
-		requestRow.appendChild(this.stopButton);
-		content.appendChild(requestRow);
-
-		const resultRow = document.createElement('div');
-		resultRow.style.cssText = 'display:flex;gap:8px;';
-		this.copyButton = this.createButton('复制');
-		this.copyButton.onclick = () => this.controller.copy();
-		resultRow.appendChild(this.copyButton);
-		this.regenerateButton = this.createButton('重新生成');
-		this.regenerateButton.onclick = () => this.request();
-		resultRow.appendChild(this.regenerateButton);
-		this.applyButton = this.createButton('插入文档');
-		this.applyButton.onclick = () =>
-			this.controller.accept(MobileAiResultRenderer.toHtml(this.controller.getState().preview));
-		resultRow.appendChild(this.applyButton);
-		content.appendChild(resultRow);
-
-		this.sheet.setBody(content);
+		this.sheet.setBody(this.layout.root);
 		this.unsubscribe = this.controller.subscribe(() => this.render());
 	}
 
@@ -142,27 +121,32 @@ class MobileAiTranslateDialog {
 
 	private render(): void {
 		const state = this.controller.getState();
-		MobileAiResultRenderer.renderInto(this.result, state.preview);
+		MobileAiResultRenderer.renderInto(
+			this.layout.resultPreview,
+			state.preview,
+		);
 		const active = state.state === 'loading' || state.state === 'streaming';
 		const ready = state.state === 'ready' && !!state.preview;
-		this.generateButton.disabled = active;
-		this.stopButton.disabled = !active;
-		this.copyButton.disabled = !ready;
-		this.regenerateButton.disabled = !ready;
-		this.applyButton.disabled = !ready;
-		this.status.textContent =
+		if (ready) {
+			this.layout.setStage('result');
+		} else if (active) {
+			this.layout.setStage('generating');
+		} else {
+			this.layout.setStage('input');
+		}
+		this.layout.generateButton.disabled = active;
+		this.layout.stopButton.disabled = !active;
+		this.layout.copyRow.disabled = !ready;
+		this.layout.regenerateButton.disabled = !ready;
+		this.layout.applyButton.disabled = !ready;
+		this.layout.status.textContent =
 			state.error ||
 			(active
 				? state.state === 'streaming'
-					? 'AI 正在输出...'
-					: 'AI 正在翻译...'
-				: '');
-	}
-
-	private createButton(label: string): HTMLButtonElement {
-		const button = document.createElement('button');
-		button.type = 'button';
-		button.textContent = label;
-		return button;
+					? 'AI 正在输出…'
+					: 'AI 正在翻译…'
+				: ready
+					? '翻译完成'
+					: '');
 	}
 }

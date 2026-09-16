@@ -14,13 +14,17 @@ class MobileAiFormatBatchDialog {
 
 	constructor() {
 		this.rules = new Array(FormatBatchProcessor.RULE_COUNT).fill(false);
-		this.sheet = new MobileAiSheet({ title: '格式批量处理' });
+		this.sheet = new MobileAiSheet({
+			title: '格式批量处理',
+			presentation: 'writer',
+			taskType: 'format_batch',
+		});
 		const content = document.createElement('div');
-		content.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+		content.className = 'mobile-ai-task-dialog';
 
 		FormatBatchProcessor.RULE_LABELS.forEach((label, index) => {
 			const row = document.createElement('label');
-			row.style.cssText = 'display:flex;align-items:center;gap:8px;';
+			row.className = 'mobile-ai-task-dialog__rule-row';
 			const box = document.createElement('input');
 			box.type = 'checkbox';
 			box.setAttribute('aria-label', label);
@@ -37,12 +41,15 @@ class MobileAiFormatBatchDialog {
 
 		this.applyButton = document.createElement('button');
 		this.applyButton.type = 'button';
+		this.applyButton.className =
+			'mobile-ai-task-dialog__btn mobile-ai-task-dialog__btn--primary';
 		this.applyButton.textContent = '应用';
 		this.applyButton.disabled = true;
 		this.applyButton.onclick = () => this.apply();
 		content.appendChild(this.applyButton);
 
 		this.status = document.createElement('div');
+		this.status.className = 'mobile-ai-task-dialog__status';
 		this.status.setAttribute('role', 'status');
 		content.appendChild(this.status);
 

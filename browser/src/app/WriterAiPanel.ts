@@ -11,6 +11,7 @@ class WriterAiPanel {
 	private readonly operationSheet: MobileAiOperationSheet;
 	private activeDialog:
 		| MobileAiOperationDialog
+		| MobileAiArticleGenerateDialog
 		| MobileAiTranslateDialog
 		| MobileAiFormatBatchDialog
 		| MobileAiCalcDialog
@@ -52,6 +53,15 @@ class WriterAiPanel {
 		this.operationSheet.open();
 	}
 
+	close(): void {
+		this.assistantPanel.close();
+		this.operationSheet.close();
+		if (this.activeDialog && typeof (this.activeDialog as any).close === 'function') {
+			(this.activeDialog as any).close();
+			this.activeDialog = null;
+		}
+	}
+
 	openTask(taskType: string): void {
 		const entry = MobileAiUiCatalog.getEntry(taskType);
 		if (!entry || !entry.iosSupport) {
@@ -71,6 +81,8 @@ class WriterAiPanel {
 			this.activeDialog = new MobileAiImageDialog();
 		} else if (entry.dialog === 'typeset') {
 			this.activeDialog = new MobileAiTypesetDialog();
+		} else if (entry.dialog === 'article') {
+			this.activeDialog = new MobileAiArticleGenerateDialog();
 		} else if (entry.dialog === 'impressOutline') {
 			if (typeof (window as any).postMobileMessage === 'function') {
 				(window as any).postMobileMessage('IMPRESS_OPEN_OUTLINE');

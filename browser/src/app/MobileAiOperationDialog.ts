@@ -6,36 +6,41 @@ class MobileAiOperationDialog {
 	private readonly taskType: string;
 	private readonly controller: WriterAiController;
 	private readonly sheet: MobileAiSheet;
-	private readonly requirement?: HTMLInputElement;
-	private readonly style?: HTMLSelectElement;
-	private readonly outlineType?: HTMLSelectElement;
+	private readonly layout: MobileAiTaskDialogControls;
+	private readonly requirement?: HTMLTextAreaElement;
+	private readonly styleSelect?: HTMLSelectElement;
+	private polishStyleValue?: HTMLSpanElement;
+	private readonly outlineTypeSelect?: HTMLSelectElement;
+	private outlineTypeValue?: HTMLSpanElement;
 	private readonly outlineDescription?: HTMLTextAreaElement;
-	private readonly articleTemplate?: HTMLSelectElement;
-	private readonly articleValues: HTMLInputElement[] = [];
-	private readonly articleForm?: HTMLDivElement;
 	private readonly imageThumb?: HTMLImageElement;
 	private pendingImage = '';
 	private lastGeneratedImage = '';
-	private readonly preview: HTMLDivElement;
-	private readonly status: HTMLDivElement;
-	private readonly generateButton: HTMLButtonElement;
-	private readonly stopButton: HTMLButtonElement;
-	private readonly copyButton: HTMLButtonElement;
-	private readonly regenerateButton: HTMLButtonElement;
-	private readonly applyButton: HTMLButtonElement;
 	private readonly unsubscribe: () => void;
 
 	constructor(taskType: string) {
 		this.taskType = taskType;
 		this.controller = WriterAiController.getInstance();
 		const entry = MobileAiUiCatalog.getEntry(taskType);
-		this.sheet = new MobileAiSheet({ title: entry?.label || 'AI 文案处理' });
-		const content = document.createElement('div');
-		content.style.cssText = 'display:flex;flex-direction:column;gap:12px;min-height:300px;';
+		const generateLabel =
+			taskType === 'text_extract'
+				? '提取文字'
+				: taskType === 'continue'
+					? '开始生成'
+					: '生成';
+		this.layout = MobileAiTaskDialogLayout.create({ generateLabel });
+		this.sheet = new MobileAiSheet({
+			title: entry?.label || 'AI 文案处理',
+			presentation: 'writer',
+			taskType,
+		});
+
+		const input = this.layout.inputSlot;
 
 		if (taskType === 'polish') {
-			this.style = document.createElement('select');
-			this.style.setAttribute('aria-label', '润色风格');
+			this.styleSelect = document.createElement('select');
+			this.styleSelect.setAttribute('aria-label', '润色风格');
+			this.styleSelect.className = 'mobile-ai-task-dialog__control';
 			const labels: { [key: string]: string } = {
 				quick: '快速润色',
 				formal: '更正式',
@@ -49,10 +54,28 @@ class MobileAiOperationDialog {
 				const option = document.createElement('option');
 				option.value = style;
 				option.textContent = labels[style] || style;
-				this.style?.appendChild(option);
+				this.styleSelect?.appendChild(option);
 			});
-			this.style.value = WriterAiCatalog.DEFAULT_POLISH_STYLE;
-			content.appendChild(this.style);
+			this.styleSelect.value = WriterAiCatalog.DEFAULT_POLISH_STYLE;
+			const initialLabel =
+				labels[this.styleSelect.value] || this.styleSelect.value;
+			const card = MobileAiTaskDialogLayout.pickerCard(
+				'润色风格',
+				initialLabel,
+				() => this.openStyleSelect(),
+			);
+			this.polishStyleValue = card.querySelector(
+				'.mobile-ai-task-dialog__picker-card-value',
+			) as HTMLSpanElement;
+			this.styleSelect.onchange = () => {
+				if (this.polishStyleValue && this.styleSelect) {
+					this.polishStyleValue.textContent =
+						labels[this.styleSelect.value] || this.styleSelect.value;
+				}
+			};
+			input.appendChild(card);
+			input.appendChild(this.styleSelect);
+			this.styleSelect.hidden = true;
 		}
 
 		if (
@@ -60,105 +83,90 @@ class MobileAiOperationDialog {
 			taskType === 'condense' ||
 			taskType === 'rewrite'
 		) {
-			this.requirement = document.createElement('input');
-			this.requirement.type = 'text';
-			this.requirement.placeholder = '额外要求（可选）';
-			this.requirement.setAttribute('aria-label', '额外要求');
-			this.requirement.style.width = '100%';
-			content.appendChild(this.requirement);
+			const hint =
+				taskType === 'condense'
+					? '请输入文案缩写要求'
+					: taskType === 'rewrite'
+						? '请输入文案重写要求'
+						: '请输入文案扩写要求';
+			this.requirement = MobileAiTaskDialogLayout.multilineInput(
+				hint,
+				'文案要求',
+				5,
+			);
+			input.appendChild(
+				MobileAiTaskDialogLayout.cardField('', this.requirement),
+			);
 		}
 
 		if (taskType === 'outline') {
-			this.outlineType = document.createElement('select');
-			this.outlineType.setAttribute('aria-label', '大纲类型');
+			this.outlineTypeSelect = document.createElement('select');
+			this.outlineTypeSelect.setAttribute('aria-label', '大纲类型');
 			WriterAiCatalog.OUTLINE_TYPES.forEach((item) => {
 				const option = document.createElement('option');
 				option.value = item.key;
 				option.textContent = item.label;
-				this.outlineType?.appendChild(option);
+				this.outlineTypeSelect?.appendChild(option);
 			});
+			this.outlineTypeSelect.value = 'general';
+			const typeCard = MobileAiTaskDialogLayout.pickerCard(
+				'大纲类型',
+				WriterAiCatalog.OUTLINE_TYPES.find((t) => t.key === 'general')
+					?.label || '通用文档',
+				() => this.openOutlineTypeSelect(),
+			);
+			this.outlineTypeValue = typeCard.querySelector(
+				'.mobile-ai-task-dialog__picker-card-value',
+			) as HTMLSpanElement;
+			this.outlineTypeSelect.onchange = () => {
+				const item = WriterAiCatalog.OUTLINE_TYPES.find(
+					(t) => t.key === this.outlineTypeSelect?.value,
+				);
+				if (this.outlineTypeValue && item) {
+					this.outlineTypeValue.textContent = item.label;
+				}
+				this.syncOutlineDescHint();
+			};
+			input.appendChild(typeCard);
+			input.appendChild(this.outlineTypeSelect);
+			this.outlineTypeSelect.hidden = true;
 
-			this.outlineType.value = 'general';
-			content.appendChild(this.outlineType);
-			this.outlineDescription = document.createElement('textarea');
-			this.outlineDescription.rows = 4;
-			this.outlineDescription.placeholder = '补充说明（可选）';
-			this.outlineDescription.setAttribute('aria-label', '大纲补充说明');
-			this.outlineDescription.style.cssText =
-				'width:100%;box-sizing:border-box;resize:vertical;';
-			content.appendChild(this.outlineDescription);
-		}
-
-		if (taskType === 'article_generate') {
-			this.articleTemplate = document.createElement('select');
-			this.articleTemplate.setAttribute('aria-label', '文案类型');
-			Object.keys(WriterAiCatalog.ARTICLE_TEMPLATES).forEach((key) => {
-				const option = document.createElement('option');
-				option.value = key;
-				const item = WriterAiCatalog.ARTICLE_TEMPLATES[key];
-				option.textContent = `${item.category} / ${key}`;
-				this.articleTemplate?.appendChild(option);
-			});
-			this.articleTemplate.onchange = () => this.renderArticleForm();
-			content.appendChild(this.articleTemplate);
-			this.articleForm = document.createElement('div');
-			this.articleForm.style.cssText =
-				'display:flex;flex-direction:column;gap:8px;';
-			content.appendChild(this.articleForm);
-			this.renderArticleForm();
+			this.outlineDescription = MobileAiTaskDialogLayout.multilineInput(
+				'请输入通用文档要求',
+				'大纲补充说明',
+				5,
+			);
+			this.syncOutlineDescHint();
+			input.appendChild(
+				MobileAiTaskDialogLayout.cardField('', this.outlineDescription),
+			);
 		}
 
 		if (taskType === 'text_extract') {
 			const pick = document.createElement('button');
 			pick.type = 'button';
+			pick.className =
+				'mobile-ai-task-dialog__btn mobile-ai-task-dialog__btn--secondary';
 			pick.textContent = '选择图片';
 			pick.onclick = () => this.pickImage();
-			content.appendChild(pick);
+			input.appendChild(pick);
 			const thumb = document.createElement('img');
-			thumb.style.cssText =
-				'max-width:100%;max-height:160px;object-fit:contain;' +
-				'display:none;border-radius:8px;';
-			content.appendChild(thumb);
+			thumb.className = 'mobile-ai-task-dialog__image-thumb';
+			thumb.hidden = true;
+			input.appendChild(thumb);
 			this.imageThumb = thumb;
 		}
 
-		this.status = document.createElement('div');
-		this.status.setAttribute('role', 'status');
-		content.appendChild(this.status);
+		this.layout.generateButton.onclick = () => this.request();
+		this.layout.stopButton.onclick = () => this.controller.cancel();
+		this.layout.copyRow.onclick = () => this.controller.copy();
+		this.layout.regenerateButton.onclick = () => this.regenerate();
+		this.layout.applyButton.onclick = () =>
+			this.controller.accept(
+				MobileAiResultRenderer.toHtml(this.controller.getState().preview),
+			);
 
-		this.preview = document.createElement('div');
-		this.preview.setAttribute('aria-live', 'polite');
-		this.preview.style.cssText =
-			'min-height:160px;max-height:42dvh;overflow:auto;padding:16px;' +
-			'border:1px solid #d8dde3;border-radius:8px;line-height:1.6;';
-		content.appendChild(this.preview);
-
-		const inputActions = document.createElement('div');
-		inputActions.style.cssText = 'display:flex;gap:8px;';
-		this.generateButton = this.createButton(
-			taskType === 'text_extract' ? '提取文字' : '开始生成',
-		);
-		this.generateButton.onclick = () => this.request();
-		inputActions.appendChild(this.generateButton);
-		this.stopButton = this.createButton('停止生成');
-		this.stopButton.onclick = () => this.controller.cancel();
-		inputActions.appendChild(this.stopButton);
-		content.appendChild(inputActions);
-
-		const resultActions = document.createElement('div');
-		resultActions.style.cssText = 'display:flex;gap:8px;';
-		this.copyButton = this.createButton('复制');
-		this.copyButton.onclick = () => this.controller.copy();
-		resultActions.appendChild(this.copyButton);
-		this.regenerateButton = this.createButton('重新生成');
-		this.regenerateButton.onclick = () => this.regenerate();
-		resultActions.appendChild(this.regenerateButton);
-		this.applyButton = this.createButton('插入文档');
-		this.applyButton.onclick = () =>
-			this.controller.accept(MobileAiResultRenderer.toHtml(this.controller.getState().preview));
-		resultActions.appendChild(this.applyButton);
-		content.appendChild(resultActions);
-		this.sheet.setBody(content);
+		this.sheet.setBody(this.layout.root);
 		this.unsubscribe = this.controller.subscribe(() => this.render());
 	}
 
@@ -171,23 +179,45 @@ class MobileAiOperationDialog {
 		this.render();
 	}
 
-	private renderArticleForm(): void {
-		const item = WriterAiCatalog.getArticleTemplate(
-			this.articleTemplate?.value || '',
-		);
-		if (!this.articleForm || !item) {
+	private syncOutlineDescHint(): void {
+		if (!this.outlineDescription || !this.outlineTypeSelect) {
 			return;
 		}
-		this.articleForm.replaceChildren();
-		this.articleValues.length = 0;
-		item.variables.forEach((label) => {
-			const input = document.createElement('input');
-			input.type = 'text';
-			input.placeholder = label;
-			input.setAttribute('aria-label', label);
-			this.articleForm?.appendChild(input);
-			this.articleValues.push(input);
-		});
+		const item = WriterAiCatalog.OUTLINE_TYPES.find(
+			(t) => t.key === this.outlineTypeSelect?.value,
+		);
+		const label = item?.label || '通用文档';
+		this.outlineDescription.placeholder = '请输入' + label + '要求';
+	}
+
+	private openStyleSelect(): void {
+		if (!this.styleSelect) {
+			return;
+		}
+		this.styleSelect.focus();
+		const picker = (this.styleSelect as HTMLSelectElement & {
+			showPicker?: () => void;
+		}).showPicker;
+		if (typeof picker === 'function') {
+			picker.call(this.styleSelect);
+		} else {
+			this.styleSelect.click();
+		}
+	}
+
+	private openOutlineTypeSelect(): void {
+		if (!this.outlineTypeSelect) {
+			return;
+		}
+		this.outlineTypeSelect.focus();
+		const picker = (this.outlineTypeSelect as HTMLSelectElement & {
+			showPicker?: () => void;
+		}).showPicker;
+		if (typeof picker === 'function') {
+			picker.call(this.outlineTypeSelect);
+		} else {
+			this.outlineTypeSelect.click();
+		}
 	}
 
 	private pickImage(): void {
@@ -208,8 +238,9 @@ class MobileAiOperationDialog {
 				}
 				this.pendingImage = window.btoa(binary);
 				if (this.imageThumb) {
-					this.imageThumb.src = 'data:image/png;base64,' + this.pendingImage;
-					this.imageThumb.style.display = 'block';
+					this.imageThumb.src =
+						'data:image/png;base64,' + this.pendingImage;
+					this.imageThumb.hidden = false;
 				}
 				this.render();
 			};
@@ -228,19 +259,16 @@ class MobileAiOperationDialog {
 		const context: { [key: string]: any } = {};
 		if (this.taskType === 'polish') {
 			context.polishStyle =
-				this.style?.value || WriterAiCatalog.DEFAULT_POLISH_STYLE;
+				this.styleSelect?.value || WriterAiCatalog.DEFAULT_POLISH_STYLE;
 		} else if (
 			this.taskType === 'expand' ||
 			this.taskType === 'condense' ||
 			this.taskType === 'rewrite'
 		) {
-			context.requirement = this.requirement?.value || '';
+			context.requirement = this.requirement?.value.trim() || '';
 		} else if (this.taskType === 'outline') {
-			context.outlineType = this.outlineType?.value || 'general';
+			context.outlineType = this.outlineTypeSelect?.value || 'general';
 			context.requirement = this.outlineDescription?.value.trim() || '';
-		} else if (this.taskType === 'article_generate') {
-			context.template = this.articleTemplate?.value || '';
-			context.variables = this.articleValues.map((input) => input.value.trim());
 		} else if (this.taskType === 'text_extract') {
 			this.lastGeneratedImage = this.pendingImage;
 			this.controller.request(
@@ -259,8 +287,6 @@ class MobileAiOperationDialog {
 			this.taskType === 'text_extract' &&
 			this.pendingImage !== this.lastGeneratedImage
 		) {
-			// 重选图后 controller 仍持有旧图,replay 会回放过期结果;
-			// 直接按当前图发起新请求。
 			this.request();
 			return;
 		}
@@ -269,31 +295,34 @@ class MobileAiOperationDialog {
 
 	private render(): void {
 		const state = this.controller.getState();
-		MobileAiResultRenderer.renderInto(this.preview, state.preview);
+		MobileAiResultRenderer.renderInto(
+			this.layout.resultPreview,
+			state.preview,
+		);
 		const active = state.state === 'loading' || state.state === 'streaming';
 		const ready = state.state === 'ready' && !!state.preview;
-		this.generateButton.disabled =
+		if (ready) {
+			this.layout.setStage('result');
+		} else if (active) {
+			this.layout.setStage('generating');
+		} else {
+			this.layout.setStage('input');
+		}
+		this.layout.generateButton.disabled =
 			active ||
 			(this.taskType === 'text_extract' && !this.pendingImage);
-		this.stopButton.disabled = !active;
-		this.copyButton.disabled = !ready;
-		this.regenerateButton.disabled = !ready;
-		this.applyButton.disabled = !ready;
-		this.status.textContent =
+		this.layout.stopButton.disabled = !active;
+		this.layout.copyRow.disabled = !ready;
+		this.layout.regenerateButton.disabled = !ready;
+		this.layout.applyButton.disabled = !ready;
+		this.layout.status.textContent =
 			state.error ||
 			(active
 				? state.state === 'streaming'
-					? 'AI 正在输出...'
-					: 'AI 正在生成...'
+					? 'AI 正在输出…'
+					: 'AI 正在生成…'
 				: ready
 					? '生成完成'
 					: '');
-	}
-
-	private createButton(label: string): HTMLButtonElement {
-		const button = document.createElement('button');
-		button.type = 'button';
-		button.textContent = label;
-		return button;
 	}
 }

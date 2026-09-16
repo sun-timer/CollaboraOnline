@@ -41,6 +41,12 @@ class NativeBridge {
 		'ai.stream': true,
 		'ai.done': true,
 		'ai.error': true,
+		'ai.conversation.load': true,
+		'ai.conversation.save': true,
+		'ai.conversation.clear': true,
+		'ai.conversation.loaded': true,
+		'ai.conversation.saved': true,
+		'ai.conversation.cleared': true,
 		'typeset.extract': true,
 		'typeset.fill': true,
 		'typeset.insert': true,
@@ -108,6 +114,12 @@ class NativeBridge {
 			(value.type === 'ai.request' ||
 				value.type === 'ai.cancel' ||
 				value.type === 'ai.accept' ||
+				value.type === 'ai.conversation.load' ||
+				value.type === 'ai.conversation.save' ||
+				value.type === 'ai.conversation.clear' ||
+				value.type === 'ai.conversation.loaded' ||
+				value.type === 'ai.conversation.saved' ||
+				value.type === 'ai.conversation.cleared' ||
 				value.type === 'ai.state' ||
 				value.type === 'ai.stream' ||
 				value.type === 'ai.done' ||

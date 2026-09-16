@@ -9,13 +9,9 @@
 class MobileAiImageDialog {
 	private readonly bridge: MobileAiBridge;
 	private readonly sheet: MobileAiSheet;
+	private readonly layout: MobileAiTaskDialogControls;
 	private readonly description: HTMLTextAreaElement;
-	private readonly generateButton: HTMLButtonElement;
-	private readonly stopButton: HTMLButtonElement;
-	private readonly insertButton: HTMLButtonElement;
-	private readonly regenerateButton: HTMLButtonElement;
 	private readonly image: HTMLImageElement;
-	private readonly status: HTMLDivElement;
 	private readonly unsubscribe: () => void;
 	private requestId = '';
 	private pendingImage = '';
@@ -30,10 +26,17 @@ class MobileAiImageDialog {
 
 	constructor() {
 		this.bridge = MobileAiBridge.getInstance();
-		this.description = document.createElement('textarea');
-		const content = document.createElement('div');
+		this.layout = MobileAiTaskDialogLayout.create({
+			generateLabel: '生成图片',
+		});
+		this.layout.copyRow.hidden = true;
+		this.layout.applyButton.textContent = '插入文档';
+		this.layout.regenerateButton.textContent = '重新生成';
+		this.layout.stopButton.textContent = '停止';
 		this.sheet = new MobileAiSheet({
 			title: 'AI 图片',
+			presentation: 'writer',
+			taskType: 'image_generate',
 			onClose: () => {
 				if (this.requestId) {
 					this.bridge.cancel(this.requestId);
@@ -42,44 +45,29 @@ class MobileAiImageDialog {
 				this.unsubscribe();
 			},
 		});
-		this.description.rows = 3;
-		this.description.placeholder = '描述你想生成的图片，例如：夕阳下的海面插画';
-		this.description.setAttribute('aria-label', '图片描述');
-		this.description.style.cssText =
-			'width:100%;box-sizing:border-box;resize:vertical;';
-		content.appendChild(this.description);
 
-		const actions = document.createElement('div');
-		actions.style.cssText = 'display:flex;gap:8px;';
-		this.generateButton = this.createButton('生成图片');
-		this.generateButton.onclick = () => this.generate();
-		actions.appendChild(this.generateButton);
-		this.stopButton = this.createButton('停止');
-		this.stopButton.onclick = () => this.stop();
-		actions.appendChild(this.stopButton);
-		content.appendChild(actions);
+		this.description = MobileAiTaskDialogLayout.multilineInput(
+			'描述你想生成的图片，例如：夕阳下的海面插画',
+			'图片描述',
+			3,
+		);
+		this.layout.inputSlot.appendChild(
+			MobileAiTaskDialogLayout.cardField('', this.description),
+		);
 
 		this.image = document.createElement('img');
-		this.image.style.cssText =
-			'max-width:100%;max-height:240px;object-fit:contain;' +
-			'display:none;border-radius:8px;';
-		content.appendChild(this.image);
+		this.image.className = 'mobile-ai-task-dialog__image-thumb';
+		this.image.hidden = true;
+		this.layout.resultScroll.appendChild(this.image);
+		this.layout.resultScroll.hidden = false;
+		this.layout.resultPreview.hidden = true;
 
-		const resultActions = document.createElement('div');
-		resultActions.style.cssText = 'display:flex;gap:8px;';
-		this.regenerateButton = this.createButton('重新生成');
-		this.regenerateButton.onclick = () => this.generate();
-		resultActions.appendChild(this.regenerateButton);
-		this.insertButton = this.createButton('插入文档');
-		this.insertButton.onclick = () => this.insert();
-		resultActions.appendChild(this.insertButton);
-		content.appendChild(resultActions);
+		this.layout.generateButton.onclick = () => this.generate();
+		this.layout.stopButton.onclick = () => this.stop();
+		this.layout.regenerateButton.onclick = () => this.generate();
+		this.layout.applyButton.onclick = () => this.insert();
 
-		this.status = document.createElement('div');
-		this.status.setAttribute('role', 'status');
-		content.appendChild(this.status);
-
-		this.sheet.setBody(content);
+		this.sheet.setBody(this.layout.root);
 		this.unsubscribe = this.bridge.subscribe((message) =>
 			this.handleMessage(message),
 		);
@@ -101,13 +89,14 @@ class MobileAiImageDialog {
 	private generate(): void {
 		const payload = MobileAiImageDialog.buildPayload(this.description.value);
 		if (!payload.selection) {
-			this.status.textContent = '请输入图片描述';
+			this.layout.status.textContent = '请输入图片描述';
 			return;
 		}
 		if (this.requestId) {
 			this.bridge.cancel(this.requestId);
 		}
 		this.pendingImage = '';
+		this.image.hidden = true;
 		this.requestId = this.bridge.request(payload);
 		this.render();
 	}
@@ -116,8 +105,6 @@ class MobileAiImageDialog {
 		if (!this.requestId) {
 			return;
 		}
-		// cancel() 的 ack 可能永不返回(请求已终态/消息失败),
-		// ack 时同步复位,避免停在 generating 态。
 		if (this.bridge.cancel(this.requestId)) {
 			this.requestId = '';
 			this.render();
@@ -132,7 +119,7 @@ class MobileAiImageDialog {
 			'ai-image.png',
 			this.pendingImage,
 		);
-		this.status.textContent = '已插入文档';
+		this.layout.status.textContent = '已插入文档';
 	}
 
 	private handleMessage(message: NativeBridgeEnvelope): void {
@@ -144,11 +131,11 @@ class MobileAiImageDialog {
 			this.pendingImage = payload.imageBase64;
 			this.requestId = '';
 			this.image.src = 'data:image/png;base64,' + this.pendingImage;
-			this.image.style.display = 'block';
-			this.status.textContent = '';
+			this.image.hidden = false;
+			this.layout.status.textContent = '';
 		} else if (message.type === 'ai.error') {
 			this.requestId = '';
-			this.status.textContent =
+			this.layout.status.textContent =
 				typeof payload.message === 'string' ? payload.message : '图片生成失败';
 		} else if (message.type === 'ai.state' && payload.state === 'cancelled') {
 			this.requestId = '';
@@ -159,23 +146,28 @@ class MobileAiImageDialog {
 	private render(): void {
 		const generating = !!this.requestId;
 		const ready = !!this.pendingImage;
-		this.generateButton.disabled = generating;
-		this.stopButton.disabled = !generating;
-		this.regenerateButton.disabled = generating || !ready;
-		this.insertButton.disabled = generating || !ready;
-		if (generating && !this.status.textContent) {
-			this.status.textContent = 'AI 正在生成图片...';
+		if (ready) {
+			this.layout.setStage('result');
+			this.layout.inputSlot.hidden = false;
+		} else if (generating) {
+			this.layout.setStage('generating');
+		} else {
+			this.layout.setStage('input');
 		}
-		if (!generating && !ready && this.status.textContent === 'AI 正在生成图片...') {
-			this.status.textContent = '';
+		this.layout.generateButton.disabled = generating;
+		this.layout.stopButton.disabled = !generating;
+		this.layout.regenerateButton.disabled = generating || !ready;
+		this.layout.applyButton.disabled = generating || !ready;
+		if (generating && !this.layout.status.textContent) {
+			this.layout.status.textContent = 'AI 正在生成图片…';
 		}
-	}
-
-	private createButton(label: string): HTMLButtonElement {
-		const button = document.createElement('button');
-		button.type = 'button';
-		button.textContent = label;
-		return button;
+		if (
+			!generating &&
+			!ready &&
+			this.layout.status.textContent === 'AI 正在生成图片…'
+		) {
+			this.layout.status.textContent = '';
+		}
 	}
 }
 

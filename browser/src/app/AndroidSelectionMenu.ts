@@ -82,7 +82,14 @@ class AndroidSelectionMenu {
 	 * Calc uses its own cell-selection bridge; Draw stays out for now.
 	 */
 	private static isSelectionDoc(): boolean {
-		return !!app.map && (app.map.getDocType() === 'text' || app.map.getDocType() === 'presentation');
+		if (!app.map) {
+			return false;
+		}
+		const docType = app.map.getDocType();
+		if (docType === 'text' || docType === 'presentation') {
+			return true;
+		}
+		return docType === 'spreadsheet' && AndroidSelectionMenu.isIOS();
 	}
 
 	private static isEditMode(): boolean {
@@ -508,9 +515,12 @@ class AndroidSelectionMenu {
 			docLayer && typeof docLayer._selectedTextContent === 'string'
 				? docLayer._selectedTextContent
 				: '';
+		const mode =
+			app.map.getDocType() === 'spreadsheet' ? 'calc' : 'text';
 		MobileSelectionEvents.broadcastShow(
 			{ anchorX: clamped.x, anchorY: clamped.y, anchorBottomY: clamped.bottomY },
 			text,
+			mode,
 		);
 		AndroidSelectionMenu.pendingLongPressSelection = false;
 		AndroidSelectionMenu.selectionStartTwips = null;

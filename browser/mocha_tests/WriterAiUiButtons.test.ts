@@ -113,7 +113,10 @@ describe('Writer AI UI buttons', function () {
 		const buttons = root.querySelectorAll('button');
 		for (let i = 0; i < buttons.length; i++) {
 			const button = buttons[i] as HTMLButtonElement;
-			if (button.textContent === label) {
+			if (
+				button.textContent === label ||
+				button.getAttribute('aria-label') === label
+			) {
 				button.click();
 				return button;
 			}
@@ -125,7 +128,10 @@ describe('Writer AI UI buttons', function () {
 		const buttons = root.querySelectorAll('button');
 		for (let i = 0; i < buttons.length; i++) {
 			const button = buttons[i] as HTMLButtonElement;
-			if (button.textContent === label) {
+			if (
+				button.textContent === label ||
+				button.getAttribute('aria-label') === label
+			) {
 				return button;
 			}
 		}
@@ -142,7 +148,7 @@ describe('Writer AI UI buttons', function () {
 	}
 
 	describe('MobileAiOperationDialog', function () {
-		it('runs 开始生成 → 停止 → 重新生成 → 复制 → 插入文档', function () {
+		it('runs 生成 → 停止 → 重新生成 → 复制 → 插入文档', function () {
 			const dom = setupDom();
 			try {
 				const bridge = createFakeWriterBridge('原始段落');
@@ -172,7 +178,7 @@ describe('Writer AI UI buttons', function () {
 				assert.ok(findButton(root, '插入文档'), '插入文档 button must be in DOM');
 				assert.ok(findButton(root, '重新生成'), '重新生成 button must be in DOM');
 
-				clickButton(root, '开始生成');
+				clickButton(root, '生成');
 				assert.equal(bridge.calls.request.length, 1);
 				assert.equal(bridge.calls.request[0].taskType, 'polish');
 				bridge.emit(aiDone('req-1', '润色结果'));
@@ -188,7 +194,7 @@ describe('Writer AI UI buttons', function () {
 				clickButton(root, '插入文档');
 				assert.equal(bridge.calls.accept.length, 1);
 
-				clickButton(root, '开始生成');
+				clickButton(root, '生成');
 				clickButton(root, '停止生成');
 				assert.deepEqual(bridge.calls.cancel, ['req-3']);
 			} finally {
@@ -358,6 +364,7 @@ describe('Writer AI UI buttons', function () {
 			const dom = setupDom();
 			try {
 				let nextId = 1;
+				MobileAiConversationController.resetSharedForTests();
 				const origGetInstance = MobileAiBridge.getInstance;
 				MobileAiBridge.getInstance = function () {
 					return {
@@ -401,7 +408,7 @@ describe('Writer AI UI buttons', function () {
 				assert.equal(input.value, '');
 
 				clickButton(root, '停止');
-				clickButton(root, '清空');
+				clickButton(root, '清空对话');
 
 				MobileAiBridge.getInstance = origGetInstance;
 			} finally {
@@ -431,6 +438,7 @@ describe('Writer AI UI buttons', function () {
 				const root = dom.document.body;
 				const polish = findButton(root, '文案润色');
 				assert.ok(polish);
+				assert.ok(polish?.querySelector('svg'));
 				assert.equal(polish?.disabled, true);
 
 				MobileAiBridge.getInstance = function () {

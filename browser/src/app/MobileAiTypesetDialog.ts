@@ -30,10 +30,13 @@ class MobileAiTypesetDialog {
 
 	constructor() {
 		this.controller = WriterAiController.getInstance();
-		this.sheet = new MobileAiSheet({ title: 'AI 排版' });
+		this.sheet = new MobileAiSheet({
+			title: 'AI 排版',
+			presentation: 'writer',
+			taskType: 'typeset',
+		});
 		this.content = document.createElement('div');
-		this.content.style.cssText =
-			'display:flex;flex-direction:column;gap:12px;min-height:280px;';
+		this.content.className = 'mobile-ai-task-dialog';
 
 		this.selectPanel = document.createElement('div');
 		this.selectPanel.style.cssText =
@@ -59,7 +62,7 @@ class MobileAiTypesetDialog {
 			grid.appendChild(card);
 		});
 		this.selectPanel.appendChild(grid);
-		this.startButton = this.createButton('开始排版');
+		this.startButton = this.createButton('开始排版', true);
 		this.startButton.onclick = () => this.startTypeset();
 		this.selectPanel.appendChild(this.startButton);
 		this.content.appendChild(this.selectPanel);
@@ -88,7 +91,7 @@ class MobileAiTypesetDialog {
 		this.regenerateButton = this.createButton('重新生成');
 		this.regenerateButton.onclick = () => this.regenerate();
 		actions.appendChild(this.regenerateButton);
-		this.applyButton = this.createButton('覆盖文档');
+		this.applyButton = this.createButton('覆盖文档', true);
 		this.applyButton.onclick = () => this.applyResult();
 		actions.appendChild(this.applyButton);
 		this.previewPanel.appendChild(actions);
@@ -355,9 +358,14 @@ class MobileAiTypesetDialog {
 		}
 	}
 
-	private createButton(label: string): HTMLButtonElement {
+	private createButton(label: string, primary = false): HTMLButtonElement {
 		const button = document.createElement('button');
 		button.type = 'button';
+		button.className =
+			'mobile-ai-task-dialog__btn ' +
+			(primary
+				? 'mobile-ai-task-dialog__btn--primary'
+				: 'mobile-ai-task-dialog__btn--secondary');
 		button.textContent = label;
 		return button;
 	}

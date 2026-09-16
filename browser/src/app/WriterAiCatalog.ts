@@ -14,12 +14,6 @@ interface WriterAiTaskDefinition {
 	allowedContextFields: string[];
 }
 
-interface WriterAiArticleTemplate {
-	key: string;
-	category: string;
-	variables: string[];
-}
-
 interface WriterAiValidationResult {
 	valid: boolean;
 	errorCode?: string;
@@ -168,99 +162,6 @@ class WriterAiCatalog {
 		},
 	};
 
-	static readonly ARTICLE_TEMPLATES: {
-		[key: string]: WriterAiArticleTemplate;
-	} = {
-		general_notice: {
-			key: 'general_notice',
-			category: '通知类',
-			variables: ['通知主要内容', '通知时间'],
-		},
-		meeting_notice: {
-			key: 'meeting_notice',
-			category: '通知类',
-			variables: ['会议主要内容', '会议时间', '参会人员'],
-		},
-		holiday_notice: {
-			key: 'holiday_notice',
-			category: '通知类',
-			variables: ['假期名称', '接收方', '发送方', '放假时间'],
-		},
-		interview_notice: {
-			key: 'interview_notice',
-			category: '通知类',
-			variables: ['面试人员', '面试时间', '面试地点', '面试单位'],
-		},
-		activity_notice: {
-			key: 'activity_notice',
-			category: '通知类',
-			variables: ['活动主题', '活动时间', '活动地点'],
-		},
-		training_notice: {
-			key: 'training_notice',
-			category: '通知类',
-			variables: ['培训主要内容', '培训人员', '培训日期'],
-		},
-		general_apply: {
-			key: 'general_apply',
-			category: '申请类',
-			variables: ['申请人', '申请事项', '申请时间'],
-		},
-		leave_apply: {
-			key: 'leave_apply',
-			category: '申请类',
-			variables: ['请假人', '请假原因', '请假天数', '请假起始日期'],
-		},
-		resign_apply: {
-			key: 'resign_apply',
-			category: '申请类',
-			variables: ['申请人', '离职原因', '离职时间'],
-		},
-		general_cert: {
-			key: 'general_cert',
-			category: '证明类',
-			variables: ['被证明人', '证明主要内容', '证明单位', '证明时间'],
-		},
-		work_cert: {
-			key: 'work_cert',
-			category: '证明类',
-			variables: ['被证明人', '工作时间', '工作单位', '工作岗位'],
-		},
-		income_cert: {
-			key: 'income_cert',
-			category: '证明类',
-			variables: ['被证明人', '收入', '工作单位', '工作岗位'],
-		},
-		resign_cert: {
-			key: 'resign_cert',
-			category: '证明类',
-			variables: ['被证明人', '离职原因', '离职时间', '证明单位', '证明时间'],
-		},
-		xiaohongshu: {
-			key: 'xiaohongshu',
-			category: '营销类',
-			variables: ['种草对象', '目标受众', '核心卖点', '文章长度', '文案风格'],
-		},
-		ad_soft: {
-			key: 'ad_soft',
-			category: '营销类',
-			variables: [
-				'产品名称',
-				'品牌',
-				'核心卖点',
-				'目标受众',
-				'投放平台',
-				'营销节点',
-				'文案风格',
-			],
-		},
-		douyin_script: {
-			key: 'douyin_script',
-			category: '营销类',
-			variables: ['主题内容', '目标受众', '视频风格', '视频时长'],
-		},
-	};
-
 	static getTask(taskType: string): WriterAiTaskDefinition | null {
 		if (!taskType || !WriterAiCatalog.TASKS[taskType]) {
 			return null;
@@ -269,10 +170,7 @@ class WriterAiCatalog {
 	}
 
 	static getArticleTemplate(key: string): WriterAiArticleTemplate | null {
-		if (!key || !WriterAiCatalog.ARTICLE_TEMPLATES[key]) {
-			return null;
-		}
-		return WriterAiCatalog.ARTICLE_TEMPLATES[key];
+		return WriterAiArticleRegistry.findByKey(key);
 	}
 
 	static validateRequest(payload: any): WriterAiValidationResult {

@@ -40,13 +40,44 @@ describe('Mobile Selection Menu', function () {
 		]);
 	});
 
+	it('Calc menu exposes Android clipboard row without AI tasks', function () {
+		const ids = MobileSelectionMenu.calcMenuItems().map((item) => item.id);
+		assert.deepEqual(ids, ['copy', 'paste', 'cut', 'clear', 'translate']);
+		const aiRows = MobileSelectionMenu.calcMenuItems().filter((item) =>
+			['outline', 'continue_write', 'article_generate', 'expand', 'polish', 'condense', 'rewrite'].includes(item.id),
+		);
+		assert.equal(aiRows.length, 0);
+	});
+
+	it('PPT graphic menu is a compact single row', function () {
+		const ids = MobileSelectionMenu.graphicMenuItems().map((item) => item.id);
+		assert.deepEqual(ids, [
+			'copy',
+			'cut',
+			'paste',
+			'delete',
+			'image_edit',
+			'save',
+		]);
+	});
+
 	it('ships Figma/Android icons for every menu item', function () {
-		MobileSelectionMenu.editMenuItems().forEach((item) => {
+		const allItems = [
+			...MobileSelectionMenu.editMenuItems(),
+			...MobileSelectionMenu.calcMenuItems(),
+			...MobileSelectionMenu.graphicMenuItems(),
+		];
+		const seen = new Set<string>();
+		allItems.forEach((item) => {
+			if (seen.has(item.iconKey)) {
+				return;
+			}
+			seen.add(item.iconKey);
 			assert.ok(MobileSelectionMenuIcons.has(item.iconKey), item.iconKey);
 		});
 	});
 
-	it('shows the six tasks only for editable Impress and never for Calc or preview', function () {
+	it('shows the six tasks only for editable Impress and never for preview', function () {
 		assert.deepEqual(MobileSelectionMenu.menuTaskTypesForDocument('presentation', false), [
 			'continue',
 			'polish',
@@ -56,6 +87,10 @@ describe('Mobile Selection Menu', function () {
 			'translate',
 		]);
 		assert.deepEqual(MobileSelectionMenu.menuTaskTypesForDocument('presentation', true), []);
+	});
+
+	it('spreadsheet selection catalog remains empty but menu items exist', function () {
 		assert.deepEqual(MobileSelectionMenu.menuTaskTypesForDocument('spreadsheet', false), []);
+		assert.ok(MobileSelectionMenu.calcMenuItems().length > 0);
 	});
 });
