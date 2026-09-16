@@ -59,7 +59,10 @@ class ImpressEditorHyperlinkDialog {
 		this.sheet.close();
 	}
 
-	private modeButton(label: string, mode: 'internet' | 'mail'): HTMLButtonElement {
+	private modeButton(
+		label: string,
+		mode: 'internet' | 'mail',
+	): HTMLButtonElement {
 		const button = document.createElement('button');
 		button.type = 'button';
 		button.textContent = label;
@@ -74,7 +77,8 @@ class ImpressEditorHyperlinkDialog {
 
 	private setMode(mode: 'internet' | 'mail'): void {
 		this.mode = mode;
-		this.urlInput.placeholder = mode === 'mail' ? 'name@example.com' : 'https://';
+		this.urlInput.placeholder =
+			mode === 'mail' ? 'name@example.com' : 'https://';
 		this.styleModeButton(this.internetTab, mode === 'internet');
 		this.styleModeButton(this.mailTab, mode === 'mail');
 	}
@@ -95,7 +99,10 @@ class ImpressEditorHyperlinkDialog {
 		return input;
 	}
 
-	private wrapField(labelText: string, input: HTMLInputElement): HTMLDivElement {
+	private wrapField(
+		labelText: string,
+		input: HTMLInputElement,
+	): HTMLDivElement {
 		const wrap = document.createElement('div');
 		wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
 		const label = document.createElement('label');

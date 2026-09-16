@@ -18,6 +18,7 @@ type ImpressEditorFeatureKind =
 	| 'command'
 	| 'queryCommand'
 	| 'dialog'
+	| 'charTool'
 	| 'save'
 	| 'export'
 	| 'print'
@@ -29,7 +30,17 @@ type ImpressEditorDialogType =
 	| 'shape'
 	| 'saveAs'
 	| 'comment'
-	| 'hyperlink';
+	| 'hyperlink'
+	| 'slideFormat'
+	| 'slideOrientation'
+	| 'slideBackground'
+	| 'slideMaster'
+	| 'fontName'
+	| 'fontSize'
+	| 'fontColor'
+	| 'highlightColor';
+
+type ImpressEditorSplitPart = 'size' | 'color';
 
 interface ImpressEditorFeature {
 	id: string;
@@ -43,6 +54,9 @@ interface ImpressEditorFeature {
 	group?: string;
 	setId?: string;
 	iconViewIndex?: number;
+	row?: 'picker' | 'chip' | 'layoutPreview' | 'splitPicker' | 'charTool';
+	splitPart?: ImpressEditorSplitPart;
+	pickerDefault?: string;
 }
 
 interface ImpressEditorTabDefinition {
@@ -59,6 +73,22 @@ interface ImpressLayoutEntry {
 	id: string;
 	label: string;
 	whatLayout: number;
+}
+
+/** Android ImpressFunctionPanelController fill styles (FillPageStyle). */
+type ImpressFillPageStyle = 0 | 1 | 2 | 3 | 4;
+
+interface ImpressSlideBackgroundOption {
+	label: string;
+	unocmd: string | null;
+	fillPageStyle?: ImpressFillPageStyle;
+	afterSelect?: 'colorPicker' | 'imagePicker';
+}
+
+interface ImpressSlideMasterOption {
+	label: string;
+	unocmd: string | null;
+	afterSelect?: 'colorPicker';
 }
 
 class ImpressEditorCatalog {
@@ -86,7 +116,102 @@ class ImpressEditorCatalog {
 		{ id: 'layout-end', label: '末尾幻灯片', whatLayout: 19 },
 	];
 
-	/** Android ImpressTransitionCatalog labels + setId + iconViewIndex (1–36). */
+	/** Android ImpressFunctionPanelController FORMAT_LABELS / FORMAT_COMMANDS. */
+	static readonly SLIDE_FORMATS: { label: string; paperFormat: string }[] = [
+		{ label: 'A4', paperFormat: '4' },
+		{ label: 'A3', paperFormat: '3' },
+		{ label: 'A5', paperFormat: '5' },
+		{ label: 'A6', paperFormat: '56' },
+		{ label: 'A2', paperFormat: '2' },
+		{ label: 'A1', paperFormat: '1' },
+		{ label: 'A0', paperFormat: '0' },
+		{ label: 'B6(ISO)', paperFormat: '12' },
+		{ label: 'B5(ISO)', paperFormat: '7' },
+		{ label: 'B4(ISO)', paperFormat: '6' },
+		{ label: 'B6(JIS)', paperFormat: '36' },
+		{ label: 'B5(JIS)', paperFormat: '35' },
+		{ label: 'B4(JIS)', paperFormat: '34' },
+		{ label: 'Letter', paperFormat: '8' },
+		{ label: 'Legal', paperFormat: '9' },
+		{ label: 'Tabloid', paperFormat: '10' },
+		{ label: '16开', paperFormat: '31' },
+		{ label: '32开', paperFormat: '32' },
+		{ label: '大32开', paperFormat: '33' },
+		{ label: '自定义', paperFormat: '11' },
+	];
+
+	/** Android ORIENTATION_LABELS / ORIENTATION_COMMANDS. */
+	static readonly SLIDE_ORIENTATIONS: { label: string; unocmd: string }[] = [
+		{ label: '横向', unocmd: '.uno:Orientation?isLandscape:bool=true' },
+		{ label: '纵向', unocmd: '.uno:Orientation?isLandscape:bool=false' },
+	];
+
+	/** Android BACKGROUND_LABELS / BACKGROUND_COMMANDS + createBackgroundActions. */
+	static readonly SLIDE_BACKGROUND_OPTIONS: ImpressSlideBackgroundOption[] = [
+		{
+			label: '无',
+			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(0),
+			fillPageStyle: 0,
+		},
+		{
+			label: '颜色',
+			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(1),
+			fillPageStyle: 1,
+			afterSelect: 'colorPicker',
+		},
+		{
+			label: '渐变',
+			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(2),
+			fillPageStyle: 2,
+		},
+		{
+			label: '阴影线',
+			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(3),
+			fillPageStyle: 3,
+		},
+		{
+			label: '位图',
+			unocmd: '.uno:SelectBackground',
+			afterSelect: 'imagePicker',
+		},
+		{
+			label: '图案',
+			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(4),
+			fillPageStyle: 4,
+		},
+		{
+			label: '使用幻灯片背景',
+			unocmd: '.uno:DisplayMasterBackground?DisplayMasterBackground:bool=true',
+		},
+	];
+
+	/** Android MASTER_SLIDE_LABELS; 默认 uses FillPageStyle 0 on iOS (Android clears local state only). */
+	static readonly SLIDE_MASTER_OPTIONS: ImpressSlideMasterOption[] = [
+		{
+			label: '默认',
+			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(0),
+		},
+		{
+			label: '纯色',
+			unocmd: null,
+			afterSelect: 'colorPicker',
+		},
+	];
+
+	static buildFillPageStyleCommand(fillStyle: ImpressFillPageStyle): string {
+		return (
+			'.uno:FillPageStyle {"FillPageStyle":{"type":"short","value":' + fillStyle + '}}'
+		);
+	}
+
+	static buildBackgroundColorCommand(rgb: number): string {
+		return (
+			'.uno:BackgroundColor {"BackgroundColor.Color":{"type":"long","value":' +
+			rgb +
+			'}}'
+		);
+	}
+
 	static readonly TRANSITIONS: { id: string; label: string; setId: string; iconViewIndex: number }[] = [
 		{ id: 'tr-none', label: '无', setId: '', iconViewIndex: 0 },
 		{ id: 'tr-wipe', label: '擦除', setId: 'wipe', iconViewIndex: 1 },
@@ -138,13 +263,265 @@ class ImpressEditorCatalog {
 				kind: 'section',
 			},
 			{
-				id: 'common-insert-image',
-				label: '本地图像',
+				id: 'slide-format',
+				label: '格式',
 				tab: 'default',
-				icon: 'image',
+				icon: 'paper-size',
 				kind: 'dialog',
-				dialog: 'image',
-				group: 'common',
+				dialog: 'slideFormat',
+				row: 'picker',
+				pickerDefault: 'A4',
+				group: 'slide',
+			},
+			{
+				id: 'slide-orientation',
+				label: '方向',
+				tab: 'default',
+				icon: 'orientation',
+				kind: 'dialog',
+				dialog: 'slideOrientation',
+				row: 'picker',
+				pickerDefault: '横向',
+				group: 'slide',
+			},
+			{
+				id: 'slide-background',
+				label: '背景',
+				tab: 'default',
+				icon: 'watermark',
+				kind: 'dialog',
+				dialog: 'slideBackground',
+				row: 'picker',
+				pickerDefault: '无',
+				group: 'slide',
+			},
+			{
+				id: 'slide-master',
+				label: '母版幻灯片',
+				tab: 'default',
+				icon: 'page-number',
+				kind: 'dialog',
+				dialog: 'slideMaster',
+				row: 'picker',
+				pickerDefault: '默认',
+				group: 'slide',
+			},
+			{
+				id: 'sec-layout',
+				label: '布局',
+				tab: 'default',
+				icon: '',
+				kind: 'section',
+			},
+		];
+
+		ImpressEditorCatalog.LAYOUTS.forEach((layout, index) => {
+			if (index < 3) {
+				features.push({
+					id: 'common-' + layout.id,
+					label: layout.label,
+					tab: 'default',
+					icon: 'pagebreak',
+					kind: 'queryCommand',
+					unocmd: '.uno:AssignLayout',
+					queryParams: '?WhatLayout:long=' + layout.whatLayout,
+					group: 'layout',
+					row: 'layoutPreview',
+				});
+			}
+		});
+
+		features.push(
+			{
+				id: 'sec-char',
+				label: '字符',
+				tab: 'default',
+				icon: '',
+				kind: 'section',
+			},
+			{
+				id: 'font-name',
+				label: '字体',
+				tab: 'default',
+				icon: 'font',
+				kind: 'dialog',
+				dialog: 'fontName',
+				unocmd: '.uno:CharFontName',
+				row: 'picker',
+				pickerDefault: '宋体',
+				group: 'char',
+			},
+			{
+				id: 'font-size',
+				label: '字号',
+				tab: 'default',
+				icon: 'font-size',
+				kind: 'dialog',
+				dialog: 'fontSize',
+				unocmd: '.uno:FontHeight',
+				row: 'splitPicker',
+				splitPart: 'size',
+				pickerDefault: '四号',
+				group: 'char',
+			},
+			{
+				id: 'font-color',
+				label: '字体颜色',
+				tab: 'default',
+				icon: 'font',
+				kind: 'dialog',
+				dialog: 'fontColor',
+				row: 'splitPicker',
+				splitPart: 'color',
+				group: 'char',
+			},
+			{
+				id: 'char-bold',
+				label: '粗体',
+				tab: 'default',
+				icon: 'font',
+				kind: 'charTool',
+				unocmd: '.uno:Bold',
+				row: 'charTool',
+				group: 'char-tools-1',
+			},
+			{
+				id: 'char-italic',
+				label: '斜体',
+				tab: 'default',
+				icon: 'font',
+				kind: 'charTool',
+				unocmd: '.uno:Italic',
+				row: 'charTool',
+				group: 'char-tools-1',
+			},
+			{
+				id: 'char-underline',
+				label: '下划线',
+				tab: 'default',
+				icon: 'font',
+				kind: 'charTool',
+				unocmd: '.uno:Underline',
+				row: 'charTool',
+				group: 'char-tools-1',
+			},
+			{
+				id: 'char-strikeout',
+				label: '删除线',
+				tab: 'default',
+				icon: 'font',
+				kind: 'charTool',
+				unocmd: '.uno:Strikeout',
+				row: 'charTool',
+				group: 'char-tools-1',
+			},
+			{
+				id: 'char-shadow',
+				label: '阴影',
+				tab: 'default',
+				icon: 'font',
+				kind: 'charTool',
+				unocmd: '.uno:Shadowed',
+				row: 'charTool',
+				group: 'char-tools-1',
+			},
+			{
+				id: 'char-highlight',
+				label: '高亮',
+				tab: 'default',
+				icon: 'font',
+				kind: 'charTool',
+				unocmd: '.uno:CharBackColor',
+				dialog: 'highlightColor',
+				row: 'charTool',
+				group: 'char-tools-1',
+			},
+			{
+				id: 'char-superscript',
+				label: '上标',
+				tab: 'default',
+				icon: 'font',
+				kind: 'charTool',
+				unocmd: '.uno:SuperScript',
+				row: 'charTool',
+				group: 'char-tools-2',
+			},
+			{
+				id: 'char-subscript',
+				label: '下标',
+				tab: 'default',
+				icon: 'font',
+				kind: 'charTool',
+				unocmd: '.uno:SubScript',
+				row: 'charTool',
+				group: 'char-tools-2',
+			},
+			{
+				id: 'sec-para',
+				label: '段落',
+				tab: 'default',
+				icon: '',
+				kind: 'section',
+			},
+			{
+				id: 'para-left',
+				label: '左对齐',
+				tab: 'default',
+				icon: 'align-left',
+				kind: 'command',
+				unocmd: '.uno:LeftPara',
+				row: 'chip',
+				group: 'para',
+			},
+			{
+				id: 'para-center',
+				label: '居中对齐',
+				tab: 'default',
+				icon: 'align-center',
+				kind: 'command',
+				unocmd: '.uno:CenterPara',
+				row: 'chip',
+				group: 'para',
+			},
+			{
+				id: 'para-right',
+				label: '右对齐',
+				tab: 'default',
+				icon: 'align-right',
+				kind: 'command',
+				unocmd: '.uno:RightPara',
+				row: 'chip',
+				group: 'para',
+			},
+			{
+				id: 'para-justify',
+				label: '两端对齐',
+				tab: 'default',
+				icon: 'align-justify',
+				kind: 'command',
+				unocmd: '.uno:JustifyPara',
+				row: 'chip',
+				group: 'para',
+			},
+			{
+				id: 'para-bullet',
+				label: '无序列表',
+				tab: 'default',
+				icon: 'bullet-list',
+				kind: 'command',
+				unocmd: '.uno:DefaultBullet',
+				row: 'chip',
+				group: 'para',
+			},
+			{
+				id: 'para-number',
+				label: '有序列表',
+				tab: 'default',
+				icon: 'numbered-list',
+				kind: 'command',
+				unocmd: '.uno:DefaultNumbering',
+				row: 'chip',
+				group: 'para',
 			},
 			{
 				id: 'save',
@@ -264,21 +641,9 @@ class ImpressEditorCatalog {
 				unocmd: '.uno:InsertAnnotation',
 				group: 'review',
 			},
-		];
+		);
 
-		ImpressEditorCatalog.LAYOUTS.forEach((layout, index) => {
-			if (index < 3) {
-				features.push({
-					id: 'common-' + layout.id,
-					label: layout.label,
-					tab: 'default',
-					icon: 'pagebreak',
-					kind: 'queryCommand',
-					unocmd: '.uno:AssignLayout',
-					queryParams: '?WhatLayout:long=' + layout.whatLayout,
-					group: 'layout',
-				});
-			}
+		ImpressEditorCatalog.LAYOUTS.forEach((layout) => {
 			features.push({
 				id: layout.id,
 				label: layout.label,
@@ -323,7 +688,9 @@ class ImpressEditorCatalog {
 			return { valid: false, errorCode: 'empty_icon' };
 		}
 		if (
-			(feature.kind === 'command' || feature.kind === 'queryCommand') &&
+			(feature.kind === 'command' ||
+				feature.kind === 'queryCommand' ||
+				feature.kind === 'charTool') &&
 			!feature.unocmd
 		) {
 			return { valid: false, errorCode: 'missing_unocmd' };

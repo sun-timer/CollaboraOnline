@@ -8,21 +8,27 @@
 class WriterEditorShapeDialog {
 	private static readonly GRID_COLS = 6;
 
-	private readonly sheet: MobileAiSheet;
+	private readonly subpage: { open(): void; close(): void };
 	private readonly controller: WriterEditorController;
 
-	constructor(controller: WriterEditorController) {
+	constructor(
+		controller: WriterEditorController,
+		host?: WriterEditorInlineSubpageHost | null,
+	) {
 		this.controller = controller;
-		this.sheet = new MobileAiSheet({ title: '插入形状' });
-		this.sheet.setBody(this.buildContent());
+		this.subpage = writerEditorMountSubpageDialog(
+			'插入形状',
+			this.buildContent(),
+			host,
+		);
 	}
 
 	open(): void {
-		this.sheet.open();
+		this.subpage.open();
 	}
 
 	close(): void {
-		this.sheet.close();
+		this.subpage.close();
 	}
 
 	private buildContent(): HTMLElement {
@@ -82,7 +88,7 @@ class WriterEditorShapeDialog {
 
 		button.onclick = () => {
 			this.controller.insertShapeUno(entry.unoCommand);
-			this.sheet.close();
+			this.subpage.close();
 		};
 		cell.appendChild(button);
 		return cell;

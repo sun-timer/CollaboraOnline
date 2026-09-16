@@ -222,20 +222,30 @@ class GraphicSelection {
 			this.handlesSection.setShowSection(true);
 			app.sectionContainer.requestReDraw();
 
+			const rect = this.rectangle;
+			const cx = (rect.pX1 + rect.pX2) / 2;
+			const cy = (rect.pY1 + rect.pY2) / 2;
+			const pixelPt = app.map._docLayer._twipsToPixels(new cool.SimplePoint(cx, cy));
+			const canvasRect = app.sectionContainer.getCanvasBoundingClientRect();
+			const scale = app.dpiScale || 1;
+			const cssX = (pixelPt.x / scale) + canvasRect.x;
+			const cssY = (pixelPt.y / scale) + canvasRect.y;
 			// Notify Android native side about graphic selection
 			if (typeof window.postMobileMessage === 'function' && window.ThisIsTheAndroidApp) {
-				const rect = this.rectangle;
-				const cx = (rect.pX1 + rect.pX2) / 2;
-				const cy = (rect.pY1 + rect.pY2) / 2;
-				const pixelPt = app.map._docLayer._twipsToPixels(new cool.SimplePoint(cx, cy));
-				const canvasRect = app.sectionContainer.getCanvasBoundingClientRect();
-				const scale = app.dpiScale || 1;
-				const cssX = (pixelPt.x / scale) + canvasRect.x;
-				const cssY = (pixelPt.y / scale) + canvasRect.y;
 				window.postMobileMessage(
 					'GRAPHICSELECTION show ' +
 					Math.round(cssX * scale) + ' ' +
 					Math.round(cssY * scale)
+				);
+			} else if (window.ThisIsTheiOSApp && typeof MobileSelectionEvents !== 'undefined') {
+				MobileSelectionEvents.broadcastShow(
+					{
+						anchorX: Math.round(cssX),
+						anchorY: Math.round(cssY),
+						anchorBottomY: Math.round(cssY),
+					},
+					'',
+					'graphic',
 				);
 			}
 		} else if (
@@ -246,9 +256,11 @@ class GraphicSelection {
 			app.sectionContainer.removeSection(this.handlesSection.name);
 			this.handlesSection = null;
 
-			// Notify Android native side that graphic selection is cleared
+			// Notify native side that graphic selection is cleared
 			if (typeof window.postMobileMessage === 'function' && window.ThisIsTheAndroidApp) {
 				window.postMobileMessage('GRAPHICSELECTION hide');
+			} else if (window.ThisIsTheiOSApp && typeof MobileSelectionEvents !== 'undefined') {
+				MobileSelectionEvents.broadcastHide();
 			}
 		}
 		app.map._docLayer._updateCursorAndOverlay();

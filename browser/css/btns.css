@@ -142,9 +142,12 @@ button.jsdialog[disabled] img {
 	flex-wrap: wrap;
 }
 
+/* Dialog default button chrome. High specificity + later in the bundle than the
+ * mobile sheet stylesheets, so every web-rendered sheet button class must be
+ * listed here or btns.css wins over its own class rules. */
 :not(.main-nav) .button-secondary,
 :not(.main-nav) .button-secondary:not(.arrowbackground),
-:not(.main-nav) > div:not(.toolbox) > button:not(.ui-tab):not(.ui-expander-btn):not(.ui-corner-all):not(.button-primary):not(.unobutton):not(.form-field-button):not(.col):not(.arrowbackground):not(.ui-combobox-button):not(.ui-linkbutton) {
+:not(.main-nav) > div:not(.toolbox) > button:not(.ui-tab):not(.ui-expander-btn):not(.ui-corner-all):not(.button-primary):not(.unobutton):not(.form-field-button):not(.col):not(.arrowbackground):not(.ui-combobox-button):not(.ui-linkbutton):not(.writer-function-tab):not(.writer-function-action-btn):not(.writer-function-picker-row):not(.writer-function-grouped-picker-row):not(.writer-function-action-row):not(.writer-function-chip):not(.writer-function-tile):not(.writer-function-list-row):not(.writer-comment-btn):not(.writer-image-option):not(.writer-shape-picker__btn):not(.writer-quick-action-bar__button):not(.fabric-selection-menu__button):not(.writer-editor-option-row):not(.writer-function-sheet__close):not(.writer-function-sheet__back):not(.writer-find-sheet__icon-btn):not(.writer-find-sheet__tab):not(.writer-find-sheet__nav-btn):not(.writer-watermark-form__stepper-btn):not(.writer-watermark-form__confirm):not(.writer-watermark-form__font-row):not(.mobile-ai-operation-card):not(.mobile-ai-task-dialog__btn):not(.mobile-ai-task-dialog__copy-row):not(.mobile-ai-task-dialog__picker-card):not(.mobile-ai-task-dialog__select-card):not(.mobile-ai-wai-dropdown-row):not(.mobile-ai-sheet-close) {
 	box-sizing: border-box;
 	height: 32px;
 	line-height: normal;

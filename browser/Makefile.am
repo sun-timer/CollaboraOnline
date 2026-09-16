@@ -265,6 +265,7 @@ COOL_JS_LST =\
 	src/app/AndroidSelectionMenu.ts \
 	src/app/AndroidCalcTap.ts \
 	src/app/MobileNativeToolbar.ts \
+	src/app/WriterAiArticleRegistry.ts \
 	src/app/WriterAiCatalog.ts \
 	src/app/CalcAiCatalog.ts \
 	src/app/CalcAiContext.ts \
@@ -276,7 +277,11 @@ COOL_JS_LST =\
 	src/app/CalcAiController.ts \
 	src/app/MobileAiConversationController.ts \
 	src/app/MobileAiSheet.ts \
+	src/app/MobileAiTaskDialogLayout.ts \
+	src/app/MobileAiWaiDropdown.ts \
+	src/app/MobileAiArticleGenerateDialog.ts \
 	src/app/MobileAiAssistantPanel.ts \
+	src/app/MobileAiOperationIcons.ts \
 	src/app/MobileAiOperationSheet.ts \
 	src/app/MobileAiOperationDialog.ts \
 	src/app/MobileAiTypesetDialog.ts \
@@ -296,6 +301,7 @@ COOL_JS_LST =\
 	src/app/WriterEditorController.ts \
 	src/app/WriterEditorSheet.ts \
 	src/app/WriterEditorIcons.ts \
+	src/app/WriterEditorInlineSubpage.ts \
 	src/app/WriterEditorPanel.ts \
 	src/app/ImpressEditorCatalog.ts \
 	src/app/ImpressEditorHyperlinkDialog.ts \

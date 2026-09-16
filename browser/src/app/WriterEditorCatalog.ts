@@ -66,18 +66,18 @@ interface WriterEditorValidationResult {
  * used by the `.uno:CharHeight` command.
  */
 const WriterEditorCharHeightCN: { [label: string]: string } = {
-	'初号': '42pt',
-	'小初': '36pt',
-	'一号': '26pt',
-	'小一': '24pt',
-	'二号': '22pt',
-	'小二': '18pt',
-	'三号': '16pt',
-	'小三': '15pt',
-	'四号': '14pt',
-	'小四': '12pt',
-	'五号': '10.5pt',
-	'小五': '9pt',
+	初号: '42pt',
+	小初: '36pt',
+	一号: '26pt',
+	小一: '24pt',
+	二号: '22pt',
+	小二: '18pt',
+	三号: '16pt',
+	小三: '15pt',
+	四号: '14pt',
+	小四: '12pt',
+	五号: '10.5pt',
+	小五: '9pt',
 };
 
 class WriterEditorCatalog {
@@ -88,9 +88,38 @@ class WriterEditorCatalog {
 		{ id: 'layout', label: '布局' },
 		{ id: 'review', label: '审阅' },
 	];
+	/** Section titles for feature groups (Android buildTabs() SECTION labels). */
+	static readonly GROUP_LABELS: { [group: string]: string } = {
+		format: '格式',
+		paragraph: '段落',
+		file: '文件',
+		insert: '插入',
+		page: '页面',
+		review: '审阅',
+	};
 
 	static readonly CHAR_HEIGHT_CN: { [label: string]: string } =
 		WriterEditorCharHeightCN;
+
+	/**
+	 * Reverse lookup for the 字号 row value: a `.uno:FontHeight` state ("14 pt")
+	 * to its Chinese size label ("四号"). Empty when the size is off-table.
+	 */
+	static charHeightLabelFor(ptState: string): string {
+		const match = /^\s*([0-9]+(?:\.[0-9]+)?)/.exec(ptState || '');
+		if (!match) {
+			return '';
+		}
+		const pt = parseFloat(match[1]);
+		const labels = Object.keys(WriterEditorCharHeightCN);
+		for (let i = 0; i < labels.length; i++) {
+			if (parseFloat(WriterEditorCharHeightCN[labels[i]]) === pt) {
+				return labels[i];
+			}
+		}
+		return '';
+	}
+
 	/**
 	 * Paper-format presets for `.uno:AttributePageSize?PaperFormat:short=N`.
 	 * All 29 entries transcribe CO's PaperFormat enum (A4=4, A3=3, ...) via
@@ -143,13 +172,62 @@ class WriterEditorCatalog {
 		bottom: number;
 	}[] = [
 		{ id: 'none', label: '无', left: 0, right: 0, top: 0, bottom: 0 },
-		{ id: 'narrow', label: '窄', left: 1270, right: 1270, top: 1270, bottom: 1270 },
-		{ id: 'moderate', label: '适中', left: 1905, right: 1905, top: 2540, bottom: 2540 },
-		{ id: 'normal190', label: '正常（1.90 cm）', left: 1905, right: 1905, top: 1905, bottom: 1905 },
-		{ id: 'normal254', label: '正常（2.54 cm）', left: 2540, right: 2540, top: 2540, bottom: 2540 },
-		{ id: 'normal318', label: '正常（3.18 cm）', left: 3175, right: 3175, top: 3175, bottom: 3175 },
-		{ id: 'wide', label: '宽', left: 5080, right: 5080, top: 2540, bottom: 2540 },
-		{ id: 'mirrored', label: '镜像', left: 5080, right: 2540, top: 2540, bottom: 2540 },
+		{
+			id: 'narrow',
+			label: '窄',
+			left: 1270,
+			right: 1270,
+			top: 1270,
+			bottom: 1270,
+		},
+		{
+			id: 'moderate',
+			label: '适中',
+			left: 1905,
+			right: 1905,
+			top: 2540,
+			bottom: 2540,
+		},
+		{
+			id: 'normal190',
+			label: '正常（1.90 cm）',
+			left: 1905,
+			right: 1905,
+			top: 1905,
+			bottom: 1905,
+		},
+		{
+			id: 'normal254',
+			label: '正常（2.54 cm）',
+			left: 2540,
+			right: 2540,
+			top: 2540,
+			bottom: 2540,
+		},
+		{
+			id: 'normal318',
+			label: '正常（3.18 cm）',
+			left: 3175,
+			right: 3175,
+			top: 3175,
+			bottom: 3175,
+		},
+		{
+			id: 'wide',
+			label: '宽',
+			left: 5080,
+			right: 5080,
+			top: 2540,
+			bottom: 2540,
+		},
+		{
+			id: 'mirrored',
+			label: '镜像',
+			left: 5080,
+			right: 2540,
+			top: 2540,
+			bottom: 2540,
+		},
 	];
 
 	/**
@@ -185,7 +263,11 @@ class WriterEditorCatalog {
 	 * (L2124-2126).
 	 */
 	static readonly FONT_FALLBACK_OPTIONS: string[] = [
-		'Liberation Serif', 'Liberation Sans', 'Liberation Mono', 'Arial', 'Times New Roman',
+		'Liberation Serif',
+		'Liberation Sans',
+		'Liberation Mono',
+		'Arial',
+		'Times New Roman',
 	];
 
 	/**
@@ -229,36 +311,30 @@ class WriterEditorCatalog {
 	 */
 	static readonly CHAR_COLOR_BLOCKS: number[][] = [
 		[
-			0x8ACFFF, 0xD596FF, 0xBEFFC6, 0xFFC891, 0xFFE4E5, 0xFFFFFF,
-			0x009CFF, 0xA628FF, 0x00FF47, 0xFFC700, 0xE65D61, 0xC0C0C0,
-			0x0000FF, 0x7000D5, 0x89CD00, 0xFF9300, 0xA62900, 0x808080,
-			0x010086, 0x390069, 0x008200, 0xFF5700, 0x8C0000, 0x000000,
+			0x8acfff, 0xd596ff, 0xbeffc6, 0xffc891, 0xffe4e5, 0xffffff, 0x009cff,
+			0xa628ff, 0x00ff47, 0xffc700, 0xe65d61, 0xc0c0c0, 0x0000ff, 0x7000d5,
+			0x89cd00, 0xff9300, 0xa62900, 0x808080, 0x010086, 0x390069, 0x008200,
+			0xff5700, 0x8c0000, 0x000000,
 		],
 		[
-			0xD20000, 0xFFBD00, 0x7ED330, 0x00B3F7, 0x792BA6, 0xFFFFFF,
-			0xFF0000, 0xFFFF00, 0x00B242, 0x0073C7, 0x002164, 0x000000,
+			0xd20000, 0xffbd00, 0x7ed330, 0x00b3f7, 0x792ba6, 0xffffff, 0xff0000,
+			0xffff00, 0x00b242, 0x0073c7, 0x002164, 0x000000,
 		],
 	];
 
 	static readonly FEATURES: WriterEditorFeature[] = [
 		// ---- 常用 (default) ----
+		// Format rows follow the edit panel's section order (Android buildTabs()
+		// commonItems: 样式 → 字体 → 字号 → 段落).
 		{
-			id: 'undo',
-			label: '撤销',
+			id: 'style',
+			label: '样式',
 			tab: 'default',
-			icon: 'undo',
-			kind: 'command',
-			unocmd: '.uno:Undo',
-			group: 'history',
-		},
-		{
-			id: 'redo',
-			label: '重做',
-			tab: 'default',
-			icon: 'redo',
-			kind: 'command',
-			unocmd: '.uno:Redo',
-			group: 'history',
+			icon: 'style',
+			kind: 'dialog',
+			dialog: 'style',
+			unocmd: '.uno:StyleApply',
+			group: 'format',
 		},
 		{
 			id: 'font-name',
@@ -281,16 +357,6 @@ class WriterEditorCatalog {
 			group: 'format',
 		},
 		{
-			id: 'style',
-			label: '样式',
-			tab: 'default',
-			icon: 'style',
-			kind: 'dialog',
-			dialog: 'style',
-			unocmd: '.uno:StyleApply',
-			group: 'format',
-		},
-		{
 			id: 'align-left',
 			label: '左对齐',
 			tab: 'default',
@@ -301,7 +367,7 @@ class WriterEditorCatalog {
 		},
 		{
 			id: 'align-center',
-			label: '居中',
+			label: '居中对齐',
 			tab: 'default',
 			icon: 'align-center',
 			kind: 'command',
@@ -490,23 +556,6 @@ class WriterEditorCatalog {
 
 		// ---- 审阅 (review) ----
 		{
-			id: 'word-count',
-			label: '字数统计',
-			tab: 'review',
-			icon: 'bullet-list',
-			kind: 'command',
-			unocmd: '.uno:WordCountDialog',
-			group: 'review',
-		},
-		{
-			id: 'find-replace',
-			label: '查找替换',
-			tab: 'review',
-			icon: 'find-replace',
-			kind: 'findReplace',
-			group: 'review',
-		},
-		{
 			id: 'spell-check',
 			label: '拼写检查',
 			tab: 'review',
@@ -537,7 +586,7 @@ class WriterEditorCatalog {
 		},
 		{
 			id: 'accept-tracked-change',
-			label: '接受',
+			label: '接收修订',
 			tab: 'review',
 			icon: 'accept-tracked-change',
 			kind: 'command',
@@ -546,7 +595,7 @@ class WriterEditorCatalog {
 		},
 		{
 			id: 'reject-tracked-change',
-			label: '拒绝',
+			label: '拒绝修订',
 			tab: 'review',
 			icon: 'reject-tracked-change',
 			kind: 'command',
@@ -559,6 +608,26 @@ class WriterEditorCatalog {
 		return WriterEditorCatalog.FEATURES.filter(
 			(feature) => feature.tab === tab,
 		);
+	}
+
+	/** Insert tab grid (Android app: 3×2 text cells, chart not in grid). */
+	static readonly INSERT_PANEL_GRID_IDS: string[] = [
+		'insert-image',
+		'insert-table',
+		'insert-shape',
+		'insert-comment',
+		'insert-page-number',
+		'insert-pagebreak',
+	];
+
+	static getInsertGridFeatures(): WriterEditorFeature[] {
+		return WriterEditorCatalog.INSERT_PANEL_GRID_IDS.map((id) => {
+			const feature = WriterEditorCatalog.getFeature(id);
+			if (!feature) {
+				throw new Error('WriterEditorCatalog missing insert grid feature: ' + id);
+			}
+			return feature;
+		});
 	}
 
 	static getFeature(id: string): WriterEditorFeature | null {
@@ -579,13 +648,18 @@ class WriterEditorCatalog {
 	 * Mirrors Android FunctionPanelController.reorderStyles (L1809-1831) +
 	 * styleMatches (L1833-1848).
 	 */
-	static reorderStyleOptions(names: string[]): { label: string; value: string }[] {
+	static reorderStyleOptions(
+		names: string[],
+	): { label: string; value: string }[] {
 		const used: boolean[] = [];
 		names.forEach(() => used.push(false));
 		const result: { label: string; value: string }[] = [];
 		WriterEditorCatalog.STYLE_ORDER.forEach((preferred) => {
 			for (let i = 0; i < names.length; i++) {
-				if (!used[i] && WriterEditorCatalog.styleMatches(names[i], preferred.styleId)) {
+				if (
+					!used[i] &&
+					WriterEditorCatalog.styleMatches(names[i], preferred.styleId)
+				) {
 					result.push({ label: preferred.label, value: names[i] });
 					used[i] = true;
 					break;
@@ -629,13 +703,13 @@ class WriterEditorCatalog {
 	 */
 	static chartTemplateService(unoChartType: string): string {
 		const services: { [key: string]: string } = {
-			'pie': 'com.sun.star.chart2.template.Pie',
+			pie: 'com.sun.star.chart2.template.Pie',
 			'pie-rounded': 'com.sun.star.chart2.template.Donut',
 			'pie-exploded': 'com.sun.star.chart2.template.PieAllExploded',
-			'line': 'com.sun.star.chart2.template.LineSymbol',
+			line: 'com.sun.star.chart2.template.LineSymbol',
 			'line-curve': 'com.sun.star.chart2.template.LineSymbol',
-			'column': 'com.sun.star.chart2.template.Column',
-			'bar': 'com.sun.star.chart2.template.Bar',
+			column: 'com.sun.star.chart2.template.Column',
+			bar: 'com.sun.star.chart2.template.Bar',
 			'column-stacked': 'com.sun.star.chart2.template.StackedColumn',
 		};
 		return services[unoChartType] || '';
@@ -656,8 +730,10 @@ class WriterEditorCatalog {
 		if (!template) {
 			return false;
 		}
-		return template !== 'com.sun.star.chart2.template.Column' ||
-			WriterEditorCatalog.chartCurveStyle(unoChartType) >= 0;
+		return (
+			template !== 'com.sun.star.chart2.template.Column' ||
+			WriterEditorCatalog.chartCurveStyle(unoChartType) >= 0
+		);
 	}
 
 	/**
@@ -665,7 +741,9 @@ class WriterEditorCatalog {
 	 * duplicate ids, missing unocmd on command-like kinds, and command-like
 	 * kinds without an icon.
 	 */
-	static validateFeature(feature: WriterEditorFeature): WriterEditorValidationResult {
+	static validateFeature(
+		feature: WriterEditorFeature,
+	): WriterEditorValidationResult {
 		if (!feature.id || !feature.id.trim()) {
 			return { valid: false, errorCode: 'empty_id' };
 		}

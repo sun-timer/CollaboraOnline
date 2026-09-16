@@ -6,12 +6,14 @@
  */
 
 class WriterEditorImageDialog {
-	private readonly sheet: MobileAiSheet;
+	private readonly subpage: { open(): void; close(): void };
 	private readonly controller: WriterEditorController;
 
-	constructor(controller: WriterEditorController) {
+	constructor(
+		controller: WriterEditorController,
+		host?: WriterEditorInlineSubpageHost | null,
+	) {
 		this.controller = controller;
-		this.sheet = new MobileAiSheet({ title: '插入图片' });
 
 		const content = document.createElement('div');
 		content.className = 'writer-image-sheet';
@@ -33,19 +35,19 @@ class WriterEditorImageDialog {
 		album.onclick = () => this.pickFromAlbum();
 		content.appendChild(album);
 
-		this.sheet.setBody(content);
+		this.subpage = writerEditorMountSubpageDialog('插入图片', content, host);
 	}
 
 	open(): void {
-		this.sheet.open();
+		this.subpage.open();
 	}
 
 	close(): void {
-		this.sheet.close();
+		this.subpage.close();
 	}
 
 	private pickFromAlbum(): void {
-		this.sheet.close();
+		this.subpage.close();
 		if ((window as any).ThisIsTheiOSApp) {
 			this.controller.requestNativeImagePicker();
 			return;

@@ -13,14 +13,16 @@ class WriterEditorPaperSizeDialog {
 	private static readonly MAX_CM = 120.0;
 	private static readonly STEP_CM = 0.1;
 
-	private readonly sheet: MobileAiSheet;
+	private readonly subpage: { open(): void; close(): void };
 	private readonly controller: WriterEditorController;
 	private widthCm = 21.0;
 	private heightCm = 29.7;
 
-	constructor(controller: WriterEditorController) {
+	constructor(
+		controller: WriterEditorController,
+		host?: WriterEditorInlineSubpageHost | null,
+	) {
 		this.controller = controller;
-		this.sheet = new MobileAiSheet({ title: '自定义纸张' });
 
 		const content = document.createElement('div');
 		content.style.cssText = 'display:flex;flex-direction:column;gap:14px;';
@@ -49,20 +51,20 @@ class WriterEditorPaperSizeDialog {
 		actions.appendChild(applyButton);
 		content.appendChild(actions);
 
-		this.sheet.setBody(content);
+		this.subpage = writerEditorMountSubpageDialog('自定义纸张', content, host);
 	}
 
 	open(): void {
-		this.sheet.open();
+		this.subpage.open();
 	}
 
 	close(): void {
-		this.sheet.close();
+		this.subpage.close();
 	}
 
 	private apply(): void {
 		this.controller.applyCustomPaperSize(this.widthCm, this.heightCm);
-		this.sheet.close();
+		this.subpage.close();
 	}
 
 	private stepperRow(

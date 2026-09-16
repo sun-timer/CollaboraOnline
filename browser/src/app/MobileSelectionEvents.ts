@@ -13,9 +13,12 @@ interface FabricSelectionAnchor {
 	anchorBottomY: number;
 }
 
+type MobileSelectionMenuMode = 'text' | 'calc' | 'graphic';
+
 interface FabricSelectionShowPayload extends FabricSelectionAnchor {
 	platform: 'ios';
 	text: string;
+	mode?: MobileSelectionMenuMode;
 }
 
 class MobileSelectionEvents {
@@ -52,7 +55,11 @@ class MobileSelectionEvents {
 		return (text || '').slice(0, max);
 	}
 
-	static broadcastShow(anchor: FabricSelectionAnchor, text: string): void {
+	static broadcastShow(
+		anchor: FabricSelectionAnchor,
+		text: string,
+		mode: MobileSelectionMenuMode = 'text',
+	): void {
 		if (typeof window === 'undefined') {
 			return;
 		}
@@ -62,6 +69,7 @@ class MobileSelectionEvents {
 			anchorY: anchor.anchorY,
 			anchorBottomY: anchor.anchorBottomY,
 			text: MobileSelectionEvents.sanitizeText(text),
+			mode,
 		};
 		window.dispatchEvent(
 			new CustomEvent(MobileSelectionEvents.SHOW_EVENT, { detail: payload }),

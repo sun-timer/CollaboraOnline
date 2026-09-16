@@ -6,13 +6,15 @@
  */
 
 class WriterEditorCommentDialog {
-	private readonly sheet: MobileAiSheet;
+	private readonly subpage: { open(): void; close(): void };
 	private readonly controller: WriterEditorController;
 	private readonly input: HTMLTextAreaElement;
 
-	constructor(controller: WriterEditorController) {
+	constructor(
+		controller: WriterEditorController,
+		host?: WriterEditorInlineSubpageHost | null,
+	) {
 		this.controller = controller;
-		this.sheet = new MobileAiSheet({ title: '批注' });
 
 		const content = document.createElement('div');
 		content.className = 'writer-comment-sheet';
@@ -36,7 +38,7 @@ class WriterEditorCommentDialog {
 		cancel.className = 'writer-comment-btn writer-comment-btn--cancel';
 		cancel.textContent = '取消';
 		cancel.setAttribute('aria-label', '取消');
-		cancel.onclick = () => this.sheet.close();
+		cancel.onclick = () => this.subpage.close();
 		actions.appendChild(cancel);
 
 		const save = document.createElement('button');
@@ -48,17 +50,17 @@ class WriterEditorCommentDialog {
 		actions.appendChild(save);
 
 		content.appendChild(actions);
-		this.sheet.setBody(content);
+		this.subpage = writerEditorMountSubpageDialog('批注', content, host);
 	}
 
 	open(): void {
 		this.input.value = '';
-		this.sheet.open();
+		this.subpage.open();
 		this.input.focus();
 	}
 
 	close(): void {
-		this.sheet.close();
+		this.subpage.close();
 	}
 
 	private save(): void {
@@ -67,7 +69,7 @@ class WriterEditorCommentDialog {
 			return;
 		}
 		this.controller.insertComment(text, this.resolveAuthorName());
-		this.sheet.close();
+		this.subpage.close();
 	}
 
 	private buildAuthorRow(): HTMLElement {

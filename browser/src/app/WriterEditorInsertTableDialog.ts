@@ -11,14 +11,16 @@ class WriterEditorInsertTableDialog {
 	private static readonly MIN_COUNT = 1;
 	private static readonly MAX_COUNT = 20;
 
-	private readonly sheet: MobileAiSheet;
+	private readonly subpage: { open(): void; close(): void };
 	private readonly controller: WriterEditorController;
 	private rowCount = 2;
 	private columnCount = 2;
 
-	constructor(controller: WriterEditorController) {
+	constructor(
+		controller: WriterEditorController,
+		host?: WriterEditorInlineSubpageHost | null,
+	) {
 		this.controller = controller;
-		this.sheet = new MobileAiSheet({ title: '插入表格' });
 
 		const content = document.createElement('div');
 		content.style.cssText = 'display:flex;flex-direction:column;gap:14px;';
@@ -47,20 +49,20 @@ class WriterEditorInsertTableDialog {
 		actions.appendChild(insertButton);
 		content.appendChild(actions);
 
-		this.sheet.setBody(content);
+		this.subpage = writerEditorMountSubpageDialog('插入表格', content, host);
 	}
 
 	open(): void {
-		this.sheet.open();
+		this.subpage.open();
 	}
 
 	close(): void {
-		this.sheet.close();
+		this.subpage.close();
 	}
 
 	private insert(): void {
 		this.controller.insertTable(this.columnCount, this.rowCount);
-		this.sheet.close();
+		this.subpage.close();
 	}
 
 	private stepperRow(

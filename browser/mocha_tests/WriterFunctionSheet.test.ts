@@ -51,7 +51,7 @@ describe('Writer function sheet shell', function () {
 		assert.equal(document.querySelector('.writer-function-sheet'), null);
 	});
 
-	it('WriterEditorPanel tab bar uses pill track and header action trio', function () {
+	it('WriterEditorPanel edit sheet uses underline tabs and header action trio', function () {
 		const aiCalls: string[] = [];
 		const focusCalls: boolean[] = [];
 		(window as any).__coolWriterAiPanel = {
@@ -71,8 +71,14 @@ describe('Writer function sheet shell', function () {
 		assert.ok(panel);
 		panel.open();
 
-		assert.ok(document.querySelector('.writer-function-tab-track'));
+		assert.ok(document.querySelector('.writer-function-sheet--edit'));
+		assert.ok(document.querySelector('.writer-function-sheet__header--hidden'));
 		assert.ok(document.querySelector('.writer-function-tab--active'));
+		assert.equal(
+			document.querySelectorAll('.writer-function-picker-row').length,
+			3,
+		);
+		assert.ok(document.querySelector('.writer-function-chip'));
 		assert.equal(
 			document.querySelectorAll('.writer-function-tab').length,
 			WriterEditorCatalog.TABS.length,
@@ -106,7 +112,7 @@ describe('Writer function sheet shell', function () {
 		});
 	});
 
-	it('WriterEditorPanel file tab renders PreviewFunctionSheet-aligned list rows', function () {
+	it('WriterEditorPanel file tab renders Android-style action rows', function () {
 		(window as any).app = { map: { on() {}, off() {} } };
 		const panel = WriterEditorPanel.mount();
 		assert.ok(panel);
@@ -118,19 +124,13 @@ describe('Writer function sheet shell', function () {
 		assert.ok(fileTab);
 		fileTab.click();
 
-		assert.ok(document.querySelector('.writer-function-list'));
 		assert.equal(
-			document.querySelectorAll('.writer-function-list-row').length,
+			document.querySelectorAll('.writer-function-action-row').length,
 			4,
 		);
-		assert.equal(
-			document.querySelectorAll('.writer-function-list-divider').length,
-			3,
-		);
-		assert.ok(document.querySelector('.writer-function-hint--hidden'));
 	});
 
-	it('WriterEditorPanel insert tab uses dedicated 2×3 grid class', function () {
+	it('WriterEditorPanel insert tab uses 3-column chip grid', function () {
 		(window as any).app = { map: { on() {}, off() {} } };
 		const panel = WriterEditorPanel.mount();
 		assert.ok(panel);
@@ -142,11 +142,19 @@ describe('Writer function sheet shell', function () {
 		assert.ok(insertTab);
 		insertTab.click();
 
-		const grid = document.querySelector('.writer-function-grid--insert');
+		const grid = document.querySelector('.writer-function-chip-grid--insert');
 		assert.ok(grid);
 		assert.equal(
-			document.querySelectorAll('.writer-function-tile').length,
-			WriterEditorCatalog.getFeatures('insert').length,
+			document.querySelectorAll('.writer-function-chip').length,
+			WriterEditorCatalog.getInsertGridFeatures().length,
+		);
+		assert.equal(
+			document.querySelectorAll('.writer-function-chip--text-only').length,
+			6,
+		);
+		assert.equal(
+			document.querySelectorAll('.writer-function-chip__icon').length,
+			0,
 		);
 	});
 });

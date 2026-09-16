@@ -49,14 +49,17 @@ const WriterEditorSearch = {
 class WriterEditorController {
 	private readonly adapter: WriterEditorAdapterLike;
 
-	constructor(adapter: WriterEditorAdapterLike = WriterEditorController.defaultAdapter()) {
+	constructor(
+		adapter: WriterEditorAdapterLike = WriterEditorController.defaultAdapter(),
+	) {
 		this.adapter = adapter;
 	}
 
 	static getInstance(): WriterEditorController {
-		const existing = typeof window !== 'undefined'
-			? (window as any).__coolWriterEditorController
-			: null;
+		const existing =
+			typeof window !== 'undefined'
+				? (window as any).__coolWriterEditorController
+				: null;
 		if (existing instanceof WriterEditorController) {
 			return existing;
 		}
@@ -94,7 +97,11 @@ class WriterEditorController {
 			case 'findReplace':
 				return { dispatched: 'findReplace' };
 			case 'toggle':
-				return { dispatched: 'toggle', command: feature.unocmd || '', enabled: false };
+				return {
+					dispatched: 'toggle',
+					command: feature.unocmd || '',
+					enabled: false,
+				};
 			default:
 				return { dispatched: 'none', reason: 'unsupported_kind' };
 		}
@@ -122,8 +129,22 @@ class WriterEditorController {
 		return defaultOn;
 	}
 
+	/**
+	 * Current state string of a UNO command as last reported by CO
+	 * (Map.StateChanges) — e.g. `.uno:CharFontName` → the font in use at the
+	 * caret. Empty string when the command has no state yet.
+	 */
+	getCommandState(command: string): string {
+		const map = (window as any).app?.map;
+		const state = map?.stateChangeHandler?.getItemValue(command);
+		return typeof state === 'string' ? state.trim() : '';
+	}
+
 	/** Dispatches a toggle feature (track/show tracked changes). */
-	runToggle(feature: WriterEditorFeature, enabled: boolean): WriterEditorRunResult {
+	runToggle(
+		feature: WriterEditorFeature,
+		enabled: boolean,
+	): WriterEditorRunResult {
 		if (!this.isWriterDocument()) {
 			return { dispatched: 'none', reason: 'not_writer_document' };
 		}
@@ -194,7 +215,9 @@ class WriterEditorController {
 			options,
 		);
 		this.adapter.sendExecuteSearch(searchCmd);
-		this.notifyNativeUndoRecord(replaceAll ? 'find_replace_all' : 'find_replace_one');
+		this.notifyNativeUndoRecord(
+			replaceAll ? 'find_replace_all' : 'find_replace_one',
+		);
 		return { executed: true, command };
 	}
 
@@ -236,7 +259,8 @@ class WriterEditorController {
 		}
 		const command =
 			'.uno:CharFontName {"CharFontName.FamilyName":{"type":"string","value":' +
-			JSON.stringify(fontName) + '}}';
+			JSON.stringify(fontName) +
+			'}}';
 		this.adapter.sendUnoCommand(command);
 		return { dispatched: 'unocmd', command };
 	}
@@ -248,10 +272,11 @@ class WriterEditorController {
 		}
 		const command =
 			'.uno:FontHeight {"FontHeight.Height":{"type":"float","value":' +
-			JSON.stringify(sizePt) + '}}';
+			JSON.stringify(sizePt) +
+			'}}';
 		this.adapter.sendUnoCommand(command);
 		return { dispatched: 'unocmd', command };
-		}
+	}
 
 	/** Inserts a table (columns x rows) via the InsertTable UNO command. */
 	insertTable(columns: number, rows: number): WriterEditorRunResult {
@@ -259,14 +284,22 @@ class WriterEditorController {
 			return { dispatched: 'none', reason: 'invalid_table' };
 		}
 		const command =
-			'.uno:InsertTable {"Columns":{"type":"long","value":' + columns +
-			'},"Rows":{"type":"long","value":' + rows + '}}';
+			'.uno:InsertTable {"Columns":{"type":"long","value":' +
+			columns +
+			'},"Rows":{"type":"long","value":' +
+			rows +
+			'}}';
 		this.adapter.sendUnoCommand(command);
 		return { dispatched: 'unocmd', command };
 	}
 
 	/** Applies page margins (HMM) via PageLRMargin + PageULMargin. */
-	applyMargins(left: number, right: number, top: number, bottom: number): WriterEditorRunResult {
+	applyMargins(
+		left: number,
+		right: number,
+		top: number,
+		bottom: number,
+	): WriterEditorRunResult {
 		const cmdLR =
 			'.uno:PageLRMargin?Page.Left:long=' + left + '&Page.Right:long=' + right;
 		const cmdUL =
@@ -299,7 +332,8 @@ class WriterEditorController {
 			return { dispatched: 'none', reason: 'empty_style' };
 		}
 		const command =
-			'.uno:StyleApply {"Style":{"type":"string","value":' + JSON.stringify(styleName) +
+			'.uno:StyleApply {"Style":{"type":"string","value":' +
+			JSON.stringify(styleName) +
 			'},"FamilyName":{"type":"string","value":"ParagraphStyles"}}';
 		this.adapter.sendUnoCommand(command);
 		return { dispatched: 'unocmd', command };
@@ -317,16 +351,54 @@ class WriterEditorController {
 		const safeTransparency = Math.max(0, Math.min(100, transparency | 0));
 		const safeFont = font || 'Noto Serif CJK SC';
 		const command =
-			'.uno:Watermark {"Text":{"type":"string","value":' + JSON.stringify(safeText) +
-			'},"Font":{"type":"string","value":' + JSON.stringify(safeFont) +
+			'.uno:Watermark {"Text":{"type":"string","value":' +
+			JSON.stringify(safeText) +
+			'},"Font":{"type":"string","value":' +
+			JSON.stringify(safeFont) +
 			'},"Angle":{"type":"long","value":' +
-			safeAngle + '},"Transparency":{"type":"long","value":' + safeTransparency +
+			safeAngle +
+			'},"Transparency":{"type":"long","value":' +
+			safeTransparency +
 			'},"Color":{"type":"long","value":12632256}}';
 		this.adapter.sendUnoCommand(command);
 		return { dispatched: 'unocmd', command };
 	}
 
 	/** Applies a paper format preset via AttributePageSize PaperFormat:short. */
+	applyPageOrientation(landscape: boolean): WriterEditorRunResult {
+		const command =
+			'.uno:Orientation?isLandscape:bool=' + (landscape ? 'true' : 'false');
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
+	/** Inserts or sets a hyperlink at the selection (Android LOActivity.insertHyperlink). */
+	insertHyperlink(displayText: string, url: string): WriterEditorRunResult {
+		const targetUrl = (url || '').trim();
+		if (!targetUrl) {
+			return { dispatched: 'none', reason: 'empty_url' };
+		}
+		let text = (displayText || '').trim();
+		if (!text) {
+			text = targetUrl;
+		}
+		let command =
+			'.uno:SetHyperlink {"Hyperlink.Text":{"type":"string","value":' +
+			JSON.stringify(text) +
+			'},"Hyperlink.URL":{"type":"string","value":' +
+			JSON.stringify(targetUrl) +
+			'}';
+		if (text !== targetUrl) {
+			command +=
+				',"Hyperlink.ReplacementText":{"type":"string","value":' +
+				JSON.stringify(text) +
+				'}';
+		}
+		command += '}';
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
 	applyPaperFormat(formatShort: string): WriterEditorRunResult {
 		if (!formatShort) {
 			return { dispatched: 'none', reason: 'empty_paper' };
@@ -340,15 +412,20 @@ class WriterEditorController {
 	 * Applies a custom paper size via AttributePageSize width/height (HMM).
 	 * cm is rounded like Android PaperSizePickerController.cmToHmm (L322-324).
 	 */
-	applyCustomPaperSize(widthCm: number, heightCm: number): WriterEditorRunResult {
+	applyCustomPaperSize(
+		widthCm: number,
+		heightCm: number,
+	): WriterEditorRunResult {
 		if (!widthCm || !heightCm || widthCm <= 0 || heightCm <= 0) {
 			return { dispatched: 'none', reason: 'invalid_paper_size' };
 		}
 		const widthHmm = Math.round(widthCm * 1000);
 		const heightHmm = Math.round(heightCm * 1000);
 		const command =
-			'.uno:AttributePageSize?AttributePageSize.Width:long=' + widthHmm +
-			'&AttributePageSize.Height:long=' + heightHmm;
+			'.uno:AttributePageSize?AttributePageSize.Width:long=' +
+			widthHmm +
+			'&AttributePageSize.Height:long=' +
+			heightHmm;
 		this.adapter.sendUnoCommand(command);
 		return { dispatched: 'unocmd', command };
 	}
@@ -369,12 +446,15 @@ class WriterEditorController {
 	 * the curved-line variant.
 	 */
 	insertChart(unoChartType: string): WriterEditorRunResult {
-		if (!unoChartType || !WriterEditorCatalog.chartTemplateService(unoChartType)) {
+		if (
+			!unoChartType ||
+			!WriterEditorCatalog.chartTemplateService(unoChartType)
+		) {
 			return { dispatched: 'none', reason: 'unknown_chart_type' };
 		}
 		const args: { [key: string]: any } = {
-			'RangeList': { type: 'string', value: '' },
-			'InNewTable': { type: 'boolean', value: false },
+			RangeList: { type: 'string', value: '' },
+			InNewTable: { type: 'boolean', value: false },
 		};
 		if (WriterEditorCatalog.needsChartTemplate(unoChartType)) {
 			args['ChartTemplate'] = {
@@ -396,7 +476,8 @@ class WriterEditorController {
 	 * Matches Android buildColorUnoCommand (BottomToolbarController L845-847).
 	 */
 	applyFontColor(rgb: number): WriterEditorRunResult {
-		const command = '.uno:FontColor {"FontColor.Color":{"type":"long","value":' + rgb + '}}';
+		const command =
+			'.uno:FontColor {"FontColor.Color":{"type":"long","value":' + rgb + '}}';
 		this.adapter.sendUnoCommand(command);
 		return { dispatched: 'unocmd', command };
 	}
@@ -407,7 +488,9 @@ class WriterEditorController {
 	 */
 	applyHighlightColor(rgb: number): WriterEditorRunResult {
 		const command =
-			'.uno:CharBackColor {"CharBackColor.Color":{"type":"long","value":' + rgb + '}}';
+			'.uno:CharBackColor {"CharBackColor.Color":{"type":"long","value":' +
+			rgb +
+			'}}';
 		this.adapter.sendUnoCommand(command);
 		return { dispatched: 'unocmd', command };
 	}
@@ -417,7 +500,8 @@ class WriterEditorController {
 		if (!dataBase64) {
 			return { dispatched: 'none', reason: 'empty_image' };
 		}
-		const message = 'insertfile name=' + fileName + ' type=graphic data=' + dataBase64;
+		const message =
+			'insertfile name=' + fileName + ' type=graphic data=' + dataBase64;
 		this.adapter.postMobileMessage(message);
 		return { dispatched: 'message', message };
 	}
@@ -450,7 +534,8 @@ class WriterEditorController {
 		if (!format) {
 			return { dispatched: 'none', reason: 'empty_format' };
 		}
-		const message = 'downloadas name=document.' + format + ' format=' + format + ' id=saveas';
+		const message =
+			'downloadas name=document.' + format + ' format=' + format + ' id=saveas';
 		this.adapter.postMobileMessage(message);
 		return { dispatched: 'message', message };
 	}
@@ -514,8 +599,11 @@ class WriterEditorController {
 		return { dispatched: 'unocmd', command };
 	}
 
-	private runCommandWithArgs(feature: WriterEditorFeature): WriterEditorRunResult {
-		const command = (feature.unocmd || '') +
+	private runCommandWithArgs(
+		feature: WriterEditorFeature,
+	): WriterEditorRunResult {
+		const command =
+			(feature.unocmd || '') +
 			(feature.args ? ' ' + JSON.stringify(feature.args) : '');
 		this.adapter.sendUnoCommand(command);
 		return { dispatched: 'unocmd', command };
@@ -544,7 +632,9 @@ class WriterEditorController {
 					map.sendUnoCommand(command);
 				}
 			},
-			getToolbarCommandValues(command: string): { [key: string]: any } | undefined {
+			getToolbarCommandValues(
+				command: string,
+			): { [key: string]: any } | undefined {
 				const map = (window as any).app?.map;
 				if (map && typeof map.getToolbarCommandValues === 'function') {
 					return map.getToolbarCommandValues(command);
@@ -578,7 +668,12 @@ class WriterEditorController {
 					poster(message);
 				}
 			},
-			downloadAs(name: string, format: string, options?: string, id?: string): void {
+			downloadAs(
+				name: string,
+				format: string,
+				options?: string,
+				id?: string,
+			): void {
 				const map = (window as any).app?.map;
 				if (map && typeof map.downloadAs === 'function') {
 					map.downloadAs(name, format, options, id);

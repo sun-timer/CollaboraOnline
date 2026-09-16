@@ -1,134 +1,86 @@
 /*
- * Writer find/replace dialog (iOS).
+ * Writer find / find-replace sheet (iOS).
  *
- * Thin DOM UI over WriterEditorController.runFind / runFindReplace. Uses
- * WriterEditorSheet chrome. Mode selector switches between find and replace;
- * settings toggles feed the SearchItem flags.
+ * Preview: find-only chrome (title 「查找」, gear + close, nav buttons above IME).
+ * Edit: full find/replace tabs. Dispatches through AndroidFindReplaceBridge.
  */
 
-class WriterFindReplaceDialog {
-	private sheet: WriterEditorSheet | null = null;
-	private readonly controller: WriterEditorController;
-	private mode: 'find' | 'replace' = 'find';
-	private readonly searchInput: HTMLInputElement;
-	private readonly replaceInput: HTMLInputElement;
-	private ignoreCheckbox!: HTMLInputElement;
-	private caseCheckbox!: HTMLInputElement;
-	private wholeCheckbox!: HTMLInputElement;
-	private readonly replaceRow: HTMLDivElement;
-	private readonly findModeBtn: HTMLButtonElement;
-	private readonly replaceModeBtn: HTMLButtonElement;
-	private readonly settingsRow: HTMLDivElement;
-	private readonly replaceButton: HTMLButtonElement;
-	private readonly replaceAllButton: HTMLButtonElement;
+interface WriterFindReplaceOpenOptions {
+	replaceEnabled?: boolean;
+}
 
-	static open(): void {
+class WriterFindReplaceDialog {
+	private static active: WriterFindReplaceDialog | null = null;
+
+	private root: HTMLDivElement | null = null;
+	private panel: HTMLDivElement | null = null;
+	private mainView: HTMLDivElement | null = null;
+	private settingsView: HTMLDivElement | null = null;
+	private readonly replaceEnabled: boolean;
+	private mode: 'find' | 'replace' = 'find';
+	private ignoreCase = true;
+	private caseSensitive = false;
+	private wholeWord = false;
+	private syncingQuery = false;
+
+	private findQueryInput!: HTMLInputElement;
+	private replaceQueryInput!: HTMLInputElement;
+	private replaceWithInput!: HTMLInputElement;
+	private findPrevBtn!: HTMLButtonElement;
+	private findNextBtn!: HTMLButtonElement;
+	private replacePrevBtn!: HTMLButtonElement;
+	private replaceNextBtn!: HTMLButtonElement;
+	private replaceAllBtn!: HTMLButtonElement;
+	private replaceOneBtn!: HTMLButtonElement;
+	private tabFindBtn!: HTMLButtonElement;
+	private tabReplaceBtn!: HTMLButtonElement;
+	private findPanel!: HTMLDivElement;
+	private replacePanel!: HTMLDivElement;
+	private tabBar!: HTMLDivElement;
+
+	private viewportHandler: (() => void) | null = null;
+
+	static titleForReplaceEnabled(replaceEnabled: boolean): string {
+		return replaceEnabled ? '查找替换' : '查找';
+	}
+
+	static isReplaceEnabledOption(
+		options?: WriterFindReplaceOpenOptions,
+	): boolean {
+		return !!(options && options.replaceEnabled);
+	}
+
+	static mountBridge(): void {
+		(window as any).__coolWriterFindReplace = {
+			open: (options?: WriterFindReplaceOpenOptions): void => {
+				WriterFindReplaceDialog.openWithOptions(options);
+			},
+			close: (): void => {
+				WriterFindReplaceDialog.closeActive();
+			},
+		};
+		(window as any).WriterFindReplaceDialog = WriterFindReplaceDialog;
+	}
+
+	static openWithOptions(options?: WriterFindReplaceOpenOptions): void {
 		if (!(window as any).ThisIsTheiOSApp) {
 			return;
 		}
-		const controller = WriterEditorController.getInstance();
-		const dialog = new WriterFindReplaceDialog(controller);
+		WriterFindReplaceDialog.closeActive();
+		const dialog = new WriterFindReplaceDialog(
+			WriterFindReplaceDialog.isReplaceEnabledOption(options),
+		);
 		dialog.show();
 	}
 
 	static closeActive(): void {
-		const bridge = (window as any).__coolWriterFindReplace;
-		if (bridge && bridge.instance instanceof WriterFindReplaceDialog) {
-			bridge.instance.close();
+		if (WriterFindReplaceDialog.active) {
+			WriterFindReplaceDialog.active.close();
 		}
 	}
 
-	static mountBridge(): void {
-		if (!(window as any).ThisIsTheiOSApp) {
-			return;
-		}
-		const bridge = {
-			instance: null as WriterFindReplaceDialog | null,
-			open: (): void => WriterFindReplaceDialog.open(),
-			close: (): void => WriterFindReplaceDialog.closeActive(),
-		};
-		(window as any).__coolWriterFindReplace = bridge;
-	}
-
-	constructor(controller: WriterEditorController) {
-		this.controller = controller;
-
-		this.searchInput = document.createElement('input');
-		this.replaceInput = document.createElement('input');
-		this.settingsRow = document.createElement('div');
-		this.replaceRow = document.createElement('div');
-		this.findModeBtn = this.makeModeButton('查找', true);
-		this.replaceModeBtn = this.makeModeButton('替换', false);
-		this.replaceButton = this.makeButton('替换', () => this.doReplace(false));
-		this.replaceAllButton = this.makeButton('全部替换', () => this.doReplace(true));
-	}
-
-	private show(): void {
-		const bridge = (window as any).__coolWriterFindReplace;
-		if (bridge) {
-			bridge.instance = this;
-		}
-		this.sheet = new WriterEditorSheet('查找替换', () => this.close());
-		this.sheet.setBody(this.buildBody());
-		this.syncReplaceEnabled();
-		this.sheet.open();
-		this.searchInput.focus();
-	}
-
-	private buildBody(): HTMLElement {
-		const content = document.createElement('div');
-		content.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
-
-		const modeRow = document.createElement('div');
-		modeRow.style.cssText =
-			'display:flex;gap:4px;border-bottom:1px solid #d8dde3;background:#f2f3f5;border-radius:8px;padding:2px;';
-		modeRow.appendChild(this.findModeBtn);
-		modeRow.appendChild(this.replaceModeBtn);
-		content.appendChild(modeRow);
-
-		this.searchInput.type = 'text';
-		this.searchInput.placeholder = '查找内容';
-		this.searchInput.style.cssText =
-			'flex:1;padding:10px;border:1px solid #d8dde3;border-radius:8px;font:inherit;';
-		this.searchInput.addEventListener('input', () => this.syncReplaceEnabled());
-
-		const searchRow = document.createElement('div');
-		searchRow.style.cssText = 'display:flex;gap:8px;align-items:center;';
-		searchRow.appendChild(this.searchInput);
-		searchRow.appendChild(this.makeButton('上一处', () => this.doFind(true)));
-		searchRow.appendChild(this.makeButton('下一处', () => this.doFind(false)));
-		content.appendChild(searchRow);
-
-		this.replaceRow.style.cssText = 'display:none;flex-direction:column;gap:8px;';
-		this.replaceInput.type = 'text';
-		this.replaceInput.placeholder = '替换为';
-		this.replaceInput.style.cssText =
-			'width:100%;padding:10px;border:1px solid #d8dde3;border-radius:8px;font:inherit;box-sizing:border-box;';
-		this.replaceRow.appendChild(this.replaceInput);
-		const replaceActions = document.createElement('div');
-		replaceActions.style.cssText = 'display:flex;gap:8px;';
-		replaceActions.appendChild(this.replaceButton);
-		replaceActions.appendChild(this.replaceAllButton);
-		this.replaceRow.appendChild(replaceActions);
-		content.appendChild(this.replaceRow);
-
-		this.settingsRow.style.cssText = 'display:flex;gap:16px;align-items:center;flex-wrap:wrap;';
-		this.ignoreCheckbox = this.makeCheckbox('忽略大小写', true);
-		this.caseCheckbox = this.makeCheckbox('区分大小写', false);
-		this.wholeCheckbox = this.makeCheckbox('全字匹配', false);
-		this.caseCheckbox.addEventListener('change', () => {
-			if (this.caseCheckbox.checked) {
-				this.ignoreCheckbox.checked = false;
-			}
-		});
-		this.ignoreCheckbox.addEventListener('change', () => {
-			if (this.ignoreCheckbox.checked) {
-				this.caseCheckbox.checked = false;
-			}
-		});
-		content.appendChild(this.settingsRow);
-
-		return content;
+	constructor(replaceEnabled: boolean) {
+		this.replaceEnabled = replaceEnabled;
 	}
 
 	open(): void {
@@ -136,106 +88,484 @@ class WriterFindReplaceDialog {
 	}
 
 	close(): void {
-		if (this.sheet) {
-			this.sheet.close();
-			this.sheet = null;
+		this.detachViewportLift();
+		if (this.root) {
+			this.root.remove();
+			this.root = null;
 		}
-		const bridge = (window as any).__coolWriterFindReplace;
-		if (bridge && bridge.instance === this) {
-			bridge.instance = null;
+		this.panel = null;
+		this.mainView = null;
+		this.settingsView = null;
+		if (WriterFindReplaceDialog.active === this) {
+			WriterFindReplaceDialog.active = null;
 		}
 	}
 
-	private makeModeButton(label: string, isFind: boolean): HTMLButtonElement {
+	private show(): void {
+		WriterFindReplaceDialog.closeActive();
+		WriterFindReplaceDialog.active = this;
+
+		this.root = document.createElement('div');
+		this.root.className = 'writer-find-sheet';
+		this.root.setAttribute('role', 'presentation');
+		this.root.onclick = (event) => {
+			if (event.target === this.root) {
+				this.close();
+			}
+		};
+
+		this.panel = document.createElement('div');
+		this.panel.className =
+			'writer-find-sheet__panel' +
+			(this.replaceEnabled
+				? ' writer-find-sheet__panel--edit'
+				: ' writer-find-sheet__panel--preview');
+		this.panel.setAttribute('role', 'dialog');
+		this.panel.setAttribute('aria-modal', 'true');
+		this.root.appendChild(this.panel);
+
+		this.mainView = document.createElement('div');
+		this.mainView.className = 'writer-find-sheet__main';
+		this.panel.appendChild(this.mainView);
+		this.mainView.appendChild(this.buildHeader());
+		this.buildMainContent();
+		this.settingsView = this.buildSettingsView();
+		this.settingsView.style.display = 'none';
+		this.panel.appendChild(this.settingsView);
+
+		document.body.appendChild(this.root);
+		this.pushOptionsToBridge();
+		this.refreshButtonStates();
+		this.attachViewportLift();
+		window.setTimeout(() => {
+			const field =
+				this.mode === 'replace' && this.replaceEnabled
+					? this.replaceQueryInput
+					: this.findQueryInput;
+			if (field) {
+				field.focus();
+			}
+		}, 0);
+	}
+
+	private buildHeader(): HTMLElement {
+		const header = document.createElement('header');
+		header.className = 'writer-find-sheet__header';
+
+		const settingsBtn = document.createElement('button');
+		settingsBtn.type = 'button';
+		settingsBtn.className = 'writer-find-sheet__icon-btn';
+		settingsBtn.setAttribute('aria-label', '查找设置');
+		settingsBtn.innerHTML = WRITER_FIND_SETTINGS_ICON;
+		settingsBtn.onclick = () => this.showSettings(true);
+		header.appendChild(settingsBtn);
+
+		const title = document.createElement('h2');
+		title.className = 'writer-find-sheet__title';
+		title.textContent = WriterFindReplaceDialog.titleForReplaceEnabled(
+			this.replaceEnabled,
+		);
+		header.appendChild(title);
+
+		const closeBtn = document.createElement('button');
+		closeBtn.type = 'button';
+		closeBtn.className =
+			'writer-find-sheet__icon-btn writer-find-sheet__icon-btn--close';
+		closeBtn.setAttribute('aria-label', '关闭');
+		closeBtn.innerHTML = WRITER_FIND_SHEET_CLOSE_ICON;
+		closeBtn.onclick = () => this.close();
+		header.appendChild(closeBtn);
+
+		return header;
+	}
+
+	private buildMainContent(): void {
+		if (!this.mainView) {
+			return;
+		}
+
+		this.tabBar = document.createElement('div');
+		this.tabBar.className = 'writer-find-sheet__tabs';
+		if (!this.replaceEnabled) {
+			this.tabBar.style.display = 'none';
+		}
+		this.tabFindBtn = this.makeTabButton('查找', true);
+		this.tabReplaceBtn = this.makeTabButton('替换', false);
+		this.tabBar.appendChild(this.tabFindBtn);
+		this.tabBar.appendChild(this.tabReplaceBtn);
+		this.mainView.appendChild(this.tabBar);
+
+		this.findPanel = document.createElement('div');
+		this.findPanel.className = 'writer-find-sheet__section';
+		this.findQueryInput = this.makeSearchField('请输入查找内容');
+		this.findPanel.appendChild(this.findQueryInput);
+		const findNav = document.createElement('div');
+		findNav.className = 'writer-find-sheet__nav-row';
+		this.findPrevBtn = this.makeNavButton('上一处', () =>
+			this.runFindPrevious(),
+		);
+		this.findNextBtn = this.makeNavButton('下一处', () =>
+			this.runFindNext(this.findQueryInput),
+		);
+		findNav.appendChild(this.findPrevBtn);
+		findNav.appendChild(this.findNextBtn);
+		this.findPanel.appendChild(findNav);
+		this.mainView.appendChild(this.findPanel);
+
+		this.replacePanel = document.createElement('div');
+		this.replacePanel.className = 'writer-find-sheet__section';
+		this.replacePanel.style.display = 'none';
+		this.replaceQueryInput = this.makeSearchField('请输入查找内容');
+		this.replaceWithInput = this.makeSearchField('请输入替换内容');
+		this.replacePanel.appendChild(this.replaceQueryInput);
+		this.replacePanel.appendChild(this.replaceWithInput);
+		const replaceNav = document.createElement('div');
+		replaceNav.className =
+			'writer-find-sheet__nav-row writer-find-sheet__nav-row--replace';
+		this.replacePrevBtn = this.makeNavButton('上一处', () =>
+			this.runFindPrevious(),
+		);
+		this.replaceNextBtn = this.makeNavButton('下一处', () =>
+			this.runFindNext(this.replaceQueryInput),
+		);
+		this.replaceAllBtn = this.makeNavButton('全部替换', () =>
+			this.runReplace(true),
+		);
+		this.replaceOneBtn = this.makeNavButton('替换', () =>
+			this.runReplace(false),
+		);
+		this.replaceOneBtn.classList.add('writer-find-sheet__nav-btn--primary');
+		replaceNav.appendChild(this.replacePrevBtn);
+		replaceNav.appendChild(this.replaceNextBtn);
+		replaceNav.appendChild(this.replaceAllBtn);
+		replaceNav.appendChild(this.replaceOneBtn);
+		this.replacePanel.appendChild(replaceNav);
+		this.mainView.appendChild(this.replacePanel);
+
+		const onQueryInput = () => {
+			if (this.syncingQuery) {
+				return;
+			}
+			if (this.mode === 'replace') {
+				this.mirrorQuery(this.replaceQueryInput, this.findQueryInput);
+			} else {
+				this.mirrorQuery(this.findQueryInput, this.replaceQueryInput);
+			}
+			this.pushOptionsToBridge();
+			this.refreshButtonStates();
+		};
+		this.findQueryInput.addEventListener('input', onQueryInput);
+		this.replaceQueryInput.addEventListener('input', onQueryInput);
+		this.replaceWithInput.addEventListener('input', () =>
+			this.refreshButtonStates(),
+		);
+
+		this.setMode('find');
+	}
+
+	private buildSettingsView(): HTMLDivElement {
+		const wrap = document.createElement('div');
+		wrap.className = 'writer-find-sheet__settings';
+
+		const header = document.createElement('header');
+		header.className = 'writer-find-sheet__header';
+		const backBtn = document.createElement('button');
+		backBtn.type = 'button';
+		backBtn.className = 'writer-find-sheet__icon-btn';
+		backBtn.setAttribute('aria-label', '返回');
+		backBtn.innerHTML = WRITER_FIND_BACK_ICON;
+		backBtn.onclick = () => this.showSettings(false);
+		header.appendChild(backBtn);
+		const title = document.createElement('h2');
+		title.className = 'writer-find-sheet__title';
+		title.textContent = '设置';
+		header.appendChild(title);
+		const spacer = document.createElement('span');
+		spacer.className = 'writer-find-sheet__icon-btn';
+		spacer.setAttribute('aria-hidden', 'true');
+		header.appendChild(spacer);
+		wrap.appendChild(header);
+
+		const list = document.createElement('div');
+		list.className = 'writer-find-sheet__settings-list';
+		let caseToggle: HTMLInputElement | null = null;
+		let fuzzyToggle: HTMLInputElement | null = null;
+		const fuzzyRow = this.makeSettingsRow(
+			'模糊查找',
+			'根据AI匹配近义词',
+			this.ignoreCase,
+			(on) => {
+				this.ignoreCase = on;
+				if (on && caseToggle) {
+					this.caseSensitive = false;
+					caseToggle.checked = false;
+				}
+				this.pushOptionsToBridge();
+			},
+		);
+		fuzzyToggle = fuzzyRow.querySelector('input') as HTMLInputElement;
+		list.appendChild(fuzzyRow);
+		const caseRow = this.makeSettingsRow(
+			'区分大小写',
+			'',
+			this.caseSensitive,
+			(on) => {
+				this.caseSensitive = on;
+				if (on && fuzzyToggle) {
+					this.ignoreCase = false;
+					fuzzyToggle.checked = false;
+				}
+				this.pushOptionsToBridge();
+			},
+		);
+		caseToggle = caseRow.querySelector('input') as HTMLInputElement;
+		list.appendChild(caseRow);
+		list.appendChild(
+			this.makeSettingsRow('全字匹配', '', this.wholeWord, (on) => {
+				this.wholeWord = on;
+				this.pushOptionsToBridge();
+			}),
+		);
+		wrap.appendChild(list);
+		return wrap;
+	}
+
+	private makeTabButton(label: string, isFind: boolean): HTMLButtonElement {
 		const button = document.createElement('button');
 		button.type = 'button';
 		button.textContent = label;
-		button.setAttribute('aria-label', label);
-		button.style.cssText =
-			'flex:1;padding:8px;border:none;border-radius:6px;font:inherit;font-size:15px;cursor:pointer;' +
-			(isFind ? 'background:#fff;color:#15171a;' : 'background:transparent;color:#666;');
+		button.className =
+			'writer-find-sheet__tab' +
+			(isFind ? ' writer-find-sheet__tab--active' : '');
 		button.onclick = () => this.setMode(isFind ? 'find' : 'replace');
 		return button;
 	}
 
-	private makeButton(label: string, handler: () => void): HTMLButtonElement {
+	private makeSearchField(placeholder: string): HTMLInputElement {
+		const input = document.createElement('input');
+		input.type = 'search';
+		input.className = 'writer-find-sheet__field';
+		input.placeholder = placeholder;
+		input.setAttribute('enterkeyhint', 'search');
+		input.addEventListener('keydown', (event) => {
+			if (event.key === 'Enter') {
+				event.preventDefault();
+				const queryField =
+					this.mode === 'replace'
+						? this.replaceQueryInput
+						: this.findQueryInput;
+				this.runFindNext(queryField);
+			}
+		});
+		return input;
+	}
+
+	private makeNavButton(label: string, handler: () => void): HTMLButtonElement {
 		const button = document.createElement('button');
 		button.type = 'button';
 		button.textContent = label;
-		button.setAttribute('aria-label', label);
-		button.style.cssText =
-			'padding:8px 12px;border:1px solid #d8dde3;border-radius:8px;background:#fff;font:inherit;cursor:pointer;';
+		button.className = 'writer-find-sheet__nav-btn';
 		button.onclick = handler;
 		return button;
 	}
 
-	private makeCheckbox(label: string, checked: boolean): HTMLInputElement {
-		const input = document.createElement('input');
-		input.type = 'checkbox';
-		input.checked = checked;
-		input.id = 'writer-find-' + label;
-		const labelElement = document.createElement('label');
-		labelElement.textContent = label;
-		labelElement.htmlFor = input.id;
-		labelElement.style.cssText = 'font-size:14px;cursor:pointer;';
-		const wrap = document.createElement('span');
-		wrap.style.cssText = 'display:flex;align-items:center;gap:4px;';
-		wrap.appendChild(input);
-		wrap.appendChild(labelElement);
-		this.settingsRow.appendChild(wrap);
-		return input;
+	private makeSettingsRow(
+		title: string,
+		subtitle: string,
+		initial: boolean,
+		onChange: (checked: boolean) => void,
+	): HTMLElement {
+		const row = document.createElement('div');
+		row.className = 'writer-find-sheet__settings-row';
+		const text = document.createElement('div');
+		text.className = 'writer-find-sheet__settings-text';
+		const titleEl = document.createElement('div');
+		titleEl.className = 'writer-find-sheet__settings-title';
+		titleEl.textContent = title;
+		text.appendChild(titleEl);
+		if (subtitle) {
+			const sub = document.createElement('div');
+			sub.className = 'writer-find-sheet__settings-sub';
+			sub.textContent = subtitle;
+			text.appendChild(sub);
+		}
+		row.appendChild(text);
+		const toggle = document.createElement('input');
+		toggle.type = 'checkbox';
+		toggle.className = 'writer-find-sheet__toggle';
+		toggle.checked = initial;
+		toggle.onchange = () => onChange(toggle.checked);
+		row.appendChild(toggle);
+		return row;
 	}
 
 	private setMode(mode: 'find' | 'replace'): void {
 		this.mode = mode;
-		this.replaceRow.style.display = mode === 'replace' ? 'flex' : 'none';
 		const findActive = mode === 'find';
-		this.findModeBtn.style.background = findActive ? '#fff' : 'transparent';
-		this.findModeBtn.style.color = findActive ? '#15171a' : '#666';
-		this.replaceModeBtn.style.background = findActive ? 'transparent' : '#fff';
-		this.replaceModeBtn.style.color = findActive ? '#666' : '#15171a';
-		this.syncReplaceEnabled();
-	}
-
-	private options(): WriterFindReplaceOptions {
-		return {
-			caseSensitive: this.caseCheckbox.checked,
-			wholeWord: this.wholeCheckbox.checked,
-		};
-	}
-
-	private syncReplaceEnabled(): void {
-		const hasQuery = this.searchInput.value.trim().length > 0;
-		this.replaceButton.disabled = !hasQuery;
-		this.replaceAllButton.disabled = !hasQuery;
-		this.replaceButton.style.opacity = hasQuery ? '1' : '0.4';
-		this.replaceAllButton.style.opacity = hasQuery ? '1' : '0.4';
-	}
-
-	private doFind(backward: boolean): void {
-		const result = this.controller.runFind(this.searchInput.value.trim(), backward, this.options());
-		if (!result.executed) {
-			this.flash(result.reason || '查找失败');
-		}
-	}
-
-	private doReplace(replaceAll: boolean): void {
-		const result = this.controller.runFindReplace(
-			this.searchInput.value.trim(),
-			this.replaceInput.value,
-			replaceAll,
-			this.options(),
+		this.findPanel.style.display = findActive ? '' : 'none';
+		this.replacePanel.style.display = findActive ? 'none' : '';
+		this.tabFindBtn.classList.toggle(
+			'writer-find-sheet__tab--active',
+			findActive,
 		);
-		if (!result.executed) {
-			this.flash(result.reason || '替换失败');
+		this.tabReplaceBtn.classList.toggle(
+			'writer-find-sheet__tab--active',
+			!findActive,
+		);
+		this.refreshButtonStates();
+	}
+
+	private showSettings(show: boolean): void {
+		if (!this.mainView || !this.settingsView) {
+			return;
+		}
+		this.mainView.style.display = show ? 'none' : '';
+		this.settingsView.style.display = show ? '' : 'none';
+	}
+
+	private mirrorQuery(
+		source: HTMLInputElement,
+		target: HTMLInputElement,
+	): void {
+		if (source.value === target.value) {
+			return;
+		}
+		this.syncingQuery = true;
+		try {
+			target.value = source.value;
+		} finally {
+			this.syncingQuery = false;
 		}
 	}
 
-	private flash(message: string): void {
-		this.searchInput.setAttribute('title', message);
+	private hasQuery(field: HTMLInputElement): boolean {
+		return field.value.trim().length > 0;
+	}
+
+	private refreshButtonStates(): void {
+		const findHas = this.hasQuery(this.findQueryInput);
+		const replaceHas =
+			this.hasQuery(this.replaceQueryInput) ||
+			this.hasQuery(this.findQueryInput);
+		this.setNavEnabled(this.findPrevBtn, findHas);
+		this.setNavEnabled(this.findNextBtn, findHas);
+		this.setNavEnabled(this.replacePrevBtn, replaceHas);
+		this.setNavEnabled(this.replaceNextBtn, replaceHas);
+		this.setNavEnabled(this.replaceAllBtn, replaceHas);
+		this.setNavEnabled(this.replaceOneBtn, replaceHas);
+		this.findQueryInput.classList.toggle(
+			'writer-find-sheet__field--filled',
+			findHas,
+		);
+		this.replaceQueryInput.classList.toggle(
+			'writer-find-sheet__field--filled',
+			this.hasQuery(this.replaceQueryInput),
+		);
+		this.replaceWithInput.classList.toggle(
+			'writer-find-sheet__field--filled',
+			this.hasQuery(this.replaceWithInput),
+		);
+	}
+
+	private setNavEnabled(button: HTMLButtonElement, enabled: boolean): void {
+		button.disabled = !enabled;
+		button.classList.toggle('writer-find-sheet__nav-btn--enabled', enabled);
+	}
+
+	private pushOptionsToBridge(): void {
+		const bridge = (window as any).AndroidFindReplaceBridge;
+		if (!bridge || typeof bridge.setOptions !== 'function') {
+			return;
+		}
+		bridge.setOptions({
+			ignoreCase: this.ignoreCase,
+			caseSensitive: this.caseSensitive,
+			wholeWord: this.wholeWord,
+		});
+	}
+
+	private runFindNext(field: HTMLInputElement): void {
+		const query = field.value.trim();
+		if (!query) {
+			return;
+		}
+		this.pushOptionsToBridge();
+		const bridge = (window as any).AndroidFindReplaceBridge;
+		if (bridge && typeof bridge.find === 'function') {
+			bridge.find(query);
+		}
+	}
+
+	private runFindPrevious(): void {
+		const field =
+			this.mode === 'replace' ? this.replaceQueryInput : this.findQueryInput;
+		if (!this.hasQuery(field)) {
+			return;
+		}
+		this.pushOptionsToBridge();
+		const bridge = (window as any).AndroidFindReplaceBridge;
+		if (bridge && typeof bridge.findPrevious === 'function') {
+			bridge.findPrevious();
+		}
+	}
+
+	private runReplace(replaceAll: boolean): void {
+		const query = this.replaceQueryInput.value.trim();
+		if (!query) {
+			return;
+		}
+		this.pushOptionsToBridge();
+		const bridge = (window as any).AndroidFindReplaceBridge;
+		if (bridge && typeof bridge.replaceForQuery === 'function') {
+			bridge.replaceForQuery(query, this.replaceWithInput.value, replaceAll);
+		}
+	}
+
+	private attachViewportLift(): void {
+		const vv = window.visualViewport;
+		if (!vv || !this.panel) {
+			return;
+		}
+		const onChange = (): void => {
+			if (!this.panel) {
+				return;
+			}
+			const inset = Math.max(0, window.innerHeight - vv.offsetTop - vv.height);
+			this.panel.style.marginBottom = inset + 'px';
+		};
+		this.viewportHandler = onChange;
+		vv.addEventListener('resize', onChange);
+		vv.addEventListener('scroll', onChange);
+		onChange();
+	}
+
+	private detachViewportLift(): void {
+		const vv = window.visualViewport;
+		if (vv && this.viewportHandler) {
+			vv.removeEventListener('resize', this.viewportHandler);
+			vv.removeEventListener('scroll', this.viewportHandler);
+		}
+		this.viewportHandler = null;
 	}
 }
 
-if (typeof window !== 'undefined' && (window as any).ThisIsTheiOSApp) {
+/** Android lolib_ic_find_settings (gear, dark on light). */
+const WRITER_FIND_SETTINGS_ICON =
+	'<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">' +
+	'<path fill="none" stroke="#333333" stroke-width="1.8" d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/>' +
+	'<path fill="none" stroke="#333333" stroke-width="1.8" stroke-linecap="round" d="M19.4 15a7.97 7.97 0 0 0 .1-1 7.97 7.97 0 0 0-.1-1l2-1.5a.5.5 0 0 0 .12-.64l-1.9-3.3a.5.5 0 0 0-.58-.22l-2.35.95a8 8 0 0 0-1.7-.98l-.35-2.5A.5.5 0 0 0 14.5 3h-5a.5.5 0 0 0-.49.42l-.35 2.5a8 8 0 0 0-1.7.98l-2.35-.95a.5.5 0 0 0-.58.22l-1.9 3.3a.5.5 0 0 0 .12.64L4.6 13a7.97 7.97 0 0 0-.1 1 7.97 7.97 0 0 0 .1 1l-2 1.5a.5.5 0 0 0-.12.64l1.9 3.3a.5.5 0 0 0 .58.22l2.35-.95c.52.4 1.1.73 1.7.98l.35 2.5a.5.5 0 0 0 .49.42h5a.5.5 0 0 0 .49-.42l.35-2.5c.6-.25 1.18-.58 1.7-.98l2.35.95a.5.5 0 0 0 .58-.22l1.9-3.3a.5.5 0 0 0-.12-.64L19.4 15z"/>' +
+	'</svg>';
+
+/** Android lolib_ic_sheet_close_80. */
+const WRITER_FIND_SHEET_CLOSE_ICON =
+	'<svg viewBox="0 0 80 80" width="24" height="24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">' +
+	'<path fill="rgba(0,0,0,0.9)" d="M55.56 26.56c.28-.32.42-.68.42-1.08 0-.4-.14-.747-.42-1.04-.293-.32-.647-.48-1.06-.48-.413 0-.767.16-1.06.48L40 37.88 26.56 24.44c-.293-.32-.647-.48-1.06-.48-.413 0-.767.16-1.06.48-.253.293-.38.64-.38 1.04 0 .4.127.747.38 1.04L37.88 40 24.4 53.4c-.253.32-.38.687-.38 1.1 0 .413.127.767.38 1.06.32.253.687.387 1.1.4.413.013.767-.12 1.06-.4L40 42.12 53.44 55.56c.293.32.647.48 1.06.48.413 0 .767-.16 1.06-.48.28-.293.42-.647.42-1.06 0-.413-.14-.767-.42-1.06L42.12 40 55.56 26.56Z"/>' +
+	'</svg>';
+
+const WRITER_FIND_BACK_ICON =
+	'<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">' +
+	'<path fill="none" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M28 12 16 24l12 12"/></svg>';
+
+if (typeof window !== 'undefined') {
 	WriterFindReplaceDialog.mountBridge();
 }

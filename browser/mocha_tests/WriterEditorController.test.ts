@@ -58,22 +58,22 @@ describe('WriterEditorController', function () {
 	it('dispatches a plain command via the adapter', function () {
 		const adapter = createFakeAdapter('text');
 		const controller = new WriterEditorController(adapter);
-		const undo = WriterEditorCatalog.getFeature('undo');
-		assert.ok(undo);
+		const alignLeft = WriterEditorCatalog.getFeature('align-left');
+		assert.ok(alignLeft);
 
-		const result = controller.run(undo);
+		const result = controller.run(alignLeft);
 
-		assert.deepEqual(result, { dispatched: 'unocmd', command: '.uno:Undo' });
-		assert.deepEqual(adapter.calls.sendUnoCommand, ['.uno:Undo']);
+		assert.deepEqual(result, { dispatched: 'unocmd', command: '.uno:LeftPara' });
+		assert.deepEqual(adapter.calls.sendUnoCommand, ['.uno:LeftPara']);
 	});
 
 	it('does not dispatch on a non-Writer document', function () {
 		const adapter = createFakeAdapter('spreadsheet');
 		const controller = new WriterEditorController(adapter);
-		const undo = WriterEditorCatalog.getFeature('undo');
-		assert.ok(undo);
+		const alignLeft = WriterEditorCatalog.getFeature('align-left');
+		assert.ok(alignLeft);
 
-		const result = controller.run(undo);
+		const result = controller.run(alignLeft);
 
 		assert.deepEqual(result, { dispatched: 'none', reason: 'not_writer_document' });
 		assert.deepEqual(adapter.calls.sendUnoCommand, []);
@@ -116,17 +116,6 @@ describe('WriterEditorController', function () {
 
 		assert.deepEqual(result, { dispatched: 'dialog', dialog: 'fontName' });
 		assert.deepEqual(adapter.calls.sendUnoCommand, []);
-	});
-
-	it('reports findReplace for the find-replace feature', function () {
-		const adapter = createFakeAdapter('text');
-		const controller = new WriterEditorController(adapter);
-		const findReplace = WriterEditorCatalog.getFeature('find-replace');
-		assert.ok(findReplace);
-
-		const result = controller.run(findReplace);
-
-		assert.deepEqual(result, { dispatched: 'findReplace' });
 	});
 
 	it('dispatches .uno:Save for the save feature', function () {

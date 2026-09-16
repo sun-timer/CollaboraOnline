@@ -7,12 +7,14 @@
  */
 
 class WriterEditorChartDialog {
-	private readonly sheet: MobileAiSheet;
+	private readonly subpage: { open(): void; close(): void };
 	private readonly controller: WriterEditorController;
 
-	constructor(controller: WriterEditorController) {
+	constructor(
+		controller: WriterEditorController,
+		host?: WriterEditorInlineSubpageHost | null,
+	) {
 		this.controller = controller;
-		this.sheet = new MobileAiSheet({ title: '插入图表' });
 
 		const content = document.createElement('div');
 		content.style.cssText = 'display:flex;flex-direction:column;gap:16px;overflow-y:auto;';
@@ -35,15 +37,15 @@ class WriterEditorChartDialog {
 			content.appendChild(grid);
 		});
 
-		this.sheet.setBody(content);
+		this.subpage = writerEditorMountSubpageDialog('插入图表', content, host);
 	}
 
 	open(): void {
-		this.sheet.open();
+		this.subpage.open();
 	}
 
 	close(): void {
-		this.sheet.close();
+		this.subpage.close();
 	}
 
 	private card(label: string, unoType: string): HTMLButtonElement {
@@ -65,7 +67,7 @@ class WriterEditorChartDialog {
 		button.appendChild(name);
 		button.onclick = () => {
 			this.controller.insertChart(unoType);
-			this.sheet.close();
+			this.subpage.close();
 		};
 		return button;
 	}
