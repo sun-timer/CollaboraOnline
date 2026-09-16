@@ -269,6 +269,9 @@ window.L.TextInput = window.L.Layer.extend({
 		// Clicking or otherwise focusing the map should focus on the clipboard
 		// container in order for the user to input text (and on-screen keyboards
 		// to pop-up), unless the document is read only.
+		if (document.querySelector('[data-cool-mobile-ai-ui="1"]')) {
+			return;
+		}
 		if (!this._map.isEditMode()) {
 			this._setAcceptInput(false);
 			// on clicking focus is important

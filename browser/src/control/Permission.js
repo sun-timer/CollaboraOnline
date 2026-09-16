@@ -76,6 +76,16 @@ window.L.Map.include({
 				button.on('click', function () {
 					that._requestFileCopy();
 				});
+			} else if (window.ThisIsTheiOSApp) {
+				// Leaving edit (e.g. 手机预览) calls setPermission('readonly').
+				// Keep the web pencil so the user can re-enter edit; Android
+				// uses a different copy-file path here.
+				if (!isPDF) {
+					button.css('display', 'flex');
+					button.on('click', function () {
+						that._switchToEditMode();
+					});
+				}
 			} else if ((!window.ThisIsAMobileApp && !this['wopi'].UserCanWrite) || (!this.options.canTryLock && (window.mode.isMobile() || window.mode.isTablet()))) {
 				$('#mobile-edit-button').hide();
 			}
