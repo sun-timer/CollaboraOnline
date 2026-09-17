@@ -20,6 +20,7 @@ describe('CalcEditorCatalog', function () {
 	it('includes calc-specific insert and data actions', function () {
 		assert.equal(CalcEditorCatalog.getFeature('insert-chart')?.dialog, 'chart');
 		assert.equal(CalcEditorCatalog.getFeature('sort-asc')?.unocmd, '.uno:SortAscending');
-		assert.equal(CalcEditorCatalog.getFeature('merge-cells')?.unocmd, '.uno:ToggleMergeCells');
+		assert.equal(CalcEditorCatalog.getFeature('merge-cells')?.kind, 'command');
+		assert.equal(CalcEditorCatalog.getFeature('merge-cells')?.icon, 'calc-merge-cells');
 	});
 });

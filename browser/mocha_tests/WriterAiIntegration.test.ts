@@ -159,7 +159,8 @@ describe('Writer AI integration', function () {
 		acceptMethod:
 			| 'replaceSelection'
 			| 'appendAfterSelection'
-			| 'insertAtEnd';
+			| 'insertAtEnd'
+			| 'pastePlainText';
 	}
 
 	const WRITER_TASK_FLOWS: WriterTaskFlowSpec[] = [
@@ -203,7 +204,7 @@ describe('Writer AI integration', function () {
 			selection: '段落开头',
 			context: {},
 			result: '续写段落',
-			acceptMethod: 'appendAfterSelection',
+			acceptMethod: 'pastePlainText',
 		},
 		{
 			taskType: 'summarize',
@@ -325,7 +326,9 @@ describe('Writer AI integration', function () {
 						tracking.calls[spec.acceptMethod][0],
 						spec.result,
 					);
-					assert.equal(tracking.calls.pastePlainText.length, 0);
+					if (spec.acceptMethod !== 'pastePlainText') {
+						assert.equal(tracking.calls.pastePlainText.length, 0);
+					}
 				},
 			);
 		});

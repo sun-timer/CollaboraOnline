@@ -23,6 +23,17 @@ describe('MobileAiDocumentExtractor', function () {
 		this.timeout(3000);
 		const sent: string[] = [];
 		const previousApp = (window as any).app;
+		const previousBridge = MobileAiBridge.getInstance;
+		let selectionPolls = 0;
+		MobileAiBridge.getInstance = function () {
+			return {
+				getSelectedText() {
+					selectionPolls += 1;
+					return selectionPolls >= 2 ? '幻灯片正文' : '';
+				},
+			} as any;
+		};
+		delete (window as any).ThisIsTheiOSApp;
 		(window as any).app = {
 			map: {
 				sendUnoCommand(command: string) {
@@ -48,6 +59,7 @@ describe('MobileAiDocumentExtractor', function () {
 		MobileAiDocumentExtractor.extractFullText().then(
 			function (text: string) {
 				(window as any).app = previousApp;
+				MobileAiBridge.getInstance = previousBridge;
 				assert.equal(text, '幻灯片正文');
 				assert.ok(sent.indexOf('.uno:SelectAll') >= 0);
 				assert.ok(sent.indexOf('uno .uno:Copy') >= 0);
@@ -55,6 +67,7 @@ describe('MobileAiDocumentExtractor', function () {
 			},
 			function (error: Error) {
 				(window as any).app = previousApp;
+				MobileAiBridge.getInstance = previousBridge;
 				done(error);
 			},
 		);

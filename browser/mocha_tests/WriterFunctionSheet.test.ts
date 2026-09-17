@@ -92,7 +92,7 @@ describe('Writer function sheet shell', function () {
 			'.writer-function-action-btn[aria-label="AI功能"]',
 		) as HTMLButtonElement;
 		const keyboardBtn = document.querySelector(
-			'.writer-function-action-btn[aria-label="呼出键盘"]',
+			'.writer-function-action-btn[aria-label="键盘"]',
 		) as HTMLButtonElement;
 		assert.ok(aiBtn);
 		assert.ok(keyboardBtn);

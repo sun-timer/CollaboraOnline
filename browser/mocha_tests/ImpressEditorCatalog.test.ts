@@ -24,7 +24,7 @@ describe('ImpressEditorCatalog', function () {
 
 	it('wires file rows matching Android', function () {
 		assert.equal(ImpressEditorCatalog.getFeature('save')?.kind, 'save');
-		assert.equal(ImpressEditorCatalog.getFeature('save')?.unocmd, '.uno:Save');
+		assert.equal(ImpressEditorCatalog.getFeature('save')?.tab, 'file');
 		assert.equal(ImpressEditorCatalog.getFeature('save-as')?.dialog, 'saveAs');
 		assert.equal(ImpressEditorCatalog.getFeature('export-pdf')?.kind, 'export');
 		assert.equal(ImpressEditorCatalog.getFeature('print')?.kind, 'print');

@@ -421,6 +421,7 @@ class CalcEditorCatalog {
 				tab: 'default',
 				icon: 'calc-merge-cells',
 				kind: 'command',
+				unocmd: '.uno:ToggleMergeCells',
 			},
 			{ id: 'sec-border', label: '边框', tab: 'default', icon: '', kind: 'section' },
 			{

@@ -439,7 +439,9 @@ describe('Writer AI UI buttons', function () {
 				const polish = findButton(root, '文案润色');
 				assert.ok(polish);
 				assert.ok(polish?.querySelector('svg'));
-				assert.equal(polish?.disabled, true);
+				assert.equal(polish?.disabled, false);
+				polish!.click();
+				assert.deepEqual(opened, []);
 
 				MobileAiBridge.getInstance = function () {
 					return {

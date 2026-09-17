@@ -851,12 +851,16 @@
 	flex-direction: column;
 	align-items: center;
 	width: 100%;
+	height: auto;
+	min-height: 0;
+	margin: 0;
 	padding: 8px 6px 10px;
 	border: none;
 	border-radius: 12px;
 	background: #f2f3f5;
 	cursor: pointer;
 	box-sizing: border-box;
+	line-height: normal;
 }
 
 .writer-function-chart-picker__preview {

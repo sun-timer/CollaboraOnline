@@ -81,12 +81,18 @@ describe('Writer AI Catalog v1', function () {
 		assert.equal(WriterAiCatalog.DEFAULT_POLISH_STYLE, 'quick');
 		assert.equal(WriterAiCatalog.DEFAULT_SOURCE_LANGUAGE, 'auto');
 		assert.equal(WriterAiCatalog.DEFAULT_TARGET_LANGUAGE, 'zh');
-		assert.ok(WriterAiCatalog.ARTICLE_TEMPLATES.general_notice);
-		assert.deepEqual(WriterAiCatalog.ARTICLE_TEMPLATES.general_notice.variables, [
-			'通知主要内容',
-			'通知时间',
-		]);
-		assert.equal(WriterAiCatalog.ARTICLE_TEMPLATES.douyin_script.category, '营销类');
+		const generalNotice = WriterAiCatalog.getArticleTemplate('general_notice');
+		assert.ok(generalNotice);
+		assert.deepEqual(
+			generalNotice &&
+				generalNotice.variables.map(function (variable) {
+					return variable.label;
+				}),
+			['通知主要内容', '通知时间'],
+		);
+		const douyin = WriterAiCatalog.getArticleTemplate('douyin_script');
+		assert.ok(douyin);
+		assert.equal(douyin && douyin.category, '营销类');
 	});
 
 	it('defines document-level insertAtEnd tasks for the iOS migration', function () {
