@@ -22,7 +22,7 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
     }
 }
 
-@interface CreateFileBottomSheetController ()
+@interface CreateFileBottomSheetController () <UIGestureRecognizerDelegate, UITextFieldDelegate>
 @property (assign, nonatomic) CreateFileDocKind docKind;
 @property (copy, nonatomic) void (^completion)(NSString *, BOOL, NSString *);
 @property (strong, nonatomic) UITextField *fileNameField;
@@ -34,6 +34,7 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
 @property (strong, nonatomic) NSLayoutConstraint *aiSwitchThumbTrailing;
 @property (strong, nonatomic) NSLayoutConstraint *aiPromptHeight;
 @property (strong, nonatomic) NSLayoutConstraint *createButtonTopToPrompt;
+@property (strong, nonatomic) NSLayoutConstraint *cardBottomConstraint;
 @end
 
 @implementation CreateFileBottomSheetController
@@ -88,7 +89,14 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
     self.view.backgroundColor = [UIColor colorWithWhite:0 alpha:0.35];
 
     UITapGestureRecognizer *dismissTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissSheet)];
+    dismissTap.cancelsTouchesInView = NO;
+    dismissTap.delegate = self;
     [self.view addGestureRecognizer:dismissTap];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillChangeFrame:)
+                                                 name:UIKeyboardWillChangeFrameNotification
+                                               object:nil];
 
     UIView *card = [[UIView alloc] init];
     card.translatesAutoresizingMaskIntoConstraints = NO;
@@ -120,6 +128,8 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
 
     self.fileNameField = [self borderedFieldWithPlaceholder:@"请输入文件名"];
     self.fileNameField.text = [self defaultBasename];
+    self.fileNameField.delegate = self;
+    self.fileNameField.returnKeyType = UIReturnKeyDone;
 
     UIView *aiRow = [[UIView alloc] init];
     aiRow.translatesAutoresizingMaskIntoConstraints = NO;
@@ -151,6 +161,8 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
     [self.aiSwitchTrack addSubview:self.aiSwitchThumb];
 
     self.aiPromptField = [self borderedFieldWithPlaceholder:@"描述你想生成的文档内容..."];
+    self.aiPromptField.delegate = self;
+    self.aiPromptField.returnKeyType = UIReturnKeyDone;
     self.aiPromptField.hidden = YES;
 
     UIButton *createButton = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -177,10 +189,11 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
                                                                                  constant:-2.5];
     self.aiSwitchThumbLeading.active = YES;
 
+    self.cardBottomConstraint = [card.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor];
     [NSLayoutConstraint activateConstraints:@[
         [card.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [card.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [card.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        self.cardBottomConstraint,
 
         [close.topAnchor constraintEqualToAnchor:card.topAnchor constant:11],
         [close.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-15],
@@ -229,6 +242,37 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
     [self updateAiSwitchUi];
 }
 
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
+    return touch.view == self.view;
+}
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    [textField resignFirstResponder];
+    return YES;
+}
+
+- (void)keyboardWillChangeFrame:(NSNotification *)notification {
+    CGRect keyboardFrame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    CGRect localKeyboardFrame = [self.view convertRect:keyboardFrame fromView:nil];
+    CGFloat overlap = MAX(0.0, CGRectGetMaxY(self.view.bounds) - CGRectGetMinY(localKeyboardFrame));
+    NSTimeInterval duration = [notification.userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+    UIViewAnimationOptions options =
+        ([notification.userInfo[UIKeyboardAnimationCurveUserInfoKey] integerValue] << 16)
+        | UIViewAnimationOptionBeginFromCurrentState;
+    self.cardBottomConstraint.constant = -overlap;
+    [UIView animateWithDuration:duration
+                          delay:0.0
+                        options:options
+                     animations:^{
+        [self.view layoutIfNeeded];
+    }
+                     completion:nil];
+}
+
 - (UITextField *)borderedFieldWithPlaceholder:(NSString *)placeholder {
     UITextField *field = [[UITextField alloc] init];
     field.translatesAutoresizingMaskIntoConstraints = NO;
@@ -264,6 +308,7 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
 }
 
 - (void)dismissSheet {
+    [self.view endEditing:YES];
     [self dismissViewControllerAnimated:YES completion:nil];
 }
 
