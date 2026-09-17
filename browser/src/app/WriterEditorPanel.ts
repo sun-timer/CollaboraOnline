@@ -98,7 +98,7 @@ class WriterEditorPanel {
 			},
 			{
 				icon: 'keyboard',
-				aria: '呼出键盘',
+				aria: '键盘',
 				handler: () => this.showKeyboard(),
 			},
 			{ icon: 'collapse', aria: '收起', handler: () => this.close() },
@@ -126,7 +126,7 @@ class WriterEditorPanel {
 
 		this.sheet.setBody(panelRoot);
 		this.inlineSubpage = new WriterEditorInlineSubpage(this.sheet.body, [
-			panelRoot,
+			this.content,
 		]);
 	}
 
@@ -148,6 +148,7 @@ class WriterEditorPanel {
 	}
 
 	open(): void {
+		MobileDocTheme.applyFromMap();
 		this.renderTabs();
 		this.renderContent();
 		this.subscribeReviewState();

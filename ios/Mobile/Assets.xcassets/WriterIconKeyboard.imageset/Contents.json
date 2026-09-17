@@ -1,19 +1,8 @@
 {
   "images": [
     {
-      "filename": "WriterIconKeyboard.png",
-      "idiom": "universal",
-      "scale": "1x"
-    },
-    {
-      "filename": "WriterIconKeyboard@2x.png",
-      "idiom": "universal",
-      "scale": "2x"
-    },
-    {
-      "filename": "WriterIconKeyboard@3x.png",
-      "idiom": "universal",
-      "scale": "3x"
+      "filename": "WriterIconKeyboard.svg",
+      "idiom": "universal"
     }
   ],
   "info": {

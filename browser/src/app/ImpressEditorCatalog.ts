@@ -22,12 +22,14 @@ type ImpressEditorFeatureKind =
 	| 'save'
 	| 'export'
 	| 'print'
-	| 'findReplace';
+	| 'findReplace'
+	| 'stub';
 
 type ImpressEditorDialogType =
 	| 'image'
 	| 'table'
 	| 'shape'
+	| 'chart'
 	| 'saveAs'
 	| 'comment'
 	| 'hyperlink'
@@ -73,6 +75,7 @@ interface ImpressLayoutEntry {
 	id: string;
 	label: string;
 	whatLayout: number;
+	icon: string;
 }
 
 /** Android ImpressFunctionPanelController fill styles (FillPageStyle). */
@@ -103,21 +106,80 @@ class ImpressEditorCatalog {
 
 	/** Android ImpressSlideLayoutCatalog ENTRIES. */
 	static readonly LAYOUTS: ImpressLayoutEntry[] = [
-		{ id: 'layout-title', label: '标题幻灯片', whatLayout: 0 },
-		{ id: 'layout-title-content', label: '标题和内容', whatLayout: 1 },
-		{ id: 'layout-section', label: '节标题', whatLayout: 2 },
-		{ id: 'layout-two-content', label: '两栏内容', whatLayout: 3 },
-		{ id: 'layout-compare', label: '比较', whatLayout: 15 },
-		{ id: 'layout-title-only', label: '仅标题', whatLayout: 19 },
-		{ id: 'layout-blank', label: '空白', whatLayout: 20 },
-		{ id: 'layout-picture-title', label: '图片与标题', whatLayout: 12 },
-		{ id: 'layout-vertical', label: '竖排标题与文本', whatLayout: 28 },
-		{ id: 'layout-content', label: '内容', whatLayout: 32 },
-		{ id: 'layout-end', label: '末尾幻灯片', whatLayout: 19 },
+		{
+			id: 'layout-title',
+			label: '标题幻灯片',
+			whatLayout: 0,
+			icon: 'impress-layout-01-title',
+		},
+		{
+			id: 'layout-title-content',
+			label: '标题和内容',
+			whatLayout: 1,
+			icon: 'impress-layout-02-title-content',
+		},
+		{
+			id: 'layout-section',
+			label: '节标题',
+			whatLayout: 2,
+			icon: 'impress-layout-03-section',
+		},
+		{
+			id: 'layout-two-content',
+			label: '两栏内容',
+			whatLayout: 3,
+			icon: 'impress-layout-04-two-content',
+		},
+		{
+			id: 'layout-compare',
+			label: '比较',
+			whatLayout: 15,
+			icon: 'impress-layout-05-compare',
+		},
+		{
+			id: 'layout-title-only',
+			label: '仅标题',
+			whatLayout: 19,
+			icon: 'impress-layout-06-title-only',
+		},
+		{
+			id: 'layout-blank',
+			label: '空白',
+			whatLayout: 20,
+			icon: 'impress-layout-07-blank',
+		},
+		{
+			id: 'layout-picture-title',
+			label: '图片与标题',
+			whatLayout: 12,
+			icon: 'impress-layout-08-picture-title',
+		},
+		{
+			id: 'layout-vertical',
+			label: '竖排标题与文本',
+			whatLayout: 28,
+			icon: 'impress-layout-09-vertical',
+		},
+		{
+			id: 'layout-content',
+			label: '内容',
+			whatLayout: 32,
+			icon: 'impress-layout-10-content',
+		},
+		{
+			id: 'layout-end',
+			label: '末尾幻灯片',
+			whatLayout: 19,
+			icon: 'impress-layout-11-end',
+		},
 	];
 
 	/** Android ImpressFunctionPanelController FORMAT_LABELS / FORMAT_COMMANDS. */
-	static readonly SLIDE_FORMATS: { label: string; paperFormat: string }[] = [
+	static readonly SLIDE_FORMATS: {
+		label: string;
+		paperFormat?: string;
+		pageSizeUno?: string;
+	}[] = [
 		{ label: 'A4', paperFormat: '4' },
 		{ label: 'A3', paperFormat: '3' },
 		{ label: 'A5', paperFormat: '5' },
@@ -198,6 +260,13 @@ class ImpressEditorCatalog {
 		},
 	];
 
+	/** Android ImpressTransitionCatalog icon assets → WriterEditorIcons keys. */
+	static transitionIconKey(iconViewIndex: number): string {
+		const n = iconViewIndex + 1;
+		const padded = n < 10 ? '00' + n : n < 100 ? '0' + n : String(n);
+		return 'impress-transition-' + padded;
+	}
+
 	static buildFillPageStyleCommand(fillStyle: ImpressFillPageStyle): string {
 		return (
 			'.uno:FillPageStyle {"FillPageStyle":{"type":"short","value":' + fillStyle + '}}'
@@ -266,7 +335,7 @@ class ImpressEditorCatalog {
 				id: 'slide-format',
 				label: '格式',
 				tab: 'default',
-				icon: 'paper-size',
+				icon: 'impress-slide-format',
 				kind: 'dialog',
 				dialog: 'slideFormat',
 				row: 'picker',
@@ -277,7 +346,7 @@ class ImpressEditorCatalog {
 				id: 'slide-orientation',
 				label: '方向',
 				tab: 'default',
-				icon: 'orientation',
+				icon: 'impress-slide-orientation',
 				kind: 'dialog',
 				dialog: 'slideOrientation',
 				row: 'picker',
@@ -288,7 +357,7 @@ class ImpressEditorCatalog {
 				id: 'slide-background',
 				label: '背景',
 				tab: 'default',
-				icon: 'watermark',
+				icon: 'impress-slide-background',
 				kind: 'dialog',
 				dialog: 'slideBackground',
 				row: 'picker',
@@ -299,7 +368,7 @@ class ImpressEditorCatalog {
 				id: 'slide-master',
 				label: '母版幻灯片',
 				tab: 'default',
-				icon: 'page-number',
+				icon: 'impress-slide-master',
 				kind: 'dialog',
 				dialog: 'slideMaster',
 				row: 'picker',
@@ -321,7 +390,7 @@ class ImpressEditorCatalog {
 					id: 'common-' + layout.id,
 					label: layout.label,
 					tab: 'default',
-					icon: 'pagebreak',
+					icon: layout.icon,
 					kind: 'queryCommand',
 					unocmd: '.uno:AssignLayout',
 					queryParams: '?WhatLayout:long=' + layout.whatLayout,
@@ -507,7 +576,7 @@ class ImpressEditorCatalog {
 				id: 'para-bullet',
 				label: '无序列表',
 				tab: 'default',
-				icon: 'bullet-list',
+				icon: 'impress-bullet-list',
 				kind: 'command',
 				unocmd: '.uno:DefaultBullet',
 				row: 'chip',
@@ -517,7 +586,7 @@ class ImpressEditorCatalog {
 				id: 'para-number',
 				label: '有序列表',
 				tab: 'default',
-				icon: 'numbered-list',
+				icon: 'impress-number-list',
 				kind: 'command',
 				unocmd: '.uno:DefaultNumbering',
 				row: 'chip',
@@ -527,16 +596,15 @@ class ImpressEditorCatalog {
 				id: 'save',
 				label: '保存',
 				tab: 'file',
-				icon: 'save',
+				icon: 'calc-file-save',
 				kind: 'save',
-				unocmd: '.uno:Save',
 				group: 'file',
 			},
 			{
 				id: 'save-as',
 				label: '另存为',
 				tab: 'file',
-				icon: 'save-as',
+				icon: 'impress-file-save-as',
 				kind: 'dialog',
 				dialog: 'saveAs',
 				group: 'file',
@@ -545,7 +613,7 @@ class ImpressEditorCatalog {
 				id: 'export-pdf',
 				label: '导出为',
 				tab: 'file',
-				icon: 'export-pdf',
+				icon: 'calc-file-export',
 				kind: 'export',
 				group: 'file',
 			},
@@ -553,7 +621,7 @@ class ImpressEditorCatalog {
 				id: 'print',
 				label: '打印',
 				tab: 'file',
-				icon: 'print',
+				icon: 'calc-file-print',
 				kind: 'print',
 				group: 'file',
 			},
@@ -561,57 +629,74 @@ class ImpressEditorCatalog {
 				id: 'insert-image',
 				label: '本地图像',
 				tab: 'insert',
-				icon: 'image',
+				icon: 'impress-insert-local-image',
 				kind: 'dialog',
 				dialog: 'image',
 				group: 'insert',
 			},
 			{
-				id: 'insert-table',
-				label: '表格',
+				id: 'insert-chart',
+				label: '图表',
 				tab: 'insert',
-				icon: 'table',
+				icon: 'impress-insert-chart',
 				kind: 'dialog',
-				dialog: 'table',
-				unocmd: '.uno:InsertTable',
-				group: 'insert',
-			},
-			{
-				id: 'insert-shape',
-				label: '形状',
-				tab: 'insert',
-				icon: 'shape',
-				kind: 'dialog',
-				dialog: 'shape',
-				group: 'insert',
-			},
-			{
-				id: 'insert-hyperlink',
-				label: '超链接',
-				tab: 'insert',
-				icon: 'page-number',
-				kind: 'dialog',
-				dialog: 'hyperlink',
-				unocmd: '.uno:SetHyperlink',
+				dialog: 'chart',
 				group: 'insert',
 			},
 			{
 				id: 'insert-comment',
 				label: '批注',
 				tab: 'insert',
-				icon: 'comment',
+				icon: 'impress-insert-comment',
 				kind: 'dialog',
 				dialog: 'comment',
 				unocmd: '.uno:InsertAnnotation',
 				group: 'insert',
 			},
 			{
+				id: 'insert-table',
+				label: '表格',
+				tab: 'insert',
+				icon: 'impress-insert-table',
+				kind: 'dialog',
+				dialog: 'table',
+				unocmd: '.uno:InsertTable',
+				group: 'insert',
+			},
+			{
+				id: 'insert-hyperlink',
+				label: '超链接',
+				tab: 'insert',
+				icon: 'impress-insert-hyperlink',
+				kind: 'dialog',
+				dialog: 'hyperlink',
+				unocmd: '.uno:SetHyperlink',
+				group: 'insert',
+			},
+			{
+				id: 'insert-shape',
+				label: '形状',
+				tab: 'insert',
+				icon: 'impress-insert-shape',
+				kind: 'dialog',
+				dialog: 'shape',
+				group: 'insert',
+			},
+			{
 				id: 'insert-textbox',
 				label: '文本框',
 				tab: 'insert',
-				icon: 'pagebreak',
+				icon: 'impress-insert-textbox',
 				kind: 'command',
 				unocmd: '.uno:DrawText',
+				group: 'insert',
+			},
+			{
+				id: 'insert-more-fields',
+				label: '更多字段',
+				tab: 'insert',
+				icon: 'impress-insert-more-fields',
+				kind: 'stub',
 				group: 'insert',
 			},
 			{
@@ -626,7 +711,7 @@ class ImpressEditorCatalog {
 				id: 'spell-check',
 				label: '拼写检查',
 				tab: 'review',
-				icon: 'spell-check',
+				icon: 'impress-spell-check',
 				kind: 'command',
 				unocmd: '.uno:SpellDialog',
 				group: 'review',
@@ -635,7 +720,7 @@ class ImpressEditorCatalog {
 				id: 'review-comment',
 				label: '批注',
 				tab: 'review',
-				icon: 'comment',
+				icon: 'impress-review-comment',
 				kind: 'dialog',
 				dialog: 'comment',
 				unocmd: '.uno:InsertAnnotation',
@@ -648,7 +733,7 @@ class ImpressEditorCatalog {
 				id: layout.id,
 				label: layout.label,
 				tab: 'layout',
-				icon: 'pagebreak',
+				icon: layout.icon,
 				kind: 'queryCommand',
 				unocmd: '.uno:AssignLayout',
 				queryParams: '?WhatLayout:long=' + layout.whatLayout,
@@ -661,7 +746,7 @@ class ImpressEditorCatalog {
 				id: item.id,
 				label: item.label,
 				tab: 'transition',
-				icon: 'pagebreak',
+				icon: ImpressEditorCatalog.transitionIconKey(item.iconViewIndex),
 				kind: 'command',
 				unocmd: '.uno:SlideChangeWindow',
 				setId: item.setId,
@@ -686,6 +771,9 @@ class ImpressEditorCatalog {
 		}
 		if (!feature.icon && feature.kind !== 'section') {
 			return { valid: false, errorCode: 'empty_icon' };
+		}
+		if (feature.kind === 'stub') {
+			return { valid: true };
 		}
 		if (
 			(feature.kind === 'command' ||

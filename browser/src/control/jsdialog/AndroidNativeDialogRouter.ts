@@ -103,6 +103,7 @@ class AndroidNativeDialogRouter {
 					extracted.type === 'fixedtext' ||
 					extracted.type === 'label' ||
 					extracted.type === 'listbox' ||
+					extracted.type === 'combobox' ||
 					extracted.type === 'treelistbox' ||
 					extracted.type === 'edit' ||
 					extracted.type === 'multilineedit' ||
@@ -153,6 +154,13 @@ class AndroidNativeDialogRouter {
 			return NATIVE_SPECIFIC_DIALOG_IDS.has(dialogId);
 		}
 		if (window.ThisIsTheiOSApp) {
+			if (
+				dialogId === 'ValidationDialog' &&
+				typeof CalcEditorValidationBridge !== 'undefined' &&
+				CalcEditorValidationBridge.isPending()
+			) {
+				return true;
+			}
 			return dialogId === 'WordCountDialog' || dialogId === 'SpellingDialog';
 		}
 		return false;
@@ -166,6 +174,11 @@ class AndroidNativeDialogRouter {
 				WriterWordCountSheet.handlePayload(payload as WriterWordCountPayload);
 			} else if (dialogId === 'SpellingDialog') {
 				WriterSpellingSheet.handlePayload(payload as WriterSpellingPayload);
+			} else if (
+				dialogId === 'ValidationDialog' &&
+				typeof CalcEditorValidationBridge !== 'undefined'
+			) {
+				CalcEditorValidationBridge.handlePayload(payload);
 			}
 			return;
 		}

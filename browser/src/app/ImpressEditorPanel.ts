@@ -6,31 +6,69 @@
 class ImpressEditorPanel {
 	private readonly sheet: WriterEditorSheet;
 	private readonly tabBar: HTMLDivElement;
+	private readonly tabScroll: HTMLDivElement;
 	private readonly grid: HTMLDivElement;
 	private activeTab: ImpressEditorTab = 'default';
 	private readonly subDialogs: { close(): void }[] = [];
 	private readonly inlineSubpage: WriterEditorInlineSubpage;
 	private readonly pickerLabels: Record<string, string> = {
+		'slide-format': 'A4',
+		'slide-orientation': '横向',
+		'slide-background': '渐变',
+		'slide-master': '默认',
 		'font-name': '宋体',
 		'font-size': '四号',
 	};
+	private selectedTransitionId = 'tr-box';
+	private selectedLayoutId = 'layout-title';
 	private fontColorRgb = 0x000000;
 	private slideBackgroundColorRgb = 0xffffff;
 	private slideMasterSolidColorRgb = 0xffffff;
 	private readonly controller = WriterEditorController.getInstance();
 
 	private constructor() {
-		this.sheet = new WriterEditorSheet('功能');
+		this.sheet = new WriterEditorSheet('', undefined, { editMode: true });
 		const content = document.createElement('div');
 		content.className = 'writer-function-panel';
 		this.tabBar = document.createElement('div');
 		this.tabBar.className = 'writer-function-tab-bar';
+		this.tabScroll = document.createElement('div');
+		this.tabScroll.className = 'writer-function-tab-scroll';
+		const divider = document.createElement('div');
+		divider.className = 'writer-function-tab-divider';
+		divider.setAttribute('aria-hidden', 'true');
+		const actions = document.createElement('div');
+		actions.className = 'writer-function-tab-actions';
+		[
+			{ icon: 'ai-sparkle', aria: 'AI功能', handler: () => this.openAiFeatures() },
+			{ icon: 'keyboard', aria: '键盘', handler: () => this.showKeyboard() },
+			{ icon: 'collapse', aria: '收起', handler: () => this.close() },
+		].forEach((action) => {
+			const button = document.createElement('button');
+			button.type = 'button';
+			button.className = 'writer-function-action-btn';
+			button.setAttribute('aria-label', action.aria);
+			const icon = WriterEditorIcons.get(action.icon);
+			if (icon) {
+				button.innerHTML = icon;
+			}
+			button.onclick = action.handler;
+			actions.appendChild(button);
+		});
+		this.tabBar.appendChild(this.tabScroll);
+		this.tabBar.appendChild(divider);
+		this.tabBar.appendChild(actions);
 		content.appendChild(this.tabBar);
+		const scrollContent = document.createElement('div');
+		scrollContent.className = 'writer-function-content';
 		this.grid = document.createElement('div');
 		this.grid.className = 'writer-function-grid';
-		content.appendChild(this.grid);
+		scrollContent.appendChild(this.grid);
+		content.appendChild(scrollContent);
 		this.sheet.setBody(content);
-		this.inlineSubpage = new WriterEditorInlineSubpage(this.sheet.body, [content]);
+		this.inlineSubpage = new WriterEditorInlineSubpage(this.sheet.body, [
+			scrollContent,
+		]);
 	}
 
 	private subHost(): WriterEditorInlineSubpageHost {
@@ -51,9 +89,26 @@ class ImpressEditorPanel {
 	}
 
 	open(): void {
+		MobileDocTheme.applyFromMap();
 		this.renderTabs();
 		this.renderGrid();
 		this.sheet.open();
+	}
+
+	private openAiFeatures(): void {
+		this.close();
+		const panel = (window as any).__coolWriterAiPanel;
+		if (panel && typeof panel.openOperationSheet === 'function') {
+			panel.openOperationSheet();
+		}
+	}
+
+	private showKeyboard(): void {
+		this.close();
+		const map = (window as any).app && (window as any).app.map;
+		if (map && typeof map.focus === 'function') {
+			map.focus(true);
+		}
 	}
 
 	close(): void {
@@ -69,11 +124,7 @@ class ImpressEditorPanel {
 	}
 
 	private renderTabs(): void {
-		this.tabBar.replaceChildren();
-		const track = document.createElement('div');
-		track.className = 'writer-function-tab-track';
-		const scroll = document.createElement('div');
-		scroll.className = 'writer-function-tab-scroll';
+		this.tabScroll.replaceChildren();
 		ImpressEditorCatalog.TABS.forEach((tab) => {
 			const button = document.createElement('button');
 			button.type = 'button';
@@ -87,49 +138,226 @@ class ImpressEditorPanel {
 				this.renderTabs();
 				this.renderGrid();
 			};
-			scroll.appendChild(button);
+			this.tabScroll.appendChild(button);
 		});
-		track.appendChild(scroll);
-		this.tabBar.appendChild(track);
 	}
 
 	private renderGrid(): void {
 		this.grid.replaceChildren();
-		if (this.activeTab === 'default') {
-			this.renderDefaultTab();
-			return;
-		}
-		this.grid.className =
-			this.activeTab === 'layout' || this.activeTab === 'transition'
-				? 'writer-function-grid writer-function-grid--common'
-				: 'writer-function-grid';
-		const features = ImpressEditorCatalog.getFeatures(this.activeTab);
-		features.forEach((feature) => {
-			if (feature.kind === 'section') {
-				const title = document.createElement('h3');
-				title.textContent = feature.label;
-				title.className = 'writer-function-section-title';
-				this.grid.appendChild(title);
+		this.grid.className = 'writer-function-grid writer-function-grid--common';
+		switch (this.activeTab) {
+			case 'default':
+				this.renderDefaultTab();
 				return;
+			case 'file':
+			case 'review':
+				this.renderActionTab(this.activeTab);
+				return;
+			case 'insert':
+				this.renderInsertTab();
+				return;
+			case 'transition':
+				this.renderTransitionTab();
+				return;
+			case 'layout':
+				this.renderLayoutTab();
+				return;
+		}
+	}
+
+	private renderActionTab(tab: ImpressEditorTab): void {
+		const stack = document.createElement('div');
+		stack.className = 'writer-function-stack';
+		const group = document.createElement('div');
+		group.className = 'writer-function-action-group';
+		const features = ImpressEditorCatalog.getFeatures(tab).filter(
+			(f) => f.kind !== 'section',
+		);
+		features.forEach((feature, index) => {
+			group.appendChild(this.createActionRow(feature));
+			if (index + 1 < features.length) {
+				const divider = document.createElement('div');
+				divider.className = 'writer-function-action-group__divider';
+				group.appendChild(divider);
 			}
-			const button = document.createElement('button');
-			button.type = 'button';
-			button.className = 'writer-function-tile';
-			button.setAttribute('aria-label', feature.label);
+		});
+		stack.appendChild(group);
+		this.grid.appendChild(stack);
+	}
+
+	private createActionRow(feature: ImpressEditorFeature): HTMLButtonElement {
+		const row = document.createElement('button');
+		row.type = 'button';
+		row.className = 'writer-function-action-row writer-function-action-row--grouped';
+		row.setAttribute('aria-label', feature.label);
+		if (feature.icon) {
+			const iconWrap = document.createElement('span');
+			iconWrap.className = 'writer-function-action-row__icon';
 			const icon = WriterEditorIcons.get(feature.icon);
 			if (icon) {
-				const iconWrap = document.createElement('span');
-				iconWrap.className = 'writer-function-tile__icon';
 				iconWrap.innerHTML = icon;
-				button.appendChild(iconWrap);
 			}
-			const tileLabel = document.createElement('span');
-			tileLabel.textContent = feature.label;
-			tileLabel.className = 'writer-function-tile__label';
-			button.appendChild(tileLabel);
-			button.onclick = () => this.onFeature(feature);
-			this.grid.appendChild(button);
-		});
+			row.appendChild(iconWrap);
+		}
+		const label = document.createElement('span');
+		label.className = 'writer-function-action-row__label';
+		label.textContent = feature.label;
+		row.appendChild(label);
+		row.onclick = () => this.onFeature(feature);
+		return row;
+	}
+
+	private renderInsertTab(): void {
+		const grid = document.createElement('div');
+		grid.className =
+			'writer-function-chip-grid writer-function-chip-grid--insert writer-function-chip-grid--impress-insert';
+		const features = ImpressEditorCatalog.getFeatures('insert');
+		const cols = 3;
+		for (let rowStart = 0; rowStart < features.length; rowStart += cols) {
+			const row = document.createElement('div');
+			row.className = 'writer-function-chip-grid__row';
+			for (
+				let i = rowStart;
+				i < Math.min(rowStart + cols, features.length);
+				i++
+			) {
+				const feature = features[i];
+				const chip = document.createElement('button');
+				chip.type = 'button';
+				chip.className = 'writer-function-chip';
+				chip.setAttribute('aria-label', feature.label);
+				const iconWrap = document.createElement('span');
+				iconWrap.className = 'writer-function-chip__icon';
+				const icon = WriterEditorIcons.get(feature.icon);
+				if (icon) {
+					iconWrap.innerHTML = icon;
+				}
+				chip.appendChild(iconWrap);
+				const label = document.createElement('span');
+				label.className = 'writer-function-chip__label';
+				label.textContent = feature.label;
+				chip.appendChild(label);
+				chip.onclick = () => this.onFeature(feature);
+				row.appendChild(chip);
+			}
+			grid.appendChild(row);
+		}
+		this.grid.appendChild(grid);
+	}
+
+	private renderTransitionTab(): void {
+		const stack = document.createElement('div');
+		stack.className = 'writer-function-impress-transition-tab';
+
+		const applyAll = document.createElement('button');
+		applyAll.type = 'button';
+		applyAll.className = 'writer-function-impress-apply-all-row';
+		applyAll.setAttribute('aria-label', '应用到全部幻灯片');
+		const applyIcon = document.createElement('span');
+		applyIcon.className = 'writer-function-impress-apply-all-row__icon';
+		const applySvg = WriterEditorIcons.get('impress-apply-transition-all');
+		if (applySvg) {
+			applyIcon.innerHTML = applySvg;
+		}
+		applyAll.appendChild(applyIcon);
+		const applyLabel = document.createElement('span');
+		applyLabel.className = 'writer-function-impress-apply-all-row__label';
+		applyLabel.textContent = '应用到全部幻灯片';
+		applyAll.appendChild(applyLabel);
+		applyAll.onclick = () => {
+			const feature = ImpressEditorCatalog.getFeature(this.selectedTransitionId);
+			if (!feature || feature.iconViewIndex === undefined) {
+				return;
+			}
+			this.applyTransition(feature.iconViewIndex, true);
+		};
+		stack.appendChild(applyAll);
+
+		const wrap = document.createElement('div');
+		wrap.className = 'writer-function-transition-grid';
+		const features = ImpressEditorCatalog.getFeatures('transition');
+		const cols = 6;
+		for (let rowStart = 0; rowStart < features.length; rowStart += cols) {
+			const row = document.createElement('div');
+			row.className =
+				'writer-function-transition-grid__row writer-function-transition-grid__row--six';
+			for (
+				let i = rowStart;
+				i < Math.min(rowStart + cols, features.length);
+				i++
+			) {
+				const feature = features[i];
+				const cell = document.createElement('button');
+				cell.type = 'button';
+				cell.className = 'writer-function-transition-cell';
+				if (feature.id === this.selectedTransitionId) {
+					cell.classList.add('writer-function-transition-cell--active');
+				}
+				const iconWrap = document.createElement('span');
+				iconWrap.className = 'writer-function-transition-cell__icon';
+				const icon = WriterEditorIcons.get(feature.icon);
+				if (icon) {
+					iconWrap.innerHTML = icon;
+				}
+				cell.appendChild(iconWrap);
+				const caption = document.createElement('span');
+				caption.className = 'writer-function-transition-cell__label';
+				caption.textContent = feature.label;
+				cell.appendChild(caption);
+				cell.onclick = () => {
+					this.selectedTransitionId = feature.id;
+					this.onFeature(feature, { keepPanelOpen: true });
+					this.renderGrid();
+				};
+				row.appendChild(cell);
+			}
+			wrap.appendChild(row);
+		}
+		stack.appendChild(wrap);
+		this.grid.appendChild(stack);
+	}
+
+	private renderLayoutTab(): void {
+		const wrap = document.createElement('div');
+		wrap.className = 'writer-function-impress-layout-grid';
+		const features = ImpressEditorCatalog.getFeatures('layout');
+		const cols = 3;
+		for (let rowStart = 0; rowStart < features.length; rowStart += cols) {
+			const row = document.createElement('div');
+			row.className = 'writer-function-impress-layout-grid__row';
+			for (
+				let i = rowStart;
+				i < Math.min(rowStart + cols, features.length);
+				i++
+			) {
+				const feature = features[i];
+				const cell = document.createElement('button');
+				cell.type = 'button';
+				cell.className = 'writer-function-impress-layout-cell';
+				if (feature.id === this.selectedLayoutId) {
+					cell.classList.add('writer-function-impress-layout-cell--active');
+				}
+				cell.setAttribute('aria-label', feature.label);
+				const iconWrap = document.createElement('span');
+				iconWrap.className = 'writer-function-impress-layout-cell__icon';
+				const icon = WriterEditorIcons.get(feature.icon);
+				if (icon) {
+					iconWrap.innerHTML = icon;
+				}
+				cell.appendChild(iconWrap);
+				const caption = document.createElement('span');
+				caption.className = 'writer-function-impress-layout-cell__label';
+				caption.textContent = feature.label;
+				cell.appendChild(caption);
+				cell.onclick = () => {
+					this.selectedLayoutId = feature.id;
+					this.onFeature(feature);
+				};
+				row.appendChild(cell);
+			}
+			wrap.appendChild(row);
+		}
+		this.grid.appendChild(wrap);
 	}
 
 	private renderDefaultTab(): void {
@@ -170,10 +398,14 @@ class ImpressEditorPanel {
 				flushCharTools();
 				flushSplitPicker();
 				flushLayoutPreview();
-				const title = document.createElement('h3');
-				title.textContent = feature.label;
-				title.className = 'writer-function-section-title';
-				this.grid.appendChild(title);
+				if (feature.id === 'sec-layout') {
+					this.grid.appendChild(this.createLayoutSectionHeader());
+				} else {
+					const title = document.createElement('h3');
+					title.textContent = feature.label;
+					title.className = 'writer-function-section-title';
+					this.grid.appendChild(title);
+				}
 				return;
 			}
 			if (feature.row === 'layoutPreview') {
@@ -304,6 +536,26 @@ class ImpressEditorPanel {
 		);
 	}
 
+	private createLayoutSectionHeader(): HTMLDivElement {
+		const header = document.createElement('div');
+		header.className = 'writer-function-section-header-row';
+		const title = document.createElement('span');
+		title.className = 'writer-function-section-title';
+		title.textContent = '布局';
+		const all = document.createElement('button');
+		all.type = 'button';
+		all.className = 'writer-function-section-header-row__link';
+		all.textContent = '全部 >';
+		all.onclick = () => {
+			this.activeTab = 'layout';
+			this.renderTabs();
+			this.renderGrid();
+		};
+		header.appendChild(title);
+		header.appendChild(all);
+		return header;
+	}
+
 	private createPickerRow(feature: ImpressEditorFeature): HTMLButtonElement {
 		const row = document.createElement('button');
 		row.type = 'button';
@@ -323,7 +575,9 @@ class ImpressEditorPanel {
 		const value = document.createElement('span');
 		value.className = 'writer-function-picker-row__value';
 		value.textContent =
-			this.pickerLabels[feature.id] || feature.pickerDefault || feature.label;
+			this.pickerLabels[feature.id] ||
+			feature.pickerDefault ||
+			feature.label;
 		row.appendChild(value);
 		const chevron = document.createElement('span');
 		chevron.className = 'writer-function-picker-row__chevron';
@@ -372,7 +626,7 @@ class ImpressEditorPanel {
 			tileLabel.textContent = feature.label;
 			tileLabel.className = 'writer-function-layout-preview__label';
 			button.appendChild(tileLabel);
-			button.onclick = () => this.onFeature(feature, { keepPanelOpen: true });
+			button.onclick = () => this.onFeature(feature);
 			row.appendChild(button);
 		});
 		return row;
@@ -382,8 +636,20 @@ class ImpressEditorPanel {
 		feature: ImpressEditorFeature,
 		options?: { keepPanelOpen?: boolean },
 	): void {
+		if (feature.kind === 'stub') {
+			if (feature.id === 'insert-more-fields') {
+				(window as any).app?.console?.log(
+					'ImpressEditorPanel: insert_more_fields todo (Android parity stub)',
+				);
+			}
+			return;
+		}
 		if (feature.kind === 'dialog') {
-			if (feature.dialog === 'image') {
+			if (feature.dialog === 'chart') {
+				this.presentSub(
+					new WriterEditorChartDialog(this.controller, this.subHost()),
+				);
+			} else if (feature.dialog === 'image') {
 				this.presentSub(
 					new WriterEditorImageDialog(this.controller, this.subHost()),
 				);
@@ -427,12 +693,17 @@ class ImpressEditorPanel {
 			return;
 		}
 		if (feature.kind === 'save') {
-			this.sendUno('.uno:Save');
+			this.mobileSave();
 			this.sheet.close();
 			return;
 		}
 		if (feature.kind === 'export') {
-			this.openExportDialog();
+			if (typeof (window as any).postMobileMessage === 'function') {
+				(window as any).postMobileMessage(
+					'downloadas name=export.pdf format=pdf',
+				);
+			}
+			this.sheet.close();
 			return;
 		}
 		if (feature.kind === 'print') {
@@ -450,7 +721,7 @@ class ImpressEditorPanel {
 			return;
 		}
 		if (feature.tab === 'transition') {
-			this.applyTransition(feature.iconViewIndex || 0);
+			this.applyTransition(feature.iconViewIndex || 0, false);
 			return;
 		}
 		if (feature.kind === 'charTool') {
@@ -511,18 +782,28 @@ class ImpressEditorPanel {
 
 	private openFontColorDialog(): void {
 		this.presentSub(
-			new WriterColorPickerDialog('字体颜色', this.fontColorRgb, (rgb) => {
-				this.fontColorRgb = rgb;
-				this.applyImpressFontColor(rgb);
-			}),
+			new WriterColorPickerDialog(
+				'字体颜色',
+				this.fontColorRgb,
+				(rgb) => {
+					this.fontColorRgb = rgb;
+					this.applyImpressFontColor(rgb);
+				},
+				this.subHost(),
+			),
 		);
 	}
 
 	private openHighlightColorDialog(): void {
 		this.presentSub(
-			new WriterColorPickerDialog('荧光颜色', null, (rgb) => {
-				this.controller.applyHighlightColor(rgb);
-			}),
+			new WriterColorPickerDialog(
+				'荧光颜色',
+				null,
+				(rgb) => {
+					this.controller.applyHighlightColor(rgb);
+				},
+				this.subHost(),
+			),
 		);
 	}
 
@@ -543,7 +824,7 @@ class ImpressEditorPanel {
 		const options: WriterChooseOption[] = ImpressEditorCatalog.SLIDE_FORMATS.map(
 			(preset) => ({
 				label: preset.label,
-				value: preset.paperFormat,
+				value: preset.paperFormat || preset.pageSizeUno || preset.label,
 			}),
 		);
 		this.presentSub(
@@ -552,6 +833,13 @@ class ImpressEditorPanel {
 				options,
 				(option) => {
 					this.pickerLabels['slide-format'] = option.label;
+					const preset = ImpressEditorCatalog.SLIDE_FORMATS.find(
+						(entry) => entry.label === option.label,
+					);
+					if (preset?.pageSizeUno) {
+						this.sendUno(preset.pageSizeUno);
+						return;
+					}
 					if (option.value === '11') {
 						this.presentSub(
 							new WriterEditorPaperSizeDialog(
@@ -561,7 +849,9 @@ class ImpressEditorPanel {
 						);
 						return;
 					}
-					this.controller.applyPaperFormat(option.value);
+					if (preset?.paperFormat) {
+						this.controller.applyPaperFormat(preset.paperFormat);
+					}
 				},
 				undefined,
 				this.subHost(),
@@ -607,6 +897,7 @@ class ImpressEditorPanel {
 				return;
 			}
 			this.pickerLabels['slide-background'] = entry.label;
+			this.renderGrid();
 			if (entry.unocmd) {
 				this.sendUno(entry.unocmd);
 			}
@@ -619,6 +910,7 @@ class ImpressEditorPanel {
 							this.slideBackgroundColorRgb = rgb;
 							this.applyImpressSlideBackgroundColor(rgb);
 						},
+						this.subHost(),
 					),
 				);
 				return;
@@ -652,12 +944,13 @@ class ImpressEditorPanel {
 				return;
 			}
 			this.pickerLabels['slide-master'] = entry.label;
+			this.renderGrid();
 			if (entry.unocmd) {
 				this.sendUno(entry.unocmd);
 			}
 			if (entry.afterSelect === 'colorPicker') {
 				this.presentSub(
-					new WriterColorPickerDialog(
+					new ImpressSolidColorPickerDialog(
 						'纯色',
 						this.slideMasterSolidColorRgb,
 						(rgb) => {
@@ -665,6 +958,7 @@ class ImpressEditorPanel {
 							this.applyImpressMasterSolidColor(rgb);
 							this.pickerLabels['slide-master'] = '纯色';
 						},
+						this.subHost(),
 					),
 				);
 			}
@@ -696,39 +990,20 @@ class ImpressEditorPanel {
 		}
 	}
 
-	/** Android ImpressTransitionApplier: Sidebar iconview select+activate. */
-	private applyTransition(iconViewIndex: number): void {
-		const socket = (window as any).app?.socket;
-		if (!socket || typeof socket.sendMessage !== 'function') {
+	private mobileSave(): void {
+		const message = 'save dontTerminateEdit=1 dontSaveIfUnmodified=1';
+		if (typeof (window as any).postMobileMessage === 'function') {
+			(window as any).postMobileMessage(message);
 			return;
 		}
-		socket.sendMessage('uno .uno:SidebarShow');
-		socket.sendMessage('uno .uno:SlideChangeWindow');
-		const map = (window as any).app?.map;
-		if (map && map.sidebar && typeof map.sidebar.setupTargetDeck === 'function') {
-			try {
-				map.sidebar.setupTargetDeck('.uno:SlideChangeWindow');
-			} catch (_err) {
-				// Deck may be unavailable on first open; dialogevent still reaches Core.
-			}
+		const socket = (window as any).app?.socket;
+		if (socket && typeof socket.sendMessage === 'function') {
+			socket.sendMessage(message);
 		}
-		let windowId = -1;
-		if ((window as any).sidebarId !== undefined && (window as any).sidebarId !== null) {
-			windowId = (window as any).sidebarId;
-		}
-		const send = (cmd: string, data: string) => {
-			socket.sendMessage(
-				'dialogevent ' +
-					windowId +
-					' {"id":"transitions_icons", "cmd": "' +
-					cmd +
-					'", "data": "' +
-					data +
-					'", "type": "iconview"}',
-			);
-		};
-		send('select', String(iconViewIndex));
-		send('activate', String(iconViewIndex));
+	}
+
+	private applyTransition(iconViewIndex: number, applyToAll: boolean): void {
+		ImpressTransitionBridge.apply(iconViewIndex, applyToAll);
 	}
 
 	private openSaveAsDialog(): void {
@@ -757,31 +1032,6 @@ class ImpressEditorPanel {
 		);
 	}
 
-	private openExportDialog(): void {
-		const options: WriterChooseOption[] = [
-			{ label: 'PDF (.pdf)', value: 'pdf' },
-			{ label: 'ODF 演示文稿 (.odp)', value: 'odp' },
-			{ label: 'PowerPoint (.pptx)', value: 'pptx' },
-		];
-		this.presentSub(
-			new WriterEditorChooseDialog(
-				'导出为',
-				options,
-				(option) => {
-					if (typeof (window as any).postMobileMessage === 'function') {
-						(window as any).postMobileMessage(
-							'downloadas name=export.' +
-								option.value +
-								' format=' +
-								option.value,
-						);
-					}
-				},
-				undefined,
-				this.subHost(),
-			),
-		);
-	}
 }
 
 /** Char tool icons (reuse WriterCharPanelIcons where available). */

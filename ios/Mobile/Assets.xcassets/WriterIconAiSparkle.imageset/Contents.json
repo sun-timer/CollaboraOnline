@@ -1,19 +1,8 @@
 {
   "images": [
     {
-      "filename": "WriterIconAiSparkle.png",
-      "idiom": "universal",
-      "scale": "1x"
-    },
-    {
-      "filename": "WriterIconAiSparkle@2x.png",
-      "idiom": "universal",
-      "scale": "2x"
-    },
-    {
-      "filename": "WriterIconAiSparkle@3x.png",
-      "idiom": "universal",
-      "scale": "3x"
+      "filename": "WriterIconAiSparkle.svg",
+      "idiom": "universal"
     }
   ],
   "info": {

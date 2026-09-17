@@ -101,6 +101,14 @@ class WriterCharPanel {
 	}
 
 	private openColor(title: string, kind: 'fontColor' | 'highlight'): void {
+		const toolbarPicker = (window as any).__coolMobileToolbarColorPicker as
+			| MobileToolbarColorPicker
+			| undefined;
+		this.close();
+		if (toolbarPicker && typeof toolbarPicker.open === 'function') {
+			toolbarPicker.open(kind === 'fontColor' ? 'font' : 'highlight');
+			return;
+		}
 		if (this.colorPicker) {
 			this.colorPicker.close();
 		}
@@ -112,7 +120,6 @@ class WriterCharPanel {
 			}
 		});
 		this.colorPicker = picker;
-		this.close();
 		picker.open();
 	}
 }

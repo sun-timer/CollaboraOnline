@@ -1,19 +1,8 @@
 {
   "images": [
     {
-      "filename": "WriterIconFunctionExportPdf.png",
-      "idiom": "universal",
-      "scale": "1x"
-    },
-    {
-      "filename": "WriterIconFunctionExportPdf@2x.png",
-      "idiom": "universal",
-      "scale": "2x"
-    },
-    {
-      "filename": "WriterIconFunctionExportPdf@3x.png",
-      "idiom": "universal",
-      "scale": "3x"
+      "filename": "WriterIconFunctionExportPdf.svg",
+      "idiom": "universal"
     }
   ],
   "info": {

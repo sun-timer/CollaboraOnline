@@ -10,11 +10,15 @@ class WriterEditorCommentDialog {
 	private readonly controller: WriterEditorController;
 	private readonly input: HTMLTextAreaElement;
 
+	private readonly onInserted?: () => void;
+
 	constructor(
 		controller: WriterEditorController,
 		host?: WriterEditorInlineSubpageHost | null,
+		onInserted?: () => void,
 	) {
 		this.controller = controller;
+		this.onInserted = onInserted;
 
 		const content = document.createElement('div');
 		content.className = 'writer-comment-sheet';
@@ -70,6 +74,9 @@ class WriterEditorCommentDialog {
 		}
 		this.controller.insertComment(text, this.resolveAuthorName());
 		this.subpage.close();
+		if (this.onInserted) {
+			this.onInserted();
+		}
 	}
 
 	private buildAuthorRow(): HTMLElement {

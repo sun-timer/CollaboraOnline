@@ -28,6 +28,17 @@ static UIColor *topToolbarIconTintColor(void)
     return [UIColor colorWithRed:32.0 / 255.0 green:33.0 / 255.0 blue:36.0 / 255.0 alpha:1.0];
 }
 
+static UIImage *topToolbarDoneBackgroundImage(UIColor *color)
+{
+    CGSize size = CGSizeMake(kTopToolbarDoneMinWidth, kTopToolbarDoneHeight);
+    UIGraphicsBeginImageContextWithOptions(size, NO, 0.0);
+    [color setFill];
+    UIRectFill(CGRectMake(0.0, 0.0, size.width, size.height));
+    UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return [image resizableImageWithCapInsets:UIEdgeInsetsMake(0.0, 16.0, 0.0, 16.0)];
+}
+
 static UIColor *topToolbarDoneColorForDocumentType(NSString *documentType)
 {
     if ([documentType isEqualToString:@"spreadsheet"]) {
@@ -184,10 +195,13 @@ static UIView *toolbarSpacer(void)
     _doneButton.translatesAutoresizingMaskIntoConstraints = NO;
     [_doneButton setTitle:@"完成" forState:UIControlStateNormal];
     [_doneButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    [_doneButton setTitleColor:UIColor.whiteColor forState:UIControlStateHighlighted];
+    [_doneButton setTitleColor:UIColor.whiteColor forState:UIControlStateDisabled];
     _doneButton.titleLabel.font = [UIFont boldSystemFontOfSize:16.0];
     _doneButton.contentEdgeInsets = UIEdgeInsetsMake(6.0, 20.0, 6.0, 20.0);
     _doneButton.layer.cornerRadius = kTopToolbarDoneHeight / 2.0;
     _doneButton.clipsToBounds = YES;
+    _doneButton.adjustsImageWhenHighlighted = NO;
     [_doneButton addTarget:self action:@selector(donePressed:) forControlEvents:UIControlEventTouchUpInside];
     [_editRow addSubview:_doneButton];
 
@@ -316,6 +330,19 @@ static UIView *toolbarSpacer(void)
 - (void)setEditMode:(BOOL)editMode
 {
     self.mode = editMode ? IOSTopToolbarModeEdit : IOSTopToolbarModePreview;
+    if (editMode) {
+        [self applyDoneButtonTheme];
+    }
+}
+
+- (void)applyDoneButtonTheme
+{
+    UIColor *fill = topToolbarDoneColorForDocumentType(self.documentType);
+    UIImage *background = topToolbarDoneBackgroundImage(fill);
+    self.doneButton.backgroundColor = UIColor.clearColor;
+    [self.doneButton setBackgroundImage:background forState:UIControlStateNormal];
+    [self.doneButton setBackgroundImage:background forState:UIControlStateHighlighted];
+    [self.doneButton setBackgroundImage:background forState:UIControlStateDisabled];
 }
 
 - (void)setDocumentTitle:(NSString *)documentTitle
@@ -362,7 +389,7 @@ static UIView *toolbarSpacer(void)
 - (void)setDocumentType:(NSString *)documentType
 {
     _documentType = [documentType copy];
-    self.doneButton.backgroundColor = topToolbarDoneColorForDocumentType(_documentType);
+    [self applyDoneButtonTheme];
     BOOL hideSearch = [_documentType isEqualToString:@"presentation"];
     for (UIButton *searchBtn in @[ self.searchButton, self.editSearchButton ]) {
         if (!searchBtn) {

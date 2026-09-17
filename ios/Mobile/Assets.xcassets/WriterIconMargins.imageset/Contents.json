@@ -1,19 +1,8 @@
 {
   "images": [
     {
-      "filename": "WriterIconMargins.png",
-      "idiom": "universal",
-      "scale": "1x"
-    },
-    {
-      "filename": "WriterIconMargins@2x.png",
-      "idiom": "universal",
-      "scale": "2x"
-    },
-    {
-      "filename": "WriterIconMargins@3x.png",
-      "idiom": "universal",
-      "scale": "3x"
+      "filename": "WriterIconMargins.svg",
+      "idiom": "universal"
     }
   ],
   "info": {

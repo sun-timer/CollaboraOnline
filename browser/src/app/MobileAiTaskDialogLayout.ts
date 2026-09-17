@@ -165,7 +165,7 @@ class MobileAiTaskDialogLayout {
 		const chevron = document.createElement('span');
 		chevron.className = 'mobile-ai-task-dialog__picker-card-chevron';
 		chevron.setAttribute('aria-hidden', 'true');
-		chevron.textContent = '▾';
+		chevron.textContent = '›';
 		card.appendChild(chevron);
 		card.onclick = onClick;
 		return card;

@@ -176,21 +176,9 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
 
 - (NSArray<NSArray<NSString *> *> *)editItemsForDocumentType
 {
+    // Matches Android BottomToolbarController: preview trio + edit tools;
+    // Writer/Impress share paragraph + insert image; Calc adds fill + merge.
     BOOL isCalc = [self.documentType isEqualToString:@"spreadsheet"];
-    BOOL isPresentation = [self.documentType isEqualToString:@"presentation"];
-
-    if (isPresentation) {
-        return @[
-            @[@"function", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
-            @[@"ai-assistant", @"AI助手", [NSString stringWithFormat:@"%ld", (long)kAIAssistantTag]],
-            @[@"ai-feature", @"AI功能", [NSString stringWithFormat:@"%ld", (long)kAIFeaturesTag]],
-            @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", (long)kKeyboardTag]],
-            @[@"character", @"字符", [NSString stringWithFormat:@"%ld", (long)kCharacterTag]],
-            @[@"paragraph", @"段落", [NSString stringWithFormat:@"%ld", (long)kParagraphTag]],
-            @[@"insert-image", @"插入图片", [NSString stringWithFormat:@"%ld", (long)kInsertImageTag]],
-            @[@"slideshow-play", @"幻灯片播放", [NSString stringWithFormat:@"%ld", (long)kSlideshowTag]],
-        ];
-    }
 
     NSMutableArray<NSArray<NSString *> *> *items =
         [NSMutableArray arrayWithArray:[self sharedEditPrefixItems]];

@@ -1,19 +1,8 @@
 {
   "images": [
     {
-      "filename": "WriterIconSpellCheck.png",
-      "idiom": "universal",
-      "scale": "1x"
-    },
-    {
-      "filename": "WriterIconSpellCheck@2x.png",
-      "idiom": "universal",
-      "scale": "2x"
-    },
-    {
-      "filename": "WriterIconSpellCheck@3x.png",
-      "idiom": "universal",
-      "scale": "3x"
+      "filename": "WriterIconSpellCheck.svg",
+      "idiom": "universal"
     }
   ],
   "info": {

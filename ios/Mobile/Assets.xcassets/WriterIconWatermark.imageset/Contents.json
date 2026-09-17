@@ -1,19 +1,8 @@
 {
   "images": [
     {
-      "filename": "WriterIconWatermark.png",
-      "idiom": "universal",
-      "scale": "1x"
-    },
-    {
-      "filename": "WriterIconWatermark@2x.png",
-      "idiom": "universal",
-      "scale": "2x"
-    },
-    {
-      "filename": "WriterIconWatermark@3x.png",
-      "idiom": "universal",
-      "scale": "3x"
+      "filename": "WriterIconWatermark.svg",
+      "idiom": "universal"
     }
   ],
   "info": {

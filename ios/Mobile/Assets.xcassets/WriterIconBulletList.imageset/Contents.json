@@ -1,19 +1,8 @@
 {
   "images": [
     {
-      "filename": "WriterIconBulletList.png",
-      "idiom": "universal",
-      "scale": "1x"
-    },
-    {
-      "filename": "WriterIconBulletList@2x.png",
-      "idiom": "universal",
-      "scale": "2x"
-    },
-    {
-      "filename": "WriterIconBulletList@3x.png",
-      "idiom": "universal",
-      "scale": "3x"
+      "filename": "WriterIconBulletList.svg",
+      "idiom": "universal"
     }
   ],
   "info": {

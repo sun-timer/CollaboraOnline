@@ -265,6 +265,8 @@ COOL_JS_LST =\
 	src/app/AndroidSelectionMenu.ts \
 	src/app/AndroidCalcTap.ts \
 	src/app/MobileNativeToolbar.ts \
+	src/app/MobileToolbarColorPicker.ts \
+	src/app/MobileDocTheme.ts \
 	src/app/WriterAiArticleRegistry.ts \
 	src/app/WriterAiCatalog.ts \
 	src/app/CalcAiCatalog.ts \
@@ -304,12 +306,23 @@ COOL_JS_LST =\
 	src/app/WriterEditorInlineSubpage.ts \
 	src/app/WriterEditorPanel.ts \
 	src/app/ImpressEditorCatalog.ts \
+	src/app/ImpressSolidColorCatalog.ts \
 	src/app/ImpressEditorHyperlinkDialog.ts \
+	src/app/ImpressTransitionBridge.ts \
 	src/app/ImpressEditorPanel.ts \
+	src/app/CalcEditorCatalog.ts \
+	src/app/CalcEditorBorder.ts \
+	src/app/CalcEditorValidationCatalog.ts \
+	src/app/CalcEditorValidationBridge.ts \
+	src/app/CalcEditorDataValidationDialog.ts \
+	src/app/CalcEditorShapeDialog.ts \
+	src/app/CalcEditorHyperlinkDialog.ts \
+	src/app/CalcEditorPanel.ts \
 	src/app/WriterEditorChooseDialog.ts \
 	src/app/WriterFindReplaceDialog.ts \
 	src/app/WriterEditorPaperSizeDialog.ts \
 	src/app/WriterEditorWatermarkDialog.ts \
+	src/app/WriterEditorChartPreviewIcons.ts \
 	src/app/WriterEditorChartDialog.ts \
 	src/app/WriterEditorInsertTableDialog.ts \
 	src/app/WriterEditorImageDialog.ts \

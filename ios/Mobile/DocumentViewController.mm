@@ -86,6 +86,9 @@
     BOOL pendingAutoGenerateHandled;
     AiConversationStore *aiConversationStore;
     ImpressOutlineOverlayController *impressOutlineOverlay;
+    dispatch_group_t forwardingThreadGroup;
+    BOOL documentUiCloseStarted;
+    void (^pendingCloseCompletion)(void);
     CGSize lastWebViewLayoutSize;
     int documentCanvasRecoverAttempts;
     BOOL documentCanvasRecoverSucceeded;
@@ -145,6 +148,9 @@ static IMP standardImpOfInputAccessoryView = nil;
     closeNotificationPipeForForwardingThread[1] = -1;
     isClosing = NO;
     kitConnectionTornDown = NO;
+    forwardingThreadGroup = dispatch_group_create();
+    documentUiCloseStarted = NO;
+    pendingCloseCompletion = nil;
     lastWebViewLayoutSize = CGSizeZero;
     documentCanvasRecoverAttempts = 0;
     documentCanvasRecoverSucceeded = NO;
@@ -786,6 +792,19 @@ static IMP standardImpOfInputAccessoryView = nil;
     self.webView = nil;
 }
 
+- (void)enqueueCloseCompletion:(void (^)(void))completion {
+    if (completion == nil) {
+        return;
+    }
+    void (^previousCompletion)(void) = pendingCloseCompletion;
+    pendingCloseCompletion = ^{
+        if (previousCompletion != nil) {
+            previousCompletion();
+        }
+        completion();
+    };
+}
+
 - (void)notifyWebViewAiConversationDocumentReady {
     if (self.webView == nil) {
         return;
@@ -811,6 +830,12 @@ static IMP standardImpOfInputAccessoryView = nil;
 }
 
 - (void)finishDocumentUiCloseWithCompletion:(void (^)(void))completion {
+    [self enqueueCloseCompletion:completion];
+    if (documentUiCloseStarted) {
+        return;
+    }
+    documentUiCloseStarted = YES;
+
     [self notifyWebViewAiConversationDocumentClosed];
     if (aiConversationStore != nil) {
         [aiConversationStore clearHistoriesForCurrentDocument];
@@ -821,25 +846,32 @@ static IMP standardImpOfInputAccessoryView = nil;
                                                     name:UIKeyboardWillChangeFrameNotification
                                                   object:nil];
     [self removeDocumentCopyIfNeeded];
-    [self.document closeWithCompletionHandler:^(BOOL success) {
-        LOG_TRC("close completion handler gets " << (success ? "YES" : "NO"));
-        [self tearDownWebView];
-        [self dismissViewControllerAnimated:YES completion:^{
-            if (completion != nil) {
-                completion();
-            }
+    dispatch_group_notify(forwardingThreadGroup, dispatch_get_main_queue(), ^{
+        [self.document closeWithCompletionHandler:^(BOOL success) {
+            LOG_TRC("close completion handler gets " << (success ? "YES" : "NO"));
+            [self tearDownWebView];
+            [self dismissViewControllerAnimated:YES completion:^{
+                void (^closeCompletion)(void) = self->pendingCloseCompletion;
+                self->pendingCloseCompletion = nil;
+                if (closeCompletion != nil) {
+                    closeCompletion();
+                }
+            }];
         }];
-    }];
+    });
 }
 
 - (void)requestCloseWithCompletion:(void (^)(void))completion {
     if (isClosing) {
-        if (completion != nil) {
-            completion();
-        }
+        [self enqueueCloseCompletion:completion];
         return;
     }
     isClosing = YES;
+    [impressOutlineOverlay dismiss];
+    [self dismissAIPanel];
+    [self dismissAIResultModal];
+    [self dismissLanguagePicker];
+    [self dismissWriterOverlayUi];
 
     void (^proceedToNativeTeardown)(void) = ^{
         [self tearDownKitConnectionIfNeeded];
@@ -849,6 +881,20 @@ static IMP standardImpOfInputAccessoryView = nil;
     if (self.webView != nil && self.document != nil && self.document->fakeClientFd >= 0) {
         NSString *script =
             @"(function(){"
+             // Close native-backed Web overlays before asking the document
+             // dispatcher to tear down the map and its socket.
+             "try{"
+             "function c(o){if(o&&typeof o.close==='function'){o.close();}}"
+             "c(window.__coolWriterEditorPanel);"
+             "c(window.__coolImpressEditorPanel);"
+             "c(window.__coolCalcEditorPanel);"
+             "c(window.__coolWriterCharPanel);"
+             "c(window.__coolWriterParaPanel);"
+             "c(window.__coolWriterFindReplace);"
+             "if(window.WriterWordCountSheet&&WriterWordCountSheet.closeActive){WriterWordCountSheet.closeActive();}"
+             "if(window.WriterSpellingSheet&&WriterSpellingSheet.closeActive){WriterSpellingSheet.closeActive();}"
+             "c(window.__coolWriterAiPanel);"
+             "}catch(e){}"
              "try{if(window.app&&app.dispatcher){app.dispatcher.dispatch('closeapp');return;}}"
              "catch(e){}"
              "try{if(window.app&&app.socket){app.socket.sendMessage('closedocument');}}"
@@ -1298,6 +1344,14 @@ static IMP standardImpOfInputAccessoryView = nil;
         if ([message.body isEqualToString:@"HULLO"]) {
             // Now we know that the JS has started completely
 
+            // A close request may race with the WebView's initial HULLO. The
+            // close path owns teardown in that case; do not start a new
+            // forwarding thread after its notification pipe was closed.
+            if (isClosing) {
+                [self tearDownKitConnectionIfNeeded];
+                return;
+            }
+
             // Contact the permanently (during app lifetime) listening COOLWSD server
             // "public" socket
             assert(coolwsd_server_socket_fd != -1);
@@ -1308,9 +1362,23 @@ static IMP standardImpOfInputAccessoryView = nil;
             fakeSocketPipe2(closeNotificationPipeForForwardingThread);
 
             // Start another thread to read responses and forward them to the JavaScript
+            dispatch_group_enter(forwardingThreadGroup);
             dispatch_async(dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
                            ^{
                                Util::setThreadName("app2js");
+                               void (^finishForwarding)(void) = ^{
+                                   if (self->closeNotificationPipeForForwardingThread[1] >= 0) {
+                                       fakeSocketClose(self->closeNotificationPipeForForwardingThread[1]);
+                                       self->closeNotificationPipeForForwardingThread[1] = -1;
+                                   }
+                                   if (self.document != nil && self.document->fakeClientFd >= 0) {
+                                       // Do not let Document's close/destructor race with
+                                       // this forwarding thread's last socket access.
+                                       fakeSocketClose(self.document->fakeClientFd);
+                                       self.document->fakeClientFd = -1;
+                                   }
+                                   dispatch_group_leave(self->forwardingThreadGroup);
+                               };
                                while (true) {
                                    struct pollfd p[2];
                                    p[0].fd = self.document->fakeClientFd;
@@ -1326,10 +1394,13 @@ static IMP standardImpOfInputAccessoryView = nil;
                                            // FakeSocket as such is not a system resource so nothing
                                            // is saved by closing it.
                                            fakeSocketClose(self->closeNotificationPipeForForwardingThread[1]);
+                                           self->closeNotificationPipeForForwardingThread[1] = -1;
 
                                            // Close our end of the fake socket connection to the
                                            // ClientSession thread, so that it terminates
                                            fakeSocketClose(self.document->fakeClientFd);
+                                           self.document->fakeClientFd = -1;
+                                           dispatch_group_leave(self->forwardingThreadGroup);
 
                                            return;
                                        }
@@ -1341,17 +1412,21 @@ static IMP standardImpOfInputAccessoryView = nil;
                                            // sign of something being wrong elsewhere anyway, and I
                                            // prefer to fix the root cause. Let's see how well this
                                            // works out. See tdf#122543 for such a case.
-                                           if (n == 0)
+                                           if (n == 0) {
+                                               finishForwarding();
                                                return;
+                                           }
                                            std::vector<char> buf(n);
                                            n = fakeSocketRead(self.document->fakeClientFd, buf.data(), n);
                                            [self.document send2JS:buf.data() length:n];
                                        }
                                    }
-                                   else
+                                   else {
+                                       finishForwarding();
+                                       assert(false);
                                        break;
+                                   }
                                }
-                               assert(false);
                            });
 
             // First we simply send the Online C++ parts the URL and the appDocId. This corresponds
@@ -1418,6 +1493,16 @@ static IMP standardImpOfInputAccessoryView = nil;
             }
 
             return;
+        } else if ([message.body hasPrefix:@"NATIVEDOCTYPE "]) {
+            NSString *type = [message.body substringFromIndex:[@"NATIVEDOCTYPE " length]];
+            if ([type isEqualToString:@"spreadsheet"]
+                || [type isEqualToString:@"presentation"]
+                || [type isEqualToString:@"text"]) {
+                nativeDocumentType = type;
+                [topToolbarController setDocumentType:nativeDocumentType];
+                [bottomToolbarController setDocumentType:nativeDocumentType];
+            }
+            return;
         } else if ([message.body hasPrefix:@"EDITMODE "]) {
             [self applyNativeEditMode:[message.body isEqualToString:@"EDITMODE on"]];
             return;
@@ -1464,6 +1549,19 @@ static IMP standardImpOfInputAccessoryView = nil;
             return;
         } else if ([message.body isEqualToString:@"WRITER_OPEN_IMAGE_PICKER"]) {
             [self bottomToolbarDidPressInsertImage];
+            return;
+        } else if ([message.body hasPrefix:@"save "]) {
+            if (self.document->fakeClientFd >= 0) {
+                const char *buf = [message.body UTF8String];
+                fakeSocketWriteQueue(self.document->fakeClientFd, buf, strlen(buf));
+            }
+            return;
+        } else if ([message.body hasPrefix:@"uno .uno:Save"]) {
+            // DocumentBroker rejects client-originated uno Save (assert in forwardToChild).
+            if (self.document->fakeClientFd >= 0) {
+                const char *saveMessage = "save dontTerminateEdit=1 dontSaveIfUnmodified=1";
+                fakeSocketWriteQueue(self.document->fakeClientFd, saveMessage, strlen(saveMessage));
+            }
             return;
         } else if ([message.body hasPrefix:@"downloadas "]) {
             NSArray<NSString*> *messageBodyItems = [message.body componentsSeparatedByString:@" "];
@@ -1705,6 +1803,7 @@ static IMP standardImpOfInputAccessoryView = nil;
 {
     nativeEditMode = editMode;
     [self dismissWriterOverlayUi];
+    [topToolbarController setDocumentType:nativeDocumentType];
     [topToolbarController setEditMode:editMode];
     [bottomToolbarController setEditMode:editMode];
     [bottomToolbarController setCompact:NO];
@@ -1720,6 +1819,7 @@ static IMP standardImpOfInputAccessoryView = nil;
       "function c(o){if(o&&typeof o.close==='function'){o.close();}}"
       "c(window.__coolWriterEditorPanel);"
       "c(window.__coolImpressEditorPanel);"
+      "c(window.__coolCalcEditorPanel);"
       "c(window.__coolWriterCharPanel);"
       "c(window.__coolWriterParaPanel);"
       "if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.close){window.__coolWriterFindReplace.close();}"
@@ -2088,17 +2188,26 @@ static IMP standardImpOfInputAccessoryView = nil;
     });
 }
 
+- (NSString *)editModeFunctionPanelJavaScript
+{
+    // Prefer COOL map doc type; fall back to native type from file extension.
+    NSString *fallback = nativeDocumentType ?: @"text";
+    return [NSString stringWithFormat:
+            @"(function(){"
+             "var t=null;"
+             "try{var m=window.app&&app.map;if(m&&typeof m.getDocType==='function'){t=m.getDocType();}}catch(e){}"
+             "if(!t){t='%@';}"
+             "if(t==='presentation'&&window.__coolImpressEditorPanel){window.__coolImpressEditorPanel.open();return;}"
+             "if(t==='spreadsheet'&&window.__coolCalcEditorPanel){window.__coolCalcEditorPanel.open();return;}"
+             "if(t==='text'&&window.__coolWriterEditorPanel){window.__coolWriterEditorPanel.open();return;}"
+             "})();",
+            fallback];
+}
+
 - (void)bottomToolbarDidPressFunction
 {
-    if (nativeEditMode && [nativeDocumentType isEqualToString:@"presentation"]) {
-        [self sendToolbarJavaScript:
-         @"if(window.__coolImpressEditorPanel){window.__coolImpressEditorPanel.open();}"];
-        return;
-    }
-    if (nativeEditMode && [nativeDocumentType isEqualToString:@"text"]) {
-        // Writer edit mode: full five-tab DOM function panel (ticket 12).
-        [self sendToolbarJavaScript:
-         @"if(window.__coolWriterEditorPanel){window.__coolWriterEditorPanel.open();}"];
+    if (nativeEditMode) {
+        [self sendToolbarJavaScript:[self editModeFunctionPanelJavaScript]];
         return;
     }
     [PreviewFunctionSheetController presentFrom:self
@@ -2131,13 +2240,9 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)bottomToolbarDidPressCharacter
 {
-    if ([nativeDocumentType isEqualToString:@"text"]
-        || [nativeDocumentType isEqualToString:@"presentation"]) {
-        [self sendToolbarJavaScript:
-         @"if(window.__coolWriterCharPanel){window.__coolWriterCharPanel.open();}"];
-        return;
-    }
-    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:Bold');}"];
+    // Android BottomToolbarController CHARACTER quick-action row (all edit doc types).
+    [self sendToolbarJavaScript:
+     @"if(window.__coolWriterCharPanel){window.__coolWriterCharPanel.open();}"];
 }
 
 - (void)bottomToolbarDidPressParagraph
@@ -2148,37 +2253,8 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)bottomToolbarDidPressFillCell
 {
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"选择单元格填充颜色"
-                                                                   message:nil
-                                                            preferredStyle:UIAlertControllerStyleActionSheet];
-    NSArray<NSDictionary *> *colors = @[
-        @{ @"title": @"黄色", @"hex": @"FFFF00" },
-        @{ @"title": @"浅绿", @"hex": @"C6EFCE" },
-        @{ @"title": @"浅红", @"hex": @"FFC7CE" },
-        @{ @"title": @"浅蓝", @"hex": @"BDD7EE" },
-        @{ @"title": @"橙色", @"hex": @"FCE4D6" },
-        @{ @"title": @"无填充", @"hex": @"FFFFFF" },
-    ];
-    for (NSDictionary *spec in colors) {
-        NSString *hex = spec[@"hex"];
-        [sheet addAction:[UIAlertAction actionWithTitle:spec[@"title"]
-                                                  style:UIAlertActionStyleDefault
-                                                handler:^(UIAlertAction *action) {
-            NSString *js = [NSString stringWithFormat:
-                @"if(window.app&&app.socket){app.socket.sendMessage("
-                 "'uno .uno:BackgroundColor {\\\"BackgroundColor.Color\\\":{\\\"type\\\":\\\"long\\\","
-                 "\\\"value\\\":%lu}}');}",
-                (unsigned long)strtoul(hex.UTF8String, NULL, 16)];
-            [self sendToolbarJavaScript:js];
-        }]];
-    }
-    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    UIPopoverPresentationController *popover = sheet.popoverPresentationController;
-    if (popover != nil) {
-        popover.sourceView = bottomToolbarController.view;
-        popover.sourceRect = bottomToolbarController.view.bounds;
-    }
-    [self presentViewController:sheet animated:YES completion:nil];
+    [self sendToolbarJavaScript:
+     @"if(window.__coolMobileToolbarColorPicker){window.__coolMobileToolbarColorPicker.open('background');}"];
 }
 
 - (void)bottomToolbarDidPressMergeCell
@@ -2324,7 +2400,9 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)bye {
     if (isClosing) {
-        [self tearDownKitConnectionIfNeeded];
+        // requestCloseWithCompletion owns the close sequence when the native
+        // navigation control started it. BYE is only an acknowledgement in
+        // that case; tearing down here would race the forwarding-thread wait.
         return;
     }
     isClosing = YES;

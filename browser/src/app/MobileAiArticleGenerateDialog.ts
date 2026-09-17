@@ -12,10 +12,11 @@ class MobileAiArticleGenerateDialog {
 	private readonly subTypeCard: HTMLButtonElement;
 	private readonly subTypeLabel: HTMLSpanElement;
 	private readonly hintBar: HTMLParagraphElement;
-	private readonly formStage: HTMLDivElement;
 	private readonly formScroll: HTMLDivElement;
 	private readonly formContainer: HTMLDivElement;
+	private readonly ctaBar: HTMLDivElement;
 	private readonly formGenerateBtn: HTMLButtonElement;
+	private readonly resultBar: HTMLDivElement;
 	private readonly resultGroup: HTMLDivElement;
 	private readonly resultPreview: HTMLDivElement;
 	private readonly copyRow: HTMLButtonElement;
@@ -41,7 +42,7 @@ class MobileAiArticleGenerateDialog {
 		this.setupGroup = document.createElement('div');
 		this.setupGroup.className = 'mobile-ai-article-dialog__setup';
 
-		this.categoryCard = MobileAiTaskDialogLayout.selectCard('请选择分类', () =>
+		this.categoryCard = MobileAiTaskDialogLayout.selectCard('选择文案类型', () =>
 			this.openCategoryPicker(),
 		);
 		this.categoryLabel = this.categoryCard.querySelector(
@@ -49,7 +50,7 @@ class MobileAiArticleGenerateDialog {
 		) as HTMLSpanElement;
 		this.setupGroup.appendChild(this.categoryCard);
 
-		this.subTypeCard = MobileAiTaskDialogLayout.selectCard('请选择子类', () =>
+		this.subTypeCard = MobileAiTaskDialogLayout.selectCard('选择文案子类', () =>
 			this.openSubTypePicker(),
 		);
 		this.subTypeCard.hidden = true;
@@ -60,26 +61,16 @@ class MobileAiArticleGenerateDialog {
 
 		this.hintBar = document.createElement('p');
 		this.hintBar.className = 'mobile-ai-article-dialog__hint';
-		this.hintBar.textContent = '请选择文案类型后，进行文案生成';
+		this.hintBar.textContent = '请选择文案类型后,进行文案生成';
 		this.setupGroup.appendChild(this.hintBar);
 
-		this.formStage = document.createElement('div');
-		this.formStage.className = 'mobile-ai-article-dialog__form-stage';
-		this.formStage.hidden = true;
 		this.formScroll = document.createElement('div');
 		this.formScroll.className = 'mobile-ai-article-dialog__form-scroll';
+		this.formScroll.hidden = true;
 		this.formContainer = document.createElement('div');
 		this.formContainer.className = 'mobile-ai-article-dialog__form-fields';
 		this.formScroll.appendChild(this.formContainer);
-		this.formStage.appendChild(this.formScroll);
-		this.formGenerateBtn = document.createElement('button');
-		this.formGenerateBtn.type = 'button';
-		this.formGenerateBtn.className =
-			'mobile-ai-task-dialog__btn mobile-ai-task-dialog__btn--primary';
-		this.formGenerateBtn.textContent = '开始生成';
-		this.formGenerateBtn.onclick = () => this.startGeneration();
-		this.formStage.appendChild(this.formGenerateBtn);
-		this.setupGroup.appendChild(this.formStage);
+		this.setupGroup.appendChild(this.formScroll);
 
 		this.root.appendChild(this.setupGroup);
 
@@ -103,8 +94,23 @@ class MobileAiArticleGenerateDialog {
 		this.copyRow.onclick = () => this.controller.copy();
 		this.resultGroup.appendChild(this.copyRow);
 
-		const resultBar = document.createElement('div');
-		resultBar.className = 'mobile-ai-task-dialog__result-bar';
+		this.root.appendChild(this.resultGroup);
+
+		this.ctaBar = document.createElement('div');
+		this.ctaBar.className = 'mobile-ai-article-dialog__cta-bar';
+		this.ctaBar.hidden = true;
+		this.formGenerateBtn = document.createElement('button');
+		this.formGenerateBtn.type = 'button';
+		this.formGenerateBtn.className =
+			'mobile-ai-task-dialog__btn mobile-ai-task-dialog__btn--primary';
+		this.formGenerateBtn.textContent = '开始生成';
+		this.formGenerateBtn.onclick = () => this.startGeneration();
+		this.ctaBar.appendChild(this.formGenerateBtn);
+		this.root.appendChild(this.ctaBar);
+
+		this.resultBar = document.createElement('div');
+		this.resultBar.className = 'mobile-ai-task-dialog__result-bar';
+		this.resultBar.hidden = true;
 		this.regenerateBtn = document.createElement('button');
 		this.regenerateBtn.type = 'button';
 		this.regenerateBtn.className =
@@ -115,7 +121,7 @@ class MobileAiArticleGenerateDialog {
 				this.setStage('form');
 			}
 		};
-		resultBar.appendChild(this.regenerateBtn);
+		this.resultBar.appendChild(this.regenerateBtn);
 		this.insertBtn = document.createElement('button');
 		this.insertBtn.type = 'button';
 		this.insertBtn.className =
@@ -125,10 +131,8 @@ class MobileAiArticleGenerateDialog {
 			this.controller.accept(
 				MobileAiResultRenderer.toHtml(this.controller.getState().preview),
 			);
-		resultBar.appendChild(this.insertBtn);
-		this.resultGroup.appendChild(resultBar);
-
-		this.root.appendChild(this.resultGroup);
+		this.resultBar.appendChild(this.insertBtn);
+		this.root.appendChild(this.resultBar);
 
 		this.status = document.createElement('div');
 		this.status.className = 'mobile-ai-task-dialog__status';
@@ -169,7 +173,7 @@ class MobileAiArticleGenerateDialog {
 				this.category = categories[index];
 				this.categoryLabel.textContent = this.category;
 				this.template = null;
-				this.subTypeLabel.textContent = '请选择子类';
+				this.subTypeLabel.textContent = '选择文案子类';
 				this.subTypeCard.hidden = false;
 				this.setStage('select');
 			},
@@ -250,13 +254,13 @@ class MobileAiArticleGenerateDialog {
 		const result = stage === 'result';
 		this.setupGroup.hidden = result;
 		this.hintBar.hidden = !select;
-		this.formStage.hidden = !form;
-		this.subTypeCard.hidden = !this.category || result;
-		if (!this.category) {
-			this.subTypeCard.hidden = true;
-		}
+		this.formScroll.hidden = !form;
+		this.ctaBar.hidden = !form;
+		const showSubType = !result && this.category !== null && (select || form);
+		this.subTypeCard.hidden = !showSubType;
 		this.resultGroup.hidden = !result;
 		this.copyRow.hidden = !result;
+		this.resultBar.hidden = !result;
 	}
 
 	private render(): void {
