@@ -15,6 +15,8 @@ typedef AiConversationStore * _Nullable (^NativeBridgeConversationStoreProvider)
 typedef void (^NativeBridgeMessageEmitter)(NSDictionary *message);
 typedef NSURL * _Nullable (^NativeBridgeDocumentURLProvider)(void);
 typedef void (^NativeBridgeReloadDocumentHandler)(void);
+typedef void (^NativeBridgeDocumentTextCompletion)(NSString * _Nullable text);
+typedef void (^NativeBridgeDocumentTextExtractor)(NativeBridgeDocumentTextCompletion completion);
 
 @interface NativeBridgeHandler : NSObject <WKScriptMessageHandler>
 
@@ -22,6 +24,7 @@ typedef void (^NativeBridgeReloadDocumentHandler)(void);
 @property (copy, nonatomic, nullable) NativeBridgeDocumentURLProvider originalDocumentURLProvider;
 @property (copy, nonatomic, nullable) NativeBridgeReloadDocumentHandler reloadDocumentHandler;
 @property (copy, nonatomic, nullable) NativeBridgeConversationStoreProvider conversationStoreProvider;
+@property (copy, nonatomic, nullable) NativeBridgeDocumentTextExtractor documentTextExtractor;
 
 - (instancetype)initWithSessionIdProvider:(NativeBridgeSessionIdProvider)sessionIdProvider
                                   emitter:(NativeBridgeMessageEmitter)emitter;

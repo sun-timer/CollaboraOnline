@@ -103,6 +103,7 @@
 /// <reference path="./WriterAiUiButtons.test.ts" />
 /// <reference path="./CalcAiController.test.ts" />
 /// <reference path="./MobileAiConversationController.test.ts" />
+/// <reference path="./MobileAiDocumentExtractor.test.ts" />
 /// <reference path="./MobileAiOperationDialog.test.ts" />
 /// <reference path="./WriterEditorCatalog.test.ts" />
 /// <reference path="./ImpressEditorCatalog.test.ts" />

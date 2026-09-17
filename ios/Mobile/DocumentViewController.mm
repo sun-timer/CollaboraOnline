@@ -12,6 +12,7 @@
 #import "config.h"
 
 #import <cstdio>
+#import <cstdlib>
 #import <string>
 #import <vector>
 
@@ -48,6 +49,7 @@
 #import "AI/WriterAIComponents.h"
 #import "AI/AiConversationStore.h"
 #import "AI/ImpressOutlineOverlayController.h"
+#import "Typeset/TypesetService.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <Poco/MemoryStream.h>
@@ -89,6 +91,10 @@
     BOOL documentCanvasRecoverSucceeded;
     BOOL documentCanvasRecoverInFlight;
 }
+
+- (void)extractDocumentTextForDocQaWithCompletion:(void (^)(NSString *text))completion;
+- (NSString *)lokClipboardPlainText;
+- (NSString *)extractDocumentTextFromFile;
 
 @end
 
@@ -221,6 +227,16 @@ static IMP standardImpOfInputAccessoryView = nil;
     nativeBridgeHandler.conversationStoreProvider = ^AiConversationStore * {
         DocumentViewController *strongSelf = weakSelf;
         return strongSelf ? strongSelf->aiConversationStore : nil;
+    };
+    nativeBridgeHandler.documentTextExtractor = ^(NativeBridgeDocumentTextCompletion completion) {
+        DocumentViewController *strongSelf = weakSelf;
+        if (!strongSelf || !completion) {
+            if (completion) {
+                completion(@"");
+            }
+            return;
+        }
+        [strongSelf extractDocumentTextForDocQaWithCompletion:completion];
     };
     [userContentController addScriptMessageHandler:nativeBridgeHandler name:@"nativeBridge"];
     [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"clipboard"];
@@ -922,6 +938,99 @@ static IMP standardImpOfInputAccessoryView = nil;
     LOG_ERR("WebContent process terminated! Is closing the document enough?");
 }
 
+- (lok::Document *)loKitDocumentOrNull {
+    if (!self.document) {
+        return nullptr;
+    }
+    return DocumentData::get(self.document->appDocId).loKitDocument;
+}
+
+- (NSString *)lokClipboardPlainText {
+    lok::Document *doc = [self loKitDocumentOrNull];
+    if (!doc) {
+        return @"";
+    }
+    const char *mimeTypes[] = { "text/plain;charset=utf-8", "text/plain", nullptr };
+    size_t outCount = 0;
+    char **outMimeTypes = nullptr;
+    size_t *outSizes = nullptr;
+    char **outStreams = nullptr;
+    if (!doc->getClipboard(mimeTypes, &outCount, &outMimeTypes, &outSizes, &outStreams) || outCount == 0) {
+        return @"";
+    }
+    NSString *text = @"";
+    for (size_t i = 0; i < outCount; ++i) {
+        NSString *mime = outMimeTypes[i] ? [NSString stringWithUTF8String:outMimeTypes[i]] : @"";
+        if (![mime hasPrefix:@"text/plain"] || !outStreams[i] || outSizes[i] == 0) {
+            continue;
+        }
+        NSData *data = [NSData dataWithBytes:outStreams[i] length:outSizes[i]];
+        NSString *candidate = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        candidate = [candidate stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (candidate.length > 0) {
+            text = candidate;
+            break;
+        }
+    }
+    return text;
+}
+
+- (NSURL *)documentExtractFileURL {
+    if (self.document && self.document->typesetSourceBackupURL
+        && [[NSFileManager defaultManager] fileExistsAtPath:self.document->typesetSourceBackupURL.path]) {
+        return self.document->typesetSourceBackupURL;
+    }
+    if (self.document && self.document->copyFileURL
+        && [[NSFileManager defaultManager] fileExistsAtPath:self.document->copyFileURL.path]) {
+        return self.document->copyFileURL;
+    }
+    return self.document.fileURL;
+}
+
+- (NSString *)extractDocumentTextFromFile {
+    NSURL *fileURL = [self documentExtractFileURL];
+    unsigned long long fileSize = 0;
+    if (fileURL.path.length > 0) {
+        NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:fileURL.path error:nil];
+        fileSize = [attrs[NSFileSize] unsignedLongLongValue];
+    }
+    NSLog(@"[AIExtract] file path=%@ exists=%d size=%llu",
+          fileURL.path ?: @"(nil)",
+          fileURL.path.length > 0 && [[NSFileManager defaultManager] fileExistsAtPath:fileURL.path],
+          fileSize);
+    NSDictionary *extracted = [TypesetService extractStructuredFromFile:fileURL];
+    NSString *fullText = [extracted[@"fullText"] isKindOfClass:[NSString class]]
+        ? extracted[@"fullText"] : @"";
+    return [fullText stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
+
+- (void)extractDocumentTextForDocQaWithCompletion:(void (^)(NSString *text))completion {
+    if (!completion) {
+        return;
+    }
+    NSLog(@"[AIExtract] start");
+    __weak DocumentViewController *weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        DocumentViewController *strongSelf = weakSelf;
+        NSString *fileText = strongSelf ? [strongSelf extractDocumentTextFromFile] : @"";
+        __block NSString *clipboardText = @"";
+        if (fileText.length == 0) {
+            dispatch_sync(dispatch_get_main_queue(), ^{
+                DocumentViewController *inner = weakSelf;
+                clipboardText = inner ? [inner lokClipboardPlainText] : @"";
+            });
+        }
+        NSString *result = fileText.length > 0 ? fileText : clipboardText;
+        NSLog(@"[AIExtract] done fileChars=%lu clipboardChars=%lu used=%@",
+              (unsigned long)fileText.length,
+              (unsigned long)clipboardText.length,
+              fileText.length > 0 ? @"file" : (clipboardText.length > 0 ? @"clipboard" : @"empty"));
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(result ?: @"");
+        });
+    });
+}
+
 // This is the same method as Java_org_libreoffice_androidlib_LOActivity_getClipboardContent, with minimal editing to work with objective C
 - (bool)getClipboardContent:(out NSMutableDictionary *)content {
     const char** mimeTypes = nullptr;
@@ -1162,6 +1271,7 @@ static IMP standardImpOfInputAccessoryView = nil;
     if ([message.name isEqualToString:@"error"]) {
         LOG_ERR("Error from WebView: " << [message.body UTF8String]);
     } else if ([message.name isEqualToString:@"debug"]) {
+        NSLog(@"[JS] %@", message.body);
         std::cerr << "==> " << [message.body UTF8String] << std::endl;
     } else if ([message.name isEqualToString:@"lok"]) {
         NSString *subBody = [message.body substringToIndex:std::min(100ul, ((NSString*)message.body).length)];

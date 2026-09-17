@@ -47,6 +47,9 @@ class NativeBridge {
 		'ai.conversation.loaded': true,
 		'ai.conversation.saved': true,
 		'ai.conversation.cleared': true,
+		'ai.doc_extract': true,
+		'ai.doc_extract.done': true,
+		'ai.doc_extract.error': true,
 		'typeset.extract': true,
 		'typeset.fill': true,
 		'typeset.insert': true,
@@ -120,6 +123,9 @@ class NativeBridge {
 				value.type === 'ai.conversation.loaded' ||
 				value.type === 'ai.conversation.saved' ||
 				value.type === 'ai.conversation.cleared' ||
+				value.type === 'ai.doc_extract' ||
+				value.type === 'ai.doc_extract.done' ||
+				value.type === 'ai.doc_extract.error' ||
 				value.type === 'ai.state' ||
 				value.type === 'ai.stream' ||
 				value.type === 'ai.done' ||

@@ -484,6 +484,153 @@ static NSDictionary *TypesetExtractStructuredFromEntries(NSDictionary<NSString *
     return result;
 }
 
+static NSArray<NSString *> *TypesetCollectDrawingText(NSData *slideXml) {
+    NSMutableArray<NSString *> *parts = [NSMutableArray array];
+    AutoPtr<Document> doc = TypesetParseXml(slideXml);
+    if (doc) {
+        for (Element *node : TypesetElements(doc, @"t", kTypesetDrawingNS)) {
+            NSString *value = [TypesetStringValue(node) stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (value.length > 0) {
+                [parts addObject:value];
+            }
+        }
+        if (parts.count > 0) {
+            return parts;
+        }
+    }
+    NSString *xml = [[NSString alloc] initWithData:slideXml encoding:NSUTF8StringEncoding] ?: @"";
+    NSRegularExpression *re = [NSRegularExpression
+        regularExpressionWithPattern:@"<a:t(?:\\s[^>]*)?>([^<]*)</a:t>"
+                             options:NSRegularExpressionCaseInsensitive
+                               error:nil];
+    NSArray<NSTextCheckingResult *> *matches =
+        [re matchesInString:xml options:0 range:NSMakeRange(0, xml.length)];
+    for (NSTextCheckingResult *match in matches) {
+        if (match.numberOfRanges < 2) {
+            continue;
+        }
+        NSString *value = [[xml substringWithRange:[match rangeAtIndex:1]]
+            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        value = [value stringByReplacingOccurrencesOfString:@"&amp;" withString:@"&"];
+        value = [value stringByReplacingOccurrencesOfString:@"&lt;" withString:@"<"];
+        value = [value stringByReplacingOccurrencesOfString:@"&gt;" withString:@">"];
+        value = [value stringByReplacingOccurrencesOfString:@"&quot;" withString:@"\""];
+        value = [value stringByReplacingOccurrencesOfString:@"&apos;" withString:@"'"];
+        if (value.length > 0) {
+            [parts addObject:value];
+        }
+    }
+    if (parts.count == 0 && xml.length > 0) {
+        NSString *stripped = [xml stringByReplacingOccurrencesOfString:@"<[^>]+>"
+                                                            withString:@" "
+                                                               options:NSRegularExpressionSearch
+                                                                 range:NSMakeRange(0, xml.length)];
+        stripped = [stripped stringByReplacingOccurrencesOfString:@"\\s+"
+                                                       withString:@" "
+                                                          options:NSRegularExpressionSearch
+                                                            range:NSMakeRange(0, stripped.length)];
+        stripped = [stripped stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (stripped.length > 0) {
+            [parts addObject:stripped];
+        }
+    }
+    return parts;
+}
+
+static NSDictionary *TypesetExtractFromPptxEntries(NSDictionary<NSString *, NSData *> *entries) {
+    NSMutableArray<NSNumber *> *indices = [NSMutableArray array];
+    for (NSString *key in entries) {
+        if (![key hasPrefix:@"ppt/slides/slide"] || ![key hasSuffix:@".xml"] || [key containsString:@"_rels"]) {
+            continue;
+        }
+        NSString *num = [key substringWithRange:NSMakeRange(@"ppt/slides/slide".length,
+            key.length - @"ppt/slides/slide".length - 4)];
+        NSInteger idx = num.integerValue;
+        if (idx > 0) {
+            [indices addObject:@(idx)];
+        }
+    }
+    [indices sortUsingSelector:@selector(compare:)];
+    NSMutableArray<NSString *> *paragraphs = [NSMutableArray array];
+    NSMutableString *fullText = [NSMutableString string];
+    for (NSNumber *idx in indices) {
+        NSString *name = [NSString stringWithFormat:@"ppt/slides/slide%@.xml", idx];
+        NSData *slideXml = entries[name];
+        if (!slideXml) {
+            continue;
+        }
+        NSArray<NSString *> *parts = TypesetCollectDrawingText(slideXml);
+        if (parts.count == 0) {
+            continue;
+        }
+        NSString *slideText = [parts componentsJoinedByString:@"\n"];
+        [paragraphs addObject:slideText];
+        if (fullText.length > 0) {
+            [fullText appendString:@"\n\n"];
+        }
+        [fullText appendFormat:@"【幻灯片 %@】\n%@", idx, slideText];
+    }
+    if (paragraphs.count == 0) {
+        return nil;
+    }
+    return @{
+        @"fullText": fullText,
+        @"paragraphs": paragraphs,
+    };
+}
+
+static NSDictionary *TypesetExtractFromOdfEntries(NSDictionary<NSString *, NSData *> *entries) {
+    NSData *contentXml = entries[@"content.xml"];
+    if (!contentXml) {
+        return nil;
+    }
+    AutoPtr<Document> doc = TypesetParseXml(contentXml);
+    NSMutableArray<NSString *> *paragraphs = [NSMutableArray array];
+    if (doc) {
+        static NSString * const kTypesetOdfTextNS = @"urn:oasis:names:tc:opendocument:xmlns:text:1.0";
+        std::vector<Element *> nodes = TypesetElements(doc, @"p", kTypesetOdfTextNS);
+        std::vector<Element *> headings = TypesetElements(doc, @"h", kTypesetOdfTextNS);
+        nodes.insert(nodes.end(), headings.begin(), headings.end());
+        for (Element *node : nodes) {
+            NSString *value = [TypesetStringValue(node) stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (value.length > 0) {
+                [paragraphs addObject:value];
+            }
+        }
+    }
+    if (paragraphs.count == 0) {
+        NSString *xml = [[NSString alloc] initWithData:contentXml encoding:NSUTF8StringEncoding] ?: @"";
+        NSRegularExpression *re = [NSRegularExpression
+            regularExpressionWithPattern:@"<text:(?:p|h)(?:\\s[^>]*)?>([\\s\\S]*?)</text:(?:p|h)>"
+                                 options:NSRegularExpressionCaseInsensitive
+                                   error:nil];
+        NSArray<NSTextCheckingResult *> *matches =
+            [re matchesInString:xml options:0 range:NSMakeRange(0, xml.length)];
+        for (NSTextCheckingResult *match in matches) {
+            if (match.numberOfRanges < 2) {
+                continue;
+            }
+            NSString *inner = [xml substringWithRange:[match rangeAtIndex:1]];
+            inner = [inner stringByReplacingOccurrencesOfString:@"<[^>]+>" withString:@""
+                                                        options:NSRegularExpressionSearch
+                                                          range:NSMakeRange(0, inner.length)];
+            inner = [inner stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (inner.length > 0) {
+                [paragraphs addObject:inner];
+            }
+        }
+    }
+    if (paragraphs.count == 0) {
+        return nil;
+    }
+    return @{
+        @"fullText": [paragraphs componentsJoinedByString:@"\n\n"],
+        @"paragraphs": paragraphs,
+    };
+}
+
 @implementation TypesetService
 
 + (NSDictionary *)extractStructuredFromFile:(NSURL *)fileURL {
@@ -493,8 +640,28 @@ static NSDictionary *TypesetExtractStructuredFromEntries(NSDictionary<NSString *
     NSData *data = [NSData dataWithContentsOfURL:fileURL];
     if (!data) return nil;
     NSMutableDictionary<NSString *, NSData *> *entries = [NSMutableDictionary dictionary];
-    if (!TypesetUnzipEntries(data, entries)) return nil;
-    return TypesetExtractStructuredFromEntries(entries);
+    if (!TypesetUnzipEntries(data, entries)) {
+        NSLog(@"[AIExtract] unzip failed path=%@", fileURL.path);
+        return nil;
+    }
+    if (entries[@"word/document.xml"]) {
+        NSLog(@"[AIExtract] zip format=docx entries=%lu", (unsigned long)entries.count);
+        return TypesetExtractStructuredFromEntries(entries);
+    }
+    NSDictionary *pptx = TypesetExtractFromPptxEntries(entries);
+    if (pptx) {
+        NSLog(@"[AIExtract] zip format=pptx entries=%lu", (unsigned long)entries.count);
+        return pptx;
+    }
+    NSDictionary *odf = TypesetExtractFromOdfEntries(entries);
+    if (odf) {
+        NSLog(@"[AIExtract] zip format=odf entries=%lu", (unsigned long)entries.count);
+        return odf;
+    }
+    NSLog(@"[AIExtract] zip format=unknown entries=%lu keys=%@",
+          (unsigned long)entries.count,
+          [[entries allKeys] componentsJoinedByString:@","]);
+    return nil;
 }
 
 + (NSURL *)fillTemplateWithType:(NSString *)typesetType

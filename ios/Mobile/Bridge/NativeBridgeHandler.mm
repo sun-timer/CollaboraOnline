@@ -121,6 +121,7 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
         @"native.ready", @"ai.request", @"ai.cancel", @"ai.accept",
         @"ai.state", @"ai.stream", @"ai.done", @"ai.error",
         @"ai.conversation.load", @"ai.conversation.save", @"ai.conversation.clear",
+        @"ai.doc_extract",
         @"typeset.extract", @"typeset.fill", @"typeset.insert",
     ]];
     if (![supportedTypes containsObject:type]) {
@@ -271,6 +272,37 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
                        requestId:requestId
                  documentSessionId:documentSessionId
                             payload:@{@"mode": mode, @"all": @(clearAll)}];
+        return;
+    }
+
+    if ([type isEqualToString:@"ai.doc_extract"]) {
+        NSLog(@"[AIExtract] nativeBridge received ai.doc_extract requestId=%@", requestId ?: @"");
+        if (!self.documentTextExtractor) {
+            NSLog(@"[AIExtract] missing documentTextExtractor");
+            [self emitErrorType:@"ai.doc_extract.error"
+                      requestId:requestId
+                documentSessionId:documentSessionId
+                           code:@"doc_extract_failed"
+                        message:@"文档全文提取失败，请稍后重试"];
+            return;
+        }
+        self.documentTextExtractor(^(NSString *text) {
+            NSString *trimmed = [(text ?: @"") stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            NSLog(@"[AIExtract] extractor callback chars=%lu", (unsigned long)trimmed.length);
+            if (trimmed.length == 0) {
+                [self emitErrorType:@"ai.doc_extract.error"
+                          requestId:requestId
+                    documentSessionId:documentSessionId
+                               code:@"doc_extract_failed"
+                            message:@"文档全文提取失败，请稍后重试"];
+                return;
+            }
+            [self emitEnvelopeType:@"ai.doc_extract.done"
+                         requestId:requestId
+                   documentSessionId:documentSessionId
+                              payload:@{@"text": trimmed}];
+        });
         return;
     }
 
