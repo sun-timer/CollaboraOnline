@@ -14,19 +14,35 @@
                         <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="HomeAvatar" translatesAutoresizingMaskIntoConstraints="NO" id="splash-logo">
-                                <rect key="frame" x="137.5" y="283.5" width="100" height="100"/>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFill" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="BrandSplash" translatesAutoresizingMaskIntoConstraints="NO" id="splash-brand">
+                                <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                            </imageView>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="BrandSplashMark" translatesAutoresizingMaskIntoConstraints="NO" id="splash-brand-mark">
+                                <rect key="frame" x="157.5" y="540" width="60" height="60"/>
                                 <constraints>
-                                    <constraint firstAttribute="width" constant="100" id="splash-logo-w"/>
-                                    <constraint firstAttribute="height" constant="100" id="splash-logo-h"/>
+                                    <constraint firstAttribute="width" constant="60" id="splash-brand-mark-w"/>
+                                    <constraint firstAttribute="height" constant="60" id="splash-brand-mark-h"/>
                                 </constraints>
                             </imageView>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="AI Office｜智启办公，高效随行" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="splash-brand-title">
+                                <rect key="frame" x="45" y="620" width="285" height="20"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                <color key="textColor" red="0" green="0" blue="0" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                            </label>
                         </subviews>
-                        <color key="backgroundColor" red="0.94901960784313721" green="0.94901960784313721" blue="0.94901960784313721" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <color key="backgroundColor" red="0.76862745098039213" green="0.85098039215686275" blue="0.96862745098039216" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                         <viewLayoutGuide key="safeArea" id="6Tk-OE-BBY"/>
                         <constraints>
-                            <constraint firstItem="splash-logo" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="splash-logo-cx"/>
-                            <constraint firstItem="splash-logo" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="splash-logo-cy"/>
+                            <constraint firstItem="splash-brand" firstAttribute="top" secondItem="Ze5-6b-2t3" secondAttribute="top" id="splash-brand-top"/>
+                            <constraint firstItem="splash-brand" firstAttribute="bottom" secondItem="Ze5-6b-2t3" secondAttribute="bottom" id="splash-brand-bottom"/>
+                            <constraint firstItem="splash-brand" firstAttribute="leading" secondItem="Ze5-6b-2t3" secondAttribute="leading" id="splash-brand-leading"/>
+                            <constraint firstItem="splash-brand" firstAttribute="trailing" secondItem="Ze5-6b-2t3" secondAttribute="trailing" id="splash-brand-trailing"/>
+                            <constraint firstItem="splash-brand-mark" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="splash-brand-mark-cx"/>
+                            <constraint firstItem="splash-brand-mark" firstAttribute="bottom" secondItem="splash-brand-title" secondAttribute="top" constant="-16" id="splash-brand-mark-bottom"/>
+                            <constraint firstItem="splash-brand-title" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="splash-brand-title-cx"/>
+                            <constraint firstItem="splash-brand-title" firstAttribute="bottom" secondItem="Ze5-6b-2t3" secondAttribute="bottom" constant="-42" id="splash-brand-title-bottom"/>
+                            <constraint firstItem="splash-brand-title" firstAttribute="leading" secondItem="Ze5-6b-2t3" secondAttribute="leading" constant="24" id="splash-brand-title-leading"/>
+                            <constraint firstItem="splash-brand-title" firstAttribute="trailing" secondItem="Ze5-6b-2t3" secondAttribute="trailing" constant="-24" id="splash-brand-title-trailing"/>
                         </constraints>
                     </view>
                 </viewController>
@@ -36,6 +52,7 @@
         </scene>
     </scenes>
     <resources>
-        <image name="HomeAvatar" width="128" height="128"/>
+        <image name="BrandSplash" width="1391" height="3013"/>
+        <image name="BrandSplashMark" width="120" height="120"/>
     </resources>
 </document>

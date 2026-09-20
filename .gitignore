@@ -154,7 +154,6 @@ pocolib-symlink
 zstdinclude-symlink
 zstdlib-symlink
 ICU.dat
-ios/Mobile/Assets.xcassets/AppIcon.appiconset
 
 # build numbers/versions
 BUNDLE-VERSION
