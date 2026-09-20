@@ -1364,6 +1364,14 @@ class TileManager {
 	}
 
 	private static updateTileDistance(tile: Tile, zoom: number) {
+		// DocumentBase publishes app.activeDocument before its layout is fully
+		// constructed. Core messages can arrive during that short window on iOS.
+		// Keep tile bookkeeping inert until the layout is available instead of
+		// aborting ProxySocket message processing with a null dereference.
+		if (!app.activeDocument || !app.activeDocument.activeLayout) {
+			tile.distanceFromView = Number.MAX_SAFE_INTEGER;
+			return;
+		}
 		if (
 			tile.coords.z !== zoom ||
 			tile.coords.part !== app.map._docLayer._selectedPart ||
@@ -1416,6 +1424,7 @@ class TileManager {
 		zoom: number,
 		isCurrent: boolean = false,
 	) {
+		if (!app.activeDocument || !app.activeDocument.activeLayout) return [];
 		if (
 			['ViewLayoutCompareChanges', 'ViewLayoutMultiPage'].includes(
 				app.activeDocument.activeLayout.type,
@@ -2115,6 +2124,8 @@ class TileManager {
 			return;
 		}
 
+		if (!app.activeDocument || !app.activeDocument.activeLayout) return;
+
 		// Calc: do not set view area too early after load and before we get the cursor position.
 		if (app.map._docLayer.isCalc() && !app.map._docLayer._gotFirstCellCursor)
 			return;
@@ -2291,7 +2302,12 @@ class TileManager {
 	}
 
 	public static updateOnChangePart() {
-		if (!this.checkPointers() || app.map._docLayer._documentInfo === '') {
+		if (
+			!this.checkPointers() ||
+			!app.activeDocument ||
+			!app.activeDocument.activeLayout ||
+			app.map._docLayer._documentInfo === ''
+		) {
 			return;
 		}
 		var center = app.map.getCenter();
@@ -2368,6 +2384,7 @@ class TileManager {
 		zoomFrameBounds: any = null,
 		forZoom: any = null,
 	): TileCoordData[] {
+		if (!app.activeDocument || !app.activeDocument.activeLayout) return [];
 		if (app.map._docLayer._partHeightTwips === 0)
 			// This is true before status message is handled.
 			return [];

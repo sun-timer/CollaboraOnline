@@ -31,6 +31,8 @@ window.addEventListener('load', function () {
 app.getViewRectangles = function () {
 	if (app.map._docLayer._splitPanesContext)
 		return app.map._docLayer._splitPanesContext.getViewRectangles();
+	else if (!app.activeDocument || !app.activeDocument.activeLayout)
+		return [];
 	else return [app.activeDocument.activeLayout.viewedRectangle.clone()];
 };
 
@@ -43,6 +45,7 @@ app.isPointVisibleInTheDisplayedArea = function (twipsArray /* x, y */) {
 		}
 		return false;
 	} else {
+		if (!app.activeDocument || !app.activeDocument.activeLayout) return false;
 		return app.activeDocument.activeLayout.viewedRectangle.containsPoint(
 			twipsArray,
 		);
@@ -57,6 +60,7 @@ app.isXVisibleInTheDisplayedArea = function (twipsX) {
 		}
 		return false;
 	} else {
+		if (!app.activeDocument || !app.activeDocument.activeLayout) return false;
 		return app.activeDocument.activeLayout.viewedRectangle.containsX(twipsX);
 	}
 };
@@ -69,6 +73,7 @@ app.isYVisibleInTheDisplayedArea = function (twipsY) {
 		}
 		return false;
 	} else {
+		if (!app.activeDocument || !app.activeDocument.activeLayout) return false;
 		return app.activeDocument.activeLayout.viewedRectangle.containsY(twipsY);
 	}
 };
@@ -83,6 +88,7 @@ app.isRectangleVisibleInTheDisplayedArea = function (
 		}
 		return false;
 	} else {
+		if (!app.activeDocument || !app.activeDocument.activeLayout) return false;
 		return app.activeDocument.activeLayout.viewedRectangle.intersectsRectangle(
 			twipsArray,
 		);
