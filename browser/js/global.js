@@ -585,6 +585,23 @@ function getInitializerClass() {
 	// enable later toggling
 	global.setLogging = function(doLogging)
 	{
+		var serializeLogArgument = function(value) {
+			if (value instanceof Error) {
+				return JSON.stringify({
+					name: value.name,
+					message: value.message,
+					stack: value.stack
+				});
+			}
+			if (typeof value === 'string') {
+				return value;
+			}
+			try {
+				return JSON.stringify(value);
+			} catch (stringifyError) {
+				return String(value);
+			}
+		};
 		var loggingMethods = ['error', 'warn', 'info', 'debug', 'trace', 'log', 'assert', 'time', 'timeEnd', 'group', 'groupEnd'];
 		if (!doLogging) {
 			var noop = function() {};
@@ -603,15 +620,7 @@ function getInitializerClass() {
 						if (method === 'error') {
 							var log = 'jserror ';
 							for (var arg = 0; arg < arguments.length; arg++) {
-								if (typeof arguments[arg] === 'string') {
-									log += arguments[arg] + '\n';
-								} else {
-									try {
-										log += JSON.stringify(arguments[arg]) + '\n';
-									} catch (stringifyError) {
-										log += String(arguments[arg]) + '\n';
-									}
-								}
+								log += serializeLogArgument(arguments[arg]) + '\n';
 							}
 							global.logServer(log);
 						}
@@ -649,6 +658,40 @@ function getInitializerClass() {
 
 				return false;
 			};
+
+			// WebKit can reduce a startup failure to the unhelpful
+			// "Script error." callback. Capture the resource and promise context
+			// as well so the native log identifies the failing bundle or asset.
+			if (!global.__coolErrorDiagnosticsInstalled) {
+				global.__coolErrorDiagnosticsInstalled = true;
+				global.addEventListener('error', function (event) {
+					var target = event && event.target;
+					var targetUrl = target && (target.src || target.href || target.currentSrc) || '';
+					if (!targetUrl && event && event.error === null && event.message === 'Script error.') {
+						return;
+					}
+					var data = {
+						kind: targetUrl ? 'resource' : 'runtime',
+						message: event && event.message || '',
+						source: event && event.filename || '',
+						line: event && event.lineno || 0,
+						column: event && event.colno || 0,
+						target: targetUrl,
+						tag: target && target.tagName || ''
+					};
+					global.logServer('jserror_event ' + JSON.stringify(data) + '\n');
+				}, true);
+				global.addEventListener('unhandledrejection', function (event) {
+					var reason = event && event.reason;
+					var data = {
+						kind: 'unhandledrejection',
+						name: reason && reason.name || '',
+						message: reason && reason.message || String(reason || ''),
+						stack: reason && reason.stack || ''
+					};
+					global.logServer('jserror_event ' + JSON.stringify(data) + '\n');
+				}, true);
+			}
 		}
 	};
 
@@ -1232,7 +1275,7 @@ function getInitializerClass() {
 				try {
 					this.onmessage({ data: bufferedMessage.data });
 				} catch (e) {
-					global.app.console.error(e);
+					global.app.console.error('ProxySocket message processing failed', e);
 					global.app.console.warn(`Failed processing a ProxySocket message (due to ${e}), ignoring`);
 					// It's better to ignore any failures rather than to lose the rest of the messages in this packet
 				}
@@ -1623,7 +1666,23 @@ function getInitializerClass() {
 		}
 
 		send(data) {
-			global.postMobileMessage(data);
+			// WKScriptMessageHandler cannot bridge a JavaScript Blob. It arrives
+			// in the iOS native handler as NSNull, which drops paste payloads
+			// such as AI-generated Writer text.
+			if (typeof data === 'string') {
+				global.postMobileMessage(data);
+				return;
+			}
+			if (typeof Blob !== 'undefined' && data instanceof Blob) {
+				data.text().then(function(text) {
+					global.postMobileMessage(text);
+				}).catch(function(error) {
+					global.postMobileError('mobile socket blob decode failed: ' +
+						(error && error.message ? error.message : String(error)));
+				});
+				return;
+			}
+			global.postMobileMessage(String(data));
 		}
 
 		close() {} // We don't support re-opening the mobile socket, so let's make sure we don't close it...
