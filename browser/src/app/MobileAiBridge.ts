@@ -247,8 +247,144 @@ class MobileAiBridge {
 		return '';
 	}
 
+	/**
+	 * Returns the document context identity used by document Q&A.
+	 * Calc changes this identity when the active sheet changes; text and
+	 * presentation documents keep one stable identity for the open document.
+	 */
+	getDocumentContextKey(): string {
+		try {
+			const map = (window as any).app?.map;
+			const docLayer = map?._docLayer;
+			const docType = map?.getDocType?.() || docLayer?._docType || 'document';
+			if (docType !== 'spreadsheet') {
+				return String(docType);
+			}
+			const part = Number.isFinite(Number(docLayer?._selectedPart))
+				? Number(docLayer._selectedPart)
+				: 0;
+			const names = Array.isArray(docLayer?._partNames)
+				? docLayer._partNames
+				: [];
+			const name = typeof names[part] === 'string' ? names[part] : '';
+			return 'spreadsheet:' + part + ':' + name;
+		} catch (_error) {
+			return '';
+		}
+	}
+
+	getSelectedTextAsync(): Promise<string> {
+		const current = this.getSelectedText();
+		if (this.isSpreadsheetDocument()) {
+			return this.requestSelectionViaSocket(current);
+		}
+		if (
+			typeof window !== 'undefined' &&
+			(window as any).ThisIsTheiOSApp &&
+			this.nativeBridge.isAvailable()
+		) {
+			return this.requestSelectionViaNative().then((text) => {
+				// An empty native result is authoritative: after undo, the editor may
+				// still paint the old handles while its selection cache is cleared.
+				// Only fall back to the socket when the native request itself failed.
+				return text === null ? this.requestSelectionViaSocket(current) : text;
+			});
+		}
+		return this.requestSelectionViaSocket(current);
+	}
+
+	private isSpreadsheetDocument(): boolean {
+		try {
+			const nativeType = (window as any).MobileNativeDocumentType;
+			const mapType = (window as any).app?.map?.getDocType?.();
+			return nativeType === 'spreadsheet' || mapType === 'spreadsheet';
+		} catch (_error) {
+			return false;
+		}
+	}
+
 	extractFullText(): Promise<string> {
 		return MobileAiDocumentExtractor.extractFullText();
+	}
+
+	private requestSelectionViaNative(): Promise<string | null> {
+		return new Promise((resolve) => {
+			const requestId = NativeBridge.createId('selection');
+			const documentSessionId = this.nativeBridge.getDocumentSessionId();
+			let settled = false;
+			const timer = window.setTimeout(() => finish(null), 1500);
+			const finish = (text: string | null): void => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				window.clearTimeout(timer);
+				unsubscribe();
+				resolve(text === null ? null : text.trim());
+			};
+			const unsubscribe = this.nativeBridge.subscribe((message) => {
+				if (message.requestId !== requestId) {
+					return;
+				}
+				if (message.type === 'ai.selection.done') {
+					const text = message.payload?.text;
+					finish(typeof text === 'string' ? text : '');
+					return;
+				}
+				if (
+					message.type === 'ai.selection.error' ||
+					message.type === 'native.error' ||
+					message.type === 'ai.error'
+				) {
+					finish(null);
+				}
+			});
+			const posted = this.nativeBridge.postMessage({
+				protocolVersion: NativeBridge.PROTOCOL_VERSION,
+				channel: 'native',
+				type: 'ai.selection',
+				requestId,
+				documentSessionId,
+				targetPlatform: 'ios',
+				payload: {},
+			});
+			if (!posted) {
+				finish(null);
+			}
+		});
+	}
+
+	private requestSelectionViaSocket(current: string): Promise<string> {
+		return new Promise((resolve) => {
+			try {
+				const appRef = (window as any).app;
+				const socket = appRef?.socket;
+				if (!socket || typeof socket.sendMessage !== 'function') {
+					resolve(current);
+					return;
+				}
+				socket.sendMessage(
+					'gettextselection mimetype=text/html,text/plain;charset=utf-8',
+				);
+				let attempts = 0;
+				const poll = (): void => {
+					attempts += 1;
+					const text = this.getSelectedText().trim();
+					if (text && (text !== current || attempts >= 2)) {
+						resolve(text);
+						return;
+					}
+					if (attempts >= 10) {
+						resolve(text || current);
+						return;
+					}
+					window.setTimeout(poll, 100);
+				};
+				window.setTimeout(poll, 100);
+			} catch (_error) {
+				resolve(current);
+			}
+		});
 	}
 
 	private normalizeConversationMessages(
@@ -264,7 +400,9 @@ class MobileAiBridge {
 			}
 			const role = item.role === 'assistant' ? 'assistant' : 'user';
 			const content =
-				typeof item.content === 'string' ? item.content : String(item.content || '');
+				typeof item.content === 'string'
+					? item.content
+					: String(item.content || '');
 			messages.push({ role, content });
 		});
 		return messages;

@@ -12,6 +12,10 @@ public class AiDocumentContextProvider {
 
         void runOnUiThread(Runnable runnable);
 
+        void beginProgrammaticSelection();
+
+        void endProgrammaticSelection();
+
         void copyViaWebsocketFallback();
 
         boolean getClipboardContent(LokClipboardData clipboardData);
@@ -27,6 +31,7 @@ public class AiDocumentContextProvider {
 
     public String extractFullTextForDocQaFirstTurn(String requestId) {
         Log.i(TAG, "doc_qa_first_turn_extract_start requestId=" + requestId);
+        bridge.beginProgrammaticSelection();
         try {
             // Prefer the core UNO path so Viewing/Editing UI state is not the primary dependency.
             bridge.postUnoCommand(".uno:SelectAll", "{}", false);
@@ -51,6 +56,8 @@ public class AiDocumentContextProvider {
         } catch (Exception e) {
             Log.w(TAG, "doc_qa_first_turn_extract_fail requestId=" + requestId, e);
             return "";
+        } finally {
+            bridge.endProgrammaticSelection();
         }
         Log.w(TAG, "doc_qa_first_turn_extract_fail requestId=" + requestId + " reason=empty");
         return "";

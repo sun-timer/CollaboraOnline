@@ -29,6 +29,7 @@ class MobileAiOperationSheet {
 	private readonly onSelect: MobileAiOperationSelectHandler;
 	private readonly sections: HTMLDivElement;
 	private readonly hint: HTMLDivElement;
+	private selectionOverride: string | null = null;
 
 	static resolveDocumentType(
 		nativeDocumentType?: string,
@@ -64,8 +65,10 @@ class MobileAiOperationSheet {
 	}
 
 	open(): void {
+		this.selectionOverride = null;
 		this.render();
 		this.sheet.open();
+		void this.refreshSelection();
 	}
 
 	close(): void {
@@ -86,7 +89,10 @@ class MobileAiOperationSheet {
 			byType[entry.taskType] = entry;
 		});
 
-		const selection = MobileAiBridge.getInstance().getSelectedText().trim();
+		const selection =
+			this.selectionOverride !== null
+				? this.selectionOverride
+				: MobileAiBridge.getInstance().getSelectedText().trim();
 		this.updateHint(documentType, selection);
 
 		this.sections.replaceChildren();
@@ -100,6 +106,15 @@ class MobileAiOperationSheet {
 			return;
 		}
 		this.renderWriterBlock(byType, selection);
+	}
+
+	private async refreshSelection(): Promise<void> {
+		const bridge = MobileAiBridge.getInstance();
+		if (typeof bridge.getSelectedTextAsync !== 'function') {
+			return;
+		}
+		this.selectionOverride = await bridge.getSelectedTextAsync();
+		this.render();
 	}
 
 	private renderWriterBlock(

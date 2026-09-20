@@ -19,6 +19,8 @@ class AndroidSelectionMenu {
 	private static tryShowRetryTimer = 0;
 	private static readonly tryShowRetryDelayMs = 100;
 	private static readonly tryShowMaxRetries = 30;
+	/** Nested guard for background operations that use SelectAll to read text. */
+	private static programmaticSelectionSuppressionDepth = 0;
 
 	/** True while a native long-press selection gesture is in flight. */
 	static isLongPressGesturePending(): boolean {
@@ -45,6 +47,31 @@ class AndroidSelectionMenu {
 			return;
 		}
 		window.postMobileMessage('SELECTIONMENU hide');
+	}
+
+	/**
+	 * Suppress the user-facing selection menu while AI/document services use
+	 * SelectAll as an internal text-extraction mechanism. The document
+	 * selection itself remains intact until the caller explicitly deselects it.
+	 */
+	static beginProgrammaticSelection(): void {
+		AndroidSelectionMenu.programmaticSelectionSuppressionDepth++;
+		AndroidSelectionMenu.clearTryShowRetry();
+		AndroidSelectionMenu.hide();
+	}
+
+	static endProgrammaticSelection(): void {
+		if (AndroidSelectionMenu.programmaticSelectionSuppressionDepth > 0) {
+			AndroidSelectionMenu.programmaticSelectionSuppressionDepth--;
+		}
+		if (AndroidSelectionMenu.programmaticSelectionSuppressionDepth === 0) {
+			AndroidSelectionMenu.clearTryShowRetry();
+			AndroidSelectionMenu.hide();
+		}
+	}
+
+	private static isProgrammaticSelectionSuppressed(): boolean {
+		return AndroidSelectionMenu.programmaticSelectionSuppressionDepth > 0;
 	}
 
 	static markNativeLongPress(): void {
@@ -108,6 +135,9 @@ class AndroidSelectionMenu {
 	 * keeps the normal edit context menu.
 	 */
 	private static shouldSuppressContextMenu(): boolean {
+		if (AndroidSelectionMenu.isProgrammaticSelectionSuppressed()) {
+			return true;
+		}
 		if (!AndroidSelectionMenu.isSelectionDoc()) {
 			return false;
 		}
@@ -397,6 +427,9 @@ class AndroidSelectionMenu {
 	 * Only when TextSelections is active with a non-degenerate range.
 	 */
 	static tryShow(): void {
+		if (AndroidSelectionMenu.isProgrammaticSelectionSuppressed()) {
+			return;
+		}
 		if (AndroidSelectionMenu.isIOS()) {
 			AndroidSelectionMenu.tryShowIOS();
 			return;
@@ -468,6 +501,9 @@ class AndroidSelectionMenu {
 
 	/** iOS: broadcast the selection to the DOM menu instead of a native popup. */
 	private static tryShowIOS(): void {
+		if (AndroidSelectionMenu.isProgrammaticSelectionSuppressed()) {
+			return;
+		}
 		if (
 			!app.map ||
 			!AndroidSelectionMenu.isSelectionDoc() ||
@@ -583,6 +619,7 @@ class AndroidSelectionMenu {
 
 	private static scheduleTryShowAfterGesture(): void {
 		if (
+			AndroidSelectionMenu.isProgrammaticSelectionSuppressed() ||
 			!AndroidSelectionMenu.pendingLongPressSelection ||
 			!AndroidSelectionMenu.selectionGestureComplete ||
 			AndroidSelectionMenu.nativeSelectionDragActive
@@ -617,6 +654,9 @@ class AndroidSelectionMenu {
 
 	/** Show menu when core reports a selection without our long-press gesture flags. */
 	private static scheduleTryShowFromCoreSelection(): void {
+		if (AndroidSelectionMenu.isProgrammaticSelectionSuppressed()) {
+			return;
+		}
 		AndroidSelectionMenu.clearTryShowRetry();
 		let attempts = 0;
 		const tick = (): void => {
@@ -645,6 +685,10 @@ class AndroidSelectionMenu {
 	}
 
 	private static onEmptyTextSelection(): void {
+		if (AndroidSelectionMenu.isProgrammaticSelectionSuppressed()) {
+			AndroidSelectionMenu.hide();
+			return;
+		}
 		if (AndroidSelectionMenu.nativeSelectionDragActive) {
 			return;
 		}
@@ -800,6 +844,11 @@ class AndroidSelectionMenu {
 			const original = layer._onTextSelectionMsg.bind(layer);
 			layer._onTextSelectionMsg = function (textMsg: string) {
 				original(textMsg);
+				if (AndroidSelectionMenu.isProgrammaticSelectionSuppressed()) {
+					AndroidSelectionMenu.clearTryShowRetry();
+					AndroidSelectionMenu.hide();
+					return;
+				}
 				const payload = textMsg.replace('textselection:', '').trim();
 
 				if (

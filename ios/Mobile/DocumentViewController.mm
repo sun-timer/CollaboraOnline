@@ -96,6 +96,8 @@
 }
 
 - (void)extractDocumentTextForDocQaWithCompletion:(void (^)(NSString *text))completion;
+- (void)extractCurrentSelectionWithCompletion:(void (^)(NSString *text))completion;
+- (NSString *)extractFullTextViaLokSelection;
 - (NSString *)lokClipboardPlainText;
 - (NSString *)extractDocumentTextFromFile;
 
@@ -243,6 +245,16 @@ static IMP standardImpOfInputAccessoryView = nil;
             return;
         }
         [strongSelf extractDocumentTextForDocQaWithCompletion:completion];
+    };
+    nativeBridgeHandler.documentSelectionExtractor = ^(NativeBridgeDocumentTextCompletion completion) {
+        DocumentViewController *strongSelf = weakSelf;
+        if (!strongSelf || !completion) {
+            if (completion) {
+                completion(@"");
+            }
+            return;
+        }
+        [strongSelf extractCurrentSelectionWithCompletion:completion];
     };
     [userContentController addScriptMessageHandler:nativeBridgeHandler name:@"nativeBridge"];
     [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"clipboard"];
@@ -921,15 +933,24 @@ static IMP standardImpOfInputAccessoryView = nil;
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-    LOG_TRC("didFailNavigation: " << [[navigation description] UTF8String]);
+    LOG_ERR("didFailNavigation: " << [[navigation description] UTF8String]
+            << " domain=" << [[error.domain description] UTF8String]
+            << " code=" << error.code
+            << " message=" << [[error.localizedDescription description] UTF8String]
+            << " url=" << [[webView.URL.absoluteString description] UTF8String]);
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-    LOG_TRC("didFailProvisionalNavigation: " << [[navigation description] UTF8String]);
+    LOG_ERR("didFailProvisionalNavigation: " << [[navigation description] UTF8String]
+            << " domain=" << [[error.domain description] UTF8String]
+            << " code=" << error.code
+            << " message=" << [[error.localizedDescription description] UTF8String]
+            << " url=" << [[webView.URL.absoluteString description] UTF8String]);
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
-    LOG_TRC("didFinishNavigation: " << [[navigation description] UTF8String]);
+    LOG_TRC("didFinishNavigation: " << [[navigation description] UTF8String]
+            << " url=" << [[webView.URL.absoluteString description] UTF8String]);
     [self notifyWebViewAiConversationDocumentReady];
     [self scheduleDocumentCanvasRecover];
 }
@@ -1050,6 +1071,134 @@ static IMP standardImpOfInputAccessoryView = nil;
     return [fullText stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 }
 
+- (NSString *)extractFullTextViaLokSelection {
+    NSAssert(![NSThread isMainThread], @"LOK extract poll must not run on main (dispatch_sync would deadlock)");
+    __weak DocumentViewController *weakSelf = self;
+    __block NSInteger partCount = 1;
+    __block NSInteger originalPart = 0;
+    __block BOOL isPresentation = NO;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        DocumentViewController *strongSelf = weakSelf;
+        lok::Document *doc = strongSelf ? [strongSelf loKitDocumentOrNull] : nullptr;
+        if (!doc) {
+            return;
+        }
+        isPresentation = [strongSelf->nativeDocumentType isEqualToString:@"presentation"];
+        if (isPresentation) {
+            partCount = MAX(1, doc->getParts());
+            originalPart = doc->getPart();
+        }
+    });
+
+    NSMutableArray<NSString *> *partTexts = [NSMutableArray array];
+    for (NSInteger part = 0; part < partCount; ++part) {
+        __block BOOL selectAllOk = NO;
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            DocumentViewController *strongSelf = weakSelf;
+            lok::Document *doc = strongSelf ? [strongSelf loKitDocumentOrNull] : nullptr;
+            if (!doc) {
+                return;
+            }
+            if (isPresentation) {
+                doc->setPart((int)part);
+            }
+            doc->postUnoCommand(".uno:SelectAll", "{}", false);
+            selectAllOk = YES;
+        });
+        if (!selectAllOk) {
+            continue;
+        }
+
+        NSString *prev = nil;
+        NSInteger stableCount = 0;
+        NSString *result = nil;
+        const NSTimeInterval timeout = isPresentation ? 0.9 : 2.5;
+        const NSTimeInterval deadline = [NSDate date].timeIntervalSince1970 + timeout;
+
+        while ([NSDate date].timeIntervalSince1970 < deadline) {
+            [NSThread sleepForTimeInterval:0.120];
+
+            __block NSString *cur = @"";
+            dispatch_sync(dispatch_get_main_queue(), ^{
+                DocumentViewController *strongSelf = weakSelf;
+                lok::Document *doc = strongSelf ? [strongSelf loKitDocumentOrNull] : nullptr;
+                if (!doc) {
+                    return;
+                }
+                char *raw = doc->getTextSelection("text/plain;charset=utf-8", nullptr);
+                if (raw) {
+                    cur = [[NSString alloc] initWithUTF8String:raw] ?: @"";
+                    free(raw);
+                }
+            });
+
+            if (cur.length > 0) {
+                if (prev != nil && prev.length == cur.length) {
+                    stableCount++;
+                    if (stableCount >= 1) {
+                        result = cur;
+                        break;
+                    }
+                } else {
+                    stableCount = 0;
+                }
+                prev = cur;
+            }
+        }
+
+        if (!result && prev.length > 0) {
+            result = prev;
+        }
+        if (result.length > 0) {
+            [partTexts addObject:isPresentation
+                ? [NSString stringWithFormat:@"【幻灯片 %ld】\n%@", (long)(part + 1), result]
+                : result];
+        }
+    }
+
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        DocumentViewController *strongSelf = weakSelf;
+        lok::Document *doc = strongSelf ? [strongSelf loKitDocumentOrNull] : nullptr;
+        if (doc) {
+            doc->postUnoCommand(".uno:Deselect", "{}", false);
+            if (isPresentation) {
+                doc->setPart((int)originalPart);
+            }
+        }
+    });
+
+    NSString *text = [partTexts componentsJoinedByString:@"\n\n"];
+    NSLog(@"[AIExtract] lok parts=%ld extractedParts=%lu chars=%lu",
+          (long)partCount,
+          (unsigned long)partTexts.count,
+          (unsigned long)text.length);
+    return text;
+}
+
+- (void)extractCurrentSelectionWithCompletion:(void (^)(NSString *text))completion {
+    if (!completion) {
+        return;
+    }
+    __weak DocumentViewController *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        DocumentViewController *strongSelf = weakSelf;
+        lok::Document *doc = strongSelf ? [strongSelf loKitDocumentOrNull] : nullptr;
+        if (!doc) {
+            completion(@"");
+            return;
+        }
+
+        char *raw = doc->getTextSelection("text/plain;charset=utf-8", nullptr);
+        NSString *text = raw ? ([[NSString alloc] initWithUTF8String:raw] ?: @"") : @"";
+        if (raw) {
+            free(raw);
+        }
+        text = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        NSLog(@"[AISelection] current selection chars=%lu", (unsigned long)text.length);
+        completion(text);
+    });
+}
+
 - (void)extractDocumentTextForDocQaWithCompletion:(void (^)(NSString *text))completion {
     if (!completion) {
         return;
@@ -1058,19 +1207,38 @@ static IMP standardImpOfInputAccessoryView = nil;
     __weak DocumentViewController *weakSelf = self;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         DocumentViewController *strongSelf = weakSelf;
-        NSString *fileText = strongSelf ? [strongSelf extractDocumentTextFromFile] : @"";
-        __block NSString *clipboardText = @"";
-        if (fileText.length == 0) {
-            dispatch_sync(dispatch_get_main_queue(), ^{
-                DocumentViewController *inner = weakSelf;
-                clipboardText = inner ? [inner lokClipboardPlainText] : @"";
+        if (!strongSelf) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(@"");
             });
+            return;
         }
-        NSString *result = fileText.length > 0 ? fileText : clipboardText;
-        NSLog(@"[AIExtract] done fileChars=%lu clipboardChars=%lu used=%@",
+
+        NSString *docType = strongSelf->nativeDocumentType ?: @"text";
+        const BOOL isSpreadsheet = [docType isEqualToString:@"spreadsheet"];
+        NSLog(@"[AIExtract] type=%@ skipZip=%d", docType, isSpreadsheet);
+        NSString *fileText = @"";
+        if (!isSpreadsheet) {
+            fileText = [strongSelf extractDocumentTextFromFile];
+        }
+
+        NSString *result = fileText;
+        NSString *used = @"empty";
+        if (fileText.length > 0) {
+            used = @"file";
+        } else {
+            NSString *lokText = [strongSelf extractFullTextViaLokSelection];
+            if (lokText.length > 0) {
+                result = lokText;
+                used = @"lok";
+            } else {
+                result = @"";
+            }
+        }
+
+        NSLog(@"[AIExtract] done fileChars=%lu used=%@",
               (unsigned long)fileText.length,
-              (unsigned long)clipboardText.length,
-              fileText.length > 0 ? @"file" : (clipboardText.length > 0 ? @"clipboard" : @"empty"));
+              used);
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(result ?: @"");
         });
@@ -1315,13 +1483,23 @@ static IMP standardImpOfInputAccessoryView = nil;
     struct pollfd p;
 
     if ([message.name isEqualToString:@"error"]) {
-        LOG_ERR("Error from WebView: " << [message.body UTF8String]);
+        NSString *body = [message.body isKindOfClass:[NSString class]]
+            ? message.body : [message.body description];
+        LOG_ERR("Error from WebView: " << [body UTF8String]);
     } else if ([message.name isEqualToString:@"debug"]) {
         NSLog(@"[JS] %@", message.body);
-        std::cerr << "==> " << [message.body UTF8String] << std::endl;
+        NSString *body = [message.body isKindOfClass:[NSString class]]
+            ? message.body : [message.body description];
+        std::cerr << "==> " << [body UTF8String] << std::endl;
     } else if ([message.name isEqualToString:@"lok"]) {
-        NSString *subBody = [message.body substringToIndex:std::min(100ul, ((NSString*)message.body).length)];
-        if (subBody.length < ((NSString*)message.body).length)
+        if (![message.body isKindOfClass:[NSString class]]) {
+            LOG_ERR("Ignoring non-string legacy WebView message body: "
+                    << ([message.body isKindOfClass:[NSNull class]] ? "NSNull" : "other"));
+            return;
+        }
+        NSString *body = (NSString *)message.body;
+        NSString *subBody = [body substringToIndex:std::min(100ul, body.length)];
+        if (subBody.length < body.length)
             subBody = [subBody stringByAppendingString:@"..."];
 
         LOG_DBG("To Online: " << [subBody UTF8String]);
@@ -1719,21 +1897,52 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (NSString *)documentCanvasRecoverJavaScript
 {
+    // The first iOS layout can finish before LOK has a usable canvas.  A single
+    // invalidateSize() is not enough in that case: the first tile request can
+    // be made with stale client zoom/viewport values and leave the preview
+    // white until the document is reopened.  Keep this in parity with the
+    // Android visible-tile recovery sequence and retry while the socket/core
+    // is still connecting.
     return @"(function(){try{"
-            "var map=window.app&&app.map;"
-            "if(!map||typeof map.invalidateSize!=='function'){return 'nomap';}"
-            "if(!map._loaded){return 'notloaded';}"
-            "map._sizeChanged=true;"
-            "map.invalidateSize(false);"
-            "var size=typeof map.getSize==='function'?map.getSize():null;"
-            "var ts=window.app&&app.tile&&app.tile.size;"
-            "if(!size||size.x<1||size.y<1){return 'zerosize';}"
-            "if(!ts||ts.x<1||ts.y<1){return 'notile';}"
-            "var layer=map._docLayer;"
-            "if(layer&&typeof layer._resetClientVisArea==='function'){layer._resetClientVisArea();}"
-            "if(layer&&typeof layer._requestNewTiles==='function'){layer._requestNewTiles();}"
-            "if(window.TileManager&&typeof TileManager.update==='function'){TileManager.update();}"
-            "return 'ok';"
+            "var maxRetries=75;"
+            "function mapReady(){"
+              "var map=window.app&&app.map;"
+              "if(!map||typeof map.invalidateSize!=='function'||!map._loaded){return null;}"
+              "var size=typeof map.getSize==='function'?map.getSize():null;"
+              "var canvas=document.getElementById('canvas-container');"
+              "var rect=canvas&&typeof canvas.getBoundingClientRect==='function'?canvas.getBoundingClientRect():null;"
+              "if((!size||size.x<1||size.y<1)&&(!rect||rect.width<1||rect.height<1)){return null;}"
+              "if(window.app&&app.socket&&typeof app.socket.isTemporarilyReconnecting==='function'&&app.socket.isTemporarilyReconnecting()){return null;}"
+              "return map;"
+            "}"
+            "function recover(tag,hard,retry){"
+                "try{"
+                "var map=mapReady();"
+                "if(!map){if(retry<maxRetries){setTimeout(function(){recover(tag,hard,retry+1);},120);}return;}"
+                "if(typeof window.dispatchEvent==='function'&&typeof Event==='function'){window.dispatchEvent(new Event('resize'));}"
+                "map._sizeChanged=true;"
+                "map.invalidateSize(false);"
+                "var layer=map._docLayer;"
+                "if(layer&&typeof layer._resetClientVisArea==='function'){layer._resetClientVisArea();}"
+                "if(layer&&typeof layer._sendClientZoom==='function'){layer._sendClientZoom(true);}"
+                "if(layer&&typeof layer._requestNewTiles==='function'){layer._requestNewTiles();}"
+                "var tm=window.TileManager||(typeof TileManager!=='undefined'?TileManager:null);"
+                "if(tm&&typeof tm.refreshTilesInBackground==='function'){tm.refreshTilesInBackground();}"
+                "if(tm&&typeof tm.update==='function'){tm.update();}"
+                "if(window.app&&app.sectionContainer&&typeof app.sectionContainer.requestReDraw==='function'){app.sectionContainer.requestReDraw();}"
+                "if(hard&&tm&&typeof tm.redraw==='function'){tm.redraw();}"
+                "if(hard){var canvas=document.getElementById('document-canvas');if(canvas&&canvas.width>0&&canvas.height>0){canvas.style.visibility='unset';}}"
+                "if(window.app&&app.console&&typeof app.console.debug==='function'){app.console.debug('ios canvas recover tag='+tag+' hard='+hard);}"
+              "}catch(e){"
+                "if(retry<maxRetries){setTimeout(function(){recover(tag,hard,retry+1);},120);}"
+                "else if(window.console&&console.warn){console.warn('ios_canvas_recover_failed',e);}"
+              "}"
+            "}"
+            "setTimeout(function(){recover('soon',false,0);},120);"
+            "setTimeout(function(){recover('mid',false,0);},420);"
+            "setTimeout(function(){recover('late',false,0);},900);"
+            "setTimeout(function(){recover('final',true,0);},1700);"
+            "return 'scheduled';"
             "}catch(e){console.error('canvas_recover '+String(e&&e.message||e));return 'err';}})();";
 }
 
@@ -1774,7 +1983,7 @@ static IMP standardImpOfInputAccessoryView = nil;
                     << [[error localizedDescription] UTF8String]);
         }
         NSString *status = [result isKindOfClass:[NSString class]] ? (NSString *)result : @"err";
-        if ([status isEqualToString:@"ok"]) {
+        if ([status isEqualToString:@"ok"] || [status isEqualToString:@"scheduled"]) {
             strongSelf->documentCanvasRecoverSucceeded = YES;
             return;
         }

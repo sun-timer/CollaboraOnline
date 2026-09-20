@@ -25,6 +25,7 @@ typedef void (^NativeBridgeDocumentTextExtractor)(NativeBridgeDocumentTextComple
 @property (copy, nonatomic, nullable) NativeBridgeReloadDocumentHandler reloadDocumentHandler;
 @property (copy, nonatomic, nullable) NativeBridgeConversationStoreProvider conversationStoreProvider;
 @property (copy, nonatomic, nullable) NativeBridgeDocumentTextExtractor documentTextExtractor;
+@property (copy, nonatomic, nullable) NativeBridgeDocumentTextExtractor documentSelectionExtractor;
 
 - (instancetype)initWithSessionIdProvider:(NativeBridgeSessionIdProvider)sessionIdProvider
                                   emitter:(NativeBridgeMessageEmitter)emitter;

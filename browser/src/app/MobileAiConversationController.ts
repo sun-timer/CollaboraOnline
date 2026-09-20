@@ -11,6 +11,7 @@ interface MobileAiConversationBridgeLike {
 	subscribe(listener: (message: NativeBridgeEnvelope) => void): () => void;
 	isAvailable(): boolean;
 	getSelectedText(): string;
+	getDocumentContextKey?(): string;
 	extractFullText?(): Promise<string>;
 	loadConversationHistory?(
 		mode: 'doc_qa' | 'chat',
@@ -58,6 +59,7 @@ class MobileAiConversationController {
 	private documentSessionBound = false;
 	private historyLoadGeneration = 0;
 	private docQaFullText = '';
+	private docQaContextKey = '';
 	private extractGeneration = 0;
 
 	static shared(): MobileAiConversationController {
@@ -88,6 +90,7 @@ class MobileAiConversationController {
 		this.historyLoadGeneration += 1;
 		this.extractGeneration += 1;
 		this.docQaFullText = '';
+		this.docQaContextKey = '';
 		this.activeAssistantMessageIndex = -1;
 		this.state = { mode: 'doc_qa', status: 'idle' };
 		this.notify();
@@ -130,7 +133,10 @@ class MobileAiConversationController {
 		};
 	}
 
-	send(prompt: string, mode: 'doc_qa' | 'chat' = this.state.mode): string | null {
+	send(
+		prompt: string,
+		mode: 'doc_qa' | 'chat' = this.state.mode,
+	): string | null {
 		const text = typeof prompt === 'string' ? prompt.trim() : '';
 		if (!text) {
 			this.setError('请输入问题或消息');
@@ -160,25 +166,42 @@ class MobileAiConversationController {
 		};
 		this.notify();
 
-		if (
+		const contextKey = this.currentDocumentContextKey();
+		const contextChanged =
 			mode === 'doc_qa' &&
-			history.length === 0 &&
-			typeof this.bridge.extractFullText === 'function'
-		) {
+			this.docQaFullText.length > 0 &&
+			contextKey.length > 0 &&
+			contextKey !== this.docQaContextKey;
+		const needsDocumentExtraction =
+			mode === 'doc_qa' &&
+			typeof this.bridge.extractFullText === 'function' &&
+			(history.length === 0 ||
+				this.docQaFullText.length === 0 ||
+				contextChanged);
+		const refreshContext =
+			mode === 'doc_qa' &&
+			history.length > 0 &&
+			(this.docQaFullText.length === 0 || contextChanged);
+
+		if (needsDocumentExtraction) {
 			const generation = ++this.extractGeneration;
-			this.bridge.extractFullText().then(
+			const extractFullText = this.bridge.extractFullText;
+			if (!extractFullText) {
+				return this.fireRequest(text, mode, history, false);
+			}
+			extractFullText().then(
 				(fullText) => {
 					if (generation !== this.extractGeneration) {
 						return;
 					}
-					const docText =
-						typeof fullText === 'string' ? fullText.trim() : '';
+					const docText = typeof fullText === 'string' ? fullText.trim() : '';
 					if (!docText) {
 						this.setError('文档全文提取失败，请稍后重试');
 						return;
 					}
 					this.docQaFullText = docText;
-					this.fireRequest(text, mode, history);
+					this.docQaContextKey = contextKey;
+					this.fireRequest(text, mode, history, refreshContext);
 				},
 				() => {
 					if (generation !== this.extractGeneration) {
@@ -190,7 +213,7 @@ class MobileAiConversationController {
 			return 'doc-qa-extract';
 		}
 
-		return this.fireRequest(text, mode, history);
+		return this.fireRequest(text, mode, history, false);
 	}
 
 	setMode(mode: 'doc_qa' | 'chat'): void {
@@ -233,6 +256,7 @@ class MobileAiConversationController {
 		this.activeAssistantMessageIndex = -1;
 		this.extractGeneration += 1;
 		this.docQaFullText = '';
+		this.docQaContextKey = '';
 		this.state = {
 			...this.state,
 			status: 'idle',
@@ -258,6 +282,7 @@ class MobileAiConversationController {
 		this.historyLoadGeneration += 1;
 		this.extractGeneration += 1;
 		this.docQaFullText = '';
+		this.docQaContextKey = '';
 		this.state = { mode: 'doc_qa', status: 'idle' };
 		this.activeAssistantMessageIndex = -1;
 	}
@@ -266,6 +291,7 @@ class MobileAiConversationController {
 		prompt: string,
 		mode: 'doc_qa' | 'chat',
 		history: MobileAiConversationMessage[],
+		contextChanged: boolean,
 	): string {
 		const selection =
 			mode === 'doc_qa'
@@ -277,6 +303,7 @@ class MobileAiConversationController {
 			history,
 			context: { prompt },
 			docQaFirstTurn: mode === 'doc_qa' && history.length === 0,
+			docQaContextRefresh: mode === 'doc_qa' && contextChanged,
 		});
 		this.state = {
 			...this.state,
@@ -290,13 +317,26 @@ class MobileAiConversationController {
 		return requestId;
 	}
 
+	private currentDocumentContextKey(): string {
+		if (typeof this.bridge.getDocumentContextKey !== 'function') {
+			return '';
+		}
+		try {
+			return this.bridge.getDocumentContextKey() || '';
+		} catch (_error) {
+			return '';
+		}
+	}
+
 	private activeMessages(): MobileAiConversationMessage[] {
 		return this.state.mode === 'doc_qa'
 			? this.docQaMessages
 			: this.chatMessages;
 	}
 
-	private messagesForMode(mode: 'doc_qa' | 'chat'): MobileAiConversationMessage[] {
+	private messagesForMode(
+		mode: 'doc_qa' | 'chat',
+	): MobileAiConversationMessage[] {
 		return mode === 'doc_qa' ? this.docQaMessages : this.chatMessages;
 	}
 
@@ -436,5 +476,6 @@ class MobileAiConversationController {
 }
 
 if (typeof window !== 'undefined') {
-	(window as any).MobileAiConversationController = MobileAiConversationController;
+	(window as any).MobileAiConversationController =
+		MobileAiConversationController;
 }

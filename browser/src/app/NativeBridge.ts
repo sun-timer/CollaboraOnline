@@ -50,6 +50,9 @@ class NativeBridge {
 		'ai.doc_extract': true,
 		'ai.doc_extract.done': true,
 		'ai.doc_extract.error': true,
+		'ai.selection': true,
+		'ai.selection.done': true,
+		'ai.selection.error': true,
 		'typeset.extract': true,
 		'typeset.fill': true,
 		'typeset.insert': true,
@@ -126,6 +129,9 @@ class NativeBridge {
 				value.type === 'ai.doc_extract' ||
 				value.type === 'ai.doc_extract.done' ||
 				value.type === 'ai.doc_extract.error' ||
+				value.type === 'ai.selection' ||
+				value.type === 'ai.selection.done' ||
+				value.type === 'ai.selection.error' ||
 				value.type === 'ai.state' ||
 				value.type === 'ai.stream' ||
 				value.type === 'ai.done' ||

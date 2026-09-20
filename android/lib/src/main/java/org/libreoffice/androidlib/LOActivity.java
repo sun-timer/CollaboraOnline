@@ -3664,6 +3664,35 @@ public class LOActivity extends AppCompatActivity {
         });
     }
 
+    private void setProgrammaticSelectionSuppression(boolean suppressed) {
+        if (mWebView == null) {
+            return;
+        }
+        final String method = suppressed
+                ? "beginProgrammaticSelection" : "endProgrammaticSelection";
+        final String script = "(function(){"
+                + "var menu=window.AndroidSelectionMenu;"
+                + "if(menu&&typeof menu." + method + "==='function'){menu." + method + "();}"
+                + "})();";
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            mWebView.evaluateJavascript(script, null);
+            return;
+        }
+        final CountDownLatch latch = new CountDownLatch(1);
+        runOnUiThread(() -> {
+            if (mWebView == null) {
+                latch.countDown();
+                return;
+            }
+            mWebView.evaluateJavascript(script, value -> latch.countDown());
+        });
+        try {
+            latch.await(500, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private void closeMobileWizardFromAndroid(String reason) {
         if (mWebView == null) {
             return;
@@ -3830,6 +3859,7 @@ public class LOActivity extends AppCompatActivity {
         String taskType = request.optString("taskType", AI_MODE_CHAT);
         JSONArray history = request.optJSONArray("history");
         boolean firstDocQaTurn = request.optBoolean("docQaFirstTurn", false);
+        boolean refreshDocQaContext = request.optBoolean("docQaContextRefresh", false);
         boolean hasEndpoint = context != null && context.has("endpoint");
         boolean hasApiKey = context != null && context.has("apiKey");
         String endpoint = context != null ? context.optString("endpoint", "") : "";
@@ -3847,6 +3877,17 @@ public class LOActivity extends AppCompatActivity {
             if (firstDocQaTurn) {
                 cachedDocTextForQa = extractDocumentTextForDocQaFirstTurn(requestId);
                 docCharCount = cachedDocTextForQa.length();
+            } else if (refreshDocQaContext) {
+                // The browser re-extracts the active Calc sheet after a sheet
+                // switch and sends it in selection. Do not keep answering from
+                // the first sheet's history in that case.
+                cachedDocTextForQa = normalizeAiText(request.optString("selection", ""));
+                if (cachedDocTextForQa.isEmpty()) {
+                    // The native Android panel does not have a browser-side
+                    // selection payload; read the active sheet on this path.
+                    cachedDocTextForQa = extractDocumentTextForDocQaFirstTurn(requestId);
+                }
+                docCharCount = cachedDocTextForQa.length();
             }
             // 二轮起 history 含首轮全文（为 KV 增量复用），不能按历史总长判"doc 太长"回退云端；
             // 上下文是否装得下由 LocalPromptBuilder 截断处理。docCharCount 保持 0 → 本地放行。
@@ -3854,7 +3895,7 @@ public class LOActivity extends AppCompatActivity {
         AiBackendRouter.ResolvedRoute route = aiBackendRouter.resolve(
                 taskType, modelMode, docCharCount, localModelManager.getState());
         final boolean useLocal = route.backend == AiBackend.BACKEND_LOCAL;
-        if (AI_MODE_DOC_QA.equals(taskType) && firstDocQaTurn
+        if (AI_MODE_DOC_QA.equals(taskType) && (firstDocQaTurn || refreshDocQaContext)
                 && cachedDocTextForQa != null && cachedDocTextForQa.isEmpty()) {
             dispatchAiState(requestId, AI_STATE_ERROR, "文档全文提取失败");
             dispatchAiError(requestId, "doc_extract_failed", "文档全文提取失败，请稍后重试");
@@ -3966,6 +4007,32 @@ public class LOActivity extends AppCompatActivity {
                     // 首轮 user 消息（含全文）存入 history：后续轮 messages 以首轮为前缀，
                     // 使本地 KV 增量复用生效，且多轮模型持续可见全文。
                     appendAiHistoryMessage(AI_MODE_DOC_QA, "user", combinedPrompt);
+                } else if (refreshDocQaContext && cachedDocTextForQa != null
+                        && !cachedDocTextForQa.isEmpty()) {
+                    JSONArray historyMessages = buildAiMessagesFromHistory(history);
+                    String question = normalizeAiText(context == null
+                            ? "" : context.optString("prompt", ""));
+                    if (question.isEmpty()) {
+                        question = extractLatestUserQuestion(history, context, request);
+                    }
+                    for (int i = 0; i < historyMessages.length(); i++) {
+                        JSONObject historyMessage = historyMessages.getJSONObject(i);
+                        // Native-panel requests already store the current plain
+                        // question in history; replace that entry with the
+                        // context-bearing prompt below.
+                        boolean isCurrentPlainQuestion = i == historyMessages.length() - 1
+                                && "user".equals(historyMessage.optString("role", ""))
+                                && question.equals(normalizeAiText(historyMessage.optString("content", "")));
+                        if (!isCurrentPlainQuestion) {
+                            messages.put(historyMessage);
+                        }
+                    }
+                    String combinedPrompt = "请只基于当前工作表内容回答问题；若当前工作表未包含答案，请明确说明。\n\n"
+                            + "【当前工作表全文】\n" + cachedDocTextForQa + "\n\n"
+                            + "【用户问题】\n" + question;
+                    Log.i(TAG, "doc_qa_context_refresh requestId=" + requestId
+                            + " chars=" + cachedDocTextForQa.length());
+                    messages.put(new JSONObject().put("role", "user").put("content", combinedPrompt));
                 } else {
                     JSONArray historyMessages = buildAiMessagesFromHistory(history);
                     if (historyMessages.length() == 0) {
@@ -18622,6 +18689,7 @@ public class LOActivity extends AppCompatActivity {
             request.put("context", context);
             request.put("modelMode", "base");
             request.put("docQaFirstTurn", firstDocQaTurn);
+            request.put("docQaContextRefresh", AI_MODE_DOC_QA.equals(taskType) && !firstDocQaTurn);
             request.put("history", ensureAiChatCoordinator().cloneHistory(request.optString("taskType", AI_MODE_CHAT)));
 
             aiActiveRequestId = requestId;
@@ -19043,6 +19111,16 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void runOnUiThread(Runnable runnable) {
                     LOActivity.this.runOnUiThread(runnable);
+                }
+
+                @Override
+                public void beginProgrammaticSelection() {
+                    LOActivity.this.setProgrammaticSelectionSuppression(true);
+                }
+
+                @Override
+                public void endProgrammaticSelection() {
+                    LOActivity.this.setProgrammaticSelectionSuppression(false);
                 }
 
                 @Override

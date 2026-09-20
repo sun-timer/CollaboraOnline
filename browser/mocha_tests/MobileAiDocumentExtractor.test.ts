@@ -23,8 +23,19 @@ describe('MobileAiDocumentExtractor', function () {
 		this.timeout(3000);
 		const sent: string[] = [];
 		const previousApp = (window as any).app;
+		const previousSelectionMenu = (window as any).AndroidSelectionMenu;
 		const previousBridge = MobileAiBridge.getInstance;
 		let selectionPolls = 0;
+		let suppressionBegins = 0;
+		let suppressionEnds = 0;
+		(window as any).AndroidSelectionMenu = {
+			beginProgrammaticSelection() {
+				suppressionBegins++;
+			},
+			endProgrammaticSelection() {
+				suppressionEnds++;
+			},
+		};
 		MobileAiBridge.getInstance = function () {
 			return {
 				getSelectedText() {
@@ -59,14 +70,18 @@ describe('MobileAiDocumentExtractor', function () {
 		MobileAiDocumentExtractor.extractFullText().then(
 			function (text: string) {
 				(window as any).app = previousApp;
+				(window as any).AndroidSelectionMenu = previousSelectionMenu;
 				MobileAiBridge.getInstance = previousBridge;
 				assert.equal(text, '幻灯片正文');
 				assert.ok(sent.indexOf('.uno:SelectAll') >= 0);
 				assert.ok(sent.indexOf('uno .uno:Copy') >= 0);
+				assert.equal(suppressionBegins, 1);
+				assert.equal(suppressionEnds, 1);
 				done();
 			},
 			function (error: Error) {
 				(window as any).app = previousApp;
+				(window as any).AndroidSelectionMenu = previousSelectionMenu;
 				MobileAiBridge.getInstance = previousBridge;
 				done(error);
 			},

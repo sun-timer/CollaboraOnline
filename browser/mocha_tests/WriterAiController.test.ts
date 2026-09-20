@@ -98,6 +98,30 @@ describe('WriterAiController', function () {
 		assert.equal(controller.getState().state, 'accepted');
 	});
 
+	it('notifies the iOS toolbar after accepting an AI insertion', function () {
+		const previousWindow = (global as any).window;
+		const nativeMessages: string[] = [];
+		(global as any).window = { ThisIsTheiOSApp: true };
+		try {
+			const bridge = createFakeBridge('原始文本');
+			const controller = new WriterAiController(bridge, {
+				pastePlainText() {
+					return true;
+				},
+				postMobileMessage(message: string) {
+					nativeMessages.push(message);
+				},
+			});
+			controller.request('polish');
+			bridge.emit(aiMessage('ai.done', { fullText: '润色后的文本' }));
+
+			assert.equal(controller.accept(), true);
+			assert.deepEqual(nativeMessages, ['NATIVE_UNDO_RECORD reason=ai_insert']);
+		} finally {
+			(global as any).window = previousWindow;
+		}
+	});
+
 	it('appends continuation after the original selection', function () {
 		const bridge = createFakeBridge('原始段落');
 		const inserted: string[] = [];

@@ -65,6 +65,15 @@ class MobileAiTranslateDialog {
 		this.sourceLanguage.value = WriterAiCatalog.DEFAULT_SOURCE_LANGUAGE;
 		this.sheet.open();
 		this.render();
+		void this.refreshSelection();
+	}
+
+	private async refreshSelection(): Promise<void> {
+		const initialText = this.sourceText.value;
+		const text = await MobileAiBridge.getInstance().getSelectedTextAsync();
+		if (this.sourceText.value === initialText) {
+			this.sourceText.value = text;
+		}
 	}
 
 	close(): void {

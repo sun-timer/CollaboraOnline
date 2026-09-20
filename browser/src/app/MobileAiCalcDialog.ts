@@ -53,7 +53,9 @@ class MobileAiCalcDialog {
 			MobileAiTaskDialogLayout.cardField('', this.promptInput),
 		);
 
-		this.layout.generateButton.onclick = () => this.request();
+		this.layout.generateButton.onclick = () => {
+			void this.request();
+		};
 		this.layout.stopButton.onclick = () => this.controller.cancel();
 		this.layout.copyRow.onclick = () => this.controller.copy();
 		this.layout.regenerateButton.onclick = () => this.controller.regenerate();
@@ -79,7 +81,9 @@ class MobileAiCalcDialog {
 		this.sheet.close();
 	}
 
-	private request(): void {
+	private async request(): Promise<void> {
+		this.refreshHint();
+		await MobileAiBridge.getInstance().getSelectedTextAsync();
 		this.refreshHint();
 		this.controller.request(this.taskType, this.promptInput.value);
 	}

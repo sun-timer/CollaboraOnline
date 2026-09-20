@@ -157,7 +157,9 @@ class MobileAiOperationDialog {
 			this.imageThumb = thumb;
 		}
 
-		this.layout.generateButton.onclick = () => this.request();
+		this.layout.generateButton.onclick = () => {
+			void this.request();
+		};
 		this.layout.stopButton.onclick = () => this.controller.cancel();
 		this.layout.copyRow.onclick = () => this.controller.copy();
 		this.layout.regenerateButton.onclick = () => this.regenerate();
@@ -174,7 +176,7 @@ class MobileAiOperationDialog {
 		this.sheet.open();
 		const state = this.controller.getState();
 		if (this.taskType === 'continue' && state.state !== 'ready') {
-			this.request();
+			void this.request();
 		}
 		this.render();
 	}
@@ -255,7 +257,7 @@ class MobileAiOperationDialog {
 		this.sheet.close();
 	}
 
-	private request(): void {
+	private async request(): Promise<void> {
 		const context: { [key: string]: any } = {};
 		if (this.taskType === 'polish') {
 			context.polishStyle =
@@ -279,7 +281,7 @@ class MobileAiOperationDialog {
 			);
 			return;
 		}
-		this.controller.request(this.taskType, context);
+		this.controller.requestWithCurrentSelection(this.taskType, context);
 	}
 
 	private regenerate(): void {

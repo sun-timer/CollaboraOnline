@@ -2,8 +2,9 @@
  * Full-document text extraction for mobile AI document Q&A (first turn).
  *
  * Android Doc QA uses LOK SelectAll → Copy → clipboard poll. iOS native
- * extract follows that path; JS SelectAll + Copy + gettextselection remains
- * the fallback when NativeBridge is unavailable.
+ * extract is ZIP (Writer/Impress) then LOK SelectAll + getTextSelection +
+ * Deselect (no Copy); spreadsheet skips ZIP. JS SelectAll remains the fallback
+ * when NativeBridge is unavailable.
  */
 
 class MobileAiDocumentExtractor {
@@ -68,6 +69,7 @@ class MobileAiDocumentExtractor {
 
 	private static extractViaNative(): Promise<string> {
 		return new Promise((resolve) => {
+			let releaseSelectionMenuSuppression = (): void => undefined;
 			try {
 				if (typeof window === 'undefined' || !(window as any).ThisIsTheiOSApp) {
 					resolve('');
@@ -80,12 +82,15 @@ class MobileAiDocumentExtractor {
 				}
 				const requestId = NativeBridge.createId('doc-extract');
 				const documentSessionId = nativeBridge.getDocumentSessionId();
+				releaseSelectionMenuSuppression =
+					MobileAiDocumentExtractor.suppressProgrammaticSelectionMenu();
 				let settled = false;
 				const finish = (text: string): void => {
 					if (settled) {
 						return;
 					}
 					settled = true;
+					releaseSelectionMenuSuppression();
 					window.clearTimeout(timer);
 					unsubscribe();
 					resolve(typeof text === 'string' ? text.trim() : '');
@@ -109,7 +114,7 @@ class MobileAiDocumentExtractor {
 						finish('');
 					}
 				});
-				const timer = window.setTimeout(() => finish(''), 4000);
+				const timer = window.setTimeout(() => finish(''), 8000);
 				const posted = nativeBridge.postMessage({
 					protocolVersion: NativeBridge.PROTOCOL_VERSION,
 					channel: 'native',
@@ -123,6 +128,7 @@ class MobileAiDocumentExtractor {
 					finish('');
 				}
 			} catch (_error) {
+				releaseSelectionMenuSuppression();
 				resolve('');
 			}
 		});
@@ -130,6 +136,8 @@ class MobileAiDocumentExtractor {
 
 	private static extractViaSelection(): Promise<string> {
 		return new Promise((resolve) => {
+			let releaseSelectionMenuSuppression = (): void => undefined;
+			let cleanedUp = false;
 			try {
 				const appRef = (window as any).app;
 				const map = appRef?.map;
@@ -148,6 +156,14 @@ class MobileAiDocumentExtractor {
 						// Best effort.
 					}
 				};
+				const cleanup = (): void => {
+					if (cleanedUp) {
+						return;
+					}
+					cleanedUp = true;
+					deselect();
+					releaseSelectionMenuSuppression();
+				};
 
 				const requestSelectionContent = (): void => {
 					if (socket && typeof socket.sendMessage === 'function') {
@@ -157,6 +173,8 @@ class MobileAiDocumentExtractor {
 					}
 				};
 
+				releaseSelectionMenuSuppression =
+					MobileAiDocumentExtractor.suppressProgrammaticSelectionMenu();
 				map.sendUnoCommand('.uno:SelectAll');
 
 				let attempt = 0;
@@ -164,7 +182,7 @@ class MobileAiDocumentExtractor {
 					attempt += 1;
 					const text = MobileAiDocumentExtractor.currentSelectionText();
 					if (text) {
-						deselect();
+						cleanup();
 						resolve(text);
 						return;
 					}
@@ -172,7 +190,7 @@ class MobileAiDocumentExtractor {
 						requestSelectionContent();
 					}
 					if (attempt >= 24) {
-						deselect();
+						cleanup();
 						resolve('');
 						return;
 					}
@@ -180,8 +198,33 @@ class MobileAiDocumentExtractor {
 				};
 				window.setTimeout(poll, 120);
 			} catch (_error) {
+				releaseSelectionMenuSuppression();
 				resolve('');
 			}
 		});
+	}
+
+	private static suppressProgrammaticSelectionMenu(): () => void {
+		try {
+			const selectionMenu = (window as any).AndroidSelectionMenu;
+			if (
+				selectionMenu &&
+				typeof selectionMenu.beginProgrammaticSelection === 'function' &&
+				typeof selectionMenu.endProgrammaticSelection === 'function'
+			) {
+				selectionMenu.beginProgrammaticSelection();
+				let released = false;
+				return () => {
+					if (released) {
+						return;
+					}
+					released = true;
+					selectionMenu.endProgrammaticSelection();
+				};
+			}
+		} catch (_error) {
+			// Menu suppression is best effort and must not block extraction.
+		}
+		return () => undefined;
 	}
 }

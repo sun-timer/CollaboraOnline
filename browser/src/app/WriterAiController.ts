@@ -10,12 +10,14 @@ interface WriterAiBridgeLike {
 	cancel(requestId: string): boolean;
 	accept(requestId: string, text: string): boolean;
 	getSelectedText(): string;
+	getSelectedTextAsync?(): Promise<string>;
 	isAvailable(): boolean;
 	subscribe(listener: (message: NativeBridgeEnvelope) => void): () => void;
 }
 
 interface WriterAiDocumentAdapter {
 	pastePlainText(text: string): boolean;
+	postMobileMessage?(message: string): void;
 	pasteHtml?(html: string, plainText: string): boolean;
 	replaceSelection?(text: string): boolean;
 	appendAfterSelection?(text: string, originalSelection?: string): boolean;
@@ -162,6 +164,20 @@ class WriterAiController {
 		return requestId;
 	}
 
+	/** Read the current selection without exposing bridge details to UI callers. */
+	requestWithCurrentSelection(
+		taskType: string,
+		context: { [key: string]: any } = {},
+		images?: string[],
+	): string | null | Promise<string | null> {
+		if (typeof this.bridge.getSelectedTextAsync !== 'function') {
+			return this.request(taskType, context, this.bridge.getSelectedText(), images);
+		}
+		return this.bridge.getSelectedTextAsync().then((selection) =>
+			this.request(taskType, context, selection, images),
+		);
+	}
+
 	cancel(): boolean {
 		if (!this.state.requestId) {
 			return false;
@@ -264,6 +280,11 @@ class WriterAiController {
 			this.setError('NativeBridge 未确认 AI 结果');
 			return false;
 		}
+		// iOS's native toolbar otherwise waits for a command-state event that can
+		// be missed while the async clipboard paste is still being processed.
+		// Android receives the same state from its WebView toolbar path, so keep
+		// this native-shell nudge iOS-specific.
+		this.notifyNativeUndoRecord('ai_insert');
 		this.state = {
 			...this.state,
 			state: 'accepted',
@@ -378,8 +399,29 @@ class WriterAiController {
 		this.listeners.slice().forEach((listener) => listener(snapshot));
 	}
 
+	private notifyNativeUndoRecord(reason: string): void {
+		if (
+			typeof window === 'undefined' ||
+			!(window as any).ThisIsTheiOSApp ||
+			typeof this.documentAdapter.postMobileMessage !== 'function'
+		) {
+			return;
+		}
+		this.documentAdapter.postMobileMessage('NATIVE_UNDO_RECORD reason=' + reason);
+	}
+
 	private static defaultDocumentAdapter(): WriterAiDocumentAdapter {
 		return {
+			postMobileMessage(message: string): void {
+				try {
+					const poster = (window as any).postMobileMessage;
+					if (typeof poster === 'function') {
+						poster(message);
+					}
+				} catch (_error) {
+					// Native undo state is best-effort and must not block AI insertion.
+				}
+			},
 			pastePlainText(text: string): boolean {
 				try {
 					const clip = (window as any).app?.map?._clip;

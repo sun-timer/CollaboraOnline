@@ -40,7 +40,11 @@ describe('MobileAiConversationController', function () {
 					}
 				};
 			},
-			emit(type: string, payload: { [key: string]: any }, requestId = 'conversation-1') {
+			emit(
+				type: string,
+				payload: { [key: string]: any },
+				requestId = 'conversation-1',
+			) {
 				const message: NativeBridgeEnvelope = {
 					protocolVersion: 1,
 					channel: 'native',
@@ -59,7 +63,10 @@ describe('MobileAiConversationController', function () {
 		const bridge = createBridge();
 		const controller = new MobileAiConversationController(bridge);
 
-		assert.equal(controller.send('这份文档讲了什么？', 'doc_qa'), 'conversation-1');
+		assert.equal(
+			controller.send('这份文档讲了什么？', 'doc_qa'),
+			'conversation-1',
+		);
 		assert.equal(bridge.calls.request[0].taskType, 'doc_qa');
 		assert.equal(bridge.calls.request[0].selection, '文档选区');
 		bridge.emit('ai.stream', { delta: '这是' });
@@ -94,7 +101,10 @@ describe('MobileAiConversationController', function () {
 		};
 		const controller = new MobileAiConversationController(bridge);
 
-		assert.equal(controller.send('这份文档讲了什么？', 'doc_qa'), 'doc-qa-extract');
+		assert.equal(
+			controller.send('这份文档讲了什么？', 'doc_qa'),
+			'doc-qa-extract',
+		);
 		assert.equal(bridge.calls.request.length, 0);
 
 		Promise.resolve().then(function () {
@@ -102,9 +112,52 @@ describe('MobileAiConversationController', function () {
 			assert.equal(bridge.calls.request[0].taskType, 'doc_qa');
 			assert.equal(bridge.calls.request[0].selection, '全文正文');
 			assert.equal(bridge.calls.request[0].docQaFirstTurn, true);
-			assert.equal(bridge.calls.request[0].context.prompt, '这份文档讲了什么？');
+			assert.equal(
+				bridge.calls.request[0].context.prompt,
+				'这份文档讲了什么？',
+			);
 			done();
 		});
+	});
+
+	it('refreshes document context after switching a spreadsheet sheet', function (done) {
+		const bridge = createBridge() as ReturnType<typeof createBridge> & {
+			getDocumentContextKey(): string;
+			extractFullText(): Promise<string>;
+		};
+		let contextKey = 'spreadsheet:0:README';
+		let extractCount = 0;
+		bridge.getDocumentContextKey = function () {
+			return contextKey;
+		};
+		bridge.extractFullText = function () {
+			extractCount += 1;
+			return Promise.resolve(extractCount === 1 ? 'README 内容' : 'Data 内容');
+		};
+		const controller = new MobileAiConversationController(bridge);
+
+		assert.equal(
+			controller.send('README 里说什么？', 'doc_qa'),
+			'doc-qa-extract',
+		);
+		Promise.resolve()
+			.then(function () {
+				bridge.emit('ai.done', { fullText: 'README 答案' }, 'conversation-1');
+				contextKey = 'spreadsheet:2:Data';
+				assert.equal(
+					controller.send('Data 里有什么？', 'doc_qa'),
+					'doc-qa-extract',
+				);
+				return Promise.resolve();
+			})
+			.then(function () {
+				assert.equal(extractCount, 2);
+				assert.equal(bridge.calls.request.length, 2);
+				assert.equal(bridge.calls.request[1].selection, 'Data 内容');
+				assert.equal(bridge.calls.request[1].docQaFirstTurn, false);
+				assert.equal(bridge.calls.request[1].docQaContextRefresh, true);
+				done();
+			});
 	});
 
 	it('keeps document Q&A and chat histories isolated', function () {

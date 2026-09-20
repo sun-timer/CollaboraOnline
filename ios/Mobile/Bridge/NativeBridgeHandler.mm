@@ -122,6 +122,7 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
         @"ai.state", @"ai.stream", @"ai.done", @"ai.error",
         @"ai.conversation.load", @"ai.conversation.save", @"ai.conversation.clear",
         @"ai.doc_extract",
+        @"ai.selection",
         @"typeset.extract", @"typeset.fill", @"typeset.insert",
     ]];
     if (![supportedTypes containsObject:type]) {
@@ -299,6 +300,26 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
                 return;
             }
             [self emitEnvelopeType:@"ai.doc_extract.done"
+                         requestId:requestId
+                   documentSessionId:documentSessionId
+                              payload:@{@"text": trimmed}];
+        });
+        return;
+    }
+
+    if ([type isEqualToString:@"ai.selection"]) {
+        if (!self.documentSelectionExtractor) {
+            [self emitErrorType:@"ai.selection.error"
+                      requestId:requestId
+                documentSessionId:documentSessionId
+                           code:@"selection_failed"
+                        message:@"当前选区读取失败，请稍后重试"];
+            return;
+        }
+        self.documentSelectionExtractor(^(NSString *text) {
+            NSString *trimmed = [(text ?: @"") stringByTrimmingCharactersInSet:
+                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            [self emitEnvelopeType:@"ai.selection.done"
                          requestId:requestId
                    documentSessionId:documentSessionId
                               payload:@{@"text": trimmed}];

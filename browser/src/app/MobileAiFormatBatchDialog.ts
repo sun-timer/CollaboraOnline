@@ -45,7 +45,9 @@ class MobileAiFormatBatchDialog {
 			'mobile-ai-task-dialog__btn mobile-ai-task-dialog__btn--primary';
 		this.applyButton.textContent = '应用';
 		this.applyButton.disabled = true;
-		this.applyButton.onclick = () => this.apply();
+		this.applyButton.onclick = () => {
+			void this.apply();
+		};
 		content.appendChild(this.applyButton);
 
 		this.status = document.createElement('div');
@@ -64,8 +66,15 @@ class MobileAiFormatBatchDialog {
 		this.applyButton.disabled = !this.rules.some((enabled) => enabled);
 	}
 
-	private apply(): void {
-		const selection = this.getSelectedText();
+	private async apply(): Promise<void> {
+		const bridge = MobileAiBridge.getInstance();
+		let selection = bridge.getSelectedText();
+		const isMobileApp =
+			!!(window as any).ThisIsTheiOSApp ||
+			!!(window as any).ThisIsTheAndroidApp;
+		if (isMobileApp) {
+			selection = await bridge.getSelectedTextAsync();
+		}
 		if (!selection) {
 			this.status.textContent = '请先选择要处理的文字';
 			return;
