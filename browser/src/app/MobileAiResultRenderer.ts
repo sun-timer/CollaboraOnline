@@ -7,32 +7,61 @@
 class MobileAiResultRenderer {
 	static toHtml(markdown: string): string {
 		const source = typeof markdown === 'string' ? markdown : '';
-		const escaped = MobileAiResultRenderer.escapeHtml(source);
+		const escaped = MobileAiResultRenderer.escapeHtml(source.trim());
 		const lines = escaped.split(/\r?\n/);
 		const output: string[] = [];
-		let inList = false;
-		lines.forEach((line) => {
-			const listItem = line.match(/^\s*-\s+(.*)$/);
-			if (listItem) {
-				if (!inList) {
-					output.push('<ul>');
-					inList = true;
-				}
-				output.push(`<li>${MobileAiResultRenderer.inline(listItem[1])}</li>`);
+		let paragraphLines: string[] = [];
+		let listTag: 'ul' | 'ol' | null = null;
+		const flushParagraph = (): void => {
+			if (paragraphLines.length === 0) {
 				return;
 			}
-			if (inList) {
-				output.push('</ul>');
-				inList = false;
-			}
 			output.push(
-				line.length > 0
-					? `<p>${MobileAiResultRenderer.inline(line)}</p>`
-					: '<br>',
+				`<p style="margin:0;">${MobileAiResultRenderer.inline(
+					paragraphLines.join('<br>'),
+				)}</p>`,
 			);
+			paragraphLines = [];
+		};
+		const closeList = (): void => {
+			if (listTag) {
+				output.push(`</${listTag}>`);
+				listTag = null;
+			}
+		};
+
+		lines.forEach((line) => {
+			if (line.trim().length === 0) {
+				flushParagraph();
+				closeList();
+				if (output.length > 0 && output[output.length - 1] !== '<br>') {
+					output.push('<br>');
+				}
+				return;
+			}
+
+			const unorderedItem = line.match(/^\s*[-*+]\s+(.*)$/);
+			const orderedItem = line.match(/^\s*\d+[.)]\s+(.*)$/);
+			const item = unorderedItem || orderedItem;
+			if (item) {
+				flushParagraph();
+				const nextListTag = unorderedItem ? 'ul' : 'ol';
+				if (listTag !== nextListTag) {
+					closeList();
+					listTag = nextListTag;
+					output.push(`<${listTag}>`);
+				}
+				output.push(`<li>${MobileAiResultRenderer.inline(item[1])}</li>`);
+				return;
+			}
+
+			closeList();
+			paragraphLines.push(line);
 		});
-		if (inList) {
-			output.push('</ul>');
+		flushParagraph();
+		closeList();
+		while (output[output.length - 1] === '<br>') {
+			output.pop();
 		}
 		return output.join('');
 	}

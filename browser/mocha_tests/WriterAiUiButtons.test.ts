@@ -148,7 +148,7 @@ describe('Writer AI UI buttons', function () {
 	}
 
 	describe('MobileAiOperationDialog', function () {
-		it('runs 生成 → 停止 → 重新生成 → 复制 → 插入文档', function () {
+		it('runs 生成 → 停止 → 重新生成 → 复制 → 插入文档', async function () {
 			const dom = setupDom();
 			try {
 				const bridge = createFakeWriterBridge('原始段落');
@@ -179,6 +179,7 @@ describe('Writer AI UI buttons', function () {
 				assert.ok(findButton(root, '重新生成'), '重新生成 button must be in DOM');
 
 				clickButton(root, '生成');
+				await new Promise((resolve) => setTimeout(resolve, 0));
 				assert.equal(bridge.calls.request.length, 1);
 				assert.equal(bridge.calls.request[0].taskType, 'polish');
 				bridge.emit(aiDone('req-1', '润色结果'));
@@ -195,6 +196,7 @@ describe('Writer AI UI buttons', function () {
 				assert.equal(bridge.calls.accept.length, 1);
 
 				clickButton(root, '生成');
+				await new Promise((resolve) => setTimeout(resolve, 0));
 				clickButton(root, '停止生成');
 				assert.deepEqual(bridge.calls.cancel, ['req-3']);
 			} finally {
@@ -202,7 +204,7 @@ describe('Writer AI UI buttons', function () {
 			}
 		});
 
-		it('auto-starts continue on open and supports 开始生成', function () {
+		it('auto-starts continue on open and supports 开始生成', async function () {
 			const dom = setupDom();
 			try {
 				const bridge = createFakeWriterBridge('段落开头');
@@ -219,6 +221,7 @@ describe('Writer AI UI buttons', function () {
 				});
 				const dialog = new MobileAiOperationDialog('continue');
 				dialog.open();
+				await new Promise((resolve) => setTimeout(resolve, 0));
 				assert.equal(bridge.calls.request.length, 1);
 				assert.equal(bridge.calls.request[0].taskType, 'continue');
 			} finally {
@@ -272,7 +275,7 @@ describe('Writer AI UI buttons', function () {
 	});
 
 	describe('MobileAiFormatBatchDialog', function () {
-		it('applies checked rules via 应用', function () {
+		it('applies checked rules via 应用', async function () {
 			const dom = setupDom();
 			try {
 				const pasted: string[] = [];
@@ -291,6 +294,7 @@ describe('Writer AI UI buttons', function () {
 				checkbox.checked = true;
 				checkbox.onchange!(new Event('change'));
 				clickButton(root, '应用');
+				await new Promise((resolve) => setTimeout(resolve, 0));
 				assert.equal(pasted.length, 1);
 				assert.notEqual(pasted[0], '待处理文本');
 			} finally {

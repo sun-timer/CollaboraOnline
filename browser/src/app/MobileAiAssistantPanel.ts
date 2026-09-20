@@ -198,12 +198,16 @@ class MobileAiAssistantPanel {
 		this.messages.replaceChildren();
 		state.messages.forEach((message) => {
 			const bubble = document.createElement('div');
-			bubble.textContent = message.content || '正在生成…';
 			bubble.style.cssText =
-				'padding:10px 12px;border-radius:10px;white-space:pre-wrap;' +
+				'padding:10px 12px;border-radius:10px;line-height:1.5;' +
 				(message.role === 'user'
 					? 'align-self:flex-end;background:#e4f0ff;'
 					: 'align-self:flex-start;background:#f1f3f4;');
+			if (message.role === 'assistant' && message.content) {
+				MobileAiResultRenderer.renderInto(bubble, message.content);
+			} else {
+				bubble.textContent = message.content || '正在生成…';
+			}
 			this.messages.appendChild(bubble);
 		});
 
