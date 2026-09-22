@@ -14,6 +14,7 @@
 #import "Settings/ClearCacheViewController.h"
 #import "LocalModelStore.h"
 #import "LocalModelViewController.h"
+#import "Settings/AppToastPresenter.h"
 #import "Settings/ProfileSettingsViewController.h"
 
 static const CGFloat kDrawerWidth = 320.0;
@@ -310,6 +311,10 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     self.localRowButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
     self.localRowButton.accessibilityIdentifier = @"aiDrawerLocalModel";
     [self.localRowButton addTarget:self action:@selector(openLocalModel) forControlEvents:UIControlEventTouchUpInside];
+    UILongPressGestureRecognizer *copyUrlLongPress =
+        [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(copyLocalModelUrlLongPress:)];
+    copyUrlLongPress.minimumPressDuration = 0.5;
+    [self.localRowButton addGestureRecognizer:copyUrlLongPress];
     [self.modelsBody addSubview:self.localRowButton];
 
     UIImageView *localIcon = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"model-vision" size:24]];
@@ -957,6 +962,26 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     BOOL supported = [LocalModelStore isDeviceSupported];
     self.localRowButton.alpha = supported ? 1.0 : 0.72;
     self.localRowButton.enabled = supported;
+}
+
+- (void)copyLocalModelUrlLongPress:(UILongPressGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateBegan) {
+        return;
+    }
+    LocalModelStore *store = [LocalModelStore shared];
+    NSString *url = [store primaryDownloadURLForInstalledEntry];
+    if (url.length == 0) {
+        LocalModelCatalogEntry *entry = [store installedEntry];
+        if (entry == nil) {
+            entry = [LocalModelStore defaultCatalogEntry];
+        }
+        url = [LocalModelStore primaryDownloadURLForEntry:entry];
+    }
+    if (url.length == 0) {
+        return;
+    }
+    [UIPasteboard generalPasteboard].string = url;
+    [AppToastPresenter showMessage:@"URL 已复制" from:self];
 }
 
 - (void)openLocalModel {

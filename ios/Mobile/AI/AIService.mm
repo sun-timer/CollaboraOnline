@@ -10,6 +10,9 @@
 #import "AIConfigurationStore.h"
 #import "AIModelConfigStore.h"
 #import "AIRequestSession.h"
+#import "AiBackendRouter.h"
+#import "LocalInferenceEngine.h"
+#import "LocalModelStore.h"
 
 @interface AIServiceRequest : NSObject
 @property (strong, nonatomic) AIRequestSession *session;
@@ -23,6 +26,16 @@
 @implementation AIServiceRequest
 @end
 
+@interface AIServiceLocalSlot : NSObject
+@property (copy, nonatomic) AIServiceEventEmitter emitter;
+@property (copy, nonatomic) NSString *requestId;
+@property (copy, nonatomic) NSString *documentSessionId;
+@property (strong, nonatomic) NSMutableString *fullText;
+@end
+
+@implementation AIServiceLocalSlot
+@end
+
 @interface AIService ()
 @property (strong, nonatomic) AIConfigurationStore *configurationStore;
 @property (strong, nonatomic) AIModelConfigStore *modelStore;
@@ -30,6 +43,8 @@
 @property (strong, nonatomic) NSOperationQueue *delegateQueue;
 @property (strong, nonatomic) NSMutableDictionary<NSURLSessionTask *, AIServiceRequest *> *requestsByTask;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, AIServiceRequest *> *requestsById;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, AIServiceLocalSlot *> *localSlotsById;
+@property (strong, nonatomic) AiBackendRouter *backendRouter;
 @end
 
 @implementation AIService
@@ -47,6 +62,8 @@
         _delegateQueue.maxConcurrentOperationCount = 1;
         _requestsByTask = [[NSMutableDictionary alloc] init];
         _requestsById = [[NSMutableDictionary alloc] init];
+        _localSlotsById = [[NSMutableDictionary alloc] init];
+        _backendRouter = [[AiBackendRouter alloc] init];
         _urlSession = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration defaultSessionConfiguration]
                                                      delegate:self
                                                 delegateQueue:_delegateQueue];
@@ -63,44 +80,40 @@
     }
 
     [self cancelRequest:requestId documentSessionId:documentSessionId];
-    AIModelType modelType = [self defaultModelTypeForTask:
-        [payload[@"taskType"] isKindOfClass:[NSString class]]
-            ? payload[@"taskType"] : @""];
-    id rawType = payload[@"modelType"];
-    if ([rawType isKindOfClass:[NSNumber class]]) {
-        NSInteger typeValue = ((NSNumber *)rawType).integerValue;
-        if (typeValue >= AIModelTypeBase && typeValue <= AIModelTypeVision) {
-            modelType = (AIModelType)typeValue;
-        }
-    }
     NSString *taskType = [payload[@"taskType"] isKindOfClass:[NSString class]]
         ? payload[@"taskType"] : @"";
     BOOL isImageGeneration = [taskType isEqualToString:@"image_generate"];
-    AIModelConfigForm *form = [self.modelStore loadForm:modelType];
-    NSString *endpoint = form.url;
-    NSString *model = form.modelName;
-    NSString *apiKey = form.apiKey;
-    if (endpoint.length == 0 || model.length == 0 || apiKey.length == 0) {
-        // 回退旧配置存储
-        NSError *configurationError = nil;
-        AIConfiguration *configuration = [self.configurationStore configurationWithError:&configurationError];
-        if (configuration != nil && configuration.endpoint.length > 0) {
-            endpoint = configuration.endpoint;
-            model = configuration.model ?: model;
-            apiKey = configuration.apiKey ?: apiKey;
-        }
-    }
-    if (endpoint.length == 0 || model.length == 0 || apiKey.length == 0) {
-        NSString *message = @"AI service is not configured";
-        [self emitType:@"ai.error"
-              requestId:requestId
-           documentSessionId:documentSessionId
-                  payload:@{@"code": @"config_missing", @"message": message}
-                   emitter:emit];
-        return;
-    }
 
     if (isImageGeneration) {
+        AIModelType modelType = [self defaultModelTypeForTask:taskType];
+        id rawType = payload[@"modelType"];
+        if ([rawType isKindOfClass:[NSNumber class]]) {
+            NSInteger typeValue = ((NSNumber *)rawType).integerValue;
+            if (typeValue >= AIModelTypeBase && typeValue <= AIModelTypeVision) {
+                modelType = (AIModelType)typeValue;
+            }
+        }
+        AIModelConfigForm *form = [self.modelStore loadForm:modelType];
+        NSString *endpoint = form.url;
+        NSString *model = form.modelName;
+        NSString *apiKey = form.apiKey;
+        if (endpoint.length == 0 || model.length == 0 || apiKey.length == 0) {
+            NSError *configurationError = nil;
+            AIConfiguration *configuration = [self.configurationStore configurationWithError:&configurationError];
+            if (configuration != nil && configuration.endpoint.length > 0) {
+                endpoint = configuration.endpoint;
+                model = configuration.model ?: model;
+                apiKey = configuration.apiKey ?: apiKey;
+            }
+        }
+        if (endpoint.length == 0 || model.length == 0 || apiKey.length == 0) {
+            [self emitType:@"ai.error"
+                  requestId:requestId
+           documentSessionId:documentSessionId
+                  payload:@{@"code": @"config_missing", @"message": @"AI service is not configured"}
+                   emitter:emit];
+            return;
+        }
         [self startImageGenerationWithEndpoint:endpoint
                                          model:model
                                         apiKey:apiKey
@@ -110,7 +123,6 @@
                                         emit:emit];
         return;
     }
-
 
     NSError *messagesError = nil;
     NSArray *messages = [self messagesForPayload:payload error:&messagesError];
@@ -124,6 +136,57 @@
                       @"code": errorCode,
                       @"message": messagesError.localizedDescription ?: @"Invalid AI payload",
                   }
+                   emitter:emit];
+        return;
+    }
+
+    NSString *modelMode = [payload[@"modelMode"] isKindOfClass:[NSString class]]
+        ? payload[@"modelMode"] : @"cloud";
+    NSInteger docCharCount = 0;
+    NSString *selection = [payload[@"selection"] isKindOfClass:[NSString class]] ? payload[@"selection"] : @"";
+    if ([taskType isEqualToString:@"doc_qa"]) {
+        docCharCount = selection.length;
+    }
+    AiBackendLocalModelState *localState = [LocalModelStore.shared backendRouterState];
+    AiBackendResolvedRoute *route = [self.backendRouter resolveTaskType:taskType
+                                                              modelMode:modelMode
+                                                            docCharCount:docCharCount
+                                                              localState:localState];
+    if (route.backend == AiBackendKindLocal) {
+        [self startLocalRequestWithMessages:messages
+                                   taskType:taskType
+                                  requestId:requestId
+                         documentSessionId:documentSessionId
+                                       emit:emit];
+        return;
+    }
+
+    AIModelType modelType = [self defaultModelTypeForTask:taskType];
+    id rawType = payload[@"modelType"];
+    if ([rawType isKindOfClass:[NSNumber class]]) {
+        NSInteger typeValue = ((NSNumber *)rawType).integerValue;
+        if (typeValue >= AIModelTypeBase && typeValue <= AIModelTypeVision) {
+            modelType = (AIModelType)typeValue;
+        }
+    }
+    AIModelConfigForm *form = [self.modelStore loadForm:modelType];
+    NSString *endpoint = form.url;
+    NSString *model = form.modelName;
+    NSString *apiKey = form.apiKey;
+    if (endpoint.length == 0 || model.length == 0 || apiKey.length == 0) {
+        NSError *configurationError = nil;
+        AIConfiguration *configuration = [self.configurationStore configurationWithError:&configurationError];
+        if (configuration != nil && configuration.endpoint.length > 0) {
+            endpoint = configuration.endpoint;
+            model = configuration.model ?: model;
+            apiKey = configuration.apiKey ?: apiKey;
+        }
+    }
+    if (endpoint.length == 0 || model.length == 0 || apiKey.length == 0) {
+        [self emitType:@"ai.error"
+              requestId:requestId
+           documentSessionId:documentSessionId
+                  payload:@{@"code": @"config_missing", @"message": @"AI service is not configured"}
                    emitter:emit];
         return;
     }
@@ -243,6 +306,20 @@
 
 - (void)cancelRequest:(NSString *)requestId
    documentSessionId:(NSString *)documentSessionId {
+    AIServiceLocalSlot *localSlot = self.localSlotsById[requestId];
+    if (localSlot != nil
+        && [localSlot.documentSessionId isEqualToString:documentSessionId]) {
+        [[LocalInferenceEngine shared] cancelRequestId:requestId];
+        AIServiceEventEmitter emitter = localSlot.emitter;
+        [self.localSlotsById removeObjectForKey:requestId];
+        [self emitType:@"ai.state"
+              requestId:requestId
+           documentSessionId:documentSessionId
+                  payload:@{@"state": @"cancelled"}
+                   emitter:emitter];
+        return;
+    }
+
     AIServiceRequest *serviceRequest = self.requestsById[requestId];
     if (serviceRequest == nil
         || ![serviceRequest.session.documentSessionId isEqualToString:documentSessionId]) {
@@ -259,6 +336,13 @@
 }
 
 - (void)cancelRequestsForDocumentSession:(NSString *)documentSessionId {
+    NSArray<NSString *> *localRequestIds = [self.localSlotsById.allKeys copy];
+    for (NSString *requestId in localRequestIds) {
+        AIServiceLocalSlot *slot = self.localSlotsById[requestId];
+        if ([slot.documentSessionId isEqualToString:documentSessionId]) {
+            [self cancelRequest:requestId documentSessionId:documentSessionId];
+        }
+    }
     NSArray<AIServiceRequest *> *requests = [self.requestsById.allValues copy];
     for (AIServiceRequest *serviceRequest in requests) {
         if ([serviceRequest.session.documentSessionId isEqualToString:documentSessionId]) {
@@ -1227,6 +1311,116 @@ didCompleteWithError:(NSError *)error {
         };
     });
     return templates[key];
+}
+
+- (void)startLocalRequestWithMessages:(NSArray *)messages
+                               taskType:(NSString *)taskType
+                              requestId:(NSString *)requestId
+                     documentSessionId:(NSString *)documentSessionId
+                                   emit:(AIServiceEventEmitter)emit {
+    LocalModelStore *store = [LocalModelStore shared];
+    LocalModelCatalogEntry *installed = [store installedEntry];
+    if (installed == nil || ![store isEnabled]) {
+        [self emitType:@"ai.error"
+              requestId:requestId
+           documentSessionId:documentSessionId
+                  payload:@{@"code": @"local_not_ready", @"message": @"本地模型未安装或未启用"}
+                   emitter:emit];
+        return;
+    }
+
+    AIServiceLocalSlot *slot = [[AIServiceLocalSlot alloc] init];
+    slot.requestId = requestId;
+    slot.documentSessionId = documentSessionId;
+    slot.emitter = [emit copy];
+    slot.fullText = [NSMutableString string];
+    self.localSlotsById[requestId] = slot;
+
+    [self emitType:@"ai.state"
+          requestId:requestId
+       documentSessionId:documentSessionId
+              payload:@{@"state": @"loading"}
+               emitter:emit];
+
+    NSURL *modelURL = [store installedModelFileURL];
+    if (modelURL == nil) {
+        [self emitType:@"ai.error"
+              requestId:requestId
+           documentSessionId:documentSessionId
+                  payload:@{@"code": @"local_not_ready", @"message": @"本地模型文件不存在"}
+                   emitter:emit];
+        [self.localSlotsById removeObjectForKey:requestId];
+        return;
+    }
+    LocalInferenceParams *params = [LocalInferenceParams fromDevice];
+    LocalInferenceEngine *engine = [LocalInferenceEngine shared];
+    BOOL multiTurn = [AiBackendRouter isMultiTurnTask:taskType];
+
+    __weak __typeof(self) weakSelf = self;
+    void (^runGenerate)(void) = ^{
+        [engine generateWithRequestId:requestId
+                             messages:messages
+                            multiTurn:multiTurn
+                               params:params
+                              onToken:^(NSString *token) {
+            AIServiceLocalSlot *active = weakSelf.localSlotsById[requestId];
+            if (active == nil) {
+                return;
+            }
+            [active.fullText appendString:token];
+            [weakSelf emitType:@"ai.state"
+                      requestId:requestId
+               documentSessionId:documentSessionId
+                      payload:@{@"state": @"streaming"}
+                       emitter:active.emitter];
+            [weakSelf emitType:@"ai.stream"
+                      requestId:requestId
+               documentSessionId:documentSessionId
+                      payload:@{@"state": @"streaming", @"delta": token}
+                       emitter:active.emitter];
+        } onComplete:^(NSString *fullText, NSTimeInterval ttftMs, float tokensPerSecond) {
+            AIServiceLocalSlot *active = weakSelf.localSlotsById[requestId];
+            if (active == nil) {
+                return;
+            }
+            NSString *text = fullText.length > 0 ? fullText : active.fullText;
+            [weakSelf emitType:@"ai.done"
+                      requestId:requestId
+               documentSessionId:documentSessionId
+                      payload:@{@"state": @"ready", @"fullText": text ?: @""}
+                       emitter:active.emitter];
+            [weakSelf.localSlotsById removeObjectForKey:requestId];
+        } onError:^(NSString *code, NSString *message) {
+            AIServiceLocalSlot *active = weakSelf.localSlotsById[requestId];
+            if (active == nil) {
+                return;
+            }
+            [weakSelf emitType:@"ai.error"
+                      requestId:requestId
+               documentSessionId:documentSessionId
+                      payload:@{@"code": code ?: @"local_infer_fail", @"message": message ?: @""}
+                       emitter:active.emitter];
+            [weakSelf.localSlotsById removeObjectForKey:requestId];
+        }];
+    };
+
+    if ([engine isModelLoaded]) {
+        runGenerate();
+        return;
+    }
+
+    [engine loadModelAtPath:modelURL.path params:params completion:^(BOOL success, NSString *message) {
+        if (!success) {
+            [weakSelf emitType:@"ai.error"
+                      requestId:requestId
+               documentSessionId:documentSessionId
+                      payload:@{@"code": @"local_load_fail", @"message": message ?: @"模型加载失败"}
+                       emitter:emit];
+            [weakSelf.localSlotsById removeObjectForKey:requestId];
+            return;
+        }
+        runGenerate();
+    }];
 }
 
 @end

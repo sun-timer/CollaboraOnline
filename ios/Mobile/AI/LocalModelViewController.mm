@@ -36,6 +36,11 @@ static UIColor *LocalModelMutedColor(void) {
 @property (strong, nonatomic) UILabel *deviceVerdictLabel;
 @property (strong, nonatomic) UIProgressView *progressView;
 @property (strong, nonatomic) UILabel *progressLabel;
+@property (strong, nonatomic) UIView *urlRow;
+@property (strong, nonatomic) UILabel *urlValueLabel;
+@property (strong, nonatomic) UIButton *modelUrlCopyButton;
+@property (strong, nonatomic) NSLayoutConstraint *divider2TopFromProgress;
+@property (strong, nonatomic) NSLayoutConstraint *divider2TopFromUrl;
 @property (strong, nonatomic) UISwitch *enableSwitch;
 @property (strong, nonatomic) UIButton *chooseButton;
 @property (strong, nonatomic) UIButton *downloadButton;
@@ -143,6 +148,34 @@ static UIColor *LocalModelMutedColor(void) {
     self.progressLabel.hidden = YES;
     [sheet addSubview:self.progressLabel];
 
+    self.urlRow = [[UIView alloc] init];
+    self.urlRow.translatesAutoresizingMaskIntoConstraints = NO;
+    self.urlRow.hidden = YES;
+    [sheet addSubview:self.urlRow];
+
+    UILabel *urlTitle = [[UILabel alloc] init];
+    urlTitle.translatesAutoresizingMaskIntoConstraints = NO;
+    urlTitle.text = @"URL";
+    urlTitle.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+    urlTitle.textColor = LocalModelMutedColor();
+    [self.urlRow addSubview:urlTitle];
+
+    self.urlValueLabel = [[UILabel alloc] init];
+    self.urlValueLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.urlValueLabel.font = [UIFont systemFontOfSize:11];
+    self.urlValueLabel.textColor = LocalModelBodyColor();
+    self.urlValueLabel.numberOfLines = 2;
+    self.urlValueLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
+    [self.urlRow addSubview:self.urlValueLabel];
+
+    self.modelUrlCopyButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.modelUrlCopyButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.modelUrlCopyButton setTitle:@"复制" forState:UIControlStateNormal];
+    self.modelUrlCopyButton.titleLabel.font = [UIFont systemFontOfSize:13];
+    [self.modelUrlCopyButton setTitleColor:[AppChromeHelper homeFabColor] forState:UIControlStateNormal];
+    [self.modelUrlCopyButton addTarget:self action:@selector(copyModelUrl) forControlEvents:UIControlEventTouchUpInside];
+    [self.urlRow addSubview:self.modelUrlCopyButton];
+
     UIView *divider2 = [[UIView alloc] init];
     divider2.translatesAutoresizingMaskIntoConstraints = NO;
     divider2.backgroundColor = divider.backgroundColor;
@@ -213,7 +246,17 @@ static UIColor *LocalModelMutedColor(void) {
         [self.progressView.trailingAnchor constraintEqualToAnchor:hint.trailingAnchor],
         [self.progressLabel.topAnchor constraintEqualToAnchor:self.progressView.bottomAnchor constant:4],
         [self.progressLabel.leadingAnchor constraintEqualToAnchor:hint.leadingAnchor],
-        [divider2.topAnchor constraintEqualToAnchor:self.progressLabel.bottomAnchor constant:16],
+        [self.urlRow.topAnchor constraintEqualToAnchor:self.progressLabel.bottomAnchor constant:12],
+        [self.urlRow.leadingAnchor constraintEqualToAnchor:hint.leadingAnchor],
+        [self.urlRow.trailingAnchor constraintEqualToAnchor:hint.trailingAnchor],
+        [urlTitle.topAnchor constraintEqualToAnchor:self.urlRow.topAnchor],
+        [urlTitle.leadingAnchor constraintEqualToAnchor:self.urlRow.leadingAnchor],
+        [self.modelUrlCopyButton.centerYAnchor constraintEqualToAnchor:urlTitle.centerYAnchor],
+        [self.modelUrlCopyButton.trailingAnchor constraintEqualToAnchor:self.urlRow.trailingAnchor],
+        [self.urlValueLabel.topAnchor constraintEqualToAnchor:urlTitle.bottomAnchor constant:4],
+        [self.urlValueLabel.leadingAnchor constraintEqualToAnchor:self.urlRow.leadingAnchor],
+        [self.urlValueLabel.trailingAnchor constraintEqualToAnchor:self.urlRow.trailingAnchor],
+        [self.urlValueLabel.bottomAnchor constraintEqualToAnchor:self.urlRow.bottomAnchor],
         [divider2.leadingAnchor constraintEqualToAnchor:sheet.leadingAnchor],
         [divider2.trailingAnchor constraintEqualToAnchor:sheet.trailingAnchor],
         [divider2.heightAnchor constraintEqualToConstant:1],
@@ -246,8 +289,29 @@ static UIColor *LocalModelMutedColor(void) {
     self.cancelHeightConstraint.active = YES;
     self.deleteHeightConstraint.active = YES;
 
+    self.divider2TopFromProgress = [divider2.topAnchor constraintEqualToAnchor:self.progressLabel.bottomAnchor constant:16];
+    self.divider2TopFromUrl = [divider2.topAnchor constraintEqualToAnchor:self.urlRow.bottomAnchor constant:16];
+    self.divider2TopFromProgress.active = YES;
+    self.divider2TopFromUrl.active = NO;
+
     [self buildListOverlay];
     [self refreshUi];
+}
+
+- (void)copyModelUrl {
+    NSString *url = [self.store primaryDownloadURLForInstalledEntry];
+    if (url.length == 0) {
+        LocalModelCatalogEntry *entry = [self.store installedEntry];
+        if (entry == nil) {
+            entry = [LocalModelStore defaultCatalogEntry];
+        }
+        url = [LocalModelStore primaryDownloadURLForEntry:entry];
+    }
+    if (url.length == 0) {
+        return;
+    }
+    [UIPasteboard generalPasteboard].string = url;
+    [AppToastPresenter showMessage:@"URL 已复制" from:self];
 }
 
 - (UIButton *)textActionButton:(NSString *)title color:(UIColor *)color action:(SEL)action {
@@ -392,12 +456,20 @@ static UIColor *LocalModelMutedColor(void) {
     heightConstraint.constant = hidden ? 0 : 38;
 }
 
+- (void)updateUrlRowVisible:(BOOL)visible urlText:(NSString *)urlText {
+    self.urlRow.hidden = !visible;
+    self.divider2TopFromProgress.active = !visible;
+    self.divider2TopFromUrl.active = visible;
+    self.urlValueLabel.text = urlText ?: @"";
+}
+
 - (void)refreshUi {
     BOOL supported = [LocalModelStore isDeviceSupported];
     self.chooseButton.enabled = supported;
     self.downloadButton.enabled = supported;
 
     if (!supported) {
+        [self updateUrlRowVisible:NO urlText:nil];
         self.statusLabel.text = @"当前设备不支持本地推理（需 arm64 且内存 4GB 以上）。";
         self.progressView.hidden = YES;
         self.progressLabel.hidden = YES;
@@ -413,6 +485,7 @@ static UIColor *LocalModelMutedColor(void) {
     LocalModelCatalogEntry *installed = [self.store installedEntry];
 
     if ([state isEqualToString:LocalModelStateDownloading]) {
+        [self updateUrlRowVisible:NO urlText:nil];
         if ([self.store isDownloadActive]) {
             NSInteger percent = [self.store downloadProgressPercent];
             self.statusLabel.text = @"正在下载模型…";
@@ -443,6 +516,7 @@ static UIColor *LocalModelMutedColor(void) {
         self.statusLabel.text = [NSString stringWithFormat:@"已安装：%@", installed.displayName];
         self.progressView.hidden = YES;
         self.progressLabel.hidden = YES;
+        [self updateUrlRowVisible:YES urlText:[LocalModelStore primaryDownloadURLForEntry:installed]];
         [self setActionRow:self.cancelButton hidden:YES];
         [self setActionRow:self.deleteButton hidden:NO];
         [self setActionRow:self.downloadButton hidden:NO];
@@ -453,6 +527,7 @@ static UIColor *LocalModelMutedColor(void) {
         return;
     }
 
+    [self updateUrlRowVisible:NO urlText:nil];
     self.progressView.hidden = YES;
     self.progressLabel.hidden = YES;
     [self setActionRow:self.cancelButton hidden:YES];
@@ -590,7 +665,7 @@ static UIColor *LocalModelMutedColor(void) {
     [self.store selectActiveModel:entry];
     [self hideModelList];
     [self refreshUi];
-    [AppToastPresenter showMessage:@"已切换本地模型" from:self];
+    [AppToastPresenter showMessage:[NSString stringWithFormat:@"已切换至 %@", entry.displayName] from:self];
 }
 
 - (void)startDownload:(LocalModelCatalogEntry *)entry {

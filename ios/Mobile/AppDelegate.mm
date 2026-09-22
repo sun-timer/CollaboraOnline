@@ -26,6 +26,7 @@
 #import "AppDelegate.h"
 #import "HomeViewController.h"
 #import "DocumentPresentation.h"
+#import "LocalInferenceLifecycle.h"
 
 #import "FakeSocket.hpp"
 #import "Kit.hpp"
@@ -53,6 +54,8 @@ NSString *app_text_direction;
 
     Log::initialize("Mobile", trace, false, false, {}, false, {});
     Util::setThreadName("main");
+
+    [LocalInferenceLifecycle install];
 
     // Clear the cache directory if it is for another build of the app
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
@@ -187,6 +190,7 @@ NSString *app_text_direction;
 }
 
 - (void)applicationDidEnterBackground:(UIApplication *)application {
+    [LocalInferenceLifecycle unloadEngineForMemoryPressure];
 }
 
 - (void)applicationWillEnterForeground:(UIApplication *)application {

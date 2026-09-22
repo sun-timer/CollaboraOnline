@@ -7,6 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		LLAMA010008 /* LocalInferenceLifecycle.mm in Sources */ = {isa = PBXBuildFile; fileRef = LLAMA010018 /* LocalInferenceLifecycle.mm */; };
+		LLAMA010001 /* LlamaInferenceCore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = LLAMA010011 /* LlamaInferenceCore.cpp */; };
+		LLAMA010002 /* LocalInferenceEngine.mm in Sources */ = {isa = PBXBuildFile; fileRef = LLAMA010012 /* LocalInferenceEngine.mm */; };
+		LLAMA010003 /* AiBackendRouter.mm in Sources */ = {isa = PBXBuildFile; fileRef = LLAMA010013 /* AiBackendRouter.mm */; };
+		LLAMA010004 /* LocalPromptBuilder.mm in Sources */ = {isa = PBXBuildFile; fileRef = LLAMA010014 /* LocalPromptBuilder.mm */; };
+		LLAMA010005 /* llama.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = LLAMA010015 /* llama.xcframework */; };
+		LLAMA010006 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = LLAMA010016 /* Metal.framework */; };
+		LLAMA010007 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = LLAMA010017 /* Accelerate.framework */; };
 		AB1201002F000000000000D1 /* WriterAIComponents.mm in Sources */ = {isa = PBXBuildFile; fileRef = AB1201002F000000000000C1 /* WriterAIComponents.mm */; };
 		1F957DC22BA8229A006C9E78 /* Util-mobile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1F957DC12BA82296006C9E78 /* Util-mobile.cpp */; };
 		1FCFA28A2B2AF13F007EE2DF /* coolwsd-fork.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1FCFA2892B2AF13C007EE2DF /* coolwsd-fork.cpp */; };
@@ -145,6 +153,19 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		LLAMA010017 /* LocalInferenceLifecycle.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LocalInferenceLifecycle.h; sourceTree = "<group>"; };
+		LLAMA010018 /* LocalInferenceLifecycle.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = LocalInferenceLifecycle.mm; sourceTree = "<group>"; };
+		LLAMA010021 /* LlamaInferenceCore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LlamaInferenceCore.h; sourceTree = "<group>"; };
+		LLAMA010011 /* LlamaInferenceCore.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = LlamaInferenceCore.cpp; sourceTree = "<group>"; };
+		LLAMA010022 /* LocalInferenceEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LocalInferenceEngine.h; sourceTree = "<group>"; };
+		LLAMA010012 /* LocalInferenceEngine.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = LocalInferenceEngine.mm; sourceTree = "<group>"; };
+		LLAMA010023 /* AiBackendRouter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AiBackendRouter.h; sourceTree = "<group>"; };
+		LLAMA010013 /* AiBackendRouter.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AiBackendRouter.mm; sourceTree = "<group>"; };
+		LLAMA010024 /* LocalPromptBuilder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LocalPromptBuilder.h; sourceTree = "<group>"; };
+		LLAMA010014 /* LocalPromptBuilder.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = LocalPromptBuilder.mm; sourceTree = "<group>"; };
+		LLAMA010015 /* llama.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = llama.xcframework; path = build-deps/llama.xcframework; sourceTree = "<group>"; };
+		LLAMA010016 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		LLAMA010017 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		AB1201002F000000000000C1 /* WriterAIComponents.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = Mobile/AI/WriterAIComponents.mm; sourceTree = "<group>"; };
 		1F957DC12BA82296006C9E78 /* Util-mobile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = "Util-mobile.cpp"; sourceTree = "<group>"; };
 		1FCFA2892B2AF13C007EE2DF /* coolwsd-fork.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = "coolwsd-fork.cpp"; sourceTree = "<group>"; };
@@ -1649,6 +1670,9 @@
 				BEA2835A21470A1C00848631 /* WebKit.framework in Frameworks */,
 				BE00F8B7213ED573001CE2D4 /* libz.tbd in Frameworks */,
 				BE00F8B5213ED543001CE2D4 /* libiconv.tbd in Frameworks */,
+				LLAMA010005 /* llama.xcframework in Frameworks */,
+				LLAMA010006 /* Metal.framework in Frameworks */,
+				LLAMA010007 /* Accelerate.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2933,6 +2957,16 @@
 				E2B010271026090900000002 /* LocalModelStore.mm */,
 				E2B010281026090900000001 /* LocalModelViewController.h */,
 				E2B010291026090900000002 /* LocalModelViewController.mm */,
+				LLAMA010021 /* LlamaInferenceCore.h */,
+				LLAMA010011 /* LlamaInferenceCore.cpp */,
+				LLAMA010022 /* LocalInferenceEngine.h */,
+				LLAMA010012 /* LocalInferenceEngine.mm */,
+				LLAMA010023 /* AiBackendRouter.h */,
+				LLAMA010013 /* AiBackendRouter.mm */,
+				LLAMA010024 /* LocalPromptBuilder.h */,
+				LLAMA010014 /* LocalPromptBuilder.mm */,
+				LLAMA010017 /* LocalInferenceLifecycle.h */,
+				LLAMA010018 /* LocalInferenceLifecycle.mm */,
 			);
 			path = AI;
 			sourceTree = "<group>";
@@ -3878,6 +3912,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = BE8D77432136762600AC58EA /* Build configuration list for PBXNativeTarget "Mobile" */;
 			buildPhases = (
+				LLAMA010030 /* Ensure Llama XCFramework */,
 				BE8D77232136762500AC58EA /* Sources */,
 				BE8D77242136762500AC58EA /* Frameworks */,
 				BE8D77252136762500AC58EA /* Resources */,
@@ -4061,6 +4096,20 @@
 			shellPath = /bin/sh;
 			shellScript = "${SOURCE_ROOT}/modify_bundle_version.sh\n\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    rm -rf \"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/data\"\nfi\n";
 		};
+		LLAMA010030 /* Ensure Llama XCFramework */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Ensure Llama XCFramework";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\n\"${SOURCE_ROOT}/scripts/ensure-llama-xcframework.sh\"\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -4165,6 +4214,11 @@
 				E2B010251026090900000001 /* ProfileSettingsViewController.mm in Sources */,
 				E2B010271026090900000001 /* LocalModelStore.mm in Sources */,
 				E2B010291026090900000001 /* LocalModelViewController.mm in Sources */,
+				LLAMA010001 /* LlamaInferenceCore.cpp in Sources */,
+				LLAMA010002 /* LocalInferenceEngine.mm in Sources */,
+				LLAMA010003 /* AiBackendRouter.mm in Sources */,
+				LLAMA010004 /* LocalPromptBuilder.mm in Sources */,
+				LLAMA010008 /* LocalInferenceLifecycle.mm in Sources */,
 				E2B0102B1026090900000001 /* AppToastPresenter.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -4334,6 +4388,7 @@
 					"IOS=IOS",
 					"DISABLE_DYNLOADING=1",
 					"ENABLE_DEBUG=1",
+					"XL_LLAMA_SIMULATOR_DEBUG=1",
 					"COOLWSD_CONFIGDIR='\".\"'",
 					"NUM_PRESPAWN_CHILDREN='\"1\"'",
 				);
@@ -4349,8 +4404,11 @@
 				"ZSTD_ROOT[sdk=iphoneos*]" = "$(SOURCE_ROOT)/../../build-deps-ios/ios-zstd/install/OS64";
 				"ZSTD_ROOT[sdk=iphonesimulator*]" = "$(SOURCE_ROOT)/../../build-deps-ios/ios-zstd/install/SIMULATORARM64";
 				ZSTD_INCLUDE_ROOT = "$(SOURCE_ROOT)/../../build-deps-ios/ios-zstd/lib";
+				"LLAMA_XCFRAMEWORK[sdk=iphoneos*]" = "$(SOURCE_ROOT)/build-deps/llama.xcframework/ios-arm64/llama.framework";
+				"LLAMA_XCFRAMEWORK[sdk=iphonesimulator*]" = "$(SOURCE_ROOT)/build-deps/llama.xcframework/ios-arm64_x86_64-simulator/llama.framework";
 				HEADER_SEARCH_PATHS = (
 					"$(SOURCE_ROOT)/Mobile",
+					"$(SOURCE_ROOT)/Mobile/AI",
 					"$(SOURCE_ROOT)/Mobile/Typeset",
 					"$(SOURCE_ROOT)/../ios",
 					"$(SOURCE_ROOT)/..",
@@ -4367,6 +4425,7 @@
 					"$(LOSRCDIR)/workdir/UnoApiHeadersTarget/offapi/comprehensive",
 					"$(POCO_ROOT)/include",
 					"$(ZSTD_INCLUDE_ROOT)",
+					"$(LLAMA_XCFRAMEWORK)/Headers",
 				);
 				INFOPLIST_FILE = Mobile/Info.plist;
 				SWIFT_VERSION = 5.0;
@@ -4433,8 +4492,11 @@
 				"ZSTD_ROOT[sdk=iphoneos*]" = "$(SOURCE_ROOT)/../../build-deps-ios/ios-zstd/install/OS64";
 				"ZSTD_ROOT[sdk=iphonesimulator*]" = "$(SOURCE_ROOT)/../../build-deps-ios/ios-zstd/install/SIMULATORARM64";
 				ZSTD_INCLUDE_ROOT = "$(SOURCE_ROOT)/../../build-deps-ios/ios-zstd/lib";
+				"LLAMA_XCFRAMEWORK[sdk=iphoneos*]" = "$(SOURCE_ROOT)/build-deps/llama.xcframework/ios-arm64/llama.framework";
+				"LLAMA_XCFRAMEWORK[sdk=iphonesimulator*]" = "$(SOURCE_ROOT)/build-deps/llama.xcframework/ios-arm64_x86_64-simulator/llama.framework";
 				HEADER_SEARCH_PATHS = (
 					"$(SOURCE_ROOT)/Mobile",
+					"$(SOURCE_ROOT)/Mobile/AI",
 					"$(SOURCE_ROOT)/Mobile/Typeset",
 					"$(SOURCE_ROOT)/../ios",
 					"$(SOURCE_ROOT)/..",
@@ -4451,6 +4513,7 @@
 					"$(LOSRCDIR)/workdir/UnoApiHeadersTarget/offapi/comprehensive",
 					"$(POCO_ROOT)/include",
 					"$(ZSTD_INCLUDE_ROOT)",
+					"$(LLAMA_XCFRAMEWORK)/Headers",
 				);
 				INFOPLIST_FILE = Mobile/Info.plist;
 				SWIFT_VERSION = 5.0;
