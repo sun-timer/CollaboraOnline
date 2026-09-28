@@ -1160,40 +1160,216 @@
 	height: 21px;
 }
 
-[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink-form {
+/* Calc insert-hyperlink page (Android CalcHyperlinkPickerController parity) */
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__segments {
+	display: flex;
+	margin: 8px 16px 12px;
+	padding: 4px;
+	border-radius: 12px;
+	background: #f2f3f5;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__segment {
+	flex: 1;
+	padding: 10px 8px;
+	border: none;
+	border-radius: 8px;
+	background: transparent;
+	font: inherit;
+	font-size: 16px;
+	color: #6a6a6a;
+	cursor: pointer;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__segment--active {
+	background: #fff;
+	color: #101010;
+	font-weight: 600;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__bodies {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+	overflow: hidden;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__pane {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
-	padding: 4px 0 8px;
+	overflow-y: auto;
+	padding: 0 16px 12px;
 }
 
-[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink-form__field {
+/* The class sets display:flex, which would beat the UA [hidden] rule. */
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__pane[hidden],
+[data-mobile-doc-theme='calc']
+.writer-function-calc-hyperlink__tree-children[hidden] {
+	display: none;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__field {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 8px;
 }
 
-[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink-form__label {
-	font-size: 13px;
-	color: #5f6368;
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__field-label {
+	font-size: 14px;
+	font-weight: 700;
+	color: #101010;
 }
 
-[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink-form__input {
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__input {
 	box-sizing: border-box;
 	width: 100%;
-	padding: 10px 12px;
-	border: 1px solid #e3e3e3;
+	padding: 12px;
+	border: 1px solid #c9cdd4;
 	border-radius: 8px;
+	background: #fff;
 	font: inherit;
 	font-size: 15px;
+	color: #101010;
 }
 
-[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink-form__submit {
-	padding: 12px 16px;
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__input::placeholder {
+	color: #999999;
+}
+
+[data-mobile-doc-theme='calc'] textarea.writer-function-calc-hyperlink__input {
+	resize: vertical;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__open {
+	padding: 13px 16px;
 	border: none;
 	border-radius: 8px;
 	background: #3b8040;
 	color: #fff;
+	font: inherit;
+	font-size: 16px;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__tree-title {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-size: 14px;
+	font-weight: 700;
+	color: #101010;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__tree {
+	display: flex;
+	flex-direction: column;
+	padding: 4px 12px;
+	border: 1px solid #c9cdd4;
+	border-radius: 12px;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__tree-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 44px;
+	padding: 6px 0;
+	border: none;
+	background: transparent;
+	font: inherit;
+	font-size: 15px;
+	color: #101010;
+	text-align: left;
+	cursor: pointer;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__tree-row--child {
+	padding-left: 44px;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__tree-chevron {
+	display: inline-flex;
+	flex-shrink: 0;
+	width: 16px;
+	height: 16px;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__tree-icon {
+	display: inline-flex;
+	flex-shrink: 0;
+	width: 20px;
+	height: 20px;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__tree-children {
+	display: flex;
+	flex-direction: column;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-hyperlink__primary {
+	margin: 8px 16px 16px;
+	padding: 14px 16px;
+	border: none;
+	border-radius: 8px;
+	background: #3b8040;
+	color: #fff;
+	font: inherit;
+	font-size: 16px;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+/* Calc insert-shape page (Android shape dialog parity: action list + cancel) */
+[data-mobile-doc-theme='calc'] .writer-function-calc-shape {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+	padding: 4px 0 8px;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-shape__list {
+	display: flex;
+	flex-direction: column;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-shape__row {
+	display: flex;
+	align-items: center;
+	min-height: 52px;
+	padding: 0 16px;
+	border: none;
+	background: transparent;
+	font: inherit;
+	font-size: 16px;
+	color: #101010;
+	text-align: left;
+	cursor: pointer;
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-shape__divider {
+	height: 1px;
+	margin: 0 16px;
+	background: rgba(0, 0, 0, 0.08);
+}
+
+[data-mobile-doc-theme='calc'] .writer-function-calc-shape__cancel {
+	margin: 12px 16px 8px;
+	padding: 12px 16px;
+	border: none;
+	border-radius: 999px;
+	background: #f2f3f5;
+	color: #101010;
 	font: inherit;
 	font-size: 16px;
 	font-weight: 600;
@@ -1341,6 +1517,160 @@
 	font: inherit;
 	font-size: 16px;
 	font-weight: 600;
+	cursor: pointer;
+}
+
+/* Impress insert-hyperlink page (Android ImpressHyperlinkPickerController parity).
+ * Accent follows --writer-function-accent (#ec5d1f under the impress theme). */
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__segments {
+	display: flex;
+	margin: 8px 16px 12px;
+	padding: 4px;
+	border-radius: 12px;
+	background: #f2f3f5;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__segment {
+	flex: 1;
+	padding: 10px 8px;
+	border: none;
+	border-radius: 8px;
+	background: transparent;
+	font: inherit;
+	font-size: 16px;
+	color: #6a6a6a;
+	cursor: pointer;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__segment--active {
+	background: #fff;
+	color: #101010;
+	font-weight: 600;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__bodies {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+	overflow: hidden;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__pane {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	overflow-y: auto;
+	padding: 0 16px 12px;
+}
+
+/* The class sets display:flex, which would beat the UA [hidden] rule. */
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__pane[hidden] {
+	display: none;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__field {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__field-label {
+	font-size: 14px;
+	font-weight: 700;
+	color: #101010;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__heading {
+	font-size: 14px;
+	font-weight: 700;
+	color: #101010;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__input {
+	box-sizing: border-box;
+	width: 100%;
+	padding: 12px;
+	border: 1px solid #c9cdd4;
+	border-radius: 8px;
+	background: #fff;
+	font: inherit;
+	font-size: 15px;
+	color: #101010;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__input::placeholder {
+	color: #999999;
+}
+
+[data-mobile-doc-theme='impress'] textarea.writer-function-impress-hyperlink__input {
+	resize: vertical;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__target-row {
+	display: flex;
+	align-items: center;
+	min-height: 44px;
+	padding: 10px 16px;
+	border: 1px solid #c9cdd4;
+	border-radius: 10px;
+	background: #fff;
+	font: inherit;
+	font-size: 15px;
+	color: #101010;
+	text-align: left;
+	cursor: pointer;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__slide-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__slide-row {
+	display: flex;
+	align-items: center;
+	min-height: 44px;
+	padding: 10px 16px;
+	border: 1px solid #c9cdd4;
+	border-radius: 10px;
+	background: #fff;
+	font: inherit;
+	font-size: 15px;
+	color: #101010;
+	text-align: left;
+	cursor: pointer;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__slide-row--selected {
+	border-color: var(--writer-function-accent);
+	background: #fdeee5;
+	font-weight: 600;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__slide-empty {
+	font-size: 14px;
+	color: #80868b;
+}
+
+[data-mobile-doc-theme='impress'] .writer-function-impress-hyperlink__primary {
+	margin: 8px 16px 16px;
+	padding: 14px 16px;
+	border: none;
+	border-radius: 8px;
+	background: var(--writer-function-accent);
+	color: #fff;
+	font: inherit;
+	font-size: 16px;
+	font-weight: 700;
 	cursor: pointer;
 }
 
@@ -1949,6 +2279,21 @@
 	height: 20px;
 	flex-shrink: 0;
 	cursor: pointer;
+	accent-color: var(--writer-function-accent);
+}
+
+/* 审阅 / 布局水印：Figma 胶囊行（全圆角 + 行间距） */
+.writer-function-stack--capsule {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.writer-function-stack--capsule > .writer-function-action-row,
+.writer-function-stack--capsule > .writer-function-toggle-row,
+.writer-function-stack--capsule > .writer-function-watermark-row {
+	margin-bottom: 0;
+	border-radius: 999px;
 }
 
 /* Comment insert sub-sheet (issue 15) */
@@ -2012,7 +2357,7 @@
 	width: 100%;
 	min-height: 96px;
 	padding: 12px;
-	border: 1px solid #e6e8eb;
+	border: none;
 	border-radius: 12px;
 	background: #fff;
 	font: inherit;
@@ -2029,13 +2374,14 @@
 .writer-comment-actions {
 	display: flex;
 	gap: 12px;
+	padding: 0 4px 4px;
 }
 
 .writer-comment-btn {
 	flex: 1;
 	padding: 14px 16px;
 	border: none;
-	border-radius: 12px;
+	border-radius: 999px;
 	font: inherit;
 	font-size: 16px;
 	font-weight: 600;
@@ -2043,13 +2389,13 @@
 }
 
 .writer-comment-btn--cancel {
-	background: #f2f3f5;
+	background: var(--writer-function-tile-bg);
 	color: #101010;
 }
 
 .writer-comment-btn--save {
-	background: linear-gradient(110deg, #c7f3ff, #f1d9ff);
-	color: #101010;
+	background: var(--writer-function-accent);
+	color: #fff;
 }
 
 /* Image insert sub-sheet (issue 15) */
@@ -2066,12 +2412,12 @@
 	width: 100%;
 	min-height: 56px;
 	padding: 14px 16px;
-	border: 1px solid #e6e8eb;
-	border-radius: 16px;
-	background: #fff;
+	border: none;
+	border-radius: 999px;
+	background: var(--writer-function-tile-bg);
 	font: inherit;
 	font-size: 16px;
-	color: #101010;
+	color: var(--writer-function-row-text);
 	cursor: pointer;
 }
 
@@ -2081,7 +2427,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	color: var(--writer-function-accent);
+	color: var(--writer-function-row-text);
 	flex-shrink: 0;
 }
 
@@ -2498,11 +2844,111 @@
 	margin: 16px 32px 24px;
 	padding: 14px 16px;
 	border: none;
-	border-radius: 24px;
-	background: #1278d9;
+	border-radius: 999px;
+	background: var(--writer-function-accent);
 	font: inherit;
 	font-size: 16px;
-	font-weight: 400;
+	font-weight: 600;
+	color: #fff;
+	cursor: pointer;
+}
+
+/* 二级页通用：表格 / 自定义纸张等（对齐水印 stepper + 主按钮） */
+.writer-subpage-form {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	margin: 0 -16px;
+}
+
+.writer-subpage-form__scroll {
+	flex: 1;
+	overflow: auto;
+	padding: 8px 16px;
+}
+
+.writer-subpage-form__section-title {
+	margin-bottom: 8px;
+	font-size: 14px;
+	font-weight: 600;
+	color: #101010;
+}
+
+.writer-subpage-form__section-spacer {
+	height: 16px;
+}
+
+.writer-subpage-form__hint {
+	margin: 4px 0 0;
+	font-size: 13px;
+	color: var(--writer-function-muted);
+	text-align: center;
+}
+
+.writer-subpage-form__stepper-track {
+	display: flex;
+	align-items: center;
+	min-height: 56px;
+	padding: 8px;
+	border-radius: 12px;
+	background: var(--writer-function-tile-bg);
+}
+
+.writer-subpage-form__stepper-value {
+	display: flex;
+	flex: 1;
+	align-items: center;
+	min-width: 0;
+	margin-right: 4px;
+	padding: 10px 12px;
+	border-radius: 16px;
+	background: #e5e6e8;
+}
+
+.writer-subpage-form__stepper-icon {
+	display: flex;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	margin-right: 8px;
+}
+
+.writer-subpage-form__stepper-number {
+	flex: 1;
+	font-size: 18px;
+	font-weight: 700;
+	color: #333;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
+.writer-subpage-form__stepper-btn {
+	display: flex;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: center;
+	width: 48px;
+	height: 48px;
+	margin: 0;
+	padding: 12px;
+	border: none;
+	background: transparent;
+	cursor: pointer;
+}
+
+.writer-subpage-form__confirm {
+	box-sizing: border-box;
+	width: calc(100% - 32px);
+	margin: 16px 16px 24px;
+	padding: 14px 16px;
+	border: none;
+	border-radius: 999px;
+	background: var(--writer-function-accent);
+	font: inherit;
+	font-size: 16px;
+	font-weight: 600;
 	color: #fff;
 	cursor: pointer;
 }

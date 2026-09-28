@@ -22,34 +22,37 @@ class WriterEditorInsertTableDialog {
 	) {
 		this.controller = controller;
 
-		const content = document.createElement('div');
-		content.style.cssText = 'display:flex;flex-direction:column;gap:14px;';
+		const wrap = document.createElement('div');
+		wrap.className = 'writer-subpage-form';
 
-		content.appendChild(this.stepperRow('行数',
-			() => this.rowCount, (value: number) => { this.rowCount = value; }));
-		content.appendChild(this.stepperRow('列数',
-			() => this.columnCount, (value: number) => { this.columnCount = value; }));
+		const scroll = document.createElement('div');
+		scroll.className = 'writer-subpage-form__scroll';
+		scroll.appendChild(
+			this.buildStepperSection(
+				'行',
+				'impress-table-rows',
+				true,
+			),
+		);
+		scroll.appendChild(this.sectionSpacer());
+		scroll.appendChild(
+			this.buildStepperSection(
+				'列',
+				'impress-table-columns',
+				false,
+			),
+		);
+		wrap.appendChild(scroll);
 
-		const summary = document.createElement('div');
-		summary.style.cssText = 'font-size:14px;color:#5f6368;text-align:center;';
-		summary.textContent = '行列范围 1 – 20';
-		content.appendChild(summary);
-
-		const actions = document.createElement('div');
-		actions.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
 		const insertButton = document.createElement('button');
 		insertButton.type = 'button';
+		insertButton.className = 'writer-subpage-form__confirm';
 		insertButton.textContent = '插入表格';
 		insertButton.setAttribute('aria-label', '插入表格');
-		insertButton.style.cssText =
-			'padding:10px 20px;border:none;border-radius:8px;' +
-			'background:linear-gradient(110deg,#c7f3ff,#f1d9ff);' +
-			'font:inherit;font-size:15px;font-weight:600;cursor:pointer;';
 		insertButton.onclick = () => this.insert();
-		actions.appendChild(insertButton);
-		content.appendChild(actions);
+		wrap.appendChild(insertButton);
 
-		this.subpage = writerEditorMountSubpageDialog('插入表格', content, host);
+		this.subpage = writerEditorMountSubpageDialog('表格', wrap, host);
 	}
 
 	open(): void {
@@ -65,52 +68,94 @@ class WriterEditorInsertTableDialog {
 		this.subpage.close();
 	}
 
-	private stepperRow(
-		labelText: string,
-		getValue: () => number,
-		setValue: (value: number) => void,
-	): HTMLDivElement {
-		const row = document.createElement('div');
-		row.style.cssText = 'display:flex;align-items:center;gap:10px;';
-		const label = document.createElement('label');
-		label.textContent = labelText;
-		label.style.cssText = 'font-size:14px;color:#5f6368;width:56px;';
-		row.appendChild(label);
-
-		const valueLabel = document.createElement('span');
-		valueLabel.style.cssText =
-			'flex:1;text-align:center;font-size:16px;font-variant-numeric:tabular-nums;color:#101010;';
-
-		const minus = this.stepperButton('−', '减小' + labelText);
-		const plus = this.stepperButton('+', '增大' + labelText);
-
-		const refresh = () => {
-			valueLabel.textContent = String(WriterEditorInsertTableDialog.clamp(getValue()));
-		};
-		minus.onclick = () => {
-			setValue(WriterEditorInsertTableDialog.clamp(getValue() - 1));
-			refresh();
-		};
-		plus.onclick = () => {
-			setValue(WriterEditorInsertTableDialog.clamp(getValue() + 1));
-			refresh();
-		};
-
-		row.appendChild(minus);
-		row.appendChild(valueLabel);
-		row.appendChild(plus);
-		refresh();
-		return row;
+	private sectionSpacer(): HTMLDivElement {
+		const spacer = document.createElement('div');
+		spacer.className = 'writer-subpage-form__section-spacer';
+		spacer.setAttribute('aria-hidden', 'true');
+		return spacer;
 	}
 
-	private stepperButton(text: string, ariaLabel: string): HTMLButtonElement {
+	private buildStepperSection(
+		labelText: string,
+		iconKey: string,
+		rows: boolean,
+	): HTMLDivElement {
+		const section = document.createElement('div');
+		const caption = document.createElement('div');
+		caption.className = 'writer-subpage-form__section-title';
+		caption.textContent = labelText;
+		section.appendChild(caption);
+		section.appendChild(this.buildStepperTrack(iconKey, rows));
+		return section;
+	}
+
+	private buildStepperTrack(iconKey: string, rows: boolean): HTMLDivElement {
+		const track = document.createElement('div');
+		track.className = 'writer-subpage-form__stepper-track';
+
+		const valueBox = document.createElement('div');
+		valueBox.className = 'writer-subpage-form__stepper-value';
+
+		const iconWrap = document.createElement('span');
+		iconWrap.className = 'writer-subpage-form__stepper-icon';
+		const icon = WriterEditorIcons.get(iconKey);
+		if (icon) {
+			iconWrap.innerHTML = icon;
+		}
+		valueBox.appendChild(iconWrap);
+
+		const valueLabel = document.createElement('span');
+		valueLabel.className = 'writer-subpage-form__stepper-number';
+		valueBox.appendChild(valueLabel);
+
+		const minus = this.stepperButton('减小', WRITER_SUBPAGE_STEPPER_MINUS_ICON, () => {
+			this.adjustCount(rows, -1);
+			valueLabel.textContent = String(
+				WriterEditorInsertTableDialog.clamp(
+					rows ? this.rowCount : this.columnCount,
+				),
+			);
+		});
+		const plus = this.stepperButton('增大', WRITER_SUBPAGE_STEPPER_PLUS_ICON, () => {
+			this.adjustCount(rows, 1);
+			valueLabel.textContent = String(
+				WriterEditorInsertTableDialog.clamp(
+					rows ? this.rowCount : this.columnCount,
+				),
+			);
+		});
+
+		valueLabel.textContent = String(
+			WriterEditorInsertTableDialog.clamp(rows ? this.rowCount : this.columnCount),
+		);
+
+		track.appendChild(valueBox);
+		track.appendChild(minus);
+		track.appendChild(plus);
+		return track;
+	}
+
+	private adjustCount(rows: boolean, delta: number): void {
+		if (rows) {
+			this.rowCount = WriterEditorInsertTableDialog.clamp(this.rowCount + delta);
+		} else {
+			this.columnCount = WriterEditorInsertTableDialog.clamp(
+				this.columnCount + delta,
+			);
+		}
+	}
+
+	private stepperButton(
+		ariaLabel: string,
+		iconSvg: string,
+		handler: () => void,
+	): HTMLButtonElement {
 		const button = document.createElement('button');
 		button.type = 'button';
-		button.textContent = text;
+		button.className = 'writer-subpage-form__stepper-btn';
 		button.setAttribute('aria-label', ariaLabel);
-		button.style.cssText =
-			'width:44px;height:44px;border:1px solid #d8dde3;border-radius:8px;' +
-			'background:#fff;font:inherit;font-size:20px;color:#1278D9;cursor:pointer;';
+		button.innerHTML = iconSvg;
+		button.onclick = handler;
 		return button;
 	}
 
@@ -121,3 +166,9 @@ class WriterEditorInsertTableDialog {
 		);
 	}
 }
+
+const WRITER_SUBPAGE_STEPPER_MINUS_ICON =
+	'<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M6 12h12" stroke="#333" stroke-width="2" stroke-linecap="round"/></svg>';
+
+const WRITER_SUBPAGE_STEPPER_PLUS_ICON =
+	'<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 6v12M6 12h12" stroke="#333" stroke-width="2" stroke-linecap="round"/></svg>';

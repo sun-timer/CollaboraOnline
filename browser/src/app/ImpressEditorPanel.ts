@@ -666,7 +666,11 @@ class ImpressEditorPanel {
 					new WriterEditorCommentDialog(this.controller, this.subHost()),
 				);
 			} else if (feature.dialog === 'hyperlink') {
-				this.presentSub(new ImpressEditorHyperlinkDialog(this.controller));
+				this.presentSub(
+					new ImpressEditorHyperlinkDialog(this.controller, this.subHost(), () =>
+						this.close(),
+					),
+				);
 			} else if (feature.dialog === 'saveAs') {
 				this.openSaveAsDialog();
 			} else if (feature.dialog === 'slideFormat') {

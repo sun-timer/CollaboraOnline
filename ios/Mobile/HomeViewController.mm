@@ -870,17 +870,30 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 
     CGRect anchorRect = [sourceView convertRect:sourceView.bounds toView:self.view];
     CGFloat popupWidth = 180;
-    CGFloat popupHeight = 124;
+    CGFloat popupHeight = 126;
     CGFloat marginEnd = 16;
     CGFloat overlap = 8;
-    CGFloat x = self.view.bounds.size.width - marginEnd - popupWidth;
+    CGFloat edge = 8;
     CGFloat yBelow = CGRectGetMaxY(anchorRect) - overlap;
     CGFloat yAbove = CGRectGetMinY(anchorRect) - popupHeight + overlap;
+    CGFloat minY = self.view.safeAreaInsets.top + edge;
+    CGFloat maxY = self.view.bounds.size.height - self.view.safeAreaInsets.bottom - edge - popupHeight;
+    if (maxY < minY) {
+        maxY = minY;
+    }
     CGFloat y = yBelow;
-    if (yBelow + popupHeight > self.view.bounds.size.height - 16 && yAbove >= 16) {
+    if (yBelow > maxY && yAbove >= minY) {
         y = yAbove;
     }
-    self.actionsPopup.frame = CGRectMake(x, y, popupWidth, popupHeight);
+    y = MIN(MAX(y, minY), maxY);
+
+    // The popup keeps translatesAutoresizingMaskIntoConstraints = NO, so the
+    // x/y position must come from constraints; a raw frame assignment leaves
+    // the position ambiguous and the next layout pass can re-place the popup.
+    [NSLayoutConstraint activateConstraints:@[
+        [self.actionsPopup.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:y],
+        [self.actionsPopup.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-marginEnd],
+    ]];
 }
 
 - (RecentDocumentItem *)currentActionsItem {

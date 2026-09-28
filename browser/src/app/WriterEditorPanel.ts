@@ -283,6 +283,7 @@ class WriterEditorPanel {
 
 	private renderLayoutTab(): void {
 		const stack = this.createStack();
+		stack.classList.add('writer-function-stack--capsule');
 		const watermark = WriterEditorCatalog.getFeature('watermark');
 		if (watermark) {
 			stack.appendChild(this.createWatermarkRow(watermark));
@@ -341,12 +342,12 @@ class WriterEditorPanel {
 
 	private renderReviewTab(): void {
 		const stack = this.createStack();
+		stack.classList.add('writer-function-stack--capsule');
 		WriterEditorCatalog.getFeatures('review').forEach((feature) => {
 			if (feature.kind === 'toggle') {
 				stack.appendChild(this.createToggleRow(feature));
 			} else {
 				stack.appendChild(this.createActionRow(feature));
-				stack.appendChild(this.createRowDivider());
 			}
 		});
 		this.content.appendChild(stack);

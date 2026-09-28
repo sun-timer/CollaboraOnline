@@ -17,6 +17,8 @@ class WriterEditorPaperSizeDialog {
 	private readonly controller: WriterEditorController;
 	private widthCm = 21.0;
 	private heightCm = 29.7;
+	private widthValueView!: HTMLSpanElement;
+	private heightValueView!: HTMLSpanElement;
 
 	constructor(
 		controller: WriterEditorController,
@@ -24,34 +26,31 @@ class WriterEditorPaperSizeDialog {
 	) {
 		this.controller = controller;
 
-		const content = document.createElement('div');
-		content.style.cssText = 'display:flex;flex-direction:column;gap:14px;';
+		const wrap = document.createElement('div');
+		wrap.className = 'writer-subpage-form';
 
-		content.appendChild(this.stepperRow('宽度',
-			() => this.widthCm, (value: number) => { this.widthCm = value; }));
-		content.appendChild(this.stepperRow('高度',
-			() => this.heightCm, (value: number) => { this.heightCm = value; }));
+		const scroll = document.createElement('div');
+		scroll.className = 'writer-subpage-form__scroll';
+		scroll.appendChild(this.buildStepperSection('宽度', true));
+		scroll.appendChild(this.sectionSpacer());
+		scroll.appendChild(this.buildStepperSection('高度', false));
 
-		const summary = document.createElement('div');
-		summary.style.cssText = 'font-size:14px;color:#5f6368;text-align:center;';
-		summary.textContent = '尺寸范围 5.0 – 120.0 cm，步长 0.1 cm';
-		content.appendChild(summary);
+		const hint = document.createElement('p');
+		hint.className = 'writer-subpage-form__hint';
+		hint.textContent = '尺寸范围 5.0 – 120.0 cm，步长 0.1 cm';
+		scroll.appendChild(hint);
+		wrap.appendChild(scroll);
 
-		const actions = document.createElement('div');
-		actions.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
 		const applyButton = document.createElement('button');
 		applyButton.type = 'button';
+		applyButton.className = 'writer-subpage-form__confirm';
 		applyButton.textContent = '应用';
 		applyButton.setAttribute('aria-label', '应用自定义纸张尺寸');
-		applyButton.style.cssText =
-			'padding:10px 20px;border:none;border-radius:8px;' +
-			'background:linear-gradient(110deg,#c7f3ff,#f1d9ff);' +
-			'font:inherit;font-size:15px;font-weight:600;cursor:pointer;';
 		applyButton.onclick = () => this.apply();
-		actions.appendChild(applyButton);
-		content.appendChild(actions);
+		wrap.appendChild(applyButton);
 
-		this.subpage = writerEditorMountSubpageDialog('自定义纸张', content, host);
+		this.subpage = writerEditorMountSubpageDialog('自定义纸张', wrap, host);
+		this.refreshValues();
 	}
 
 	open(): void {
@@ -67,59 +66,82 @@ class WriterEditorPaperSizeDialog {
 		this.subpage.close();
 	}
 
-	private stepperRow(
-		labelText: string,
-		getValue: () => number,
-		setValue: (value: number) => void,
-	): HTMLDivElement {
-		const row = document.createElement('div');
-		row.style.cssText = 'display:flex;align-items:center;gap:10px;';
-		const label = document.createElement('label');
-		label.textContent = labelText;
-		label.style.cssText = 'font-size:14px;color:#5f6368;width:56px;';
-		row.appendChild(label);
-
-		const valueLabel = document.createElement('span');
-		valueLabel.style.cssText =
-			'flex:1;text-align:center;font-size:16px;font-variant-numeric:tabular-nums;color:#101010;';
-
-		const minus = this.stepperButton('−', '减小' + labelText);
-		const plus = this.stepperButton('+', '增大' + labelText);
-
-		const refresh = () => {
-			valueLabel.textContent =
-				WriterEditorPaperSizeDialog.formatCm(
-					WriterEditorPaperSizeDialog.clampCm(getValue()),
-				) + ' cm';
-		};
-		minus.onclick = () => {
-			setValue(WriterEditorPaperSizeDialog.clampCm(
-				getValue() - WriterEditorPaperSizeDialog.STEP_CM,
-			));
-			refresh();
-		};
-		plus.onclick = () => {
-			setValue(WriterEditorPaperSizeDialog.clampCm(
-				getValue() + WriterEditorPaperSizeDialog.STEP_CM,
-			));
-			refresh();
-		};
-
-		row.appendChild(minus);
-		row.appendChild(valueLabel);
-		row.appendChild(plus);
-		refresh();
-		return row;
+	private sectionSpacer(): HTMLDivElement {
+		const spacer = document.createElement('div');
+		spacer.className = 'writer-subpage-form__section-spacer';
+		spacer.setAttribute('aria-hidden', 'true');
+		return spacer;
 	}
 
-	private stepperButton(text: string, ariaLabel: string): HTMLButtonElement {
+	private buildStepperSection(labelText: string, widthRow: boolean): HTMLDivElement {
+		const section = document.createElement('div');
+		const caption = document.createElement('div');
+		caption.className = 'writer-subpage-form__section-title';
+		caption.textContent = labelText;
+		section.appendChild(caption);
+		section.appendChild(this.buildStepperTrack(widthRow));
+		return section;
+	}
+
+	private buildStepperTrack(widthRow: boolean): HTMLDivElement {
+		const track = document.createElement('div');
+		track.className = 'writer-subpage-form__stepper-track';
+
+		const valueBox = document.createElement('div');
+		valueBox.className = 'writer-subpage-form__stepper-value';
+
+		const valueLabel = document.createElement('span');
+		valueLabel.className = 'writer-subpage-form__stepper-number';
+		if (widthRow) {
+			this.widthValueView = valueLabel;
+		} else {
+			this.heightValueView = valueLabel;
+		}
+		valueBox.appendChild(valueLabel);
+
+		const minus = this.stepperButton('减小' + (widthRow ? '宽度' : '高度'), () => {
+			this.adjust(widthRow, -WriterEditorPaperSizeDialog.STEP_CM);
+		});
+		const plus = this.stepperButton('增大' + (widthRow ? '宽度' : '高度'), () => {
+			this.adjust(widthRow, WriterEditorPaperSizeDialog.STEP_CM);
+		});
+
+		track.appendChild(valueBox);
+		track.appendChild(minus);
+		track.appendChild(plus);
+		return track;
+	}
+
+	private adjust(widthRow: boolean, delta: number): void {
+		if (widthRow) {
+			this.widthCm = WriterEditorPaperSizeDialog.clampCm(this.widthCm + delta);
+		} else {
+			this.heightCm = WriterEditorPaperSizeDialog.clampCm(this.heightCm + delta);
+		}
+		this.refreshValues();
+	}
+
+	private refreshValues(): void {
+		if (this.widthValueView) {
+			this.widthValueView.textContent =
+				WriterEditorPaperSizeDialog.formatCm(this.widthCm) + ' cm';
+		}
+		if (this.heightValueView) {
+			this.heightValueView.textContent =
+				WriterEditorPaperSizeDialog.formatCm(this.heightCm) + ' cm';
+		}
+	}
+
+	private stepperButton(ariaLabel: string, handler: () => void): HTMLButtonElement {
 		const button = document.createElement('button');
 		button.type = 'button';
-		button.textContent = text;
+		button.className = 'writer-subpage-form__stepper-btn';
 		button.setAttribute('aria-label', ariaLabel);
-		button.style.cssText =
-			'width:44px;height:44px;border:1px solid #d8dde3;border-radius:8px;' +
-			'background:#fff;font:inherit;font-size:20px;color:#1278D9;cursor:pointer;';
+		button.innerHTML =
+			ariaLabel.indexOf('增大') >= 0
+				? '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 6v12M6 12h12" stroke="#333" stroke-width="2" stroke-linecap="round"/></svg>'
+				: '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M6 12h12" stroke="#333" stroke-width="2" stroke-linecap="round"/></svg>';
+		button.onclick = handler;
 		return button;
 	}
 
@@ -130,10 +152,7 @@ class WriterEditorPaperSizeDialog {
 	private static clampCm(value: number): number {
 		return Math.max(
 			WriterEditorPaperSizeDialog.MIN_CM,
-			Math.min(
-				WriterEditorPaperSizeDialog.MAX_CM,
-				Math.round(value * 10.0) / 10.0,
-			),
+			Math.min(WriterEditorPaperSizeDialog.MAX_CM, value),
 		);
 	}
 }
