@@ -241,6 +241,18 @@ public class AiProfileSettingsActivity extends AppCompatActivity {
         prefs.edit().putString(AiSettingsStore.KEY_PROFILE_AVATAR_URI, uri.toString()).apply();
         avatarView.setImageURI(uri);
         hasChanged = true;
+        org.libreoffice.androidapp.feedback.FeedbackIdentityStore.uploadAvatarFromUri(
+                this, uri, new org.libreoffice.androidapp.feedback.FeedbackApi.VoidCallback() {
+                    @Override
+                    public void onSuccess() {
+                    }
+
+                    @Override
+                    public void onError(String reason, String message) {
+                        android.util.Log.w("LOActivity",
+                                "feedback avatar upload fail reason=" + reason);
+                    }
+                });
     }
 
     @Override

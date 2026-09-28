@@ -26,11 +26,13 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.libreoffice.androidapp.R;
 import org.libreoffice.androidapp.feedback.FeedbackApi;
+import org.libreoffice.androidapp.feedback.FeedbackConfig;
 import org.libreoffice.androidapp.feedback.FeedbackRecord;
 import org.libreoffice.androidapp.feedback.FeedbackStore;
 import org.libreoffice.androidlib.SystemUiHelper;
 
 import java.io.FileNotFoundException;
+import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -40,17 +42,17 @@ import java.util.Locale;
 /**
  * 问题反馈与建议（Figma 429:20679 起全部反馈页面）。
  * 页面流：表单 → 提交成功 → 反馈记录列表 → 详情(状态/回复/关闭)。
- * 后端 API 未接入：提交/列表/回复均为本地闭环（见 FeedbackApi 占位）。
+ * 数据：V1.2 反馈 HTTP API（见 {@link org.libreoffice.androidapp.feedback.FeedbackConfig}）。
  */
 public class FeedbackActivity extends AppCompatActivity {
 
+    private static final int MAX_ATTACH_COUNT = 3;
     private static final long MAX_ATTACH_BYTES = 5L * 1024 * 1024; // 图片超过5MB
 
     // 表单状态
     private final int[] chipIds = {
             R.id.feedbackTypeChip0, R.id.feedbackTypeChip1,
             R.id.feedbackTypeChip2, R.id.feedbackTypeChip3};
-    private final String[] typeValues = {"bug", "idea", "ux", "other"};
     private int selectedType = -1;
     private final List<Uri> attachUris = new ArrayList<>();
     private boolean shareLog;
@@ -76,6 +78,7 @@ public class FeedbackActivity extends AppCompatActivity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        FeedbackStore.clearLegacyMockIfNeeded(this);
         showForm();
     }
 
@@ -173,9 +176,8 @@ public class FeedbackActivity extends AppCompatActivity {
     }
 
     private void showList() {
-        records = FeedbackStore.load(this);
-        if (records.isEmpty()) {
-            showEmpty();
+        if (!FeedbackApi.isConfigured()) {
+            toast(R.string.feedback_api_not_configured);
             return;
         }
         setContentView(R.layout.feedback_list);
@@ -189,7 +191,31 @@ public class FeedbackActivity extends AppCompatActivity {
 
         RecyclerView list = findViewById(R.id.feedbackList);
         list.setLayoutManager(new LinearLayoutManager(this));
-        listAdapter = new RecyclerView.Adapter<FeedbackListHolder>() {
+        records = new ArrayList<>();
+        listAdapter = buildListAdapter();
+        list.setAdapter(listAdapter);
+
+        toast(R.string.feedback_loading);
+        FeedbackApi.fetchList(this, 1, new FeedbackApi.ListCallback() {
+            @Override
+            public void onSuccess(List<FeedbackRecord> list) {
+                records = list;
+                if (records.isEmpty()) {
+                    showEmpty();
+                    return;
+                }
+                listAdapter.notifyDataSetChanged();
+            }
+
+            @Override
+            public void onError(String reason, String message) {
+                toastApiError(reason);
+            }
+        });
+    }
+
+    private RecyclerView.Adapter<FeedbackListHolder> buildListAdapter() {
+        return new RecyclerView.Adapter<FeedbackListHolder>() {
             @Override
             public FeedbackListHolder onCreateViewHolder(ViewGroup parent, int viewType) {
                 View item = getLayoutInflater().inflate(R.layout.feedback_list_item, parent, false);
@@ -211,7 +237,6 @@ public class FeedbackActivity extends AppCompatActivity {
                 return records.size();
             }
         };
-        list.setAdapter(listAdapter);
     }
 
     private void showEmpty() {
@@ -226,8 +251,11 @@ public class FeedbackActivity extends AppCompatActivity {
     }
 
     private void showDetail(String id) {
-        currentDetail = FeedbackStore.find(this, id);
-        if (currentDetail == null) {
+        if (!FeedbackApi.isConfigured()) {
+            toast(R.string.feedback_api_not_configured);
+            return;
+        }
+        if (id == null || id.isEmpty()) {
             showList();
             return;
         }
@@ -235,17 +263,26 @@ public class FeedbackActivity extends AppCompatActivity {
         SystemUiHelper.enableEdgeToEdge(this);
         SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
         SystemUiHelper.applyStatusBarPadding(findViewById(R.id.feedbackDetailHeader), 0);
-        // 本地模拟：提交 30 秒后推进为「已回复」，演示 处理中 → 已回复 全流程。
-        // API 接入后由服务端状态驱动，此段删除。
-        if ((currentDetail.status == FeedbackRecord.Status.SUBMITTED
-                || currentDetail.status == FeedbackRecord.Status.PROCESSING)
-                && System.currentTimeMillis() - currentDetail.submitTime > 30_000L) {
-            FeedbackApi.simulateReply(this, currentDetail);
-        }
         applyFeedbackBottomBarInsets(R.id.feedbackDetailBottomBar);
-
         findViewById(R.id.feedbackDetailBackBtn).setOnClickListener(v -> showList());
 
+        toast(R.string.feedback_loading);
+        FeedbackApi.fetchDetail(this, id, new FeedbackApi.RecordCallback() {
+            @Override
+            public void onSuccess(FeedbackRecord record) {
+                currentDetail = record;
+                bindDetailUi(record);
+            }
+
+            @Override
+            public void onError(String reason, String message) {
+                toastApiError(reason);
+                showList();
+            }
+        });
+    }
+
+    private void bindDetailUi(FeedbackRecord currentDetail) {
         TextView no = findViewById(R.id.feedbackDetailNo);
         no.setText(currentDetail.id);
         TextView time = findViewById(R.id.feedbackDetailTime);
@@ -260,34 +297,35 @@ public class FeedbackActivity extends AppCompatActivity {
         TextView myTime = findViewById(R.id.feedbackDetailMyTime);
         myTime.setText(getString(R.string.feedback_my_time_submitted,
                 formatTime(currentDetail.submitTime)));
-        boolean replied = currentDetail.status == FeedbackRecord.Status.REPLIED;
 
-
+        boolean hasReply = currentDetail.replyText != null
+                && !currentDetail.replyText.isEmpty();
         findViewById(R.id.feedbackDetailReplyRow)
-                .setVisibility(replied ? View.VISIBLE : View.GONE);
-        if (replied) {
+                .setVisibility(hasReply ? View.VISIBLE : View.GONE);
+        if (hasReply) {
             TextView replyText = findViewById(R.id.feedbackDetailReplyText);
             replyText.setText(currentDetail.replyText);
             TextView replyTime = findViewById(R.id.feedbackDetailReplyTime);
-            replyTime.setText(getString(R.string.feedback_reply_time, formatTime(currentDetail.replyTime)));
+            replyTime.setText(getString(R.string.feedback_reply_time,
+                    formatTime(currentDetail.replyTime)));
             ImageView replyImage = findViewById(R.id.feedbackDetailReplyImage);
             if (!currentDetail.replyImageUris.isEmpty()) {
-                Bitmap bmp = decodeImage(Uri.parse(currentDetail.replyImageUris.get(0)));
+                String src = currentDetail.replyImageUris.get(0);
+                Bitmap bmp = decodeImageSource(src);
                 if (bmp != null) {
                     replyImage.setImageBitmap(bmp);
                     replyImage.setVisibility(View.VISIBLE);
-                    replyImage.setOnClickListener(v -> showImageViewer(currentDetail.replyImageUris.get(0)));
+                    replyImage.setOnClickListener(v -> showImageViewer(src));
                 }
             }
         }
 
-        // 底部状态栏
+        boolean processing = currentDetail.status == FeedbackRecord.Status.PROCESSING
+                || currentDetail.status == FeedbackRecord.Status.SUBMITTED;
         findViewById(R.id.feedbackDetailProcessingBar).setVisibility(
-                currentDetail.status == FeedbackRecord.Status.PROCESSING
-                        || currentDetail.status == FeedbackRecord.Status.SUBMITTED
-                        ? View.VISIBLE : View.GONE);
+                processing && !hasReply ? View.VISIBLE : View.GONE);
         findViewById(R.id.feedbackDetailRepliedBar).setVisibility(
-                replied ? View.VISIBLE : View.GONE);
+                currentDetail.canClose() ? View.VISIBLE : View.GONE);
         findViewById(R.id.feedbackDetailClosedBar).setVisibility(
                 currentDetail.status == FeedbackRecord.Status.CLOSED ? View.VISIBLE : View.GONE);
 
@@ -310,7 +348,7 @@ public class FeedbackActivity extends AppCompatActivity {
 
     private void handleAttachUris(List<Uri> uris) {
         for (Uri uri : uris) {
-            if (attachUris.size() >= 6) {
+            if (attachUris.size() >= MAX_ATTACH_COUNT) {
                 toast(R.string.feedback_add_image_too_many);
                 break;
             }
@@ -362,35 +400,51 @@ public class FeedbackActivity extends AppCompatActivity {
     }
 
     private void submitFeedback() {
+        if (!FeedbackApi.isConfigured()) {
+            toast(R.string.feedback_api_not_configured);
+            return;
+        }
         if (selectedType < 0) {
             toast(R.string.feedback_choose_type);
             return;
         }
         String content = ((EditText) findViewById(R.id.feedbackDescInput))
                 .getText().toString().trim();
-        if (content.length() < 10) {
+        int len = content.codePointCount(0, content.length());
+        if (len < 10) {
             toast(R.string.feedback_desc_too_short);
+            return;
+        }
+        if (len > 500) {
+            toast(R.string.feedback_desc_too_long);
+            return;
+        }
+        if (shareLog) {
+            toast(R.string.feedback_log_upload_pending);
             return;
         }
         String contact = ((EditText) findViewById(R.id.feedbackContactInput))
                 .getText().toString().trim();
+        String feedbackType = getSelectedTypeText();
+        View submitBtn = findViewById(R.id.feedbackSubmitBtn);
+        submitBtn.setEnabled(false);
 
-        FeedbackRecord record = new FeedbackRecord();
-        record.id = FeedbackApi.newFeedbackId(System.currentTimeMillis());
-        record.type = getSelectedTypeText();
-        record.submitTime = System.currentTimeMillis();
-        record.content = content;
-        record.contact = contact;
-        record.shareLog = shareLog;
-        for (Uri uri : attachUris) {
-            record.imageUris.add(uri.toString());
-        }
-        record.status = FeedbackRecord.Status.PROCESSING;
-        // API 接入前：本地落库；回复状态由详情页按时间模拟推进
-        FeedbackApi.submit(this, record);
+        List<Uri> images = new ArrayList<>(attachUris);
+        FeedbackApi.submitForm(this, feedbackType, content, contact, images, shareLog,
+                new FeedbackApi.RecordCallback() {
+                    @Override
+                    public void onSuccess(FeedbackRecord record) {
+                        attachUris.clear();
+                        submitBtn.setEnabled(true);
+                        showSuccess();
+                    }
 
-        attachUris.clear();
-        showSuccess();
+                    @Override
+                    public void onError(String reason, String message) {
+                        submitBtn.setEnabled(true);
+                        toastApiError(reason);
+                    }
+                });
     }
 
     private String getSelectedTypeText() {
@@ -408,6 +462,11 @@ public class FeedbackActivity extends AppCompatActivity {
                 dot.setBackgroundResource(R.drawable.bg_feedback_dot_blue);
                 text.setTextColor(Color.parseColor("#0066FF"));
                 text.setText(R.string.feedback_replied);
+                break;
+            case RESOLVED:
+                dot.setBackgroundResource(R.drawable.bg_feedback_dot_blue);
+                text.setTextColor(Color.parseColor("#0066FF"));
+                text.setText(R.string.feedback_resolved);
                 break;
             case CLOSED:
                 dot.setBackgroundResource(R.drawable.bg_feedback_dot_gray);
@@ -442,11 +501,21 @@ public class FeedbackActivity extends AppCompatActivity {
                 .setOnClickListener(v -> dialog.dismiss());
         dialog.findViewById(R.id.feedbackCloseDialogConfirm).setOnClickListener(v -> {
             dialog.dismiss();
-            if (currentDetail != null) {
-                currentDetail.status = FeedbackRecord.Status.CLOSED;
-                FeedbackStore.update(this, currentDetail);
+            if (currentDetail == null || !currentDetail.canClose()) {
+                return;
             }
-            showDetail(currentDetail != null ? currentDetail.id : null);
+            final String feedbackNo = currentDetail.id;
+            FeedbackApi.closeFeedback(this, feedbackNo, new FeedbackApi.VoidCallback() {
+                @Override
+                public void onSuccess() {
+                    showDetail(feedbackNo);
+                }
+
+                @Override
+                public void onError(String reason, String message) {
+                    toastApiError(reason);
+                }
+            });
         });
         dialog.show();
     }
@@ -456,12 +525,53 @@ public class FeedbackActivity extends AppCompatActivity {
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.feedback_image_viewer);
         ImageView image = dialog.findViewById(R.id.feedbackImageViewerImage);
-        Bitmap bmp = decodeImage(Uri.parse(uriString));
+        Bitmap bmp = decodeImageSource(uriString);
         if (bmp != null) {
             image.setImageBitmap(bmp);
         }
         dialog.findViewById(R.id.feedbackImageViewerClose).setOnClickListener(v -> dialog.dismiss());
         dialog.show();
+    }
+
+    private void toastApiError(String reason) {
+        if ("feedback_api_not_configured".equals(reason)) {
+            toast(R.string.feedback_api_not_configured);
+        } else if ("feedback_log_upload_pending".equals(reason)) {
+            toast(R.string.feedback_log_upload_pending);
+        } else {
+            toast(R.string.feedback_submit_failed);
+        }
+    }
+
+    private Bitmap decodeImageSource(String source) {
+        if (source == null || source.isEmpty()) {
+            return null;
+        }
+        if (source.startsWith("content:") || source.startsWith("file:")) {
+            return decodeImage(Uri.parse(source));
+        }
+        String url = FeedbackConfig.assetUrl(source);
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+            return decodeImageUrl(url);
+        }
+        return decodeImage(Uri.parse(source));
+    }
+
+    @Nullable
+    private Bitmap decodeImageUrl(String urlString) {
+        try {
+            java.net.URL url = new java.net.URL(urlString);
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(15_000);
+            conn.setReadTimeout(15_000);
+            try (InputStream in = conn.getInputStream()) {
+                return BitmapFactory.decodeStream(in);
+            } finally {
+                conn.disconnect();
+            }
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // ==================== 工具 ====================

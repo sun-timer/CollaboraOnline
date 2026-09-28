@@ -1,51 +1,212 @@
 package org.libreoffice.androidapp.feedback;
 
 import android.content.Context;
+import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
- * 反馈提交回传接口（占位）。
- *
- * TODO(api): 后端接口 URL 待定（需求方尚未提供），接入后在此实现真实提交/查询：
- *   1. POST {api_url}/feedback    body: {type, content, images[], contact, shareLog}
- *   2. GET  {api_url}/feedback/list?page=  返回记录 + 状态 + 客服回复
- * 当前阶段：提交直接落本地 {@link FeedbackStore}，状态按时间推进，保证全流程可演示。
+ * 反馈 V1.2 API 门面（{@link FeedbackClient} + {@link FeedbackIdentityStore}）。
  */
 public final class FeedbackApi {
 
-    /** 占位：后端提交地址，确定后替换。 */
-    private static final String SUBMIT_URL = ""; // TODO(api): feedback submit url
+    public interface VoidCallback {
+        void onSuccess();
+
+        void onError(String reason, String message);
+    }
+
+    public interface RecordCallback {
+        void onSuccess(FeedbackRecord record);
+
+        void onError(String reason, String message);
+    }
+
+    public interface ListCallback {
+        void onSuccess(java.util.List<FeedbackRecord> records);
+
+        void onError(String reason, String message);
+    }
+
+    private static final ExecutorService EXEC = Executors.newSingleThreadExecutor();
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     private FeedbackApi() {
     }
 
-    /** 生成反馈编号（yyyyMMddHHmm，对齐 Figma 示例 202604150028）。 */
-    public static String newFeedbackId(long millis) {
-        return new SimpleDateFormat("yyyyMMddHHmm", Locale.US).format(new Date(millis));
+    public static boolean isConfigured() {
+        return FeedbackConfig.isConfigured();
     }
 
-    /**
-     * 模拟提交：API 接入前直接本地落库，状态置为已提交（随后推进为处理中）。
-     * API 接入后改为网络请求：URL 从 {@link #SUBMIT_URL} 读取。
-     */
-    public static void submit(Context context, FeedbackRecord record) {
-        FeedbackStore.add(context, record);
+    static void runAsync(Runnable task) {
+        EXEC.execute(task);
     }
 
-    /** API 接入前：本地模拟客服回复（演示「已回复」状态与回复气泡）。 */
-    public static void simulateReply(Context context, FeedbackRecord record) {
-        if (record.status == FeedbackRecord.Status.SUBMITTED
-                || record.status == FeedbackRecord.Status.PROCESSING) {
-            record.status = FeedbackRecord.Status.REPLIED;
-            record.replyTime = System.currentTimeMillis();
-            record.replyText = ACTION_REPLY_TEXT;
-            FeedbackStore.update(context, record);
+    static void postSuccess(VoidCallback callback) {
+        if (callback == null) {
+            return;
+        }
+        MAIN.post(callback::onSuccess);
+    }
+
+    static void postError(VoidCallback callback, String reason, String message) {
+        if (callback == null) {
+            return;
+        }
+        MAIN.post(() -> callback.onError(reason, message));
+    }
+
+    private static void postSuccess(RecordCallback callback, FeedbackRecord record) {
+        if (callback == null) {
+            return;
+        }
+        MAIN.post(() -> callback.onSuccess(record));
+    }
+
+    private static void postError(RecordCallback callback, String reason, String message) {
+        if (callback == null) {
+            return;
+        }
+        MAIN.post(() -> callback.onError(reason, message));
+    }
+
+    private static void postSuccess(ListCallback callback,
+            java.util.List<FeedbackRecord> records) {
+        if (callback == null) {
+            return;
+        }
+        MAIN.post(() -> callback.onSuccess(records));
+    }
+
+    private static void postError(ListCallback callback, String reason, String message) {
+        if (callback == null) {
+            return;
+        }
+        MAIN.post(() -> callback.onError(reason, message));
+    }
+
+    public static void submitForm(Context context, String feedbackType, String content,
+            String contact, List<Uri> imageUris, boolean shareLogRequested,
+            RecordCallback callback) {
+        if (!isConfigured()) {
+            postError(callback, "feedback_api_not_configured", "");
+            return;
+        }
+        if (shareLogRequested) {
+            postError(callback, "feedback_log_upload_pending", "");
+            return;
+        }
+        String trimmed = content != null ? content.trim() : "";
+        int len = trimmed.codePointCount(0, trimmed.length());
+        if (len < 10 || len > 500) {
+            postError(callback, "feedback_validation", "content length");
+            return;
+        }
+        final String bodyContent = trimmed;
+        runAsync(() -> {
+            try {
+                Context app = context.getApplicationContext();
+                String userId = FeedbackIdentityStore.getOrCreateUserId(app);
+                String nickname = FeedbackIdentityStore.getNickname(app);
+                String avatar = FeedbackIdentityStore.getAvatarServerPath(app);
+                Uri localAvatar = FeedbackIdentityStore.getLocalAvatarUri(app);
+                if ((avatar == null || avatar.isEmpty()) && localAvatar != null) {
+                    avatar = FeedbackClient.uploadAvatar(app, userId, localAvatar);
+                    FeedbackIdentityStore.setAvatarServerPath(app, avatar);
+                }
+                List<String> paths = imageUris.isEmpty()
+                        ? java.util.Collections.emptyList()
+                        : FeedbackClient.uploadImages(app, imageUris);
+                String version = appVersion(app);
+                FeedbackRecord record = FeedbackClient.submit(app, userId, nickname, avatar,
+                        feedbackType, bodyContent, contact, paths, version,
+                        FeedbackClient.deviceModel(), FeedbackClient.osVersion());
+                android.util.Log.i("LOActivity",
+                        "feedback submit ok feedbackNo=" + record.id);
+                postSuccess(callback, record);
+            } catch (FeedbackApiException e) {
+                android.util.Log.w("LOActivity",
+                        "feedback_core_fail reason=" + e.reason + " msg=" + e.getMessage());
+                postError(callback, e.reason, e.getMessage());
+            }
+        });
+    }
+
+    public static void fetchList(Context context, int pageNum, ListCallback callback) {
+        if (!isConfigured()) {
+            postError(callback, "feedback_api_not_configured", "");
+            return;
+        }
+        runAsync(() -> {
+            try {
+                Context app = context.getApplicationContext();
+                String userId = FeedbackIdentityStore.getOrCreateUserId(app);
+                String nickname = FeedbackIdentityStore.getNickname(app);
+                String avatar = FeedbackIdentityStore.getAvatarServerPath(app);
+                FeedbackClient.FeedbackListPage page = FeedbackClient.list(
+                        app, userId, nickname, avatar, pageNum, 10);
+                postSuccess(callback, page.list);
+            } catch (FeedbackApiException e) {
+                android.util.Log.w("LOActivity",
+                        "feedback_core_fail reason=" + e.reason + " msg=" + e.getMessage());
+                postError(callback, e.reason, e.getMessage());
+            }
+        });
+    }
+
+    public static void fetchDetail(Context context, String feedbackNo, RecordCallback callback) {
+        if (!isConfigured()) {
+            postError(callback, "feedback_api_not_configured", "");
+            return;
+        }
+        runAsync(() -> {
+            try {
+                Context app = context.getApplicationContext();
+                String userId = FeedbackIdentityStore.getOrCreateUserId(app);
+                String nickname = FeedbackIdentityStore.getNickname(app);
+                String avatar = FeedbackIdentityStore.getAvatarServerPath(app);
+                FeedbackRecord record = FeedbackClient.detail(
+                        app, userId, nickname, avatar, feedbackNo);
+                postSuccess(callback, record);
+            } catch (FeedbackApiException e) {
+                android.util.Log.w("LOActivity",
+                        "feedback_core_fail reason=" + e.reason + " msg=" + e.getMessage());
+                postError(callback, e.reason, e.getMessage());
+            }
+        });
+    }
+
+    public static void closeFeedback(Context context, String feedbackNo, VoidCallback callback) {
+        if (!isConfigured()) {
+            postError(callback, "feedback_api_not_configured", "");
+            return;
+        }
+        runAsync(() -> {
+            try {
+                Context app = context.getApplicationContext();
+                String userId = FeedbackIdentityStore.getOrCreateUserId(app);
+                String nickname = FeedbackIdentityStore.getNickname(app);
+                String avatar = FeedbackIdentityStore.getAvatarServerPath(app);
+                FeedbackClient.close(app, userId, nickname, avatar, feedbackNo);
+                postSuccess(callback);
+            } catch (FeedbackApiException e) {
+                android.util.Log.w("LOActivity",
+                        "feedback_core_fail reason=" + e.reason + " msg=" + e.getMessage());
+                postError(callback, e.reason, e.getMessage());
+            }
+        });
+    }
+
+    private static String appVersion(Context context) {
+        try {
+            return context.getPackageManager()
+                    .getPackageInfo(context.getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "";
         }
     }
-
-    private static final String ACTION_REPLY_TEXT =
-            "感谢您的反馈，我们已经收到并转交相关同事处理。";
 }

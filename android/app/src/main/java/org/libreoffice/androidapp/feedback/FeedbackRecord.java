@@ -4,43 +4,105 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.TimeZone;
 
-/** 一条本地反馈记录（对应 Figma「反馈记录」列表/详情数据模型）。 */
+/** 反馈列表/详情展示模型（与服务端 V1.2 字段对应）。 */
 public class FeedbackRecord {
 
     public enum Status {
-        /** 已提交（列表灰点） */
         SUBMITTED,
-        /** 处理中（底部「已收到，感谢反馈」） */
         PROCESSING,
-        /** 已回复（蓝点，含客服回复气泡） */
         REPLIED,
-        /** 已关闭（底部「该反馈已关闭」） */
+        RESOLVED,
         CLOSED
     }
 
-    /** 反馈编号，格式 yyyyMMddHHmm（Figma 例：202604150028）。 */
-    public String id;
-    /** 问题类型文案（功能异常…）。 */
-    public String type;
-    /** 提交时间 epoch millis。 */
+    /** 服务端 feedbackNo */
+    public String id = "";
+    public String type = "";
     public long submitTime;
-    /** 问题描述。 */
-    public String content;
-    /** 附件图片 content uri 列表。 */
+    public String content = "";
+    /** 用户图：相对路径或本地 content URI 字符串 */
     public List<String> imageUris = new ArrayList<>();
-    /** 联系方式（选填）。 */
     public String contact = "";
-    /** 是否共享应用日志。 */
     public boolean shareLog;
     public Status status = Status.SUBMITTED;
-    /** 客服回复（REPLIED 时有效）。 */
     public String replyText = "";
     public long replyTime = 0;
     public List<String> replyImageUris = new ArrayList<>();
 
+    public boolean canClose() {
+        return status == Status.REPLIED || status == Status.RESOLVED;
+    }
+
+    public static Status fromApiLabel(String label) {
+        if (label == null) {
+            return Status.SUBMITTED;
+        }
+        switch (label) {
+            case "处理中":
+                return Status.PROCESSING;
+            case "已回复":
+                return Status.REPLIED;
+            case "已解决":
+                return Status.RESOLVED;
+            case "关闭":
+                return Status.CLOSED;
+            case "已提交":
+            default:
+                return Status.SUBMITTED;
+        }
+    }
+
+    static FeedbackRecord fromDetailJson(JSONObject data) {
+        FeedbackRecord r = new FeedbackRecord();
+        r.id = data.optString("feedbackNo");
+        r.type = data.optString("feedbackType");
+        r.content = data.optString("content");
+        r.contact = data.optString("contact", "");
+        r.status = fromApiLabel(data.optString("status"));
+        r.submitTime = parseServerTimeStatic(data.optString("submitTime"));
+        r.imageUris = jsonStringList(data.optJSONArray("imagePaths"));
+        JSONObject reply = data.optJSONObject("reply");
+        if (reply != null) {
+            r.replyText = reply.optString("replyContent", "");
+            r.replyTime = parseServerTimeStatic(reply.optString("replyTime"));
+            r.replyImageUris = jsonStringList(reply.optJSONArray("imagePaths"));
+        }
+        return r;
+    }
+
+    private static List<String> jsonStringList(JSONArray arr) {
+        List<String> list = new ArrayList<>();
+        if (arr == null) {
+            return list;
+        }
+        for (int i = 0; i < arr.length(); i++) {
+            list.add(arr.optString(i));
+        }
+        return list;
+    }
+
+    private static long parseServerTimeStatic(String text) {
+        if (text == null || text.isEmpty()) {
+            return System.currentTimeMillis();
+        }
+        try {
+            SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
+            fmt.setTimeZone(TimeZone.getTimeZone("GMT+8"));
+            Date d = fmt.parse(text);
+            return d != null ? d.getTime() : System.currentTimeMillis();
+        } catch (Exception e) {
+            return System.currentTimeMillis();
+        }
+    }
+
+    /** @deprecated 仅保留给旧 JSON 迁移；新数据来自 API */
     public JSONObject toJson() {
         JSONObject o = new JSONObject();
         try {
@@ -58,35 +120,5 @@ public class FeedbackRecord {
         } catch (JSONException ignored) {
         }
         return o;
-    }
-
-    public static FeedbackRecord fromJson(JSONObject o) {
-        FeedbackRecord r = new FeedbackRecord();
-        r.id = o.optString("id");
-        r.type = o.optString("type");
-        r.submitTime = o.optLong("submitTime");
-        r.content = o.optString("content");
-        r.imageUris = listFrom(o.optJSONArray("imageUris"));
-        r.contact = o.optString("contact");
-        r.shareLog = o.optBoolean("shareLog");
-        try {
-            r.status = Status.valueOf(o.optString("status", Status.SUBMITTED.name()));
-        } catch (IllegalArgumentException e) {
-            r.status = Status.SUBMITTED;
-        }
-        r.replyText = o.optString("replyText");
-        r.replyTime = o.optLong("replyTime");
-        r.replyImageUris = listFrom(o.optJSONArray("replyImageUris"));
-        return r;
-    }
-
-    private static List<String> listFrom(JSONArray a) {
-        List<String> list = new ArrayList<>();
-        if (a != null) {
-            for (int i = 0; i < a.length(); i++) {
-                list.add(a.optString(i));
-            }
-        }
-        return list;
     }
 }

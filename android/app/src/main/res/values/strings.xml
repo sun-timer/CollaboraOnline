@@ -267,7 +267,11 @@
     <string name="back_label">Back</string>
     <string name="copy">Copy</string>
     <string name="feedback_add_image">Add image</string>
-    <string name="feedback_add_image_too_many">Up to 6 images allowed</string>
+    <string name="feedback_add_image_too_many">Up to 3 images allowed</string>
+    <string name="feedback_api_not_configured">Feedback service is not configured</string>
+    <string name="feedback_log_upload_pending">Log upload is not available yet</string>
+    <string name="feedback_submit_failed">Submit failed. Please try again.</string>
+    <string name="feedback_loading">Loading…</string>
     <string name="feedback_choose_type">Please select an issue type</string>
     <string name="feedback_close_confirm_message">Issue resolved — confirm closing this feedback?</string>
     <string name="feedback_close_feedback">Close Feedback</string>
@@ -278,6 +282,7 @@
     <string name="feedback_desc_hint">Please describe the issue in detail (at least 10 characters)</string>
     <string name="feedback_desc_label">Description or Suggestion</string>
     <string name="feedback_desc_too_short">Please enter at least 10 characters</string>
+    <string name="feedback_desc_too_long">Please keep within 500 characters</string>
     <string name="feedback_empty_art_desc">No feedback yet</string>
     <string name="feedback_empty_message">You have not submitted any feedback yet</string>
     <string name="feedback_image_fullscreen">Image preview</string>
