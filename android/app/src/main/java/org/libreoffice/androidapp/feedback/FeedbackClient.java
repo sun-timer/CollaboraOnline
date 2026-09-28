@@ -9,6 +9,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -61,9 +63,29 @@ final class FeedbackClient {
         return paths;
     }
 
+    static String uploadLog(Context context, String userId, File logFile)
+            throws FeedbackApiException {
+        if (logFile == null || !logFile.isFile()) {
+            throw new FeedbackApiException("feedback_log_upload", "missing file");
+        }
+        long size = logFile.length();
+        if (size <= 0 || size > FeedbackConfig.MAX_LOG_BYTES) {
+            throw new FeedbackApiException("feedback_log_upload", "file size");
+        }
+        String boundary = newBoundary();
+        byte[] body = buildMultipartLogFile(boundary, userId, logFile);
+        JSONObject root = postBytes(FeedbackConfig.PATH_UPLOAD_LOG,
+                "multipart/form-data; boundary=" + boundary, body);
+        JSONObject data = root.optJSONObject("data");
+        if (data == null) {
+            throw new FeedbackApiException("feedback_log_upload", "missing data");
+        }
+        return data.optString("logPath", data.optString("path"));
+    }
+
     static FeedbackRecord submit(Context context, String userId, String nickname,
             String avatarPath, String feedbackType, String content, String contact,
-            List<String> imagePaths, String appVersion, String deviceModel,
+            List<String> imagePaths, String logPath, String appVersion, String deviceModel,
             String osVersion) throws FeedbackApiException {
         JSONObject body = new JSONObject();
         try {
@@ -81,6 +103,9 @@ final class FeedbackClient {
             }
             if (imagePaths != null && !imagePaths.isEmpty()) {
                 body.put("imagePaths", new JSONArray(imagePaths));
+            }
+            if (logPath != null && !logPath.isEmpty()) {
+                body.put("logPath", logPath);
             }
             if (appVersion != null && !appVersion.isEmpty()) {
                 body.put("appVersion", appVersion);
@@ -209,6 +234,47 @@ final class FeedbackClient {
             throw new FeedbackApiException("feedback_multipart", e.getMessage());
         }
         return out.toByteArray();
+    }
+
+    private static byte[] buildMultipartLogFile(String boundary, String userId, File logFile)
+            throws FeedbackApiException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try {
+            writeField(out, boundary, "userId", userId);
+            writeFileFieldBytes(out, boundary, "file", logFile.getName(),
+                    "text/plain", readFileBytes(logFile));
+            out.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+        } catch (FeedbackApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new FeedbackApiException("feedback_multipart", e.getMessage());
+        }
+        return out.toByteArray();
+    }
+
+    private static byte[] readFileBytes(File file) throws FeedbackApiException {
+        try (FileInputStream in = new FileInputStream(file)) {
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
+            int n;
+            while ((n = in.read(chunk)) >= 0) {
+                buf.write(chunk, 0, n);
+            }
+            return buf.toByteArray();
+        } catch (Exception e) {
+            throw new FeedbackApiException("feedback_read_file", e.getMessage());
+        }
+    }
+
+    private static void writeFileFieldBytes(ByteArrayOutputStream out, String boundary,
+            String fieldName, String fileName, String mime, byte[] bytes) throws Exception {
+        out.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
+        out.write(("Content-Disposition: form-data; name=\"" + fieldName
+                + "\"; filename=\"" + fileName + "\"\r\n")
+                .getBytes(StandardCharsets.UTF_8));
+        out.write(("Content-Type: " + mime + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        out.write(bytes);
+        out.write("\r\n".getBytes(StandardCharsets.UTF_8));
     }
 
     private static byte[] buildMultipartImages(Context context, String boundary, List<Uri> uris)

@@ -61,6 +61,9 @@ public class FeedbackActivity extends AppCompatActivity {
     // 列表
     private RecyclerView.Adapter<FeedbackListHolder> listAdapter;
     private List<FeedbackRecord> records = new ArrayList<>();
+    private int listPageNum = 1;
+    private int listTotalPages = 1;
+    private boolean listLoading = false;
 
     // 详情
     private FeedbackRecord currentDetail;
@@ -192,15 +195,50 @@ public class FeedbackActivity extends AppCompatActivity {
         RecyclerView list = findViewById(R.id.feedbackList);
         list.setLayoutManager(new LinearLayoutManager(this));
         records = new ArrayList<>();
+        listPageNum = 1;
+        listTotalPages = 1;
+        listLoading = false;
         listAdapter = buildListAdapter();
         list.setAdapter(listAdapter);
-
-        toast(R.string.feedback_loading);
-        FeedbackApi.fetchList(this, 1, new FeedbackApi.ListCallback() {
+        list.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
-            public void onSuccess(List<FeedbackRecord> list) {
-                records = list;
-                if (records.isEmpty()) {
+            public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+                if (dy <= 0 || listLoading) {
+                    return;
+                }
+                LinearLayoutManager lm = (LinearLayoutManager) recyclerView.getLayoutManager();
+                if (lm == null) {
+                    return;
+                }
+                int lastVisible = lm.findLastVisibleItemPosition();
+                if (lastVisible >= records.size() - 2 && listPageNum < listTotalPages) {
+                    loadFeedbackListPage(listPageNum + 1, true);
+                }
+            }
+        });
+
+        loadFeedbackListPage(1, false);
+    }
+
+    private void loadFeedbackListPage(int pageNum, boolean append) {
+        if (listLoading) {
+            return;
+        }
+        listLoading = true;
+        if (!append) {
+            toast(R.string.feedback_loading);
+        }
+        FeedbackApi.fetchListPage(this, pageNum, new FeedbackApi.ListPageCallback() {
+            @Override
+            public void onSuccess(FeedbackApi.ListPage page) {
+                listLoading = false;
+                if (!append) {
+                    records.clear();
+                }
+                records.addAll(page.list);
+                listPageNum = page.pageNum > 0 ? page.pageNum : pageNum;
+                listTotalPages = page.pages > 0 ? page.pages : 1;
+                if (!append && records.isEmpty()) {
                     showEmpty();
                     return;
                 }
@@ -209,7 +247,10 @@ public class FeedbackActivity extends AppCompatActivity {
 
             @Override
             public void onError(String reason, String message) {
-                toastApiError(reason);
+                listLoading = false;
+                if (!append) {
+                    toastApiError(reason);
+                }
             }
         });
     }
@@ -227,7 +268,7 @@ public class FeedbackActivity extends AppCompatActivity {
                 FeedbackRecord r = records.get(position);
                 h.type.setText(r.type);
                 h.time.setText(formatTime(r.submitTime));
-                h.content.setText(r.content);
+                h.content.setText(formatListSummary(r.content));
                 applyStatusStyle(h.dot, h.status, r.status);
                 h.itemView.setOnClickListener(v -> showDetail(r.id));
             }
@@ -297,6 +338,7 @@ public class FeedbackActivity extends AppCompatActivity {
         TextView myTime = findViewById(R.id.feedbackDetailMyTime);
         myTime.setText(getString(R.string.feedback_my_time_submitted,
                 formatTime(currentDetail.submitTime)));
+        bindDetailMyImages(currentDetail.imageUris);
 
         boolean hasReply = currentDetail.replyText != null
                 && !currentDetail.replyText.isEmpty();
@@ -419,7 +461,7 @@ public class FeedbackActivity extends AppCompatActivity {
             toast(R.string.feedback_desc_too_long);
             return;
         }
-        if (shareLog) {
+        if (shareLog && !FeedbackConfig.isLogUploadEnabled()) {
             toast(R.string.feedback_log_upload_pending);
             return;
         }
@@ -646,6 +688,46 @@ public class FeedbackActivity extends AppCompatActivity {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private void bindDetailMyImages(List<String> paths) {
+        View scroll = findViewById(R.id.feedbackDetailMyImagesScroll);
+        LinearLayout row = findViewById(R.id.feedbackDetailMyImages);
+        row.removeAllViews();
+        if (paths == null || paths.isEmpty()) {
+            scroll.setVisibility(View.GONE);
+            return;
+        }
+        scroll.setVisibility(View.VISIBLE);
+        int size = dp(72);
+        int gap = dp(8);
+        for (String path : paths) {
+            ImageView thumb = new ImageView(this);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
+            if (row.getChildCount() > 0) {
+                lp.setMarginStart(gap);
+            }
+            thumb.setLayoutParams(lp);
+            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            thumb.setBackgroundResource(R.drawable.bg_feedback_thumb);
+            Bitmap bmp = decodeImageSource(path);
+            if (bmp != null) {
+                thumb.setImageBitmap(bmp);
+            }
+            final String src = path;
+            thumb.setOnClickListener(v -> showImageViewer(src));
+            row.addView(thumb);
+        }
+    }
+
+    private static String formatListSummary(String summary) {
+        if (summary == null || summary.isEmpty()) {
+            return "";
+        }
+        if (summary.codePointCount(0, summary.length()) >= 50 && !summary.endsWith("...")) {
+            return summary + "...";
+        }
+        return summary;
     }
 
     private String formatTime(long millis) {

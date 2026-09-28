@@ -32,6 +32,20 @@ public final class FeedbackApi {
         void onError(String reason, String message);
     }
 
+    public static final class ListPage {
+        public int pageNum;
+        public int pageSize;
+        public int total;
+        public int pages;
+        public final java.util.List<FeedbackRecord> list = new java.util.ArrayList<>();
+    }
+
+    public interface ListPageCallback {
+        void onSuccess(ListPage page);
+
+        void onError(String reason, String message);
+    }
+
     private static final ExecutorService EXEC = Executors.newSingleThreadExecutor();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
@@ -96,7 +110,7 @@ public final class FeedbackApi {
             postError(callback, "feedback_api_not_configured", "");
             return;
         }
-        if (shareLogRequested) {
+        if (shareLogRequested && !FeedbackConfig.isLogUploadEnabled()) {
             postError(callback, "feedback_log_upload_pending", "");
             return;
         }
@@ -121,9 +135,23 @@ public final class FeedbackApi {
                 List<String> paths = imageUris.isEmpty()
                         ? java.util.Collections.emptyList()
                         : FeedbackClient.uploadImages(app, imageUris);
+                String logPath = null;
+                if (shareLogRequested) {
+                    java.io.File logFile = FeedbackLogExporter.exportLogFile(app);
+                    try {
+                        logPath = FeedbackClient.uploadLog(app, userId, logFile);
+                        android.util.Log.i("LOActivity",
+                                "feedback log upload ok logPath=" + logPath);
+                    } finally {
+                        if (logFile != null && logFile.exists()) {
+                            //noinspection ResultOfMethodCallIgnored
+                            logFile.delete();
+                        }
+                    }
+                }
                 String version = appVersion(app);
                 FeedbackRecord record = FeedbackClient.submit(app, userId, nickname, avatar,
-                        feedbackType, bodyContent, contact, paths, version,
+                        feedbackType, bodyContent, contact, paths, logPath, version,
                         FeedbackClient.deviceModel(), FeedbackClient.osVersion());
                 android.util.Log.i("LOActivity",
                         "feedback submit ok feedbackNo=" + record.id);
@@ -137,8 +165,22 @@ public final class FeedbackApi {
     }
 
     public static void fetchList(Context context, int pageNum, ListCallback callback) {
+        fetchListPage(context, pageNum, new ListPageCallback() {
+            @Override
+            public void onSuccess(ListPage page) {
+                postSuccess(callback, page.list);
+            }
+
+            @Override
+            public void onError(String reason, String message) {
+                postError(callback, reason, message);
+            }
+        });
+    }
+
+    public static void fetchListPage(Context context, int pageNum, ListPageCallback callback) {
         if (!isConfigured()) {
-            postError(callback, "feedback_api_not_configured", "");
+            postErrorListPage(callback, "feedback_api_not_configured", "");
             return;
         }
         runAsync(() -> {
@@ -147,15 +189,33 @@ public final class FeedbackApi {
                 String userId = FeedbackIdentityStore.getOrCreateUserId(app);
                 String nickname = FeedbackIdentityStore.getNickname(app);
                 String avatar = FeedbackIdentityStore.getAvatarServerPath(app);
-                FeedbackClient.FeedbackListPage page = FeedbackClient.list(
+                FeedbackClient.FeedbackListPage raw = FeedbackClient.list(
                         app, userId, nickname, avatar, pageNum, 10);
-                postSuccess(callback, page.list);
+                ListPage page = new ListPage();
+                page.pageNum = raw.pageNum;
+                page.pageSize = raw.pageSize;
+                page.total = raw.total;
+                page.pages = raw.pages;
+                page.list.addAll(raw.list);
+                MAIN.post(() -> {
+                    if (callback != null) {
+                        callback.onSuccess(page);
+                    }
+                });
             } catch (FeedbackApiException e) {
                 android.util.Log.w("LOActivity",
                         "feedback_core_fail reason=" + e.reason + " msg=" + e.getMessage());
-                postError(callback, e.reason, e.getMessage());
+                postErrorListPage(callback, e.reason, e.getMessage());
             }
         });
+    }
+
+    private static void postErrorListPage(ListPageCallback callback, String reason,
+            String message) {
+        if (callback == null) {
+            return;
+        }
+        MAIN.post(() -> callback.onError(reason, message));
     }
 
     public static void fetchDetail(Context context, String feedbackNo, RecordCallback callback) {
