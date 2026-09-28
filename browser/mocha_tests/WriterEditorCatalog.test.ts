@@ -27,12 +27,11 @@ describe('WriterEditorCatalog', function () {
 		});
 	});
 
-	it('exposes the common-tab history and paragraph commands', function () {
-		const undo = WriterEditorCatalog.getFeature('undo');
-		assert.ok(undo);
-		assert.equal(undo && undo.unocmd, '.uno:Undo');
+	it('exposes the common-tab format rows and paragraph commands', function () {
+		const style = WriterEditorCatalog.getFeature('style');
+		assert.ok(style);
+		assert.equal(style && style.unocmd, '.uno:StyleApply');
 		const alignLeft = WriterEditorCatalog.getFeature('align-left');
-		assert.ok(alignLeft);
 		assert.equal(alignLeft && alignLeft.unocmd, '.uno:LeftPara');
 	});
 
@@ -88,12 +87,12 @@ describe('WriterEditorCatalog', function () {
 
 	it('detects a duplicate feature id against the registry', function () {
 		const duplicate: WriterEditorFeature = {
-			id: 'undo',
+			id: 'align-left',
 			label: 'x',
 			tab: 'default',
 			icon: 'x',
 			kind: 'command',
-			unocmd: '.uno:Undo',
+			unocmd: '.uno:LeftPara',
 		};
 		assert.equal(
 			WriterEditorCatalog.validateFeature(duplicate).errorCode,

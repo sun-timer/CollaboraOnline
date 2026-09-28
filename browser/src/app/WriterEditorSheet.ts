@@ -7,6 +7,11 @@
  * Separate from MobileAiSheet so AI panels keep their own chrome (18px radius).
  */
 
+interface WriterEditorSheetOptions {
+	/** Edit-mode function panel (Figma 192-5683 / Android lolib_sheet_functions_edit). */
+	editMode?: boolean;
+}
+
 class WriterEditorSheet {
 	readonly root: HTMLDivElement;
 	readonly panel: HTMLDivElement;
@@ -15,10 +20,17 @@ class WriterEditorSheet {
 	private readonly closeButton: HTMLButtonElement;
 	private readonly onClose?: () => void;
 
-	constructor(title: string, onClose?: () => void) {
+	constructor(
+		title: string,
+		onClose?: () => void,
+		options?: WriterEditorSheetOptions,
+	) {
 		this.onClose = onClose;
+		const editMode = !!options?.editMode;
 		this.root = document.createElement('div');
-		this.root.className = 'writer-function-sheet';
+		this.root.className =
+			'writer-function-sheet' +
+			(editMode ? ' writer-function-sheet--edit' : '');
 		this.root.setAttribute('role', 'presentation');
 		this.root.onclick = (event) => {
 			if (event.target === this.root) {
@@ -27,18 +39,25 @@ class WriterEditorSheet {
 		};
 
 		this.panel = document.createElement('div');
-		this.panel.className = 'writer-function-sheet__panel';
+		this.panel.className =
+			'writer-function-sheet__panel' +
+			(editMode ? ' writer-function-sheet__panel--edit' : '');
 		this.panel.setAttribute('role', 'dialog');
 		this.panel.setAttribute('aria-modal', 'true');
 		this.root.appendChild(this.panel);
 
-		const grabber = document.createElement('div');
-		grabber.className = 'writer-function-sheet__grabber';
-		grabber.setAttribute('aria-hidden', 'true');
-		this.panel.appendChild(grabber);
+		if (!editMode) {
+			const grabber = document.createElement('div');
+			grabber.className = 'writer-function-sheet__grabber';
+			grabber.setAttribute('aria-hidden', 'true');
+			this.panel.appendChild(grabber);
+		}
 
 		const header = document.createElement('header');
 		header.className = 'writer-function-sheet__header';
+		if (editMode) {
+			header.classList.add('writer-function-sheet__header--hidden');
+		}
 		this.title = document.createElement('h2');
 		this.title.className = 'writer-function-sheet__title';
 		this.title.textContent = title;
@@ -57,7 +76,9 @@ class WriterEditorSheet {
 		this.panel.appendChild(header);
 
 		this.body = document.createElement('div');
-		this.body.className = 'writer-function-sheet__body';
+		this.body.className =
+			'writer-function-sheet__body' +
+			(editMode ? ' writer-function-sheet__body--edit' : '');
 		this.panel.appendChild(this.body);
 	}
 
