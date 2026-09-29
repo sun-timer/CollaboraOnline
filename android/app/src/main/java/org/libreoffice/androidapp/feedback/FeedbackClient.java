@@ -1,8 +1,11 @@
 package org.libreoffice.androidapp.feedback;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
+import android.os.SystemClock;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -49,10 +52,16 @@ final class FeedbackClient {
         if (uris == null || uris.isEmpty()) {
             throw new FeedbackApiException("feedback_upload_empty", "files empty");
         }
+        long tAll = SystemClock.elapsedRealtime();
+        Log.i(TAG, "feedback_upload_images start count=" + uris.size());
         String boundary = newBoundary();
+        long tBuild = SystemClock.elapsedRealtime();
         byte[] body = buildMultipartImages(context, boundary, uris);
+        long buildMs = SystemClock.elapsedRealtime() - tBuild;
+        long tHttp = SystemClock.elapsedRealtime();
         JSONObject root = postBytes(FeedbackConfig.PATH_UPLOAD_IMAGES,
                 "multipart/form-data; boundary=" + boundary, body);
+        long httpMs = SystemClock.elapsedRealtime() - tHttp;
         JSONArray data = root.optJSONArray("data");
         List<String> paths = new ArrayList<>();
         if (data != null) {
@@ -60,6 +69,9 @@ final class FeedbackClient {
                 paths.add(data.optString(i));
             }
         }
+        Log.i(TAG, "feedback_upload_images ok buildMs=" + buildMs + " httpMs=" + httpMs
+                + " totalBytes=" + body.length + " pathCount=" + paths.size()
+                + " totalMs=" + (SystemClock.elapsedRealtime() - tAll));
         return paths;
     }
 
@@ -290,8 +302,10 @@ final class FeedbackClient {
             throws FeedbackApiException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
-            for (Uri uri : uris) {
-                writeFileField(out, boundary, "files", uri, context);
+            for (int i = 0; i < uris.size(); i++) {
+                UploadImagePart part = prepareUploadImage(context, uris.get(i), i);
+                writeFileFieldBytes(out, boundary, "files", part.fileName,
+                        part.mime, part.bytes);
             }
             out.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
         } catch (FeedbackApiException e) {
@@ -300,6 +314,18 @@ final class FeedbackClient {
             throw new FeedbackApiException("feedback_multipart", e.getMessage());
         }
         return out.toByteArray();
+    }
+
+    private static final class UploadImagePart {
+        final byte[] bytes;
+        final String fileName;
+        final String mime;
+
+        UploadImagePart(byte[] bytes, String fileName, String mime) {
+            this.bytes = bytes;
+            this.fileName = fileName;
+            this.mime = mime;
+        }
     }
 
     private static void writeField(ByteArrayOutputStream out, String boundary, String name,
@@ -359,6 +385,126 @@ final class FeedbackClient {
         } catch (Exception e) {
             throw new FeedbackApiException("feedback_read_uri", e.getMessage());
         }
+    }
+
+    private static UploadImagePart prepareUploadImage(Context context, Uri uri, int index)
+            throws FeedbackApiException {
+        long t0 = SystemClock.elapsedRealtime();
+        String baseName = uploadImageBaseName(uri);
+        int maxEdge = FeedbackConfig.UPLOAD_IMAGE_MAX_EDGE_PX;
+        int quality = FeedbackConfig.UPLOAD_IMAGE_JPEG_QUALITY;
+        try {
+            BitmapFactory.Options boundsOpts = new BitmapFactory.Options();
+            boundsOpts.inJustDecodeBounds = true;
+            try (InputStream boundsIn = context.getContentResolver().openInputStream(uri)) {
+                if (boundsIn == null) {
+                    throw new FeedbackApiException("feedback_read_uri", "openInputStream null");
+                }
+                BitmapFactory.decodeStream(boundsIn, null, boundsOpts);
+            }
+            int srcW = boundsOpts.outWidth;
+            int srcH = boundsOpts.outHeight;
+            if (srcW <= 0 || srcH <= 0) {
+                return fallbackUploadImagePart(context, uri, index, baseName, t0, "invalid_bounds");
+            }
+            BitmapFactory.Options decodeOpts = new BitmapFactory.Options();
+            decodeOpts.inSampleSize = sampleSizeForMaxEdge(srcW, srcH, maxEdge);
+            Bitmap bitmap;
+            try (InputStream decodeIn = context.getContentResolver().openInputStream(uri)) {
+                if (decodeIn == null) {
+                    throw new FeedbackApiException("feedback_read_uri", "openInputStream null");
+                }
+                bitmap = BitmapFactory.decodeStream(decodeIn, null, decodeOpts);
+            }
+            if (bitmap == null) {
+                return fallbackUploadImagePart(context, uri, index, baseName, t0, "decode_null");
+            }
+            long readMs = SystemClock.elapsedRealtime() - t0;
+            long tCompress = SystemClock.elapsedRealtime();
+            Bitmap toCompress = scaleBitmapToMaxEdge(bitmap, maxEdge);
+            if (toCompress != bitmap) {
+                bitmap.recycle();
+            }
+            ByteArrayOutputStream jpegOut = new ByteArrayOutputStream();
+            if (!toCompress.compress(Bitmap.CompressFormat.JPEG, quality, jpegOut)) {
+                toCompress.recycle();
+                return fallbackUploadImagePart(context, uri, index, baseName, t0, "compress_fail");
+            }
+            toCompress.recycle();
+            byte[] outBytes = jpegOut.toByteArray();
+            long compressMs = SystemClock.elapsedRealtime() - tCompress;
+            Log.i(TAG, "feedback_upload_images read_uri i=" + index + " src=" + srcW + "x" + srcH
+                    + " readMs=" + readMs + " compressMs=" + compressMs
+                    + " outBytes=" + outBytes.length + " reason=jpeg");
+            return new UploadImagePart(outBytes, jpegFileName(baseName), "image/jpeg");
+        } catch (FeedbackApiException e) {
+            throw e;
+        } catch (Exception e) {
+            return fallbackUploadImagePart(context, uri, index, baseName, t0, e.getMessage());
+        }
+    }
+
+    private static UploadImagePart fallbackUploadImagePart(Context context, Uri uri, int index,
+            String baseName, long t0, String reason) throws FeedbackApiException {
+        byte[] raw = readUriBytes(context, uri);
+        long readMs = SystemClock.elapsedRealtime() - t0;
+        String mime = mimeFromFileName(baseName);
+        Log.i(TAG, "feedback_upload_images read_uri i=" + index + " readMs=" + readMs
+                + " outBytes=" + raw.length + " reason=fallback_" + reason);
+        return new UploadImagePart(raw, baseName, mime);
+    }
+
+    private static int sampleSizeForMaxEdge(int width, int height, int maxEdge) {
+        int maxDim = Math.max(width, height);
+        int sample = 1;
+        while (maxDim / sample > maxEdge * 2) {
+            sample *= 2;
+        }
+        return sample;
+    }
+
+    private static Bitmap scaleBitmapToMaxEdge(Bitmap bitmap, int maxEdge) {
+        int w = bitmap.getWidth();
+        int h = bitmap.getHeight();
+        int maxDim = Math.max(w, h);
+        if (maxDim <= maxEdge) {
+            return bitmap;
+        }
+        float scale = (float) maxEdge / maxDim;
+        int nw = Math.max(1, Math.round(w * scale));
+        int nh = Math.max(1, Math.round(h * scale));
+        return Bitmap.createScaledBitmap(bitmap, nw, nh, true);
+    }
+
+    private static String uploadImageBaseName(Uri uri) {
+        String path = uri.getLastPathSegment();
+        if (path == null || path.isEmpty()) {
+            return "upload.jpg";
+        }
+        return path;
+    }
+
+    private static String jpegFileName(String baseName) {
+        int dot = baseName.lastIndexOf('.');
+        String stem = dot > 0 ? baseName.substring(0, dot) : baseName;
+        return stem + ".jpg";
+    }
+
+    private static String mimeFromFileName(String fileName) {
+        String lower = fileName.toLowerCase(Locale.US);
+        if (lower.endsWith(".png")) {
+            return "image/png";
+        }
+        if (lower.endsWith(".gif")) {
+            return "image/gif";
+        }
+        if (lower.endsWith(".webp")) {
+            return "image/webp";
+        }
+        if (lower.endsWith(".bmp")) {
+            return "image/bmp";
+        }
+        return "image/jpeg";
     }
 
     private static JSONObject postJson(String path, JSONObject body) throws FeedbackApiException {

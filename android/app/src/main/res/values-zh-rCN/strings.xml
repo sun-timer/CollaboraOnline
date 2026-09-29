@@ -280,6 +280,9 @@
     <string name="feedback_service_avatar">客服</string>
     <string name="feedback_share_log">共享应用日志，以便更准确诊断问题</string>
     <string name="feedback_submit">提交</string>
+    <string name="feedback_submitting">正在提交反馈…</string>
+    <string name="feedback_submitting_hint">请稍候…</string>
+    <string name="feedback_submitting_hint_images">正在上传图片，请稍候…</string>
     <string name="feedback_submitted">已提交</string>
     <string name="feedback_success_art_desc">反馈成功</string>
     <string name="feedback_success_message">感谢您的反馈，我们会尽快处理！</string>

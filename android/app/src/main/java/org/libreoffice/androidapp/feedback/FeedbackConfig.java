@@ -20,6 +20,12 @@ public final class FeedbackConfig {
 
     public static final long MAX_LOG_BYTES = 5L * 1024 * 1024;
 
+    /** 反馈附图上传：长边上限（像素），超出则缩放后再 JPEG 压缩。 */
+    public static final int UPLOAD_IMAGE_MAX_EDGE_PX = 1920;
+
+    /** 反馈附图 JPEG 质量（1–100）。 */
+    public static final int UPLOAD_IMAGE_JPEG_QUALITY = 85;
+
     public static final String PATH_UPLOAD_AVATAR = "/v1.0/feedback/uploadAvatar";
     public static final String PATH_UPLOAD_IMAGES = "/v1.0/feedback/uploadImages";
     public static final String PATH_UPLOAD_LOG = "/v1.0/feedback/uploadLog";

@@ -49,6 +49,8 @@ public class FeedbackActivity extends AppCompatActivity {
 
     private static final int MAX_ATTACH_COUNT = 3;
     private static final long MAX_ATTACH_BYTES = 5L * 1024 * 1024; // 图片超过5MB
+    private static final long MAX_NETWORK_IMAGE_BYTES = 20L * 1024 * 1024;
+    private static final int FULLSCREEN_IMAGE_MAX_EDGE_PX = 2048;
 
     // 表单状态
     private final int[] chipIds = {
@@ -69,6 +71,9 @@ public class FeedbackActivity extends AppCompatActivity {
     // 详情
     private FeedbackRecord currentDetail;
 
+    @Nullable
+    private Dialog submitLoadingDialog;
+
     private final androidx.activity.result.ActivityResultLauncher<String> imagePicker =
             registerForActivityResult(new ActivityResultContracts.GetMultipleContents(), uris -> {
                 if (uris != null && !uris.isEmpty()) {
@@ -83,6 +88,12 @@ public class FeedbackActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         FeedbackStore.clearLegacyMockIfNeeded(this);
         showForm();
+    }
+
+    @Override
+    protected void onDestroy() {
+        dismissSubmitLoading();
+        super.onDestroy();
     }
 
     // ==================== 页面切换 ====================
@@ -239,12 +250,13 @@ public class FeedbackActivity extends AppCompatActivity {
         }
         listLoading = true;
         if (!append) {
-            toast(R.string.feedback_loading);
+            setListLoadingOverlay(true);
         }
         FeedbackApi.fetchListPage(this, pageNum, new FeedbackApi.ListPageCallback() {
             @Override
             public void onSuccess(FeedbackApi.ListPage page) {
                 listLoading = false;
+                setListLoadingOverlay(false);
                 if (!append) {
                     records.clear();
                 }
@@ -261,9 +273,17 @@ public class FeedbackActivity extends AppCompatActivity {
             @Override
             public void onError(String reason, String message) {
                 listLoading = false;
+                setListLoadingOverlay(false);
                 toastApiError(reason, message);
             }
         });
+    }
+
+    private void setListLoadingOverlay(boolean visible) {
+        View overlay = findViewById(R.id.feedbackListLoadingOverlay);
+        if (overlay != null) {
+            overlay.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
     }
 
     private RecyclerView.Adapter<FeedbackListHolder> buildListAdapter() {
@@ -318,20 +338,29 @@ public class FeedbackActivity extends AppCompatActivity {
         applyFeedbackBottomBarInsets(R.id.feedbackDetailBottomBar);
         findViewById(R.id.feedbackDetailBackBtn).setOnClickListener(v -> showList());
 
-        toast(R.string.feedback_loading);
+        setDetailLoadingOverlay(true);
         FeedbackApi.fetchDetail(this, id, new FeedbackApi.RecordCallback() {
             @Override
             public void onSuccess(FeedbackRecord record) {
+                setDetailLoadingOverlay(false);
                 currentDetail = record;
                 bindDetailUi(record);
             }
 
             @Override
             public void onError(String reason, String message) {
+                setDetailLoadingOverlay(false);
                 toastApiError(reason, message);
                 showList();
             }
         });
+    }
+
+    private void setDetailLoadingOverlay(boolean visible) {
+        View overlay = findViewById(R.id.feedbackDetailLoadingOverlay);
+        if (overlay != null) {
+            overlay.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
     }
 
     private void bindDetailUi(FeedbackRecord currentDetail) {
@@ -376,7 +405,7 @@ public class FeedbackActivity extends AppCompatActivity {
             replyImage.setVisibility(View.GONE);
             if (hasReplyImages) {
                 String src = currentDetail.replyImageUris.get(0);
-                loadImageAsync(replyImage, src, true);
+                loadImageAsync(replyImage, src, true, dp(320));
             }
         }
 
@@ -490,10 +519,12 @@ public class FeedbackActivity extends AppCompatActivity {
         submitBtn.setEnabled(false);
 
         List<Uri> images = new ArrayList<>(attachUris);
+        showSubmitLoading(!images.isEmpty());
         FeedbackApi.submitForm(this, feedbackType, content, contact, images, shareLog,
                 new FeedbackApi.RecordCallback() {
                     @Override
                     public void onSuccess(FeedbackRecord record) {
+                        dismissSubmitLoading();
                         attachUris.clear();
                         shareLog = false;
                         submitBtn.setEnabled(true);
@@ -502,6 +533,7 @@ public class FeedbackActivity extends AppCompatActivity {
 
                     @Override
                     public void onError(String reason, String message) {
+                        dismissSubmitLoading();
                         submitBtn.setEnabled(true);
                         toastApiError(reason, message);
                     }
@@ -547,6 +579,36 @@ public class FeedbackActivity extends AppCompatActivity {
 
     // ==================== 弹窗 ====================
 
+    private void showSubmitLoading(boolean hasImages) {
+        dismissSubmitLoading();
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(R.layout.feedback_submit_loading_dialog);
+        dialog.setCancelable(false);
+        dialog.setCanceledOnTouchOutside(false);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            dialog.getWindow().setLayout(dp(280), ViewGroup.LayoutParams.WRAP_CONTENT);
+            dialog.getWindow().setDimAmount(0.45f);
+        }
+        TextView message = dialog.findViewById(R.id.feedbackSubmitLoadingMessage);
+        message.setText(hasImages
+                ? R.string.feedback_submitting_hint_images
+                : R.string.feedback_submitting_hint);
+        submitLoadingDialog = dialog;
+        dialog.show();
+    }
+
+    private void dismissSubmitLoading() {
+        if (submitLoadingDialog != null) {
+            try {
+                submitLoadingDialog.dismiss();
+            } catch (Exception ignored) {
+            }
+            submitLoadingDialog = null;
+        }
+    }
+
     private void showCloseConfirm() {
         Dialog dialog = new Dialog(this);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -583,12 +645,26 @@ public class FeedbackActivity extends AppCompatActivity {
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.feedback_image_viewer);
         ImageView image = dialog.findViewById(R.id.feedbackImageViewerImage);
-        Bitmap bmp = decodeImageSource(uriString);
-        if (bmp != null) {
-            image.setImageBitmap(bmp);
-        }
+        View loading = dialog.findViewById(R.id.feedbackImageViewerLoading);
+        image.setVisibility(View.INVISIBLE);
         dialog.findViewById(R.id.feedbackImageViewerClose).setOnClickListener(v -> dialog.dismiss());
         dialog.show();
+        final int maxEdge = fullscreenImageMaxEdgePx();
+        FeedbackApi.runAsync(() -> {
+            Bitmap bmp = decodeImageSource(uriString, maxEdge);
+            runOnUiThread(() -> {
+                if (!dialog.isShowing()) {
+                    return;
+                }
+                if (loading != null) {
+                    loading.setVisibility(View.GONE);
+                }
+                image.setVisibility(View.VISIBLE);
+                if (bmp != null) {
+                    image.setImageBitmap(bmp);
+                }
+            });
+        });
     }
 
     private void toastApiError(String reason, String message) {
@@ -603,7 +679,8 @@ public class FeedbackActivity extends AppCompatActivity {
         }
     }
 
-    private Bitmap decodeImageSource(String source) {
+    @Nullable
+    private Bitmap decodeImageSource(String source, int maxEdgePx) {
         if (source == null || source.isEmpty()) {
             return null;
         }
@@ -612,26 +689,101 @@ public class FeedbackActivity extends AppCompatActivity {
         }
         String url = FeedbackConfig.assetUrl(source);
         if (url.startsWith("http://") || url.startsWith("https://")) {
-            return decodeImageUrl(url);
+            return decodeImageUrl(url, maxEdgePx);
         }
         return decodeImage(Uri.parse(source));
     }
 
     @Nullable
-    private Bitmap decodeImageUrl(String urlString) {
+    private Bitmap decodeImageUrl(String urlString, int maxEdgePx) {
+        byte[] data = downloadUrlBytes(urlString);
+        if (data == null) {
+            return null;
+        }
+        return decodeBytesWithMaxEdge(data, maxEdgePx);
+    }
+
+    @Nullable
+    private byte[] downloadUrlBytes(String urlString) {
+        java.net.HttpURLConnection conn = null;
         try {
             java.net.URL url = new java.net.URL(urlString);
-            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn = (java.net.HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(15_000);
-            conn.setReadTimeout(15_000);
-            try (InputStream in = conn.getInputStream()) {
-                return BitmapFactory.decodeStream(in);
-            } finally {
-                conn.disconnect();
+            conn.setReadTimeout(30_000);
+            try (InputStream in = conn.getInputStream();
+                    java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
+                byte[] chunk = new byte[8192];
+                int n;
+                long total = 0;
+                while ((n = in.read(chunk)) >= 0) {
+                    total += n;
+                    if (total > MAX_NETWORK_IMAGE_BYTES) {
+                        return null;
+                    }
+                    buf.write(chunk, 0, n);
+                }
+                return buf.toByteArray();
             }
         } catch (Exception e) {
             return null;
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
         }
+    }
+
+    @Nullable
+    private static Bitmap decodeBytesWithMaxEdge(byte[] data, int maxEdgePx) {
+        if (data == null || data.length == 0 || maxEdgePx <= 0) {
+            return null;
+        }
+        try {
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(data, 0, data.length, bounds);
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                return null;
+            }
+            BitmapFactory.Options decode = new BitmapFactory.Options();
+            decode.inSampleSize = sampleSizeForMaxEdge(bounds.outWidth, bounds.outHeight, maxEdgePx);
+            Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, data.length, decode);
+            if (bitmap == null) {
+                return null;
+            }
+            int w = bitmap.getWidth();
+            int h = bitmap.getHeight();
+            int maxDim = Math.max(w, h);
+            if (maxDim <= maxEdgePx) {
+                return bitmap;
+            }
+            float scale = (float) maxEdgePx / maxDim;
+            int nw = Math.max(1, Math.round(w * scale));
+            int nh = Math.max(1, Math.round(h * scale));
+            Bitmap scaled = Bitmap.createScaledBitmap(bitmap, nw, nh, true);
+            if (scaled != bitmap) {
+                bitmap.recycle();
+            }
+            return scaled;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static int sampleSizeForMaxEdge(int width, int height, int maxEdge) {
+        int maxDim = Math.max(width, height);
+        int sample = 1;
+        while (maxDim / sample > maxEdge * 2) {
+            sample *= 2;
+        }
+        return sample;
+    }
+
+    private int fullscreenImageMaxEdgePx() {
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        int screenMax = Math.max(dm.widthPixels, dm.heightPixels);
+        return Math.min(FULLSCREEN_IMAGE_MAX_EDGE_PX, Math.max(screenMax, dp(360)));
     }
 
     // ==================== 工具 ====================
@@ -730,17 +882,17 @@ public class FeedbackActivity extends AppCompatActivity {
             thumb.setBackgroundResource(R.drawable.bg_feedback_thumb);
             final String src = path;
             thumb.setOnClickListener(v -> showImageViewer(src));
-            loadImageAsync(thumb, src, false);
+            loadImageAsync(thumb, src, false, dp(160));
             row.addView(thumb);
         }
     }
 
-    private void loadImageAsync(ImageView target, String source, boolean centerCrop) {
+    private void loadImageAsync(ImageView target, String source, boolean centerCrop, int maxEdgePx) {
         if (source == null || source.isEmpty()) {
             return;
         }
         FeedbackApi.runAsync(() -> {
-            Bitmap bmp = decodeImageSource(source);
+            Bitmap bmp = decodeImageSource(source, maxEdgePx);
             if (bmp == null) {
                 return;
             }

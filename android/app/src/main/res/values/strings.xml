@@ -301,6 +301,9 @@
     <string name="feedback_service_avatar">Support</string>
     <string name="feedback_share_log">Share app logs for more accurate diagnosis</string>
     <string name="feedback_submit">Submit</string>
+    <string name="feedback_submitting">Submitting feedback…</string>
+    <string name="feedback_submitting_hint">Please wait…</string>
+    <string name="feedback_submitting_hint_images">Uploading images, please wait…</string>
     <string name="feedback_submitted">Submitted</string>
     <string name="feedback_success_art_desc">Feedback submitted</string>
     <string name="feedback_success_message">Thanks for your feedback. We will handle it soon!</string>
