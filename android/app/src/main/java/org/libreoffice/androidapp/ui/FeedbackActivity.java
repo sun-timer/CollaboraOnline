@@ -29,6 +29,7 @@ import org.libreoffice.androidapp.feedback.FeedbackApi;
 import org.libreoffice.androidapp.feedback.FeedbackConfig;
 import org.libreoffice.androidapp.feedback.FeedbackRecord;
 import org.libreoffice.androidapp.feedback.FeedbackStore;
+import org.libreoffice.androidapp.feedback.FeedbackTypes;
 import org.libreoffice.androidlib.SystemUiHelper;
 
 import java.io.FileNotFoundException;
@@ -67,7 +68,6 @@ public class FeedbackActivity extends AppCompatActivity {
 
     // 详情
     private FeedbackRecord currentDetail;
-    private Bitmap replyImageBitmap;
 
     private final androidx.activity.result.ActivityResultLauncher<String> imagePicker =
             registerForActivityResult(new ActivityResultContracts.GetMultipleContents(), uris -> {
@@ -105,6 +105,7 @@ public class FeedbackActivity extends AppCompatActivity {
             chips[i].setOnClickListener(v -> selectChip(idx));
         }
         selectChip(-1);
+        shareLog = false;
 
         EditText desc = findViewById(R.id.feedbackDescInput);
         TextView count = findViewById(R.id.feedbackDescCount);
@@ -127,6 +128,7 @@ public class FeedbackActivity extends AppCompatActivity {
                 imagePicker.launch("image/*"));
 
         ImageView logCheck = findViewById(R.id.feedbackLogCheck);
+        logCheck.setImageResource(R.drawable.ic_feedback_checkbox_off);
         findViewById(R.id.feedbackLogRow).setOnClickListener(v -> {
             shareLog = !shareLog;
             logCheck.setImageResource(shareLog
@@ -248,9 +250,7 @@ public class FeedbackActivity extends AppCompatActivity {
             @Override
             public void onError(String reason, String message) {
                 listLoading = false;
-                if (!append) {
-                    toastApiError(reason);
-                }
+                toastApiError(reason, message);
             }
         });
     }
@@ -317,7 +317,7 @@ public class FeedbackActivity extends AppCompatActivity {
 
             @Override
             public void onError(String reason, String message) {
-                toastApiError(reason);
+                toastApiError(reason, message);
                 showList();
             }
         });
@@ -340,25 +340,32 @@ public class FeedbackActivity extends AppCompatActivity {
                 formatTime(currentDetail.submitTime)));
         bindDetailMyImages(currentDetail.imageUris);
 
-        boolean hasReply = currentDetail.replyText != null
+        boolean hasReplyText = currentDetail.replyText != null
                 && !currentDetail.replyText.isEmpty();
+        boolean hasReplyImages = currentDetail.replyImageUris != null
+                && !currentDetail.replyImageUris.isEmpty();
+        boolean hasReply = hasReplyText || hasReplyImages;
         findViewById(R.id.feedbackDetailReplyRow)
                 .setVisibility(hasReply ? View.VISIBLE : View.GONE);
         if (hasReply) {
             TextView replyText = findViewById(R.id.feedbackDetailReplyText);
-            replyText.setText(currentDetail.replyText);
+            replyText.setVisibility(hasReplyText ? View.VISIBLE : View.GONE);
+            if (hasReplyText) {
+                replyText.setText(currentDetail.replyText);
+            }
             TextView replyTime = findViewById(R.id.feedbackDetailReplyTime);
-            replyTime.setText(getString(R.string.feedback_reply_time,
-                    formatTime(currentDetail.replyTime)));
+            if (currentDetail.replyTime > 0) {
+                replyTime.setVisibility(View.VISIBLE);
+                replyTime.setText(getString(R.string.feedback_reply_time,
+                        formatTime(currentDetail.replyTime)));
+            } else {
+                replyTime.setVisibility(View.GONE);
+            }
             ImageView replyImage = findViewById(R.id.feedbackDetailReplyImage);
-            if (!currentDetail.replyImageUris.isEmpty()) {
+            replyImage.setVisibility(View.GONE);
+            if (hasReplyImages) {
                 String src = currentDetail.replyImageUris.get(0);
-                Bitmap bmp = decodeImageSource(src);
-                if (bmp != null) {
-                    replyImage.setImageBitmap(bmp);
-                    replyImage.setVisibility(View.VISIBLE);
-                    replyImage.setOnClickListener(v -> showImageViewer(src));
-                }
+                loadImageAsync(replyImage, src, true);
             }
         }
 
@@ -467,7 +474,7 @@ public class FeedbackActivity extends AppCompatActivity {
         }
         String contact = ((EditText) findViewById(R.id.feedbackContactInput))
                 .getText().toString().trim();
-        String feedbackType = getSelectedTypeText();
+        String feedbackType = getSelectedApiType();
         View submitBtn = findViewById(R.id.feedbackSubmitBtn);
         submitBtn.setEnabled(false);
 
@@ -477,6 +484,7 @@ public class FeedbackActivity extends AppCompatActivity {
                     @Override
                     public void onSuccess(FeedbackRecord record) {
                         attachUris.clear();
+                        shareLog = false;
                         submitBtn.setEnabled(true);
                         showSuccess();
                     }
@@ -484,16 +492,13 @@ public class FeedbackActivity extends AppCompatActivity {
                     @Override
                     public void onError(String reason, String message) {
                         submitBtn.setEnabled(true);
-                        toastApiError(reason);
+                        toastApiError(reason, message);
                     }
                 });
     }
 
-    private String getSelectedTypeText() {
-        if (selectedType < 0 || selectedType >= chips.length) {
-            return "";
-        }
-        return ((TextView) chips[selectedType]).getText().toString();
+    private String getSelectedApiType() {
+        return FeedbackTypes.apiLabelForChipIndex(selectedType);
     }
 
     // ==================== 状态样式 ====================
@@ -555,7 +560,7 @@ public class FeedbackActivity extends AppCompatActivity {
 
                 @Override
                 public void onError(String reason, String message) {
-                    toastApiError(reason);
+                    toastApiError(reason, message);
                 }
             });
         });
@@ -575,11 +580,13 @@ public class FeedbackActivity extends AppCompatActivity {
         dialog.show();
     }
 
-    private void toastApiError(String reason) {
+    private void toastApiError(String reason, String message) {
         if ("feedback_api_not_configured".equals(reason)) {
             toast(R.string.feedback_api_not_configured);
         } else if ("feedback_log_upload_pending".equals(reason)) {
             toast(R.string.feedback_log_upload_pending);
+        } else if ("feedback_api".equals(reason) && message != null && !message.isEmpty()) {
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
         } else {
             toast(R.string.feedback_submit_failed);
         }
@@ -710,14 +717,32 @@ public class FeedbackActivity extends AppCompatActivity {
             thumb.setLayoutParams(lp);
             thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
             thumb.setBackgroundResource(R.drawable.bg_feedback_thumb);
-            Bitmap bmp = decodeImageSource(path);
-            if (bmp != null) {
-                thumb.setImageBitmap(bmp);
-            }
             final String src = path;
             thumb.setOnClickListener(v -> showImageViewer(src));
+            loadImageAsync(thumb, src, false);
             row.addView(thumb);
         }
+    }
+
+    private void loadImageAsync(ImageView target, String source, boolean centerCrop) {
+        if (source == null || source.isEmpty()) {
+            return;
+        }
+        FeedbackApi.runAsync(() -> {
+            Bitmap bmp = decodeImageSource(source);
+            if (bmp == null) {
+                return;
+            }
+            runOnUiThread(() -> {
+                if (isFinishing() || target.getWindowToken() == null) {
+                    return;
+                }
+                target.setImageBitmap(bmp);
+                if (centerCrop) {
+                    target.setVisibility(View.VISIBLE);
+                }
+            });
+        });
     }
 
     private static String formatListSummary(String summary) {

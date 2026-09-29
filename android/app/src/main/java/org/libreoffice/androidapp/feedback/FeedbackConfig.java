@@ -5,7 +5,11 @@ package org.libreoffice.androidapp.feedback;
  */
 public final class FeedbackConfig {
 
-    /** 为空时允许进入 UI，网络请求前 Toast 并中止。 */
+    /**
+     * 为空时允许进入 UI，网络请求前 Toast 并中止。
+     * 本机 Mock 联调（debug）：先 {@code python3 issues/android-feedback-api/mock-server.py --host 0.0.0.0}
+     * 模拟器填 {@code http://10.0.2.2:9010}，真机填 {@code http://<电脑局域网IP>:9010}。
+     */
     public static final String API_BASE_URL = "";
 
     /**
