@@ -19,7 +19,26 @@ public class FeedbackRecord {
         PROCESSING,
         REPLIED,
         RESOLVED,
-        CLOSED
+        CLOSED;
+
+        public static Status fromApiLabel(String label) {
+            if (label == null) {
+                return Status.SUBMITTED;
+            }
+            switch (label) {
+                case "处理中":
+                    return Status.PROCESSING;
+                case "已回复":
+                    return Status.REPLIED;
+                case "已解决":
+                    return Status.RESOLVED;
+                case "关闭":
+                    return Status.CLOSED;
+                case "已提交":
+                default:
+                    return Status.SUBMITTED;
+            }
+        }
     }
 
     /** 服务端 feedbackNo */
@@ -40,24 +59,6 @@ public class FeedbackRecord {
         return status == Status.REPLIED || status == Status.RESOLVED;
     }
 
-    public static Status fromApiLabel(String label) {
-        if (label == null) {
-            return Status.SUBMITTED;
-        }
-        switch (label) {
-            case "处理中":
-                return Status.PROCESSING;
-            case "已回复":
-                return Status.REPLIED;
-            case "已解决":
-                return Status.RESOLVED;
-            case "关闭":
-                return Status.CLOSED;
-            case "已提交":
-            default:
-                return Status.SUBMITTED;
-        }
-    }
 
     static FeedbackRecord fromDetailJson(JSONObject data) {
         FeedbackRecord r = new FeedbackRecord();
@@ -65,7 +66,7 @@ public class FeedbackRecord {
         r.type = data.optString("feedbackType");
         r.content = data.optString("content");
         r.contact = data.optString("contact", "");
-        r.status = fromApiLabel(data.optString("status"));
+        r.status = Status.fromApiLabel(data.optString("status"));
         r.submitTime = parseServerTimeStatic(data.optString("submitTime"));
         r.imageUris = jsonStringList(data.optJSONArray("imagePaths"));
         JSONObject reply = data.optJSONObject("reply");

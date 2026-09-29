@@ -56,7 +56,7 @@ public final class FeedbackApi {
         return FeedbackConfig.isConfigured();
     }
 
-    static void runAsync(Runnable task) {
+    public static void runAsync(Runnable task) {
         EXEC.execute(task);
     }
 

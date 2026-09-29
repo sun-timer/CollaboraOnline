@@ -270,6 +270,7 @@
     <string name="feedback_add_image_too_many">Up to 3 images allowed</string>
     <string name="feedback_api_not_configured">Feedback service is not configured</string>
     <string name="feedback_log_upload_pending">Log upload is not available yet</string>
+    <string name="feedback_log_will_upload">Diagnostic log will be uploaded with this feedback</string>
     <string name="feedback_submit_failed">Submit failed. Please try again.</string>
     <string name="feedback_loading">Loading…</string>
     <string name="feedback_choose_type">Please select an issue type</string>

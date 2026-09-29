@@ -127,13 +127,24 @@ public class FeedbackActivity extends AppCompatActivity {
         findViewById(R.id.feedbackAttachAddBtn).setOnClickListener(v ->
                 imagePicker.launch("image/*"));
 
-        ImageView logCheck = findViewById(R.id.feedbackLogCheck);
-        logCheck.setImageResource(R.drawable.ic_feedback_checkbox_off);
-        findViewById(R.id.feedbackLogRow).setOnClickListener(v -> {
-            shareLog = !shareLog;
-            logCheck.setImageResource(shareLog
-                    ? R.drawable.ic_feedback_checkbox_on : R.drawable.ic_feedback_checkbox_off);
-        });
+        View logRow = findViewById(R.id.feedbackLogRow);
+        if (FeedbackConfig.isLogUploadEnabled()) {
+            logRow.setVisibility(View.VISIBLE);
+            ImageView logCheck = findViewById(R.id.feedbackLogCheck);
+            logCheck.setImageResource(R.drawable.ic_feedback_checkbox_off);
+            logRow.setOnClickListener(v -> {
+                shareLog = !shareLog;
+                logCheck.setImageResource(shareLog
+                        ? R.drawable.ic_feedback_checkbox_on
+                        : R.drawable.ic_feedback_checkbox_off);
+                if (shareLog) {
+                    toast(R.string.feedback_log_will_upload);
+                }
+            });
+        } else {
+            logRow.setVisibility(View.GONE);
+            shareLog = false;
+        }
     }
 
     /**

@@ -121,7 +121,10 @@ final class FeedbackClient {
         }
         Log.i(TAG, "feedback submit request feedbackType=" + feedbackType
                 + " contentLen=" + content.codePointCount(0, content.length()));
-        JSONObject data = postJson(FeedbackConfig.PATH_SUBMIT, body).getJSONObject("data");
+        JSONObject data = postJson(FeedbackConfig.PATH_SUBMIT, body).optJSONObject("data");
+        if (data == null) {
+            throw new FeedbackApiException("feedback_parse", "missing data");
+        }
         FeedbackRecord record = new FeedbackRecord();
         record.id = data.optString("feedbackNo");
         record.type = feedbackType;
@@ -144,7 +147,10 @@ final class FeedbackClient {
         } catch (Exception e) {
             throw new FeedbackApiException("feedback_json_build", e.getMessage());
         }
-        JSONObject data = postJson(FeedbackConfig.PATH_LIST, body).getJSONObject("data");
+        JSONObject data = postJson(FeedbackConfig.PATH_LIST, body).optJSONObject("data");
+        if (data == null) {
+            throw new FeedbackApiException("feedback_parse", "missing data");
+        }
         FeedbackListPage page = new FeedbackListPage();
         page.pageNum = data.optInt("pageNum", pageNum);
         page.pageSize = data.optInt("pageSize", pageSize);
@@ -177,7 +183,10 @@ final class FeedbackClient {
         } catch (Exception e) {
             throw new FeedbackApiException("feedback_json_build", e.getMessage());
         }
-        JSONObject data = postJson(FeedbackConfig.PATH_DETAIL, body).getJSONObject("data");
+        JSONObject data = postJson(FeedbackConfig.PATH_DETAIL, body).optJSONObject("data");
+        if (data == null) {
+            throw new FeedbackApiException("feedback_parse", "missing data");
+        }
         return FeedbackRecord.fromDetailJson(data);
     }
 

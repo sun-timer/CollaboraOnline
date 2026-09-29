@@ -1,7 +1,6 @@
 package org.libreoffice.androidapp.feedback;
 
 import android.content.Context;
-import android.os.Process;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -26,7 +25,7 @@ public final class FeedbackLogExporter {
      */
     public static File exportLogFile(Context context) throws FeedbackApiException {
         Context app = context.getApplicationContext();
-        int pid = Process.myPid();
+        int pid = android.os.Process.myPid();
         Process process;
         try {
             process = new ProcessBuilder(
