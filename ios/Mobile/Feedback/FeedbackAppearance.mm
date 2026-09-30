@@ -68,19 +68,39 @@
     return row;
 }
 
-+ (UIButton *)typeChipWithTitle:(NSString *)title tag:(NSInteger)tag target:(id)target action:(SEL)action {
++ (UIButton *)typeChipWithTitle:(NSString *)title
+                       minWidth:(CGFloat)minWidth
+                            tag:(NSInteger)tag
+                         target:(id)target
+                         action:(SEL)action {
     UIButton *chip = [UIButton buttonWithType:UIButtonTypeCustom];
     chip.translatesAutoresizingMaskIntoConstraints = NO;
     chip.tag = tag;
     chip.titleLabel.font = [UIFont systemFontOfSize:14];
+    chip.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     chip.contentEdgeInsets = UIEdgeInsetsMake(0, 12, 0, 12);
     chip.layer.cornerRadius = 18.5;
     chip.clipsToBounds = YES;
     [chip setTitle:title forState:UIControlStateNormal];
     [chip addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
     [chip.heightAnchor constraintEqualToConstant:37].active = YES;
+    if (minWidth > 0) {
+        [chip.widthAnchor constraintGreaterThanOrEqualToConstant:minWidth].active = YES;
+    }
+    [chip setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [chip setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     [self applyChipStyle:chip selected:NO];
     return chip;
+}
+
++ (void)finishTypeChipRow:(UIStackView *)row {
+    row.alignment = UIStackViewAlignmentCenter;
+    row.distribution = UIStackViewDistributionFill;
+    UIView *spacer = [[UIView alloc] init];
+    spacer.translatesAutoresizingMaskIntoConstraints = NO;
+    [spacer setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    [spacer setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    [row addArrangedSubview:spacer];
 }
 
 + (void)applyChipStyle:(UIButton *)chip selected:(BOOL)selected {
@@ -144,9 +164,12 @@
 + (UIColor *)statusDotColorForStatus:(FeedbackStatus)status {
     switch (status) {
         case FeedbackStatusReplied:
+        case FeedbackStatusResolved:
             return [UIColor colorWithRed:0x00 / 255.0 green:0x66 / 255.0 blue:0xFF / 255.0 alpha:1];
         case FeedbackStatusProcessing:
-            return [self primaryAccentColor];
+            return [UIColor colorWithRed:0xFA / 255.0 green:0x62 / 255.0 blue:0x00 / 255.0 alpha:1];
+        case FeedbackStatusSubmitted:
+        case FeedbackStatusClosed:
         default:
             return [UIColor colorWithRed:0x6A / 255.0 green:0x6A / 255.0 blue:0x6A / 255.0 alpha:1];
     }
@@ -169,6 +192,8 @@
     switch (status) {
         case FeedbackStatusReplied:
             return @"已回复";
+        case FeedbackStatusResolved:
+            return @"问题已解决";
         case FeedbackStatusClosed:
             return @"已关闭";
         case FeedbackStatusProcessing:
@@ -182,9 +207,12 @@
 + (UIColor *)statusTextColorForStatus:(FeedbackStatus)status {
     switch (status) {
         case FeedbackStatusReplied:
+        case FeedbackStatusResolved:
             return [UIColor colorWithRed:0x00 / 255.0 green:0x66 / 255.0 blue:0xFF / 255.0 alpha:1];
         case FeedbackStatusProcessing:
-            return [self primaryAccentColor];
+            return [UIColor colorWithRed:0xFA / 255.0 green:0x62 / 255.0 blue:0x00 / 255.0 alpha:1];
+        case FeedbackStatusSubmitted:
+        case FeedbackStatusClosed:
         default:
             return [self textSecondaryColor];
     }

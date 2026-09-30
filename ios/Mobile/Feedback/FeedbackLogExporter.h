@@ -9,10 +9,10 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/** 旧版本地 mock；接 V1.2 API 后仅用于一次性清空 legacy 数据。 */
-@interface FeedbackStore : NSObject
+@interface FeedbackLogExporter : NSObject
 
-+ (void)clearLegacyMockIfNeeded;
+/** 缓存目录下的 .txt；上传成功后由调用方删除 */
++ (nullable NSURL *)exportLogFileURLWithError:(NSError **)error;
 
 @end
 

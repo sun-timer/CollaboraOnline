@@ -180,9 +180,8 @@ static UIColor *AboutCardColor(void) {
 
 - (void)openFeedback {
     FeedbackViewController *vc = [[FeedbackViewController alloc] init];
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
-    nav.modalPresentationStyle = UIModalPresentationFullScreen;
-    [self presentViewController:nav animated:YES completion:nil];
+    vc.modalPresentationStyle = UIModalPresentationFullScreen;
+    [self presentViewController:vc animated:YES completion:nil];
 }
 
 - (void)openLicense {

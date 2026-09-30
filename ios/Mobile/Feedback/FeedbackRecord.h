@@ -13,6 +13,7 @@ typedef NS_ENUM(NSInteger, FeedbackStatus) {
     FeedbackStatusSubmitted,
     FeedbackStatusProcessing,
     FeedbackStatusReplied,
+    FeedbackStatusResolved,
     FeedbackStatusClosed,
 };
 
@@ -28,6 +29,13 @@ typedef NS_ENUM(NSInteger, FeedbackStatus) {
 @property (assign, nonatomic) FeedbackStatus status;
 @property (copy, nonatomic) NSString *replyText;
 @property (assign, nonatomic) NSTimeInterval replyTime;
+@property (copy, nonatomic) NSArray<NSString *> *replyImagePaths;
+
+- (BOOL)canClose;
+
++ (FeedbackStatus)statusFromApiLabel:(NSString *)label;
++ (instancetype)recordFromDetailDictionary:(NSDictionary *)data;
++ (NSTimeInterval)parseServerTime:(NSString *)text;
 
 - (NSDictionary *)dictionaryRepresentation;
 + (nullable instancetype)recordFromDictionary:(NSDictionary *)dict;

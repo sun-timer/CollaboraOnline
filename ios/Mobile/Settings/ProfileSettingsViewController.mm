@@ -10,6 +10,10 @@
 #import "HomeCardDialogPresenter.h"
 #import "Settings/AppChromeHelper.h"
 #import "Settings/AppIcons.h"
+#import "Settings/AppToastPresenter.h"
+#import "FeedbackConfig.h"
+#import "FeedbackApiException.h"
+#import "FeedbackIdentityStore.h"
 
 #import <PhotosUI/PhotosUI.h>
 
@@ -228,6 +232,18 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
     [[NSUserDefaults standardUserDefaults] setObject:url.path forKey:kAvatarPathKey];
     self.profileChanged = YES;
     [self reloadProfile];
+    if ([FeedbackConfig isConfigured]) {
+        __weak __typeof(self) weakSelf = self;
+        [FeedbackIdentityStore uploadAvatarFromLocalFileWithCompletion:^(NSError *error) {
+            if (error != nil) {
+                NSString *reason = [FeedbackApiException reasonFromError:error];
+                if ([reason isEqualToString:@"feedback_api_not_configured"]) {
+                    return;
+                }
+                [AppToastPresenter showMessage:@"头像同步失败" from:weakSelf];
+            }
+        }];
+    }
 }
 
 - (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results {

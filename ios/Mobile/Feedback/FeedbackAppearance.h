@@ -22,8 +22,13 @@ NS_ASSUME_NONNULL_BEGIN
 + (UIColor *)contentBlockBackgroundColor;
 
 + (UIStackView *)sectionHeaderRowWithText:(NSString *)text required:(BOOL)required;
-+ (UIButton *)typeChipWithTitle:(NSString *)title tag:(NSInteger)tag target:(id)target action:(SEL)action;
++ (UIButton *)typeChipWithTitle:(NSString *)title
+                       minWidth:(CGFloat)minWidth
+                            tag:(NSInteger)tag
+                         target:(id)target
+                         action:(SEL)action;
 + (void)applyChipStyle:(UIButton *)chip selected:(BOOL)selected;
++ (void)finishTypeChipRow:(UIStackView *)row;
 + (void)styleInputContainer:(UIView *)container cornerRadius:(CGFloat)radius;
 + (void)styleContentBlock:(UIView *)view;
 + (UIButton *)primaryButtonWithTitle:(NSString *)title target:(id)target action:(SEL)action;

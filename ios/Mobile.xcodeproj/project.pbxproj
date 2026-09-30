@@ -119,6 +119,7 @@
 		C79282312DF89BB2001EA43B /* MobileSocket.mm in Sources */ = {isa = PBXBuildFile; fileRef = C79282302DF89BB2001EA43B /* MobileSocket.mm */; };
 		D49B580F2D1077F700E0E607 /* UniformTypeIdentifiers.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D49B580E2D1077F700E0E607 /* UniformTypeIdentifiers.framework */; };
 		C0FFEE2F2026082400000001 /* PhotosUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE302026082400000001 /* PhotosUI.framework */; };
+		C0FFEE312026093000000001 /* OSLog.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE312026093000000002 /* OSLog.framework */; };
 		D4A0F3D72D64E86C00472DEE /* CoolURLSchemeHandler.mm in Sources */ = {isa = PBXBuildFile; fileRef = D4A0F3D62D64E86C00472DEE /* CoolURLSchemeHandler.mm */; };
 		E2B010051026090900000001 /* AboutViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010051026090900000002 /* AboutViewController.mm */; };
 		E2B010091026090900000001 /* HTMLAssetViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010091026090900000002 /* HTMLAssetViewController.mm */; };
@@ -128,6 +129,12 @@
 		E2B010111026090900000001 /* FeedbackStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010111026090900000002 /* FeedbackStore.mm */; };
 		E2B010131026090900000001 /* FeedbackViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010131026090900000002 /* FeedbackViewController.mm */; };
 		E2B010331026090900000001 /* FeedbackAppearance.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010331026090900000002 /* FeedbackAppearance.mm */; };
+		E2B010351026090900000001 /* FeedbackApi.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010351026090900000002 /* FeedbackApi.mm */; };
+		E2B010371026090900000001 /* FeedbackApiException.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010371026090900000002 /* FeedbackApiException.mm */; };
+		E2B010391026090900000001 /* FeedbackClient.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010391026090900000002 /* FeedbackClient.mm */; };
+		E2B0103B1026090900000001 /* FeedbackConfig.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0103B1026090900000002 /* FeedbackConfig.mm */; };
+		E2B0103D1026090900000001 /* FeedbackIdentityStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0103D1026090900000002 /* FeedbackIdentityStore.mm */; };
+		E2B0103F1026090900000001 /* FeedbackLogExporter.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B0103F1026090900000002 /* FeedbackLogExporter.mm */; };
 		E2B010151026090900000001 /* notice.txt in Resources */ = {isa = PBXBuildFile; fileRef = E2B010151026090900000002 /* notice.txt */; };
 		E2B010171026090900000001 /* license.html in Resources */ = {isa = PBXBuildFile; fileRef = E2B010171026090900000002 /* license.html */; };
 		E2B010191026090900000001 /* AppIcons.mm in Sources */ = {isa = PBXBuildFile; fileRef = E2B010191026090900000002 /* AppIcons.mm */; };
@@ -1612,6 +1619,7 @@
 		C79282302DF89BB2001EA43B /* MobileSocket.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = MobileSocket.mm; sourceTree = "<group>"; };
 		D49B580E2D1077F700E0E607 /* UniformTypeIdentifiers.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UniformTypeIdentifiers.framework; path = System/Library/Frameworks/UniformTypeIdentifiers.framework; sourceTree = SDKROOT; };
 		C0FFEE302026082400000001 /* PhotosUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PhotosUI.framework; path = System/Library/Frameworks/PhotosUI.framework; sourceTree = SDKROOT; };
+		C0FFEE312026093000000002 /* OSLog.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OSLog.framework; path = System/Library/Frameworks/OSLog.framework; sourceTree = SDKROOT; };
 		D4A0F3D62D64E86C00472DEE /* CoolURLSchemeHandler.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CoolURLSchemeHandler.mm; sourceTree = "<group>"; };
 		D4A0F3D82D663A0000472DEE /* CoolURLSchemeHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CoolURLSchemeHandler.h; sourceTree = "<group>"; };
 		E2B010041026090900000001 /* AboutViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AboutViewController.h; sourceTree = "<group>"; };
@@ -1630,6 +1638,18 @@
 		E2B010131026090900000002 /* FeedbackViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackViewController.mm; sourceTree = "<group>"; };
 		E2B010331026090900000002 /* FeedbackAppearance.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackAppearance.mm; sourceTree = "<group>"; };
 		E2B010331026090900000003 /* FeedbackAppearance.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackAppearance.h; sourceTree = "<group>"; };
+		E2B010351026090900000002 /* FeedbackApi.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackApi.mm; sourceTree = "<group>"; };
+		E2B010351026090900000003 /* FeedbackApi.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackApi.h; sourceTree = "<group>"; };
+		E2B010371026090900000002 /* FeedbackApiException.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackApiException.mm; sourceTree = "<group>"; };
+		E2B010371026090900000003 /* FeedbackApiException.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackApiException.h; sourceTree = "<group>"; };
+		E2B010391026090900000002 /* FeedbackClient.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackClient.mm; sourceTree = "<group>"; };
+		E2B010391026090900000003 /* FeedbackClient.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackClient.h; sourceTree = "<group>"; };
+		E2B0103B1026090900000002 /* FeedbackConfig.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackConfig.mm; sourceTree = "<group>"; };
+		E2B0103B1026090900000003 /* FeedbackConfig.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackConfig.h; sourceTree = "<group>"; };
+		E2B0103D1026090900000002 /* FeedbackIdentityStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackIdentityStore.mm; sourceTree = "<group>"; };
+		E2B0103D1026090900000003 /* FeedbackIdentityStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackIdentityStore.h; sourceTree = "<group>"; };
+		E2B0103F1026090900000002 /* FeedbackLogExporter.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FeedbackLogExporter.mm; sourceTree = "<group>"; };
+		E2B0103F1026090900000003 /* FeedbackLogExporter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FeedbackLogExporter.h; sourceTree = "<group>"; };
 		E2B010151026090900000002 /* notice.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = notice.txt; sourceTree = "<group>"; };
 		E2B010171026090900000002 /* license.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = license.html; sourceTree = "<group>"; };
 		E2B010181026090900000001 /* AppIcons.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppIcons.h; sourceTree = "<group>"; };
@@ -1664,6 +1684,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C0FFEE2F2026082400000001 /* PhotosUI.framework in Frameworks */,
+				C0FFEE312026093000000001 /* OSLog.framework in Frameworks */,
 				D49B580F2D1077F700E0E607 /* UniformTypeIdentifiers.framework in Frameworks */,
 				BE512CBA2518DE6E00921C15 /* libsqlite3.tbd in Frameworks */,
 				BE6362C22153B5B500F4237E /* CoreServices.framework in Frameworks */,
@@ -1726,6 +1747,18 @@
 				E2B010131026090900000002 /* FeedbackViewController.mm */,
 				E2B010331026090900000003 /* FeedbackAppearance.h */,
 				E2B010331026090900000002 /* FeedbackAppearance.mm */,
+				E2B010351026090900000003 /* FeedbackApi.h */,
+				E2B010351026090900000002 /* FeedbackApi.mm */,
+				E2B010371026090900000003 /* FeedbackApiException.h */,
+				E2B010371026090900000002 /* FeedbackApiException.mm */,
+				E2B010391026090900000003 /* FeedbackClient.h */,
+				E2B010391026090900000002 /* FeedbackClient.mm */,
+				E2B0103B1026090900000003 /* FeedbackConfig.h */,
+				E2B0103B1026090900000002 /* FeedbackConfig.mm */,
+				E2B0103D1026090900000003 /* FeedbackIdentityStore.h */,
+				E2B0103D1026090900000002 /* FeedbackIdentityStore.mm */,
+				E2B0103F1026090900000003 /* FeedbackLogExporter.h */,
+				E2B0103F1026090900000002 /* FeedbackLogExporter.mm */,
 			);
 			path = Feedback;
 			sourceTree = "<group>";
@@ -1769,6 +1802,7 @@
 			isa = PBXGroup;
 			children = (
 				C0FFEE302026082400000001 /* PhotosUI.framework */,
+				C0FFEE312026093000000002 /* OSLog.framework */,
 				D49B580E2D1077F700E0E607 /* UniformTypeIdentifiers.framework */,
 				BE512CB92518DE6400921C15 /* libsqlite3.tbd */,
 				BE6362C12153B5B500F4237E /* CoreServices.framework */,
@@ -4205,6 +4239,12 @@
 				E2B010111026090900000001 /* FeedbackStore.mm in Sources */,
 				E2B010131026090900000001 /* FeedbackViewController.mm in Sources */,
 				E2B010331026090900000001 /* FeedbackAppearance.mm in Sources */,
+				E2B010351026090900000001 /* FeedbackApi.mm in Sources */,
+				E2B010371026090900000001 /* FeedbackApiException.mm in Sources */,
+				E2B010391026090900000001 /* FeedbackClient.mm in Sources */,
+				E2B0103B1026090900000001 /* FeedbackConfig.mm in Sources */,
+				E2B0103D1026090900000001 /* FeedbackIdentityStore.mm in Sources */,
+				E2B0103F1026090900000001 /* FeedbackLogExporter.mm in Sources */,
 				E2B010191026090900000001 /* AppIcons.mm in Sources */,
 				E2B0101B1026090900000001 /* AppChromeHelper.mm in Sources */,
 				E2B0101D1026090900000001 /* AIQuickCreateViewController.mm in Sources */,
