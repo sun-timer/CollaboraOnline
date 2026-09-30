@@ -7,8 +7,7 @@
 
 #import "FeedbackConfig.h"
 
-/** 联调 cpolar 隧道；发布前改回 @"" */
-static NSString * const kFeedbackAPIBaseURL = @"http://1695d68b.r9.cpolar.cn";
+static NSString * const kFeedbackAPIBaseURL = @"";
 
 @implementation FeedbackConfig
 

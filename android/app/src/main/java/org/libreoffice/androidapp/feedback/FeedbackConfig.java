@@ -10,8 +10,7 @@ public final class FeedbackConfig {
      * 本机 Mock 联调（debug）：先 {@code python3 issues/android-feedback-api/mock-server.py --host 0.0.0.0}
      * 模拟器填 {@code http://10.0.2.2:9010}，真机填 {@code http://<电脑局域网IP>:9010}。
      */
-    /** 联调 cpolar 隧道；发布前改回 "" */
-    public static final String API_BASE_URL = "http://1695d68b.r9.cpolar.cn";
+    public static final String API_BASE_URL = "";
 
     /**
      * 扩展 {@link #PATH_UPLOAD_LOG}：后端定稿前保持 false，勾选日志仅 Toast。
