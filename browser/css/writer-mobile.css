@@ -18,7 +18,9 @@
 	--mobile-ai-wai-muted: #999999;
 	--mobile-ai-wai-gradient: linear-gradient(135deg, #1da8ff 0%, #dd00ce 100%);
 	--mobile-ai-wai-dialog-width: 335px;
-	--mobile-ai-wai-max-height: min(748px, 60dvh);
+	/* Use the visible webview. dvh already shrinks with the keyboard, so a
+	   second 60% cap collapses the form above it. */
+	--mobile-ai-wai-max-height: min(748px, calc(100dvh - 32px));
 	--mobile-ai-wai-scroll-max: min(280px, 32dvh);
 }
 
@@ -2845,17 +2847,32 @@
 
 .mobile-ai-sheet-body--writer {
 	display: flex;
-	flex: 1;
+	flex: 1 1 auto;
 	flex-direction: column;
 	min-height: 0;
-	overflow: hidden;
+	overflow: auto;
 	padding: 0 0 12px;
+	-webkit-overflow-scrolling: touch;
 }
 
 .mobile-ai-sheet-body--writer > .mobile-ai-task-dialog {
 	box-sizing: border-box;
+	flex: 0 0 auto;
 	max-width: 100%;
+	max-height: none;
+	overflow: visible;
 	padding: 0 12px;
+}
+
+.mobile-ai-sheet-body--writer .mobile-ai-task-dialog__input {
+	flex: 0 0 auto;
+	max-height: none;
+	overflow: visible;
+}
+
+.mobile-ai-sheet-body--writer .mobile-ai-task-dialog__card,
+.mobile-ai-sheet-body--writer .mobile-ai-task-dialog__textarea {
+	max-height: none;
 }
 
 .mobile-ai-sheet-body--writer > .mobile-ai-article-dialog {

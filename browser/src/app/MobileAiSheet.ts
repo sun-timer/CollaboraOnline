@@ -105,7 +105,30 @@ class MobileAiSheet {
 		this.body.className =
 			'mobile-ai-sheet-body' +
 			(writer ? ' mobile-ai-sheet-body--writer' : '');
+		if (writer) {
+			this.body.addEventListener('focusin', (event) => {
+				const target = event.target;
+				if (!(target instanceof HTMLElement)) {
+					return;
+				}
+				window.setTimeout(() => this.keepFieldInView(target), 280);
+			});
+		}
 		this.panel.appendChild(this.body);
+	}
+
+	/** Scroll only the sheet body, so the keyboard does not move the document. */
+	private keepFieldInView(target: HTMLElement): void {
+		if (!this.root.parentElement || !this.body.contains(target)) {
+			return;
+		}
+		const bodyRect = this.body.getBoundingClientRect();
+		const targetRect = target.getBoundingClientRect();
+		if (targetRect.bottom > bodyRect.bottom - 8) {
+			this.body.scrollTop += targetRect.bottom - bodyRect.bottom + 12;
+		} else if (targetRect.top < bodyRect.top + 8) {
+			this.body.scrollTop -= bodyRect.top - targetRect.top + 12;
+		}
 	}
 
 	setTitle(title: string): void {
