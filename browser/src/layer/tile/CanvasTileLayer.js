@@ -1081,7 +1081,15 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		}
 		else if (textMsg.startsWith('canonicalidchange:')) {
 			var payload = textMsg.substring('canonicalidchange:'.length + 1);
-			var viewRenderedState = payload.split('=')[3].split(' ')[0];
+			var viewRenderedState = '';
+			try {
+				viewRenderedState = payload.split('=')[3].split(' ')[0];
+			} catch (e) {
+				window.app.console.warn('canonicalidchange parse failed', e);
+			}
+			if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {
+				window.postMobileMessage('WRITER_CANONICAL msg=' + payload);
+			}
 			if (this._debug.overlayOn) {
 				var viewId = payload.split('=')[1].split(' ')[0];
 				var canonicalId = payload.split('=')[2].split(' ')[0];

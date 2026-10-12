@@ -1637,6 +1637,7 @@ class TileManager {
 		textMsg: string,
 	) {
 		let needsNewTiles = false;
+		let overlap = 0;
 		const calc = app.map._docLayer.isCalc();
 
 		let modeArray = [mode];
@@ -1654,6 +1655,7 @@ class TileManager {
 					(calc && !this.tileZoomIsCurrent(coords))) // In calc, we invalidate all tiles with different zoom levels.
 			) {
 				if (tile.distanceFromView === 0) needsNewTiles = true;
+				overlap++;
 
 				this.invalidateTile(key, wireId);
 			}
@@ -1670,6 +1672,50 @@ class TileManager {
 
 			if (needsNewTiles && app.activeDocument.isModeActive(mode))
 				app.map._docLayer._debug.addTileInvalidationMessage(textMsg);
+		}
+
+		const paintProbe = (window as any).__writerPaintWantInvalidate;
+		if (
+			paintProbe &&
+			(window as any).ThisIsTheAndroidApp &&
+			app.map._docLayer.isWriter()
+		) {
+			(window as any).__writerPaintWantInvalidate = false;
+			(window as any).__writerPaintGotInvalidate = true;
+			const drawing =
+				app.sectionContainer &&
+				typeof app.sectionContainer.drawingAllowed === 'function'
+					? app.sectionContainer.drawingAllowed()
+						? 1
+						: 0
+					: -1;
+			const rect = invalidatedRectangle.toArray().join(',');
+			if (typeof (window as any).postMobileMessage === 'function') {
+				(window as any).postMobileMessage(
+					'WRITER_INVALIDATE overlap=' +
+						overlap +
+						' tiles=' +
+						this.tiles.size +
+						' rect=' +
+						rect +
+						' part=' +
+						part +
+						' mode=' +
+						mode +
+						' drawing=' +
+						drawing,
+				);
+			}
+		}
+
+		// Marking a visible tile dirty does not request a new bitmap.
+		// On the first document those bitmaps stay blank while the caret moves.
+		if (
+			needsNewTiles &&
+			(window as any).ThisIsTheAndroidApp &&
+			app.map._docLayer.isWriter()
+		) {
+			this.update();
 		}
 	}
 

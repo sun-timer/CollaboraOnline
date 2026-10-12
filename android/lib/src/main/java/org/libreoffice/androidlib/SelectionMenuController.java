@@ -74,6 +74,7 @@ public class SelectionMenuController {
     private float pendingAnchorX;
     private float pendingAnchorY;
     private float pendingAnchorBottomY;
+    private int positionRetry;
 
     public SelectionMenuController(Host host) {
         this.host = host;
@@ -149,6 +150,7 @@ public class SelectionMenuController {
         pendingAnchorX = windowX;
         pendingAnchorY = windowY;
         pendingAnchorBottomY = anchorBottomY;
+        positionRetry = 0;
         updateEditActionVisibility();
 
         menuView.setVisibility(View.VISIBLE);
@@ -192,6 +194,7 @@ public class SelectionMenuController {
         if (!visible || menuView == null) {
             return;
         }
+        positionRetry = 0;
         menuView.post(this::positionPopupNearAnchor);
     }
 
@@ -224,6 +227,12 @@ public class SelectionMenuController {
         int menuWidth = menuView.getWidth();
         int menuHeight = menuView.getHeight();
         if (menuWidth <= 0 || menuHeight <= 0) {
+            // First frame after VISIBLE often has no size. Leaving it there
+            // keeps the XML default, which is the top-left corner.
+            if (visible && positionRetry < 8) {
+                positionRetry++;
+                menuView.post(this::positionPopupNearAnchor);
+            }
             return;
         }
 

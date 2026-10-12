@@ -457,6 +457,12 @@ class UserList extends window.L.Control {
 	) {
 		let message;
 
+		// Android is a single local editor. A first-load status can arrive after
+		// addview, so the local "guest user" is announced as someone else joining.
+		if ((window as any).ThisIsTheAndroidApp) {
+			return;
+		}
+
 		if (viewId === this.map._docLayer._viewId) {
 			return;
 		}

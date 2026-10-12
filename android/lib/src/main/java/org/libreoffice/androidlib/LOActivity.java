@@ -3272,6 +3272,12 @@ public class LOActivity extends AppCompatActivity {
                 }
                 return false;
             }
+            case "WRITER_TYPE":
+            case "WRITER_INVALIDATE":
+            case "WRITER_CANONICAL":
+                Log.i(TAG, messageAndParam[0]
+                        + (messageAndParam.length > 1 ? " " + messageAndParam[1] : ""));
+                return false;
             case "EDITMODE": {
                 switch (messageAndParam[1]) {
                     case "on":
@@ -5685,13 +5691,23 @@ public class LOActivity extends AppCompatActivity {
             continueCopyBar.setOnClickListener(v -> onContinueWriteCopy());
         }
 
-        continueDialogOverlay.setOnClickListener(v -> dismissContinueWriteDialog());
+        continueDialogOverlay.setOnClickListener(v -> {
+            Log.i(TAG, "continue_write_dialog_dismiss reason=overlay");
+            dismissContinueWriteDialog();
+        });
+        // The included layout used to keep a lower elevation than this transparent
+        // overlay, so taps on 插入文档 hit the overlay and only closed the dialog.
+        continueDialogPanel.setElevation(continueDialogOverlay.getElevation()
+                + 8f * getResources().getDisplayMetrics().density);
         // 透明 overlay 仅拦截点击关闭；面板需 clickable 防止触摸穿透到 WebView（对齐 impress_outline）
         continueDialogPanel.setClickable(true);
         // 右上角关闭×（设计稿顶部横栏，两态都有）
         View closeBtn = continueDialogPanel.findViewById(R.id.continue_close_button);
         if (closeBtn != null) {
-            closeBtn.setOnClickListener(v -> dismissContinueWriteDialog());
+            closeBtn.setOnClickListener(v -> {
+                Log.i(TAG, "continue_write_dialog_dismiss reason=close");
+                dismissContinueWriteDialog();
+            });
         }
         if (continueStopBtn != null) {
             continueStopBtn.setOnClickListener(v -> onContinueWriteStop());
@@ -16264,6 +16280,16 @@ public class LOActivity extends AppCompatActivity {
         }
 
         switchArticleDialogStage(ARTICLE_STAGE_FORM);
+        if (articleDialog != null && articleDialog.getWindow() != null) {
+            // Activity is adjustNothing and the dialog was opened with STATE_UNCHANGED
+            // after hideKeyboardForBottomSheet(), so a later EditText focus never
+            // raises the IME. Allow this window to show it when a field is tapped.
+            articleDialog.getWindow().setSoftInputMode(
+                    android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                            | android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED);
+            articleDialog.getWindow().clearFlags(
+                    android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
+        }
         if (articleDialogRoot != null) {
             articleDialogRoot.post(this::applyArticleDialogSize);
         }
@@ -16440,6 +16466,12 @@ public class LOActivity extends AppCompatActivity {
         String html = AiMarkdownRenderer.markdownToHtml(markdown);
         byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
         paste("text/html", bytes);
+        // Same sequence as pasteFromSystemClipboard: lok paste loads the HTML,
+        // Writer/Impress still need .uno:Paste before it appears in the document.
+        if (!mIsCalcDocument) {
+            postUnoCommand(".uno:Paste", "{}", false);
+            Log.i(TAG, "paste_ai_html writer_paste_uno chars=" + markdown.length());
+        }
     }
 
     // ==================== 图片插入 / base64 工具 ====================

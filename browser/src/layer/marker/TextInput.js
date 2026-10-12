@@ -711,6 +711,11 @@ window.L.TextInput = window.L.Layer.extend({
 	_onInput: function(ev) {
 		if (this._map.uiManager.isUIBlocked())
 			return;
+		if (window.ThisIsTheAndroidApp && ev && ev.inputType &&
+			ev.inputType !== 'deleteContentBackward' &&
+			ev.inputType !== 'deleteContentForward') {
+			this._flushAndroidRemoveText();
+		}
 		this._statusLog('_onInput [');
 		app.idleHandler.notifyActive();
 
@@ -845,6 +850,57 @@ window.L.TextInput = window.L.Layer.extend({
 		}
 	},
 
+	// One sample per keystroke burst. The matching WRITER_INVALIDATE line (or
+	// "none") says whether core told the view to repaint, and whether that
+	// rectangle hit a tile already on screen.
+	_androidWriterPaintProbe: function(reason) {
+		if (!window.ThisIsTheAndroidApp || !this._map || this._map.getDocType() !== 'text')
+			return;
+		var now = Date.now();
+		if (this._androidPaintProbeAt && now - this._androidPaintProbeAt < 500)
+			return;
+		this._androidPaintProbeAt = now;
+		window.__writerPaintWantInvalidate = true;
+		window.__writerPaintGotInvalidate = false;
+		var layer = this._map._docLayer;
+		var size = (this._map.getSize && this._map.getSize()) || {x: -1, y: -1};
+		var info = layer ? layer._documentInfo : null;
+		var infoState = (info === '') ? 'empty' : (info ? 'set' : 'null');
+		var canonical = layer && layer._canonicalIdInitialized ? 1 : 0;
+		var drawing = (app.sectionContainer && typeof app.sectionContainer.drawingAllowed === 'function')
+			? (app.sectionContainer.drawingAllowed() ? 1 : 0) : -1;
+		var cursor = (app.file && app.file.textCursor && app.file.textCursor.rectangle)
+			? app.file.textCursor.rectangle : null;
+		var cursorText = cursor ? (cursor.x1 + ',' + cursor.y1) : 'none';
+		if (typeof window.postMobileMessage === 'function') {
+			window.postMobileMessage(
+				'WRITER_TYPE reason=' + reason +
+				' docInfo=' + infoState +
+				' canonical=' + canonical +
+				' map=' + size.x + 'x' + size.y +
+				' drawing=' + drawing +
+				' cursor=' + cursorText
+			);
+		}
+		setTimeout(function() {
+			if (window.__writerPaintGotInvalidate)
+				return;
+			window.__writerPaintWantInvalidate = false;
+			var later = (app.file && app.file.textCursor && app.file.textCursor.rectangle)
+				? app.file.textCursor.rectangle : null;
+			var laterText = later
+				? (later.x1 + ',' + later.y1 + ' ' + later.width + 'x' + later.height)
+				: 'none';
+			var laterDrawing = (app.sectionContainer && typeof app.sectionContainer.drawingAllowed === 'function')
+				? (app.sectionContainer.drawingAllowed() ? 1 : 0) : -1;
+			if (typeof window.postMobileMessage === 'function') {
+				window.postMobileMessage(
+					'WRITER_INVALIDATE none cursor=' + laterText + ' drawing=' + laterDrawing
+				);
+			}
+		}, 800);
+	},
+
 	// Sends the given (UTF-8) string of text to coolwsd, as IME (text composition)
 	// messages
 	_sendText: function(text) {
@@ -874,6 +930,7 @@ window.L.TextInput = window.L.Layer.extend({
 				}
 			}
 		}
+		this._androidWriterPaintProbe('text');
 	},
 
 	// Empties the textarea / contenteditable element.
@@ -1157,6 +1214,11 @@ window.L.TextInput = window.L.Layer.extend({
 		if (this._map.uiManager.isUIBlocked())
 			return;
 
+		if (window.ThisIsTheAndroidApp &&
+			(ev.key === 'Backspace' || ev.key === 'Delete')) {
+			this._flushAndroidRemoveText();
+		}
+
 		app.idleHandler.notifyActive();
 		if (!this.hasAccessibilitySupport() && !this._isComposing &&
 			(ev.key === 'ArrowLeft' || ev.key === 'ArrowRight' ||
@@ -1190,6 +1252,47 @@ window.L.TextInput = window.L.Layer.extend({
 	// message.
 	// Will remove characters from the queue first, if there are any.
 	_removeTextContent: function(before, after) {
+		if (window.ThisIsTheAndroidApp) {
+			this._queueAndroidRemoveText(before, after);
+			return;
+		}
+		this._emitRemoveTextContent(before, after);
+	},
+
+	// A held delete key emits one removetextcontent per repeat and stalls core.
+	// Batch them into the multi-character message this socket command already accepts.
+	_queueAndroidRemoveText: function(before, after) {
+		this._androidRemoveBefore = (this._androidRemoveBefore || 0) + (before || 0);
+		this._androidRemoveAfter = (this._androidRemoveAfter || 0) + (after || 0);
+		if (this._androidRemoveTimer) {
+			clearTimeout(this._androidRemoveTimer);
+		}
+		var self = this;
+		this._androidRemoveTimer = setTimeout(function() {
+			self._androidRemoveTimer = null;
+			self._flushAndroidRemoveText();
+		}, 60);
+		if ((this._androidRemoveBefore + this._androidRemoveAfter) >= 24) {
+			this._flushAndroidRemoveText();
+		}
+	},
+
+	_flushAndroidRemoveText: function() {
+		if (this._androidRemoveTimer) {
+			clearTimeout(this._androidRemoveTimer);
+			this._androidRemoveTimer = null;
+		}
+		var before = this._androidRemoveBefore || 0;
+		var after = this._androidRemoveAfter || 0;
+		this._androidRemoveBefore = 0;
+		this._androidRemoveAfter = 0;
+		if (before === 0 && after === 0) {
+			return;
+		}
+		this._emitRemoveTextContent(before, after);
+	},
+
+	_emitRemoveTextContent: function(before, after) {
 		if (this._map._debug.logKeyboardEvents) {
 			window.app.console.log('Remove ' + before + ' before, and ' + after + ' after');
 		}
@@ -1205,6 +1308,7 @@ window.L.TextInput = window.L.Layer.extend({
 			' before=' + before +
 			' after=' + after
 		);
+		this._androidWriterPaintProbe('delete');
 	},
 
 	_followMyCursor: function() {

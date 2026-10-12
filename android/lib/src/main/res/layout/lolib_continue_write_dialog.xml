@@ -5,7 +5,7 @@
     android:background="@drawable/lolib_bg_continue_dialog"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:elevation="24dp">
+    android:elevation="50dp">
 
     <FrameLayout
         android:layout_width="match_parent"

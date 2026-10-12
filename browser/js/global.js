@@ -2154,6 +2154,11 @@ function getInitializerClass() {
 		var visualViewport = event.target;
 
 		window.scroll(0, 0);
+		// Android activity is adjustNothing. Shrinking body to the keyboard
+		// viewport leaves a keyboard-sized gap over the sheet after the IME hides.
+		if (window.ThisIsTheAndroidApp) {
+			return;
+		}
 		document.body.style.height = visualViewport.height + 'px';
 	}
 
