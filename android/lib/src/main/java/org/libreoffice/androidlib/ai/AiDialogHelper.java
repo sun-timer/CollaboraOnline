@@ -231,6 +231,7 @@ public final class AiDialogHelper {
         if (edit == null) {
             return;
         }
+        edit.setShowSoftInputOnFocus(true);
         Runnable showIme = () -> {
             edit.requestFocusFromTouch();
             InputMethodManager imm = (InputMethodManager) edit.getContext()
@@ -243,6 +244,14 @@ public final class AiDialogHelper {
                 shown = imm.showSoftInput(edit, InputMethodManager.SHOW_IMPLICIT);
                 if (!shown) {
                     shown = imm.showSoftInput(edit, InputMethodManager.SHOW_FORCED);
+                }
+            }
+            if (!shown) {
+                androidx.core.view.WindowInsetsControllerCompat controller =
+                        androidx.core.view.ViewCompat.getWindowInsetsController(edit);
+                if (controller != null) {
+                    controller.show(androidx.core.view.WindowInsetsCompat.Type.ime());
+                    shown = true;
                 }
             }
             android.util.Log.d("LOActivity", "wai_input_bind focused=" + edit.isFocused()

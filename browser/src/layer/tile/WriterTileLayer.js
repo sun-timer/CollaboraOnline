@@ -111,7 +111,27 @@ window.L.WriterTileLayer = window.L.CanvasTileLayer.extend({
 			this._postMouseEvent('buttondown', this.lastCursorPos.center[0], this.lastCursorPos.center[1], 1, 1, 0);
 			this._postMouseEvent('buttonup', this.lastCursorPos.center[0], this.lastCursorPos.center[1], 1, 1, 0);
 		}
-		if (!statusJSON.width || !statusJSON.height || this._documentInfo === textMsg) {
+		// A brand-new document can report 0×0 before layout. Leaving
+		// _documentInfo as '' makes TileManager.update() drop every later
+		// invalidation, so typed text stays invisible until edit mode is
+		// toggled. Record the status and keep the view id so tiles can start.
+		if (!statusJSON.width || !statusJSON.height) {
+			if (statusJSON.viewid !== undefined) {
+				this._viewId = statusJSON.viewid;
+				app.activeDocument.setActiveViewID(this._viewId);
+			}
+			if (this._documentInfo === '') {
+				this._documentInfo = textMsg;
+			}
+			if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {
+				window.postMobileMessage('WRITER_STATUS zero_size w=' + statusJSON.width + ' h=' + statusJSON.height);
+			}
+			if (typeof TileManager !== 'undefined' && TileManager.update) {
+				TileManager.update();
+			}
+			return;
+		}
+		if (this._documentInfo === textMsg) {
 			return;
 		}
 
@@ -158,6 +178,17 @@ window.L.WriterTileLayer = window.L.CanvasTileLayer.extend({
 			pages: this._pages,
 			docType: this._docType
 		});
+		// Tile requests stay blocked until canonicalidchange. On a fresh
+		// install that message can be missed, so the first new document
+		// never paints typed text. Status is enough to start tiles here;
+		// a later canonicalidchange still redraws.
+		if (window.ThisIsTheAndroidApp && !this._canonicalIdInitialized) {
+			this._canonicalIdInitialized = true;
+			if (typeof window.postMobileMessage === 'function') {
+				window.postMobileMessage('WRITER_CANONICAL missing_on_status');
+			}
+			TileManager.update();
+		}
 		TileManager.resetPreFetching(true);
 	},
 });

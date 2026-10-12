@@ -56,15 +56,28 @@ class AndroidCalcCellMenu {
 		}
 
 		const rect = app.calc.cellCursorRectangle;
-		const cx = (rect.pX1 + rect.pX2) / 2;
-		const pixelTop = docLayer._twipsToPixels(new cool.SimplePoint(cx, rect.pY1));
-		const pixelBottom = docLayer._twipsToPixels(new cool.SimplePoint(cx, rect.pY2));
+		const layout = app.activeDocument && app.activeDocument.activeLayout;
+		const viewed = layout && layout.viewedRectangle;
+		if (!viewed) {
+			AndroidCalcCellMenu.reportSkip('no_viewed_rect', retry);
+			return;
+		}
+		// pX/pY are core pixels. Passing them through _twipsToPixels treats
+		// pixels as twips and collapses every cell to the top-left.
+		// Match AndroidSelectionMenu: view pixels, then CSS, then physical.
+		const docAnchor = app.sectionContainer.getDocumentAnchor
+			? app.sectionContainer.getDocumentAnchor()
+			: [0, 0];
+		const originX = viewed.pX1 - (docAnchor[0] || 0);
+		const originY = viewed.pY1 - (docAnchor[1] || 0);
+		const viewX = (rect.pX1 + rect.pX2) / 2 - originX;
+		const viewTop = rect.pY1 - originY;
+		const viewBottom = rect.pY2 - originY;
 		const canvasRect = app.sectionContainer.getCanvasBoundingClientRect();
 		const scale = app.dpiScale || 1;
-		// 与 GraphicSelectionMiddleware / AndroidSelectionMenu 一致：WebView 物理像素
-		const cssX = pixelTop.x / scale + canvasRect.x;
-		const cssY = pixelTop.y / scale + canvasRect.y;
-		const cssBottomY = pixelBottom.y / scale + canvasRect.y;
+		const cssX = viewX / scale + canvasRect.x;
+		const cssY = viewTop / scale + canvasRect.y;
+		const cssBottomY = viewBottom / scale + canvasRect.y;
 		const anchorX = Math.round(cssX * scale);
 		const anchorY = Math.round(cssY * scale);
 		const anchorBottomY = Math.round(cssBottomY * scale);

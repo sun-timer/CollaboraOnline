@@ -3705,7 +3705,15 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
         sendTextFrame("searchresultselection: " + payload);
         break;
     case LOK_CALLBACK_DOCUMENT_SIZE_CHANGED:
+#if defined(__ANDROID__)
+        // Calc paste emits this from inside the kit poll. getStatus() calls
+        // getParts() on that stack and the process dies with SIGSEGV.
+        // The callback payload already contains the new width and height.
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "docsize_status_skipped");
+#else
         getStatus();
+#endif
         break;
     case LOK_CALLBACK_SET_PART:
     {
@@ -3827,7 +3835,15 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
     case LOK_CALLBACK_COMMENT:
     {
         sendTextFrame("comment: " + payload);
+#if defined(__ANDROID__)
+        // Calc paste emits a comment callback from inside the kit poll.
+        // getStatus() calls getParts() on that stack and the process dies
+        // with SIGSEGV. The comment frame above is what the client applies.
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "comment_status_skipped");
+#else
         getStatus();
+#endif
         break;
     }
     case LOK_CALLBACK_INVALIDATE_HEADER:
