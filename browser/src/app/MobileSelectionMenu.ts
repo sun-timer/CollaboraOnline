@@ -36,6 +36,9 @@ class MobileSelectionMenu {
 	private container: HTMLDivElement | null = null;
 	private anchorBottomY = 0;
 	private menuMode: 'text' | 'calc' | 'graphic' = 'text';
+	/** Ignore taps until this time. iOS emits extra clicks when the long-press finger lifts. */
+	private static ignoreActionsUntil = 0;
+	private static readonly OPEN_CLICK_GUARD_MS = 500;
 	private readonly onShow: (event: Event) => void;
 	private readonly onHide: (event: Event) => void;
 
@@ -259,9 +262,17 @@ class MobileSelectionMenu {
 		this.anchorBottomY =
 			typeof detail.anchorBottomY === 'number' ? detail.anchorBottomY : detail.anchorY;
 
+		MobileSelectionMenu.ignoreActionsUntil =
+			Date.now() + MobileSelectionMenu.OPEN_CLICK_GUARD_MS;
+
 		const overlay = document.createElement('div');
 		overlay.className = MobileSelectionMenu.OVERLAY_CLASS;
-		overlay.onclick = () => this.hide();
+		overlay.onclick = (event) => {
+			if (MobileSelectionMenu.consumeOpeningClick(event)) {
+				return;
+			}
+			this.hide();
+		};
 
 		const panel = document.createElement('div');
 		panel.className = MobileSelectionMenu.MENU_CLASS;
@@ -377,7 +388,7 @@ class MobileSelectionMenu {
 	): boolean {
 		if (ctx.mode === 'calc') {
 			if (item.id === 'paste') {
-				return ctx.editable;
+				return ctx.editable && ctx.editMode;
 			}
 			if (item.id === 'cut' || item.id === 'clear') {
 				return ctx.editable && ctx.editMode;
@@ -388,13 +399,16 @@ class MobileSelectionMenu {
 			return true;
 		}
 		if (ctx.mode === 'graphic') {
-			if (item.id === 'paste' || item.id === 'cut' || item.id === 'delete' || item.id === 'image_edit') {
+			if (item.id === 'paste' || item.id === 'cut') {
+				return ctx.editable && ctx.editMode;
+			}
+			if (item.id === 'delete' || item.id === 'image_edit') {
 				return ctx.editable;
 			}
 			return true;
 		}
 		if (item.id === 'paste' || item.id === 'cut') {
-			return ctx.editable;
+			return ctx.editable && ctx.editMode;
 		}
 		if (item.id === 'translate') {
 			return ctx.editMode;
@@ -424,8 +438,23 @@ class MobileSelectionMenu {
 		label.textContent = item.label;
 		button.appendChild(label);
 
-		button.onclick = () => MobileSelectionMenu.onItemTap(item);
+		button.onclick = (event) => {
+			if (MobileSelectionMenu.consumeOpeningClick(event)) {
+				return;
+			}
+			MobileSelectionMenu.onItemTap(item);
+		};
 		return button;
+	}
+
+	/** Swallow the clicks iOS synthesizes as the long-press finger lifts onto the new menu. */
+	private static consumeOpeningClick(event: Event): boolean {
+		if (Date.now() >= MobileSelectionMenu.ignoreActionsUntil) {
+			return false;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+		return true;
 	}
 
 	private static onItemTap(item: MobileSelectionMenuItemSpec): void {
@@ -486,29 +515,21 @@ class MobileSelectionMenu {
 			return;
 		}
 		if (actionId === 'copy') {
-			clip._execCopyCutPaste('copy');
-		} else if (actionId === 'cut') {
-			if (!MobileSelectionMenu.isDocEditable()) {
+			// iOS only writes UIPasteboard when Copy is passed through the native
+			// clipboard handler. A bare execCommand falls through to the keyboard-paste warning.
+			if (
+				clip._selectionType !== 'text' &&
+				clip._selectionType !== 'slide' &&
+				clip._selectionType !== 'complex'
+			) {
+				clip.setTextSelectionType('text');
+			}
+			clip._execCopyCutPaste('copy', '.uno:Copy');
+		} else if (actionId === 'cut' || actionId === 'paste') {
+			if (!MobileSelectionMenu.isDocEditable() || !MobileSelectionMenu.isEditModeActive()) {
 				return;
 			}
-			const run = () => clip._execCopyCutPaste('cut');
-			if (MobileSelectionMenu.isEditModeActive()) {
-				run();
-			} else if (typeof map.setEditMode === 'function') {
-				map.setEditMode(true);
-				window.setTimeout(run, 0);
-			}
-		} else if (actionId === 'paste') {
-			if (!MobileSelectionMenu.isDocEditable()) {
-				return;
-			}
-			const run = () => clip._execCopyCutPaste('paste');
-			if (MobileSelectionMenu.isEditModeActive()) {
-				run();
-			} else if (typeof map.setEditMode === 'function') {
-				map.setEditMode(true);
-				window.setTimeout(run, 0);
-			}
+			clip._execCopyCutPaste(actionId, actionId === 'cut' ? '.uno:Cut' : undefined);
 		}
 	}
 
