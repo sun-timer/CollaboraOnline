@@ -312,8 +312,10 @@ public class SelectionMenuController {
             toastReadOnlyDocument();
             return;
         }
-        runEditSensitiveClipboardAction(() ->
-                host.pasteFromSystemClipboard(this::hide));
+        if (!host.isEditModeActive()) {
+            return;
+        }
+        host.pasteFromSystemClipboard(this::hide);
     }
 
     private void onCut() {
@@ -321,19 +323,11 @@ public class SelectionMenuController {
             toastReadOnlyDocument();
             return;
         }
-        runEditSensitiveClipboardAction(() -> {
-            host.cutSelectionToSystemClipboard();
-            hide();
-        });
-    }
-
-    /** Run immediately in edit mode; otherwise switch to edit first (keeps UNO after mode ready). */
-    private void runEditSensitiveClipboardAction(Runnable action) {
-        if (host.isEditModeActive()) {
-            action.run();
-        } else {
-            host.ensureEditModeThen(action);
+        if (!host.isEditModeActive()) {
+            return;
         }
+        host.cutSelectionToSystemClipboard();
+        hide();
     }
 
     private void onDelete() {
@@ -381,7 +375,7 @@ public class SelectionMenuController {
         if (calcMode) {
             setViewVisibility(R.id.selection_op_select_all, View.GONE);
             setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
-            setViewVisibility(R.id.selection_op_paste, docEditable ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_paste, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_cut, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_delete, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_image_edit, View.GONE);
@@ -396,8 +390,8 @@ public class SelectionMenuController {
         } else if (graphicMode) {
             // Impress 图形选中：单行紧凑浮层（复制/剪切/粘贴/删除/图片编辑/保存）
             setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
-            setViewVisibility(R.id.selection_op_cut, docEditable ? View.VISIBLE : View.GONE);
-            setViewVisibility(R.id.selection_op_paste, docEditable ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_cut, docEditable && editMode ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_paste, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_delete, docEditable ? View.VISIBLE : View.GONE);
             updateActionLabel(R.id.selection_op_delete, "删除");
             setViewVisibility(R.id.selection_op_image_edit, docEditable ? View.VISIBLE : View.GONE);
@@ -416,9 +410,9 @@ public class SelectionMenuController {
             setViewVisibility(R.id.selection_op_save, View.GONE);
             setViewVisibility(R.id.selection_op_select_all, View.VISIBLE);
             setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
-            // Paste/cut: available whenever the document is editable (preview or edit mode).
-            setViewVisibility(R.id.selection_op_paste, docEditable ? View.VISIBLE : View.GONE);
-            setViewVisibility(R.id.selection_op_cut, docEditable ? View.VISIBLE : View.GONE);
+            // Paste/cut: only when the document is writable and already in edit mode.
+            setViewVisibility(R.id.selection_op_paste, docEditable && editMode ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_cut, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_translate, editMode ? View.VISIBLE : View.GONE);
             for (int sectionId : SELECTION_AI_SECTION_IDS) {
                 setViewVisibility(sectionId, editMode ? View.VISIBLE : View.GONE);
