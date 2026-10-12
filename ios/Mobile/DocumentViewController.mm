@@ -1931,18 +1931,29 @@ static IMP standardImpOfInputAccessoryView = nil;
                 "if(tm&&typeof tm.update==='function'){tm.update();}"
                 "if(window.app&&app.sectionContainer&&typeof app.sectionContainer.requestReDraw==='function'){app.sectionContainer.requestReDraw();}"
                 "if(hard&&tm&&typeof tm.redraw==='function'){tm.redraw();}"
-                "if(hard){var canvas=document.getElementById('document-canvas');if(canvas&&canvas.width>0&&canvas.height>0){canvas.style.visibility='unset';}}"
+                "if(hard){var canvas=document.getElementById('document-canvas');"
+                "var box=document.getElementById('canvas-container');"
+                "var boxRect=box&&typeof box.getBoundingClientRect==='function'?box.getBoundingClientRect():null;"
+                "if(canvas&&((canvas.width>0&&canvas.height>0)||(boxRect&&boxRect.width>1&&boxRect.height>1))){canvas.style.visibility='visible';}}"
                 "if(window.app&&app.console&&typeof app.console.debug==='function'){app.console.debug('ios canvas recover tag='+tag+' hard='+hard);}"
               "}catch(e){"
                 "if(retry<maxRetries){setTimeout(function(){recover(tag,hard,retry+1);},120);}"
                 "else if(window.console&&console.warn){console.warn('ios_canvas_recover_failed',e);}"
               "}"
             "}"
+            "function canvasShown(){"
+              "var canvas=document.getElementById('document-canvas');"
+              "if(!canvas||canvas.style.visibility==='hidden'){return false;}"
+              "var box=document.getElementById('canvas-container');"
+              "var boxRect=box&&typeof box.getBoundingClientRect==='function'?box.getBoundingClientRect():null;"
+              "return (canvas.width>0&&canvas.height>0)||(boxRect&&boxRect.width>1&&boxRect.height>1);"
+            "}"
+            "if(canvasShown()){return 'visible';}"
             "setTimeout(function(){recover('soon',false,0);},120);"
             "setTimeout(function(){recover('mid',false,0);},420);"
             "setTimeout(function(){recover('late',false,0);},900);"
             "setTimeout(function(){recover('final',true,0);},1700);"
-            "return 'scheduled';"
+            "return 'pending';"
             "}catch(e){console.error('canvas_recover '+String(e&&e.message||e));return 'err';}})();";
 }
 
@@ -1983,7 +1994,7 @@ static IMP standardImpOfInputAccessoryView = nil;
                     << [[error localizedDescription] UTF8String]);
         }
         NSString *status = [result isKindOfClass:[NSString class]] ? (NSString *)result : @"err";
-        if ([status isEqualToString:@"ok"] || [status isEqualToString:@"scheduled"]) {
+        if ([status isEqualToString:@"visible"]) {
             strongSelf->documentCanvasRecoverSucceeded = YES;
             return;
         }
@@ -2135,12 +2146,18 @@ static IMP standardImpOfInputAccessoryView = nil;
     if (currentSize.width < 1.0 || currentSize.height < 1.0) {
         return;
     }
-    if (firstValidLayout) {
-        lastWebViewLayoutSize = currentSize;
-        [self scheduleDocumentCanvasRecover];
+    const BOOL sizeChanged =
+        fabs(currentSize.width - lastWebViewLayoutSize.width) > 1.0
+        || fabs(currentSize.height - lastWebViewLayoutSize.height) > 1.0;
+    if (!firstValidLayout && !sizeChanged) {
         return;
     }
     lastWebViewLayoutSize = currentSize;
+    if (!firstValidLayout) {
+        documentCanvasRecoverAttempts = 0;
+        documentCanvasRecoverSucceeded = NO;
+    }
+    [self scheduleDocumentCanvasRecover];
 }
 
 - (void)viewDidAppear:(BOOL)animated

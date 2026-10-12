@@ -13,6 +13,7 @@
 		LLAMA010003 /* AiBackendRouter.mm in Sources */ = {isa = PBXBuildFile; fileRef = LLAMA010013 /* AiBackendRouter.mm */; };
 		LLAMA010004 /* LocalPromptBuilder.mm in Sources */ = {isa = PBXBuildFile; fileRef = LLAMA010014 /* LocalPromptBuilder.mm */; };
 		LLAMA010005 /* llama.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = LLAMA010015 /* llama.xcframework */; };
+		LLAMA010009 /* llama.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = LLAMA010015 /* llama.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		LLAMA010006 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = LLAMA010016 /* Metal.framework */; };
 		LLAMA010007 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = LLAMA010017 /* Accelerate.framework */; };
 		AB1201002F000000000000D1 /* WriterAIComponents.mm in Sources */ = {isa = PBXBuildFile; fileRef = AB1201002F000000000000C1 /* WriterAIComponents.mm */; };
@@ -1705,6 +1706,20 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		LLAMA010040 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				LLAMA010009 /* llama.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXGroup section */
 		E2B020011026090900000001 /* Settings */ = {
@@ -3949,6 +3964,7 @@
 				LLAMA010030 /* Ensure Llama XCFramework */,
 				BE8D77232136762500AC58EA /* Sources */,
 				BE8D77242136762500AC58EA /* Frameworks */,
+				LLAMA010040 /* Embed Frameworks */,
 				BE8D77252136762500AC58EA /* Resources */,
 				C0D2A0012026091000000001 /* Copy LibreOffice Runtime Resources */,
 				3F88490F29943B7600FBB3E9 /* ShellScript */,

@@ -819,7 +819,7 @@ class CanvasSectionContainer {
 		if (this.width === 0 || this.height === 0) {
 			app.console.warn('Canvas width or height is zero.');
 			const documentContainer = document.getElementById('document-container');
-			if (documentContainer && documentContainer.clientWidth !== 0 || documentContainer.clientHeight !== 0) {
+			if (documentContainer && (documentContainer.clientWidth !== 0 || documentContainer.clientHeight !== 0)) {
 				if (app.map._docLayer) {
 					app.map._docLayer._syncTileContainerSize(true);
 					app.activeDocument.activeLayout.sendClientVisibleArea();

@@ -57,6 +57,12 @@ class MobileWriterComments {
 	}
 
 	static collectWriterComments(): WriterCommentSummary[] {
+		// First document open fires showannotations from WriterTileLayer.beforeAdd,
+		// before CanvasTileLayer.onAdd creates the section container. Reading it
+		// then throws and aborts addLayer, so the canvas stays hidden.
+		if (!app.sectionContainer) {
+			return [];
+		}
 		const sec = app.sectionContainer.getSectionWithName(
 			app.CSections.CommentList.name,
 		) as any;
@@ -97,6 +103,9 @@ class MobileWriterComments {
 	}
 
 	static navigateToComment(id: string): boolean {
+		if (!app.sectionContainer || !id) {
+			return false;
+		}
 		const sec = app.sectionContainer.getSectionWithName(
 			app.CSections.CommentList.name,
 		) as any;
@@ -127,7 +136,13 @@ class MobileWriterComments {
 			return;
 		}
 		map.__mobileWriterCommentsInstalled = true;
-		const sync = () => MobileWriterComments.syncCommentCountToNative();
+		const sync = () => {
+			try {
+				MobileWriterComments.syncCommentCountToNative();
+			} catch (error) {
+				window.app.console.error('MobileWriterComments sync failed', error);
+			}
+		};
 		map.on('docloaded', sync);
 		map.on('insertannotation', sync);
 		map.on('deleteannotation', sync);

@@ -1734,10 +1734,13 @@ AS_IF([test "$ENABLE_IOSAPP" = "true"],
               mkdir -p ios/Mobile/Branding
               (cd "$APP_BRANDING_DIR" && tar cf - .) | (cd ios/Mobile/Branding && tar xf -)
           else
-              # A Branding/branding.css file must exist, it is
-              # referenced unconditionally in cool.html in the
-              # iOS app.
+              # branding.css and branding.js are referenced
+              # unconditionally from cool.html. branding-mobile.css
+              # is requested by global.js on phones. Missing files
+              # show up as WebView resource errors on first launch.
               touch ios/Mobile/Branding/branding.css
+              touch ios/Mobile/Branding/branding.js
+              touch ios/Mobile/Branding/branding-mobile.css
           fi
           cp coolkitconfig-mobile.xcu ios/Mobile/coolkitconfig.xcu
        fi
