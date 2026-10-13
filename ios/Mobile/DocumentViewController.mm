@@ -2543,11 +2543,6 @@ static IMP standardImpOfInputAccessoryView = nil;
     [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:WordCountDialog');}"];
 }
 
-- (void)previewFunctionSheetDidRequestSpellCheck
-{
-    [self sendToolbarJavaScript:@"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:SpellDialog');}"];
-}
-
 #pragma mark - DocumentTabsSheetControllerDelegate
 
 - (NSURL *)currentDocumentURLForDocumentTabsSheet

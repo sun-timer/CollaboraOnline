@@ -4,7 +4,6 @@
  */
 
 interface AndroidFindReplaceOptions {
-	ignoreCase?: boolean;
 	caseSensitive?: boolean;
 	wholeWord?: boolean;
 }

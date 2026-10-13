@@ -7,14 +7,6 @@
         </LinearLayout>
         <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/find_sheet_section_gap" android:layout_marginStart="@dimen/find_sheet_content_margin_h" android:layout_marginEnd="@dimen/find_sheet_content_margin_h">
                 <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="@dimen/find_sheet_settings_row_height" android:paddingStart="8dp" android:paddingEnd="8dp">
-                        <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
-                                <TextView android:textSize="16sp" android:textColor="#101010" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="模糊查找"/>
-                                <TextView android:textSize="14sp" android:textColor="#6a6a6a" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="根据AI匹配近义词"/>
-                        </LinearLayout>
-                        <androidx.appcompat.widget.SwitchCompat android:id="@+id/find_opt_ignore_case" android:layout_width="wrap_content" android:layout_height="wrap_content" android:thumb="@drawable/lolib_bg_find_toggle_thumb" android:track="@drawable/lolib_bg_find_toggle_track"/>
-                </LinearLayout>
-                <View android:background="#d8d8d8" android:layout_width="match_parent" android:layout_height="1dp"/>
-                <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="@dimen/find_sheet_settings_row_height" android:paddingStart="8dp" android:paddingEnd="8dp">
                         <TextView android:textSize="16sp" android:textColor="#101010" android:layout_width="0dp" android:layout_height="wrap_content" android:text="区分大小写" android:layout_weight="1"/>
                         <androidx.appcompat.widget.SwitchCompat android:id="@+id/find_opt_case_sensitive" android:layout_width="wrap_content" android:layout_height="wrap_content" android:thumb="@drawable/lolib_bg_find_toggle_thumb" android:track="@drawable/lolib_bg_find_toggle_track"/>
                 </LinearLayout>

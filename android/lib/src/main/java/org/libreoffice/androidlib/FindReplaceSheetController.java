@@ -54,7 +54,6 @@ public class FindReplaceSheetController {
     private AlertDialog floatingDialog;
     private AlertDialog floatingSettingsDialog;
     private boolean replaceTabActive = false;
-    private boolean ignoreCase = true;
     private boolean caseSensitive = false;
     private boolean wholeWord = false;
     private boolean syncingQueryFields = false;
@@ -318,33 +317,18 @@ public class FindReplaceSheetController {
 
     private void showSettings() {
         View panel = LayoutInflater.from(host.getContext()).inflate(R.layout.lolib_sheet_find_settings, null);
-        SwitchCompat fuzzySwitch = panel.findViewById(R.id.find_opt_ignore_case);
         SwitchCompat caseSensitiveSwitch = panel.findViewById(R.id.find_opt_case_sensitive);
         SwitchCompat wholeWordSwitch = panel.findViewById(R.id.find_opt_whole_word);
         ImageButton back = panel.findViewById(R.id.find_settings_back);
 
-        styleFindSwitch(fuzzySwitch);
         styleFindSwitch(caseSensitiveSwitch);
         styleFindSwitch(wholeWordSwitch);
 
-        fuzzySwitch.setChecked(ignoreCase);
         caseSensitiveSwitch.setChecked(caseSensitive);
         wholeWordSwitch.setChecked(wholeWord);
 
-        fuzzySwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            ignoreCase = isChecked;
-            if (isChecked) {
-                caseSensitive = false;
-                caseSensitiveSwitch.setChecked(false);
-            }
-            pushOptionsToBridge();
-        });
         caseSensitiveSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             caseSensitive = isChecked;
-            if (isChecked) {
-                ignoreCase = false;
-                fuzzySwitch.setChecked(false);
-            }
             pushOptionsToBridge();
         });
         wholeWordSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -429,7 +413,6 @@ public class FindReplaceSheetController {
     private void pushOptionsToBridge() {
         host.runFindBridge(
                 "AndroidFindReplaceBridge.setOptions({"
-                        + "ignoreCase:" + ignoreCase + ","
                         + "caseSensitive:" + caseSensitive + ","
                         + "wholeWord:" + wholeWord
                         + "})");
