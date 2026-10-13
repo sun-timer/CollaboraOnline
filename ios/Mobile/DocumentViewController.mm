@@ -1838,6 +1838,9 @@ static IMP standardImpOfInputAccessoryView = nil;
         | UIViewAnimationOptionBeginFromCurrentState;
 
     bottomToolbarController.compact = keyboardVisible;
+    [self sendToolbarJavaScript:keyboardVisible
+        ? @"if(window.__coolMobileSelectionMenu&&__coolMobileSelectionMenu.setKeyboardVisible){__coolMobileSelectionMenu.setKeyboardVisible(true);}"
+        : @"if(window.__coolMobileSelectionMenu&&__coolMobileSelectionMenu.setKeyboardVisible){__coolMobileSelectionMenu.setKeyboardVisible(false);}"];
     bottomToolbarHeightConstraint.constant = bottomToolbarController.preferredHeight;
     bottomToolbarBottomConstraint.constant = bottomOffset;
     [UIView animateWithDuration:duration

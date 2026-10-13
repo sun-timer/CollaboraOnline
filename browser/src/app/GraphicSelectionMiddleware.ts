@@ -27,6 +27,33 @@ class GraphicSelection {
 		return this.rectangle !== null;
 	}
 
+	/** View-pixel CSS anchor. Does not pass core pixels through _twipsToPixels. */
+	private static iosGraphicAnchorCss(rect: cool.SimpleRectangle): {
+		anchorX: number;
+		anchorY: number;
+		anchorBottomY: number;
+	} {
+		const layout = app.activeDocument && app.activeDocument.activeLayout;
+		const viewed = layout && layout.viewedRectangle;
+		const docAnchor =
+			app.sectionContainer && app.sectionContainer.getDocumentAnchor
+				? app.sectionContainer.getDocumentAnchor()
+				: [0, 0];
+		const originX = viewed ? viewed.pX1 - (docAnchor[0] || 0) : 0;
+		const originY = viewed ? viewed.pY1 - (docAnchor[1] || 0) : 0;
+		const canvasRect = app.sectionContainer.getCanvasBoundingClientRect();
+		const scale = app.dpiScale || 1;
+		const left = (rect.pX1 - originX) / scale + canvasRect.x;
+		const right = (rect.pX2 - originX) / scale + canvasRect.x;
+		const top = (rect.pY1 - originY) / scale + canvasRect.y;
+		const bottom = (rect.pY2 - originY) / scale + canvasRect.y;
+		return {
+			anchorX: Math.round((left + right) / 2),
+			anchorY: Math.round(top),
+			anchorBottomY: Math.round(bottom),
+		};
+	}
+
 	public static onUpdatePermission() {
 		this.rectangle = null;
 		this.updateGraphicSelection();
@@ -238,15 +265,21 @@ class GraphicSelection {
 					Math.round(cssY * scale)
 				);
 			} else if (window.ThisIsTheiOSApp && typeof MobileSelectionEvents !== 'undefined') {
-				MobileSelectionEvents.broadcastShow(
-					{
-						anchorX: Math.round(cssX),
-						anchorY: Math.round(cssY),
-						anchorBottomY: Math.round(cssY),
-					},
-					'',
-					'graphic',
-				);
+				// pX/pY are already core pixels. The shared cssX above runs them
+				// through _twipsToPixels and collapses the menu to the top-left.
+				// Android still consumes that path; iOS anchors from view pixels.
+				if (
+					typeof MobileSelectionMenu !== 'undefined' &&
+					MobileSelectionMenu.iosKeyboardOpen()
+				) {
+					MobileSelectionEvents.broadcastHide();
+				} else {
+					MobileSelectionEvents.broadcastShow(
+						GraphicSelection.iosGraphicAnchorCss(rect),
+						'',
+						'graphic',
+					);
+				}
 			}
 		} else if (
 			this.handlesSection &&
