@@ -6,8 +6,10 @@ import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -18,6 +20,7 @@ import android.widget.TextView;
 import androidx.appcompat.widget.SwitchCompat;
 
 import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
@@ -54,7 +57,13 @@ public class FindReplaceSheetController {
     private AlertDialog floatingDialog;
     private AlertDialog floatingSettingsDialog;
     private boolean replaceTabActive = false;
-    private boolean ignoreCase = true;
+    /** 编辑模式才有替换；预览只查找。 */
+    private boolean replaceEnabled = false;
+    private boolean floatingPlaced = false;
+    private int floatingX;
+    private int floatingY;
+    private float dragLastRawX;
+    private float dragLastRawY;
     private boolean caseSensitive = false;
     private boolean wholeWord = false;
     private boolean syncingQueryFields = false;
@@ -78,28 +87,18 @@ public class FindReplaceSheetController {
     public void show() {
         dismiss();
         host.hideKeyboardForBottomSheet();
+        replaceEnabled = host.isEditModeActive();
+        floatingPlaced = false;
         View panel = LayoutInflater.from(host.getContext()).inflate(R.layout.lolib_sheet_find_replace, null);
         mainPanel = panel;
         bindMainPanel(panel);
-        if (BottomSheetAnchorHelper.isLandscape(host.getContext())) {
-            floatingDialog = showFloatingDialog(panel);
-        } else {
-            mainDialog = new BottomSheetDialog(host.getContext());
-            mainDialog.setContentView(panel);
-            AiDialogHelper.applyCloseOnlyDismiss(mainDialog);
-            mainDialog.setOnDismissListener(dialog -> {
-                mainDialog = null;
-                mainPanel = null;
-            });
-            mainDialog.setOnShowListener(d -> expandMainSheet(mainDialog, panel));
-            mainDialog.show();
-            AiDialogHelper.applyNoDimScrim(mainDialog);
-        }
+        floatingDialog = showFloatingDialog(panel);
     }
 
     public void dismiss() {
         dismissSettings();
         portraitSheetTargetHeightPx = 0;
+        floatingPlaced = false;
         if (floatingDialog != null) {
             floatingDialog.dismiss();
             floatingDialog = null;
@@ -132,7 +131,7 @@ public class FindReplaceSheetController {
             if (findPanel != null) {
                 findPanel.setVisibility(View.VISIBLE);
             }
-            if (replacePanel != null) {
+            if (replaceEnabled && replacePanel != null) {
                 replacePanel.setVisibility(View.VISIBLE);
             }
             try {
@@ -146,6 +145,11 @@ public class FindReplaceSheetController {
                 int windowWidth = targetWidthPx + shadowMargin * 2;
                 int windowHeight = Math.min(contentHeight + shadowMargin * 2, maxHeightPx);
                 dialog.getWindow().setLayout(windowWidth, windowHeight);
+                WindowManager.LayoutParams attrs = dialog.getWindow().getAttributes();
+                attrs.gravity = Gravity.TOP | Gravity.START;
+                attrs.x = floatingX;
+                attrs.y = floatingY;
+                dialog.getWindow().setAttributes(attrs);
                 // contentView 固定目标宽度、居中于窗口内，四周留出阴影边距。
                 android.view.ViewGroup.LayoutParams lp = panel.getLayoutParams();
                 if (lp instanceof WindowManager.LayoutParams) {
@@ -170,7 +174,7 @@ public class FindReplaceSheetController {
         });
     }
 
-    /** 横屏：固定大小悬浮右上角（顶部栏下方），无遮罩。对齐 Figma 5632:26433。 */
+    /** 悬浮查找窗：默认在顶栏下方靠右，按住标题可拖开，避免挡住正文。 */
     private AlertDialog showFloatingDialog(View panel) {
         android.content.Context context = host.getContext();
         AlertDialog dialog = new AlertDialog.Builder(context).create();
@@ -202,13 +206,116 @@ public class FindReplaceSheetController {
             });
             panel.setClipToOutline(true);
 
-            layoutParams = dialog.getWindow().getAttributes();
-            layoutParams.gravity = Gravity.TOP | Gravity.END;
-            layoutParams.x = -host.dpToPx(16);
-            layoutParams.y = host.getTopToolbarHeightPx() + host.dpToPx(8);
-            dialog.getWindow().setAttributes(layoutParams);
+            WindowManager.LayoutParams placed = dialog.getWindow().getAttributes();
+            placed.gravity = Gravity.TOP | Gravity.START;
+            if (!floatingPlaced) {
+                int margin = host.dpToPx(16);
+                floatingX = Math.max(margin, screenW - targetW - margin);
+                floatingY = host.getTopToolbarHeightPx() + host.dpToPx(8);
+                floatingPlaced = true;
+            }
+            placed.x = floatingX;
+            placed.y = floatingY;
+            dialog.getWindow().setAttributes(placed);
+            attachDragHandle(dialog, panel.findViewById(R.id.find_sheet_title));
+            installFloatingInsets(dialog);
         }
         return dialog;
+    }
+
+    private void applyFindMode(View panel) {
+        TextView title = panel.findViewById(R.id.find_sheet_title);
+        View tabBar = panel.findViewById(R.id.find_tab_bar);
+        if (title != null) {
+            title.setText(replaceEnabled ? "查找替换" : "查找");
+        }
+        if (tabBar != null) {
+            tabBar.setVisibility(replaceEnabled ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void relayoutFloating(View panel) {
+        if (floatingDialog == null || panel == null || !floatingDialog.isShowing()) {
+            return;
+        }
+        android.util.DisplayMetrics metrics = host.getContext().getResources().getDisplayMetrics();
+        int targetW = Math.min(host.dpToPx(421), metrics.widthPixels - host.dpToPx(32));
+        int maxH = (int) (metrics.heightPixels * 0.92f);
+        applyFloatingPanelSize(panel, floatingDialog, targetW, maxH);
+    }
+
+    private void attachDragHandle(AlertDialog dialog, View handle) {
+        if (handle == null) {
+            return;
+        }
+        handle.setOnTouchListener((v, event) -> {
+            if (dialog.getWindow() == null) {
+                return false;
+            }
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    dragLastRawX = event.getRawX();
+                    dragLastRawY = event.getRawY();
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    int dx = Math.round(event.getRawX() - dragLastRawX);
+                    int dy = Math.round(event.getRawY() - dragLastRawY);
+                    dragLastRawX = event.getRawX();
+                    dragLastRawY = event.getRawY();
+                    moveFloatingWindow(dialog, floatingX + dx, floatingY + dy);
+                    return true;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    private void moveFloatingWindow(AlertDialog dialog, int x, int y) {
+        Window window = dialog.getWindow();
+        if (window == null) {
+            return;
+        }
+        android.util.DisplayMetrics metrics = host.getContext().getResources().getDisplayMetrics();
+        int windowW = window.getDecorView().getWidth();
+        int windowH = window.getDecorView().getHeight();
+        WindowManager.LayoutParams lp = window.getAttributes();
+        if (windowW <= 0) {
+            windowW = lp.width > 0 ? lp.width : 0;
+        }
+        if (windowH <= 0) {
+            windowH = lp.height > 0 ? lp.height : 0;
+        }
+        int maxX = Math.max(0, metrics.widthPixels - windowW);
+        int maxY = Math.max(0, metrics.heightPixels - windowH);
+        floatingX = Math.max(0, Math.min(x, maxX));
+        floatingY = Math.max(0, Math.min(y, maxY));
+        lp.gravity = Gravity.TOP | Gravity.START;
+        lp.x = floatingX;
+        lp.y = floatingY;
+        window.setAttributes(lp);
+    }
+
+    private void installFloatingInsets(AlertDialog dialog) {
+        Window window = dialog.getWindow();
+        if (window == null) {
+            return;
+        }
+        View decor = window.getDecorView();
+        ViewCompat.setOnApplyWindowInsetsListener(decor, (v, insets) -> {
+            boolean imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime());
+            int imeBottom = imeVisible ? insets.getInsets(WindowInsetsCompat.Type.ime()).bottom : 0;
+            int screenH = host.getContext().getResources().getDisplayMetrics().heightPixels;
+            int windowH = v.getHeight();
+            if (windowH <= 0 && window.getAttributes().height > 0) {
+                windowH = window.getAttributes().height;
+            }
+            int maxY = Math.max(0, screenH - imeBottom - windowH - host.dpToPx(8));
+            if (floatingY > maxY) {
+                moveFloatingWindow(dialog, floatingX, maxY);
+            }
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(decor);
     }
 
     private void bindMainPanel(View panel) {
@@ -228,6 +335,8 @@ public class FindReplaceSheetController {
         TextView replaceNext = panel.findViewById(R.id.find_replace_btn_next);
         TextView replaceAll = panel.findViewById(R.id.find_replace_btn_all);
         TextView replaceOne = panel.findViewById(R.id.find_replace_btn_one);
+
+        applyFindMode(panel);
 
         findQueryView = findQuery;
         replaceQueryView = replaceQuery;
@@ -250,6 +359,7 @@ public class FindReplaceSheetController {
             findPanel.setVisibility(View.VISIBLE);
             replacePanel.setVisibility(View.GONE);
             refreshStateColors();
+            relayoutFloating(panel);
         };
         Runnable showReplaceTab = () -> {
             replaceTabActive = true;
@@ -263,13 +373,18 @@ public class FindReplaceSheetController {
             replacePanel.setVisibility(View.VISIBLE);
             mirrorQueryField(findQuery, replaceQuery);
             refreshStateColors();
+            relayoutFloating(panel);
         };
 
         if (findTab != null) {
             findTab.setOnClickListener(v -> showFindTab.run());
         }
         if (replaceTab != null) {
-            replaceTab.setOnClickListener(v -> showReplaceTab.run());
+            replaceTab.setOnClickListener(v -> {
+                if (replaceEnabled) {
+                    showReplaceTab.run();
+                }
+            });
         }
         close.setOnClickListener(v -> dismiss());
         settings.setOnClickListener(v -> showSettings());
@@ -318,33 +433,18 @@ public class FindReplaceSheetController {
 
     private void showSettings() {
         View panel = LayoutInflater.from(host.getContext()).inflate(R.layout.lolib_sheet_find_settings, null);
-        SwitchCompat fuzzySwitch = panel.findViewById(R.id.find_opt_ignore_case);
         SwitchCompat caseSensitiveSwitch = panel.findViewById(R.id.find_opt_case_sensitive);
         SwitchCompat wholeWordSwitch = panel.findViewById(R.id.find_opt_whole_word);
         ImageButton back = panel.findViewById(R.id.find_settings_back);
 
-        styleFindSwitch(fuzzySwitch);
         styleFindSwitch(caseSensitiveSwitch);
         styleFindSwitch(wholeWordSwitch);
 
-        fuzzySwitch.setChecked(ignoreCase);
         caseSensitiveSwitch.setChecked(caseSensitive);
         wholeWordSwitch.setChecked(wholeWord);
 
-        fuzzySwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            ignoreCase = isChecked;
-            if (isChecked) {
-                caseSensitive = false;
-                caseSensitiveSwitch.setChecked(false);
-            }
-            pushOptionsToBridge();
-        });
         caseSensitiveSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             caseSensitive = isChecked;
-            if (isChecked) {
-                ignoreCase = false;
-                fuzzySwitch.setChecked(false);
-            }
             pushOptionsToBridge();
         });
         wholeWordSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -429,7 +529,6 @@ public class FindReplaceSheetController {
     private void pushOptionsToBridge() {
         host.runFindBridge(
                 "AndroidFindReplaceBridge.setOptions({"
-                        + "ignoreCase:" + ignoreCase + ","
                         + "caseSensitive:" + caseSensitive + ","
                         + "wholeWord:" + wholeWord
                         + "})");

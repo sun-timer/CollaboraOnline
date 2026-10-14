@@ -28,8 +28,8 @@
                         <TextView android:textSize="@dimen/function_sheet_row_text_size" android:textColor="#333333" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="字数统计" android:layout_marginStart="@dimen/function_sheet_row_icon_text_gap"/>
                 </LinearLayout>
                 <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@+id/function_action_find_replace" android:paddingTop="@dimen/function_sheet_row_padding_v" android:paddingBottom="@dimen/function_sheet_row_padding_v" android:layout_width="match_parent" android:layout_height="@dimen/function_sheet_row_height" android:paddingStart="@dimen/function_sheet_row_padding_h" android:paddingEnd="@dimen/function_sheet_row_padding_h">
-                        <ImageView android:layout_width="@dimen/function_sheet_row_icon_size" android:layout_height="@dimen/function_sheet_row_icon_size" android:src="@drawable/lolib_ic_function_find_replace" android:contentDescription="查找替换"/>
-                        <TextView android:textSize="@dimen/function_sheet_row_text_size" android:textColor="#333333" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="查找替换" android:layout_marginStart="@dimen/function_sheet_row_icon_text_gap"/>
+                        <ImageView android:layout_width="@dimen/function_sheet_row_icon_size" android:layout_height="@dimen/function_sheet_row_icon_size" android:src="@drawable/lolib_ic_function_find_replace" android:contentDescription="查找"/>
+                        <TextView android:textSize="@dimen/function_sheet_row_text_size" android:textColor="#333333" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="查找" android:layout_marginStart="@dimen/function_sheet_row_icon_text_gap"/>
                 </LinearLayout>
         </LinearLayout>
 </LinearLayout>

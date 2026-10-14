@@ -27,6 +27,8 @@ class AndroidSelectionMenu {
 	private static readonly tryShowMaxRetries = 30;
 	/** Nested guard for background operations that use SelectAll to read text. */
 	private static programmaticSelectionSuppressionDepth = 0;
+	/** Last iOS touch in CSS pixels. Used when core view coords collapse to the canvas origin. */
+	private static lastIosGestureCss: { x: number; y: number } | null = null;
 
 	/** True while a native long-press selection gesture is in flight. */
 	static isLongPressGesturePending(): boolean {
@@ -559,6 +561,13 @@ class AndroidSelectionMenu {
 			return;
 		}
 		if (
+			typeof MobileSelectionMenu !== 'undefined' &&
+			MobileSelectionMenu.iosKeyboardOpen()
+		) {
+			MobileSelectionEvents.broadcastHide();
+			return;
+		}
+		if (
 			!app.map ||
 			!AndroidSelectionMenu.isSelectionDoc() ||
 			!AndroidSelectionMenu.hasNonDegenerateSelection()
@@ -583,7 +592,7 @@ class AndroidSelectionMenu {
 		const rightViewX = Math.max(startRect.v2X, startRect.v4X, endRect.v2X, endRect.v4X);
 		const bottomViewY = Math.max(startRect.v3Y, startRect.v4Y, endRect.v3Y, endRect.v4Y);
 		const canvasRect = app.sectionContainer.getCanvasBoundingClientRect();
-		const anchor = MobileSelectionEvents.computeAnchorCss({
+		const fromHandles = MobileSelectionEvents.computeAnchorCss({
 			topViewY,
 			leftViewX,
 			rightViewX,
@@ -592,10 +601,11 @@ class AndroidSelectionMenu {
 			canvasY: canvasRect.y,
 			scale: app.dpiScale || 1,
 		});
+		const anchor = AndroidSelectionMenu.resolveIosTextAnchor(fromHandles);
 		if (!anchor) {
 			return;
 		}
-		const clamped = AndroidSelectionMenu.clampAnchorInCss(
+		const clamped = AndroidSelectionMenu.clampIosAnchor(
 			anchor.anchorX,
 			anchor.anchorY,
 			anchor.anchorBottomY,
@@ -614,6 +624,102 @@ class AndroidSelectionMenu {
 		);
 		AndroidSelectionMenu.pendingLongPressSelection = false;
 		AndroidSelectionMenu.selectionStartTwips = null;
+	}
+
+	/**
+	 * Prefer the painted text-selection section. Start/end handle rects in edit
+	 * mode can collapse to the canvas origin while the highlight is elsewhere.
+	 */
+	private static resolveIosTextAnchor(fromHandles: {
+		anchorX: number;
+		anchorY: number;
+		anchorBottomY: number;
+	} | null): { anchorX: number; anchorY: number; anchorBottomY: number } | null {
+		const fromSection = AndroidSelectionMenu.iosTextSelectionSectionAnchor();
+		let anchor =
+			fromSection && !AndroidSelectionMenu.iosAnchorCollapsed(fromSection.anchorX, fromSection.anchorY)
+				? fromSection
+				: fromHandles;
+		if (
+			anchor &&
+			AndroidSelectionMenu.iosAnchorCollapsed(anchor.anchorX, anchor.anchorY)
+		) {
+			const gesture = AndroidSelectionMenu.lastIosGestureCss;
+			if (
+				gesture &&
+				!AndroidSelectionMenu.iosAnchorCollapsed(gesture.x, gesture.y)
+			) {
+				anchor = {
+					anchorX: gesture.x,
+					anchorY: gesture.y,
+					anchorBottomY: gesture.y + 18,
+				};
+			}
+		}
+		return anchor;
+	}
+
+	private static iosTextSelectionSectionAnchor(): {
+		anchorX: number;
+		anchorY: number;
+		anchorBottomY: number;
+	} | null {
+		const view = app.activeDocument && app.activeDocument.activeView;
+		const section = view && view.selectionSection;
+		if (!section || !section.isSectionShown() || !section.myTopLeft || !section.size) {
+			return null;
+		}
+		if (section.size[0] < 1 || section.size[1] < 1 || !app.sectionContainer) {
+			return null;
+		}
+		const canvasRect = app.sectionContainer.getCanvasBoundingClientRect();
+		const scale = app.dpiScale || 1;
+		const left = section.myTopLeft[0] / scale + canvasRect.x;
+		const top = section.myTopLeft[1] / scale + canvasRect.y;
+		const right = (section.myTopLeft[0] + section.size[0]) / scale + canvasRect.x;
+		const bottom = (section.myTopLeft[1] + section.size[1]) / scale + canvasRect.y;
+		if (![left, top, right, bottom].every((value) => Number.isFinite(value))) {
+			return null;
+		}
+		return {
+			anchorX: (left + right) / 2,
+			anchorY: top,
+			anchorBottomY: bottom,
+		};
+	}
+
+	private static iosAnchorCollapsed(x: number, y: number): boolean {
+		if (!Number.isFinite(x) || !Number.isFinite(y)) {
+			return true;
+		}
+		const canvas = document.getElementById('canvas-container');
+		const rect = canvas
+			? canvas.getBoundingClientRect()
+			: app.sectionContainer
+				? app.sectionContainer.getCanvasBoundingClientRect()
+				: null;
+		if (!rect || rect.width < 8 || rect.height < 8) {
+			return x < 24 && y < 24;
+		}
+		return Math.abs(x - rect.left) < 24 && Math.abs(y - rect.top) < 24;
+	}
+
+	/** Skip clamping when the canvas box is empty — that pins every anchor to 8,8. */
+	private static clampIosAnchor(
+		x: number,
+		y: number,
+		bottomY: number,
+	): { x: number; y: number; bottomY: number } {
+		const canvas = document.getElementById('canvas-container');
+		const rect = canvas ? canvas.getBoundingClientRect() : null;
+		if (!rect || rect.width < 8 || rect.height < 8) {
+			return {
+				x: Math.round(x),
+				y: Math.round(y),
+				bottomY: Math.round(bottomY),
+			};
+		}
+		return AndroidSelectionMenu.clampAnchorInCss(x, y, bottomY);
 	}
 
 	private static clampAnchorInCss(
@@ -1009,6 +1115,7 @@ class AndroidSelectionMenu {
 			}
 			startX = touch.clientX;
 			startY = touch.clientY;
+			AndroidSelectionMenu.lastIosGestureCss = { x: startX, y: startY };
 			AndroidSelectionMenu.clearTryShowRetry();
 			longPressTimer = window.setTimeout(() => {
 				longPressTimer = 0;
@@ -1025,6 +1132,10 @@ class AndroidSelectionMenu {
 				return;
 			}
 			if (AndroidSelectionMenu.nativeSelectionDragActive) {
+				AndroidSelectionMenu.lastIosGestureCss = {
+					x: touch.clientX,
+					y: touch.clientY,
+				};
 				AndroidSelectionMenu.updateTextSelectionEndAt(
 					touch.clientX * scale(),
 					touch.clientY * scale(),
@@ -1049,6 +1160,10 @@ class AndroidSelectionMenu {
 			if (AndroidSelectionMenu.nativeSelectionDragActive) {
 				const touch = e.changedTouches[0];
 				if (touch) {
+					AndroidSelectionMenu.lastIosGestureCss = {
+						x: touch.clientX,
+						y: touch.clientY,
+					};
 					AndroidSelectionMenu.finishTextSelectionDrag(
 						touch.clientX * scale(),
 						touch.clientY * scale(),

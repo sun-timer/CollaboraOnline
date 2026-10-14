@@ -18,7 +18,6 @@ class WriterFindReplaceDialog {
 	private settingsView: HTMLDivElement | null = null;
 	private readonly replaceEnabled: boolean;
 	private mode: 'find' | 'replace' = 'find';
-	private ignoreCase = true;
 	private caseSensitive = false;
 	private wholeWord = false;
 	private syncingQuery = false;
@@ -288,38 +287,12 @@ class WriterFindReplaceDialog {
 
 		const list = document.createElement('div');
 		list.className = 'writer-find-sheet__settings-list';
-		let caseToggle: HTMLInputElement | null = null;
-		let fuzzyToggle: HTMLInputElement | null = null;
-		const fuzzyRow = this.makeSettingsRow(
-			'模糊查找',
-			'根据AI匹配近义词',
-			this.ignoreCase,
-			(on) => {
-				this.ignoreCase = on;
-				if (on && caseToggle) {
-					this.caseSensitive = false;
-					caseToggle.checked = false;
-				}
-				this.pushOptionsToBridge();
-			},
-		);
-		fuzzyToggle = fuzzyRow.querySelector('input') as HTMLInputElement;
-		list.appendChild(fuzzyRow);
-		const caseRow = this.makeSettingsRow(
-			'区分大小写',
-			'',
-			this.caseSensitive,
-			(on) => {
+		list.appendChild(
+			this.makeSettingsRow('区分大小写', '', this.caseSensitive, (on) => {
 				this.caseSensitive = on;
-				if (on && fuzzyToggle) {
-					this.ignoreCase = false;
-					fuzzyToggle.checked = false;
-				}
 				this.pushOptionsToBridge();
-			},
+			}),
 		);
-		caseToggle = caseRow.querySelector('input') as HTMLInputElement;
-		list.appendChild(caseRow);
 		list.appendChild(
 			this.makeSettingsRow('全字匹配', '', this.wholeWord, (on) => {
 				this.wholeWord = on;
@@ -478,7 +451,6 @@ class WriterFindReplaceDialog {
 			return;
 		}
 		bridge.setOptions({
-			ignoreCase: this.ignoreCase,
 			caseSensitive: this.caseSensitive,
 			wholeWord: this.wholeWord,
 		});

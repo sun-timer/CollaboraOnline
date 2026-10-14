@@ -2104,6 +2104,8 @@ public class FunctionPanelController {
         result.add(new FunctionTab("layout", "布局", layoutItems));
 
         List<FunctionItem> reviewItems = new ArrayList<>();
+        reviewItems.add(new FunctionItem(ItemType.ACTION, "find_replace", "查找替换",
+                R.drawable.lolib_ic_function_find_replace, ".uno:SearchDialog"));
         reviewItems.add(new FunctionItem(ItemType.ACTION, "spell_check", "拼写检查",
                 R.drawable.lolib_ic_calc_spell_check, ".uno:SpellDialog"));
         reviewItems.add(new FunctionItem(ItemType.TOGGLE, "track_changes", "追踪修订", "",

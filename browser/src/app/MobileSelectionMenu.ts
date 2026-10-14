@@ -41,12 +41,53 @@ class MobileSelectionMenu {
 	private static readonly OPEN_CLICK_GUARD_MS = 500;
 	private readonly onShow: (event: Event) => void;
 	private readonly onHide: (event: Event) => void;
+	private readonly onVisualViewport: () => void;
+	/** Native keyboard frame is on screen (DocumentViewController). */
+	private nativeKeyboardVisible = false;
+	private lastAnchorX = 0;
+	private lastAnchorY = 0;
+	private positionAttempts = 0;
 
 	constructor() {
 		this.onShow = (event: Event) => this.show(event as CustomEvent);
 		this.onHide = () => this.hide();
+		this.onVisualViewport = () => this.handleVisualViewport();
 		window.addEventListener(MobileSelectionEvents.SHOW_EVENT, this.onShow);
 		window.addEventListener(MobileSelectionEvents.HIDE_EVENT, this.onHide);
+		const viewport = window.visualViewport;
+		if (viewport) {
+			viewport.addEventListener('resize', this.onVisualViewport);
+			viewport.addEventListener('scroll', this.onVisualViewport);
+		}
+	}
+
+	/** Soft keyboard covers the web view. Selection menu stays hidden until it closes. */
+	static iosKeyboardOpen(): boolean {
+		const menu = (window as any).__coolMobileSelectionMenu as MobileSelectionMenu | undefined;
+		if (menu && menu.keyboardOpen()) {
+			return true;
+		}
+		return MobileSelectionMenu.visualKeyboardOpen();
+	}
+
+	static visualKeyboardOpen(): boolean {
+		const viewport = window.visualViewport;
+		if (!viewport) {
+			return false;
+		}
+		return window.innerHeight - viewport.offsetTop - viewport.height > 150;
+	}
+
+	keyboardOpen(): boolean {
+		return this.nativeKeyboardVisible || MobileSelectionMenu.visualKeyboardOpen();
+	}
+
+	/** Called from iOS DocumentViewController keyboardWillChangeFrame. */
+	setKeyboardVisible(visible: boolean): void {
+		this.nativeKeyboardVisible = visible;
+		if (visible) {
+			this.hide();
+		}
 	}
 
 	/** Fixed Writer edit layout (Android lolib_selection_popup.xml). */
@@ -213,7 +254,24 @@ class MobileSelectionMenu {
 	dispose(): void {
 		window.removeEventListener(MobileSelectionEvents.SHOW_EVENT, this.onShow);
 		window.removeEventListener(MobileSelectionEvents.HIDE_EVENT, this.onHide);
+		const viewport = window.visualViewport;
+		if (viewport) {
+			viewport.removeEventListener('resize', this.onVisualViewport);
+			viewport.removeEventListener('scroll', this.onVisualViewport);
+		}
 		this.hide();
+	}
+
+	private handleVisualViewport(): void {
+		if (this.keyboardOpen()) {
+			if (this.container) {
+				this.hide();
+			}
+			return;
+		}
+		if (this.container) {
+			this.positionNearAnchor(this.lastAnchorX, this.lastAnchorY);
+		}
 	}
 
 	hide(): void {
@@ -230,6 +288,9 @@ class MobileSelectionMenu {
 	private show(event: CustomEvent): void {
 		const detail = event.detail as MobileSelectionShowDetail;
 		if (!detail || typeof detail.anchorX !== 'number') {
+			return;
+		}
+		if (this.keyboardOpen()) {
 			return;
 		}
 		this.hide();
@@ -290,9 +351,27 @@ class MobileSelectionMenu {
 		document.body.appendChild(panel);
 		this.overlay = overlay;
 		this.container = panel;
-		window.requestAnimationFrame(() => {
-			this.positionNearAnchor(detail.anchorX, detail.anchorY);
-		});
+		this.schedulePosition(detail.anchorX, detail.anchorY);
+	}
+
+	/** Measure, then place. A zero-size first frame used to leave the menu at the static top-left. */
+	private schedulePosition(anchorX: number, anchorY: number): void {
+		this.lastAnchorX = anchorX;
+		this.lastAnchorY = anchorY;
+		this.positionAttempts = 0;
+		const step = () => {
+			if (!this.container) {
+				return;
+			}
+			this.positionNearAnchor(this.lastAnchorX, this.lastAnchorY);
+			this.positionAttempts++;
+			const unmeasured =
+				this.container.offsetWidth < 8 || this.container.offsetHeight < 8;
+			if (unmeasured && this.positionAttempts < 8) {
+				window.requestAnimationFrame(step);
+			}
+		};
+		step();
 	}
 
 	private static buildRows(
@@ -560,11 +639,14 @@ class MobileSelectionMenu {
 		if (!this.container) {
 			return;
 		}
+		const viewport = window.visualViewport;
+		const viewWidth = viewport ? viewport.width : window.innerWidth;
+		const viewHeight = viewport ? viewport.height : window.innerHeight;
 		const width = Math.min(
 			this.menuMode === 'graphic'
-				? window.innerWidth - MobileSelectionMenu.POPUP_MARGIN_PX * 2
+				? viewWidth - MobileSelectionMenu.POPUP_MARGIN_PX * 2
 				: MobileSelectionMenu.POPUP_MAX_WIDTH_PX,
-			window.innerWidth - MobileSelectionMenu.POPUP_MARGIN_PX * 2,
+			viewWidth - MobileSelectionMenu.POPUP_MARGIN_PX * 2,
 		);
 		this.container.style.width = width + 'px';
 
@@ -574,10 +656,10 @@ class MobileSelectionMenu {
 		const bottomReserved =
 			MobileSelectionMenu.BOTTOM_TOOLBAR_PX +
 			MobileSelectionMenu.readSafeAreaBottom();
-		const maxContentBottom = window.innerHeight - bottomReserved - margin;
+		const maxContentBottom = viewHeight - bottomReserved - margin;
 
 		let x = anchorX - menuWidth / 2;
-		x = Math.max(margin, Math.min(x, window.innerWidth - menuWidth - margin));
+		x = Math.max(margin, Math.min(x, viewWidth - menuWidth - margin));
 
 		const selectionCenterY = (anchorY + this.anchorBottomY) / 2;
 		const spaceAbove = selectionCenterY - margin;
@@ -600,8 +682,13 @@ class MobileSelectionMenu {
 		}
 		y = Math.max(margin, Math.min(y, maxContentBottom - menuHeight));
 
-		this.container.style.left = Math.round(x) + 'px';
-		this.container.style.top = Math.round(y) + 'px';
+		// position:fixed is layout-viewport relative. iOS pans the visual
+		// viewport when the caret is focused, which otherwise pins this menu
+		// to the visible top-left.
+		const offsetLeft = viewport ? viewport.offsetLeft : 0;
+		const offsetTop = viewport ? viewport.offsetTop : 0;
+		this.container.style.left = Math.round(x + offsetLeft) + 'px';
+		this.container.style.top = Math.round(y + offsetTop) + 'px';
 	}
 
 	private static readSafeAreaBottom(): number {
