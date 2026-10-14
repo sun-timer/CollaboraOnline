@@ -4006,9 +4006,9 @@ public class LOActivity extends AppCompatActivity {
                             + "【用户问题】\n" + (question == null ? "" : question);
                     Log.i(TAG, "doc_qa_first_turn_context_chars requestId=" + requestId + " chars=" + docText.length());
                     messages.put(new JSONObject().put("role", "user").put("content", combinedPrompt));
-                    // 首轮 user 消息（含全文）存入 history：后续轮 messages 以首轮为前缀，
-                    // 使本地 KV 增量复用生效，且多轮模型持续可见全文。
-                    appendAiHistoryMessage(AI_MODE_DOC_QA, "user", combinedPrompt);
+                    // 发给模型的首轮仍带全文，便于后续轮 KV 复用。界面历史只保留用户原话。
+                    appendAiHistoryMessage(AI_MODE_DOC_QA, "user",
+                            question == null ? "" : question, combinedPrompt);
                 } else if (refreshDocQaContext && cachedDocTextForQa != null
                         && !cachedDocTextForQa.isEmpty()) {
                     JSONArray historyMessages = buildAiMessagesFromHistory(history);
@@ -19290,7 +19290,7 @@ public class LOActivity extends AppCompatActivity {
                 continue;
             }
             String role = item.optString("role", "");
-            String content = item.optString("content", "");
+            String content = visibleAiHistoryText(item.optString("content", ""));
             if (content.trim().isEmpty()) {
                 continue;
             }
@@ -19300,11 +19300,34 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void appendAiHistoryMessage(String mode, String role, String content) {
+        appendAiHistoryMessage(mode, role, content, null);
+    }
+
+    private void appendAiHistoryMessage(String mode, String role, String content, String modelContent) {
         try {
-            ensureAiChatCoordinator().appendHistoryMessage(mode, role, content);
+            ensureAiChatCoordinator().appendHistoryMessage(mode, role, content, modelContent);
         } catch (JSONException e) {
             Log.e(TAG, "appendAiHistoryMessage failed", e);
         }
+    }
+
+    /** 旧历史把带全文的提示词写进了 content。界面只显示【用户问题】后面的原话。 */
+    private static String visibleAiHistoryText(String content) {
+        if (content == null) {
+            return "";
+        }
+        boolean wrapped = content.contains("【全文内容】")
+                || content.contains("【当前工作表全文】")
+                || content.startsWith("你是文档问答助手")
+                || content.startsWith("你是简洁的中文助手");
+        int marker = content.lastIndexOf("【用户问题】");
+        if (wrapped && marker >= 0) {
+            String question = content.substring(marker + "【用户问题】".length()).trim();
+            if (!question.isEmpty()) {
+                return question;
+            }
+        }
+        return content;
     }
 
     private void clearAiHistoryFilesForCurrentDocument() {
@@ -19344,12 +19367,14 @@ public class LOActivity extends AppCompatActivity {
             if (!"assistant".equals(role) && !"user".equals(role) && !"system".equals(role)) {
                 continue;
             }
+            String modelContent = normalizeAiText(item.optString("modelContent", ""));
             String content = normalizeAiText(item.optString("content", ""));
-            if (content.isEmpty()) {
+            String outbound = modelContent.isEmpty() ? content : modelContent;
+            if (outbound.isEmpty()) {
                 continue;
             }
             try {
-                messages.put(new JSONObject().put("role", role).put("content", content));
+                messages.put(new JSONObject().put("role", role).put("content", outbound));
             } catch (JSONException ignored) {
             }
         }

@@ -93,11 +93,22 @@ public class AiChatCoordinator {
     }
 
     public void appendHistoryMessage(String mode, String role, String content) throws JSONException {
+        appendHistoryMessage(mode, role, content, null);
+    }
+
+    public void appendHistoryMessage(String mode, String role, String content, String modelContent)
+            throws JSONException {
         String normalized = normalize(content);
+        String normalizedModel = modelContent == null ? "" : normalize(modelContent);
+        if (normalized.isEmpty()) {
+            normalized = normalizedModel;
+        }
         if (normalized.isEmpty()) {
             return;
         }
-        conversationStore.appendHistoryMessage(mode, getHistory(mode), role, normalized);
+        conversationStore.appendHistoryMessage(
+                mode, getHistory(mode), role, normalized,
+                normalizedModel.equals(normalized) ? null : normalizedModel);
     }
 
     public JSONArray cloneHistory(String mode) {

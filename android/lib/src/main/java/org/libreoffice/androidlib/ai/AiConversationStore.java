@@ -78,9 +78,21 @@ public class AiConversationStore {
     }
 
     public void appendHistoryMessage(String mode, JSONArray history, String role, String content) throws JSONException {
+        appendHistoryMessage(mode, history, role, content, null);
+    }
+
+    /**
+     * content 是界面上要显示的文字。modelContent 非空时只发给模型（例如带全文的文档问答提示），
+     * 收起再打开时不能把这段提示画进气泡。
+     */
+    public void appendHistoryMessage(String mode, JSONArray history, String role, String content,
+            String modelContent) throws JSONException {
         JSONObject entry = new JSONObject();
         entry.put("role", role);
         entry.put("content", content);
+        if (modelContent != null && !modelContent.isEmpty() && !modelContent.equals(content)) {
+            entry.put("modelContent", modelContent);
+        }
         history.put(entry);
         saveHistory(mode, history);
     }
