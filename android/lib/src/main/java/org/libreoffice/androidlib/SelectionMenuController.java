@@ -456,11 +456,18 @@ public class SelectionMenuController {
                 rowLp.weight = 1f;
                 rowLp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
             } else {
-                rowLp.width = Math.round(dpToPx(62f));
+                rowLp.width = Math.round(dpToPx(56f));
                 rowLp.weight = 0f;
-                rowLp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+                rowLp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
             }
             action.setLayoutParams(rowLp);
+        }
+        View basicRow = host.findViewById(R.id.selection_basic_row);
+        if (basicRow != null && basicRow.getLayoutParams() != null) {
+            basicRow.getLayoutParams().width = weighted
+                    ? ViewGroup.LayoutParams.MATCH_PARENT
+                    : ViewGroup.LayoutParams.WRAP_CONTENT;
+            basicRow.requestLayout();
         }
     }
 

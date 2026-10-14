@@ -2161,6 +2161,24 @@
 	min-width: 0;
 }
 
+/* Calc cell menu: hug the visible actions. A lone 复制 must not stretch to 301px. */
+.fabric-selection-menu--calc {
+	width: max-content;
+	max-width: min(301px, calc(100vw - 32px));
+	padding: 4px;
+}
+
+.fabric-selection-menu--calc .fabric-selection-menu__row {
+	min-height: 0;
+}
+
+.fabric-selection-menu--calc .fabric-selection-menu__button {
+	flex: 0 0 auto;
+	width: 56px;
+	min-width: 56px;
+	padding: 8px 4px;
+}
+
 /* ── iOS char/para quick bar ── */
 .writer-quick-action-bar {
 	position: fixed;

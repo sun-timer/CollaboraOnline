@@ -1126,6 +1126,10 @@ body.mobile-phone-preview-active #main-document-content {
 	touch-action: manipulation !important;
 }
 
+body.mobile-phone-preview-pending #document-container {
+	visibility: hidden !important;
+}
+
 body.mobile-phone-preview-active #document-container,
 body.mobile-phone-preview-active [data-docType='spreadsheet'] #document-container {
 	position: absolute !important;
@@ -1137,11 +1141,11 @@ body.mobile-phone-preview-active [data-docType='spreadsheet'] #document-containe
 	height: auto !important;
 }
 
-body.mobile-phone-preview-active #map,
-body.mobile-phone-preview-active #map .leaflet-container,
-body.mobile-phone-preview-active #map .leaflet-map-pane,
-body.mobile-phone-preview-active #map .leaflet-tile-pane,
-body.mobile-phone-preview-active #map .leaflet-canvas-container {
+body.mobile-phone-preview-active:not(.mobile-phone-preview-spreadsheet) #map,
+body.mobile-phone-preview-active:not(.mobile-phone-preview-spreadsheet) #map .leaflet-container,
+body.mobile-phone-preview-active:not(.mobile-phone-preview-spreadsheet) #map .leaflet-map-pane,
+body.mobile-phone-preview-active:not(.mobile-phone-preview-spreadsheet) #map .leaflet-tile-pane,
+body.mobile-phone-preview-active:not(.mobile-phone-preview-spreadsheet) #map .leaflet-canvas-container {
 	position: absolute !important;
 	top: 0 !important;
 	left: 0 !important;

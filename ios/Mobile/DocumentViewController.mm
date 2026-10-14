@@ -1696,10 +1696,14 @@ static IMP standardImpOfInputAccessoryView = nil;
         } else if ([message.body hasPrefix:@"COMMENTCOUNT "]) {
             [self applyNativeCommentCount:message.body];
             return;
-        } else if ([message.body hasPrefix:@"CALC_CELL_TAP"]) {
-            // Android-only diagnostic/gesture bridge message.  Older shared
-            // Browser bundles may still emit it; never send it to Core.
-            LOG_TRC("Ignoring Android-only CALC_CELL_TAP message from WebView");
+        } else if ([message.body hasPrefix:@"CALC_CELL_TAP"]
+                   || [message.body hasPrefix:@"CALC_CELL_DISPATCH"]
+                   || [message.body hasPrefix:@"CALC_CELL_POPUP"]
+                   || [message.body hasPrefix:@"CALC_HEADER_DISPATCH"]
+                   || [message.body hasPrefix:@"CALC_HEADER_POPUP"]) {
+            // Android-only diagnostic/gesture bridge messages.  The shared
+            // browser bundle may still emit them; never send them to Core.
+            LOG_TRC("Ignoring Android-only calc bridge message from WebView");
             return;
         } else if ([message.body hasPrefix:@"OPENLINK"] || [message.body hasPrefix:@"HYPERLINK"]) {
             NSArray *messageBodyItems = [message.body componentsSeparatedByString:@" "];
@@ -2369,7 +2373,10 @@ static IMP standardImpOfInputAccessoryView = nil;
 {
     [self dismissDocumentKeyboard];
     __weak DocumentViewController *weakSelf = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.28 * NSEC_PER_SEC)),
+    // Keyboard dismiss needs a beat. Viewing mode can open the preview immediately,
+    // otherwise the sheet stays at the editing zoom and then jumps.
+    const NSTimeInterval settleDelay = nativeEditMode ? 0.28 : 0;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(settleDelay * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         DocumentViewController *strongSelf = weakSelf;
         if (strongSelf == nil || strongSelf->isClosing) {

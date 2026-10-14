@@ -339,6 +339,8 @@ class MobileSelectionMenu {
 		panel.className = MobileSelectionMenu.MENU_CLASS;
 		if (this.menuMode === 'graphic') {
 			panel.classList.add('fabric-selection-menu--graphic');
+		} else if (this.menuMode === 'calc') {
+			panel.classList.add('fabric-selection-menu--calc');
 		}
 		panel.onclick = (e) => e.stopPropagation();
 
@@ -648,9 +650,13 @@ class MobileSelectionMenu {
 				: MobileSelectionMenu.POPUP_MAX_WIDTH_PX,
 			viewWidth - MobileSelectionMenu.POPUP_MARGIN_PX * 2,
 		);
-		this.container.style.width = width + 'px';
+		if (this.menuMode === 'calc') {
+			this.container.style.width = 'max-content';
+		} else {
+			this.container.style.width = width + 'px';
+		}
 
-		const menuWidth = this.container.offsetWidth || width;
+		const menuWidth = this.container.offsetWidth || (this.menuMode === 'calc' ? 72 : width);
 		const menuHeight = this.container.offsetHeight || 200;
 		const margin = MobileSelectionMenu.POPUP_MARGIN_PX;
 		const bottomReserved =

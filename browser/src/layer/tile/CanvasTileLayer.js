@@ -1658,7 +1658,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 
 		if (textMsg.match('EMPTY')) {
 			app.calc.cellCursorVisible = false;
-			if (window.ThisIsTheAndroidApp && window.AndroidCalcCellMenu) {
+			if ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) && window.AndroidCalcCellMenu) {
 				window.AndroidCalcCellMenu.hide();
 			}
 			if (cellfillMarkerSection)
@@ -1695,7 +1695,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 				window.postMobileMessage('CALC_CELL_TAP cursorAddr col=' + app.calc.cellAddress.x + ' row=' + app.calc.cellAddress.y + topLeft);
 			} catch(e) { /* diagnostic */ }
 		}
-		if (window.ThisIsTheAndroidApp && window.AndroidCalcCellMenu) {
+		if ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) && window.AndroidCalcCellMenu) {
 			window.AndroidCalcCellMenu.tryShow();
 		} else if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {
 			window.postMobileMessage('CALC_CELL_DISPATCH skip=no_bridge');
@@ -2574,6 +2574,9 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			this._updateScrollOnCellSelection(oldSelection, this._cellSelectionArea);
 
 			CellSelectionMarkers.update();
+			if ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) && window.AndroidCalcCellMenu) {
+				window.AndroidCalcCellMenu.tryShow();
+			}
 		} else {
 			this._cellSelectionArea = null;
 			if (cellfillMarkerSection)
@@ -2583,6 +2586,13 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			this._map.wholeRowSelected = false;
 			if (this._refreshRowColumnHeaders)
 				this._refreshRowColumnHeaders();
+			if ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) && window.AndroidCalcCellMenu) {
+				if (app.calc.cellCursorVisible) {
+					window.AndroidCalcCellMenu.tryShow();
+				} else {
+					window.AndroidCalcCellMenu.hide();
+				}
+			}
 		}
 	},
 
