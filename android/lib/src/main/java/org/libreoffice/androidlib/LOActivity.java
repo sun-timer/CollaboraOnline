@@ -214,6 +214,7 @@ public class LOActivity extends AppCompatActivity {
     public static final String EXTRA_AUTO_GENERATE_AI_CONTENT = "org.libreoffice.androidlib.extra.AUTO_GENERATE_AI_CONTENT";
     public static final String EXTRA_AUTO_USER_DESCRIPTION = "org.libreoffice.androidlib.extra.AUTO_USER_DESCRIPTION";
     public static final String EXTRA_AUTO_IS_CALC_NEW_TABLE = "org.libreoffice.androidlib.extra.AUTO_IS_CALC_NEW_TABLE";
+    public static final String EXTRA_AUTO_IS_IMPRESS_GENERATE = "org.libreoffice.androidlib.extra.AUTO_IS_IMPRESS_GENERATE";
     public static final String EXTRA_START_IN_EDIT_MODE = "org.libreoffice.androidlib.extra.START_IN_EDIT_MODE";
     private static final String CLIPBOARD_FILE_PATH = "LibreofficeClipboardFile.data";
     private static final String CLIPBOARD_COOL_SIGNATURE = "cool-clip-magic-4a22437e49a8-";
@@ -845,6 +846,7 @@ public class LOActivity extends AppCompatActivity {
     private String pendingAutoOpenAiPrompt = "";
     private String pendingAutoUserDescription = "";
     private boolean pendingAutoIsCalcNewTable = false;
+    private boolean pendingAutoIsImpressGenerate = false;
     private String autoGenerateAcceptRequestId = "";
     private boolean imagePickerInFlight = false;
     private DrawerLayout docDrawerLayout;
@@ -1307,7 +1309,8 @@ public class LOActivity extends AppCompatActivity {
                     // (prefixed logs), so debugging doesn't depend on the embedded
                     // server protocol (postMobileMessage) which errors on unknown cmds.
                     String msg = consoleMessage == null ? "" : consoleMessage.message();
-                    if (msg != null && (msg.contains("[selection_menu]") || msg.contains("[kbprobe]"))) {
+                    if (msg != null && (msg.contains("[selection_menu]") || msg.contains("[kbprobe]")
+                            || msg.contains("[landscape_preview]"))) {
                         Log.i(TAG, "js_console: " + msg);
                     }
                     return true;
@@ -1413,6 +1416,8 @@ public class LOActivity extends AppCompatActivity {
             pendingAutoGenerateAiContent = false;
             pendingAutoOpenAiPrompt = "";
             pendingAutoUserDescription = "";
+            pendingAutoIsCalcNewTable = false;
+            pendingAutoIsImpressGenerate = false;
             startInEditMode = false;
             return;
         }
@@ -1431,6 +1436,7 @@ public class LOActivity extends AppCompatActivity {
             pendingAutoUserDescription = "";
         }
         pendingAutoIsCalcNewTable = intent.getBooleanExtra(EXTRA_AUTO_IS_CALC_NEW_TABLE, false);
+        pendingAutoIsImpressGenerate = intent.getBooleanExtra(EXTRA_AUTO_IS_IMPRESS_GENERATE, false);
     }
 
     private void setupSystemChrome() {
@@ -1981,10 +1987,6 @@ public class LOActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (mobilePhonePreviewController != null && mobilePhonePreviewController.isShowing()) {
-            mobilePhonePreviewController.hide();
-            return;
-        }
         Log.i(TAG, "onBackPressed.. isFinishing=" + isFinishing() + " aiSheetShowing="
                 + (aiOperationSheet != null && aiOperationSheet.isShowing()));
         super.onBackPressed();
@@ -1999,9 +2001,6 @@ public class LOActivity extends AppCompatActivity {
         ensureBottomToolbarController().onConfigurationChanged();
         ensureTopToolbarController().onConfigurationChanged();
         notifyWebViewOrientationChanged();
-        if (mobilePhonePreviewController != null && mobilePhonePreviewController.isShowing()) {
-            mobilePhonePreviewController.relayout();
-        }
         repositionAiDialogsOnConfigurationChanged();
     }
 
@@ -3250,13 +3249,7 @@ public class LOActivity extends AppCompatActivity {
                 return false;
             }
             case "MOBILE_PHONE_PREVIEW": {
-                if (messageAndParam.length > 1 && "hide".equals(messageAndParam[1])) {
-                    getMainHandler().post(() -> {
-                        if (mobilePhonePreviewController != null && mobilePhonePreviewController.isShowing()) {
-                            mobilePhonePreviewController.hide();
-                        }
-                    });
-                }
+                // The native button now fits the page without opening a preview mode.
                 return false;
             }
             case "CLIPBOARD": {
@@ -3373,6 +3366,9 @@ public class LOActivity extends AppCompatActivity {
                         if (parts.length >= 3) {
                             final float anchorX = Float.parseFloat(parts[1]);
                             final float anchorY = Float.parseFloat(parts[2]);
+                            final float anchorBottomY = parts.length >= 4
+                                    ? Float.parseFloat(parts[3])
+                                    : anchorY;
                             getMainHandler().post(() -> {
                                 if (mIsCalcDocument) {
                                     ensureSelectionMenuController().hide();
@@ -3380,7 +3376,7 @@ public class LOActivity extends AppCompatActivity {
                                 } else {
                                     SelectionMenuController smc = ensureSelectionMenuController();
                                     smc.setGraphicMode(true);
-                                    smc.showAtWindow(anchorX, anchorY);
+                                    smc.showAtWindow(anchorX, anchorY, anchorBottomY);
                                 }
                             });
                         }
@@ -10813,7 +10809,7 @@ public class LOActivity extends AppCompatActivity {
 
                 @Override
                 public void toggleMobilePhonePreview() {
-                    ensureMobilePhonePreviewController().toggle();
+                    ensureMobilePhonePreviewController().fitToPage();
                 }
 
                 @Override
@@ -10847,6 +10843,11 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public void startSlideShow() {
+                    LOActivity.this.startSlideShow();
+                }
+
+                @Override
                 public void executeUnoCommand(String command) {
                     LOActivity.this.executeUnoCommand(command);
                 }
@@ -10871,45 +10872,7 @@ public class LOActivity extends AppCompatActivity {
 
     private MobilePhonePreviewController ensureMobilePhonePreviewController() {
         if (mobilePhonePreviewController == null) {
-            mobilePhonePreviewController = new MobilePhonePreviewController(new MobilePhonePreviewController.Host() {
-                @Override
-                public View findViewById(int id) {
-                    return LOActivity.this.findViewById(id);
-                }
-
-                @Override
-                public android.webkit.WebView getWebView() {
-                    return LOActivity.this.mWebView;
-                }
-
-                @Override
-                public int dpToPx(int dp) {
-                    return LOActivity.this.dpToPx(dp);
-                }
-
-                @Override
-                public void runOnUiThread(Runnable runnable) {
-                    LOActivity.this.runOnUiThread(runnable);
-                }
-
-                @Override
-                public boolean isEditModeActive() {
-                    return LOActivity.this.mIsEditModeActive;
-                }
-
-                @Override
-                public void switchToViewingMode() {
-                    LOActivity.this.switchToViewingMode();
-                }
-
-                @Override
-                public void setBottomToolbarVisible(boolean visible) {
-                    View toolbar = LOActivity.this.findViewById(R.id.doc_bottom_toolbar);
-                    if (toolbar != null) {
-                        toolbar.setVisibility(visible ? View.VISIBLE : View.GONE);
-                    }
-                }
-            });
+            mobilePhonePreviewController = new MobilePhonePreviewController(() -> mWebView);
         }
         return mobilePhonePreviewController;
     }
@@ -11076,6 +11039,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void applyBottomToolbarImeState(boolean imeVisible, int imeInsetBottom, int navigationBarInsetBottom) {
+        boolean imeWasVisible = isImeVisibleForToolbar;
         isImeVisibleForToolbar = imeVisible;
         bottomToolbarImeInsetPx = Math.max(0, imeInsetBottom);
         Log.i(TAG, "keyboard_visibility imeVisible=" + imeVisible
@@ -11094,6 +11058,14 @@ public class LOActivity extends AppCompatActivity {
         } else {
             // Defer clear to avoid racing showSoftInput() during Calc edit-mode entry.
             scheduleImeAllowedClear("ime_hidden");
+            if (imeWasVisible && mIsEditModeActive) {
+                View toolbar = findViewById(R.id.doc_bottom_toolbar);
+                if (toolbar != null) {
+                    toolbar.post(() -> recoverCanvasAfterImeHidden());
+                } else {
+                    recoverCanvasAfterImeHidden();
+                }
+            }
         }
     }
 
@@ -11749,11 +11721,10 @@ public class LOActivity extends AppCompatActivity {
     private void startSlideShow() {
         Log.i(TAG, "start_slide_show");
         runWebJs("(function(){try{"
-                + "if(window.app&&app.map&&app.map.slideShow){"
-                + "app.map.slideShow._startFullscreenSlideshow();"
-                + "}else if(window.L&&window.L.Map&&window.app&&app.map){"
-                + "app.map.downloadAs('slideshow.svg','svg',null,'slideshow');"
-                + "}"
+                + "if(!(window.app&&app.map)){console.error('start_slide_show map_missing');return;}"
+                + "var eventName=window.canvasSlideshowEnabled?'newfullscreen':'fullscreen';"
+                + "app.map.fire(eventName);"
+                + "console.log('start_slide_show event='+eventName);"
                 + "}catch(e){console.error('slideshow_error',e);}})();", null);
     }
 
@@ -13200,6 +13171,43 @@ public class LOActivity extends AppCompatActivity {
             if (mWebView != null) {
                 mWebView.evaluateJavascript(script,
                         value -> Log.i(TAG, "visible_tile_redraw reason=" + reason + " result=" + value));
+            }
+        });
+    }
+
+    private void recoverCanvasAfterImeHidden() {
+        if (mWebView == null) {
+            return;
+        }
+        final String script = "(function(){try{"
+                + "function measure(){"
+                + "var doc=document.getElementById('document-container');"
+                + "var mapEl=document.getElementById('map');"
+                + "var canvas=doc?doc.querySelector('canvas'):null;"
+                + "var docH=doc?Math.round(doc.getBoundingClientRect().height):0;"
+                + "var mapH=mapEl?mapEl.clientHeight:0;"
+                + "var canvasH=canvas?canvas.height:0;"
+                + "var canvasCss=canvas?Math.round(canvas.getBoundingClientRect().height):0;"
+                + "return 'doc='+docH+' map='+mapH+' canvas='+canvasH+' canvasCss='+canvasCss;"
+                + "}"
+                + "function sync(tag){"
+                + "if(!(window.app&&app.map&&app.map._docLayer)){return;}"
+                + "var before=measure();"
+                + "var layer=app.map._docLayer;"
+                + "if(typeof layer._syncTileContainerSize==='function'){layer._syncTileContainerSize(true);}"
+                + "if(typeof layer._resetClientVisArea==='function'){layer._resetClientVisArea();}"
+                + "if(typeof layer._requestNewTiles==='function'){layer._requestNewTiles();}"
+                + "if(window.app.sectionContainer&&typeof app.sectionContainer.requestReDraw==='function'){app.sectionContainer.requestReDraw();}"
+                + "if(typeof window.postMobileMessage==='function'){window.postMobileMessage('ime_canvas_sync tag='+tag+' before='+before+' after='+measure());}"
+                + "}"
+                + "setTimeout(function(){sync('soon');},80);"
+                + "setTimeout(function(){sync('late');},400);"
+                + "return 'scheduled';"
+                + "}catch(e){return 'err '+e;}})();";
+        runOnUiThread(() -> {
+            if (mWebView != null) {
+                mWebView.evaluateJavascript(script,
+                        value -> Log.i(TAG, "ime_canvas_sync_schedule result=" + value));
             }
         });
     }
@@ -16458,7 +16466,10 @@ public class LOActivity extends AppCompatActivity {
 
     // ==================== 扩写/缩写/润色弹窗相关方法 ====================
 
-    /** 把 Markdown 文本转 HTML 后粘贴，触发 Writer HTML Import Filter，标题/加粗/列表落地为文档样式。 */
+    /**
+     * 把 Markdown 转成 HTML 后粘贴。LOK paste() 内部已经写入剪贴板并派发
+     * .uno:Paste；这里再发一次会把同一段内容插入第二遍。
+     */
     private void pasteAiTextAsHtml(String markdown) {
         if (markdown == null || markdown.isEmpty()) {
             return;
@@ -16466,12 +16477,7 @@ public class LOActivity extends AppCompatActivity {
         String html = AiMarkdownRenderer.markdownToHtml(markdown);
         byte[] bytes = html.getBytes(StandardCharsets.UTF_8);
         paste("text/html", bytes);
-        // Same sequence as pasteFromSystemClipboard: lok paste loads the HTML,
-        // Writer/Impress still need .uno:Paste before it appears in the document.
-        if (!mIsCalcDocument) {
-            postUnoCommand(".uno:Paste", "{}", false);
-            Log.i(TAG, "paste_ai_html writer_paste_uno chars=" + markdown.length());
-        }
+        Log.i(TAG, "paste_ai_html chars=" + markdown.length() + " mime=text/html");
     }
 
     // ==================== 图片插入 / base64 工具 ====================
@@ -18404,6 +18410,10 @@ public class LOActivity extends AppCompatActivity {
             startCalcNewTableRequest(userDescription);
             return;
         }
+        if (pendingAutoIsImpressGenerate) {
+            startImpressNewPptFromCreate(buildImpressCreateUserInput());
+            return;
+        }
         String prompt = pendingAutoOpenAiPrompt == null || pendingAutoOpenAiPrompt.isEmpty()
                 ? "请先生成文档大纲（章节标题），再基于大纲输出完整正文，风格专业、结构清晰。"
                 : pendingAutoOpenAiPrompt;
@@ -18414,6 +18424,52 @@ public class LOActivity extends AppCompatActivity {
         }
         showNativeAiPanel();
         startNativeAiRequest("", prompt, true, "chat", false);
+    }
+
+    private String buildImpressCreateUserInput() {
+        String desc = pendingAutoUserDescription == null ? "" : pendingAutoUserDescription.trim();
+        String prompt = pendingAutoOpenAiPrompt == null ? "" : pendingAutoOpenAiPrompt.trim();
+        String theme = "";
+        int themeStart = prompt.indexOf("主题：《");
+        if (themeStart >= 0) {
+            int themeEnd = prompt.indexOf("》", themeStart + 4);
+            if (themeEnd > themeStart) {
+                theme = prompt.substring(themeStart + "主题：《".length(), themeEnd).trim();
+            }
+        }
+        if (!theme.isEmpty() && !desc.isEmpty()) {
+            return "主题：" + theme + "\n" + desc;
+        }
+        if (!desc.isEmpty()) {
+            return desc;
+        }
+        if (!theme.isEmpty()) {
+            return theme;
+        }
+        return prompt.isEmpty() ? "请生成一份演示文稿" : prompt;
+    }
+
+    private void startImpressNewPptFromCreate(String userInput) {
+        if (impressOutlinePanel == null) {
+            setupImpressOutlineDialog();
+        }
+        if (impressOutlinePanel == null || impressOutlineOverlay == null) {
+            Log.w(TAG, "ai_impress_new_ppt_abort reason=dialog_missing");
+            return;
+        }
+        impressOutlineInputType = "quick";
+        impressOutlineLastInput = userInput == null ? "" : userInput;
+        if (impressOutlineQuickInput != null) {
+            impressOutlineQuickInput.setText(impressOutlineLastInput);
+        }
+        switchImpressOutlineInputType("quick");
+        impressOutlineOverlay.setVisibility(View.VISIBLE);
+        impressOutlinePanel.setVisibility(View.VISIBLE);
+        impressOutlinePanel.post(this::positionImpressOutlineDialogCenter);
+        setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_GENERATING);
+        Log.i(TAG, "ai_impress_new_ppt_start chars=" + impressOutlineLastInput.length()
+                + " taskType=" + AiChatCoordinator.MODE_IMPRESS_OUTLINE);
+        startImpressOutlineRequest(impressOutlineLastInput);
     }
 
     private void startCalcNewTableRequest(String userDescription) {

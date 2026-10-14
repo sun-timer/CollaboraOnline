@@ -446,6 +446,7 @@ window.L.Map = window.L.Evented.extend({
 
 		this.fire('movestart');
 		window.L.DomUtil.setPosition(this._mapPane, this._getMapPanePos().subtract(offset));
+		this._snapLandscapePreviewX();
 		this.fire('move').fire('moveend');
 
 		return this;
@@ -1362,6 +1363,9 @@ window.L.Map = window.L.Evented.extend({
 			this.fire('load');
 		}
 
+		// viewreset can pan the page back to the left edge. Put the
+		// landscape-preview page back in the middle before anyone reads it.
+		this._snapLandscapePreviewX();
 		this.fire('move');
 
 		if (zoomChanged) {
@@ -1664,6 +1668,22 @@ window.L.Map = window.L.Evented.extend({
 			this.getPixelOrigin();
 
 		return pixelOrigin.subtract(this._getMapPanePos());
+	},
+
+	// Landscape preview: the page is narrower than the screen, and a later
+	// pan ignores maxBounds and pins it to the left. Lock the horizontal
+	// origin on the centered page. Vertical scrolling is unchanged.
+	_snapLandscapePreviewX: function () {
+		var doc = this._docLayer;
+		if (!doc || typeof doc._landscapePreviewPagePad !== 'function' || !this._pixelOrigin)
+			return;
+		var padInfo = doc._landscapePreviewPagePad();
+		if (!padInfo)
+			return;
+		var panePos = this._getMapPanePos();
+		var desired = panePos.x - padInfo.padX;
+		if (this._pixelOrigin.x !== desired)
+			this._pixelOrigin.x = desired;
 	},
 
 	_getNewPixelOrigin: function (center, zoom) {

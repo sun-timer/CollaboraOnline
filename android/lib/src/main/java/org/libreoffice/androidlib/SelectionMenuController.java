@@ -507,9 +507,12 @@ public class SelectionMenuController {
         if (fillAvailable) {
             targetWidth = computePopupTargetWidth();
         } else if (calcMode || graphicMode) {
-            lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
-            menuView.setLayoutParams(lp);
-            return;
+            // Cap to the screen so chips wider than the viewport scroll inside
+            // the row. WRAP_CONTENT grows with the chips and never scrolls.
+            int available = computeAvailablePopupWidth();
+            int content = computeVisibleChipRowWidthPx();
+            // One visible chip (Calc preview: copy only) stays one cell wide.
+            targetWidth = Math.min(content, available);
         } else {
             targetWidth = computePopupTargetWidth();
         }
@@ -517,6 +520,41 @@ public class SelectionMenuController {
             lp.width = targetWidth;
             menuView.setLayoutParams(lp);
         }
+    }
+
+    /** On-screen width for the calc/graphic chip row, excluding side margins. */
+    private int computeAvailablePopupWidth() {
+        View parent = menuView != null ? (View) menuView.getParent() : null;
+        int parentWidth = parent != null ? parent.getWidth() : 0;
+        int margin = Math.round(dpToPx(32f));
+        if (parentWidth > margin) {
+            return parentWidth - margin;
+        }
+        return Math.round(dpToPx(POPUP_MAX_WIDTH_DP));
+    }
+
+    /** Fixed 62dp chips plus the popup's horizontal padding. */
+    private int computeVisibleChipRowWidthPx() {
+        int[] chipIds = new int[] {
+                R.id.selection_op_copy,
+                R.id.selection_op_cut,
+                R.id.selection_op_paste,
+                R.id.selection_op_select_all,
+                R.id.selection_op_delete,
+                R.id.selection_op_image_edit,
+                R.id.selection_op_save,
+                R.id.selection_op_translate,
+        };
+        int visible = 0;
+        for (int chipId : chipIds) {
+            View chip = menuView != null ? menuView.findViewById(chipId) : null;
+            if (chip != null && chip.getVisibility() == View.VISIBLE) {
+                visible++;
+            }
+        }
+        int padding = menuView != null
+                ? menuView.getPaddingLeft() + menuView.getPaddingRight() : 0;
+        return visible * Math.round(dpToPx(62f)) + padding;
     }
 
     /** Available document width capped at Figma max (245:7964). */

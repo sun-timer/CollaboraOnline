@@ -2914,7 +2914,12 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			center.x = app.activeDocument.activeLayout.viewedRectangle.cX1;
 		else {
 			center.x -= this._map.getSize().divideBy(2).x;
-			center.x = Math.round(center.x < 0 ? 0 : center.x);
+			// Landscape preview keeps a negative origin so the page can sit
+			// in the middle. Clamping to 0 pins it to the left edge.
+			if (this._landscapePreviewPagePad())
+				center.x = Math.round(center.x);
+			else
+				center.x = Math.round(center.x < 0 ? 0 : center.x);
 			needsXScroll = true;
 		}
 
@@ -3208,6 +3213,38 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 	recalculateZoomOnResize: function() {
 		if (this.isWriter())
 			this._invalidateZoomFirstFit = true;
+	},
+
+	// Landscape preview: how far the page must shift right so it sits in the
+	// middle. Null when this zoom already fills the width.
+	_landscapePreviewPagePad: function () {
+		if (!window.ThisIsTheAndroidApp || !this._map || !this.isWriter())
+			return null;
+		if (typeof this._map.isReadOnlyMode !== 'function' || !this._map.isReadOnlyMode())
+			return null;
+		var size = this._map.getSize();
+		if (!size || size.x <= size.y || size.x <= 16)
+			return null;
+		var pages = app.file && app.file.writer && app.file.writer.pageRectangleList;
+		if (!pages || !pages.length)
+			return null;
+		var pageIndex = Math.max(0, Math.min(pages.length - 1, this._currentPage || 0));
+		var rect = pages[pageIndex];
+		if (!rect || rect[2] <= 0)
+			return null;
+		var pageCss = this._twipsToCssPixels({x: rect[2], y: rect[3]});
+		if (!pageCss || pageCss.x <= 0)
+			return null;
+		var padX = Math.round((size.x - pageCss.x) / 2);
+		if (padX < 8)
+			return null;
+		return {padX: padX, pageIndex: pageIndex, pageCss: pageCss, size: size};
+	},
+
+	_centerLandscapePreviewPage: function () {
+		if (!this._landscapePreviewPagePad())
+			return;
+		this._updateMaxBounds(true);
 	},
 
 	// This is really just called on zoomend
@@ -3708,6 +3745,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 
 		// Center the view w.r.t the new map-pane position using the current zoom.
 		this._map.setView(this._map.getCenter());
+		this._centerLandscapePreviewPage();
 
 		this._nonDesktopChecksAfterResizeEvent(heightIncreased);
 
@@ -4016,11 +4054,25 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 
 		var docPixelLimits = new cool.Point(app.activeDocument.fileSize.pX / app.dpiScale, app.activeDocument.fileSize.pY / app.dpiScale);
 		var scrollPixelLimits = new cool.Point(app.activeDocument.activeLayout.viewSize.pX / app.dpiScale, app.activeDocument.activeLayout.viewSize.pY / app.dpiScale);
-		var topLeft = this._map.unproject(new cool.Point(0, 0));
+		// A later zoom resets the view through these bounds. If they start at
+		// x=0 and are at least as wide as the screen, the page is clamped left.
+		// Pad the page equally on both sides so the only fit is centered.
+		var padInfo = this._updatingPreviewBounds ? null : this._landscapePreviewPagePad();
+		var originX = padInfo ? -padInfo.padX : 0;
+		var limitX = padInfo ? (padInfo.pageCss.x + padInfo.padX) : scrollPixelLimits.x;
+		var topLeft = this._map.unproject(new cool.Point(originX, 0));
 
-		if (this._documentInfo === '' || sizeChanged) {
-			// we just got the first status so we need to center the document
-			this._map.setMaxBounds(new window.L.LatLngBounds(topLeft, this._map.unproject(scrollPixelLimits)));
+		if (this._documentInfo === '' || sizeChanged || padInfo) {
+			this._updatingPreviewBounds = true;
+			this._map.setMaxBounds(new window.L.LatLngBounds(topLeft, this._map.unproject(new cool.Point(limitX, scrollPixelLimits.y))));
+			this._updatingPreviewBounds = false;
+			if (padInfo) {
+				var after = this._map.getPixelBoundsCore();
+				window.app.console.log('[landscape_preview] padX=' + padInfo.padX
+					+ ' pageCss=' + Math.round(padInfo.pageCss.x)
+					+ ' view=' + Math.round(padInfo.size.x)
+					+ ' minX=' + (after && after.min ? Math.round(after.min.x) : 'na'));
+			}
 		}
 
 		this._docPixelSize = {x: docPixelLimits.x, y: docPixelLimits.y};

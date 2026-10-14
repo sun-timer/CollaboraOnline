@@ -223,26 +223,47 @@ class GraphicSelection {
 			app.sectionContainer.requestReDraw();
 
 			const rect = this.rectangle;
-			const cx = (rect.pX1 + rect.pX2) / 2;
-			const cy = (rect.pY1 + rect.pY2) / 2;
-			const pixelPt = app.map._docLayer._twipsToPixels(new cool.SimplePoint(cx, cy));
 			const canvasRect = app.sectionContainer.getCanvasBoundingClientRect();
 			const scale = app.dpiScale || 1;
-			const cssX = (pixelPt.x / scale) + canvasRect.x;
-			const cssY = (pixelPt.y / scale) + canvasRect.y;
+			// rectangle.pX/pY are already core pixels. _twipsToPixels() would
+			// treat them as twips and pin every shape to the same corner.
+			let viewX = (rect.pX1 + rect.pX2) / 2;
+			let viewTop = rect.pY1;
+			let viewBottom = rect.pY2;
+			const layout = app.activeDocument && app.activeDocument.activeLayout;
+			const viewed = layout && layout.viewedRectangle;
+			if (viewed) {
+				const docAnchor = app.sectionContainer.getDocumentAnchor
+					? app.sectionContainer.getDocumentAnchor()
+					: [0, 0];
+				const originX = viewed.pX1 - (docAnchor[0] || 0);
+				const originY = viewed.pY1 - (docAnchor[1] || 0);
+				viewX -= originX;
+				viewTop -= originY;
+				viewBottom -= originY;
+			}
+			const cssX = viewX / scale + canvasRect.x;
+			const cssY = viewTop / scale + canvasRect.y;
+			const cssBottomY = viewBottom / scale + canvasRect.y;
 			// Notify Android native side about graphic selection
 			if (typeof window.postMobileMessage === 'function' && window.ThisIsTheAndroidApp) {
 				window.postMobileMessage(
 					'GRAPHICSELECTION show ' +
 					Math.round(cssX * scale) + ' ' +
-					Math.round(cssY * scale)
+					Math.round(cssY * scale) + ' ' +
+					Math.round(cssBottomY * scale)
 				);
 			} else if (window.ThisIsTheiOSApp && typeof MobileSelectionEvents !== 'undefined') {
+				const cx = (rect.pX1 + rect.pX2) / 2;
+				const cy = (rect.pY1 + rect.pY2) / 2;
+				const pixelPt = app.map._docLayer._twipsToPixels(new cool.SimplePoint(cx, cy));
+				const iosCssX = pixelPt.x / scale + canvasRect.x;
+				const iosCssY = pixelPt.y / scale + canvasRect.y;
 				MobileSelectionEvents.broadcastShow(
 					{
-						anchorX: Math.round(cssX),
-						anchorY: Math.round(cssY),
-						anchorBottomY: Math.round(cssY),
+						anchorX: Math.round(iosCssX),
+						anchorY: Math.round(iosCssY),
+						anchorBottomY: Math.round(iosCssY),
 					},
 					'',
 					'graphic',

@@ -415,6 +415,9 @@ window.L.Map.include({
 
 		if ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) && !transientReconnect)
 			window.postMobileMessage('EDITMODE off');
+		if (window.ThisIsTheAndroidApp && !transientReconnect && this._docLayer
+			&& typeof this._docLayer._centerLandscapePreviewPage === 'function')
+			this._docLayer._centerLandscapePreviewPage();
 	},
 
 	// Is user currently in read only mode (i.e: initial mobile read only view mode, user may have write access)
