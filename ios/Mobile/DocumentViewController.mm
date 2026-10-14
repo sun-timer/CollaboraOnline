@@ -1696,6 +1696,9 @@ static IMP standardImpOfInputAccessoryView = nil;
         } else if ([message.body hasPrefix:@"COMMENTCOUNT "]) {
             [self applyNativeCommentCount:message.body];
             return;
+        } else if ([message.body hasPrefix:@"SHEET_TAB_POPUP"]) {
+            [self presentSheetTabPopupFromMessage:message.body];
+            return;
         } else if ([message.body hasPrefix:@"CALC_CELL_TAP"]
                    || [message.body hasPrefix:@"CALC_CELL_DISPATCH"]
                    || [message.body hasPrefix:@"CALC_CELL_POPUP"]
@@ -2491,6 +2494,153 @@ static IMP standardImpOfInputAccessoryView = nil;
 {
     [self sendToolbarJavaScript:
      @"if(window.__coolMobileToolbarColorPicker){window.__coolMobileToolbarColorPicker.open('background');}"];
+}
+
+- (void)presentSheetTabPopupFromMessage:(NSString *)message
+{
+    static NSString *const showPrefix = @"SHEET_TAB_POPUP show ";
+    if (![message hasPrefix:showPrefix]) {
+        return;
+    }
+    NSString *json = [message substringFromIndex:showPrefix.length];
+    NSData *data = [json dataUsingEncoding:NSUTF8StringEncoding];
+    if (data == nil) {
+        return;
+    }
+    NSError *error = nil;
+    id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+    if (![parsed isKindOfClass:[NSDictionary class]]) {
+        LOG_ERR("SHEET_TAB_POPUP json failed");
+        return;
+    }
+    NSDictionary *payload = (NSDictionary *)parsed;
+    NSInteger tabIndex = [payload[@"tabIndex"] integerValue];
+    NSString *sheetName = [payload[@"sheetName"] isKindOfClass:[NSString class]] ? payload[@"sheetName"] : @"";
+    BOOL isProtected = [payload[@"isProtected"] boolValue];
+    BOOL canDelete = [payload[@"canDelete"] boolValue];
+    CGFloat anchorX = [payload[@"anchorX"] doubleValue];
+    CGFloat anchorY = [payload[@"anchorY"] doubleValue];
+    if (tabIndex < 0) {
+        return;
+    }
+
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:sheetName
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    if (!isProtected) {
+        [sheet addAction:[UIAlertAction actionWithTitle:@"重命名"
+                                                   style:UIAlertActionStyleDefault
+                                                 handler:^(UIAlertAction *action) {
+            [self promptRenameSheet:tabIndex currentName:sheetName];
+        }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"复制"
+                                               style:UIAlertActionStyleDefault
+                                             handler:^(UIAlertAction *action) {
+        NSString *body = [NSString stringWithFormat:
+            @"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:Move?Copy:bool=true&UseCurrentDocument:bool=true&FromContextMenu:bool=true&ContextMenuIndex=%ld&Index=%ld');}",
+            (long)tabIndex, (long)(tabIndex + 2)];
+        [self runSheetActionAfterEdit:body];
+    }]];
+    if (!isProtected) {
+        UIAlertActionStyle style = canDelete ? UIAlertActionStyleDestructive : UIAlertActionStyleDefault;
+        [sheet addAction:[UIAlertAction actionWithTitle:@"删除"
+                                                   style:style
+                                                 handler:^(UIAlertAction *action) {
+            if (!canDelete) {
+                [self presentSheetNotice:@"至少需要保留一个工作表"];
+                return;
+            }
+            [self confirmDeleteSheet:tabIndex name:sheetName];
+        }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    UIPopoverPresentationController *popover = sheet.popoverPresentationController;
+    if (popover != nil) {
+        popover.sourceView = self.webView;
+        popover.sourceRect = CGRectMake(anchorX, anchorY, 1, 1);
+    }
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)presentSheetNotice:(NSString *)message
+{
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil
+                                                                   message:message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)promptRenameSheet:(NSInteger)tabIndex currentName:(NSString *)currentName
+{
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"重命名工作表"
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+        textField.text = currentName;
+        textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定"
+                                               style:UIAlertActionStyleDefault
+                                             handler:^(UIAlertAction *action) {
+        NSString *newName = [alert.textFields.firstObject.text stringByTrimmingCharactersInSet:
+                             [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (newName.length == 0) {
+            [self presentSheetNotice:@"请输入工作表名称"];
+            return;
+        }
+        NSData *nameData = [NSJSONSerialization dataWithJSONObject:@[newName] options:0 error:nil];
+        NSString *arrayJson = nameData
+            ? [[NSString alloc] initWithData:nameData encoding:NSUTF8StringEncoding]
+            : @"[\"\"]";
+        NSString *nameJson = (arrayJson.length >= 2)
+            ? [arrayJson substringWithRange:NSMakeRange(1, arrayJson.length - 2)]
+            : @"\"\"";
+        NSString *body = [NSString stringWithFormat:
+            @"if(typeof map.renamePage==='function'){map.renamePage(%@,%ld);}",
+            nameJson, (long)tabIndex];
+        [self runSheetActionAfterEdit:body];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)confirmDeleteSheet:(NSInteger)tabIndex name:(NSString *)name
+{
+    NSString *message = [NSString stringWithFormat:@"确定要删除工作表「%@」吗？", name ?: @""];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"删除工作表"
+                                                                   message:message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"删除"
+                                               style:UIAlertActionStyleDestructive
+                                             handler:^(UIAlertAction *action) {
+        NSString *body = [NSString stringWithFormat:
+            @"if(typeof map.deletePage==='function'){map.deletePage(%ld);}",
+            (long)tabIndex];
+        [self runSheetActionAfterEdit:body];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)runSheetActionAfterEdit:(NSString *)jsBody
+{
+    if (jsBody.length == 0) {
+        return;
+    }
+    NSString *script = [NSString stringWithFormat:
+        @"(function(){"
+         "var map=window.app&&window.app.map;"
+         "if(!map)return;"
+         "function go(){%@}"
+         "function ready(){return !(map.isReadOnlyMode&&map.isReadOnlyMode());}"
+         "if(ready()){go();return;}"
+         "if(typeof map._switchToEditMode==='function'){map._switchToEditMode();}"
+         "var n=0;var t=setInterval(function(){n++;if(ready()||n>20){clearInterval(t);if(ready())go();}},150);"
+         "})();",
+        jsBody];
+    [self sendToolbarJavaScript:script];
 }
 
 - (void)bottomToolbarDidPressMergeCell

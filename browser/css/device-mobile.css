@@ -111,6 +111,12 @@ html[dir='rtl'] .sub-menu-arrow {
 	display: none;
 }
 
+.spreadsheet-tab {
+	-webkit-touch-callout: none;
+	-webkit-user-select: none;
+	user-select: none;
+}
+
 .spreadsheet-tab-selected {
 	color: #0b87e7 !important;
 	border-color: #0b87e7;
@@ -354,6 +360,93 @@ body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab 
 }
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] .tab-drop-area {
+	display: none !important;
+}
+
+/* iOS 工作表栏对齐 Android：加号右侧直接是工作表名称，不留列表按钮 */
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #spreadsheet-toolbar {
+	grid-template-columns: 40px auto;
+	height: 40px;
+	border-top: 1px solid #E3E3E3;
+	background-color: #FFFFFF;
+}
+
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #sheets-buttons-toolbox > div.toolbox {
+	height: 40px;
+	align-content: stretch;
+}
+
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet {
+	width: 40px !important;
+	height: 40px !important;
+	min-width: 40px !important;
+	min-height: 40px !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border-radius: 0 !important;
+	position: relative !important;
+	background: #3B8040 url('images/lc_insertsheet_calc_mobile.svg') no-repeat center / 22px 22px !important;
+	background-color: #3B8040 !important;
+	border: none !important;
+	box-shadow: none !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	overflow: hidden !important;
+}
+
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet .unobutton,
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet button {
+	position: absolute !important;
+	inset: 0 !important;
+	width: 100% !important;
+	height: 100% !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: none !important;
+	background: none !important;
+	box-shadow: none !important;
+}
+
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet img,
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet .w2ui-icon {
+	display: none !important;
+}
+
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #sheetlist,
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #firstrecord,
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #prevrecord,
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #nextrecord,
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #lastrecord {
+	display: none !important;
+}
+
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tabs-container {
+	height: 40px;
+}
+
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab-scroll {
+	margin-left: 0;
+}
+
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab {
+	background-color: #FFFFFF !important;
+	color: #6A6A6A !important;
+	border: 1px solid transparent !important;
+	border-radius: 0 !important;
+	font-weight: 400 !important;
+}
+
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab.spreadsheet-tab-selected {
+	background-color: #FFFFFF !important;
+	color: #3B8040 !important;
+	border: 1px solid transparent !important;
+	font-weight: 700 !important;
+}
+
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab .lock,
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab .view-indicator,
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] .tab-drop-area {
 	display: none !important;
 }
 

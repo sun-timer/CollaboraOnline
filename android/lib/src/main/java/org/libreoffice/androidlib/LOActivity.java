@@ -5523,9 +5523,11 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void copyCalcSheet(int tabIndex) {
-        executeUnoCommand(".uno:Move?Copy:bool=true&UseCurrentDocument:bool=true&FromContextMenu:bool=true&ContextMenuIndex="
-                + tabIndex + "&Index=" + (tabIndex + 2));
-        Log.i(TAG, "copy_calc_sheet tabIndex=" + tabIndex);
+        ensureEditModeThen(() -> {
+            executeUnoCommand(".uno:Move?Copy:bool=true&UseCurrentDocument:bool=true&FromContextMenu:bool=true&ContextMenuIndex="
+                    + tabIndex + "&Index=" + (tabIndex + 2));
+            Log.i(TAG, "copy_calc_sheet tabIndex=" + tabIndex);
+        });
     }
 
     private void deleteCalcSheet(int tabIndex) {
