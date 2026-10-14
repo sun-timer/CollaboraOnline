@@ -32,6 +32,7 @@ class SheetsBar {
 				callback: this.onSelectSheet.bind(this),
 			});
 
+		this.map._sheetsBar = this;
 		this.create();
 
 		map.on('doclayerinit', this.onDocLayerInit, this);
@@ -104,31 +105,96 @@ class SheetsBar {
 			return;
 		}
 		plus.dataset.insertBound = '1';
-		// 捕获阶段截住点击。否则会冒泡成 toolbox 回调，core 把 insertsheet 当成未知控件弹出菜单。
-		plus.addEventListener('click', (ev) => {
+		var onPlus = (ev) => {
+			// 捕获阶段截住。Android WebView 上父级 mousedown preventDefault 会吃掉 click，
+			// 所以 pointerup / touchend 也要插入。冒泡到 toolbox 时 core 会把 insertsheet 当成未知控件弹菜单。
 			ev.preventDefault();
 			ev.stopPropagation();
-			if (plus.hasAttribute('disabled')) {
+			var now = Date.now();
+			if (this._lastInsertAt && now - this._lastInsertAt < 500) {
 				return;
 			}
+			var editing = !this.map || typeof this.map.isEditMode !== 'function' || this.map.isEditMode();
+			if (!editing && plus.hasAttribute('disabled')) {
+				return;
+			}
+			this._lastInsertAt = now;
 			this.insertSheetAtEnd();
-		}, true);
+		};
+		plus.addEventListener('pointerup', onPlus, true);
+		plus.addEventListener('touchend', onPlus, true);
+		plus.addEventListener('click', onPlus, true);
 	}
 
-	insertSheetAtEnd() {
-		var docLayer = this.map && this.map._docLayer;
+	_nextSheetName() {
+		var names = this.partNames || [];
+		var prefix = 'Sheet';
+		if (names.length > 0) {
+			var matched = /^(.*?)(\d+)$/.exec(names[0]);
+			if (matched && matched[1]) {
+				prefix = matched[1];
+			}
+		}
+		var index = names.length + 1;
+		var name = prefix + index;
+		var guard = 0;
+		while (names.indexOf(name) !== -1 && guard < 1000) {
+			index++;
+			name = prefix + index;
+			guard++;
+		}
+		return name;
+	}
+
+	_sendInsertSheet() {
+		var map = this.map;
+		var docLayer = map && map._docLayer;
 		var nPos = docLayer && typeof docLayer._parts === 'number'
 			? docLayer._parts
 			: (typeof this.parts === 'number' ? this.parts : 0);
-		this.map.insertPage.scrollToEnd = true;
-		if (docLayer && docLayer._sheetSwitch) {
-			this.map.insertPage(nPos);
-			return;
+		if (map.insertPage) {
+			map.insertPage.scrollToEnd = true;
 		}
+		try {
+			if (docLayer && docLayer._sheetSwitch) {
+				docLayer._sheetSwitch.updateOnSheetInsertion(nPos);
+			}
+		} catch (e) {
+			window.app.console.warn('sheet insert bookkeeping failed', e);
+		}
+		// 带上真实表名。空 Name 会让 core 走插入对话框，Android 无头模式里对话框不出现，看起来像没加上。
+		// 不要走 map.insertPage：它会在表建成前 setPart，把还不存在的页发给 core。
+		var cmd = {
+			Name: {type: 'string', value: this._nextSheetName()},
+			Index: {type: 'unsigned short', value: nPos + 1}
+		};
 		if (window.app && app.socket && typeof app.socket.sendMessage === 'function') {
-			var cmd = {Name: {type: 'string', value: ''}, Index: {type: 'long', value: nPos + 1}};
 			app.socket.sendMessage('uno .uno:Insert ' + JSON.stringify(cmd));
 		}
+	}
+
+	insertSheetAtEnd() {
+		var map = this.map;
+		if (!map) {
+			return;
+		}
+		if (typeof map.isEditMode === 'function' && !map.isEditMode()) {
+			if (this._insertAfterEdit) {
+				return;
+			}
+			this._insertAfterEdit = true;
+			if (typeof map._switchToEditMode === 'function') {
+				map._switchToEditMode();
+			}
+			setTimeout(() => {
+				this._insertAfterEdit = false;
+				if (typeof map.isEditMode !== 'function' || map.isEditMode()) {
+					this._sendInsertSheet();
+				}
+			}, 250);
+			return;
+		}
+		this._sendInsertSheet();
 	}
 
 	onDocLayerInit() {
