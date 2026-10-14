@@ -244,6 +244,18 @@ body.android-native-bottom-toolbar[data-docType='spreadsheet'] #spreadsheet-tool
 	background-color: #FFFFFF;
 }
 
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #sheets-buttons-toolbox,
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #sheets-buttons-toolbox {
+	position: relative;
+	z-index: 2;
+}
+
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tabs-container,
+body.ios-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tabs-container {
+	position: relative;
+	z-index: 1;
+}
+
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #sheets-buttons-toolbox > div.toolbox {
 	height: 40px;
 	align-content: stretch;
@@ -268,6 +280,8 @@ body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet {
 	justify-content: center !important;
 	-webkit-tap-highlight-color: transparent;
 	overflow: hidden !important;
+	touch-action: manipulation;
+	z-index: 3;
 }
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet .unobutton,
@@ -336,8 +350,15 @@ body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet:acti
 	display: none !important;
 }
 
-body.android-native-bottom-toolbar[data-docType='spreadsheet'] #sheetlist {
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #sheetlist,
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #firstrecord,
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #prevrecord,
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #nextrecord,
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #lastrecord {
 	display: none !important;
+	pointer-events: none !important;
+	width: 0 !important;
+	min-width: 0 !important;
 }
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab {
@@ -393,6 +414,8 @@ body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet {
 	align-items: center !important;
 	justify-content: center !important;
 	overflow: hidden !important;
+	touch-action: manipulation;
+	z-index: 3;
 }
 
 body.ios-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet .unobutton,

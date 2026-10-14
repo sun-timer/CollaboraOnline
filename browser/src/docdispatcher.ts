@@ -496,20 +496,10 @@ class Dispatcher {
 
 		// sheets toolbar
 		this.actionsMap['insertsheet'] = function () {
-			// childElementCount 含拖放占位，不能当工作表下标。用真实表数量插到末尾。
-			var docLayer = app.map && app.map._docLayer;
-			var nPos =
-				docLayer && typeof docLayer._parts === 'number' ? docLayer._parts : 0;
-			app.map.insertPage.scrollToEnd = true;
-			if (docLayer && docLayer._sheetSwitch) {
-				app.map.insertPage(nPos);
-				return;
+			var bar = app.map && (app.map as any)._sheetsBar;
+			if (bar && typeof bar.insertSheetAtEnd === 'function') {
+				bar.insertSheetAtEnd();
 			}
-			var cmd = {
-				Name: { type: 'string', value: '' },
-				Index: { type: 'long', value: nPos + 1 },
-			};
-			app.socket.sendMessage('uno .uno:Insert ' + JSON.stringify(cmd));
 		};
 		this.actionsMap['firstrecord'] = function () {
 			$('#spreadsheet-tab-scroll').scrollLeft(0);
