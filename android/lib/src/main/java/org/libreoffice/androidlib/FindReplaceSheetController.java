@@ -1,6 +1,9 @@
 package org.libreoffice.androidlib;
 
 import android.app.AlertDialog;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.util.Log;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
@@ -109,68 +112,39 @@ public class FindReplaceSheetController {
         }
     }
 
-    /**
-     * 横屏悬浮弹窗尺寸：宽度固定 targetWidthPx；高度随内容（两个 tab 中较高者），
-     * 上限 maxHeightPx 仅用于防止超高溢出屏幕，不主动裁切（切 tab 不截断）。
-     */
+    /** Size the floating window to the currently visible tab, plus transparent shadow space. */
     private void applyFloatingPanelSize(View panel, AlertDialog dialog, int targetWidthPx, int maxHeightPx) {
         if (dialog == null || dialog.getWindow() == null || panel == null) {
             return;
         }
         int shadowMargin = host.dpToPx(20);
         panel.post(() -> {
-            if (dialog.getWindow() == null) {
+            Window window = dialog.getWindow();
+            if (window == null || !dialog.isShowing()) {
                 return;
             }
-            // 替换 tab 初始 gone，measure 会漏掉其高度导致横屏截断：
-            // 测量前临时展开全部 panel 取最高值，之后再恢复初始可见性。
-            View findPanel = panel.findViewById(R.id.find_panel_find);
-            View replacePanel = panel.findViewById(R.id.find_panel_replace);
-            int findVis = findPanel != null ? findPanel.getVisibility() : View.VISIBLE;
-            int replaceVis = replacePanel != null ? replacePanel.getVisibility() : View.GONE;
-            if (findPanel != null) {
-                findPanel.setVisibility(View.VISIBLE);
+            // GONE tabs must not contribute height: the tab callbacks resize the
+            // window again when switching between find and replace.
+            int widthSpec = View.MeasureSpec.makeMeasureSpec(targetWidthPx, View.MeasureSpec.EXACTLY);
+            int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+            panel.measure(widthSpec, heightSpec);
+            int contentHeight = Math.max(panel.getMeasuredHeight(), 1);
+            ViewGroup.LayoutParams lp = panel.getLayoutParams();
+            if (lp != null) {
+                lp.width = targetWidthPx;
+                lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                panel.setLayoutParams(lp);
             }
-            if (replaceEnabled && replacePanel != null) {
-                replacePanel.setVisibility(View.VISIBLE);
-            }
-            try {
-                int widthSpec = android.view.View.MeasureSpec.makeMeasureSpec(targetWidthPx,
-                        android.view.View.MeasureSpec.EXACTLY);
-                int heightSpec = android.view.View.MeasureSpec.makeMeasureSpec(0,
-                        android.view.View.MeasureSpec.UNSPECIFIED);
-                panel.measure(widthSpec, heightSpec);
-                int contentHeight = Math.max(panel.getMeasuredHeight(), 1);
-                // 窗口比内容大一圈，为 elevation 阴影留空间（透明窗口下阴影溢出）。
-                int windowWidth = targetWidthPx + shadowMargin * 2;
-                int windowHeight = Math.min(contentHeight + shadowMargin * 2, maxHeightPx);
-                dialog.getWindow().setLayout(windowWidth, windowHeight);
-                WindowManager.LayoutParams attrs = dialog.getWindow().getAttributes();
-                attrs.gravity = Gravity.TOP | Gravity.START;
-                attrs.x = floatingX;
-                attrs.y = floatingY;
-                dialog.getWindow().setAttributes(attrs);
-                // contentView 固定目标宽度、居中于窗口内，四周留出阴影边距。
-                android.view.ViewGroup.LayoutParams lp = panel.getLayoutParams();
-                if (lp instanceof WindowManager.LayoutParams) {
-                    WindowManager.LayoutParams wlp = (WindowManager.LayoutParams) lp;
-                    wlp.width = targetWidthPx;
-                    wlp.height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
-                    wlp.gravity = Gravity.CENTER;
-                    panel.setLayoutParams(wlp);
-                } else if (lp != null) {
-                    lp.width = targetWidthPx;
-                    lp.height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
-                    panel.setLayoutParams(lp);
-                }
-            } finally {
-                if (findPanel != null) {
-                    findPanel.setVisibility(findVis);
-                }
-                if (replacePanel != null) {
-                    replacePanel.setVisibility(replaceVis);
-                }
-            }
+            int windowWidth = targetWidthPx + shadowMargin * 2;
+            int windowHeight = Math.min(contentHeight + shadowMargin * 2, maxHeightPx);
+            window.setLayout(windowWidth, windowHeight);
+            WindowManager.LayoutParams attrs = window.getAttributes();
+            attrs.gravity = Gravity.TOP | Gravity.START;
+            attrs.x = floatingX;
+            attrs.y = floatingY;
+            window.setAttributes(attrs);
+            Log.i("FindReplaceSheet", "find_panel_size content=" + targetWidthPx + "x" + contentHeight
+                    + " window=" + windowWidth + "x" + windowHeight + " replace=" + replaceTabActive);
         });
     }
 
@@ -178,12 +152,22 @@ public class FindReplaceSheetController {
     private AlertDialog showFloatingDialog(View panel) {
         android.content.Context context = host.getContext();
         AlertDialog dialog = new AlertDialog.Builder(context).create();
-        dialog.setView(panel);
+        // Keep the shadow gutter transparent and outside the white content card.
+        int shadowMargin = host.dpToPx(20);
+        FrameLayout content = new FrameLayout(context);
+        content.setPadding(shadowMargin, shadowMargin, shadowMargin, shadowMargin);
+        content.setClipChildren(false);
+        content.setClipToPadding(false);
+        content.addView(panel, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        dialog.setView(content, 0, 0, 0, 0);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
         AiDialogHelper.applyTransparentWindow(dialog);
         panel.setBackgroundResource(R.drawable.lolib_bg_find_floating_panel);
         dialog.show();
         if (dialog.getWindow() != null) {
+            // The shared helper uses a white window card; only our content is white.
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             // AlertDialog 默认 dimAmount=0.6f 有遮罩，需清除（文档保持可见）。
             WindowManager.LayoutParams layoutParams = dialog.getWindow().getAttributes();
             layoutParams.dimAmount = 0f;
@@ -193,7 +177,7 @@ public class FindReplaceSheetController {
             android.util.DisplayMetrics metrics = context.getResources().getDisplayMetrics();
             int screenW = metrics.widthPixels;
             int screenH = metrics.heightPixels;
-            int targetW = Math.min(host.dpToPx(421), screenW - host.dpToPx(32));
+            int targetW = Math.min(host.dpToPx(421), screenW - host.dpToPx(72));
             int maxH = (int) (screenH * 0.92f);
             applyFloatingPanelSize(panel, dialog, targetW, maxH);
             // 阴影：透明窗口下 root elevation 提供投影（设计稿 #0000001f 淡阴影）。
@@ -210,7 +194,7 @@ public class FindReplaceSheetController {
             placed.gravity = Gravity.TOP | Gravity.START;
             if (!floatingPlaced) {
                 int margin = host.dpToPx(16);
-                floatingX = Math.max(margin, screenW - targetW - margin);
+                floatingX = Math.max(margin, screenW - targetW - shadowMargin * 2 - margin);
                 floatingY = host.getTopToolbarHeightPx() + host.dpToPx(8);
                 floatingPlaced = true;
             }
@@ -239,7 +223,7 @@ public class FindReplaceSheetController {
             return;
         }
         android.util.DisplayMetrics metrics = host.getContext().getResources().getDisplayMetrics();
-        int targetW = Math.min(host.dpToPx(421), metrics.widthPixels - host.dpToPx(32));
+        int targetW = Math.min(host.dpToPx(421), metrics.widthPixels - host.dpToPx(72));
         int maxH = (int) (metrics.heightPixels * 0.92f);
         applyFloatingPanelSize(panel, floatingDialog, targetW, maxH);
     }

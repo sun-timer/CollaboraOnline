@@ -46,6 +46,7 @@ public class TopToolbarController {
     private View undoButton;
     private View redoButton;
     private View searchPreviewButton;
+    private View searchEditButton;
     private boolean isEditModeActive = false;
     private boolean isCalcDocument = false;
     private boolean isImpressDocument = false;
@@ -73,6 +74,7 @@ public class TopToolbarController {
         undoButton = host.findViewById(R.id.top_btn_undo);
         redoButton = host.findViewById(R.id.top_btn_redo);
         searchPreviewButton = host.findViewById(R.id.top_btn_search_preview);
+        searchEditButton = host.findViewById(R.id.top_btn_search_edit);
 
         bindClick(R.id.top_btn_back, v -> host.onTopToolbarBack());
         bindClick(R.id.top_btn_done, v -> host.switchToViewingMode());
@@ -82,6 +84,7 @@ public class TopToolbarController {
         bindClick(R.id.top_btn_redo, v -> requestRedo());
 
         bindClick(R.id.top_btn_search_preview, v -> host.showFindReplaceSheet());
+        bindClick(R.id.top_btn_search_edit, v -> host.showFindReplaceSheet());
         bindClick(R.id.top_btn_share_preview, v -> host.shareCurrentDocument());
         bindClick(R.id.top_btn_open_docs_preview, v -> host.showDocumentTabsSheet());
         bindClick(R.id.top_btn_open_docs_edit, v -> host.showDocumentTabsSheet());
@@ -112,10 +115,13 @@ public class TopToolbarController {
 
     /** 演示文稿顶栏不展示搜索图标(对齐 Figma:标题栏右侧无搜索)。 */
     private void applyImpressSearchVisibility() {
-        if (searchPreviewButton == null) {
-            return;
+        int visibility = isImpressDocument ? View.GONE : View.VISIBLE;
+        if (searchPreviewButton != null) {
+            searchPreviewButton.setVisibility(visibility);
         }
-        searchPreviewButton.setVisibility(isImpressDocument ? View.GONE : View.VISIBLE);
+        if (searchEditButton != null) {
+            searchEditButton.setVisibility(visibility);
+        }
     }
 
     public void refreshOpenDocumentCount() {
