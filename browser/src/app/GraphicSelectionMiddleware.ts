@@ -27,6 +27,33 @@ class GraphicSelection {
 		return this.rectangle !== null;
 	}
 
+	/** View-pixel CSS anchor. Does not pass core pixels through _twipsToPixels. */
+	private static iosGraphicAnchorCss(rect: cool.SimpleRectangle): {
+		anchorX: number;
+		anchorY: number;
+		anchorBottomY: number;
+	} {
+		const layout = app.activeDocument && app.activeDocument.activeLayout;
+		const viewed = layout && layout.viewedRectangle;
+		const docAnchor =
+			app.sectionContainer && app.sectionContainer.getDocumentAnchor
+				? app.sectionContainer.getDocumentAnchor()
+				: [0, 0];
+		const originX = viewed ? viewed.pX1 - (docAnchor[0] || 0) : 0;
+		const originY = viewed ? viewed.pY1 - (docAnchor[1] || 0) : 0;
+		const canvasRect = app.sectionContainer.getCanvasBoundingClientRect();
+		const scale = app.dpiScale || 1;
+		const left = (rect.pX1 - originX) / scale + canvasRect.x;
+		const right = (rect.pX2 - originX) / scale + canvasRect.x;
+		const top = (rect.pY1 - originY) / scale + canvasRect.y;
+		const bottom = (rect.pY2 - originY) / scale + canvasRect.y;
+		return {
+			anchorX: Math.round((left + right) / 2),
+			anchorY: Math.round(top),
+			anchorBottomY: Math.round(bottom),
+		};
+	}
+
 	public static onUpdatePermission() {
 		this.rectangle = null;
 		this.updateGraphicSelection();
@@ -254,20 +281,19 @@ class GraphicSelection {
 					Math.round(cssBottomY * scale)
 				);
 			} else if (window.ThisIsTheiOSApp && typeof MobileSelectionEvents !== 'undefined') {
-				const cx = (rect.pX1 + rect.pX2) / 2;
-				const cy = (rect.pY1 + rect.pY2) / 2;
-				const pixelPt = app.map._docLayer._twipsToPixels(new cool.SimplePoint(cx, cy));
-				const iosCssX = pixelPt.x / scale + canvasRect.x;
-				const iosCssY = pixelPt.y / scale + canvasRect.y;
-				MobileSelectionEvents.broadcastShow(
-					{
-						anchorX: Math.round(iosCssX),
-						anchorY: Math.round(iosCssY),
-						anchorBottomY: Math.round(iosCssY),
-					},
-					'',
-					'graphic',
-				);
+				// iOS anchors from view pixels. Hide the menu while the keyboard is open.
+				if (
+					typeof MobileSelectionMenu !== 'undefined' &&
+					MobileSelectionMenu.iosKeyboardOpen()
+				) {
+					MobileSelectionEvents.broadcastHide();
+				} else {
+					MobileSelectionEvents.broadcastShow(
+						GraphicSelection.iosGraphicAnchorCss(rect),
+						'',
+						'graphic',
+					);
+				}
 			}
 		} else if (
 			this.handlesSection &&
