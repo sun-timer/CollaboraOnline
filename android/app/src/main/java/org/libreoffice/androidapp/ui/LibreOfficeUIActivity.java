@@ -1592,6 +1592,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         if (requestCode == CREATE_SPREADSHEET_REQUEST_CODE) {
             i.putExtra(LOActivity.EXTRA_AUTO_IS_CALC_NEW_TABLE, true);
         }
+        if (requestCode == CREATE_PRESENTATION_REQUEST_CODE) {
+            i.putExtra(LOActivity.EXTRA_AUTO_IS_IMPRESS_GENERATE, true);
+        }
         startActivityForResult(i, LO_ACTIVITY_REQUEST_CODE);
     }
 
@@ -1639,6 +1642,8 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             aiPromptInput.setVisibility(aiSwitchChecked[0] ? View.VISIBLE : View.GONE);
             if (aiSwitchChecked[0] && requestCode == CREATE_SPREADSHEET_REQUEST_CODE) {
                 aiPromptInput.setHint("描述你想生成的表格内容，例如：2024年各季度销售数据表");
+            } else if (aiSwitchChecked[0] && requestCode == CREATE_PRESENTATION_REQUEST_CODE) {
+                aiPromptInput.setHint("描述你想生成的演示内容，例如：人工智能赋能课堂");
             } else if (aiSwitchChecked[0]) {
                 aiPromptInput.setHint("描述你想生成的文档内容...");
             }

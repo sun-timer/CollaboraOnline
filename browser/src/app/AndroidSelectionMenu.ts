@@ -15,6 +15,12 @@ class AndroidSelectionMenu {
 	private static selectionStartTwips: { x: number; y: number } | null = null;
 	/** True once core acknowledges `selecttext start` during the current gesture. */
 	private static selectionStartAcknowledged = false;
+	/**
+	 * Android long-press selects a few characters at the press point instead of
+	 * extending `selecttext start` from the previous caret.
+	 */
+	private static localCharacterSelection = false;
+	private static readonly localLongPressCharCount = 2;
 	private static readonly minSelectionSpanTwips = 80;
 	private static tryShowRetryTimer = 0;
 	private static readonly tryShowRetryDelayMs = 100;
@@ -174,6 +180,7 @@ class AndroidSelectionMenu {
 		AndroidSelectionMenu.nativeSelectionDragActive = false;
 		AndroidSelectionMenu.selectionStartTwips = null;
 		AndroidSelectionMenu.selectionStartAcknowledged = false;
+		AndroidSelectionMenu.localCharacterSelection = false;
 		AndroidSelectionMenu.lastDragSelectionUpdateAt = 0;
 		AndroidSelectionMenu.clearTryShowRetry();
 		AndroidSelectionMenu.hide();
@@ -225,17 +232,55 @@ class AndroidSelectionMenu {
 
 	/**
 	 * Select word at document twips via selecttext start.
-	 * Shared by long-press and double-tap. Do NOT send selecttext reset here —
+	 * Double-tap only. Do NOT send selecttext reset here —
 	 * LOK reset collapses the caret to document start.
 	 */
 	private static selectWordAtTwips(pos: { x: number; y: number }): void {
 		AndroidSelectionMenu.lastSelectionStartAt = Date.now();
 		AndroidSelectionMenu.selectionStartTwips = { x: pos.x, y: pos.y };
 		AndroidSelectionMenu.selectionStartAcknowledged = false;
+		AndroidSelectionMenu.localCharacterSelection = false;
 		AndroidSelectionMenu.debugLog(
 			'word_select twips=' + pos.x + ',' + pos.y,
 		);
 		app.map._docLayer._postSelectTextEvent('start', pos.x, pos.y);
+	}
+
+	/**
+	 * Place the caret on the pressed character, step one character left, then
+	 * select `localLongPressCharCount` characters. `selecttext start` would
+	 * instead select from the previous caret to this point (tablet log:
+	 * stationary long-press, dragged=false, chars=10..87).
+	 * Goes through the socket directly: sendUnoCommand drops these in preview.
+	 */
+	private static selectLocalCharactersAtTwips(pos: { x: number; y: number }): void {
+		const layer = app.map && app.map._docLayer;
+		if (!layer || typeof layer._postMouseEvent !== 'function') {
+			AndroidSelectionMenu.cancelGesture();
+			return;
+		}
+		AndroidSelectionMenu.lastSelectionStartAt = Date.now();
+		AndroidSelectionMenu.selectionStartTwips = { x: pos.x, y: pos.y };
+		AndroidSelectionMenu.selectionStartAcknowledged = false;
+		AndroidSelectionMenu.localCharacterSelection = true;
+		AndroidSelectionMenu.debugLog(
+			'local_select twips=' + pos.x + ',' + pos.y +
+				' chars=' + AndroidSelectionMenu.localLongPressCharCount,
+		);
+		layer._postMouseEvent('buttondown', pos.x, pos.y, 1, 1, 0);
+		layer._postMouseEvent('buttonup', pos.x, pos.y, 1, 1, 0);
+		AndroidSelectionMenu.sendSelectionUno('.uno:GoLeft');
+		for (let i = 0; i < AndroidSelectionMenu.localLongPressCharCount; i++) {
+			AndroidSelectionMenu.sendSelectionUno('.uno:CharRightSel');
+		}
+	}
+
+	private static sendSelectionUno(command: string): void {
+		if (!app.socket || typeof app.socket.sendMessage !== 'function') {
+			return;
+		}
+		AndroidSelectionMenu.debugLog('uno ' + command);
+		app.socket.sendMessage('uno ' + command);
 	}
 
 	private static prepareWordSelectionGesture(): void {
@@ -250,7 +295,7 @@ class AndroidSelectionMenu {
 		AndroidSelectionMenu.pendingLongPressSelection = true;
 	}
 
-	/** Long-press: selecttext start at press point (word select); end on drag/up. */
+	/** Long-press: a few characters at the press point; drag still extends the end. */
 	static startTextSelectionAt(viewX: number, viewY: number): void {
 		const pos = AndroidSelectionMenu.viewPointToDocumentTwips(viewX, viewY);
 		if (!pos) {
@@ -258,6 +303,10 @@ class AndroidSelectionMenu {
 			return;
 		}
 
+		if (AndroidSelectionMenu.isAndroid()) {
+			AndroidSelectionMenu.selectLocalCharactersAtTwips(pos);
+			return;
+		}
 		AndroidSelectionMenu.selectWordAtTwips(pos);
 	}
 
@@ -330,6 +379,11 @@ class AndroidSelectionMenu {
 			if (!force) {
 				return;
 			}
+			// Local long-press already queued a caret click plus character
+			// steps. selecttext start here selects from the old caret.
+			if (AndroidSelectionMenu.localCharacterSelection) {
+				return;
+			}
 			const anchor = AndroidSelectionMenu.selectionStartTwips;
 			if (!anchor) {
 				return;
@@ -388,9 +442,9 @@ class AndroidSelectionMenu {
 				if (dragged) {
 					AndroidSelectionMenu.updateTextSelectionEndAt(viewX, viewY, true);
 				}
-				// Stationary long-press: `selecttext start` already word-selected at the
-				// anchor; do not re-send `end` at the same point — it can make core
-				// collapse the selection to a caret (selection flash-away).
+				// Stationary long-press already selected the characters at the
+				// anchor. Do not re-send `end` at the same point — it can make
+				// core collapse the selection to a caret.
 				AndroidSelectionMenu.debugLog(
 					'finish start=' + (start ? start.x + ',' + start.y : 'null') +
 						' end=' + endTwips.x + ',' + endTwips.y +

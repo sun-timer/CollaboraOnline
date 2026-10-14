@@ -39,6 +39,10 @@
                                                 <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/lolib_ic_toolbar_insert_image" android:contentDescription="插入图片"/>
                                                 <TextView android:textSize="14sp" android:textColor="#202124" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="插入图片"/>
                                         </LinearLayout>
+                                        <LinearLayout android:gravity="center" android:orientation="vertical" android:id="@+id/toolbar_item_slideshow" android:focusable="true" android:visibility="gone" android:clickable="true" android:layout_width="120dp" android:layout_height="match_parent">
+                                                <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/lolib_ic_toolbar_slideshow" android:contentDescription="幻灯片播放"/>
+                                                <TextView android:textSize="14sp" android:textColor="#202124" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="幻灯片播放"/>
+                                        </LinearLayout>
                                         <LinearLayout android:gravity="center" android:orientation="vertical" android:id="@+id/toolbar_item_fill_cell" android:focusable="true" android:visibility="gone" android:clickable="true" android:layout_width="108dp" android:layout_height="match_parent">
                                                 <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/lolib_ic_toolbar_fill_cell" android:contentDescription="填充单元格"/>
                                                 <TextView android:textSize="14sp" android:textColor="#202124" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="填充单元格"/>

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:id="@+id/selection_popup_root" android:background="@drawable/lolib_bg_selection_popup" android:padding="8dp" android:clickable="true" android:layout_width="match_parent" android:layout_height="wrap_content" android:elevation="8dp">
-        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@+id/selection_basic_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="56dp">
+        <HorizontalScrollView android:id="@+id/selection_basic_scroll" android:scrollbars="none" android:layout_width="match_parent" android:layout_height="wrap_content" android:fillViewport="true" android:overScrollMode="ifContentScrolls">
+        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@+id/selection_basic_row" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="56dp">
                 <LinearLayout android:id="@+id/selection_op_copy" style="@style/SelectionPopupButtonWeighted">
                         <ImageView android:src="@drawable/lolib_ic_selection_copy" style="@style/SelectionPopupButtonIcon"/>
                         <TextView android:text="复制" style="@style/SelectionPopupButtonText"/>
@@ -34,6 +35,7 @@
                         <TextView android:text="翻译" style="@style/SelectionPopupButtonText"/>
                 </LinearLayout>
         </LinearLayout>
+        </HorizontalScrollView>
         <View android:id="@+id/selection_divider_1" android:background="@drawable/lolib_bg_selection_popup_row_divider" android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="2dp"/>
         <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:id="@+id/selection_ai_row_1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:minHeight="60dp">
                 <LinearLayout android:id="@+id/selection_op_outline" style="@style/SelectionPopupButtonWeighted">

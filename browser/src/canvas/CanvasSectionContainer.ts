@@ -660,7 +660,15 @@ class CanvasSectionContainer {
 		);
 		const point = cool.SimplePoint.fromCorePixels(sectionPos);
 
+		// Match MouseControl.onClick: the section point has no scroll, so add
+		// viewedRectangle before the postCoreMouseEvent adjustment. Skipping
+		// that add drops the page-centering offset. Tablet log 2026-10-13:
+		// tap view 2182,522 → mouse twips 9418,2836, long-press view 2205,629
+		// → selecttext twips 12013,3419 (same Y scale, X +2595 twips) and a
+		// stationary long-press selected 87 characters.
 		let documentPoint = point.clone();
+		documentPoint.pX += app.activeDocument.activeLayout.viewedRectangle.pX1;
+		documentPoint.pY += app.activeDocument.activeLayout.viewedRectangle.pY1;
 		documentPoint.pX +=
 			-app.activeDocument.activeLayout.viewedRectangle.pX1 +
 			this.getDocumentAnchor()[0];

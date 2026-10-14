@@ -44,6 +44,9 @@ public class BottomToolbarController {
             R.id.toolbar_item_fill_cell,
             R.id.toolbar_item_merge_cell
     };
+    private static final int[] EDIT_MODE_IMPRESS_ONLY_TOOLBAR_ITEM_IDS = new int[] {
+            R.id.toolbar_item_slideshow
+    };
     private static final int[] TOOLBAR_ITEM_DISPLAY_ORDER = new int[] {
             R.id.toolbar_item_mobile_preview,
             R.id.toolbar_item_function,
@@ -53,6 +56,7 @@ public class BottomToolbarController {
             R.id.toolbar_item_character,
             R.id.toolbar_item_paragraph,
             R.id.toolbar_item_insert_image,
+            R.id.toolbar_item_slideshow,
             R.id.toolbar_item_fill_cell,
             R.id.toolbar_item_merge_cell
     };
@@ -115,6 +119,8 @@ public class BottomToolbarController {
         void focusDocumentAndShowIme();
 
         void openLocalImagePickerFromWeb();
+
+        void startSlideShow();
 
         void executeUnoCommand(String command);
 
@@ -186,6 +192,11 @@ public class BottomToolbarController {
         bindToolbarClick(R.id.toolbar_item_insert_image, v -> {
             hideQuickActionPanel();
             host.openLocalImagePickerFromWeb();
+        });
+        bindToolbarClick(R.id.toolbar_item_slideshow, v -> {
+            hideQuickActionPanel();
+            Log.i(TAG, "bottom_toolbar_slideshow");
+            host.startSlideShow();
         });
         bindToolbarClick(R.id.toolbar_item_fill_cell, v -> {
             hideQuickActionPanel();
@@ -365,6 +376,7 @@ public class BottomToolbarController {
         setBottomToolbarItemsVisible(EDIT_MODE_COMMON_TOOLBAR_ITEM_IDS, isEditMode);
         setBottomToolbarItemsVisible(EDIT_MODE_WRITER_ONLY_TOOLBAR_ITEM_IDS, isEditMode && !isCalcDocument);
         setBottomToolbarItemsVisible(EDIT_MODE_CALC_ONLY_TOOLBAR_ITEM_IDS, isEditMode && isCalcDocument);
+        setBottomToolbarItemsVisible(EDIT_MODE_IMPRESS_ONLY_TOOLBAR_ITEM_IDS, isEditMode && isImpressDocument);
         applyBottomToolbarItemsAlignment(isEditMode);
         updateMobilePreviewToolbarItem(isEditMode);
         if (!isEditMode) {
