@@ -94,8 +94,41 @@ class SheetsBar {
 
 		this.parentContainer.replaceChildren();
 		this.builder.build(this.parentContainer, data);
-		
+		this.bindInsertSheetButton();
 		this.updateSheetListMenu();
+	}
+
+	bindInsertSheetButton() {
+		var plus = this.parentContainer.querySelector('#insertsheet');
+		if (!plus || plus.dataset.insertBound === '1') {
+			return;
+		}
+		plus.dataset.insertBound = '1';
+		// 捕获阶段截住点击。否则会冒泡成 toolbox 回调，core 把 insertsheet 当成未知控件弹出菜单。
+		plus.addEventListener('click', (ev) => {
+			ev.preventDefault();
+			ev.stopPropagation();
+			if (plus.hasAttribute('disabled')) {
+				return;
+			}
+			this.insertSheetAtEnd();
+		}, true);
+	}
+
+	insertSheetAtEnd() {
+		var docLayer = this.map && this.map._docLayer;
+		var nPos = docLayer && typeof docLayer._parts === 'number'
+			? docLayer._parts
+			: (typeof this.parts === 'number' ? this.parts : 0);
+		this.map.insertPage.scrollToEnd = true;
+		if (docLayer && docLayer._sheetSwitch) {
+			this.map.insertPage(nPos);
+			return;
+		}
+		if (window.app && app.socket && typeof app.socket.sendMessage === 'function') {
+			var cmd = {Name: {type: 'string', value: ''}, Index: {type: 'long', value: nPos + 1}};
+			app.socket.sendMessage('uno .uno:Insert ' + JSON.stringify(cmd));
+		}
 	}
 
 	onDocLayerInit() {
@@ -163,14 +196,10 @@ class SheetsBar {
 			}
 			return;
 		}
-		if (object.id === 'insertsheet' && eventType === 'click') {
-			// 加号新增工作表：直接发 .uno:Insert（不走 dialogevent，core 不认识 insertsheet 控件；
-			// 也不走 map.insertPage，其依赖 _docLayer._sheetSwitch，Android 可能缺失）
-			if (window.app && app.socket && typeof app.socket.sendMessage === 'function') {
-				var totalParts = this.map && this.map._docLayer && this.map._docLayer._parts !== undefined
-					? this.map._docLayer._parts : (this.parts !== undefined ? this.parts : 0);
-				var cmd = {Name: {type: 'string', value: ''}, Index: {type: 'long', value: totalParts + 1}};
-				app.socket.sendMessage('uno .uno:Insert ' + JSON.stringify(cmd));
+		// toolbox 回调里 object 是工具条容器，命令在 data 里，不能只看 object.id。
+		if ((object && object.id === 'insertsheet') || data === 'insertsheet') {
+			if (eventType === 'click') {
+				this.insertSheetAtEnd();
 			}
 			return;
 		}

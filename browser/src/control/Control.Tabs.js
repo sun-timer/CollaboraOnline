@@ -226,31 +226,15 @@ window.L.Control.Tabs = window.L.Control.extend({
 							.on('press', function (j) {
 								return function(pressEv) {
 									this._tabForContextMenu = j;
+									if (window.mode.isMobile() && this._usesNativeSheetTabPopup()) {
+										// 预览（只读）也要弹出。改名/复制/删除由原生端先进入编辑再执行。
+										this._showMobileSheetTabPopup(j, pressEv, sheetPartNames);
+										return;
+									}
 									if (!this._map.isReadOnlyMode()) {
 										if (window.mode.isMobile()) {
-											if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {
-												var pressedTab = window.L.DomUtil.get('spreadsheet-tab' + j);
-												var tabEl = pressedTab;
-												if (pressEv && pressEv.target && pressEv.target.closest) {
-													tabEl = pressEv.target.closest('.spreadsheet-tab') || pressedTab;
-												}
-												var rect = tabEl ? tabEl.getBoundingClientRect() : null;
-												var sheetName = sheetPartNames && sheetPartNames[j] ? sheetPartNames[j] : label.textContent;
-												var isProtected = tabEl && window.L.DomUtil.hasClass(tabEl, 'spreadsheet-tab-protected');
-												var canDelete = app.calc.getVisiblePartCount() !== 1;
-												window.postMobileMessage('SHEET_TAB_POPUP show ' + JSON.stringify({
-													tabIndex: j,
-													sheetName: sheetName,
-													isProtected: isProtected,
-													canDelete: canDelete,
-													anchorX: rect ? rect.left + rect.width * 0.5 : 0,
-													anchorY: rect ? rect.top : 0,
-													anchorBottom: rect ? rect.bottom : 0
-												}));
-											} else {
-												window.contextMenuWizard = true;
-												this._map.fire('mobilewizard', {data: menuData});
-											}
+											window.contextMenuWizard = true;
+											this._map.fire('mobilewizard', {data: menuData});
 										} else {
 											$(e.target).trigger('contextmenu');
 										}
@@ -263,6 +247,16 @@ window.L.Control.Tabs = window.L.Control.extend({
 						horizScrollPos = tab.offsetLeft;
 					}
 
+					if (window.mode.isMobile() && (window.ThisIsTheiOSApp || window.ThisIsTheAndroidApp)) {
+						window.L.DomEvent.on(tab, 'contextmenu', function(j) {
+							return function(ev) {
+								if (ev && ev.preventDefault) {
+									ev.preventDefault();
+								}
+								this._showMobileSheetTabPopup(j, ev, sheetPartNames);
+							};
+						}(i).bind(this));
+					}
 					if (!window.mode.isMobile()) {
 						window.L.DomEvent.on(tab, 'dblclick', function(j) {
 							return function() {
@@ -386,23 +380,48 @@ window.L.Control.Tabs = window.L.Control.extend({
 		if (part !== this._map._docLayer._selectedPart) {
 			this._setPartIndex(part);
 		}
-		else if (window.ThisIsTheAndroidApp && window.mode.isMobile()) {
-			// 点击当前选中的工作表 tab → 弹出重命名/复制菜单
-			var tabEl = e.currentTarget;
-			var rect = tabEl.getBoundingClientRect();
-			var sheetName = tabEl.textContent || ('Sheet ' + (part + 1));
-			var isProtected = window.L.DomUtil.hasClass(tabEl, 'spreadsheet-tab-protected');
-			var canDelete = app.calc.getVisiblePartCount() !== 1;
-			window.postMobileMessage('SHEET_TAB_POPUP show ' + JSON.stringify({
-				tabIndex: part,
-				sheetName: sheetName,
-				isProtected: isProtected,
-				canDelete: canDelete,
-				anchorX: rect ? rect.left + rect.width * 0.5 : 0,
-				anchorY: rect ? rect.top : 0,
-				anchorBottom: rect ? rect.bottom : 0
-			}));
+		else if (window.mode.isMobile() && this._usesNativeSheetTabPopup()) {
+			this._showMobileSheetTabPopup(part, e, null);
 		}
+	},
+
+	_usesNativeSheetTabPopup: function() {
+		return (window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp)
+			&& typeof window.postMobileMessage === 'function';
+	},
+
+	_showMobileSheetTabPopup: function(tabIndex, ev, partNames) {
+		if (!this._usesNativeSheetTabPopup()) {
+			return;
+		}
+		var now = Date.now();
+		if (this._sheetPopupAt && now - this._sheetPopupAt < 400 && this._sheetPopupIndex === tabIndex) {
+			return;
+		}
+		this._sheetPopupAt = now;
+		this._sheetPopupIndex = tabIndex;
+		this._tabForContextMenu = tabIndex;
+		var pressedTab = window.L.DomUtil.get('spreadsheet-tab' + tabIndex);
+		var tabEl = pressedTab;
+		var target = ev && (ev.currentTarget || ev.target);
+		if (target && target.closest) {
+			tabEl = target.closest('.spreadsheet-tab') || pressedTab;
+		}
+		var rect = tabEl ? tabEl.getBoundingClientRect() : null;
+		var sheetName = partNames && partNames[tabIndex]
+			? partNames[tabIndex]
+			: (tabEl && tabEl.textContent ? tabEl.textContent : '');
+		var isProtected = tabEl && window.L.DomUtil.hasClass(tabEl, 'spreadsheet-tab-protected');
+		var canDelete = app.calc.getVisiblePartCount() !== 1;
+		window.postMobileMessage('SHEET_TAB_POPUP show ' + JSON.stringify({
+			tabIndex: tabIndex,
+			sheetName: sheetName,
+			isProtected: !!isProtected,
+			canDelete: canDelete,
+			anchorX: rect ? rect.left + rect.width * 0.5 : 0,
+			anchorY: rect ? rect.top : 0,
+			anchorBottom: rect ? rect.bottom : 0
+		}));
 	},
 
 	//selected sheet is moved to new index
