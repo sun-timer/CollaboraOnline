@@ -27,8 +27,8 @@ import java.util.WeakHashMap;
  */
 public final class BottomSheetAnchorHelper {
     private static final String TAG = "BottomSheetAnchor";
-    /** Figma 750×1624：功能面板统一高度 1066px ≈ 65.6% 屏高。 */
-    public static final float FUNCTION_PANEL_HEIGHT_RATIO = 1066f / 1624f;
+    /** Edit-mode 功能 sheet cap. Shorter tabs stay content-sized; 常用 stops at half the screen. */
+    public static final float FUNCTION_PANEL_HEIGHT_RATIO = 0.5f;
     /** Figma 125:12715 预览态功能弹窗 696px ≈ 42.9% 屏高（内容自适应，此为上限）。 */
     public static final float PREVIEW_FUNCTION_PANEL_HEIGHT_RATIO = 696f / 1624f;
 

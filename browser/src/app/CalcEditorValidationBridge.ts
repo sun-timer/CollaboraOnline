@@ -1,17 +1,105 @@
 /*
  * Intercept ValidationDialog on iOS Calc panel; read/write via dialogevent (Android parity).
+ * Macro catalog harvest intercepts MacroSelectorDialog only while a browse is pending.
  */
+
+interface CalcEditorMacroItem {
+	documentScope: boolean;
+	scopeLabel: string;
+	library: string;
+	module: string;
+	name: string;
+	uri: string;
+	description: string;
+}
+
+interface CalcMacroHarvestScope {
+	row: number;
+	documentScope: boolean;
+}
+
+interface CalcMacroHarvestNode {
+	row: number;
+	name: string;
+}
+
+type CalcMacroHarvestStage = 'idle' | 'scope' | 'library' | 'select';
 
 class CalcEditorValidationBridge {
 	private static pendingRead: CalcEditorValidationState | null = null;
 	private static pendingReadCallback: (() => void) | null = null;
 	private static pendingWrite: CalcEditorValidationState | null = null;
 
+	private static harvestActive = false;
+	private static harvestWindowId = -1;
+	private static harvestStartedAt = 0;
+	private static harvestTimer = 0;
+	private static harvestCallbacks: Array<(items: CalcEditorMacroItem[]) => void> = [];
+	private static harvestItems: CalcEditorMacroItem[] = [];
+	private static harvestUris = new Set<string>();
+	private static harvestStage: CalcMacroHarvestStage = 'idle';
+	private static harvestScopes: CalcMacroHarvestScope[] = [];
+	private static harvestScopeIndex = 0;
+	private static harvestLibraries: CalcMacroHarvestNode[] = [];
+	private static harvestLibraryIndex = 0;
+	private static harvestModules: CalcMacroHarvestNode[] = [];
+	private static harvestModuleIndex = 0;
+	private static harvestSelectingModule = false;
+	private static harvestCategoryEntries: any[] = [];
+
 	static isPending(): boolean {
 		return (
 			CalcEditorValidationBridge.pendingRead !== null ||
 			CalcEditorValidationBridge.pendingWrite !== null
 		);
+	}
+
+	static isHarvestPending(): boolean {
+		return CalcEditorValidationBridge.harvestActive;
+	}
+
+	/** Enumerate real macros via .uno:RunMacro without showing the Collabora wizard. */
+	static loadMacroCatalog(
+		sendUno: (command: string) => void,
+		onLoaded: (items: CalcEditorMacroItem[]) => void,
+	): void {
+		CalcEditorValidationBridge.harvestCallbacks.push(onLoaded);
+		if (CalcEditorValidationBridge.harvestActive) {
+			return;
+		}
+		CalcEditorValidationBridge.harvestActive = true;
+		CalcEditorValidationBridge.harvestWindowId = -1;
+		CalcEditorValidationBridge.harvestStartedAt = Date.now();
+		CalcEditorValidationBridge.harvestItems = [];
+		CalcEditorValidationBridge.harvestUris = new Set<string>();
+		CalcEditorValidationBridge.harvestStage = 'idle';
+		CalcEditorValidationBridge.harvestScopes = [];
+		CalcEditorValidationBridge.harvestScopeIndex = 0;
+		CalcEditorValidationBridge.harvestLibraries = [];
+		CalcEditorValidationBridge.harvestLibraryIndex = 0;
+		CalcEditorValidationBridge.harvestModules = [];
+		CalcEditorValidationBridge.harvestModuleIndex = 0;
+		CalcEditorValidationBridge.harvestSelectingModule = false;
+		CalcEditorValidationBridge.harvestCategoryEntries = [];
+		CalcEditorValidationBridge.armHarvestTimer();
+		sendUno('.uno:RunMacro');
+	}
+
+	static handleMacroPayload(payload: NativeDialogPayload): void {
+		if (!CalcEditorValidationBridge.harvestActive) {
+			return;
+		}
+		if (payload.action === 'dismiss') {
+			CalcEditorValidationBridge.finishHarvest(false);
+			return;
+		}
+		if (payload.action === 'show') {
+			CalcEditorValidationBridge.onMacroShow(payload);
+			return;
+		}
+		if (payload.action === 'update') {
+			CalcEditorValidationBridge.onMacroUpdate(payload);
+		}
 	}
 
 	static loadCurrent(
@@ -273,5 +361,462 @@ class CalcEditorValidationBridge {
 			String(responseCode),
 			'responsebutton',
 		);
+	}
+
+	private static armHarvestTimer(): void {
+		if (CalcEditorValidationBridge.harvestTimer) {
+			window.clearTimeout(CalcEditorValidationBridge.harvestTimer);
+		}
+		CalcEditorValidationBridge.harvestTimer = window.setTimeout(() => {
+			CalcEditorValidationBridge.harvestTimer = 0;
+			if (!CalcEditorValidationBridge.harvestActive) {
+				return;
+			}
+			if (CalcEditorValidationBridge.harvestWindowId >= 0) {
+				CalcEditorValidationBridge.finishHarvest(true);
+				return;
+			}
+			if (Date.now() - CalcEditorValidationBridge.harvestStartedAt < 20000) {
+				CalcEditorValidationBridge.armHarvestTimer();
+				return;
+			}
+			CalcEditorValidationBridge.finishHarvest(false);
+		}, 8000);
+	}
+
+	private static onMacroShow(payload: NativeDialogPayload): void {
+		CalcEditorValidationBridge.harvestWindowId = payload.windowId;
+		const categories = CalcEditorValidationBridge.findControl(
+			payload.controls || [],
+			'categories',
+		);
+		const entries = CalcEditorValidationBridge.controlEntries(categories);
+		CalcEditorValidationBridge.harvestCategoryEntries = entries;
+		CalcEditorValidationBridge.harvestScopes =
+			CalcEditorValidationBridge.collectScopes(entries);
+		if (!CalcEditorValidationBridge.harvestScopes.length) {
+			CalcEditorValidationBridge.finishHarvest(true);
+			return;
+		}
+		const documentIndex = CalcEditorValidationBridge.harvestScopes.findIndex(
+			(scope) => scope.documentScope,
+		);
+		if (documentIndex > 0) {
+			const documentScope = CalcEditorValidationBridge.harvestScopes.splice(
+				documentIndex,
+				1,
+			)[0];
+			CalcEditorValidationBridge.harvestScopes.unshift(documentScope);
+		}
+		CalcEditorValidationBridge.harvestScopeIndex = 0;
+		CalcEditorValidationBridge.beginScope();
+	}
+
+	private static onMacroUpdate(payload: NativeDialogPayload): void {
+		const control = (payload.controls || [])[0];
+		if (!control) {
+			return;
+		}
+		if (control.id === 'categories') {
+			CalcEditorValidationBridge.handleCategoriesUpdate(control);
+			return;
+		}
+		if (control.id === 'commands') {
+			CalcEditorValidationBridge.handleCommandsUpdate(control);
+		}
+	}
+
+	private static handleCategoriesUpdate(control: NativeDialogControl): void {
+		const entries = CalcEditorValidationBridge.controlEntries(control);
+		if (entries.length) {
+			CalcEditorValidationBridge.harvestCategoryEntries = entries;
+		}
+		if (CalcEditorValidationBridge.harvestStage === 'scope') {
+			const scope =
+				CalcEditorValidationBridge.harvestScopes[
+					CalcEditorValidationBridge.harvestScopeIndex
+				];
+			const root = scope
+				? CalcEditorValidationBridge.findTreeNode(entries, scope.row)
+				: null;
+			const children =
+				root && Array.isArray(root.children) && root.children.length
+					? root.children
+					: CalcEditorValidationBridge.nonScopeEntries(entries);
+			CalcEditorValidationBridge.harvestLibraries =
+				CalcEditorValidationBridge.toNodes(children);
+			CalcEditorValidationBridge.harvestLibraryIndex = 0;
+			CalcEditorValidationBridge.beginLibrary();
+			return;
+		}
+		if (CalcEditorValidationBridge.harvestStage === 'library') {
+			const library =
+				CalcEditorValidationBridge.harvestLibraries[
+					CalcEditorValidationBridge.harvestLibraryIndex
+				];
+			const node = library
+				? CalcEditorValidationBridge.findTreeNode(entries, library.row)
+				: null;
+			let children: any[] = [];
+			if (node && Array.isArray(node.children)) {
+				children = node.children;
+			} else if (library && !node) {
+				children = entries.filter(
+					(entry) => CalcEditorValidationBridge.entryRow(entry) !== library.row,
+				);
+			}
+			CalcEditorValidationBridge.harvestModules =
+				CalcEditorValidationBridge.toNodes(children);
+			CalcEditorValidationBridge.harvestModuleIndex = 0;
+			CalcEditorValidationBridge.selectCurrentMacroNode();
+		}
+	}
+
+	private static handleCommandsUpdate(control: NativeDialogControl): void {
+		if (CalcEditorValidationBridge.harvestStage !== 'select') {
+			return;
+		}
+		const scope =
+			CalcEditorValidationBridge.harvestScopes[
+				CalcEditorValidationBridge.harvestScopeIndex
+			];
+		const library =
+			CalcEditorValidationBridge.harvestLibraries[
+				CalcEditorValidationBridge.harvestLibraryIndex
+			];
+		if (!scope || !library) {
+			CalcEditorValidationBridge.advanceAfterCommands();
+			return;
+		}
+		const moduleName = CalcEditorValidationBridge.harvestSelectingModule
+			? CalcEditorValidationBridge.harvestModules[
+					CalcEditorValidationBridge.harvestModuleIndex
+				]?.name || ''
+			: '';
+		const scopeLabel = scope.documentScope ? '我的宏' : '应用程序的宏';
+		for (const entry of CalcEditorValidationBridge.controlEntries(control)) {
+			const name = CalcEditorValidationBridge.entryText(entry);
+			if (!name || name === '<dummy>') {
+				continue;
+			}
+			const uri = CalcEditorValidationBridge.buildMacroUri(
+				library.name,
+				moduleName,
+				name,
+				scope.documentScope,
+			);
+			if (CalcEditorValidationBridge.harvestUris.has(uri)) {
+				continue;
+			}
+			CalcEditorValidationBridge.harvestUris.add(uri);
+			CalcEditorValidationBridge.harvestItems.push({
+				documentScope: scope.documentScope,
+				scopeLabel: scopeLabel,
+				library: library.name,
+				module: moduleName,
+				name: name,
+				uri: uri,
+				description: CalcEditorValidationBridge.entryDescription(entry),
+			});
+		}
+		CalcEditorValidationBridge.advanceAfterCommands();
+	}
+
+	private static beginScope(): void {
+		const scope =
+			CalcEditorValidationBridge.harvestScopes[
+				CalcEditorValidationBridge.harvestScopeIndex
+			];
+		if (!scope) {
+			CalcEditorValidationBridge.finishHarvest(true);
+			return;
+		}
+		CalcEditorValidationBridge.harvestLibraries = [];
+		CalcEditorValidationBridge.harvestLibraryIndex = 0;
+		CalcEditorValidationBridge.harvestModules = [];
+		CalcEditorValidationBridge.harvestModuleIndex = 0;
+		const root = CalcEditorValidationBridge.findTreeNode(
+			CalcEditorValidationBridge.harvestCategoryEntries,
+			scope.row,
+		);
+		const children =
+			root && Array.isArray(root.children) ? root.children : [];
+		if (children.length) {
+			CalcEditorValidationBridge.harvestLibraries =
+				CalcEditorValidationBridge.toNodes(children);
+			CalcEditorValidationBridge.beginLibrary();
+			return;
+		}
+		CalcEditorValidationBridge.harvestStage = 'scope';
+		CalcEditorValidationBridge.sendTreeViewEvent(
+			CalcEditorValidationBridge.harvestWindowId,
+			'categories',
+			'expand',
+			scope.row,
+		);
+	}
+
+	private static beginLibrary(): void {
+		if (
+			CalcEditorValidationBridge.harvestLibraryIndex >=
+			CalcEditorValidationBridge.harvestLibraries.length
+		) {
+			CalcEditorValidationBridge.advanceScope();
+			return;
+		}
+		const library =
+			CalcEditorValidationBridge.harvestLibraries[
+				CalcEditorValidationBridge.harvestLibraryIndex
+			];
+		CalcEditorValidationBridge.harvestModules = [];
+		CalcEditorValidationBridge.harvestModuleIndex = 0;
+		const node = CalcEditorValidationBridge.findTreeNode(
+			CalcEditorValidationBridge.harvestCategoryEntries,
+			library.row,
+		);
+		const children =
+			node && Array.isArray(node.children) ? node.children : [];
+		if (children.length) {
+			CalcEditorValidationBridge.harvestModules =
+				CalcEditorValidationBridge.toNodes(children);
+			CalcEditorValidationBridge.selectCurrentMacroNode();
+			return;
+		}
+		CalcEditorValidationBridge.harvestStage = 'library';
+		CalcEditorValidationBridge.sendTreeViewEvent(
+			CalcEditorValidationBridge.harvestWindowId,
+			'categories',
+			'expand',
+			library.row,
+		);
+	}
+
+	private static selectCurrentMacroNode(): void {
+		const library =
+			CalcEditorValidationBridge.harvestLibraries[
+				CalcEditorValidationBridge.harvestLibraryIndex
+			];
+		if (!library) {
+			CalcEditorValidationBridge.advanceScope();
+			return;
+		}
+		CalcEditorValidationBridge.harvestSelectingModule =
+			CalcEditorValidationBridge.harvestModules.length > 0 &&
+			CalcEditorValidationBridge.harvestModuleIndex <
+				CalcEditorValidationBridge.harvestModules.length;
+		const row = CalcEditorValidationBridge.harvestSelectingModule
+			? CalcEditorValidationBridge.harvestModules[
+					CalcEditorValidationBridge.harvestModuleIndex
+				].row
+			: library.row;
+		CalcEditorValidationBridge.harvestStage = 'select';
+		CalcEditorValidationBridge.sendTreeViewEvent(
+			CalcEditorValidationBridge.harvestWindowId,
+			'categories',
+			'select',
+			row,
+		);
+	}
+
+	private static advanceAfterCommands(): void {
+		if (CalcEditorValidationBridge.harvestSelectingModule) {
+			CalcEditorValidationBridge.harvestModuleIndex += 1;
+			if (
+				CalcEditorValidationBridge.harvestModuleIndex <
+				CalcEditorValidationBridge.harvestModules.length
+			) {
+				CalcEditorValidationBridge.selectCurrentMacroNode();
+				return;
+			}
+		}
+		CalcEditorValidationBridge.harvestLibraryIndex += 1;
+		CalcEditorValidationBridge.harvestModules = [];
+		CalcEditorValidationBridge.harvestModuleIndex = 0;
+		CalcEditorValidationBridge.beginLibrary();
+	}
+
+	private static advanceScope(): void {
+		CalcEditorValidationBridge.harvestScopeIndex += 1;
+		if (
+			CalcEditorValidationBridge.harvestScopeIndex >=
+			CalcEditorValidationBridge.harvestScopes.length
+		) {
+			CalcEditorValidationBridge.finishHarvest(true);
+			return;
+		}
+		CalcEditorValidationBridge.beginScope();
+	}
+
+	private static finishHarvest(sendCancel: boolean): void {
+		if (!CalcEditorValidationBridge.harvestActive) {
+			return;
+		}
+		CalcEditorValidationBridge.harvestActive = false;
+		CalcEditorValidationBridge.harvestStage = 'idle';
+		if (CalcEditorValidationBridge.harvestTimer) {
+			window.clearTimeout(CalcEditorValidationBridge.harvestTimer);
+			CalcEditorValidationBridge.harvestTimer = 0;
+		}
+		const windowId = CalcEditorValidationBridge.harvestWindowId;
+		if (sendCancel && windowId >= 0) {
+			CalcEditorValidationBridge.sendResponse(windowId, 'cancel', 0);
+		}
+		const items = CalcEditorValidationBridge.harvestItems.slice();
+		const callbacks = CalcEditorValidationBridge.harvestCallbacks.splice(0);
+		callbacks.forEach((callback) => callback(items));
+	}
+
+	private static collectScopes(entries: any[]): CalcMacroHarvestScope[] {
+		const scopes: CalcMacroHarvestScope[] = [];
+		for (const entry of entries) {
+			const text = CalcEditorValidationBridge.entryText(entry);
+			const row = CalcEditorValidationBridge.entryRow(entry);
+			if (row < 0 || !text) {
+				continue;
+			}
+			scopes.push({
+				row: row,
+				documentScope: CalcEditorValidationBridge.isDocumentScopeText(text),
+			});
+		}
+		return scopes;
+	}
+
+	private static nonScopeEntries(entries: any[]): any[] {
+		const scopeRows = new Set(
+			CalcEditorValidationBridge.harvestScopes.map((scope) => scope.row),
+		);
+		return entries.filter((entry) => {
+			const row = CalcEditorValidationBridge.entryRow(entry);
+			return row >= 0 && !scopeRows.has(row) && !!CalcEditorValidationBridge.entryText(entry);
+		});
+	}
+
+	private static toNodes(entries: any[]): CalcMacroHarvestNode[] {
+		const nodes: CalcMacroHarvestNode[] = [];
+		for (const entry of entries) {
+			const row = CalcEditorValidationBridge.entryRow(entry);
+			const name = CalcEditorValidationBridge.entryText(entry);
+			if (row < 0 || !name || name === '<dummy>') {
+				continue;
+			}
+			nodes.push({ row: row, name: name });
+		}
+		return nodes;
+	}
+
+	private static controlEntries(control: NativeDialogControl | undefined): any[] {
+		if (!control || !Array.isArray(control.entries)) {
+			return [];
+		}
+		return control.entries;
+	}
+
+	private static findTreeNode(entries: any[] | undefined, row: number): any | null {
+		if (!entries) {
+			return null;
+		}
+		for (const entry of entries) {
+			if (!entry) {
+				continue;
+			}
+			if (CalcEditorValidationBridge.entryRow(entry) === row) {
+				return entry;
+			}
+			const child = CalcEditorValidationBridge.findTreeNode(entry.children, row);
+			if (child) {
+				return child;
+			}
+		}
+		return null;
+	}
+
+	private static entryRow(entry: any): number {
+		if (!entry || entry.row === undefined || entry.row === null) {
+			return -1;
+		}
+		const row = Number(entry.row);
+		return Number.isFinite(row) ? row : -1;
+	}
+
+	private static entryText(entry: any): string {
+		if (!entry) {
+			return '';
+		}
+		if (typeof entry.text === 'string' && entry.text) {
+			return entry.text;
+		}
+		if (Array.isArray(entry.columns)) {
+			for (const column of entry.columns) {
+				if (column && typeof column.text === 'string' && column.text) {
+					return column.text;
+				}
+			}
+		}
+		return '';
+	}
+
+	private static entryDescription(entry: any): string {
+		if (!entry) {
+			return '';
+		}
+		if (typeof entry.description === 'string') {
+			return entry.description;
+		}
+		if (Array.isArray(entry.columns) && entry.columns.length > 1) {
+			const column = entry.columns[1];
+			if (column && typeof column.text === 'string') {
+				return column.text;
+			}
+		}
+		return '';
+	}
+
+	private static isDocumentScopeText(text: string): boolean {
+		const value = text || '';
+		return (
+			!value.includes('应用程序的宏') &&
+			!value.includes('Application') &&
+			!value.toLowerCase().includes('share')
+		);
+	}
+
+	private static buildMacroUri(
+		library: string,
+		moduleName: string,
+		name: string,
+		documentScope: boolean,
+	): string {
+		const location = documentScope ? 'document' : 'application';
+		let script = library || '';
+		if (moduleName) {
+			script += '.' + moduleName;
+		}
+		script += '.' + name;
+		return (
+			'vnd.sun.star.script:' +
+			script +
+			'?language=Basic&location=' +
+			location
+		);
+	}
+
+	private static sendTreeViewEvent(
+		windowId: number,
+		controlId: string,
+		cmd: string,
+		row: number,
+	): void {
+		const socket = (window as any).app && (window as any).app.socket;
+		if (!socket || typeof socket.sendMessage !== 'function' || windowId < 0) {
+			return;
+		}
+		const body = JSON.stringify({
+			id: controlId,
+			cmd: cmd,
+			data: row,
+			type: 'treeview',
+		});
+		socket.sendMessage('dialogevent ' + windowId + ' ' + body);
 	}
 }

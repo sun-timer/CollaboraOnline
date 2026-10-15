@@ -161,6 +161,13 @@ class AndroidNativeDialogRouter {
 			) {
 				return true;
 			}
+			if (
+				dialogId === 'MacroSelectorDialog' &&
+				typeof CalcEditorValidationBridge !== 'undefined' &&
+				CalcEditorValidationBridge.isHarvestPending()
+			) {
+				return true;
+			}
 			return dialogId === 'WordCountDialog' || dialogId === 'SpellingDialog';
 		}
 		return false;
@@ -179,6 +186,12 @@ class AndroidNativeDialogRouter {
 				typeof CalcEditorValidationBridge !== 'undefined'
 			) {
 				CalcEditorValidationBridge.handlePayload(payload);
+			} else if (
+				dialogId === 'MacroSelectorDialog' &&
+				typeof CalcEditorValidationBridge !== 'undefined' &&
+				CalcEditorValidationBridge.isHarvestPending()
+			) {
+				CalcEditorValidationBridge.handleMacroPayload(payload);
 			}
 			return;
 		}

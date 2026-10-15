@@ -119,6 +119,9 @@ class WriterEditorSheet {
 	}
 
 	close(): void {
+		if (!this.root.isConnected) {
+			return;
+		}
 		this.root.remove();
 		if (this.onClose) {
 			this.onClose();

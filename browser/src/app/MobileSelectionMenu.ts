@@ -85,7 +85,7 @@ class MobileSelectionMenu {
 	/** Called from iOS DocumentViewController keyboardWillChangeFrame. */
 	setKeyboardVisible(visible: boolean): void {
 		this.nativeKeyboardVisible = visible;
-		if (visible && this.menuMode !== 'calc') {
+		if (visible && this.menuMode !== 'calc' && this.menuMode !== 'graphic') {
 			this.hide();
 		}
 	}
@@ -290,10 +290,13 @@ class MobileSelectionMenu {
 		if (!detail || typeof detail.anchorX !== 'number') {
 			return;
 		}
-		// Calc's edit-mode long-press menu is explicitly allowed through by
-		// AndroidCalcCellMenu; do not discard that event just because the cell
-		// editor keyboard is still open. Text selection menus keep the keyboard guard.
-		if (this.keyboardOpen() && detail.mode !== 'calc') {
+		// Calc cell menus and graphic object menus stay up while the keyboard
+		// is open. Text selection menus keep the keyboard guard.
+		if (
+			this.keyboardOpen() &&
+			detail.mode !== 'calc' &&
+			detail.mode !== 'graphic'
+		) {
 			return;
 		}
 		this.hide();
@@ -319,8 +322,6 @@ class MobileSelectionMenu {
 			} else if (docType !== 'text' && docType !== 'presentation') {
 				return;
 			}
-		} else if (this.menuMode === 'graphic' && docType === 'spreadsheet') {
-			return;
 		}
 
 		this.anchorBottomY =

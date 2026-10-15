@@ -449,9 +449,15 @@ class AndroidSelectionMenu {
 		// menu on finger-up, the same moment Writer/Impress show theirs.
 		// Leaving this to the text-selection retry lets an EMPTY textselection
 		// cancel the gesture before the menu appears.
+		// A selected graphic keeps the graphic menu; the cell menu would cover it.
 		if (app.map && app.map.getDocType() === 'spreadsheet') {
 			AndroidSelectionMenu.pendingLongPressSelection = false;
-			AndroidSelectionMenu.showCalcMenuAtPress();
+			const graphicSelected =
+				typeof GraphicSelection !== 'undefined' &&
+				GraphicSelection.hasActiveSelection();
+			if (!graphicSelected) {
+				AndroidSelectionMenu.showCalcMenuAtPress();
+			}
 			return;
 		}
 
@@ -467,6 +473,16 @@ class AndroidSelectionMenu {
 	 */
 	static onLongPressAt(viewX: number, viewY: number): void {
 		if (!AndroidSelectionMenu.isMobileApp() || !AndroidSelectionMenu.isSelectionDoc()) {
+			return;
+		}
+
+		// An already-selected shape/image/chart keeps the graphic menu.
+		// prepareWordSelectionGesture hides it and starts a text selection.
+		if (
+			typeof GraphicSelection !== 'undefined' &&
+			GraphicSelection.hasActiveSelection()
+		) {
+			GraphicSelection.updateGraphicSelection();
 			return;
 		}
 

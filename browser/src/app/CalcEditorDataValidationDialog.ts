@@ -29,7 +29,10 @@ class CalcEditorDataValidationDialog {
 	private rangeExtraSection!: HTMLDivElement;
 	private customExtraSection!: HTMLDivElement;
 	private errorContentSection!: HTMLDivElement;
-	private macroSection!: HTMLDivElement;
+	private macroBrowseButton!: HTMLButtonElement;
+	private macroHint!: HTMLDivElement;
+	private macroPicker: CalcEditorMacroPicker | null = null;
+	private macroDisplayName = '';
 	private valueInput!: HTMLInputElement;
 	private maxInput!: HTMLInputElement;
 	private listInput!: HTMLTextAreaElement;
@@ -38,7 +41,6 @@ class CalcEditorDataValidationDialog {
 	private inputHelpTextInput!: HTMLTextAreaElement;
 	private errorTitleInput!: HTMLInputElement;
 	private errorMessageInput!: HTMLTextAreaElement;
-	private macroUrlInput!: HTMLInputElement;
 
 	constructor(
 		sendUno: (command: string) => void,
@@ -90,6 +92,10 @@ class CalcEditorDataValidationDialog {
 			this.optionPicker.close();
 			this.optionPicker = null;
 		}
+		if (this.macroPicker) {
+			this.macroPicker.close();
+			this.macroPicker = null;
+		}
 		this.subpage.close();
 	}
 
@@ -120,7 +126,6 @@ class CalcEditorDataValidationDialog {
 		this.state.inputHelpText = this.inputHelpTextInput.value;
 		this.state.errorTitle = this.errorTitleInput.value;
 		this.state.errorMessage = this.errorMessageInput.value;
-		this.state.macroUrl = this.macroUrlInput.value;
 	}
 
 	private applyStateToInputs(): void {
@@ -132,7 +137,9 @@ class CalcEditorDataValidationDialog {
 		this.inputHelpTextInput.value = this.state.inputHelpText;
 		this.errorTitleInput.value = this.state.errorTitle;
 		this.errorMessageInput.value = this.state.errorMessage;
-		this.macroUrlInput.value = this.state.macroUrl || this.state.errorTitle;
+		if (!this.macroDisplayName && this.state.macroUrl) {
+			this.macroDisplayName = this.state.macroUrl;
+		}
 	}
 
 	private buildSegmentControl(): HTMLElement {
@@ -274,15 +281,25 @@ class CalcEditorDataValidationDialog {
 		);
 
 		this.errorActionValueEl = document.createElement('span');
-		scroll.appendChild(
-			this.pickerRow('操作', this.errorActionValueEl, () =>
-				this.openOptionPicker('errorAction'),
-			),
+		const actionRow = document.createElement('div');
+		actionRow.className = 'writer-function-calc-validation__action-row';
+		const actionPicker = this.pickerRow('操作', this.errorActionValueEl, () =>
+			this.openOptionPicker('errorAction'),
 		);
+		actionPicker.classList.add('writer-function-calc-validation__action-picker');
+		this.macroBrowseButton = document.createElement('button');
+		this.macroBrowseButton.type = 'button';
+		this.macroBrowseButton.className = 'writer-function-calc-validation__browse';
+		this.macroBrowseButton.textContent = '浏览';
+		this.macroBrowseButton.setAttribute('aria-label', '浏览宏');
+		this.macroBrowseButton.onclick = () => this.openMacroPicker();
+		actionRow.appendChild(actionPicker);
+		actionRow.appendChild(this.macroBrowseButton);
+		scroll.appendChild(actionRow);
 
-		this.macroUrlInput = this.textField('');
-		this.macroSection = this.labeledField('宏', this.macroUrlInput);
-		scroll.appendChild(this.macroSection);
+		this.macroHint = document.createElement('div');
+		this.macroHint.className = 'writer-function-calc-validation__macro-hint';
+		scroll.appendChild(this.macroHint);
 
 		this.errorTitleInput = this.textField('');
 		this.errorMessageInput = document.createElement('textarea');
@@ -384,9 +401,49 @@ class CalcEditorDataValidationDialog {
 		this.rangeExtraSection.hidden = !isRange;
 		this.customExtraSection.hidden = !isCustom;
 
-		this.macroSection.hidden = this.state.errorActionIndex !== 3;
-		this.errorContentSection.hidden =
-			this.state.errorActionIndex === 3 || this.state.errorActionIndex === 4;
+		const macroAction = this.state.errorActionIndex === 3;
+		const silentReject = this.state.errorActionIndex === 4;
+		this.macroBrowseButton.hidden = !macroAction;
+		this.macroHint.hidden = !macroAction || !this.state.macroUrl;
+		this.macroHint.textContent = this.macroHint.hidden ? '' : this.macroLabel();
+		this.errorContentSection.hidden = silentReject;
+	}
+
+	private macroLabel(): string {
+		if (this.macroDisplayName && this.macroDisplayName !== this.state.macroUrl) {
+			return this.macroDisplayName;
+		}
+		const url = this.state.macroUrl || '';
+		const match = url.match(/script:([^?]+)/);
+		return match ? match[1] : url;
+	}
+
+	private openMacroPicker(): void {
+		if (this.optionPicker) {
+			this.optionPicker.close();
+			this.optionPicker = null;
+		}
+		if (this.macroPicker) {
+			this.macroPicker.close();
+		}
+		this.macroPicker = new CalcEditorMacroPicker(
+			this.host,
+			this.state.macroUrl,
+			(item) => {
+				this.state.macroUrl = item.uri;
+				this.macroDisplayName = item.module
+					? item.module + '.' + item.name
+					: item.name;
+				this.macroPicker = null;
+				this.refreshDynamicFields();
+			},
+		);
+		this.macroPicker.open();
+		CalcEditorValidationBridge.loadMacroCatalog(this.sendUno, (items) => {
+			if (this.macroPicker) {
+				this.macroPicker.setCatalog(items);
+			}
+		});
 	}
 
 	private pickerRow(
@@ -451,5 +508,193 @@ class CalcEditorDataValidationDialog {
 		row.appendChild(box);
 		row.appendChild(text);
 		return row;
+	}
+}
+
+/** 宏选择器 subpage (Android CalcValidationMacroPickerController). */
+class CalcEditorMacroPicker {
+	private readonly subpage: { open(): void; close(): void };
+	private readonly root: HTMLDivElement;
+	private readonly scopeBox: HTMLDivElement;
+	private readonly tree: HTMLDivElement;
+	private readonly description: HTMLTextAreaElement;
+	private readonly onChosen: (item: CalcEditorMacroItem) => void;
+	private catalog: CalcEditorMacroItem[] = [];
+	private catalogLoaded = false;
+	private documentScope = true;
+	private searchFilter = '';
+	private readonly selectedUrl: string;
+
+	constructor(
+		host: WriterEditorInlineSubpageHost | null | undefined,
+		currentMacroUrl: string,
+		onChosen: (item: CalcEditorMacroItem) => void,
+	) {
+		this.onChosen = onChosen;
+		this.selectedUrl = currentMacroUrl || '';
+		if (currentMacroUrl.indexOf('location=application') >= 0) {
+			this.documentScope = false;
+		}
+
+		this.root = document.createElement('div');
+		this.root.className = 'writer-function-calc-macro';
+
+		this.root.appendChild(this.sectionLabel('程序库'));
+		this.scopeBox = document.createElement('div');
+		this.scopeBox.className = 'writer-function-calc-macro__scope';
+		this.root.appendChild(this.scopeBox);
+
+		this.root.appendChild(this.sectionLabel('宏名称'));
+		const search = document.createElement('input');
+		search.type = 'text';
+		search.className = 'writer-function-calc-validation__input';
+		search.placeholder = '搜索';
+		search.setAttribute('aria-label', '搜索宏');
+		search.oninput = () => {
+			this.searchFilter = search.value.trim().toLowerCase();
+			this.rebuildTree();
+		};
+		this.root.appendChild(search);
+
+		this.tree = document.createElement('div');
+		this.tree.className = 'writer-function-calc-macro__tree';
+		this.root.appendChild(this.tree);
+
+		this.root.appendChild(this.sectionLabel('说明'));
+		this.description = document.createElement('textarea');
+		this.description.className = 'writer-function-calc-validation__textarea';
+		this.description.rows = 3;
+		this.description.readOnly = true;
+		this.description.setAttribute('aria-label', '说明');
+		this.root.appendChild(this.description);
+
+		this.subpage = writerEditorMountSubpageDialog('宏选择器', this.root, host);
+		this.rebuildScope();
+		this.rebuildTree();
+	}
+
+	open(): void {
+		this.subpage.open();
+	}
+
+	close(): void {
+		if (!this.root.isConnected) {
+			return;
+		}
+		this.subpage.close();
+	}
+
+	setCatalog(items: CalcEditorMacroItem[]): void {
+		this.catalogLoaded = true;
+		this.catalog = items || [];
+		const current = this.catalog.find((item) => item.uri === this.selectedUrl);
+		if (current) {
+			this.documentScope = current.documentScope;
+			this.description.value = current.description || current.uri;
+		}
+		this.rebuildScope();
+		this.rebuildTree();
+	}
+
+	private sectionLabel(text: string): HTMLDivElement {
+		const label = document.createElement('div');
+		label.className = 'writer-function-calc-macro__section';
+		label.textContent = text;
+		return label;
+	}
+
+	private rebuildScope(): void {
+		this.scopeBox.replaceChildren();
+		this.scopeBox.appendChild(
+			this.scopeRow('我的宏', this.documentScope ? '▾' : '▸', false, () => {
+				this.documentScope = !this.documentScope;
+				this.rebuildScope();
+				this.rebuildTree();
+			}),
+		);
+		if (this.documentScope) {
+			this.scopeBox.appendChild(this.scopeRow('Standard', '', true, () => undefined));
+		}
+		this.scopeBox.appendChild(
+			this.scopeRow('应用程序的宏', '', false, () => {
+				this.documentScope = false;
+				this.rebuildScope();
+				this.rebuildTree();
+			}),
+		);
+	}
+
+	private scopeRow(
+		label: string,
+		chevron: string,
+		child: boolean,
+		onClick: () => void,
+	): HTMLButtonElement {
+		const row = document.createElement('button');
+		row.type = 'button';
+		row.className = 'writer-function-calc-macro__scope-row';
+		if (child) {
+			row.classList.add('writer-function-calc-macro__scope-row--child');
+		}
+		if (chevron) {
+			const mark = document.createElement('span');
+			mark.className = 'writer-function-calc-macro__chevron';
+			mark.textContent = chevron;
+			row.appendChild(mark);
+		}
+		const text = document.createElement('span');
+		text.textContent = label;
+		row.appendChild(text);
+		row.onclick = onClick;
+		return row;
+	}
+
+	private rebuildTree(): void {
+		this.tree.replaceChildren();
+		const needle = this.searchFilter;
+		const items = this.catalog.filter((item) => {
+			if (item.documentScope !== this.documentScope) {
+				return false;
+			}
+			if (!needle) {
+				return true;
+			}
+			const haystack = (item.name + ' ' + item.library + ' ' + item.module).toLowerCase();
+			return haystack.indexOf(needle) >= 0;
+		});
+		if (!items.length) {
+			const empty = document.createElement('div');
+			empty.className = 'writer-function-calc-macro__empty';
+			empty.textContent = !this.catalogLoaded
+				? '正在读取宏…'
+				: needle
+					? '没有匹配的宏'
+					: '没有可用的宏';
+			this.tree.appendChild(empty);
+			return;
+		}
+		items.forEach((item) => {
+			const row = document.createElement('button');
+			row.type = 'button';
+			row.className = 'writer-function-calc-macro__row';
+			const selected = item.uri === this.selectedUrl;
+			if (selected) {
+				row.classList.add('writer-function-calc-macro__row--selected');
+			}
+			const display = item.module ? item.module + '.' + item.name : item.name;
+			row.textContent = display;
+			if (selected) {
+				const check = document.createElement('span');
+				check.className = 'writer-function-calc-macro__check';
+				check.textContent = '✓';
+				row.appendChild(check);
+			}
+			row.onclick = () => {
+				this.description.value = item.description || item.uri;
+				this.onChosen(item);
+				this.close();
+			};
+			this.tree.appendChild(row);
+		});
 	}
 }
