@@ -1179,6 +1179,48 @@ bool ChildSession::getStatus()
     return sendTextFrame("status: " + status);
 }
 
+#if defined(__ANDROID__)
+void ChildSession::deferDocumentStatusUpdate()
+{
+    if (_documentStatusUpdatePending)
+        return;
+
+    auto* poll = KitSocketPoll::getMainPoll();
+    if (!poll)
+    {
+        __android_log_print(ANDROID_LOG_WARN, "LOActivity",
+                            "docsize_status_deferred reason=no_poll");
+        return;
+    }
+
+    _documentStatusUpdatePending = true;
+    std::weak_ptr<ChildSession> weakSession =
+        std::static_pointer_cast<ChildSession>(shared_from_this());
+    poll->addCallback([weakSession] {
+        auto session = weakSession.lock();
+        if (!session)
+            return;
+
+        if (!session->_isDocLoaded || session->_viewId < 0 || session->isCloseFrame() ||
+            session->isDisconnected())
+        {
+            session->_documentStatusUpdatePending = false;
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "docsize_status_deferred reason=session_closed");
+            return;
+        }
+
+        // Run on the kit thread, after the originating LOK callback has returned.
+        // Keep the flag set while querying so nested size callbacks are coalesced.
+        const bool success = session->getStatus();
+        session->_documentStatusUpdatePending = false;
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                            "docsize_status_deferred reason=refreshed success=%d session=%s",
+                            success, session->getId().c_str());
+    });
+}
+#endif
+
 bool ChildSession::getPartStatus()
 {
     std::string status;
@@ -3706,11 +3748,9 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
         break;
     case LOK_CALLBACK_DOCUMENT_SIZE_CHANGED:
 #if defined(__ANDROID__)
-        // Calc paste emits this from inside the kit poll. getStatus() calls
-        // getParts() on that stack and the process dies with SIGSEGV.
-        // The callback payload already contains the new width and height.
-        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
-                            "docsize_status_skipped");
+        // Querying getParts() on this LOK callback stack can crash during paste.
+        // Do not drop the status: Calc needs it to refresh sheet names and count.
+        deferDocumentStatusUpdate();
 #else
         getStatus();
 #endif

@@ -174,6 +174,10 @@ private:
     bool loadDocument(const StringVector& tokens);
     bool saveDocumentBackground(const StringVector &tokens);
 
+#if defined(__ANDROID__)
+    void deferDocumentStatusUpdate();
+#endif
+
     bool sendFontRendering(const StringVector& tokens);
     bool getCommandValues(const StringVector& tokens);
 
@@ -322,6 +326,10 @@ private:
 
     /// Whether document has been opened successfully
     bool _isDocLoaded;
+
+#if defined(__ANDROID__)
+    bool _documentStatusUpdatePending = false;
+#endif
 
     std::string _docType;
 
