@@ -3048,10 +3048,10 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			// Don't show the keyboard when the Wizard is visible, or when we have just been in a zoom
 			if (!window.mobileWizard && !window.pageMobileWizard &&
 				!window.insertionMobileWizard && !hasMobileWizardOpened &&
-				!JSDialog.IsAnyInputFocused() && !hasIframeModalOpened && !app.sectionContainer.isPostZoomReplay()) {
-				// If the user is editing, show the keyboard, but don't change
-				// anything if nothing is changed.
-
+				!JSDialog.IsAnyInputFocused() && !hasIframeModalOpened && !app.sectionContainer.isPostZoomReplay() &&
+				!window.ThisIsTheiOSApp && !window.ThisIsTheAndroidApp) {
+				// Desktop only. iOS / Android Word、PPT、Excel 选中文字会走到这里，
+				// 若 focus(true) 软键盘会挡住正文。键盘只由「呼出键盘」打开。
 				// We will focus map if no comment is being edited (writer only for now).
 				if (this.isWriter()) {
 					var section = app.sectionContainer.getSectionWithName(app.CSections.CommentList.name);

@@ -417,9 +417,14 @@ class MouseControl extends CanvasSectionObject {
 
 	public getMobileKeyboardVisibility(): boolean {
 		if (!app.map._docLayer) return false;
-		// Writer: never auto-popup the soft keyboard on a document tap — placing the
-		// cursor is enough; the user opens the keyboard via the bottom "呼出键盘" button.
-		else if (app.map._docLayer._docType === 'text') return false;
+		// Word / PPT / Excel：点按或选中文字都不自动弹键盘，只由「呼出键盘」打开。
+		if (
+			(window as any).ThisIsTheiOSApp ||
+			(window as any).ThisIsTheAndroidApp
+		) {
+			return false;
+		}
+		if (app.map._docLayer._docType === 'text') return false;
 		else if (app.map._docLayer._docType === 'spreadsheet') {
 			const acceptInput =
 				app.calc.cellCursorVisible &&

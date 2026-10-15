@@ -3285,11 +3285,8 @@ public class LOActivity extends AppCompatActivity {
                         recoverVisibleTilesAfterEditMode("js_editmode_on");
                         // prompt for file conversion
                         requestForOdf();
-                        // Calc edit mode: show keyboard once, but do not keep WebView in text-editor
-                        // mode — that blocks single-tap cell selection on the canvas.
-                        if (mIsCalcDocument && mWebView != null) {
-                            getMainHandler().post(() -> showCalcEditModeKeyboardOnEntry());
-                        }
+                        // Word / PPT / Excel：进入编辑模式不弹键盘。选中文字也不弹，
+                        // 只有底部「呼出键盘」调用 focusDocumentAndShowIme。
                         runPendingAfterEditMode();
                         break;
                     case "off":
@@ -12870,9 +12867,7 @@ public class LOActivity extends AppCompatActivity {
         manualEditModeSwitchPending = true;
         lastPreviewModeSwitchMs = 0L;
         updateEditModeState(true, "manual_edit_switch");
-        if (mIsCalcDocument && mWebView != null) {
-            getMainHandler().post(this::showCalcEditModeKeyboardOnEntry);
-        }
+        // Excel 切到编辑模式不自动弹键盘，只由「呼出键盘」打开。
         if (mWebView != null) {
             mWebView.evaluateJavascript(
                     "(function(){try{if(window.app&&app.map&&typeof app.map._switchToEditMode==='function')"
@@ -12977,20 +12972,6 @@ public class LOActivity extends AppCompatActivity {
         if (mWebView != null) {
             mWebView.setImeAllowedByUser(false);
             Log.d(TAG, "ime_allowed_cleared reason=" + reason);
-        }
-    }
-
-    private void showCalcEditModeKeyboardOnEntry() {
-        if (mWebView == null || !mIsCalcDocument || !mIsEditModeActive) {
-            return;
-        }
-        mWebView.evaluateJavascript(
-                "(function(){if(window.app&&app.map){app.map.focus(true);}return true;})();",
-                null);
-        setImeAllowedByUserSustained(true);
-        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (imm != null) {
-            imm.showSoftInput(mWebView, InputMethodManager.SHOW_IMPLICIT);
         }
     }
 

@@ -287,20 +287,13 @@ window.L.Map.include({
 		if (window.mode.isMobile() || window.mode.isTablet()) {
 			this.fire('editorgotfocus');
 			this.fire('closemobilewizard');
-			if (window.ThisIsTheAndroidApp) {
-				if (this.getDocType() === 'text') {
-					// AI Office (Writer): entering edit mode must NOT auto-open the
-					// soft keyboard — the user opens it via the bottom "呼出键盘" button.
-					this.focus(false);
-					setTimeout(function() {
-						app.map.focus(false);
-					}, 80);
-				} else {
-					this.focus(true);
-					setTimeout(function() {
-						app.map.focus(true);
-					}, 80);
-				}
+			if (window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) {
+				// Word / PPT / Excel：进入编辑模式不弹键盘。选中文字也不弹，
+				// 只有底部「呼出键盘」调用 focus(true)。
+				this.focus(false);
+				setTimeout(function() {
+					app.map.focus(false);
+				}, 80);
 			} else if (!window.ThisIsTheiOSApp)
 				this.focus();
 		}
