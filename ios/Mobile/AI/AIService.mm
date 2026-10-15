@@ -263,8 +263,23 @@
         forHTTPHeaderField:@"Authorization"];
     NSString *size = [payload[@"size"] isKindOfClass:[NSString class]]
         ? payload[@"size"] : @"1024x1024";
+    // MobileAiImageDialog sends the description in selection. Keep prompt
+    // support for callers that already use the image API field name.
     NSString *prompt = [payload[@"prompt"] isKindOfClass:[NSString class]]
-        ? payload[@"prompt"] : @"";
+        ? [payload[@"prompt"] stringByTrimmingCharactersInSet:
+            [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
+    if (prompt.length == 0 && [payload[@"selection"] isKindOfClass:[NSString class]]) {
+        prompt = [payload[@"selection"] stringByTrimmingCharactersInSet:
+            [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    }
+    if (prompt.length == 0) {
+        [self emitType:@"ai.error"
+              requestId:requestId
+           documentSessionId:documentSessionId
+                  payload:@{@"code": @"invalid_payload", @"message": @"请输入图片描述"}
+                   emitter:emit];
+        return;
+    }
     NSDictionary *body = @{
         @"model": model,
         @"prompt": prompt,
