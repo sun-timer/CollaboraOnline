@@ -149,16 +149,20 @@ class AndroidNativeDialogRouter {
 		return !!(window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp);
 	}
 
+	private isCalcDocument(): boolean {
+		const map = (window as any).app && (window as any).app.map;
+		return !!(map && typeof map.getDocType === 'function' && map.getDocType() === 'spreadsheet');
+	}
+
 	private handlesDialogOnThisPlatform(dialogId: string): boolean {
 		if (window.ThisIsTheAndroidApp) {
 			return NATIVE_SPECIFIC_DIALOG_IDS.has(dialogId);
 		}
 		if (window.ThisIsTheiOSApp) {
-			if (
-				dialogId === 'ValidationDialog' &&
-				typeof CalcEditorValidationBridge !== 'undefined' &&
-				CalcEditorValidationBridge.isPending()
-			) {
+			if (dialogId === 'ValidationDialog' || dialogId === 'MacroSelectorDialog') {
+				return true;
+			}
+			if (dialogId === 'HyperlinkDialog' && this.isCalcDocument()) {
 				return true;
 			}
 			return dialogId === 'WordCountDialog' || dialogId === 'SpellingDialog';
@@ -174,11 +178,31 @@ class AndroidNativeDialogRouter {
 				WriterWordCountSheet.handlePayload(payload as WriterWordCountPayload);
 			} else if (dialogId === 'SpellingDialog') {
 				WriterSpellingSheet.handlePayload(payload as WriterSpellingPayload);
-			} else if (
-				dialogId === 'ValidationDialog' &&
-				typeof CalcEditorValidationBridge !== 'undefined'
-			) {
-				CalcEditorValidationBridge.handlePayload(payload);
+			} else if (dialogId === 'ValidationDialog') {
+				if (
+					typeof CalcEditorValidationBridge !== 'undefined' &&
+					CalcEditorValidationBridge.isPending()
+				) {
+					CalcEditorValidationBridge.handlePayload(payload);
+				} else if (typeof CalcEditorValidationBridge !== 'undefined') {
+					CalcEditorValidationBridge.dismissWindow(payload.windowId);
+				}
+			} else if (dialogId === 'MacroSelectorDialog') {
+				if (
+					typeof CalcEditorValidationBridge !== 'undefined' &&
+					CalcEditorValidationBridge.isHarvestPending()
+				) {
+					CalcEditorValidationBridge.handleMacroPayload(payload);
+				} else if (typeof CalcEditorValidationBridge !== 'undefined') {
+					CalcEditorValidationBridge.dismissWindow(payload.windowId);
+				}
+			} else if (dialogId === 'HyperlinkDialog') {
+				if (typeof CalcEditorValidationBridge !== 'undefined') {
+					CalcEditorValidationBridge.dismissWindow(payload.windowId);
+				}
+				if (typeof CalcEditorPanel !== 'undefined') {
+					CalcEditorPanel.openInsertHyperlink();
+				}
 			}
 			return;
 		}

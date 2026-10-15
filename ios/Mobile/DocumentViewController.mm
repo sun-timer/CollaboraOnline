@@ -69,6 +69,7 @@
     NSString *translateTargetLang;
     NSString *aiFullText;
     CGFloat keyboardHeight;
+    BOOL keyboardVisibleForCanvas;
     AIService *aiService;
     IOSTopToolbarController *topToolbarController;
     IOSBottomToolbarController *bottomToolbarController;
@@ -1880,12 +1881,38 @@ static IMP standardImpOfInputAccessoryView = nil;
     scrollView.pinchGestureRecognizer.enabled = NO;
 }
 
+- (void)recoverCalcCanvasAfterKeyboardHidden
+{
+    // Same sequence as Android LOActivity.recoverCanvasAfterImeHidden.
+    // The web view grows again when the toolbar drops, but the tile canvas
+    // keeps the keyboard-height size until this runs.
+    if (![nativeDocumentType isEqualToString:@"spreadsheet"]) {
+        return;
+    }
+    NSString *script =
+        @"(function(){try{"
+         "function sync(){"
+           "if(!(window.app&&app.map&&app.map._docLayer)){return;}"
+           "var layer=app.map._docLayer;"
+           "if(typeof layer._syncTileContainerSize==='function'){layer._syncTileContainerSize(true);}"
+           "if(typeof layer._resetClientVisArea==='function'){layer._resetClientVisArea();}"
+           "if(typeof layer._requestNewTiles==='function'){layer._requestNewTiles();}"
+           "if(window.app.sectionContainer&&typeof app.sectionContainer.requestReDraw==='function'){app.sectionContainer.requestReDraw();}"
+         "}"
+         "setTimeout(sync,80);"
+         "setTimeout(sync,400);"
+         "}catch(e){}})();";
+    [self sendToolbarJavaScript:script];
+}
+
 - (void)keyboardWillChangeFrame:(NSNotification *)notification
 {
     CGRect keyboardFrame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
     CGRect localKeyboardFrame = [self.view convertRect:keyboardFrame fromView:nil];
     CGFloat safeBottom = CGRectGetMaxY(self.view.bounds) - self.view.safeAreaInsets.bottom;
     BOOL keyboardVisible = CGRectGetMinY(localKeyboardFrame) < CGRectGetMaxY(self.view.bounds);
+    BOOL keyboardWasVisible = keyboardVisibleForCanvas;
+    keyboardVisibleForCanvas = keyboardVisible;
     CGFloat bottomOffset = keyboardVisible ? MIN(0.0, CGRectGetMinY(localKeyboardFrame) - safeBottom) : 0.0;
     NSTimeInterval duration = [notification.userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
     UIViewAnimationOptions options =
@@ -1904,7 +1931,11 @@ static IMP standardImpOfInputAccessoryView = nil;
                      animations:^{
         [self.view layoutIfNeeded];
     }
-                     completion:nil];
+                     completion:^(BOOL finished) {
+        if (keyboardWasVisible && !keyboardVisible) {
+            [self recoverCalcCanvasAfterKeyboardHidden];
+        }
+    }];
 }
 
 - (void)viewSafeAreaInsetsDidChange

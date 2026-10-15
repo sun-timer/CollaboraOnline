@@ -281,19 +281,13 @@ class GraphicSelection {
 					Math.round(cssBottomY * scale)
 				);
 			} else if (window.ThisIsTheiOSApp && typeof MobileSelectionEvents !== 'undefined') {
-				// iOS anchors from view pixels. Hide the menu while the keyboard is open.
-				if (
-					typeof MobileSelectionMenu !== 'undefined' &&
-					MobileSelectionMenu.iosKeyboardOpen()
-				) {
-					MobileSelectionEvents.broadcastHide();
-				} else {
-					MobileSelectionEvents.broadcastShow(
-						GraphicSelection.iosGraphicAnchorCss(rect),
-						'',
-						'graphic',
-					);
-				}
+				// Graphic menus stay up while the keyboard is open. MobileSelectionMenu
+				// already allows mode 'graphic' in that case.
+				MobileSelectionEvents.broadcastShow(
+					GraphicSelection.iosGraphicAnchorCss(rect),
+					'',
+					'graphic',
+				);
 			}
 		} else if (
 			this.handlesSection &&

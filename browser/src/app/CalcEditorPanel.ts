@@ -27,6 +27,8 @@ class CalcEditorPanel {
 		'wrap-text': false,
 		'grid-lines': true,
 	};
+	private closeTimer: number | null = null;
+	private mergeChooser: { close(): void } | null = null;
 
 	private constructor() {
 		this.sheet = new WriterEditorSheet('', undefined, { editMode: true });
@@ -77,6 +79,24 @@ class CalcEditorPanel {
 		return this.inlineSubpage;
 	}
 
+	/** iOS Calc: custom 互联网/邮件/文档 sheet. Returns false for other apps or doc types. */
+	static openInsertHyperlink(): boolean {
+		if (!(window as any).ThisIsTheiOSApp) {
+			return false;
+		}
+		const map = (window as any).app && (window as any).app.map;
+		if (!map || typeof map.getDocType !== 'function' || map.getDocType() !== 'spreadsheet') {
+			return false;
+		}
+		const panel = CalcEditorPanel.mount();
+		if (!panel) {
+			return false;
+		}
+		panel.open();
+		panel.openHyperlinkDialog();
+		return true;
+	}
+
 	static mount(): CalcEditorPanel | null {
 		if (!(window as any).ThisIsTheiOSApp) {
 			return null;
@@ -91,6 +111,12 @@ class CalcEditorPanel {
 	}
 
 	open(): void {
+		if (this.closeTimer !== null) {
+			window.clearTimeout(this.closeTimer);
+			this.closeTimer = null;
+		}
+		this.sheet.root.style.visibility = '';
+		this.sheet.root.style.pointerEvents = '';
 		MobileDocTheme.applyFromMap();
 		this.syncToggleStateFromDocument();
 		this.renderTabs();
@@ -99,10 +125,26 @@ class CalcEditorPanel {
 	}
 
 	close(): void {
-		const children = this.subDialogs.splice(0);
-		children.forEach((dialog) => dialog.close());
-		this.inlineSubpage.clearSubpages();
-		this.sheet.close();
+		if (this.closeTimer !== null) {
+			return;
+		}
+		const chooser = this.mergeChooser;
+		this.mergeChooser = null;
+		// Hide now so the half-height sheet does not stay on screen, but
+		// detach it after the click that called close() has finished.
+		this.sheet.root.style.visibility = 'hidden';
+		this.sheet.root.style.pointerEvents = 'none';
+		this.closeTimer = window.setTimeout(() => {
+			this.closeTimer = null;
+			const children = this.subDialogs.splice(0);
+			children.forEach((dialog) => dialog.close());
+			this.inlineSubpage.clearSubpages();
+			this.sheet.close();
+			if (chooser) {
+				chooser.close();
+			}
+			this.recoverDocumentCanvas();
+		}, 0);
 	}
 
 	private openAiFeatures(): void {
@@ -1038,13 +1080,7 @@ class CalcEditorPanel {
 				this.openPrintAreaDialog();
 				break;
 			case 'hyperlink':
-				this.presentSub(
-					new CalcEditorHyperlinkDialog(
-						this.controller,
-						this.subHost(),
-						() => this.close(),
-					),
-				);
+				this.openHyperlinkDialog();
 				break;
 			case 'image':
 				this.close();
@@ -1186,6 +1222,9 @@ class CalcEditorPanel {
 	}
 
 	private openMergeCellsDialog(): void {
+		// Android dismisses the function panel, then shows merge options on
+		// their own sheet. Keeping the chooser inside this panel leaves the
+		// 50dvh sheet blank after the command and crashes 收起 on detach.
 		const options: WriterChooseOption[] = [
 			{
 				label: '合并内容',
@@ -1200,18 +1239,32 @@ class CalcEditorPanel {
 				value: '.uno:MergeCells?MoveContents:bool=false',
 			},
 		];
-		this.presentSub(
-			new WriterEditorChooseDialog(
+		this.close();
+		window.setTimeout(() => {
+			if (this.mergeChooser) {
+				this.mergeChooser.close();
+				this.mergeChooser = null;
+			}
+			const dialog = new WriterEditorChooseDialog(
 				'合并单元格',
 				options,
 				(option) => {
-					this.close();
-					this.sendUno(option.value);
+					window.setTimeout(() => {
+						this.sendUno(option.value);
+						this.recoverDocumentCanvas();
+					}, 200);
 				},
-				undefined,
-				this.subHost(),
-			),
-		);
+			);
+			this.mergeChooser = dialog;
+			dialog.open();
+		}, 0);
+	}
+
+	private recoverDocumentCanvas(): void {
+		const map = (window as any).app && (window as any).app.map;
+		if (map && typeof map.invalidateSize === 'function') {
+			map.invalidateSize(false);
+		}
 	}
 
 	private openPaperOrientationDialog(): void {
@@ -1261,6 +1314,16 @@ class CalcEditorPanel {
 		if (socket && typeof socket.sendMessage === 'function') {
 			socket.sendMessage(message);
 		}
+	}
+
+	private openHyperlinkDialog(): void {
+		this.presentSub(
+			new CalcEditorHyperlinkDialog(
+				this.controller,
+				this.subHost(),
+				() => this.close(),
+			),
+		);
 	}
 
 	private openDataValidationDialog(): void {

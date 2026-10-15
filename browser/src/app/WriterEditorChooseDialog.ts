@@ -49,8 +49,12 @@ class WriterEditorChooseDialog {
 				'<svg viewBox="0 0 24 24" width="20" height="20"><path fill="#1278d9" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
 			row.appendChild(check);
 			row.onclick = () => {
-				this.onSelect(option);
-				this.close();
+				// Remove the sheet after this click finishes. WKWebView crashes
+				// if the event target is detached inside the touch handler.
+				window.setTimeout(() => {
+					this.onSelect(option);
+					this.close();
+				}, 0);
 			};
 			list.appendChild(row);
 			if (index + 1 < options.length) {

@@ -3370,14 +3370,9 @@ public class LOActivity extends AppCompatActivity {
                                     ? Float.parseFloat(parts[3])
                                     : anchorY;
                             getMainHandler().post(() -> {
-                                if (mIsCalcDocument) {
-                                    ensureSelectionMenuController().hide();
-                                    showCalcObjectBar();
-                                } else {
-                                    SelectionMenuController smc = ensureSelectionMenuController();
-                                    smc.setGraphicMode(true);
-                                    smc.showAtWindow(anchorX, anchorY, anchorBottomY);
-                                }
+                                SelectionMenuController smc = ensureSelectionMenuController();
+                                smc.setGraphicMode(true);
+                                smc.showAtWindow(anchorX, anchorY, anchorBottomY);
                             });
                         }
                     } catch (NumberFormatException e) {
@@ -20238,6 +20233,12 @@ public class LOActivity extends AppCompatActivity {
                 if (mIsImpressDocument && (".uno:InsertPage".equals(command)
                         || ".uno:DuplicatePage".equals(command) || ".uno:DeletePage".equals(command))) {
                     Log.i(TAG, "impress_slide_status_request after=" + command);
+                    postMobileMessageNative("status");
+                }
+                // Sheet "+" sends .uno:Insert. Ask core for status so the tab list
+                // refreshes; do not treat InsertPage as a sheet insert.
+                if (mIsCalcDocument && ".uno:Insert".equals(command)) {
+                    Log.i(TAG, "calc_sheet_status_request after=" + command);
                     postMobileMessageNative("status");
                 }
                 switch (messageAndParameterArray[1]) {
