@@ -17290,10 +17290,6 @@ public class LOActivity extends AppCompatActivity {
         aiImageActiveRequestId = requestId;
         Log.i(TAG, "ai_image_request_start requestId=" + requestId + " size=" + size + " promptChars=" + prompt.length());
 
-        final String finalModel = model;
-        final String finalEndpoint = endpoint;
-        final String finalApiKey = apiKey;
-        final String finalSize = size;
         final int expectedCount = 4;
 
         // 预占位：4 个槽位先填 null（生成中），gallery 显示占位图
@@ -17307,68 +17303,63 @@ public class LOActivity extends AppCompatActivity {
         renderAiImageGallery();
         switchAiImageStage(AI_IMAGE_STAGE_RESULT);
 
-        // 先发一次 n=4 的请求；若接口不支持 n 只返回 <4 张，再并发补齐
-        requestAiImageOnce(finalEndpoint, finalApiKey, finalModel, prompt, finalSize, expectedCount,
+        // 当前图片接口仅支持 n=1；逐张请求，保留四张候选图且避免并发限流。
+        requestAiImageSlot(requestId, endpoint, apiKey, model, prompt, size, 0, expectedCount);
+    }
+
+    private void requestAiImageSlot(String requestId, String endpoint, String apiKey, String model,
+            String prompt, String size, int slot, int expectedCount) {
+        if (!requestId.equals(aiImageActiveRequestId)) {
+            return;
+        }
+        if (slot >= expectedCount) {
+            Log.i(TAG, "ai_image_done requestId=" + requestId + " count=" + aiImageBase64List.size());
+            return;
+        }
+        Log.i(TAG, "ai_image_slot_start requestId=" + requestId + " slot=" + slot + " n=1");
+        requestAiImageOnce(endpoint, apiKey, model, prompt, size, 1,
                 new AiRequestManager.ImageGenCallback() {
                     @Override
                     public void onImages(java.util.List<String> base64List) {
+                        if (base64List == null || base64List.isEmpty() || base64List.get(0) == null
+                                || base64List.get(0).isEmpty()) {
+                            onError("empty_data", "图片生成返回为空");
+                            return;
+                        }
                         runOnUiThread(() -> {
-                            if (base64List == null || base64List.isEmpty()) {
-                                toastTodo("图片生成返回为空");
-                                switchAiImageStage(AI_IMAGE_STAGE_INPUT);
+                            if (!requestId.equals(aiImageActiveRequestId)) {
                                 return;
                             }
-                            // 填充已返回的图到前 N 个槽位
-                            int filled = Math.min(base64List.size(), expectedCount);
-                            for (int i = 0; i < filled; i++) {
-                                aiImageBase64List.set(i, base64List.get(i));
-                            }
-                            aiImageSelectedIndex = 0;
+                            aiImageBase64List.set(slot, base64List.get(0));
                             renderAiImageGallery();
-                            Log.i(TAG, "ai_image_done count=" + base64List.size());
-
-                            // 兜底：返回不足 4 张，并发补齐剩余槽位
-                            if (filled < expectedCount) {
-                                int remaining = expectedCount - filled;
-                                Log.i(TAG, "ai_image_fallback_concurrent remaining=" + remaining
-                                        + " returned=" + base64List.size());
-                                for (int i = 0; i < remaining; i++) {
-                                    final int slot = filled + i;
-                                    requestAiImageOnce(finalEndpoint, finalApiKey, finalModel, prompt,
-                                            finalSize, 1, new AiRequestManager.ImageGenCallback() {
-                                                @Override
-                                                public void onImages(java.util.List<String> extra) {
-                                                    runOnUiThread(() -> {
-                                                        if (extra != null && !extra.isEmpty()
-                                                                && slot < aiImageBase64List.size()) {
-                                                            aiImageBase64List.set(slot, extra.get(0));
-                                                            renderAiImageGallery();
-                                                            Log.i(TAG, "ai_image_fallback_slot_done slot=" + slot);
-                                                        }
-                                                    });
-                                                }
-
-                                                @Override
-                                                public void onError(String code, String message) {
-                                                    runOnUiThread(() -> {
-                                                        Log.w(TAG, "ai_image_fallback_slot_error slot=" + slot
-                                                                + " code=" + code);
-                                                        // 该槽位失败保留占位，不阻断其它
-                                                    });
-                                                }
-                                            });
-                                }
-                            }
+                            Log.i(TAG, "ai_image_slot_done requestId=" + requestId + " slot=" + slot);
+                            requestAiImageSlot(requestId, endpoint, apiKey, model, prompt, size,
+                                    slot + 1, expectedCount);
                         });
                     }
 
                     @Override
                     public void onError(String code, String message) {
                         runOnUiThread(() -> {
-                            String safeMsg = message == null ? "" : (message.length() > 80 ? message.substring(0, 80) + "..." : message);
-                            toastTodo("图片生成失败：" + safeMsg);
-                            switchAiImageStage(AI_IMAGE_STAGE_INPUT);
-                            Log.i(TAG, "ai_image_error code=" + code + " msg=" + safeMsg);
+                            if (!requestId.equals(aiImageActiveRequestId)) {
+                                return;
+                            }
+                            String safeMsg = message == null ? "" : (message.length() > 80
+                                    ? message.substring(0, 80) + "..." : message);
+                            // 串行请求中前 slot 张已成功；移除失败和未开始的占位，避免一直显示生成中。
+                            while (aiImageBase64List.size() > slot) {
+                                aiImageBase64List.remove(aiImageBase64List.size() - 1);
+                            }
+                            if (slot == 0) {
+                                toastTodo("图片生成失败：" + safeMsg);
+                                switchAiImageStage(AI_IMAGE_STAGE_INPUT);
+                            } else {
+                                aiImageSelectedIndex = Math.min(aiImageSelectedIndex, slot - 1);
+                                renderAiImageGallery();
+                                toastTodo("已生成 " + slot + " 张，其余生成失败：" + safeMsg);
+                            }
+                            Log.i(TAG, "ai_image_error requestId=" + requestId + " slot=" + slot
+                                    + " code=" + code + " msg=" + safeMsg);
                         });
                     }
                 });
@@ -17379,8 +17370,14 @@ public class LOActivity extends AppCompatActivity {
                                     String size, int n, AiRequestManager.ImageGenCallback callback) {
         AiRequestSession session = new AiRequestSession();
         aiImageSessions.add(session);
-        new Thread(() -> aiRequestManager.executeImageGen(endpoint, apiKey, model, prompt,
-                size, n, session, callback), "ai-image-gen-" + n).start();
+        new Thread(() -> {
+            try {
+                aiRequestManager.executeImageGen(endpoint, apiKey, model, prompt,
+                        size, n, session, callback);
+            } finally {
+                getMainHandler().post(() -> aiImageSessions.remove(session));
+            }
+        }, "ai-image-gen-" + n).start();
     }
 
     private void renderAiImageGallery() {
