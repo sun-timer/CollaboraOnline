@@ -120,6 +120,10 @@ class CalcEditorValidationBridge {
 		sendUno('.uno:Validation');
 	}
 
+	static dismissWindow(windowId: number): void {
+		CalcEditorValidationBridge.sendResponse(windowId, 'cancel', 2);
+	}
+
 	static handlePayload(payload: NativeDialogPayload): void {
 		const windowId = payload.windowId;
 		if (windowId < 0) {

@@ -29,7 +29,9 @@ class CalcEditorDataValidationDialog {
 	private rangeExtraSection!: HTMLDivElement;
 	private customExtraSection!: HTMLDivElement;
 	private errorContentSection!: HTMLDivElement;
+	private actionSection!: HTMLElement;
 	private macroBrowseButton!: HTMLButtonElement;
+	private readonly checkboxSyncs: Array<() => void> = [];
 	private macroHint!: HTMLDivElement;
 	private macroPicker: CalcEditorMacroPicker | null = null;
 	private macroDisplayName = '';
@@ -137,6 +139,7 @@ class CalcEditorDataValidationDialog {
 		this.inputHelpTextInput.value = this.state.inputHelpText;
 		this.errorTitleInput.value = this.state.errorTitle;
 		this.errorMessageInput.value = this.state.errorMessage;
+		this.checkboxSyncs.forEach((sync) => sync());
 		if (!this.macroDisplayName && this.state.macroUrl) {
 			this.macroDisplayName = this.state.macroUrl;
 		}
@@ -242,13 +245,11 @@ class CalcEditorDataValidationDialog {
 		this.customExtraSection = document.createElement('div');
 		this.customExtraSection.className = 'writer-function-calc-validation__group';
 		this.customExtraSection.appendChild(
-			this.labeledField('公式', this.customFormulaInput),
-		);
-		this.customExtraSection.appendChild(
 			this.checkboxRow('区分大小写', () => this.state.caseSensitive, (v) => {
 				this.state.caseSensitive = v;
 			}),
 		);
+		this.customExtraSection.appendChild(this.formulaField(this.customFormulaInput));
 		scroll.appendChild(this.customExtraSection);
 
 		return scroll;
@@ -262,6 +263,7 @@ class CalcEditorDataValidationDialog {
 				this.state.showInputHelp = v;
 			}),
 		);
+		scroll.appendChild(this.sectionLabel('内容'));
 		this.inputHelpTitleInput = this.textField('');
 		scroll.appendChild(this.labeledField('标题', this.inputHelpTitleInput));
 		this.inputHelpTextInput = document.createElement('textarea');
@@ -277,16 +279,27 @@ class CalcEditorDataValidationDialog {
 		scroll.appendChild(
 			this.checkboxRow('处理无效值', () => this.state.showErrorAlert, (v) => {
 				this.state.showErrorAlert = v;
+				this.refreshDynamicFields();
 			}),
 		);
 
 		this.errorActionValueEl = document.createElement('span');
+		this.actionSection = document.createElement('div');
+		this.actionSection.className = 'writer-function-calc-validation__field-block';
+		this.actionSection.appendChild(this.sectionLabel('操作'));
 		const actionRow = document.createElement('div');
 		actionRow.className = 'writer-function-calc-validation__action-row';
-		const actionPicker = this.pickerRow('操作', this.errorActionValueEl, () =>
-			this.openOptionPicker('errorAction'),
-		);
-		actionPicker.classList.add('writer-function-calc-validation__action-picker');
+		const actionPicker = document.createElement('button');
+		actionPicker.type = 'button';
+		actionPicker.className = 'writer-function-calc-validation__picker';
+		this.errorActionValueEl.className = 'writer-function-calc-validation__picker-value';
+		const chevron = document.createElement('span');
+		chevron.className = 'writer-function-calc-validation__picker-chevron';
+		chevron.setAttribute('aria-hidden', 'true');
+		chevron.textContent = '›';
+		actionPicker.appendChild(this.errorActionValueEl);
+		actionPicker.appendChild(chevron);
+		actionPicker.onclick = () => this.openOptionPicker('errorAction');
 		this.macroBrowseButton = document.createElement('button');
 		this.macroBrowseButton.type = 'button';
 		this.macroBrowseButton.className = 'writer-function-calc-validation__browse';
@@ -295,7 +308,8 @@ class CalcEditorDataValidationDialog {
 		this.macroBrowseButton.onclick = () => this.openMacroPicker();
 		actionRow.appendChild(actionPicker);
 		actionRow.appendChild(this.macroBrowseButton);
-		scroll.appendChild(actionRow);
+		this.actionSection.appendChild(actionRow);
+		scroll.appendChild(this.actionSection);
 
 		this.macroHint = document.createElement('div');
 		this.macroHint.className = 'writer-function-calc-validation__macro-hint';
@@ -335,7 +349,9 @@ class CalcEditorDataValidationDialog {
 			}));
 			selected = CalcEditorValidationCatalog.findDataByIndex(this.state.dataIndex).label;
 		} else {
-			title = '操作';
+			title = CalcEditorValidationCatalog.findErrorActionByIndex(
+				this.state.errorActionIndex,
+			).label;
 			options = CalcEditorValidationCatalog.ERROR_ACTION_OPTIONS.map((o) => ({
 				label: o.label,
 				value: String(o.index),
@@ -385,16 +401,13 @@ class CalcEditorDataValidationDialog {
 		const isList = CalcEditorValidationCatalog.isListAllow(allow);
 		const isRange = CalcEditorValidationCatalog.isRangeAllow(allow);
 		const isCustom = CalcEditorValidationCatalog.isCustomAllow(allow);
-		const needsData = CalcEditorValidationCatalog.needsDataOperator(allow);
 
-		this.allowBlankRow.hidden = isAny && !isCustom;
-		this.dataSection.hidden = !needsData;
-		this.valueSection.hidden = isAny || isList || isRange || isCustom;
+		const showDataValue = !isList && !isRange && !isCustom;
+		this.allowBlankRow.hidden = !(isAny || showDataValue || isCustom);
+		this.dataSection.hidden = !showDataValue;
+		this.valueSection.hidden = !showDataValue;
 		this.maxSection.hidden =
-			!needsData ||
-			isList ||
-			isRange ||
-			isCustom ||
+			!showDataValue ||
 			!CalcEditorValidationCatalog.needsBetweenValues(this.state.dataIndex);
 		this.listSection.hidden = !isList;
 		this.listExtraSection.hidden = !isList;
@@ -403,10 +416,12 @@ class CalcEditorDataValidationDialog {
 
 		const macroAction = this.state.errorActionIndex === 3;
 		const silentReject = this.state.errorActionIndex === 4;
-		this.macroBrowseButton.hidden = !macroAction;
-		this.macroHint.hidden = !macroAction || !this.state.macroUrl;
+		const showError = this.state.showErrorAlert;
+		this.actionSection.hidden = !showError;
+		this.macroBrowseButton.hidden = !macroAction || !showError;
+		this.macroHint.hidden = !macroAction || !showError || !this.state.macroUrl;
 		this.macroHint.textContent = this.macroHint.hidden ? '' : this.macroLabel();
-		this.errorContentSection.hidden = silentReject;
+		this.errorContentSection.hidden = !showError || silentReject;
 	}
 
 	private macroLabel(): string {
@@ -451,24 +466,47 @@ class CalcEditorDataValidationDialog {
 		valueEl: HTMLSpanElement,
 		onClick: () => void,
 	): HTMLDivElement {
+		const wrap = document.createElement('div');
+		wrap.className = 'writer-function-calc-validation__field-block';
+		wrap.appendChild(this.sectionLabel(label));
 		const row = document.createElement('button');
 		row.type = 'button';
 		row.className = 'writer-function-calc-validation__picker';
-		const lab = document.createElement('span');
-		lab.className = 'writer-function-calc-validation__picker-label';
-		lab.textContent = label;
 		valueEl.className = 'writer-function-calc-validation__picker-value';
 		const chevron = document.createElement('span');
 		chevron.className = 'writer-function-calc-validation__picker-chevron';
 		chevron.setAttribute('aria-hidden', 'true');
 		chevron.textContent = '›';
-		row.appendChild(lab);
 		row.appendChild(valueEl);
 		row.appendChild(chevron);
 		row.onclick = onClick;
-		const wrap = document.createElement('div');
-		wrap.className = 'writer-function-calc-validation__field-block';
 		wrap.appendChild(row);
+		return wrap;
+	}
+
+	private sectionLabel(text: string): HTMLDivElement {
+		const label = document.createElement('div');
+		label.className = 'writer-function-calc-validation__section-label';
+		label.textContent = text;
+		return label;
+	}
+
+	private formulaField(input: HTMLInputElement): HTMLDivElement {
+		const wrap = this.labeledField('公式', input);
+		const box = document.createElement('div');
+		box.className = 'writer-function-calc-validation__fx';
+		const prefix = document.createElement('span');
+		prefix.className = 'writer-function-calc-validation__fx-prefix';
+		prefix.textContent = 'fx';
+		input.classList.add('writer-function-calc-validation__fx-input');
+		box.appendChild(prefix);
+		box.appendChild(input);
+		const label = wrap.firstChild;
+		wrap.replaceChildren();
+		if (label) {
+			wrap.appendChild(label);
+		}
+		wrap.appendChild(box);
 		return wrap;
 	}
 
@@ -496,17 +534,27 @@ class CalcEditorDataValidationDialog {
 		getValue: () => boolean,
 		setValue: (v: boolean) => void,
 	): HTMLElement {
-		const row = document.createElement('label');
+		const row = document.createElement('button');
+		row.type = 'button';
 		row.className = 'writer-function-calc-validation__checkbox-row';
-		const box = document.createElement('input');
-		box.type = 'checkbox';
-		box.className = 'writer-function-calc-validation__checkbox';
-		box.checked = getValue();
-		box.onchange = () => setValue(box.checked);
 		const text = document.createElement('span');
 		text.textContent = label;
-		row.appendChild(box);
+		const mark = document.createElement('span');
+		mark.className = 'writer-function-calc-validation__check';
+		mark.setAttribute('aria-hidden', 'true');
+		const paint = () => {
+			const on = getValue();
+			mark.classList.toggle('writer-function-calc-validation__check--on', on);
+			row.setAttribute('aria-pressed', on ? 'true' : 'false');
+		};
+		row.onclick = () => {
+			setValue(!getValue());
+			paint();
+		};
+		paint();
+		this.checkboxSyncs.push(paint);
 		row.appendChild(text);
+		row.appendChild(mark);
 		return row;
 	}
 }
@@ -567,6 +615,14 @@ class CalcEditorMacroPicker {
 		this.description.readOnly = true;
 		this.description.setAttribute('aria-label', '说明');
 		this.root.appendChild(this.description);
+
+		const confirm = document.createElement('button');
+		confirm.type = 'button';
+		confirm.className = 'writer-function-calc-validation__confirm';
+		confirm.textContent = '确定';
+		confirm.setAttribute('aria-label', '确定');
+		confirm.onclick = () => this.close();
+		this.root.appendChild(confirm);
 
 		this.subpage = writerEditorMountSubpageDialog('宏选择器', this.root, host);
 		this.rebuildScope();

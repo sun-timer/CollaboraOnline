@@ -79,6 +79,24 @@ class CalcEditorPanel {
 		return this.inlineSubpage;
 	}
 
+	/** iOS Calc: custom 互联网/邮件/文档 sheet. Returns false for other apps or doc types. */
+	static openInsertHyperlink(): boolean {
+		if (!(window as any).ThisIsTheiOSApp) {
+			return false;
+		}
+		const map = (window as any).app && (window as any).app.map;
+		if (!map || typeof map.getDocType !== 'function' || map.getDocType() !== 'spreadsheet') {
+			return false;
+		}
+		const panel = CalcEditorPanel.mount();
+		if (!panel) {
+			return false;
+		}
+		panel.open();
+		panel.openHyperlinkDialog();
+		return true;
+	}
+
 	static mount(): CalcEditorPanel | null {
 		if (!(window as any).ThisIsTheiOSApp) {
 			return null;
@@ -1062,13 +1080,7 @@ class CalcEditorPanel {
 				this.openPrintAreaDialog();
 				break;
 			case 'hyperlink':
-				this.presentSub(
-					new CalcEditorHyperlinkDialog(
-						this.controller,
-						this.subHost(),
-						() => this.close(),
-					),
-				);
+				this.openHyperlinkDialog();
 				break;
 			case 'image':
 				this.close();
@@ -1302,6 +1314,16 @@ class CalcEditorPanel {
 		if (socket && typeof socket.sendMessage === 'function') {
 			socket.sendMessage(message);
 		}
+	}
+
+	private openHyperlinkDialog(): void {
+		this.presentSub(
+			new CalcEditorHyperlinkDialog(
+				this.controller,
+				this.subHost(),
+				() => this.close(),
+			),
+		);
 	}
 
 	private openDataValidationDialog(): void {

@@ -111,9 +111,15 @@ class Dispatcher {
 		};
 		// TODO: deduplicate
 		this.actionsMap['hyperlinkdialog'] = function () {
+			if (typeof CalcEditorPanel !== 'undefined' && CalcEditorPanel.openInsertHyperlink()) {
+				return;
+			}
 			app.map.sendUnoCommand('.uno:HyperlinkDialog');
 		};
 		this.actionsMap['inserthyperlink'] = () => {
+			if (typeof CalcEditorPanel !== 'undefined' && CalcEditorPanel.openInsertHyperlink()) {
+				return;
+			}
 			app.map.sendUnoCommand('.uno:HyperlinkDialog');
 		};
 		this.actionsMap['rev-history'] = function () {

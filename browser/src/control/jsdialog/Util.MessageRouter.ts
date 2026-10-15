@@ -118,6 +118,12 @@ class JSDialogMessageRouter {
 						'" ... }',
 				);
 			}
+		} else if (
+			window.ThisIsTheiOSApp &&
+			window.AndroidNativeDialogRouter &&
+			window.AndroidNativeDialogRouter.tryIntercept(msgData)
+		) {
+			return;
 		} else if (msgData.jsontype === 'dialog') {
 			app.socket._map.fire('jsdialog', { data: msgData, callback: callbackFn });
 		} else if (msgData.jsontype === 'sidebar') {
