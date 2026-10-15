@@ -223,7 +223,7 @@ AC_ARG_WITH(android-abi,
 
 AC_ARG_WITH([app-name],
               AS_HELP_STRING([--with-app-name=<name>],
-                             [Set the user-visible name of the app you build.]))
+                             [Deprecated; the product name is fixed to Orange Office.]))
 
 AC_ARG_WITH([user-id],
               AS_HELP_STRING([--with-user-id=cool],
@@ -909,10 +909,9 @@ AC_SUBST(ENABLE_ANDROIDAPP)
 AM_CONDITIONAL([ENABLE_ANDROIDAPP], [test "$ENABLE_ANDROIDAPP" = "true"])
 AC_SUBST(ANDROID_PACKAGE_NAME)
 
-APP_NAME="Collabora Online Development Edition"
-if test -n "$with_app_name"; then
-   APP_NAME="$with_app_name"
-fi
+# PRODUCT NAME LOCK: Orange Office is the user-visible app name on every platform.
+# Do not change this value or restore the --with-app-name override without product-owner approval.
+APP_NAME="Orange Office"
 AC_DEFINE_UNQUOTED([APP_NAME],["$APP_NAME"],[The user-visible name of the app you build.])
 AC_SUBST(APP_NAME)
 
