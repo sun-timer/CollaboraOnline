@@ -13013,6 +13013,46 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void focusDocumentAndShowIme() {
+        runWithImpressTextCursor(this::focusDocumentAndShowImeAllowed, true);
+    }
+
+    /** A selected slide object is not a text input target, even in edit mode. */
+    private void runWithImpressTextCursor(Runnable action, boolean showHint) {
+        if (mWebView == null || isFinishing() || exitingToHome || documentSwitchInProgress) {
+            return;
+        }
+        if (!mIsImpressDocument) {
+            action.run();
+            return;
+        }
+        final COWebView requestWebView = mWebView;
+        final Uri requestDocumentUri = getIntent().getData();
+        requestWebView.evaluateJavascript(
+                "(function(){try{return !!(window.app&&app.map"
+                        + "&&typeof app.map.isEditMode==='function'&&app.map.isEditMode()"
+                        + "&&app.file&&app.file.textCursor&&app.file.textCursor.visible);"
+                        + "}catch(e){return false;}})();",
+                result -> {
+                    if (mWebView != requestWebView || isFinishing() || exitingToHome
+                            || documentSwitchInProgress || !mIsImpressDocument
+                            || !Objects.equals(requestDocumentUri, getIntent().getData())) {
+                        return;
+                    }
+                    boolean allowed = mIsEditModeActive && "true".equals(result);
+                    Log.i(TAG, "impress_keyboard_gate allowed=" + allowed
+                            + " textCursor=" + result + " editMode=" + mIsEditModeActive
+                            + " retry=" + !showHint);
+                    if (!allowed) {
+                        if (showHint) {
+                            Toast.makeText(this, "请在输入模式下呼出键盘", Toast.LENGTH_SHORT).show();
+                        }
+                        return;
+                    }
+                    action.run();
+                });
+    }
+
+    private void focusDocumentAndShowImeAllowed() {
         if (mWebView == null) {
             return;
         }
@@ -13028,7 +13068,8 @@ public class LOActivity extends AppCompatActivity {
         }
         requestDocumentFocusAndShowIme(false);
         // 功能面板/BottomSheet 关闭后 IME 可能被窗口焦点切换打断，短延迟重试一次。
-        getMainHandler().postDelayed(() -> requestDocumentFocusAndShowIme(true), 150L);
+        getMainHandler().postDelayed(() -> runWithImpressTextCursor(
+                () -> requestDocumentFocusAndShowIme(true), false), 150L);
         nudgeSocketIfStalled("show_ime_focus_doc");
     }
 
@@ -13219,7 +13260,7 @@ public class LOActivity extends AppCompatActivity {
                 + "if(typeof layer._resetClientVisArea==='function'){layer._resetClientVisArea();}"
                 + "if(typeof layer._requestNewTiles==='function'){layer._requestNewTiles();}"
                 + "if(window.app.sectionContainer&&typeof app.sectionContainer.requestReDraw==='function'){app.sectionContainer.requestReDraw();}"
-                + "if(typeof window.postMobileMessage==='function'){window.postMobileMessage('ime_canvas_sync tag='+tag+' before='+before+' after='+measure());}"
+                + "if(typeof window.postMobileDebug==='function'){window.postMobileDebug('ime_canvas_sync tag='+tag+' before='+before+' after='+measure());}"
                 + "}"
                 + "setTimeout(function(){sync('soon');},80);"
                 + "setTimeout(function(){sync('late');},400);"
@@ -20024,6 +20065,15 @@ public class LOActivity extends AppCompatActivity {
     private void afterMessageFromWebView(String[] messageAndParameterArray) {
         switch (messageAndParameterArray[0]) {
             case "uno":
+                // Native Impress does not always publish a new part list after a slide edit.
+                // Request the authoritative status after the queued UNO command, rather than
+                // leaving the sorter at its old count while insertPage increments _parts.
+                String command = messageAndParameterArray[1].split(" ", 2)[0];
+                if (mIsImpressDocument && (".uno:InsertPage".equals(command)
+                        || ".uno:DuplicatePage".equals(command) || ".uno:DeletePage".equals(command))) {
+                    Log.i(TAG, "impress_slide_status_request after=" + command);
+                    postMobileMessageNative("status");
+                }
                 switch (messageAndParameterArray[1]) {
                     case ".uno:Copy":
                     case ".uno:Cut":

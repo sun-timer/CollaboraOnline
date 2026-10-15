@@ -456,7 +456,8 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 	_scrollToPart: function() {
 		var partNo = this._map.getCurrentPartNumber();
 		//var sliderSize, nodePos, nodeOffset, nodeMargin;
-		var node = this._partsPreviewCont.children[partNo];
+		var preview = this._previewTiles[partNo];
+		var node = preview ? preview.parentNode : null;
 
 		if (node && (!this._previewTiles[partNo] || !this._isPreviewVisible(partNo))) {
 			if (this.scrollTimer) clearTimeout(this.scrollTimer);
@@ -594,7 +595,7 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 							break;
 						}
 						if (this._previewTiles[it].hash !== app.impress.partList[it].hash) {
-							this._insertPreview({selectedPart: it, hashCode: app.impress.partList[it].hash});
+							this._insertPreview({selectedPart: it - 1, hashCode: app.impress.partList[it].hash});
 							break;
 						}
 					}
@@ -731,13 +732,15 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 			// insert newPreview to newIndex position
 			this._previewTiles.splice(newIndex, 0, newPreview);
 
-			var selectedFrame = this._previewTiles[e.selectedPart].parentNode;
+			var selectedFrame = e.selectedPart < 0 ?
+				this._partsPreviewCont.querySelector('#first-drop-site') :
+				this._previewTiles[e.selectedPart].parentNode;
 			var newFrame = newPreview.parentNode;
 
 			// insert after selectedFrame
 			selectedFrame.parentNode.insertBefore(newFrame, selectedFrame.nextSibling);
 
-			this._ensureVisiblePreviews();
+			this._onScroll();
 			this._scrollToPart();
 			this._updatePageBadges();
 		}
