@@ -82,9 +82,12 @@ window.L.Control.ContextMenu = window.L.Control.extend({
 			return;
 		}
 
-		// Android Calc: suppress the default mobile context menu (Cut/Copy/Paste/…)
-		// until we ship a native selection popup aligned with Writer.
-		if (window.ThisIsTheAndroidApp && map.getDocType() === 'spreadsheet') {
+		// Android / iOS 的 Word、PPT、Excel：长按选字后出我们的菜单。
+		// 内核上下文菜单保持关闭，不要在这里重新打开。
+		var docType = map.getDocType();
+		var mobileSelectionDoc = (window.ThisIsTheiOSApp || window.ThisIsTheAndroidApp) &&
+			(docType === 'text' || docType === 'presentation' || docType === 'spreadsheet');
+		if (mobileSelectionDoc) {
 			map.fire('closemobilewizard');
 			return;
 		}

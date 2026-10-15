@@ -539,23 +539,36 @@ static NSArray<NSString *> *TypesetCollectDrawingText(NSData *slideXml) {
 }
 
 static NSDictionary *TypesetExtractFromPptxEntries(NSDictionary<NSString *, NSData *> *entries) {
-    NSMutableArray<NSNumber *> *indices = [NSMutableArray array];
+    static NSString * const kSlidePrefix = @"ppt/slides/slide";
+    NSMutableArray<NSString *> *keys = [NSMutableArray array];
     for (NSString *key in entries) {
-        if (![key hasPrefix:@"ppt/slides/slide"] || ![key hasSuffix:@".xml"] || [key containsString:@"_rels"]) {
+        if (![key hasPrefix:kSlidePrefix] || ![key hasSuffix:@".xml"] || [key containsString:@"_rels"]) {
             continue;
         }
-        NSString *num = [key substringWithRange:NSMakeRange(@"ppt/slides/slide".length,
-            key.length - @"ppt/slides/slide".length - 4)];
-        NSInteger idx = num.integerValue;
-        if (idx > 0) {
-            [indices addObject:@(idx)];
+        NSString *num = [key substringWithRange:NSMakeRange(kSlidePrefix.length,
+            key.length - kSlidePrefix.length - 4)];
+        if (num.integerValue > 0) {
+            [keys addObject:key];
         }
     }
-    [indices sortUsingSelector:@selector(compare:)];
+    [keys sortUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
+        NSInteger leftIndex = [[left substringWithRange:NSMakeRange(kSlidePrefix.length,
+            left.length - kSlidePrefix.length - 4)] integerValue];
+        NSInteger rightIndex = [[right substringWithRange:NSMakeRange(kSlidePrefix.length,
+            right.length - kSlidePrefix.length - 4)] integerValue];
+        if (leftIndex < rightIndex) {
+            return NSOrderedAscending;
+        }
+        if (leftIndex > rightIndex) {
+            return NSOrderedDescending;
+        }
+        return NSOrderedSame;
+    }];
     NSMutableArray<NSString *> *paragraphs = [NSMutableArray array];
     NSMutableString *fullText = [NSMutableString string];
-    for (NSNumber *idx in indices) {
-        NSString *name = [NSString stringWithFormat:@"ppt/slides/slide%@.xml", idx];
+    for (NSString *name in keys) {
+        NSInteger idx = [[name substringWithRange:NSMakeRange(kSlidePrefix.length,
+            name.length - kSlidePrefix.length - 4)] integerValue];
         NSData *slideXml = entries[name];
         if (!slideXml) {
             continue;
@@ -569,7 +582,7 @@ static NSDictionary *TypesetExtractFromPptxEntries(NSDictionary<NSString *, NSDa
         if (fullText.length > 0) {
             [fullText appendString:@"\n\n"];
         }
-        [fullText appendFormat:@"【幻灯片 %@】\n%@", idx, slideText];
+        [fullText appendFormat:@"【幻灯片 %ld】\n%@", (long)idx, slideText];
     }
     if (paragraphs.count == 0) {
         return nil;

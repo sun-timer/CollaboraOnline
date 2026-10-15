@@ -168,8 +168,8 @@ class MobileSelectionMenu {
 	static calcMenuItems(): MobileSelectionMenuItemSpec[] {
 		return [
 			{ id: 'copy', label: '复制', iconKey: 'copy', kind: 'clipboard' },
-			{ id: 'paste', label: '粘贴', iconKey: 'paste', kind: 'clipboard' },
 			{ id: 'cut', label: '剪切', iconKey: 'cut', kind: 'clipboard' },
+			{ id: 'paste', label: '粘贴', iconKey: 'paste', kind: 'clipboard' },
 			{
 				id: 'clear',
 				label: '清除',

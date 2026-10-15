@@ -1,10 +1,9 @@
 /*
  * Full-document text extraction for mobile AI document Q&A (first turn).
  *
- * Android Doc QA uses LOK SelectAll → Copy → clipboard poll. iOS native
- * extract is ZIP (Writer/Impress) then LOK SelectAll + getTextSelection +
- * Deselect (no Copy); spreadsheet skips ZIP. JS SelectAll remains the fallback
- * when NativeBridge is unavailable.
+ * Android 全文问答在原生面板里提取，不走这里。演示文稿在
+ * LOActivity.extractDocumentTextForDocQaFirstTurn 导出后读取，不要改回全选。
+ * iOS：表格跳过压缩包，用全选；演示文稿先导出再读文本框；文字文档先读文件再全选。
  */
 
 class MobileAiDocumentExtractor {

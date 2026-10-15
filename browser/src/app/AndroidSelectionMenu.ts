@@ -112,19 +112,19 @@ class AndroidSelectionMenu {
 	}
 
 	/**
-	 * Selection-capable document types: Writer text and Impress presentation
-	 * (LOK setTextSelection is implemented for both — sd SdXImpressDocument).
-	 * Calc uses its own cell-selection bridge; Draw stays out for now.
+	 * Android / iOS 的 Word、PPT、Excel：长按选中文字，松手后出我们的菜单。
+	 * 不要改回内核右键菜单。Draw 不走这条。
 	 */
 	private static isSelectionDoc(): boolean {
 		if (!app.map) {
 			return false;
 		}
 		const docType = app.map.getDocType();
-		if (docType === 'text' || docType === 'presentation') {
-			return true;
-		}
-		return docType === 'spreadsheet' && AndroidSelectionMenu.isIOS();
+		return (
+			docType === 'text' ||
+			docType === 'presentation' ||
+			docType === 'spreadsheet'
+		);
 	}
 
 	private static isEditMode(): boolean {
@@ -136,24 +136,14 @@ class AndroidSelectionMenu {
 	}
 
 	/**
-	 * In preview Writer, long-press always means "select text for the AI menu",
-	 * so the browser's 550ms long-press must never fall through to a right-click.
-	 * In edit mode (Writer / Impress) we only suppress while a native selection
-	 * gesture is in flight, so a long-press that did NOT become a selection still
-	 * keeps the normal edit context menu.
+	 * 两端都挡住长按右键。画布约 550ms 会先发右键，选字要到约 600ms，
+	 * 不挡住的话内核菜单会先弹出来。不要只在手势进行中才挡。
 	 */
 	private static shouldSuppressContextMenu(): boolean {
 		if (AndroidSelectionMenu.isProgrammaticSelectionSuppressed()) {
 			return true;
 		}
-		if (!AndroidSelectionMenu.isSelectionDoc()) {
-			return false;
-		}
-		return (
-			AndroidSelectionMenu.isPreviewWriterMode() ||
-			AndroidSelectionMenu.nativeSelectionDragActive ||
-			AndroidSelectionMenu.pendingLongPressSelection
-		);
+		return AndroidSelectionMenu.isSelectionDoc();
 	}
 
 	private static clearLocalTextSelection(): void {
@@ -462,14 +452,17 @@ class AndroidSelectionMenu {
 	}
 
 	/**
-	 * Long-press in preview mode (WebView-local viewX/viewY).
-	 * Invoked from LOActivity / COWebView only when native preview mode is active.
+	 * 长按入口。Android 由原生手势调用，iOS 由 installIosLongPress 调用。
+	 * 先关掉内核菜单，再选中按下位置的文字；菜单等松手后再出。
 	 */
 	static onLongPressAt(viewX: number, viewY: number): void {
 		if (!AndroidSelectionMenu.isMobileApp() || !AndroidSelectionMenu.isSelectionDoc()) {
 			return;
 		}
 
+		if (app.map && typeof app.map.fire === 'function') {
+			app.map.fire('closemobilewizard');
+		}
 		AndroidSelectionMenu.prepareWordSelectionGesture();
 		AndroidSelectionMenu.markNativeLongPress();
 		AndroidSelectionMenu.selectionGestureComplete = false;
@@ -496,12 +489,21 @@ class AndroidSelectionMenu {
 		if (!app.map || typeof app.map.isReadOnlyMode !== 'function') {
 			return;
 		}
-		// Both preview (read-only) and edit mode are allowed for selection docs;
-		// other doc types (spreadsheet / draw) never show this menu.
+		// Writer and Impress use the text selection menu. Calc uses the compact bar.
 		if (!AndroidSelectionMenu.isSelectionDoc()) {
 			return;
 		}
 		if (!AndroidSelectionMenu.hasNonDegenerateSelection()) {
+			return;
+		}
+		// Excel 选中文字后出紧凑条（复制/剪切/粘贴/清除/翻译），不要出文字菜单。
+		if (app.map.getDocType() === 'spreadsheet') {
+			const calcMenu = (window as any).AndroidCalcCellMenu;
+			if (calcMenu && typeof calcMenu.showAfterSelection === 'function') {
+				calcMenu.showAfterSelection();
+			}
+			AndroidSelectionMenu.pendingLongPressSelection = false;
+			AndroidSelectionMenu.selectionStartTwips = null;
 			return;
 		}
 
@@ -807,9 +809,27 @@ class AndroidSelectionMenu {
 					tick,
 					AndroidSelectionMenu.tryShowRetryDelayMs,
 				);
+				return;
+			}
+			if (app.map && app.map.getDocType() === 'spreadsheet') {
+				AndroidSelectionMenu.showCalcMenuAtPress();
 			}
 		};
 		AndroidSelectionMenu.tryShowRetryTimer = window.setTimeout(tick, 50);
+	}
+
+	/** Excel 单元格里没有可选文字：先把光标落到该格，再出同一条紧凑菜单。 */
+	private static showCalcMenuAtPress(): void {
+		const pos = AndroidSelectionMenu.selectionStartTwips;
+		const layer = app.map && app.map._docLayer;
+		if (pos && layer && typeof layer._postMouseEvent === 'function') {
+			layer._postMouseEvent('buttondown', pos.x, pos.y, 1, 1, 0);
+			layer._postMouseEvent('buttonup', pos.x, pos.y, 1, 1, 0);
+		}
+		const menu = (window as any).AndroidCalcCellMenu;
+		if (menu && typeof menu.showAfterSelection === 'function') {
+			window.setTimeout(() => menu.showAfterSelection(), 80);
+		}
 	}
 
 	/** Show menu when core reports a selection without our long-press gesture flags. */
@@ -896,14 +916,17 @@ class AndroidSelectionMenu {
 				point: cool.SimplePoint,
 				e: MouseEvent,
 			): void {
-				if (
-					AndroidSelectionMenu.isMobileApp() &&
-					AndroidSelectionMenu.shouldSuppressContextMenu()
-				) {
-					e.preventDefault();
-					e.stopPropagation();
-					return;
+			if (
+				AndroidSelectionMenu.isMobileApp() &&
+				AndroidSelectionMenu.shouldSuppressContextMenu()
+			) {
+				e.preventDefault();
+				e.stopPropagation();
+				if (app.map && typeof app.map.fire === 'function') {
+					app.map.fire('closemobilewizard');
 				}
+				return;
+			}
 				return originalOnContextMenu.call(this, point, e);
 			};
 
@@ -1098,9 +1121,8 @@ class AndroidSelectionMenu {
 	}
 
 	/**
-	 * iOS has no native long-press bridge (Android drives onLongPressAt from
-	 * LOActivity); detect the gesture in the browser. Coordinates are CSS px,
-	 * converted to physical px for the shared twips math.
+	 * iOS 没有原生长按桥，在浏览器里等 600ms 再走 onLongPressAt。
+	 * Word、PPT、Excel 都走这里。坐标是 CSS 像素，再乘 dpiScale 给共用的 twips 计算。
 	 */
 	private static installIosLongPress(): void {
 		let longPressTimer = 0;
@@ -1111,6 +1133,10 @@ class AndroidSelectionMenu {
 		const onTouchStart = (e: TouchEvent) => {
 			const touch = e.touches[0];
 			if (!touch || !AndroidSelectionMenu.isSelectionDoc()) {
+				return;
+			}
+			const target = e.target as HTMLElement | null;
+			if (!target || target.tagName !== 'CANVAS') {
 				return;
 			}
 			startX = touch.clientX;

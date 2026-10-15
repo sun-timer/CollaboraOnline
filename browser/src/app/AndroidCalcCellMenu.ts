@@ -14,6 +14,8 @@ class AndroidCalcCellMenu {
 	private static deferUntilPointerUp = false;
 	private static calcMenuShownOnIOS = false;
 	private static listenersInstalled = false;
+	/** 长按选字完成后才允许在编辑模式弹出紧凑条。 */
+	private static pendingLongPress = false;
 
 	private static isIOS(): boolean {
 		return !!(window as any).ThisIsTheiOSApp;
@@ -23,22 +25,80 @@ class AndroidCalcCellMenu {
 		return !!window.ThisIsTheAndroidApp;
 	}
 
-	/** iOS copy menu is preview-only; edit mode keeps the keyboard / text flow. */
+	/**
+	 * 编辑模式两端都一样：长按选中文字（没有文字则先落光标）之后才出紧凑条。
+	 * 点一下单元格不要弹出。预览仍跟随单元格光标。不要改回点击即弹出。
+	 */
 	private static allowOnThisPlatform(): boolean {
 		if (AndroidCalcCellMenu.isAndroid()) {
-			return typeof window.postMobileMessage === 'function';
-		}
-		if (!AndroidCalcCellMenu.isIOS()) {
+			if (typeof window.postMobileMessage !== 'function') {
+				return false;
+			}
+		} else if (AndroidCalcCellMenu.isIOS()) {
+			if (typeof (window as any).MobileSelectionEvents === 'undefined') {
+				return false;
+			}
+		} else {
 			return false;
 		}
-		if (typeof (window as any).MobileSelectionEvents === 'undefined') {
-			return false;
+		if (AndroidCalcCellMenu.pendingLongPress) {
+			return true;
 		}
 		const readOnly =
 			!!app.map &&
 			typeof app.map.isReadOnlyMode === 'function' &&
 			app.map.isReadOnlyMode();
 		return readOnly;
+	}
+
+	/** After a calc long-press placed the cell cursor (no text range to anchor). */
+	static showAfterSelection(): void {
+		AndroidCalcCellMenu.pendingLongPress = true;
+		AndroidCalcCellMenu.tryShow(0);
+	}
+
+	/** Long-press in edit mode: compact bar only when the press hits the selection. */
+	static showFromLongPress(point: any): void {
+		if (!AndroidCalcCellMenu.pointInsideSelection(point)) {
+			AndroidCalcCellMenu.pendingLongPress = false;
+			AndroidCalcCellMenu.hide();
+			return;
+		}
+		AndroidCalcCellMenu.pendingLongPress = true;
+		AndroidCalcCellMenu.tryShow(0);
+	}
+
+	static dismiss(): void {
+		AndroidCalcCellMenu.pendingLongPress = false;
+		AndroidCalcCellMenu.hide();
+	}
+
+	private static pointInsideSelection(point: any): boolean {
+		if (!point) {
+			return false;
+		}
+		const cursor =
+			app.calc && app.calc.cellCursorVisible && app.calc.cellCursorRectangle;
+		if (cursor && AndroidCalcCellMenu.rectContains(cursor, point)) {
+			return true;
+		}
+		const area = app.map && app.map._docLayer && app.map._docLayer._cellSelectionArea;
+		return !!(area && AndroidCalcCellMenu.rectContains(area, point));
+	}
+
+	private static rectContains(rect: any, point: any): boolean {
+		const px = point.pX;
+		const py = point.pY;
+		if (typeof rect.pContainsPoint === 'function' && point.pToArray) {
+			return rect.pContainsPoint(point.pToArray());
+		}
+		if (typeof rect.containsPoint === 'function' && point.toArray) {
+			return rect.containsPoint(point.toArray());
+		}
+		if (rect.pX1 === undefined || px === undefined) {
+			return false;
+		}
+		return px >= rect.pX1 && px <= rect.pX2 && py >= rect.pY1 && py <= rect.pY2;
 	}
 
 	private static installPointerListeners(): void {
@@ -129,6 +189,7 @@ class AndroidCalcCellMenu {
 			return;
 		}
 		if (!app.map || app.map.getDocType() !== 'spreadsheet') {
+			AndroidCalcCellMenu.pendingLongPress = false;
 			AndroidCalcCellMenu.reportSkip(
 				'not_calc doc=' + (app.map ? app.map.getDocType() : 'no_map'),
 				retry,
@@ -136,6 +197,7 @@ class AndroidCalcCellMenu {
 			return;
 		}
 		if (app.map.wholeRowSelected || app.map.wholeColumnSelected) {
+			AndroidCalcCellMenu.pendingLongPress = false;
 			AndroidCalcCellMenu.hide();
 			AndroidCalcCellMenu.reportSkip('whole_row_col', retry);
 			return;
@@ -145,6 +207,7 @@ class AndroidCalcCellMenu {
 			if (retry < 8) {
 				window.setTimeout(() => AndroidCalcCellMenu.tryShow(retry + 1), 60);
 			} else {
+				AndroidCalcCellMenu.pendingLongPress = false;
 				AndroidCalcCellMenu.reportSkip('no_cell_cursor', retry);
 			}
 			return;
@@ -153,11 +216,13 @@ class AndroidCalcCellMenu {
 			app.definitions.graphicSelection &&
 			app.definitions.graphicSelection.handlesSection
 		) {
+			AndroidCalcCellMenu.pendingLongPress = false;
 			AndroidCalcCellMenu.reportSkip('graphic_selection', retry);
 			return;
 		}
 		const docLayer = app.map._docLayer;
 		if (!docLayer || !app.sectionContainer) {
+			AndroidCalcCellMenu.pendingLongPress = false;
 			AndroidCalcCellMenu.reportSkip('no_doc_layer', retry);
 			return;
 		}
@@ -165,6 +230,7 @@ class AndroidCalcCellMenu {
 		const layout = app.activeDocument && app.activeDocument.activeLayout;
 		const viewed = layout && layout.viewedRectangle;
 		if (!viewed) {
+			AndroidCalcCellMenu.pendingLongPress = false;
 			AndroidCalcCellMenu.reportSkip('no_viewed_rect', retry);
 			return;
 		}
@@ -192,6 +258,7 @@ class AndroidCalcCellMenu {
 			retry === 0 &&
 			anchorKey === AndroidCalcCellMenu.lastAnchorKey
 		) {
+			AndroidCalcCellMenu.pendingLongPress = false;
 			AndroidCalcCellMenu.reportSkip('dedupe', retry);
 			return;
 		}
@@ -199,11 +266,17 @@ class AndroidCalcCellMenu {
 		if (AndroidCalcCellMenu.isIOS()) {
 			const events = (window as any).MobileSelectionEvents;
 			const menu = (window as any).MobileSelectionMenu;
-			if (menu && typeof menu.iosKeyboardOpen === 'function' && menu.iosKeyboardOpen()) {
+			if (
+				!AndroidCalcCellMenu.pendingLongPress &&
+				menu &&
+				typeof menu.iosKeyboardOpen === 'function' &&
+				menu.iosKeyboardOpen()
+			) {
 				events.broadcastHide();
 				AndroidCalcCellMenu.calcMenuShownOnIOS = false;
 				return;
 			}
+			AndroidCalcCellMenu.pendingLongPress = false;
 			events.broadcastShow(
 				{
 					anchorX: cssX,
@@ -215,6 +288,7 @@ class AndroidCalcCellMenu {
 			);
 			AndroidCalcCellMenu.calcMenuShownOnIOS = true;
 		} else {
+			AndroidCalcCellMenu.pendingLongPress = false;
 			const anchorX = Math.round(cssX * scale);
 			const anchorY = Math.round(cssY * scale);
 			const anchorBottomY = Math.round(cssBottomY * scale);

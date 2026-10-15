@@ -29,6 +29,11 @@ public class AiDocumentContextProvider {
         this.bridge = bridge;
     }
 
+    /**
+     * Writer / Calc 全文：全选后从剪贴板取纯文本。
+     * 演示文稿不要调用这里。全选得到的是形状，剪贴板没有正文；
+     * 演示文稿在 LOActivity.extractDocumentTextForDocQaFirstTurn 里导出后读取。
+     */
     public String extractFullTextForDocQaFirstTurn(String requestId) {
         Log.i(TAG, "doc_qa_first_turn_extract_start requestId=" + requestId);
         bridge.beginProgrammaticSelection();

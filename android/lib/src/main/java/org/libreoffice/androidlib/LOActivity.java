@@ -19407,8 +19407,86 @@ public class LOActivity extends AppCompatActivity {
         return normalizeAiText(request.optString("prompt", ""));
     }
 
+    /**
+     * 全文问答取正文。Writer / Calc 继续走全选复制。
+     * 演示文稿的全选选中的是形状，剪贴板没有纯文本，必须先导出再读文本框。
+     * 演示文稿不要改回 SelectAll。
+     */
     private String extractDocumentTextForDocQaFirstTurn(String requestId) {
+        if (mIsImpressDocument) {
+            String exported = extractImpressTextViaExport(requestId);
+            if (!exported.isEmpty()) {
+                return exported;
+            }
+            Log.w(TAG, "doc_qa_impress_export_empty requestId=" + requestId);
+        }
         return ensureAiDocumentContextProvider().extractFullTextForDocQaFirstTurn(requestId);
+    }
+
+    /** 把当前演示文稿导出成 odp，再从 content.xml 的 text:p 拼出各页文字。 */
+    private String extractImpressTextViaExport(String requestId) {
+        File temp = null;
+        try {
+            temp = File.createTempFile("ai-doc-extract", ".odp", getCacheDir());
+            if (temp.exists() && !temp.delete()) {
+                Log.w(TAG, "doc_qa_impress_temp_delete_failed requestId=" + requestId);
+            }
+            saveAs(temp.toURI().toString(), "odp", null);
+            if (!temp.exists() || temp.length() == 0) {
+                Log.w(TAG, "doc_qa_impress_saveas_missing requestId=" + requestId);
+                return "";
+            }
+            String text = extractOdfPlainText(temp);
+            Log.i(TAG, "doc_qa_impress_export chars=" + text.length()
+                    + " requestId=" + requestId);
+            return text;
+        } catch (Exception e) {
+            Log.w(TAG, "doc_qa_impress_export_fail requestId=" + requestId, e);
+            return "";
+        } finally {
+            if (temp != null && temp.exists() && !temp.delete()) {
+                Log.w(TAG, "doc_qa_impress_temp_cleanup_failed requestId=" + requestId);
+            }
+        }
+    }
+
+    /** 只读 odp 里的正文段落。供演示文稿全文问答使用。 */
+    private String extractOdfPlainText(File file) throws Exception {
+        StringBuilder text = new StringBuilder();
+        final String textNs = "urn:oasis:names:tc:opendocument:xmlns:text:1.0";
+        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(
+                new java.io.FileInputStream(file))) {
+            java.util.zip.ZipEntry entry;
+            byte[] buf = new byte[8192];
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            DocumentBuilder builder = factory.newDocumentBuilder();
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.isDirectory() || !"content.xml".equals(entry.getName())) {
+                    continue;
+                }
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                int n;
+                while ((n = zis.read(buf)) > 0) {
+                    baos.write(buf, 0, n);
+                }
+                org.w3c.dom.Document contentXml = builder.parse(
+                        new ByteArrayInputStream(baos.toByteArray()));
+                NodeList paragraphs = contentXml.getElementsByTagNameNS(textNs, "p");
+                for (int i = 0; i < paragraphs.getLength() && text.length() < 150000; i++) {
+                    String para = extractOdfParagraphText((Element) paragraphs.item(i), textNs);
+                    if (para.isEmpty()) {
+                        continue;
+                    }
+                    if (text.length() > 0) {
+                        text.append('\n');
+                    }
+                    text.append(para);
+                }
+                break;
+            }
+        }
+        return text.length() > 150000 ? text.substring(0, 150000) : text.toString().trim();
     }
 
     private String normalizeAiText(String text) {

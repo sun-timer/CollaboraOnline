@@ -100,6 +100,8 @@
 - (NSString *)extractFullTextViaLokSelection;
 - (NSString *)lokClipboardPlainText;
 - (NSString *)extractDocumentTextFromFile;
+- (NSString *)extractPresentationTextViaExport;
+- (NSString *)textFromStructuredExtract:(NSDictionary *)extracted;
 
 @end
 
@@ -1054,6 +1056,45 @@ static IMP standardImpOfInputAccessoryView = nil;
     return self.document.fileURL;
 }
 
+- (NSString *)textFromStructuredExtract:(NSDictionary *)extracted {
+    NSString *fullText = [extracted[@"fullText"] isKindOfClass:[NSString class]]
+        ? extracted[@"fullText"] : @"";
+    return [fullText stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
+
+// 演示文稿全选选中的是形状，getTextSelection 为空。
+// 先把当前文稿导出成 odp，再读文本框。不要改回 SelectAll。
+- (NSString *)extractPresentationTextViaExport {
+    __weak DocumentViewController *weakSelf = self;
+    __block NSURL *exportURL = nil;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        DocumentViewController *strongSelf = weakSelf;
+        lok::Document *doc = strongSelf ? [strongSelf loKitDocumentOrNull] : nullptr;
+        if (!doc) {
+            return;
+        }
+        NSString *name = [NSString stringWithFormat:@"ai-doc-extract-%@.odp", [[NSUUID UUID] UUIDString]];
+        NSURL *url = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:name]];
+        [[NSFileManager defaultManager] removeItemAtURL:url error:nil];
+        doc->saveAs([[url absoluteString] UTF8String], "odp", nullptr);
+        NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:url.path error:nil];
+        unsigned long long fileSize = [attrs[NSFileSize] unsignedLongLongValue];
+        NSLog(@"[AIExtract] impress export path=%@ size=%llu", url.path, fileSize);
+        if (fileSize > 0) {
+            exportURL = url;
+        } else {
+            [[NSFileManager defaultManager] removeItemAtURL:url error:nil];
+        }
+    });
+    if (!exportURL) {
+        return @"";
+    }
+    NSString *text = [self textFromStructuredExtract:[TypesetService extractStructuredFromFile:exportURL]];
+    [[NSFileManager defaultManager] removeItemAtURL:exportURL error:nil];
+    NSLog(@"[AIExtract] impress export chars=%lu", (unsigned long)text.length);
+    return text;
+}
+
 - (NSString *)extractDocumentTextFromFile {
     NSURL *fileURL = [self documentExtractFileURL];
     unsigned long long fileSize = 0;
@@ -1065,10 +1106,7 @@ static IMP standardImpOfInputAccessoryView = nil;
           fileURL.path ?: @"(nil)",
           fileURL.path.length > 0 && [[NSFileManager defaultManager] fileExistsAtPath:fileURL.path],
           fileSize);
-    NSDictionary *extracted = [TypesetService extractStructuredFromFile:fileURL];
-    NSString *fullText = [extracted[@"fullText"] isKindOfClass:[NSString class]]
-        ? extracted[@"fullText"] : @"";
-    return [fullText stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    return [self textFromStructuredExtract:[TypesetService extractStructuredFromFile:fileURL]];
 }
 
 - (NSString *)extractFullTextViaLokSelection {
@@ -1216,9 +1254,14 @@ static IMP standardImpOfInputAccessoryView = nil;
 
         NSString *docType = strongSelf->nativeDocumentType ?: @"text";
         const BOOL isSpreadsheet = [docType isEqualToString:@"spreadsheet"];
+        const BOOL isPresentation = [docType isEqualToString:@"presentation"];
         NSLog(@"[AIExtract] type=%@ skipZip=%d", docType, isSpreadsheet);
         NSString *fileText = @"";
-        if (!isSpreadsheet) {
+        // 演示文稿与 Writer/Calc 分开：先导出读文本框，全选读不到字。
+        if (isPresentation) {
+            fileText = [strongSelf extractPresentationTextViaExport];
+        }
+        if (fileText.length == 0 && !isSpreadsheet) {
             fileText = [strongSelf extractDocumentTextFromFile];
         }
 

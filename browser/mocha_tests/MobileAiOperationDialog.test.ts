@@ -23,6 +23,25 @@ describe('Mobile AI operation rendering', function () {
 		assert.ok(html.indexOf('<p style="margin:0;">第一段</p><br><p style="margin:0;">第二段</p>') >= 0);
 	});
 
+	it('renders a Markdown table and keeps surrounding text', function () {
+		const html = MobileAiResultRenderer.toHtml(
+			'指标如下：\n\n| Metric | Value |\n| --- | ---: |\n| Rows | 15 |\n\n结束',
+		);
+		assert.ok(html.indexOf('<table') >= 0);
+		assert.ok(html.indexOf('<th') >= 0 && html.indexOf('Metric') >= 0);
+		assert.ok(html.indexOf('<td') >= 0 && html.indexOf('Rows') >= 0);
+		assert.ok(html.indexOf('text-align:right') >= 0);
+		assert.ok(html.indexOf('指标如下：') >= 0);
+		assert.ok(html.indexOf('结束') >= 0);
+		assert.equal(html.indexOf('| Metric |'), -1);
+	});
+
+	it('keeps an unfinished table as text until the separator row arrives', function () {
+		const html = MobileAiResultRenderer.toHtml('| Metric | Value |');
+		assert.equal(html.indexOf('<table'), -1);
+		assert.ok(html.indexOf('| Metric | Value |') >= 0);
+	});
+
 	it('renders ordered Markdown items without paragraph spacing inflation', function () {
 		const html = MobileAiResultRenderer.toHtml('1. 第一项\n\n2. 第二项');
 		assert.ok(html.indexOf('<ol><li>第一项</li></ol>') >= 0);

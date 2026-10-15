@@ -112,11 +112,11 @@ class MouseControl extends CanvasSectionObject {
 		e.stopPropagation();
 		e.stopImmediatePropagation();
 
-		// Android Calc: do not request core context menu on long-press.
+		// Excel 长按不向内核发右键。选字和菜单由 AndroidSelectionMenu 负责，两端相同。
 		if (
-			(window as any).ThisIsTheAndroidApp &&
 			app.map._docLayer &&
-			app.map._docLayer._docType === 'spreadsheet'
+			app.map._docLayer._docType === 'spreadsheet' &&
+			((window as any).ThisIsTheAndroidApp || (window as any).ThisIsTheiOSApp)
 		) {
 			return;
 		}
@@ -468,6 +468,15 @@ class MouseControl extends CanvasSectionObject {
 	}
 
 	onClick(point: cool.SimplePoint, e: MouseEvent): void {
+		const calcTap = (window as any).AndroidCalcTap;
+		if (
+			calcTap &&
+			typeof calcTap.shouldIgnoreWebClick === 'function' &&
+			calcTap.shouldIgnoreWebClick()
+		) {
+			return;
+		}
+
 		app.map.fire('closepopups');
 		app.map.fire('editorgotfocus');
 
