@@ -190,6 +190,18 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     private boolean pendingAutoOpenAiAfterCreate = false;
     private String pendingAutoAiPrompt = "";
     private String pendingAutoUserDescription = "";
+    private String pendingImpressCreationOptions = "";
+    private static final int PICK_PPT_CREATE_SOURCE = 149;
+    private Dialog pptCreateDialog;
+    private EditText pptCreateSourceInput;
+    private TextView pptCreateSourceLabel;
+    private boolean pptCreateSourceLoading;
+    private int pptCreateSourceGeneration;
+    private static final String[] PPT_CREATE_MODES = {"快速生成", "粘贴大纲", "文档生成"};
+    private static final String[] PPT_CREATE_TYPES = {"quick", "outline", "document"};
+    private static final String[] PPT_CREATE_PAGES = {"1-10页", "11-20页", "21-30页", "30+页"};
+    private static final String[] PPT_CREATE_AUDIENCES = {"大众", "投资者", "学生", "教师", "领导"};
+    private static final String[] PPT_CREATE_STYLES = {"通用", "行业调研", "市场推广", "工作汇报", "学术报告", "教学课件"};
     private AlertDialog aiGeneratingDialog;
 
     // 抽屉内二级面板：activity_ai_model_config.xml overlay（勿用 panel_ai_model_config，真机 ScrollView 灰屏）
@@ -1583,9 +1595,15 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         if (uri == null)
             return;
 
-        addDocumentToRecents(uri);
+        open(uri, autoOpenAi, aiPrompt, startInEditMode, userDescription, requestCode, "");
+    }
 
+    private void open(Uri uri, boolean autoOpenAi, String aiPrompt, boolean startInEditMode,
+                      String userDescription, int requestCode, String impressOptions) {
+        if (uri == null) return;
+        addDocumentToRecents(uri);
         Intent i = getIntentToEdit(uri, autoOpenAi, aiPrompt, startInEditMode);
+        i.putExtra(LOActivity.EXTRA_IMPRESS_CREATION_OPTIONS, impressOptions);
         if (!TextUtils.isEmpty(userDescription)) {
             i.putExtra(LOActivity.EXTRA_AUTO_USER_DESCRIPTION, userDescription);
         }
@@ -1607,7 +1625,8 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     private void showCreateFileBottomSheet(final String defaultFileName, final String mimeType, final int requestCode) {
         final Dialog dialog = new Dialog(this);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        dialog.setContentView(R.layout.dialog_create_file_shell);
+        final boolean isImpress = requestCode == CREATE_PRESENTATION_REQUEST_CODE;
+        dialog.setContentView(isImpress ? R.layout.dialog_create_presentation_shell : R.layout.dialog_create_file_shell);
 
         View card = dialog.findViewById(R.id.createDialogCard);
         TextView createTitle = dialog.findViewById(R.id.createTitle);
@@ -1618,11 +1637,24 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         View aiSwitchTrack = dialog.findViewById(R.id.aiSwitch);
         View aiSwitchThumb = dialog.findViewById(R.id.aiSwitchThumb);
         final EditText aiPromptInput = dialog.findViewById(R.id.aiPromptInput);
-        final boolean[] aiSwitchChecked = {false};
+        final boolean[] aiSwitchChecked = {isImpress};
+        final int[] pptChoices = {0, 1, 0, 4};
+        if (isImpress) bindPresentationCreationOptions(dialog, aiPromptInput, pptChoices);
         final int aiSwitchThumbMarginPx = (int) (2.5f * getResources().getDisplayMetrics().density);
 
         Runnable updateAiSwitchUi = () -> {
-            aiSwitchTrack.setBackgroundResource(R.drawable.bg_ai_switch_track_off);
+            GradientDrawable track = new GradientDrawable();
+            track.setCornerRadius(24 * getResources().getDisplayMetrics().density);
+            track.setColor(Color.parseColor(aiSwitchChecked[0] ? "#1278D9" : "#CBD1D7"));
+            aiSwitchTrack.setBackground(track);
+            if (isImpress) {
+                dialog.findViewById(R.id.pptCreateOptions).setVisibility(aiSwitchChecked[0] ? View.VISIBLE : View.GONE);
+                createButton.setText(aiSwitchChecked[0] ? "生成和创建" : "创建演示");
+                createButton.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                        aiSwitchChecked[0] ? new int[]{0xFF438BFF, 0xFF8C50FF, 0xFFE600EB}
+                                : new int[]{0xFFEC5D1F, 0xFFEC5D1F}));
+                ((GradientDrawable) createButton.getBackground()).setCornerRadius(8 * getResources().getDisplayMetrics().density);
+            }
             FrameLayout.LayoutParams thumbParams = (FrameLayout.LayoutParams) aiSwitchThumb.getLayoutParams();
             if (aiSwitchChecked[0]) {
                 thumbParams.gravity = Gravity.CENTER_VERTICAL | Gravity.END;
@@ -1639,11 +1671,11 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         aiSwitchTrack.setOnClickListener(v -> {
             aiSwitchChecked[0] = !aiSwitchChecked[0];
             updateAiSwitchUi.run();
-            aiPromptInput.setVisibility(aiSwitchChecked[0] ? View.VISIBLE : View.GONE);
+            if (!isImpress) aiPromptInput.setVisibility(aiSwitchChecked[0] ? View.VISIBLE : View.GONE);
             if (aiSwitchChecked[0] && requestCode == CREATE_SPREADSHEET_REQUEST_CODE) {
                 aiPromptInput.setHint("描述你想生成的表格内容，例如：2024年各季度销售数据表");
             } else if (aiSwitchChecked[0] && requestCode == CREATE_PRESENTATION_REQUEST_CODE) {
-                aiPromptInput.setHint("描述你想生成的演示内容，例如：人工智能赋能课堂");
+                // The creation mode owns the PPT input hint.
             } else if (aiSwitchChecked[0]) {
                 aiPromptInput.setHint("描述你想生成的文档内容...");
             }
@@ -1653,12 +1685,13 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         final String baseName = trimFileExtension(defaultFileName);
         final CreateSheetStyle style = getCreateSheetStyle(requestCode);
 
-        createTitle.setText(style.titleResId);
+        createTitle.setText(isImpress ? "创建演示" : getString(style.titleResId));
         createButton.setText(style.buttonTextResId);
         applyCreateButtonColor(createButton, style.buttonColorHex);
         fileNameInput.setText(baseName);
         fileNameInput.setSelection(fileNameInput.getText().length());
         overwriteWarning.setVisibility(View.GONE);
+        updateAiSwitchUi.run();
 
         if (card != null) {
             ResponsiveUiHelper.applyAdaptiveSheetCardLayout(this, card);
@@ -1676,11 +1709,30 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 return;
             }
 
+            pendingImpressCreationOptions = "";
+            if (isImpress && aiSwitchChecked[0] && pptCreateSourceLoading) {
+                Toast.makeText(this, "文档正在读取，请稍候", Toast.LENGTH_SHORT).show();
+                return;
+            }
             if (aiSwitchChecked[0]) {
                 String userDescription = aiPromptInput.getText() == null ? "" : aiPromptInput.getText().toString().trim();
-                if (requestCode == CREATE_SPREADSHEET_REQUEST_CODE && userDescription.isEmpty()) {
-                    aiPromptInput.setError("请描述你想生成的表格内容");
+                if ((requestCode == CREATE_SPREADSHEET_REQUEST_CODE || isImpress) && userDescription.isEmpty()) {
+                    aiPromptInput.setError(isImpress ? "请输入PPT主题、大纲或选择来源文档" : "请描述你想生成的表格内容");
                     return;
+                }
+                if (isImpress) {
+                    try {
+                        org.json.JSONObject options = new org.json.JSONObject();
+                        options.put("title", name);
+                        options.put("inputType", PPT_CREATE_TYPES[pptChoices[0]]);
+                        options.put("pageIndex", pptChoices[1]);
+                        options.put("audienceIndex", pptChoices[2]);
+                        options.put("styleIndex", pptChoices[3]);
+                        pendingImpressCreationOptions = options.toString();
+                    } catch (org.json.JSONException e) {
+                        aiPromptInput.setError("生成选项无效，请重试");
+                        return;
+                    }
                 }
                 pendingAutoOpenAiAfterCreate = true;
                 pendingAutoUserDescription = userDescription;
@@ -1717,7 +1769,89 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 imm.showSoftInput(fileNameInput, InputMethodManager.SHOW_IMPLICIT);
             }
         });
+        dialog.setOnDismissListener(d -> {
+            if (pptCreateDialog == dialog) {
+                pptCreateDialog = null;
+                pptCreateSourceInput = null;
+                pptCreateSourceLabel = null;
+            }
+        });
         dialog.show();
+    }
+
+    private void bindPresentationCreationOptions(Dialog dialog, EditText input, int[] choices) {
+        pptCreateDialog = dialog;
+        pptCreateSourceInput = input;
+        pptCreateSourceLabel = dialog.findViewById(R.id.pptCreateDocument);
+        pptCreateSourceLoading = false;
+        TextView mode = dialog.findViewById(R.id.pptCreateMode);
+        mode.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("生成方式")
+                .setSingleChoiceItems(PPT_CREATE_MODES, choices[0], (picker, index) -> {
+                    choices[0] = index;
+                    ++pptCreateSourceGeneration;
+                    pptCreateSourceLoading = false;
+                    mode.setText(PPT_CREATE_MODES[index]);
+                    input.setText("");
+                    input.setHint(index == 0 ? "请输入PPT主题和要求" : index == 1 ? "粘贴已有大纲文本…" : "选择来源文档后可编辑正文");
+                    pptCreateSourceLabel.setText("选择 TXT / DOCX / PDF 文件");
+                    pptCreateSourceLabel.setVisibility(index == 2 ? View.VISIBLE : View.GONE);
+                    picker.dismiss();
+                }).show());
+        bindPresentationChoice(dialog, R.id.pptCreatePages, PPT_CREATE_PAGES, choices, 1);
+        bindPresentationChoice(dialog, R.id.pptCreateAudience, PPT_CREATE_AUDIENCES, choices, 2);
+        bindPresentationChoice(dialog, R.id.pptCreateStyle, PPT_CREATE_STYLES, choices, 3);
+        pptCreateSourceLabel.setOnClickListener(v -> {
+            Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+            pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"text/plain", "application/pdf",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
+            startActivityForResult(pick, PICK_PPT_CREATE_SOURCE);
+        });
+    }
+
+    private void bindPresentationChoice(Dialog dialog, int id, String[] items, int[] choices, int slot) {
+        TextView button = dialog.findViewById(id);
+        button.setText(items[choices[slot]]);
+        button.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setSingleChoiceItems(items, choices[slot], (picker, index) -> {
+                    choices[slot] = index;
+                    button.setText(items[index]);
+                    picker.dismiss();
+                }).show());
+    }
+
+    private void readPresentationCreationSource(Uri uri) {
+        if (uri == null || pptCreateDialog == null || pptCreateSourceInput == null) return;
+        final Dialog owner = pptCreateDialog;
+        final EditText input = pptCreateSourceInput;
+        final int generation = ++pptCreateSourceGeneration;
+        pptCreateSourceLoading = true;
+        pptCreateSourceLabel.setText("正在读取文档…");
+        new Thread(() -> {
+            try {
+                String name = "来源文档";
+                try (Cursor cursor = getContentResolver().query(uri,
+                        new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+                    if (cursor != null && cursor.moveToFirst()) name = cursor.getString(0);
+                }
+                String text = org.libreoffice.androidlib.template.ImpressSourceTextReader.read(this, uri, name);
+                final String displayName = name;
+                runOnUiThread(() -> {
+                    if (pptCreateDialog != owner || !owner.isShowing() || generation != pptCreateSourceGeneration) return;
+                    pptCreateSourceLoading = false;
+                    input.setText(text);
+                    pptCreateSourceLabel.setText(displayName);
+                });
+            } catch (Exception | LinkageError e) {
+                Log.w(LOGTAG, "ppt_create_source_read_failed", e);
+                runOnUiThread(() -> {
+                    if (pptCreateDialog != owner || !owner.isShowing() || generation != pptCreateSourceGeneration) return;
+                    pptCreateSourceLoading = false;
+                    input.setText("");
+                    pptCreateSourceLabel.setText("读取失败，点击重新选择");
+                    input.setError(e.getMessage() == null ? "文档读取失败" : e.getMessage());
+                });
+            }
+        }, "ppt-create-source").start();
     }
 
     private void showRemoveFromListConfirmDialog(Uri uri) {
@@ -2263,6 +2397,10 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         super.onSaveInstanceState(outState);
 
         outState.putInt(FILTER_MODE_KEY, filterMode);
+        outState.putBoolean("create.autoAi", pendingAutoOpenAiAfterCreate);
+        outState.putString("create.prompt", pendingAutoAiPrompt);
+        outState.putString("create.description", pendingAutoUserDescription);
+        outState.putString("create.impressOptions", pendingImpressCreationOptions);
 
         outState.putBoolean(ENABLE_SHOW_HIDDEN_FILES_KEY, showHiddenFiles);
 
@@ -2274,6 +2412,10 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     protected void onRestoreInstanceState(Bundle savedInstanceState) {
         // TODO Auto-generated method stub
         super.onRestoreInstanceState(savedInstanceState);
+        pendingAutoOpenAiAfterCreate = savedInstanceState.getBoolean("create.autoAi", false);
+        pendingAutoAiPrompt = savedInstanceState.getString("create.prompt", "");
+        pendingAutoUserDescription = savedInstanceState.getString("create.description", "");
+        pendingImpressCreationOptions = savedInstanceState.getString("create.impressOptions", "");
         if (savedInstanceState.isEmpty()) {
             return;
         }
@@ -2325,6 +2467,10 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 open(uri);
                 break;
             }
+            case PICK_PPT_CREATE_SOURCE: {
+                if (resultCode == RESULT_OK && data != null) readPresentationCreationSource(data.getData());
+                break;
+            }
             case CREATE_DOCUMENT_REQUEST_CODE:
             case CREATE_SPREADSHEET_REQUEST_CODE:
             case CREATE_PRESENTATION_REQUEST_CODE: {
@@ -2343,6 +2489,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 final boolean autoOpenAi = pendingAutoOpenAiAfterCreate;
                 final String autoAiPrompt = pendingAutoAiPrompt;
                 final String autoUserDescription = pendingAutoUserDescription;
+                final String impressOptions = pendingImpressCreationOptions;
                 if (autoOpenAi) {
                     showAiGeneratingDialog();
                 } else {
@@ -2350,7 +2497,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 }
                 createNewFileAsync(uri, extension, () -> {
                     dismissAiGeneratingDialog();
-                    open(uri, autoOpenAi, autoAiPrompt, true, autoUserDescription, requestCode);
+                    open(uri, autoOpenAi, autoAiPrompt, true, autoUserDescription, requestCode, impressOptions);
                 });
                 pendingAutoOpenAiAfterCreate = false;
                 pendingAutoAiPrompt = "";

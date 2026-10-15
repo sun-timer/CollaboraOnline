@@ -16,6 +16,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithHostViewController:(UIViewController *)host
                                  aiService:(AIService *)aiService;
 - (void)showWithPrefill:(nullable NSString *)prefill;
+/// New-document flow: submitted options -> generated content -> saved PPTX.
+- (void)startCreationWithInput:(NSString *)input options:(NSDictionary *)options;
 - (void)dismiss;
 - (BOOL)isVisible;
 

@@ -736,12 +736,13 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 - (void)showCreateFileSheetForKind:(CreateFileDocKind)kind extension:(NSString *)extension {
     __weak __typeof(self) weakSelf = self;
     CreateFileBottomSheetController *sheet = [[CreateFileBottomSheetController alloc] initWithDocKind:kind
-                                                                                           completion:^(NSString *basename, BOOL aiEnabled, NSString *aiUserDescription) {
+                                                                                           completion:^(NSString *basename, BOOL aiEnabled, NSString *aiUserDescription, NSDictionary *presentationOptions) {
         [weakSelf finishCreateWithExtension:extension
                                    docKind:(NSInteger)kind
                                    basename:basename
                                   aiEnabled:aiEnabled
-                          aiUserDescription:aiUserDescription];
+                          aiUserDescription:aiUserDescription
+                          presentationOptions:presentationOptions];
     }];
     [self presentViewController:sheet animated:YES completion:nil];
 }
@@ -750,7 +751,8 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
                           docKind:(NSInteger)docKind
                          basename:(NSString *)basename
                         aiEnabled:(BOOL)aiEnabled
-                aiUserDescription:(NSString *)aiUserDescription {
+                aiUserDescription:(NSString *)aiUserDescription
+                presentationOptions:(NSDictionary *)presentationOptions {
     NSError *error = nil;
     NSURL *url = [DocumentPresentation createBlankDocumentWithExtension:extension
                                                               basename:basename
@@ -773,8 +775,10 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
                                                            userDescription:aiUserDescription
                                                                 calcNewTable:(docKind == CreateFileDocKindCalc)];
         if (docKind == CreateFileDocKindImpress) {
-            options.autoGenerateAiContent = NO;
-            options.autoOpenImpressOutline = YES;
+            options.autoGenerateAiContent = YES;
+            options.autoGenerateImpress = YES;
+            options.impressCreationOptions = presentationOptions;
+            options.autoOpenImpressOutline = NO;
         }
     }
     [DocumentPresentation presentDocumentAtURL:url from:self options:options];

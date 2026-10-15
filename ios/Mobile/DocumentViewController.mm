@@ -607,6 +607,11 @@ static IMP standardImpOfInputAccessoryView = nil;
     DocumentPresentationLaunchOptions *opts = self.launchOptions;
     self.launchOptions = nil;
 
+    if (opts.autoGenerateImpress) {
+        [impressOutlineOverlay startCreationWithInput:opts.autoUserDescription ?: @""
+                                              options:opts.impressCreationOptions ?: @{}];
+        return;
+    }
     if (opts.autoIsCalcNewTable) {
         [self startAutoGenerateCalcNewTable:opts.autoUserDescription ?: @""];
         return;

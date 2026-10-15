@@ -20,7 +20,8 @@ typedef NS_ENUM(NSInteger, CreateFileDocKind) {
 - (instancetype)initWithDocKind:(CreateFileDocKind)docKind
                      completion:(void (^)(NSString *basename,
                                           BOOL aiEnabled,
-                                          NSString *aiUserDescription))completion;
+                                          NSString *aiUserDescription,
+                                          NSDictionary *presentationOptions))completion;
 
 @end
 

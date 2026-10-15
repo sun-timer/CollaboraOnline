@@ -76,6 +76,8 @@ static NSString *PptxSafeType(id value) {
 @property (strong, nonatomic) UIProgressView *pptProgress;
 @property (strong, nonatomic) UIButton *pptCancelBtn;
 @property (copy, nonatomic) NSString *inputType;
+@property (assign, nonatomic) BOOL directCreation;
+@property (copy, nonatomic) NSString *creationTitle;
 @property (assign, nonatomic) NSInteger pageIndex;
 @property (assign, nonatomic) NSInteger audienceIndex;
 @property (assign, nonatomic) NSInteger styleIndex;
@@ -454,6 +456,8 @@ static NSString *PptxSafeType(id value) {
 }
 
 - (void)showWithPrefill:(NSString *)prefill {
+    self.directCreation = NO;
+    self.creationTitle = @"";
     UIView *hostView = self.host.view;
     if (self.overlay.superview != hostView) {
         self.overlay.frame = hostView.bounds;
@@ -481,6 +485,24 @@ static NSString *PptxSafeType(id value) {
     }
     [self setState:ImpressOutlineStateInput];
     self.overlay.hidden = NO;
+}
+
+- (void)startCreationWithInput:(NSString *)input options:(NSDictionary *)options {
+    [self showWithPrefill:input];
+    self.directCreation = YES;
+    self.creationTitle = [options[@"title"] isKindOfClass:NSString.class] ? options[@"title"] : @"";
+    self.pageIndex = MAX(0, MIN(3, [options[@"pageIndex"] respondsToSelector:@selector(integerValue)] ? [options[@"pageIndex"] integerValue] : 1));
+    self.audienceIndex = MAX(0, MIN(4, [options[@"audienceIndex"] integerValue]));
+    self.styleIndex = MAX(0, MIN(5, [options[@"styleIndex"] respondsToSelector:@selector(integerValue)] ? [options[@"styleIndex"] integerValue] : 4));
+    NSString *type = [options[@"inputType"] isKindOfClass:NSString.class] ? options[@"inputType"] : @"quick";
+    if (![self.modeTypes containsObject:type]) type = @"quick";
+    [self switchInputType:type];
+    if ([type isEqualToString:@"document"]) self.docContent = input;
+    UITextView *field = [type isEqualToString:@"outline"] ? self.pasteInput : self.quickInput;
+    field.text = input;
+    field.tag = 0;
+    field.textColor = UIColor.labelColor;
+    [self onGenerate];
 }
 
 - (BOOL)isVisible {
@@ -634,6 +656,10 @@ static NSString *PptxSafeType(id value) {
 }
 
 - (void)onErrorRetry {
+    if (self.directCreation && self.lastErrorWasPpt && self.selectedTemplateId.length > 0 && self.slides.count > 0) {
+        [self onTemplateSelected];
+        return;
+    }
     if (self.lastErrorWasPpt && self.slides.count > 0) {
         [self setState:ImpressOutlineStateTemplateSelect];
         return;
@@ -684,6 +710,10 @@ static NSString *PptxSafeType(id value) {
 
 - (void)onStop {
     [self cancelActiveRequests];
+    if (self.directCreation) {
+        [self dismiss];
+        return;
+    }
     [self setState:ImpressOutlineStateInput];
 }
 
@@ -734,6 +764,18 @@ static NSString *PptxSafeType(id value) {
         if ([item isKindOfClass:[NSDictionary class]]) {
             [self.slides addObject:[item mutableCopy]];
         }
+    }
+    if (self.directCreation) {
+        NSString *preferred = self.styleIndex == 4 ? @"minimalist" : self.styleIndex == 5 ? @"fresh" : @"business";
+        PptxTemplateInfo *info = [PptxTemplateService templateWithId:preferred];
+        if (!info) info = [PptxTemplateService loadIndex].firstObject;
+        if (!info) {
+            [self failStop:@"PPT模板不可用，请检查安装包资源"];
+            return;
+        }
+        self.selectedTemplateId = info.templateId;
+        [self onTemplateSelected];
+        return;
     }
     [self renderCards];
     [self setState:ImpressOutlineStateCompleted];
@@ -1000,13 +1042,18 @@ static NSString *PptxSafeType(id value) {
 
 - (void)cancelPptGeneration {
     [self cancelActiveRequests];
+    if (self.directCreation) {
+        [self dismiss];
+        return;
+    }
     [self setState:ImpressOutlineStateTemplateSelect];
 }
 
 - (void)finishPptFill {
     self.pptProgress.progress = 1;
     self.generatingPptText.text = @"正在写入模板…";
-    NSString *cover = self.slides.firstObject[@"title"] ?: @"AI生成PPT";
+    NSString *cover = self.directCreation && self.creationTitle.length > 0
+        ? self.creationTitle : (self.slides.firstObject[@"title"] ?: @"AI生成PPT");
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSError *error = nil;
         NSURL *output = [PptxTemplateService fillAndAssembleTemplateId:self.selectedTemplateId
@@ -1015,6 +1062,7 @@ static NSString *PptxSafeType(id value) {
                                                            outputName:cover
                                                                 error:&error];
         dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.cancelled || ![self isVisible]) return;
             if (!output) {
                 [self failStop:error.localizedDescription ?: @"模板填充失败"];
                 return;

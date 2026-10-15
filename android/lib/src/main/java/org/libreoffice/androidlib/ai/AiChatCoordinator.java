@@ -1219,8 +1219,10 @@ public class AiChatCoordinator {
                 + "}\n\n"
                 + "type枚举：cover(封面)、toc(目录)、section_divider(章节分割页)、section(章节正文)、end(结尾)\n"
                 + "每章结构：先一条 section_divider（title=章名，content=本章概述），再一条或多条 section（正文页）\n"
+                + "title 和 content 的值必须用英文双引号包住，不能写成 \"title\":目录 这种缺引号的形式。\n"
+                + "content 必须是一个字符串，禁止输出数组。不要把示例里的 XX 原样输出。\n"
                 + "title: 每页标题（简洁有力）\n"
-                + "content: 内容要点（Markdown格式，用•开头的列表）\n"
+                + "content: 内容要点（用\\n分隔，不要用 Markdown 代码块）\n"
                 + "页数不超过" + pageRange + "页\n"
                 + "风格：" + style + "\n"
                 + "听众：" + audience;

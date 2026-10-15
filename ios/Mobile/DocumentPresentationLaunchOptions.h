@@ -14,6 +14,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (assign, nonatomic) BOOL autoGenerateAiContent;
 @property (assign, nonatomic) BOOL autoOpenImpressOutline;
+@property (assign, nonatomic) BOOL autoGenerateImpress;
+@property (copy, nonatomic, nullable) NSDictionary *impressCreationOptions;
 @property (copy, nonatomic, nullable) NSString *autoAiPrompt;
 @property (copy, nonatomic, nullable) NSString *autoUserDescription;
 @property (assign, nonatomic) BOOL autoIsCalcNewTable;

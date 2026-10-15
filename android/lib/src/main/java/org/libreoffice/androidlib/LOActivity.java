@@ -211,6 +211,7 @@ public class LOActivity extends AppCompatActivity {
     private static final String KEY_INTENT_URI = "intentUri";
     public static final String EXTRA_AUTO_OPEN_AI_PANEL = "org.libreoffice.androidlib.extra.AUTO_OPEN_AI_PANEL";
     public static final String EXTRA_AUTO_OPEN_AI_PROMPT = "org.libreoffice.androidlib.extra.AUTO_OPEN_AI_PROMPT";
+    public static final String EXTRA_IMPRESS_CREATION_OPTIONS = "org.libreoffice.androidlib.extra.IMPRESS_CREATION_OPTIONS";
     public static final String EXTRA_AUTO_GENERATE_AI_CONTENT = "org.libreoffice.androidlib.extra.AUTO_GENERATE_AI_CONTENT";
     public static final String EXTRA_AUTO_USER_DESCRIPTION = "org.libreoffice.androidlib.extra.AUTO_USER_DESCRIPTION";
     public static final String EXTRA_AUTO_IS_CALC_NEW_TABLE = "org.libreoffice.androidlib.extra.AUTO_IS_CALC_NEW_TABLE";
@@ -783,6 +784,8 @@ public class LOActivity extends AppCompatActivity {
     private String impressOutlineInputType = "quick";
     private String impressOutlineDocFileContent = "";
     private String impressOutlineDocDisplayName = "";
+    private boolean impressCreationDirect;
+    private String impressCreationTitle = "";
     private int impressOutlinePageIndex = 1;
     private int impressOutlineAudienceIndex = 0;
     private int impressOutlineStyleIndex = 4;
@@ -8173,6 +8176,8 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void openImpressOutlineDialog() {
+        impressCreationDirect = false;
+        impressCreationTitle = "";
         impressOutlineInputType = "quick";
         impressOutlineDocFileContent = "";
         impressOutlineDocDisplayName = "";
@@ -8186,6 +8191,8 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void dismissImpressOutlineDialog() {
+        impressCreationDirect = false;
+        impressCreationTitle = "";
         if (!impressOutlineActiveRequestId.isEmpty()) {
             cancelAiRequest(impressOutlineActiveRequestId);
             aiStreamingViewByRequestId.remove(impressOutlineActiveRequestId);
@@ -8293,12 +8300,8 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void parseAndShowImpressOutline(String jsonText) {
-        String cleanJson = jsonText;
-        if (cleanJson.startsWith("```")) {
-            cleanJson = cleanJson.replaceAll("(?s)^```(?:json)?\\s*", "").replaceAll("\\s*```$", "");
-        }
         try {
-            JSONObject result = new JSONObject(cleanJson);
+            JSONObject result = parseImpressOutlineObject(jsonText);
             JSONArray slides = result.optJSONArray("slides");
             if (slides == null || slides.length() == 0) {
                 throw new JSONException("slides array is empty");
@@ -8306,6 +8309,23 @@ public class LOActivity extends AppCompatActivity {
 
             // Save slides JSON for template generation
             impressOutlineSlidesJson = slides;
+            if (impressCreationDirect) {
+                if (templateIndex == null) loadImpressTemplateIndex();
+                String preferred = impressOutlineStyleIndex == 4 ? "minimalist"
+                        : impressOutlineStyleIndex == 5 ? "fresh" : "business";
+                org.libreoffice.androidlib.template.TemplateIndex.Template template =
+                        templateIndex == null ? null : templateIndex.findById(preferred);
+                if (template == null && templateIndex != null && !templateIndex.getAllTemplates().isEmpty())
+                    template = templateIndex.getAllTemplates().get(0);
+                if (template == null) {
+                    impressOutlineErrorText.setText("PPT模板不可用，请重试");
+                    setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_ERROR);
+                    return;
+                }
+                selectedTemplateId = template.id;
+                startPptGeneration();
+                return;
+            }
 
             impressOutlineCardContainer.removeAllViews();
             int firstContentRowIndex = -1;
@@ -8324,9 +8344,159 @@ public class LOActivity extends AppCompatActivity {
             }
             setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
         } catch (JSONException e) {
-            impressOutlineErrorText.setText("大纲解析失败，AI返回原始文本：\n\n" + cleanJson);
+            String reason = outlineParseReason(e);
+            Log.w(TAG, "impress_outline_parse_fail reason=" + reason);
+            impressOutlineErrorText.setText("大纲解析失败：" + reason);
             setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_ERROR);
         }
+    }
+
+    private JSONObject parseImpressOutlineObject(String raw) throws JSONException {
+        String text = raw == null ? "" : raw.trim();
+        if (text.startsWith("```")) {
+            int newline = text.indexOf('\n');
+            text = (newline >= 0 ? text.substring(newline + 1) : text.substring(3)).trim();
+            if (text.endsWith("```")) {
+                text = text.substring(0, text.length() - 3).trim();
+            }
+        }
+        int start = text.indexOf('{');
+        int end = text.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            text = text.substring(start, end + 1);
+        }
+        String repaired = repairImpressOutlineJson(text);
+        JSONException last = null;
+        for (String candidate : new String[] {text, repaired}) {
+            if (candidate == null || candidate.isEmpty()) continue;
+            try {
+                JSONObject obj = new JSONObject(candidate);
+                JSONArray slides = obj.optJSONArray("slides");
+                if (slides != null && slides.length() > 0) return obj;
+                last = new JSONException("slides array is empty");
+            } catch (JSONException e) {
+                last = e;
+            }
+        }
+        JSONObject recovered = recoverImpressOutlineSlides(repaired);
+        if (recovered != null) {
+            Log.i(TAG, "impress_outline_parse_recovered slides="
+                    + recovered.getJSONArray("slides").length() + " len=" + text.length());
+            return recovered;
+        }
+        String reason = outlineParseReason(last);
+        Log.w(TAG, "impress_outline_parse_fail len=" + text.length() + " reason=" + reason);
+        throw new JSONException(reason);
+    }
+
+    /** org.json 的 message 会带上整段原文，界面只保留原因。 */
+    private static String outlineParseReason(JSONException error) {
+        String message = error == null || error.getMessage() == null
+                ? "outline json invalid" : error.getMessage();
+        int of = message.indexOf(" of ");
+        if (of > 0) message = message.substring(0, of);
+        if (message.length() > 80) message = message.substring(0, 80);
+        return message;
+    }
+
+    /**
+     * 后面的页损坏时，从最后一个完整页往前试，保留前面已经合法的页。
+     * 证据：2026-10-15 18:06 的返回在第 2 页写成 "title":目录"，整段被拒绝。
+     */
+    private static JSONObject recoverImpressOutlineSlides(String text) {
+        if (text == null || text.isEmpty()) return null;
+        boolean inString = false;
+        boolean escape = false;
+        int depth = 0;
+        java.util.List<Integer> slideEnds = new java.util.ArrayList<>();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (inString) {
+                if (escape) {
+                    escape = false;
+                    continue;
+                }
+                if (c == '\\') {
+                    escape = true;
+                    continue;
+                }
+                if (c == '"') inString = false;
+                continue;
+            }
+            if (c == '"') {
+                inString = true;
+                continue;
+            }
+            if (c == '{' || c == '[') {
+                depth++;
+            } else if (c == '}' || c == ']') {
+                depth--;
+                if (c == '}' && depth == 2) slideEnds.add(i);
+            }
+        }
+        for (int i = slideEnds.size() - 1; i >= 0; i--) {
+            String candidate = text.substring(0, slideEnds.get(i) + 1) + "]}";
+            try {
+                JSONObject obj = new JSONObject(candidate);
+                JSONArray slides = obj.optJSONArray("slides");
+                if (slides != null && slides.length() > 0) return obj;
+            } catch (JSONException ignored) {
+            }
+        }
+        return null;
+    }
+
+    /** 模型常在字符串里输出真实换行，或在 } ] 前留逗号。org.json 会因此整段拒绝。 */
+    private static String repairImpressOutlineJson(String text) {
+        if (text == null || text.isEmpty()) return "";
+        StringBuilder out = new StringBuilder(text.length() + 16);
+        boolean inString = false;
+        boolean escape = false;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (inString) {
+                if (escape) {
+                    out.append(c);
+                    escape = false;
+                    continue;
+                }
+                if (c == '\\') {
+                    out.append(c);
+                    escape = true;
+                    continue;
+                }
+                if (c == '"') {
+                    inString = false;
+                    out.append(c);
+                    continue;
+                }
+                if (c == '\n') {
+                    out.append("\\n");
+                    continue;
+                }
+                if (c == '\r') continue;
+                if (c == '\t') {
+                    out.append("\\t");
+                    continue;
+                }
+                out.append(c);
+                continue;
+            }
+            if (c == '"') {
+                inString = true;
+                out.append(c);
+                continue;
+            }
+            if (c == ',') {
+                int j = i + 1;
+                while (j < text.length() && Character.isWhitespace(text.charAt(j))) j++;
+                if (j < text.length() && (text.charAt(j) == '}' || text.charAt(j) == ']')) {
+                    continue;
+                }
+            }
+            out.append(c);
+        }
+        return out.toString();
     }
 
     private void updateImpressOutlineDocUi() {
@@ -9190,7 +9360,8 @@ public class LOActivity extends AppCompatActivity {
         });
 
         final String assetPath = "templates/impress/" + tmpl.file;
-        final String coverTitle = extractImpressCoverTitle();
+        final String coverTitle = !impressCreationTitle.isEmpty()
+                ? impressCreationTitle : extractImpressCoverTitle();
         new Thread(() -> {
             try {
                 org.libreoffice.androidlib.template.TemplateSlideCatalog catalog =
@@ -9238,7 +9409,7 @@ public class LOActivity extends AppCompatActivity {
         if (safeTitle.isEmpty()) safeTitle = "AI生成PPT";
         String safeTemplate = sanitizeImpressFileName(templateName);
         if (safeTemplate.isEmpty()) safeTemplate = "模板";
-        String baseName = safeTitle + "_" + safeTemplate;
+        String baseName = !impressCreationTitle.isEmpty() ? safeTitle : safeTitle + "_" + safeTemplate;
         File dir = getCacheDir();
         File candidate = new File(dir, baseName + ".pptx");
         int suffix = 2;
@@ -18470,7 +18641,8 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         if (pendingAutoIsImpressGenerate) {
-            startImpressNewPptFromCreate(buildImpressCreateUserInput());
+            String userInput = pendingAutoUserDescription == null ? "" : pendingAutoUserDescription.trim();
+            startImpressNewPptFromCreate(userInput);
             return;
         }
         String prompt = pendingAutoOpenAiPrompt == null || pendingAutoOpenAiPrompt.isEmpty()
@@ -18485,29 +18657,6 @@ public class LOActivity extends AppCompatActivity {
         startNativeAiRequest("", prompt, true, "chat", false);
     }
 
-    private String buildImpressCreateUserInput() {
-        String desc = pendingAutoUserDescription == null ? "" : pendingAutoUserDescription.trim();
-        String prompt = pendingAutoOpenAiPrompt == null ? "" : pendingAutoOpenAiPrompt.trim();
-        String theme = "";
-        int themeStart = prompt.indexOf("主题：《");
-        if (themeStart >= 0) {
-            int themeEnd = prompt.indexOf("》", themeStart + 4);
-            if (themeEnd > themeStart) {
-                theme = prompt.substring(themeStart + "主题：《".length(), themeEnd).trim();
-            }
-        }
-        if (!theme.isEmpty() && !desc.isEmpty()) {
-            return "主题：" + theme + "\n" + desc;
-        }
-        if (!desc.isEmpty()) {
-            return desc;
-        }
-        if (!theme.isEmpty()) {
-            return theme;
-        }
-        return prompt.isEmpty() ? "请生成一份演示文稿" : prompt;
-    }
-
     private void startImpressNewPptFromCreate(String userInput) {
         if (impressOutlinePanel == null) {
             setupImpressOutlineDialog();
@@ -18516,12 +18665,32 @@ public class LOActivity extends AppCompatActivity {
             Log.w(TAG, "ai_impress_new_ppt_abort reason=dialog_missing");
             return;
         }
+        // 新建演示只负责收集输入。大纲确认和选模板走文档内同一套对话框。
+        impressCreationDirect = false;
         impressOutlineInputType = "quick";
+        impressCreationTitle = "";
+        try {
+            String raw = getIntent().getStringExtra(EXTRA_IMPRESS_CREATION_OPTIONS);
+            JSONObject options = raw == null || raw.isEmpty() ? new JSONObject() : new JSONObject(raw);
+            impressOutlineInputType = options.optString("inputType", "quick");
+            impressOutlinePageIndex = Math.max(0, Math.min(3, options.optInt("pageIndex", 1)));
+            impressOutlineAudienceIndex = Math.max(0, Math.min(4, options.optInt("audienceIndex", 0)));
+            impressOutlineStyleIndex = Math.max(0, Math.min(5, options.optInt("styleIndex", 4)));
+            impressCreationTitle = options.optString("title", "").trim();
+        } catch (JSONException e) {
+            Log.w(TAG, "ai_impress_create_options_invalid", e);
+        }
         impressOutlineLastInput = userInput == null ? "" : userInput;
         if (impressOutlineQuickInput != null) {
             impressOutlineQuickInput.setText(impressOutlineLastInput);
         }
-        switchImpressOutlineInputType("quick");
+        if (impressOutlinePasteInput != null) impressOutlinePasteInput.setText(impressOutlineLastInput);
+        if ("document".equals(impressOutlineInputType)) {
+            impressOutlineDocFileContent = impressOutlineLastInput;
+            impressOutlineDocDisplayName = "新建演示来源文档";
+        }
+        switchImpressOutlineInputType(impressOutlineInputType);
+        refreshImpressOutlinePillLabels();
         impressOutlineOverlay.setVisibility(View.VISIBLE);
         impressOutlinePanel.setVisibility(View.VISIBLE);
         impressOutlinePanel.post(this::positionImpressOutlineDialogCenter);
