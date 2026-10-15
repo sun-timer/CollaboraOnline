@@ -93,7 +93,7 @@ public class TopToolbarController {
         refreshOpenDocumentCount();
         resetUndoRedoState("toolbar_setup");
         applyDocumentThemeBackground();
-        applyImpressSearchVisibility();
+        applySearchVisibility();
         applyEditToolbarPadding();
         updateEditModeState(isEditModeActive, "toolbar_setup");
     }
@@ -108,14 +108,14 @@ public class TopToolbarController {
         isImpressDocument = isImpress;
         Runnable applyTask = () -> {
             applyDocumentThemeBackground();
-            applyImpressSearchVisibility();
+            applySearchVisibility();
         };
         runOnUi(applyTask);
     }
 
-    /** 演示文稿顶栏不展示搜索图标(对齐 Figma:标题栏右侧无搜索)。 */
-    private void applyImpressSearchVisibility() {
-        int visibility = isImpressDocument ? View.GONE : View.VISIBLE;
+    /** 所有文档均保留查找入口；编辑模式下现有面板同时提供替换。 */
+    private void applySearchVisibility() {
+        int visibility = View.VISIBLE;
         if (searchPreviewButton != null) {
             searchPreviewButton.setVisibility(visibility);
         }
