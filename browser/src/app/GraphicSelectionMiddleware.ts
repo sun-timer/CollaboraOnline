@@ -281,13 +281,21 @@ class GraphicSelection {
 					Math.round(cssBottomY * scale)
 				);
 			} else if (window.ThisIsTheiOSApp && typeof MobileSelectionEvents !== 'undefined') {
-				// Graphic menus stay up while the keyboard is open. MobileSelectionMenu
-				// already allows mode 'graphic' in that case.
-				MobileSelectionEvents.broadcastShow(
-					GraphicSelection.iosGraphicAnchorCss(rect),
-					'',
-					'graphic',
-				);
+				// A slide text selection also selects its shape. Keep the text menu.
+				const selectionMenu = (window as any).AndroidSelectionMenu;
+				const textSelected =
+					selectionMenu &&
+					typeof selectionMenu.hasVisibleTextSelection === 'function' &&
+					selectionMenu.hasVisibleTextSelection();
+				if (!textSelected) {
+					// Graphic menus stay up while the keyboard is open. MobileSelectionMenu
+					// already allows mode 'graphic' in that case.
+					MobileSelectionEvents.broadcastShow(
+						GraphicSelection.iosGraphicAnchorCss(rect),
+						'',
+						'graphic',
+					);
+				}
 			}
 		} else if (
 			this.handlesSection &&

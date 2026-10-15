@@ -16,7 +16,7 @@ class AndroidSelectionMenu {
 	/** True once core acknowledges `selecttext start` during the current gesture. */
 	private static selectionStartAcknowledged = false;
 	/**
-	 * Android long-press selects a few characters at the press point instead of
+	 * Mobile long-press selects a few characters at the press point instead of
 	 * extending `selecttext start` from the previous caret.
 	 */
 	private static localCharacterSelection = false;
@@ -29,10 +29,20 @@ class AndroidSelectionMenu {
 	private static programmaticSelectionSuppressionDepth = 0;
 	/** Last iOS touch in CSS pixels. Used when core view coords collapse to the canvas origin. */
 	private static lastIosGestureCss: { x: number; y: number } | null = null;
+	/**
+	 * Finger-up after a long-press still synthesizes a click. On a slide that
+	 * click selects the shape and clears the text selection.
+	 */
+	private static suppressClickUntil = 0;
 
 	/** True while a native long-press selection gesture is in flight. */
 	static isLongPressGesturePending(): boolean {
 		return AndroidSelectionMenu.pendingLongPressSelection;
+	}
+
+	/** True when core has a text range, so a shape message must not replace it. */
+	static hasVisibleTextSelection(): boolean {
+		return AndroidSelectionMenu.hasNonDegenerateSelection();
 	}
 
 	/** Debug trace; reaches logcat via WebChromeClient.onConsoleMessage. */
@@ -98,13 +108,19 @@ class AndroidSelectionMenu {
 		return AndroidSelectionMenu.isAndroid() || AndroidSelectionMenu.isIOS();
 	}
 
+	/** Read-only Word or PPT. Both show the text menu; AI stays edit-only. */
 	private static isPreviewWriterMode(): boolean {
 		return (
 			!!app.map &&
 			typeof app.map.isReadOnlyMode === 'function' &&
 			app.map.isReadOnlyMode() &&
-			app.map.getDocType() === 'text'
+			(app.map.getDocType() === 'text' ||
+				app.map.getDocType() === 'presentation')
 		);
+	}
+
+	private static isPresentation(): boolean {
+		return !!app.map && app.map.getDocType() === 'presentation';
 	}
 
 	private static isWriterDoc(): boolean {
@@ -293,7 +309,16 @@ class AndroidSelectionMenu {
 			return;
 		}
 
-		if (AndroidSelectionMenu.isAndroid()) {
+		// Slide text lives in a shape. A click selects that shape, and
+		// CharRightSel then has no text cursor in preview or edit.
+		// selecttext hits the characters under the point.
+		if (AndroidSelectionMenu.isPresentation()) {
+			AndroidSelectionMenu.selectWordAtTwips(pos);
+			return;
+		}
+		// Word / Excel: click the character, then select two characters there.
+		// selecttext start spans from the previous caret.
+		if (AndroidSelectionMenu.isAndroid() || AndroidSelectionMenu.isIOS()) {
 			AndroidSelectionMenu.selectLocalCharactersAtTwips(pos);
 			return;
 		}
@@ -476,9 +501,11 @@ class AndroidSelectionMenu {
 			return;
 		}
 
-		// An already-selected shape/image/chart keeps the graphic menu.
-		// prepareWordSelectionGesture hides it and starts a text selection.
+		// An already-selected image or chart keeps the graphic menu.
+		// A slide's text is also a shape: long-press must still select that
+		// text. An empty textselection falls back to the graphic menu.
 		if (
+			!AndroidSelectionMenu.isPresentation() &&
 			typeof GraphicSelection !== 'undefined' &&
 			GraphicSelection.hasActiveSelection()
 		) {
@@ -494,6 +521,7 @@ class AndroidSelectionMenu {
 		AndroidSelectionMenu.selectionGestureComplete = false;
 		AndroidSelectionMenu.nativeSelectionDragActive = true;
 		AndroidSelectionMenu.lastDragSelectionUpdateAt = 0;
+		AndroidSelectionMenu.suppressClickUntil = Date.now() + 700;
 		AndroidSelectionMenu.startTextSelectionAt(viewX, viewY);
 	}
 
@@ -605,14 +633,6 @@ class AndroidSelectionMenu {
 			!AndroidSelectionMenu.isSelectionDoc() ||
 			!AndroidSelectionMenu.hasNonDegenerateSelection()
 		) {
-			return;
-		}
-		// Text selection in a read-only Writer preview remains available for the
-		// existing Writer flow.  iOS Impress selection AI is edit-only.
-		const isReadOnly =
-			typeof app.map.isReadOnlyMode === 'function' && app.map.isReadOnlyMode();
-		if (app.map.getDocType() === 'presentation' && isReadOnly) {
-			MobileSelectionEvents.broadcastHide();
 			return;
 		}
 		const startRect = TextSelections.getStartRectangle();
@@ -923,6 +943,18 @@ class AndroidSelectionMenu {
 			return;
 		}
 		if (AndroidSelectionMenu.pendingLongPressSelection) {
+			// Long-press on a picture still has a shape and no text range.
+			if (
+				AndroidSelectionMenu.isPresentation() &&
+				AndroidSelectionMenu.selectionGestureComplete &&
+				typeof GraphicSelection !== 'undefined' &&
+				GraphicSelection.hasActiveSelection()
+			) {
+				AndroidSelectionMenu.pendingLongPressSelection = false;
+				AndroidSelectionMenu.nativeSelectionDragActive = false;
+				GraphicSelection.updateGraphicSelection();
+				return;
+			}
 			AndroidSelectionMenu.cancelGesture();
 			AndroidSelectionMenu.clearLocalTextSelection();
 		}
@@ -982,6 +1014,10 @@ class AndroidSelectionMenu {
 					!AndroidSelectionMenu.isSelectionDoc()
 				) {
 					return originalOnClick.call(this, point, e);
+				}
+
+				if (Date.now() < AndroidSelectionMenu.suppressClickUntil) {
+					return;
 				}
 
 				app.map.fire('closepopups');
