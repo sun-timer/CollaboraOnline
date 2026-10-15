@@ -154,10 +154,6 @@ class AndroidCalcTap {
 				);
 				if (moved) {
 					AndroidCalcTap.iosDispatchedAt = Date.now();
-					const calcMenu = (window as any).AndroidCalcCellMenu;
-					if (calcMenu && typeof calcMenu.dismiss === 'function') {
-						calcMenu.dismiss();
-					}
 				}
 			},
 			true,

@@ -85,7 +85,7 @@ class MobileSelectionMenu {
 	/** Called from iOS DocumentViewController keyboardWillChangeFrame. */
 	setKeyboardVisible(visible: boolean): void {
 		this.nativeKeyboardVisible = visible;
-		if (visible) {
+		if (visible && this.menuMode !== 'calc') {
 			this.hide();
 		}
 	}
@@ -290,7 +290,10 @@ class MobileSelectionMenu {
 		if (!detail || typeof detail.anchorX !== 'number') {
 			return;
 		}
-		if (this.keyboardOpen()) {
+		// Calc's edit-mode long-press menu is explicitly allowed through by
+		// AndroidCalcCellMenu; do not discard that event just because the cell
+		// editor keyboard is still open. Text selection menus keep the keyboard guard.
+		if (this.keyboardOpen() && detail.mode !== 'calc') {
 			return;
 		}
 		this.hide();

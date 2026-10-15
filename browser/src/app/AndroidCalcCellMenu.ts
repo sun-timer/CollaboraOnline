@@ -14,7 +14,7 @@ class AndroidCalcCellMenu {
 	private static deferUntilPointerUp = false;
 	private static calcMenuShownOnIOS = false;
 	private static listenersInstalled = false;
-	/** 长按选字完成后才允许在编辑模式弹出紧凑条。 */
+	/** Set when a long-press asks to show before the cell cursor message arrives. */
 	private static pendingLongPress = false;
 
 	private static isIOS(): boolean {
@@ -26,33 +26,25 @@ class AndroidCalcCellMenu {
 	}
 
 	/**
-	 * 编辑模式两端都一样：长按选中文字（没有文字则先落光标）之后才出紧凑条。
-	 * 点一下单元格不要弹出。预览仍跟随单元格光标。不要改回点击即弹出。
+	 * 预览和编辑都跟随单元格光标：选中单元格就出紧凑条。
+	 * 点选、光标移动、长按走同一条 tryShow。
 	 */
 	private static allowOnThisPlatform(): boolean {
 		if (AndroidCalcCellMenu.isAndroid()) {
-			if (typeof window.postMobileMessage !== 'function') {
-				return false;
-			}
-		} else if (AndroidCalcCellMenu.isIOS()) {
-			if (typeof (window as any).MobileSelectionEvents === 'undefined') {
-				return false;
-			}
-		} else {
-			return false;
+			return typeof window.postMobileMessage === 'function';
 		}
-		if (AndroidCalcCellMenu.pendingLongPress) {
-			return true;
+		if (AndroidCalcCellMenu.isIOS()) {
+			return typeof (window as any).MobileSelectionEvents !== 'undefined';
 		}
-		const readOnly =
-			!!app.map &&
-			typeof app.map.isReadOnlyMode === 'function' &&
-			app.map.isReadOnlyMode();
-		return readOnly;
+		return false;
 	}
 
 	/** After a calc long-press placed the cell cursor (no text range to anchor). */
 	static showAfterSelection(): void {
+		// Finger-up already happened. A stale pointerdown flag would defer the
+		// menu until a pointerup that will not come again.
+		AndroidCalcCellMenu.pointerDown = false;
+		AndroidCalcCellMenu.deferUntilPointerUp = false;
 		AndroidCalcCellMenu.pendingLongPress = true;
 		AndroidCalcCellMenu.tryShow(0);
 	}
@@ -265,17 +257,8 @@ class AndroidCalcCellMenu {
 
 		if (AndroidCalcCellMenu.isIOS()) {
 			const events = (window as any).MobileSelectionEvents;
-			const menu = (window as any).MobileSelectionMenu;
-			if (
-				!AndroidCalcCellMenu.pendingLongPress &&
-				menu &&
-				typeof menu.iosKeyboardOpen === 'function' &&
-				menu.iosKeyboardOpen()
-			) {
-				events.broadcastHide();
-				AndroidCalcCellMenu.calcMenuShownOnIOS = false;
-				return;
-			}
+			// Same as preview: the cell cursor itself is enough. An open
+			// formula keyboard must not swallow the menu in edit mode.
 			AndroidCalcCellMenu.pendingLongPress = false;
 			events.broadcastShow(
 				{

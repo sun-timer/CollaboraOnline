@@ -445,6 +445,16 @@ class AndroidSelectionMenu {
 		AndroidSelectionMenu.nativeSelectionDragActive = false;
 		AndroidSelectionMenu.selectionGestureComplete = true;
 
+		// Calc has no text range for a selected cell. Show the compact cell
+		// menu on finger-up, the same moment Writer/Impress show theirs.
+		// Leaving this to the text-selection retry lets an EMPTY textselection
+		// cancel the gesture before the menu appears.
+		if (app.map && app.map.getDocType() === 'spreadsheet') {
+			AndroidSelectionMenu.pendingLongPressSelection = false;
+			AndroidSelectionMenu.showCalcMenuAtPress();
+			return;
+		}
+
 		// Long-press word select often has identical start/end twips; wait for
 		// textselection: instead of cancelling here. onEmptyTextSelection handles
 		// genuine zero-width failures.
@@ -562,7 +572,12 @@ class AndroidSelectionMenu {
 		if (AndroidSelectionMenu.isProgrammaticSelectionSuppressed()) {
 			return;
 		}
+		const spreadsheet =
+			!!app.map && app.map.getDocType() === 'spreadsheet';
+		// Calc edit mode often still has the formula keyboard. The cell menu
+		// is allowed through; only text menus stay hidden while it is open.
 		if (
+			!spreadsheet &&
 			typeof MobileSelectionMenu !== 'undefined' &&
 			MobileSelectionMenu.iosKeyboardOpen()
 		) {
@@ -818,17 +833,27 @@ class AndroidSelectionMenu {
 		AndroidSelectionMenu.tryShowRetryTimer = window.setTimeout(tick, 50);
 	}
 
-	/** Excel 单元格里没有可选文字：先把光标落到该格，再出同一条紧凑菜单。 */
+	/** Excel 单元格里没有可选文字：沿用当前单元格光标，松手后出同一条紧凑菜单。 */
 	private static showCalcMenuAtPress(): void {
-		const pos = AndroidSelectionMenu.selectionStartTwips;
-		const layer = app.map && app.map._docLayer;
-		if (pos && layer && typeof layer._postMouseEvent === 'function') {
-			layer._postMouseEvent('buttondown', pos.x, pos.y, 1, 1, 0);
-			layer._postMouseEvent('buttonup', pos.x, pos.y, 1, 1, 0);
+		const cursorVisible = !!(
+			app.calc &&
+			app.calc.cellCursorVisible &&
+			app.calc.cellCursorRectangle
+		);
+		// A second click on the cell that is already selected enters in-cell
+		// edit and the keyboard then dismisses the menu. Only move the cursor
+		// when there is no cell to anchor on.
+		if (!cursorVisible) {
+			const pos = AndroidSelectionMenu.selectionStartTwips;
+			const layer = app.map && app.map._docLayer;
+			if (pos && layer && typeof layer._postMouseEvent === 'function') {
+				layer._postMouseEvent('buttondown', pos.x, pos.y, 1, 1, 0);
+				layer._postMouseEvent('buttonup', pos.x, pos.y, 1, 1, 0);
+			}
 		}
 		const menu = (window as any).AndroidCalcCellMenu;
 		if (menu && typeof menu.showAfterSelection === 'function') {
-			window.setTimeout(() => menu.showAfterSelection(), 80);
+			window.setTimeout(() => menu.showAfterSelection(), cursorVisible ? 0 : 80);
 		}
 	}
 
@@ -1082,6 +1107,11 @@ class AndroidSelectionMenu {
 
 				// Edit mode (Writer / Impress): same gesture-driven rules as preview —
 				// do not pop the menu on every core textselection (e.g. leftover SelectAll).
+				// Calc's menu is the cell bar shown on finger-up. An EMPTY
+				// textselection is normal for a selected cell and must not cancel it.
+				if (app.map && app.map.getDocType() === 'spreadsheet') {
+					return;
+				}
 				if (
 					AndroidSelectionMenu.isSelectionDoc() &&
 					AndroidSelectionMenu.isEditMode()
