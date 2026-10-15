@@ -577,6 +577,10 @@ window.L.Control.MobileWizardWindow = window.L.Control.extend({
 				document.getElementById('mobile-wizard').style.height = '100vh';
 				$('#mobile-wizard').css('top', $('#document-container').css('top'));
 				this.isFunctionMenu = true;
+			} else if (isSidebar) {
+				// Keep the mobile properties sidebar compact so the document remains visible.
+				document.getElementById('mobile-wizard').style.height = '50vh';
+				$('#mobile-wizard').css('top', '');
 			}
 			else if (data.id === 'modal-dialog-about-dialog-box' || data.id === 'modal-dialog-unlock-features-popup') {
 				isPopup = true;
