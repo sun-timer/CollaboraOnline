@@ -2320,13 +2320,10 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)topToolbarDidPressSearch
 {
-    if (nativeEditMode) {
-        [self sendToolbarJavaScript:
-         @"if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open({replaceEnabled:true});}"];
-    } else {
-        [self sendToolbarJavaScript:
-         @"if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open({replaceEnabled:false});}"];
-    }
+    // Top-bar search (preview + edit): full find/replace sheet with capsule tabs.
+    // Preview「功能 → 审阅 → 查找」uses previewFunctionSheetDidRequestFindReplace (find-only).
+    [self sendToolbarJavaScript:
+     @"if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open({replaceEnabled:true});}"];
 }
 
 - (void)topToolbarDidPressShare
