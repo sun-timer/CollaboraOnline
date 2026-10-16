@@ -616,14 +616,6 @@ class CalcEditorMacroPicker {
 		this.description.setAttribute('aria-label', '说明');
 		this.root.appendChild(this.description);
 
-		const confirm = document.createElement('button');
-		confirm.type = 'button';
-		confirm.className = 'writer-function-calc-validation__confirm';
-		confirm.textContent = '确定';
-		confirm.setAttribute('aria-label', '确定');
-		confirm.onclick = () => this.close();
-		this.root.appendChild(confirm);
-
 		this.subpage = writerEditorMountSubpageDialog('宏选择器', this.root, host);
 		this.rebuildScope();
 		this.rebuildTree();

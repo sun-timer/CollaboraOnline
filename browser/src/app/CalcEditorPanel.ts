@@ -97,6 +97,24 @@ class CalcEditorPanel {
 		return true;
 	}
 
+	/** iOS Calc: custom 条件/输入帮助/错误警告 sheet (Android CalcDataValidationController). */
+	static openDataValidation(): boolean {
+		if (!(window as any).ThisIsTheiOSApp) {
+			return false;
+		}
+		const map = (window as any).app && (window as any).app.map;
+		if (!map || typeof map.getDocType !== 'function' || map.getDocType() !== 'spreadsheet') {
+			return false;
+		}
+		const panel = CalcEditorPanel.mount();
+		if (!panel) {
+			return false;
+		}
+		panel.open();
+		panel.openDataValidationDialog();
+		return true;
+	}
+
 	static mount(): CalcEditorPanel | null {
 		if (!(window as any).ThisIsTheiOSApp) {
 			return null;

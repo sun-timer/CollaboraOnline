@@ -154,6 +154,47 @@ class AndroidNativeDialogRouter {
 		return !!(map && typeof map.getDocType === 'function' && map.getDocType() === 'spreadsheet');
 	}
 
+	private closeMobileWizard(): void {
+		const map = (window as any).app && (window as any).app.map;
+		if (map && typeof map.fire === 'function') {
+			map.fire('closemobilewizard');
+		}
+	}
+
+	private payloadLooksLikeValidationDialog(msgData: any): boolean {
+		if (!msgData || !window.ThisIsTheiOSApp || !this.isCalcDocument()) {
+			return false;
+		}
+		const controls: NativeDialogControl[] = [];
+		this.flattenControls(msgData.children, controls);
+		return controls.some(
+			(c) =>
+				c.id === 'allow' ||
+				c.id === 'minlist' ||
+				c.id === 'actionCB' ||
+				c.id === 'tabcontrol',
+		);
+	}
+
+	private inferIosCalcDialogId(msgData: any): string | null {
+		if (!window.ThisIsTheiOSApp || !this.isCalcDocument() || !msgData) {
+			return null;
+		}
+		if (msgData.dialogid) {
+			return msgData.dialogid;
+		}
+		if (msgData.id === 'HyperlinkDialog') {
+			return 'HyperlinkDialog';
+		}
+		if (msgData.id === 'MacroSelectorDialog') {
+			return 'MacroSelectorDialog';
+		}
+		if (this.payloadLooksLikeValidationDialog(msgData)) {
+			return 'ValidationDialog';
+		}
+		return null;
+	}
+
 	private handlesDialogOnThisPlatform(dialogId: string): boolean {
 		if (window.ThisIsTheAndroidApp) {
 			return NATIVE_SPECIFIC_DIALOG_IDS.has(dialogId);
@@ -179,6 +220,19 @@ class AndroidNativeDialogRouter {
 			} else if (dialogId === 'SpellingDialog') {
 				WriterSpellingSheet.handlePayload(payload as WriterSpellingPayload);
 			} else if (dialogId === 'ValidationDialog') {
+				if (payload.action === 'update') {
+					if (
+						typeof CalcEditorValidationBridge !== 'undefined' &&
+						CalcEditorValidationBridge.isPending()
+					) {
+						return;
+					}
+					return;
+				}
+				if (payload.action === 'dismiss') {
+					this.unregister(payload.windowId);
+					return;
+				}
 				if (
 					typeof CalcEditorValidationBridge !== 'undefined' &&
 					CalcEditorValidationBridge.isPending()
@@ -186,8 +240,29 @@ class AndroidNativeDialogRouter {
 					CalcEditorValidationBridge.handlePayload(payload);
 				} else if (typeof CalcEditorValidationBridge !== 'undefined') {
 					CalcEditorValidationBridge.dismissWindow(payload.windowId);
+					this.unregister(payload.windowId);
+					this.closeMobileWizard();
+					if (
+						typeof CalcEditorPanel !== 'undefined' &&
+						CalcEditorPanel.openDataValidation()
+					) {
+						return;
+					}
 				}
 			} else if (dialogId === 'MacroSelectorDialog') {
+				if (payload.action === 'update') {
+					if (
+						typeof CalcEditorValidationBridge !== 'undefined' &&
+						CalcEditorValidationBridge.isHarvestPending()
+					) {
+						CalcEditorValidationBridge.handleMacroPayload(payload);
+					}
+					return;
+				}
+				if (payload.action === 'dismiss') {
+					this.unregister(payload.windowId);
+					return;
+				}
 				if (
 					typeof CalcEditorValidationBridge !== 'undefined' &&
 					CalcEditorValidationBridge.isHarvestPending()
@@ -195,11 +270,20 @@ class AndroidNativeDialogRouter {
 					CalcEditorValidationBridge.handleMacroPayload(payload);
 				} else if (typeof CalcEditorValidationBridge !== 'undefined') {
 					CalcEditorValidationBridge.dismissWindow(payload.windowId);
+					this.unregister(payload.windowId);
 				}
 			} else if (dialogId === 'HyperlinkDialog') {
+				if (payload.action === 'update' || payload.action === 'dismiss') {
+					if (payload.action === 'dismiss') {
+						this.unregister(payload.windowId);
+					}
+					return;
+				}
 				if (typeof CalcEditorValidationBridge !== 'undefined') {
 					CalcEditorValidationBridge.dismissWindow(payload.windowId);
 				}
+				this.unregister(payload.windowId);
+				this.closeMobileWizard();
 				if (typeof CalcEditorPanel !== 'undefined') {
 					CalcEditorPanel.openInsertHyperlink();
 				}
@@ -242,6 +326,10 @@ class AndroidNativeDialogRouter {
 		if (msgData.dialogid && this.handlesDialogOnThisPlatform(msgData.dialogid)) {
 			return true;
 		}
+		const inferred = this.inferIosCalcDialogId(msgData);
+		if (inferred && this.handlesDialogOnThisPlatform(inferred)) {
+			return true;
+		}
 		return false;
 	}
 
@@ -272,6 +360,10 @@ class AndroidNativeDialogRouter {
 		}
 
 		this.activeWindowIds.add(msgData.id);
+		const inferredDialogId = this.inferIosCalcDialogId(msgData);
+		if (!msgData.dialogid && inferredDialogId) {
+			msgData.dialogid = inferredDialogId;
+		}
 		if (msgData.dialogid) {
 			this.activeDialogIds.set(msgData.id, msgData.dialogid);
 		}
