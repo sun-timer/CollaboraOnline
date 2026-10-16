@@ -14,6 +14,8 @@
 #import "../Typeset/PptxTemplateService.h"
 #import "../Typeset/TypesetService.h"
 #import "../RecentDocumentsStore.h"
+#import "../DocumentPresentation.h"
+#import "../DocumentViewController.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <objc/runtime.h>
@@ -485,6 +487,9 @@ static NSString *PptxSafeType(id value) {
     }
     [self setState:ImpressOutlineStateInput];
     self.overlay.hidden = NO;
+    if (self.host.view != nil) {
+        [self.host.view bringSubviewToFront:self.overlay];
+    }
 }
 
 - (void)startCreationWithInput:(NSString *)input options:(NSDictionary *)options {
@@ -1164,11 +1169,28 @@ static NSString *PptxSafeType(id value) {
             RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
             [store recordURL:output];
             [self setState:ImpressOutlineStateCompleted];
+            NSString *message = [NSString stringWithFormat:@"已生成文件：%@\n可立即打开查看，或稍后在首页「最近」中打开。", output.lastPathComponent];
             UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"PPT 已生成"
-                                                                           message:[NSString stringWithFormat:@"已保存到最近文件：%@\n请关闭当前文档后从首页打开。", output.lastPathComponent]
+                                                                           message:message
                                                                     preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            [alert addAction:[UIAlertAction actionWithTitle:@"稍后" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) {
                 [self dismiss];
+            }]];
+            [alert addAction:[UIAlertAction actionWithTitle:@"立即打开" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+                [self dismiss];
+                NSURL *pptxURL = output;
+                UIViewController *host = self.host;
+                if ([host isKindOfClass:[DocumentViewController class]]) {
+                    DocumentViewController *docVC = (DocumentViewController *)host;
+                    UIViewController *presenter = docVC.presentingViewController;
+                    [docVC requestCloseWithCompletion:^{
+                        if (presenter != nil) {
+                            [DocumentPresentation presentDocumentAtURL:pptxURL from:presenter];
+                        }
+                    }];
+                } else if (host != nil) {
+                    [DocumentPresentation presentDocumentAtURL:pptxURL from:host];
+                }
             }]];
             [self.host presentViewController:alert animated:YES completion:nil];
         });
