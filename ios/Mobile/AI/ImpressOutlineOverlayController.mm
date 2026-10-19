@@ -14,6 +14,8 @@
 #import "../Typeset/PptxTemplateService.h"
 #import "../Typeset/TypesetService.h"
 #import "../RecentDocumentsStore.h"
+#import "../DocumentPresentation.h"
+#import "../DocumentViewController.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <objc/runtime.h>
@@ -485,6 +487,9 @@ static NSString *PptxSafeType(id value) {
     }
     [self setState:ImpressOutlineStateInput];
     self.overlay.hidden = NO;
+    if (self.host.view != nil) {
+        [self.host.view bringSubviewToFront:self.overlay];
+    }
 }
 
 - (void)startCreationWithInput:(NSString *)input options:(NSDictionary *)options {
@@ -717,12 +722,100 @@ static NSString *PptxSafeType(id value) {
     [self setState:ImpressOutlineStateInput];
 }
 
+- (NSString *)aiResultText:(NSDictionary *)payload {
+    // AIService emits the finished reply as fullText. Reading text always
+    // looks empty and stops PPT generation on the first page.
+    if ([payload[@"fullText"] isKindOfClass:[NSString class]] && [payload[@"fullText"] length] > 0) {
+        return payload[@"fullText"];
+    }
+    if ([payload[@"text"] isKindOfClass:[NSString class]]) {
+        return payload[@"text"];
+    }
+    return @"";
+}
+
+- (NSString *)sanitizeGenerateJson:(NSString *)json {
+    if (json.length == 0) {
+        return json ?: @"";
+    }
+    NSString *clean = json;
+    NSArray<NSString *> *patterns = @[
+        @"\"\\s*:\\s*,",
+        @"\"\\s*:\\s*\\}",
+        @"\"\\s*:\\s*\n\\s*,",
+    ];
+    NSArray<NSString *> *replacements = @[@"\":\"\",", @"\":\"\"}", @"\":\"\","];
+    for (NSUInteger i = 0; i < patterns.count; i++) {
+        NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:patterns[i]
+                                                                            options:0
+                                                                              error:nil];
+        if (!re) {
+            continue;
+        }
+        clean = [re stringByReplacingMatchesInString:clean
+                                              options:0
+                                                range:NSMakeRange(0, clean.length)
+                                         withTemplate:replacements[i]];
+    }
+    return clean;
+}
+
+- (id)jsonObjectFromModelText:(NSString *)raw {
+    NSString *clean = [self sanitizeGenerateJson:[self stripFences:raw]];
+    NSData *data = [clean dataUsingEncoding:NSUTF8StringEncoding];
+    id obj = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if (obj) {
+        return obj;
+    }
+    NSRange open = [clean rangeOfString:@"{"];
+    NSRange close = [clean rangeOfString:@"}" options:NSBackwardsSearch];
+    if (open.location == NSNotFound || close.location == NSNotFound || close.location <= open.location) {
+        return nil;
+    }
+    NSString *slice = [clean substringWithRange:NSMakeRange(open.location, close.location - open.location + 1)];
+    slice = [self sanitizeGenerateJson:slice];
+    data = [slice dataUsingEncoding:NSUTF8StringEncoding];
+    return data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+}
+
+- (NSDictionary *)fallbackGeneratedSlideAtIndex:(NSInteger)index {
+    if (index < 0 || index >= (NSInteger)self.slides.count) {
+        return nil;
+    }
+    NSDictionary *outline = self.slides[index];
+    NSString *type = PptxSafeType(outline[@"type"]);
+    if (type.length == 0) {
+        type = @"section";
+    }
+    NSString *content = [outline[@"content"] isKindOfClass:[NSString class]] ? outline[@"content"] : @"";
+    NSMutableArray<NSString *> *points = [NSMutableArray array];
+    NSMutableArray<NSString *> *detailed = [NSMutableArray array];
+    for (NSString *line in [content componentsSeparatedByString:@"\n"]) {
+        NSString *trimmed = [line stringByTrimmingCharactersInSet:
+            [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (trimmed.length == 0) {
+            continue;
+        }
+        [points addObject:trimmed];
+        [detailed addObject:@""];
+    }
+    return @{
+        @"page": @(index + 1),
+        @"type": type,
+        @"title": outline[@"title"] ?: @"",
+        @"subtitle": @"",
+        @"content": content,
+        @"content_points": points,
+        @"detailed_content": detailed,
+    };
+}
+
 - (void)handleOutlineEvent:(NSString *)type requestId:(NSString *)requestId payload:(NSDictionary *)payload {
     if (![requestId isEqualToString:self.activeRequestId]) {
         return;
     }
     if ([type isEqualToString:@"ai.done"]) {
-        NSString *text = [payload[@"text"] isKindOfClass:[NSString class]] ? payload[@"text"] : @"";
+        NSString *text = [self aiResultText:payload];
         self.activeRequestId = @"";
         [self parseAndShowOutline:text];
     } else if ([type isEqualToString:@"ai.error"]) {
@@ -746,9 +839,8 @@ static NSString *PptxSafeType(id value) {
 }
 
 - (void)parseAndShowOutline:(NSString *)jsonText {
+    id obj = [self jsonObjectFromModelText:jsonText];
     NSString *clean = [self stripFences:jsonText];
-    NSData *data = [clean dataUsingEncoding:NSUTF8StringEncoding];
-    id obj = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
     NSArray *slides = nil;
     if ([obj isKindOfClass:[NSDictionary class]]) {
         slides = obj[@"slides"];
@@ -1011,25 +1103,32 @@ static NSString *PptxSafeType(id value) {
         return;
     }
     if ([type isEqualToString:@"ai.done"]) {
-        NSString *text = [payload[@"text"] isKindOfClass:[NSString class]] ? payload[@"text"] : @"";
+        NSString *text = [self aiResultText:payload];
         self.generateRequestId = @"";
-        NSString *clean = [self stripFences:text];
-        NSData *data = [clean dataUsingEncoding:NSUTF8StringEncoding];
-        id obj = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+        id obj = [self jsonObjectFromModelText:text];
         NSArray *slides = [obj isKindOfClass:[NSDictionary class]] ? obj[@"slides"] : nil;
-        if (![slides isKindOfClass:[NSArray class]] || slides.count == 0) {
+        id first = [slides isKindOfClass:[NSArray class]] ? slides.firstObject : nil;
+        NSDictionary *slide = [first isKindOfClass:[NSDictionary class]] ? first : nil;
+        if (!slide) {
+            // Same as Android: a bad page uses the outline and generation continues.
+            slide = [self fallbackGeneratedSlideAtIndex:self.generateCurrent];
+        }
+        if (!slide) {
             [self failStop:@"生成失败：本页未返回有效内容"];
             return;
         }
-        id first = slides.firstObject;
-        if ([first isKindOfClass:[NSDictionary class]]) {
-            self.generatedByIndex[@(self.generateCurrent)] = first;
-        }
+        self.generatedByIndex[@(self.generateCurrent)] = slide;
         [self startBatch:self.generateCurrent + 1];
     } else if ([type isEqualToString:@"ai.error"]) {
         self.generateRequestId = @"";
-        NSString *message = [payload[@"message"] isKindOfClass:[NSString class]] ? payload[@"message"] : @"生成失败";
-        [self failStop:message];
+        NSDictionary *slide = [self fallbackGeneratedSlideAtIndex:self.generateCurrent];
+        if (!slide) {
+            NSString *message = [payload[@"message"] isKindOfClass:[NSString class]] ? payload[@"message"] : @"生成失败";
+            [self failStop:message];
+            return;
+        }
+        self.generatedByIndex[@(self.generateCurrent)] = slide;
+        [self startBatch:self.generateCurrent + 1];
     }
 }
 
@@ -1070,11 +1169,28 @@ static NSString *PptxSafeType(id value) {
             RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
             [store recordURL:output];
             [self setState:ImpressOutlineStateCompleted];
+            NSString *message = [NSString stringWithFormat:@"已生成文件：%@\n可立即打开查看，或稍后在首页「最近」中打开。", output.lastPathComponent];
             UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"PPT 已生成"
-                                                                           message:[NSString stringWithFormat:@"已保存到最近文件：%@\n请关闭当前文档后从首页打开。", output.lastPathComponent]
+                                                                           message:message
                                                                     preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            [alert addAction:[UIAlertAction actionWithTitle:@"稍后" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) {
                 [self dismiss];
+            }]];
+            [alert addAction:[UIAlertAction actionWithTitle:@"立即打开" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+                [self dismiss];
+                NSURL *pptxURL = output;
+                UIViewController *host = self.host;
+                if ([host isKindOfClass:[DocumentViewController class]]) {
+                    DocumentViewController *docVC = (DocumentViewController *)host;
+                    UIViewController *presenter = docVC.presentingViewController;
+                    [docVC requestCloseWithCompletion:^{
+                        if (presenter != nil) {
+                            [DocumentPresentation presentDocumentAtURL:pptxURL from:presenter];
+                        }
+                    }];
+                } else if (host != nil) {
+                    [DocumentPresentation presentDocumentAtURL:pptxURL from:host];
+                }
             }]];
             [self.host presentViewController:alert animated:YES completion:nil];
         });

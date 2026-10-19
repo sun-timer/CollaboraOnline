@@ -588,6 +588,22 @@ static IMP standardImpOfInputAccessoryView = nil;
     aiResultModal = nil;
 }
 
+- (void)schedulePendingAutoGenerateFallbackIfNeeded
+{
+    if (pendingAutoGenerateHandled || self.launchOptions == nil) {
+        return;
+    }
+    BOOL wantsAuto = self.launchOptions.autoOpenImpressOutline || self.launchOptions.autoGenerateAiContent;
+    if (!wantsAuto) {
+        return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (!pendingAutoGenerateHandled && self.launchOptions != nil) {
+            [self maybeAutoGenerateAiContentAfterLoad];
+        }
+    });
+}
+
 - (void)maybeAutoGenerateAiContentAfterLoad
 {
     if (pendingAutoGenerateHandled || self.launchOptions == nil) {
@@ -2254,6 +2270,7 @@ static IMP standardImpOfInputAccessoryView = nil;
     [super viewDidAppear:animated];
     [self refreshOpenDocumentCount];
     [self scheduleDocumentCanvasRecover];
+    [self schedulePendingAutoGenerateFallbackIfNeeded];
 }
 
 - (void)refreshOpenDocumentCount
@@ -2320,13 +2337,10 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)topToolbarDidPressSearch
 {
-    if (nativeEditMode) {
-        [self sendToolbarJavaScript:
-         @"if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open({replaceEnabled:true});}"];
-    } else {
-        [self sendToolbarJavaScript:
-         @"if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open({replaceEnabled:false});}"];
-    }
+    // Top-bar search (preview + edit): full find/replace sheet with capsule tabs.
+    // Preview「功能 → 审阅 → 查找」uses previewFunctionSheetDidRequestFindReplace (find-only).
+    [self sendToolbarJavaScript:
+     @"if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open({replaceEnabled:true});}"];
 }
 
 - (void)topToolbarDidPressShare

@@ -294,7 +294,7 @@ window.L.Map = window.L.Evented.extend({
 					this.focus();
 				}
 				app.idleHandler._activate();
-				if (window.ThisIsTheAndroidApp) {
+				if (window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) {
 					window.postMobileMessage('hideProgressbar');
 				}
 

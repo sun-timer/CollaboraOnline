@@ -305,20 +305,11 @@ class MobileSelectionMenu {
 
 		const map = (window as any).app?.map;
 		const docType = map?.getDocType?.() || 'text';
-		const isReadOnly =
-			typeof map?.isReadOnlyMode === 'function' && !!map.isReadOnlyMode();
 
 		this.menuMode = detail.mode || 'text';
 		if (this.menuMode === 'text') {
 			if (docType === 'spreadsheet') {
 				this.menuMode = 'calc';
-			} else if (docType === 'presentation' && isReadOnly) {
-				if (
-					MobileSelectionMenu.menuTaskTypesForDocument(docType, isReadOnly)
-						.length === 0
-				) {
-					return;
-				}
 			} else if (docType !== 'text' && docType !== 'presentation') {
 				return;
 			}

@@ -1,8 +1,9 @@
 /*
  * Writer find / find-replace sheet (iOS).
  *
- * Preview: find-only chrome (title 「查找」, gear + close, nav buttons above IME).
- * Edit: full find/replace tabs. Dispatches through AndroidFindReplaceBridge.
+ * Preview top-bar search + edit toolbar: full find/replace tabs (title 「查找替换」).
+ * Preview「功能 → 审阅 → 查找」: find-only (title 「查找」, no tab bar).
+ * Dispatches through AndroidFindReplaceBridge.
  */
 
 interface WriterFindReplaceOpenOptions {

@@ -122,6 +122,14 @@ class CalcEditorValidationBridge {
 
 	static dismissWindow(windowId: number): void {
 		CalcEditorValidationBridge.sendResponse(windowId, 'cancel', 2);
+		CalcEditorValidationBridge.releaseDialogWindow(windowId);
+	}
+
+	private static releaseDialogWindow(windowId: number): void {
+		const router = (window as any).AndroidNativeDialogRouter;
+		if (router && typeof router.unregister === 'function' && windowId >= 0) {
+			router.unregister(windowId);
+		}
 	}
 
 	static handlePayload(payload: NativeDialogPayload): void {
@@ -142,6 +150,7 @@ class CalcEditorValidationBridge {
 			CalcEditorValidationBridge.pendingReadCallback = null;
 			CalcEditorValidationBridge.parseValidationPayload(payload, target);
 			CalcEditorValidationBridge.sendResponse(windowId, 'cancel', 2);
+			CalcEditorValidationBridge.releaseDialogWindow(windowId);
 			if (callback) {
 				callback();
 			}
@@ -231,6 +240,7 @@ class CalcEditorValidationBridge {
 		}
 
 		CalcEditorValidationBridge.sendResponse(windowId, 'ok', 1);
+		CalcEditorValidationBridge.releaseDialogWindow(windowId);
 	}
 
 	private static parseValidationPayload(

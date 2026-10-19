@@ -861,6 +861,19 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
     stack.spacing = 0;
     [self.actionsPopup addSubview:stack];
 
+    CGRect anchorRect = [sourceView convertRect:sourceView.bounds toView:self.view];
+    CGFloat popupWidth = 180;
+    CGFloat popupHeight = 124;
+    CGFloat marginEnd = 16;
+    CGFloat overlap = 8;
+    CGFloat yBelow = CGRectGetMaxY(anchorRect) - overlap;
+    CGFloat yAbove = CGRectGetMinY(anchorRect) - popupHeight + overlap;
+    CGFloat y = yBelow;
+    if (yBelow + popupHeight > self.view.bounds.size.height - 16 && yAbove >= 16) {
+        y = yAbove;
+    }
+    y = MAX(16, MIN(y, self.view.bounds.size.height - popupHeight - 16));
+
     [NSLayoutConstraint activateConstraints:@[
         [stack.topAnchor constraintEqualToAnchor:self.actionsPopup.topAnchor constant:2],
         [stack.leadingAnchor constraintEqualToAnchor:self.actionsPopup.leadingAnchor constant:7],
@@ -869,22 +882,12 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
         [renameButton.heightAnchor constraintEqualToConstant:40],
         [shareButton.heightAnchor constraintEqualToConstant:40],
         [removeButton.heightAnchor constraintEqualToConstant:40],
-        [self.actionsPopup.widthAnchor constraintEqualToConstant:180],
+        [self.actionsPopup.widthAnchor constraintEqualToConstant:popupWidth],
+        [self.actionsPopup.heightAnchor constraintEqualToConstant:popupHeight],
+        [self.actionsPopup.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:y],
+        [self.actionsPopup.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-marginEnd],
     ]];
-
-    CGRect anchorRect = [sourceView convertRect:sourceView.bounds toView:self.view];
-    CGFloat popupWidth = 180;
-    CGFloat popupHeight = 124;
-    CGFloat marginEnd = 16;
-    CGFloat overlap = 8;
-    CGFloat x = self.view.bounds.size.width - marginEnd - popupWidth;
-    CGFloat yBelow = CGRectGetMaxY(anchorRect) - overlap;
-    CGFloat yAbove = CGRectGetMinY(anchorRect) - popupHeight + overlap;
-    CGFloat y = yBelow;
-    if (yBelow + popupHeight > self.view.bounds.size.height - 16 && yAbove >= 16) {
-        y = yAbove;
-    }
-    self.actionsPopup.frame = CGRectMake(x, y, popupWidth, popupHeight);
+    [self.view layoutIfNeeded];
 }
 
 - (RecentDocumentItem *)currentActionsItem {

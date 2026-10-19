@@ -141,12 +141,25 @@ window.L.ImpressTileLayer = window.L.CanvasTileLayer.extend({
 		this._map = map;
 		map.addControl(this._preview);
 		map.on('updateparts', this.onUpdateParts, this);
+		map.on('docloaded', this._syncMobileAddSlideButton, this);
 		app.events.on('updatepermission', this.onUpdatePermission.bind(this));
 
 		if (!map._docPreviews)
 			map._docPreviews = {};
 
 		map.uiManager.initializeSpecializedUI(this._docType);
+		this._syncMobileAddSlideButton();
+	},
+
+	_syncMobileAddSlideButton: function () {
+		if (!window.mode.isMobile() || !this._addButton || !this._map) {
+			return;
+		}
+		if (typeof this._map.isEditMode === 'function' && this._map.isEditMode()) {
+			this._addButton.attach(this._map);
+		} else {
+			this._addButton.detach();
+		}
 	},
 
 	onResizeImpress: function () {
@@ -165,10 +178,7 @@ window.L.ImpressTileLayer = window.L.CanvasTileLayer.extend({
 				if (mobileEditButton)
 					mobileEditButton.classList.remove('portrait');
 			}
-			if (this._addButton && this._map._permission === 'edit') {
-				this._addButton.detach();
-				this._addButton.attach(this._map);
-			}
+			this._syncMobileAddSlideButton();
 		}
 		else {
 			var container = window.L.DomUtil.get('main-document-content');// consider height of document area to calculate estimated height for slide-sorter
@@ -196,12 +206,14 @@ window.L.ImpressTileLayer = window.L.CanvasTileLayer.extend({
 	},
 
 	onUpdatePermission: function (e) {
-		if (window.mode.isMobile()) {
-			if (e.detail.perm === 'edit') {
-				this._addButton.attach(this._map);
-			} else {
-				this._addButton.detach();
-			}
+		if (!window.mode.isMobile() || !this._addButton) {
+			return;
+		}
+		var perm = (e && e.detail && e.detail.perm) || (e && e.perm);
+		if (perm === 'edit') {
+			this._addButton.attach(this._map);
+		} else {
+			this._addButton.detach();
 		}
 	},
 

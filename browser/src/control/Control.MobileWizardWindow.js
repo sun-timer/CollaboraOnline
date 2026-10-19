@@ -557,7 +557,7 @@ window.L.Control.MobileWizardWindow = window.L.Control.extend({
 					});
 			}
 			this._builder.build(this.content, [data]);
-			if (window.ThisIsTheAndroidApp)
+			if (window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp)
 				window.postMobileMessage('hideProgressbar');
 
 			this._mainTitle = data.text ? data.text : '';

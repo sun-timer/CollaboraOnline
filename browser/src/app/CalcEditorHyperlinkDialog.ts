@@ -136,8 +136,27 @@ class CalcEditorHyperlinkDialog {
 		this.documentTargetVisible = false;
 		this.expandedGroups.clear();
 		this.showTab('internet');
+		this.seedDocumentTabDefaults();
 		this.subpage.open();
 		this.webLink.focus();
+	}
+
+	/** Android CalcHyperlinkPickerController.onPickerShown — default sheet target. */
+	private seedDocumentTabDefaults(): void {
+		const groups = this.readDocumentTargets();
+		const sheets = groups[0]?.items || [];
+		if (!sheets.length) {
+			return;
+		}
+		const active =
+			sheets.find((item) => item.label && this.docTarget.value === item.label) ||
+			sheets[0];
+		if (!this.selectedDocumentUrl) {
+			this.selectedDocumentUrl = active.url;
+		}
+		if (!this.docTarget.value.trim()) {
+			this.docTarget.value = active.label;
+		}
 	}
 
 	close(): void {

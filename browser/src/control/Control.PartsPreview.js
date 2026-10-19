@@ -21,8 +21,8 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 		frameClass: '',
 		axis: '',
 		allowOrientation: true,
-		maxWidth: window.mode.isDesktop() ? 180: (window.mode.isTablet() ? 120: (window.ThisIsTheAndroidApp ? 98: 60)),
-		maxHeight: window.mode.isDesktop() ? 180: (window.mode.isTablet() ? 120: (window.ThisIsTheAndroidApp ? 55: 60))
+		maxWidth: window.mode.isDesktop() ? 180: (window.mode.isTablet() ? 120: ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) ? 98: 60)),
+		maxHeight: window.mode.isDesktop() ? 180: (window.mode.isTablet() ? 120: ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) ? 55: 60))
 	},
 	partsFocused: false,
 
