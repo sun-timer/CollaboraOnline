@@ -7,6 +7,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.libreoffice.androidlib.LOActivity;
 
+import java.net.URI;
+
 /** 云端模型配置读写（EXPLORER_PREFS）及 chat/completions 采样参数。 */
 public final class AiModelConfigStore {
     public static final int MODEL_BASE = 0;
@@ -229,17 +231,27 @@ public final class AiModelConfigStore {
         return "需要配置" + getModelLabel(modelType);
     }
 
-    /** 校验指定模型是否已配置 URL/API Key；缺项返回提示文案，就绪返回空串。 */
+    /** 校验指定模型是否已配置 URL；部分服务允许不填写 API Key。 */
     public static String validateConfigured(Context context, int modelType) {
         Form form = loadForm(context, modelType, "", "");
         String url = safeTrim(form.url);
-        String apiKey = safeTrim(form.apiKey);
+        String model = safeTrim(form.modelName);
         String label = getModelLabel(modelType);
         if (url.isEmpty()) {
             return "请先在设置中配置" + label + "的接口地址。";
         }
-        if (apiKey.isEmpty()) {
-            return "请先在设置中配置" + label + "的 API Key。";
+        try {
+            URI uri = new URI(url);
+            String scheme = uri.getScheme();
+            if (uri.getHost() == null || !("http".equalsIgnoreCase(scheme)
+                    || "https".equalsIgnoreCase(scheme))) {
+                return "请检查" + label + "的接口 URL，填写完整的 http:// 或 https:// 地址。";
+            }
+        } catch (Exception e) {
+            return "请检查" + label + "的接口 URL，填写完整的 http:// 或 https:// 地址。";
+        }
+        if (model.isEmpty()) {
+            return "请先在设置中填写" + label + "的模型名称。";
         }
         return "";
     }

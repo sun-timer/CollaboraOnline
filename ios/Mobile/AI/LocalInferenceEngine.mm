@@ -43,6 +43,95 @@
 @property (atomic, assign) BOOL cancelRequested;
 @end
 
+@interface LocalThinkContentFilter : NSObject
+@property (strong, nonatomic) NSMutableString *pending;
+@property (assign, nonatomic) BOOL insideThink;
+- (NSString *)append:(NSString *)text;
+- (NSString *)finish;
+- (NSString *)drainAtEndOfInput:(BOOL)endOfInput;
+- (NSUInteger)suffixPrefixLengthForMarker:(NSString *)marker;
+@end
+
+@implementation LocalThinkContentFilter
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _pending = [NSMutableString string];
+    }
+    return self;
+}
+
+- (NSString *)append:(NSString *)text {
+    if (text.length > 0) {
+        [self.pending appendString:text];
+    }
+    return [self drainAtEndOfInput:NO];
+}
+
+- (NSString *)finish {
+    return [self drainAtEndOfInput:YES];
+}
+
+- (NSString *)drainAtEndOfInput:(BOOL)endOfInput {
+    static NSString * const startTag = @"<think>";
+    static NSString * const endTag = @"</think>";
+    NSMutableString *visible = [NSMutableString string];
+
+    while (YES) {
+        NSString *marker = self.insideThink ? endTag : startTag;
+        NSRange markerRange = [self.pending rangeOfString:marker options:NSCaseInsensitiveSearch];
+        if (markerRange.location != NSNotFound) {
+            if (!self.insideThink && markerRange.location > 0) {
+                [visible appendString:[self.pending substringToIndex:markerRange.location]];
+            }
+            [self.pending deleteCharactersInRange:NSMakeRange(0, NSMaxRange(markerRange))];
+            self.insideThink = !self.insideThink;
+            continue;
+        }
+
+        if (self.insideThink) {
+            if (endOfInput) {
+                [self.pending setString:@""];
+            } else {
+                NSUInteger keep = [self suffixPrefixLengthForMarker:endTag];
+                if (self.pending.length > keep) {
+                    [self.pending deleteCharactersInRange:NSMakeRange(0, self.pending.length - keep)];
+                }
+            }
+            return visible;
+        }
+
+        if (endOfInput) {
+            [visible appendString:self.pending];
+            [self.pending setString:@""];
+            return visible;
+        }
+
+        NSUInteger keep = [self suffixPrefixLengthForMarker:startTag];
+        NSUInteger safeLength = self.pending.length - keep;
+        if (safeLength > 0) {
+            [visible appendString:[self.pending substringToIndex:safeLength]];
+            [self.pending deleteCharactersInRange:NSMakeRange(0, safeLength)];
+        }
+        return visible;
+    }
+}
+
+- (NSUInteger)suffixPrefixLengthForMarker:(NSString *)marker {
+    NSUInteger maxLength = MIN(self.pending.length, marker.length - 1);
+    for (NSUInteger length = maxLength; length > 0; length--) {
+        NSString *suffix = [self.pending substringFromIndex:self.pending.length - length];
+        NSString *prefix = [marker substringToIndex:length];
+        if ([suffix caseInsensitiveCompare:prefix] == NSOrderedSame) {
+            return length;
+        }
+    }
+    return 0;
+}
+
+@end
+
 @implementation LocalInferenceEngine
 
 + (instancetype)shared {
@@ -140,6 +229,7 @@
             return;
         }
 
+        BOOL qwen3Model = [self.loadedModelPath.lowercaseString containsString:@"qwen3"];
         NSArray<NSDictionary *> *promptMessages =
             [LocalPromptBuilder buildPromptFromHistory:messages
                                            contextSize:useParams.contextSize
@@ -169,7 +259,7 @@
         }
 
         NSTimeInterval start = [NSDate date].timeIntervalSince1970;
-        if (!xl_llama_prefill_messages(rolePtrs.data(), contentPtrs.data(), (int)rolePtrs.size())) {
+        if (!xl_llama_prefill_messages(rolePtrs.data(), contentPtrs.data(), (int)rolePtrs.size(), qwen3Model)) {
             if (onError) {
                 onError(@"local_prefill_fail", @"本地推理 prefill 失败");
             }
@@ -178,9 +268,9 @@
         }
 
         NSMutableString *full = [NSMutableString string];
+        LocalThinkContentFilter *outputFilter = [[LocalThinkContentFilter alloc] init];
         NSTimeInterval firstTokenMs = 0;
         NSInteger tokenCount = 0;
-        BOOL streamingSent = NO;
 
         for (NSInteger i = 0; i < useParams.maxTokens; i++) {
             if (self.cancelRequested) {
@@ -202,14 +292,14 @@
                 firstTokenMs = ([NSDate date].timeIntervalSince1970 - start) * 1000.0;
             }
             tokenCount++;
-            [full appendString:token];
-            if (onToken) {
-                if (!streamingSent) {
-                    streamingSent = YES;
-                }
-                onToken(token);
-            }
+            [self emitVisibleText:[outputFilter append:token]
+                             full:full
+                           onToken:onToken];
         }
+
+        [self emitVisibleText:[outputFilter finish]
+                         full:full
+                       onToken:onToken];
 
         NSTimeInterval elapsed = MAX(0.001, [NSDate date].timeIntervalSince1970 - start);
         float tps = (float)(tokenCount / elapsed);
@@ -218,6 +308,18 @@
         }
         self.executingRequestId = nil;
     });
+}
+
+- (void)emitVisibleText:(NSString *)text
+                   full:(NSMutableString *)full
+                onToken:(LocalInferenceTokenBlock)onToken {
+    if (text.length == 0) {
+        return;
+    }
+    [full appendString:text];
+    if (onToken) {
+        onToken(text);
+    }
 }
 
 @end

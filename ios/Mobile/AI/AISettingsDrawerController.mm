@@ -317,7 +317,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     [self.localRowButton addGestureRecognizer:copyUrlLongPress];
     [self.modelsBody addSubview:self.localRowButton];
 
-    UIImageView *localIcon = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"model-vision" size:24]];
+    UIImageView *localIcon = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"model-local-inference" size:24]];
     localIcon.translatesAutoresizingMaskIntoConstraints = NO;
     localIcon.userInteractionEnabled = NO;
     [self.localRowButton addSubview:localIcon];
@@ -587,16 +587,18 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     connectionTitleRow.alignment = UIStackViewAlignmentCenter;
     UIImageView *connectionIcon = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"ai-connection" size:20]];
     [connectionTitleRow addArrangedSubview:connectionIcon];
-    [connectionTitleRow addArrangedSubview:[self makeSectionTitle:@"连接配置" icon:@"ai-connection"]];
+    [connectionTitleRow addArrangedSubview:[self makeSectionTitle:@"连接" icon:@"ai-connection"]];
     [connectionStack addArrangedSubview:connectionTitleRow];
+    [connectionStack setCustomSpacing:16 afterView:connectionTitleRow];
 
-    self.configNameField = [self addField:@"配置名称" placeholder:@"我的 OpenAI 配置" to:connectionStack];
-    self.providerField = [self addField:@"供应商" placeholder:@"OpenAI" to:connectionStack];
-    self.urlField = [self addField:@"URL" placeholder:@"https://api.openai.com/v1/chat/completions" to:connectionStack];
+    self.configNameField = [self addField:@"配置名称（如：公司 API、个人 DeepSeek）" placeholder:@"请输入配置名称" to:connectionStack];
+    self.providerField = [self addField:@"模型供应商（OpenAI / Azure / Ollama / Local / DeepSeek）" placeholder:@"OpenAI" to:connectionStack];
+    self.urlField = [self addField:@"URL（接口地址）" placeholder:@"https://api.openai.com/v1/chat/completions" to:connectionStack];
     self.urlField.keyboardType = UIKeyboardTypeURL;
-    self.apiKeyField = [self addField:@"API Key" placeholder:@"sk-..." to:connectionStack];
+    [self.urlField addTarget:self action:@selector(urlFieldDidChange:) forControlEvents:UIControlEventEditingChanged];
+    self.apiKeyField = [self addField:@"API Key（密钥）" placeholder:@"sk-...（部分服务可留空）" to:connectionStack];
     self.apiKeyField.secureTextEntry = YES;
-    self.modelNameField = [self addField:@"模型名称" placeholder:@"gpt-4o-mini" to:connectionStack];
+    self.modelNameField = [self addField:@"模型名称（如 gpt-4o、llama3）" placeholder:@"点击获取模型列表" to:connectionStack];
 
     UIView *paramsCard = [self makeSettingsCard];
     UIStackView *paramsStack = [[UIStackView alloc] init];
@@ -611,7 +613,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     paramsTitleRow.alignment = UIStackViewAlignmentCenter;
     UIImageView *paramsIcon = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"ai-params" size:20]];
     [paramsTitleRow addArrangedSubview:paramsIcon];
-    [paramsTitleRow addArrangedSubview:[self makeSectionTitle:@"参数配置" icon:@"ai-params"]];
+    [paramsTitleRow addArrangedSubview:[self makeSectionTitle:@"参数" icon:@"ai-params"]];
     [paramsStack addArrangedSubview:paramsTitleRow];
 
     UILabel *topPValue = nil;
@@ -722,11 +724,15 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 }
 
 - (UITextField *)addField:(NSString *)labelText placeholder:(NSString *)placeholder to:(UIStackView *)stack {
+    UIStackView *fieldGroup = [[UIStackView alloc] init];
+    fieldGroup.axis = UILayoutConstraintAxisVertical;
+    fieldGroup.spacing = 8;
     UILabel *label = [[UILabel alloc] init];
     label.text = labelText;
+    label.numberOfLines = 0;
     label.font = [UIFont systemFontOfSize:13];
     label.textColor = AIDrawerColorTextPrimary();
-    [stack addArrangedSubview:label];
+    [fieldGroup addArrangedSubview:label];
     UITextField *field = [[UITextField alloc] init];
     field.placeholder = placeholder;
     field.font = [UIFont systemFontOfSize:14];
@@ -740,7 +746,8 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     field.rightView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 1)];
     field.rightViewMode = UITextFieldViewModeAlways;
     [field.heightAnchor constraintEqualToConstant:40].active = YES;
-    [stack addArrangedSubview:field];
+    [fieldGroup addArrangedSubview:field];
+    [stack addArrangedSubview:fieldGroup];
     return field;
 }
 
@@ -868,6 +875,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     self.configNameField.text = form.configName;
     self.providerField.text = form.provider;
     self.urlField.text = form.url;
+    [self updateURLFieldError:NO];
     self.apiKeyField.text = form.apiKey;
     self.modelNameField.text = form.modelName;
     self.topPSlider.value = form.topP;
@@ -906,6 +914,12 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 }
 
 - (void)saveAndCloseConfig {
+    if (![self isCompleteBaseURL:self.urlField.text]) {
+        [self updateURLFieldError:YES];
+        [self showConfigurationAlertWithTitle:@"接口地址不完整"
+                                       message:@"请填写完整的 http:// 或 https:// 接口地址。"];
+        return;
+    }
     AIModelConfigForm *form = [[AIModelConfigForm alloc] init];
     form.configName = self.configNameField.text;
     form.provider = self.providerField.text;
@@ -1018,6 +1032,313 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     [textField resignFirstResponder];
     return YES;
+}
+
+- (BOOL)textFieldShouldBeginEditing:(UITextField *)textField {
+    if (textField == self.modelNameField) {
+        [self fetchModelsForCurrentConfiguration];
+        return NO;
+    }
+    return YES;
+}
+
+- (void)urlFieldDidChange:(UITextField *)textField {
+    if ([self isCompleteBaseURL:textField.text]) {
+        [self updateURLFieldError:NO];
+    }
+}
+
+- (BOOL)isCompleteBaseURL:(NSString *)value {
+    NSString *trimmed = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmed.length == 0 || [trimmed rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].location != NSNotFound) {
+        return NO;
+    }
+    NSURLComponents *components = [NSURLComponents componentsWithString:trimmed];
+    NSString *scheme = components.scheme.lowercaseString;
+    return components.host.length > 0 && ([scheme isEqualToString:@"http"] || [scheme isEqualToString:@"https"]);
+}
+
+- (void)updateURLFieldError:(BOOL)hasError {
+    self.urlField.layer.borderWidth = hasError ? 1.0 : 0.0;
+    self.urlField.layer.borderColor = hasError ? UIColor.systemRedColor.CGColor : UIColor.clearColor.CGColor;
+}
+
+- (void)showConfigurationAlertWithTitle:(NSString *)title message:(NSString *)message {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
+                                                                   message:message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)fetchModelsForCurrentConfiguration {
+    NSString *endpoint = [self.urlField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (![self isCompleteBaseURL:endpoint]) {
+        [self updateURLFieldError:YES];
+        [self showConfigurationAlertWithTitle:@"接口地址不完整"
+                                       message:@"请先填写完整的 http:// 或 https:// 接口地址，再获取模型列表。"];
+        return;
+    }
+
+    NSString *provider = [self.providerField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
+    NSString *apiKey = [self.apiKeyField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
+    NSError *requestError = nil;
+    NSDictionary *spec = [self modelListRequestSpecForProvider:provider endpoint:endpoint error:&requestError];
+    NSURL *url = [spec[@"url"] isKindOfClass:[NSString class]] ? [NSURL URLWithString:spec[@"url"]] : nil;
+    if (url == nil || requestError != nil) {
+        [self showConfigurationAlertWithTitle:@"无法获取模型列表"
+                                       message:@"请检查接口 URL，并使用正确的服务地址。"];
+        return;
+    }
+
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"GET";
+    request.timeoutInterval = 15.0;
+    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    NSString *keyHeader = spec[@"keyHeader"];
+    if (apiKey.length > 0) {
+        if (keyHeader.length > 0) {
+            [request setValue:apiKey forHTTPHeaderField:keyHeader];
+            if ([keyHeader isEqualToString:@"x-api-key"]) {
+                [request setValue:@"2023-06-01" forHTTPHeaderField:@"anthropic-version"];
+            }
+        } else if ([spec[@"bearer"] boolValue]) {
+            [request setValue:[NSString stringWithFormat:@"Bearer %@", apiKey] forHTTPHeaderField:@"Authorization"];
+        }
+    }
+
+    UIAlertController *progress = [UIAlertController alertControllerWithTitle:@"正在获取模型列表…"
+                                                                      message:@"请稍候"
+                                                               preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *waitingAction = [UIAlertAction actionWithTitle:@"正在获取…"
+                                                            style:UIAlertActionStyleDefault
+                                                          handler:nil];
+    waitingAction.enabled = NO;
+    [progress addAction:waitingAction];
+    [self presentViewController:progress animated:YES completion:nil];
+    __weak __typeof(self) weakSelf = self;
+    NSURLSessionDataTask *task = [NSURLSession.sharedSession dataTaskWithRequest:request
+                                                               completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSArray<NSString *> *models = nil;
+        NSString *failure = nil;
+        NSInteger status = [response isKindOfClass:[NSHTTPURLResponse class]]
+            ? ((NSHTTPURLResponse *)response).statusCode : 0;
+        if (error != nil) {
+            failure = @"网络连接失败";
+        } else if (status < 200 || status >= 300) {
+            failure = [NSString stringWithFormat:@"HTTP %ld", (long)status];
+        } else if (data.length > 2 * 1024 * 1024) {
+            failure = @"响应内容过大";
+        } else {
+            id payload = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+            models = [weakSelf modelNamesFromPayload:payload];
+            if (models.count == 0) {
+                failure = @"接口没有返回可选模型";
+            }
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            AISettingsDrawerController *strongSelf = weakSelf;
+            if (strongSelf == nil) {
+                return;
+            }
+            [progress dismissViewControllerAnimated:YES completion:^{
+                if (failure.length > 0) {
+                    [strongSelf showModelPickerError:failure];
+                } else {
+                    [strongSelf showModelPickerWithNames:models];
+                }
+            }];
+        });
+    }];
+    [task resume];
+}
+
+- (NSDictionary *)modelListRequestSpecForProvider:(NSString *)provider endpoint:(NSString *)endpoint error:(NSError **)error {
+    NSURLComponents *components = [NSURLComponents componentsWithString:endpoint];
+    if (components == nil || components.host.length == 0) {
+        if (error != NULL) {
+            *error = [NSError errorWithDomain:@"AIModelPicker" code:1 userInfo:@{NSLocalizedDescriptionKey: @"Invalid URL"}];
+        }
+        return nil;
+    }
+    NSString *host = components.host.lowercaseString;
+    NSString *path = components.path ?: @"";
+    NSString *lowerProvider = provider.lowercaseString;
+    BOOL azure = [lowerProvider containsString:@"azure"] || [host containsString:@"openai.azure.com"];
+    BOOL anthropic = [lowerProvider containsString:@"anthropic"] || [host containsString:@"anthropic.com"];
+    BOOL gemini = [lowerProvider containsString:@"gemini"] || [lowerProvider containsString:@"google"]
+        || [host containsString:@"generativelanguage.googleapis.com"];
+    BOOL ollama = [lowerProvider containsString:@"ollama"];
+    NSString *keyHeader = nil;
+    BOOL bearer = YES;
+
+    if (azure) {
+        NSRange deployments = [path.lowercaseString rangeOfString:@"/openai/deployments/"];
+        NSString *prefix = deployments.location != NSNotFound ? [path substringToIndex:deployments.location] : path;
+        if ([prefix.lowercaseString hasSuffix:@"/openai"]) {
+            prefix = [prefix substringToIndex:prefix.length - @"/openai".length];
+        }
+        path = [NSString stringWithFormat:@"%@/openai/models", [self pathByTrimmingTrailingSlash:prefix]];
+        NSString *apiVersion = nil;
+        for (NSURLQueryItem *item in components.queryItems) {
+            if ([item.name.lowercaseString isEqualToString:@"api-version"]) {
+                apiVersion = item.value;
+                break;
+            }
+        }
+        components.queryItems = @[[NSURLQueryItem queryItemWithName:@"api-version" value:apiVersion.length > 0 ? apiVersion : @"2024-10-21"]];
+        keyHeader = @"api-key";
+        bearer = NO;
+    } else if (anthropic) {
+        if (![path hasSuffix:@"/models"]) {
+            NSRange messages = [path rangeOfString:@"/messages" options:NSBackwardsSearch];
+            path = messages.location != NSNotFound
+                ? [[path substringToIndex:messages.location] stringByAppendingString:@"/models"]
+                : [NSString stringWithFormat:@"%@/v1/models", [self pathByTrimmingTrailingSlash:path]];
+        }
+        keyHeader = @"x-api-key";
+        bearer = NO;
+        components.query = nil;
+    } else if (gemini && [host containsString:@"generativelanguage.googleapis.com"]
+               && ![path containsString:@"/openai/"]) {
+        NSRange version = [path rangeOfString:@"/v1beta"];
+        NSString *prefix = version.location != NSNotFound ? [path substringToIndex:version.location] : @"";
+        path = [prefix stringByAppendingString:@"/v1beta/models"];
+        keyHeader = @"x-goog-api-key";
+        bearer = NO;
+        components.query = nil;
+    } else if (ollama && [path hasSuffix:@"/api/tags"]) {
+        // Keep Ollama's native local model list route.
+        components.query = nil;
+    } else if (ollama && ([path hasSuffix:@"/api/chat"] || [path hasSuffix:@"/api/generate"])) {
+        NSRange apiPath = [path rangeOfString:@"/api/" options:NSBackwardsSearch];
+        NSString *prefix = apiPath.location == NSNotFound ? @"" : [path substringToIndex:apiPath.location];
+        path = [NSString stringWithFormat:@"%@/api/tags", [self pathByTrimmingTrailingSlash:prefix]];
+        components.query = nil;
+    } else if ([path hasSuffix:@"/models"]) {
+        components.query = nil;
+    } else if ([path hasSuffix:@"/chat/completions"]) {
+        path = [[path substringToIndex:path.length - @"/chat/completions".length] stringByAppendingString:@"/models"];
+        components.query = nil;
+    } else if ([path hasSuffix:@"/completions"]) {
+        path = [[path substringToIndex:path.length - @"/completions".length] stringByAppendingString:@"/models"];
+        components.query = nil;
+    } else if ([path hasSuffix:@"/v1"] || [path hasSuffix:@"/v1beta/openai"]) {
+        path = [path stringByAppendingString:@"/models"];
+        components.query = nil;
+    } else if (path.length == 0 || [path isEqualToString:@"/"]) {
+        path = gemini ? @"/v1beta/openai/models" : @"/v1/models";
+        components.query = nil;
+    } else {
+        path = [NSString stringWithFormat:@"%@/models", [self pathByTrimmingTrailingSlash:path]];
+        components.query = nil;
+    }
+    components.path = path;
+    NSURL *url = components.URL;
+    if (url == nil) {
+        if (error != NULL) {
+            *error = [NSError errorWithDomain:@"AIModelPicker" code:2 userInfo:@{NSLocalizedDescriptionKey: @"Invalid model list URL"}];
+        }
+        return nil;
+    }
+    return @{@"url": url.absoluteString, @"keyHeader": keyHeader ?: @"", @"bearer": @(bearer)};
+}
+
+- (NSString *)pathByTrimmingTrailingSlash:(NSString *)path {
+    NSString *result = path ?: @"";
+    while ([result hasSuffix:@"/"] && result.length > 0) {
+        result = [result substringToIndex:result.length - 1];
+    }
+    return result;
+}
+
+- (NSArray<NSString *> *)modelNamesFromPayload:(id)payload {
+    NSArray *items = nil;
+    if ([payload isKindOfClass:[NSDictionary class]]) {
+        items = payload[@"data"];
+        if (![items isKindOfClass:[NSArray class]]) {
+            items = payload[@"models"];
+        }
+    }
+    if (![items isKindOfClass:[NSArray class]]) {
+        return @[];
+    }
+    NSMutableOrderedSet<NSString *> *names = [[NSMutableOrderedSet alloc] init];
+    for (id item in items) {
+        NSString *name = nil;
+        if ([item isKindOfClass:[NSString class]]) {
+            name = [item stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        } else if ([item isKindOfClass:[NSDictionary class]]) {
+            NSDictionary *entry = item;
+            for (NSString *key in @[@"id", @"name", @"model"]) {
+                id candidate = entry[key];
+                if ([candidate isKindOfClass:[NSString class]] && [candidate length] > 0) {
+                    name = [candidate stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+                    break;
+                }
+            }
+        }
+        if ([name hasPrefix:@"models/"]) {
+            name = [name substringFromIndex:@"models/".length];
+        }
+        if (name.length > 0) {
+            [names addObject:name];
+        }
+    }
+    return names.array;
+}
+
+- (void)showModelPickerError:(NSString *)error {
+    NSString *message = [NSString stringWithFormat:@"获取失败（%@）。请检查接口 URL 是否完整可用，并确认 API Key 正确；支持免 Key 的服务可以留空。也可以手动输入模型名称。", error ?: @"未知错误"];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"无法获取模型列表"
+                                                                   message:message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"手动填写" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self showManualModelEntry];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)showModelPickerWithNames:(NSArray<NSString *> *)names {
+    UIAlertController *picker = [UIAlertController alertControllerWithTitle:@"选择模型"
+                                                                    message:nil
+                                                             preferredStyle:UIAlertControllerStyleActionSheet];
+    for (NSString *name in names) {
+        [picker addAction:[UIAlertAction actionWithTitle:name style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            self.modelNameField.text = name;
+        }]];
+    }
+    [picker addAction:[UIAlertAction actionWithTitle:@"手动填写其他模型名称…" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self showManualModelEntry];
+    }]];
+    [picker addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    UIPopoverPresentationController *popover = picker.popoverPresentationController;
+    if (popover != nil) {
+        popover.sourceView = self.modelNameField;
+        popover.sourceRect = self.modelNameField.bounds;
+    }
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)showManualModelEntry {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"手动填写模型名称"
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
+        field.placeholder = @"输入模型名称";
+        field.text = self.modelNameField.text;
+        field.autocorrectionType = UITextAutocorrectionTypeNo;
+        field.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *name = [alert.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (name.length > 0) {
+            self.modelNameField.text = name;
+        }
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 @end

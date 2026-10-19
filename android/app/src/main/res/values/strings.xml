@@ -119,6 +119,7 @@
     <string name="ai_provider_hint">OpenAI</string>
     <string name="ai_url">URL (Endpoint)</string>
     <string name="ai_api_key">API Key</string>
+    <string name="ai_api_key_optional_hint">sk-... (optional for some services)</string>
     <string name="ai_model_name_label">Model name (e.g. gpt-4o, llama3)</string>
     <string name="ai_params">Parameters</string>
     <string name="ai_top_p">Top P</string>

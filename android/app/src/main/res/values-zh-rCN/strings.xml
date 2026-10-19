@@ -114,6 +114,7 @@
     <string name="ai_provider_hint">OpenAI</string>
     <string name="ai_url">URL (接口地址)</string>
     <string name="ai_api_key">API Key (密钥)</string>
+    <string name="ai_api_key_optional_hint">sk-...（部分服务可留空）</string>
     <string name="ai_model_name_label">模型名称 (如 gpt-4o, llama3)</string>
     <string name="ai_params">参数</string>
     <string name="ai_top_p">Top P</string>

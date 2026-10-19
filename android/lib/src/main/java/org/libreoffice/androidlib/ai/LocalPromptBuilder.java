@@ -9,6 +9,10 @@ import java.util.List;
 
 public final class LocalPromptBuilder {
     public static final int SAFETY_MARGIN = 128;
+    private static final String FINAL_ANSWER_ONLY_INSTRUCTION =
+            "只输出给用户看的最终答案，不要展示分析、思考过程、草稿或内部推理；推理请在内部完成。 "
+                    + "Respond only with the final answer intended for the user. Do not expose analysis, "
+                    + "chain-of-thought, internal reasoning, or draft text.";
 
     private LocalPromptBuilder() {}
 
@@ -35,7 +39,8 @@ public final class LocalPromptBuilder {
         }
         int budget = Math.max(256, contextSize - maxGenTokens - SAFETY_MARGIN);
         if (!multiTurn) {
-            return truncateToTokenBudget(new JSONArray(history.toString()), budget);
+            JSONArray selected = truncateToTokenBudget(new JSONArray(history.toString()), budget);
+            return applyFinalAnswerOnlyMode(selected);
         }
 
         JSONObject system = null;
@@ -67,7 +72,38 @@ public final class LocalPromptBuilder {
         if (selected.length() == 0 && system != null) {
             selected.put(system);
         }
-        return selected;
+        return applyFinalAnswerOnlyMode(selected);
+    }
+
+    private static JSONArray applyFinalAnswerOnlyMode(JSONArray messages) throws JSONException {
+        JSONArray result = new JSONArray();
+        int firstSystemIndex = -1;
+        for (int i = 0; i < messages.length(); i++) {
+            String role = messages.optJSONObject(i) == null ? ""
+                    : messages.optJSONObject(i).optString("role", "");
+            if (firstSystemIndex < 0 && "system".equals(role)) {
+                firstSystemIndex = i;
+            }
+        }
+
+        if (firstSystemIndex < 0) {
+            result.put(new JSONObject()
+                    .put("role", "system")
+                    .put("content", FINAL_ANSWER_ONLY_INSTRUCTION));
+        }
+
+        for (int i = 0; i < messages.length(); i++) {
+            JSONObject item = messages.getJSONObject(i);
+            JSONObject copy = new JSONObject(item.toString());
+            if (i == firstSystemIndex) {
+                String existing = copy.optString("content", "");
+                copy.put("content", existing.isEmpty()
+                        ? FINAL_ANSWER_ONLY_INSTRUCTION
+                        : existing + "\n\n" + FINAL_ANSWER_ONLY_INSTRUCTION);
+            }
+            result.put(copy);
+        }
+        return result;
     }
 
     public static JSONArray truncateToTokenBudget(JSONArray messages, int maxTokens) throws JSONException {

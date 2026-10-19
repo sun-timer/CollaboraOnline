@@ -61,8 +61,7 @@ static NSString *const AIConfigurationDefaultModel = @"Orangepi-2.5-flash";
 - (BOOL)isConfigured {
     AIConfiguration *configuration = [self configurationWithError:nil];
     return configuration.endpoint.length > 0
-        && configuration.model.length > 0
-        && configuration.apiKey.length > 0;
+        && configuration.model.length > 0;
 }
 
 - (BOOL)saveEndpoint:(NSString *)endpoint

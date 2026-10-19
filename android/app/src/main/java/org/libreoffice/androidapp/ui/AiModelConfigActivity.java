@@ -65,6 +65,7 @@ public class AiModelConfigActivity extends AppCompatActivity {
         bindHeader();
         bindSliders();
         loadValues();
+        AiModelPicker.bind(this, modelNameInput, urlInput, providerInput, apiKeyInput);
         bindActions();
         View scrim = findViewById(R.id.modelConfigScrim);
         if (scrim != null) {
@@ -199,6 +200,10 @@ public class AiModelConfigActivity extends AppCompatActivity {
     }
 
     private boolean persistForm(boolean showToast) {
+        if (showToast && !AiModelPicker.validateBaseUrl(urlInput)) {
+            Toast.makeText(this, "请检查接口 URL 是否完整", Toast.LENGTH_SHORT).show();
+            return false;
+        }
         AiModelConfigStore.Form form = readForm();
         if (!AiModelConfigStore.saveForm(this, modelType, form)) {
             if (showToast) {

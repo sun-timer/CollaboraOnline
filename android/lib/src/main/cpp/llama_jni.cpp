@@ -525,7 +525,8 @@ Java_org_libreoffice_androidlib_ai_LocalInferenceEngine_nativePrefill(JNIEnv *en
 JNIEXPORT jboolean JNICALL
 Java_org_libreoffice_androidlib_ai_LocalInferenceEngine_nativePrefillMessages(JNIEnv *env, jclass,
                                                                               jobjectArray jroles,
-                                                                              jobjectArray jcontents) {
+                                                                              jobjectArray jcontents,
+                                                                              jboolean disable_thinking) {
     if (g_ctx == nullptr || g_model == nullptr || jroles == nullptr || jcontents == nullptr) {
         log_fail("local_infer_fail", "not_loaded");
         return JNI_FALSE;
@@ -587,6 +588,10 @@ Java_org_libreoffice_androidlib_ai_LocalInferenceEngine_nativePrefillMessages(JN
         }
     }
     formatted.resize((size_t) needed);
+    if (disable_thinking == JNI_TRUE) {
+        // Match the Qwen3 chat template's enable_thinking=false generation prefix.
+        formatted += "<think>\n\n</think>\n\n";
+    }
     __android_log_print(ANDROID_LOG_INFO, LO_TAG, "local_chat_template_ok msgs=%d promptChars=%zu",
                         (int) n_msg, formatted.size());
 

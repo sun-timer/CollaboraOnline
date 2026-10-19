@@ -8,6 +8,14 @@
 #import "LocalPromptBuilder.h"
 
 static const NSInteger kSafetyMargin = 128;
+static NSString * const kFinalAnswerOnlyInstruction =
+    @"只输出给用户看的最终答案，不要展示分析、思考过程、草稿或内部推理；推理请在内部完成。 "
+    @"Respond only with the final answer intended for the user. Do not expose analysis, "
+    @"chain-of-thought, internal reasoning, or draft text.";
+
+@interface LocalPromptBuilder ()
++ (NSArray<NSDictionary *> *)applyFinalAnswerOnlyMode:(NSArray<NSDictionary *> *)messages;
+@end
 
 @implementation LocalPromptBuilder
 
@@ -79,7 +87,8 @@ static const NSInteger kSafetyMargin = 128;
     }
     NSInteger budget = MAX(256, contextSize - maxGenTokens - kSafetyMargin);
     if (!multiTurn) {
-        return [self truncateToTokenBudget:history maxTokens:budget];
+        NSArray<NSDictionary *> *selected = [self truncateToTokenBudget:history maxTokens:budget];
+        return [self applyFinalAnswerOnlyMode:selected];
     }
 
     NSDictionary *system = nil;
@@ -111,7 +120,34 @@ static const NSInteger kSafetyMargin = 128;
     if (selected.count == 0 && system != nil) {
         selected = @[ system ];
     }
-    return selected;
+    return [self applyFinalAnswerOnlyMode:selected];
+}
+
++ (NSArray<NSDictionary *> *)applyFinalAnswerOnlyMode:(NSArray<NSDictionary *> *)messages {
+    NSInteger firstSystemIndex = -1;
+    for (NSUInteger i = 0; i < messages.count; i++) {
+        NSString *role = [messages[i][@"role"] isKindOfClass:[NSString class]] ? messages[i][@"role"] : @"";
+        if (firstSystemIndex < 0 && [role isEqualToString:@"system"]) {
+            firstSystemIndex = (NSInteger)i;
+        }
+    }
+
+    NSMutableArray<NSDictionary *> *result = [NSMutableArray arrayWithCapacity:messages.count + 1];
+    if (firstSystemIndex < 0) {
+        [result addObject:@{ @"role": @"system", @"content": kFinalAnswerOnlyInstruction }];
+    }
+
+    for (NSUInteger i = 0; i < messages.count; i++) {
+        NSMutableDictionary *copy = [messages[i] mutableCopy];
+        NSString *content = [copy[@"content"] isKindOfClass:[NSString class]] ? copy[@"content"] : @"";
+        if ((NSInteger)i == firstSystemIndex) {
+            copy[@"content"] = content.length > 0
+                ? [NSString stringWithFormat:@"%@\n\n%@", content, kFinalAnswerOnlyInstruction]
+                : kFinalAnswerOnlyInstruction;
+        }
+        [result addObject:copy];
+    }
+    return result;
 }
 
 @end

@@ -436,7 +436,7 @@ void xl_llama_unload_model(void) {
     }
 }
 
-bool xl_llama_prefill_messages(const char **roles, const char **contents, int count) {
+bool xl_llama_prefill_messages(const char **roles, const char **contents, int count, bool disable_thinking) {
     if (g_ctx == nullptr || g_model == nullptr || roles == nullptr || contents == nullptr || count <= 0) {
         log_fail("local_infer_fail", "not_loaded");
         return false;
@@ -471,6 +471,10 @@ bool xl_llama_prefill_messages(const char **roles, const char **contents, int co
         }
     }
     formatted.resize((size_t) needed);
+    if (disable_thinking) {
+        // Match the Qwen3 chat template's enable_thinking=false generation prefix.
+        formatted += "<think>\n\n</think>\n\n";
+    }
     return prefill_prompt_text(formatted.c_str());
 }
 

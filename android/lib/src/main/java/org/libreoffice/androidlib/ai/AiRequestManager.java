@@ -57,7 +57,9 @@ public class AiRequestManager {
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
             connection.setRequestProperty("Accept", "text/event-stream");
-            connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+            if (apiKey != null && !apiKey.trim().isEmpty()) {
+                connection.setRequestProperty("Authorization", "Bearer " + apiKey.trim());
+            }
 
             JSONObject body = new JSONObject();
             body.put("model", model);
@@ -182,7 +184,9 @@ public class AiRequestManager {
             connection.setReadTimeout(120000);
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+            if (apiKey != null && !apiKey.trim().isEmpty()) {
+                connection.setRequestProperty("Authorization", "Bearer " + apiKey.trim());
+            }
 
             JSONObject body = new JSONObject();
             body.put("model", model);

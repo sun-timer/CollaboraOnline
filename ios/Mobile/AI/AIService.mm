@@ -97,7 +97,7 @@
         NSString *endpoint = form.url;
         NSString *model = form.modelName;
         NSString *apiKey = form.apiKey;
-        if (endpoint.length == 0 || model.length == 0 || apiKey.length == 0) {
+        if (endpoint.length == 0 || model.length == 0) {
             NSError *configurationError = nil;
             AIConfiguration *configuration = [self.configurationStore configurationWithError:&configurationError];
             if (configuration != nil && configuration.endpoint.length > 0) {
@@ -106,7 +106,7 @@
                 apiKey = configuration.apiKey ?: apiKey;
             }
         }
-        if (endpoint.length == 0 || model.length == 0 || apiKey.length == 0) {
+        if (endpoint.length == 0 || model.length == 0) {
             [self emitType:@"ai.error"
                   requestId:requestId
            documentSessionId:documentSessionId
@@ -173,7 +173,7 @@
     NSString *endpoint = form.url;
     NSString *model = form.modelName;
     NSString *apiKey = form.apiKey;
-    if (endpoint.length == 0 || model.length == 0 || apiKey.length == 0) {
+    if (endpoint.length == 0 || model.length == 0) {
         NSError *configurationError = nil;
         AIConfiguration *configuration = [self.configurationStore configurationWithError:&configurationError];
         if (configuration != nil && configuration.endpoint.length > 0) {
@@ -182,7 +182,7 @@
             apiKey = configuration.apiKey ?: apiKey;
         }
     }
-    if (endpoint.length == 0 || model.length == 0 || apiKey.length == 0) {
+    if (endpoint.length == 0 || model.length == 0) {
         [self emitType:@"ai.error"
               requestId:requestId
            documentSessionId:documentSessionId
@@ -192,7 +192,9 @@
     }
 
     NSURL *url = [NSURL URLWithString:endpoint];
-    if (url == nil || url.scheme.length == 0 || url.host.length == 0) {
+    NSString *urlScheme = url.scheme.lowercaseString;
+    if (url == nil || url.host.length == 0
+        || (![urlScheme isEqualToString:@"http"] && ![urlScheme isEqualToString:@"https"])) {
         [self emitType:@"ai.error"
               requestId:requestId
            documentSessionId:documentSessionId
@@ -206,8 +208,10 @@
     request.timeoutInterval = 30.0;
     [request setValue:@"application/json; charset=UTF-8" forHTTPHeaderField:@"Content-Type"];
     [request setValue:@"text/event-stream" forHTTPHeaderField:@"Accept"];
-    [request setValue:[NSString stringWithFormat:@"Bearer %@", apiKey]
-        forHTTPHeaderField:@"Authorization"];
+    if (apiKey.length > 0) {
+        [request setValue:[NSString stringWithFormat:@"Bearer %@", apiKey]
+            forHTTPHeaderField:@"Authorization"];
+    }
 
     NSMutableDictionary *body = [@{
         @"model": model,
@@ -259,8 +263,10 @@
     request.timeoutInterval = 60.0;
     [request setValue:@"application/json; charset=UTF-8" forHTTPHeaderField:@"Content-Type"];
     [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
-    [request setValue:[NSString stringWithFormat:@"Bearer %@", apiKey]
-        forHTTPHeaderField:@"Authorization"];
+    if (apiKey.length > 0) {
+        [request setValue:[NSString stringWithFormat:@"Bearer %@", apiKey]
+            forHTTPHeaderField:@"Authorization"];
+    }
     NSString *size = [payload[@"size"] isKindOfClass:[NSString class]]
         ? payload[@"size"] : @"1024x1024";
     // MobileAiImageDialog sends the description in selection. Keep prompt

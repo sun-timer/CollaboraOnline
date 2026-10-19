@@ -7,6 +7,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -127,6 +128,8 @@ public final class LocalInferenceEngine {
             try {
                 // KV 保留/清理由 native 自动判断：新输入以旧输入为前缀（doc_qa 多轮）→ 增量，
                 // 否则全量。不再无条件清 KV，否则破坏增量复用。
+                boolean qwen3Model = loadedModelPath != null
+                        && loadedModelPath.toLowerCase(Locale.ROOT).contains("qwen3");
                 JSONArray promptMessages = LocalPromptBuilder.buildPrompt(
                         messages, params.contextSize, params.maxTokens, multiTurn);
                 String[] roles = new String[promptMessages.length()];
@@ -140,7 +143,7 @@ public final class LocalInferenceEngine {
                 Log.i(TAG, "local_prefill_start requestId=" + requestId
                         + " msgs=" + promptMessages.length());
                 long prefillStartMs = System.currentTimeMillis();
-                if (!nativePrefillMessages(roles, contents)) {
+                if (!nativePrefillMessages(roles, contents, qwen3Model)) {
                     notifyError(callback, "local_prefill_fail", "本地推理 prefill 失败");
                     return;
                 }
@@ -148,6 +151,7 @@ public final class LocalInferenceEngine {
                         + " ms=" + (System.currentTimeMillis() - prefillStartMs));
 
                 StringBuilder full = new StringBuilder();
+                ThinkContentFilter outputFilter = new ThinkContentFilter();
                 long firstTokenMs = 0L;
                 int tokenCount = 0;
 
@@ -170,11 +174,10 @@ public final class LocalInferenceEngine {
                         Log.i(TAG, "local_first_token requestId=" + requestId + " ttft_ms=" + firstTokenMs);
                     }
                     tokenCount++;
-                    full.append(piece);
-                    if (callback != null) {
-                        callback.onToken(piece);
-                    }
+                    emitVisibleText(outputFilter.append(piece), full, callback);
                 }
+
+                emitVisibleText(outputFilter.finish(), full, callback);
 
                 long elapsed = Math.max(1L, System.currentTimeMillis() - startMs);
                 float tps = tokenCount * 1000f / elapsed;
@@ -201,6 +204,92 @@ public final class LocalInferenceEngine {
         }
     }
 
+    private static void emitVisibleText(String text, StringBuilder full, GenerateCallback callback) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        full.append(text);
+        if (callback != null) {
+            callback.onToken(text);
+        }
+    }
+
+    /** Suppresses explicit reasoning blocks before they reach streaming or completion callbacks. */
+    private static final class ThinkContentFilter {
+        private static final String START_TAG = "<think>";
+        private static final String END_TAG = "</think>";
+
+        private final StringBuilder pending = new StringBuilder();
+        private boolean insideThink;
+
+        String append(String text) {
+            if (text != null && !text.isEmpty()) {
+                pending.append(text);
+            }
+            return drain(false);
+        }
+
+        String finish() {
+            return drain(true);
+        }
+
+        private String drain(boolean endOfInput) {
+            StringBuilder visible = new StringBuilder();
+            while (true) {
+                String marker = insideThink ? END_TAG : START_TAG;
+                int markerIndex = indexOfIgnoreCase(pending, marker);
+                if (markerIndex >= 0) {
+                    if (!insideThink && markerIndex > 0) {
+                        visible.append(pending, 0, markerIndex);
+                    }
+                    pending.delete(0, markerIndex + marker.length());
+                    insideThink = !insideThink;
+                    continue;
+                }
+
+                if (insideThink) {
+                    if (endOfInput) {
+                        pending.setLength(0);
+                    } else {
+                        int keep = suffixPrefixLength(pending, END_TAG);
+                        if (pending.length() > keep) {
+                            pending.delete(0, pending.length() - keep);
+                        }
+                    }
+                    return visible.toString();
+                }
+
+                if (endOfInput) {
+                    visible.append(pending);
+                    pending.setLength(0);
+                    return visible.toString();
+                }
+                int keep = suffixPrefixLength(pending, START_TAG);
+                int safeLength = pending.length() - keep;
+                if (safeLength > 0) {
+                    visible.append(pending, 0, safeLength);
+                    pending.delete(0, safeLength);
+                }
+                return visible.toString();
+            }
+        }
+
+        private static int indexOfIgnoreCase(StringBuilder text, String needle) {
+            return text.toString().toLowerCase(Locale.ROOT).indexOf(needle);
+        }
+
+        private static int suffixPrefixLength(StringBuilder text, String marker) {
+            String value = text.toString();
+            int max = Math.min(value.length(), marker.length() - 1);
+            for (int length = max; length > 0; length--) {
+                if (value.regionMatches(true, value.length() - length, marker, 0, length)) {
+                    return length;
+                }
+            }
+            return 0;
+        }
+    }
+
     private static native boolean nativeLoadModel(String path, int contextSize, int threads,
             String nativeLibDir);
 
@@ -210,7 +299,7 @@ public final class LocalInferenceEngine {
 
     private static native boolean nativePrefill(String prompt);
 
-    private static native boolean nativePrefillMessages(String[] roles, String[] contents);
+    private static native boolean nativePrefillMessages(String[] roles, String[] contents, boolean disableThinking);
 
     private static native String nativeSampleToken();
 }

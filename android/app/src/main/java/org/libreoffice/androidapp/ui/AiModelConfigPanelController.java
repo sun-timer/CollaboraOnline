@@ -64,6 +64,7 @@ final class AiModelConfigPanelController {
         bindHeader();
         bindSliders();
         loadValues();
+        AiModelPicker.bind(context, modelNameInput, urlInput, providerInput, apiKeyInput);
         bindActions();
 
         View panel = root.findViewById(R.id.aiModelConfigPanel);
@@ -188,6 +189,10 @@ final class AiModelConfigPanelController {
     }
 
     private void saveAndDismiss() {
+        if (!AiModelPicker.validateBaseUrl(urlInput)) {
+            Toast.makeText(context, "请检查接口 URL 是否完整", Toast.LENGTH_SHORT).show();
+            return;
+        }
         AiModelConfigStore.Form form = readForm();
         if (!AiModelConfigStore.saveForm(context, modelType, form)) {
             Toast.makeText(context, R.string.ai_model_config_save_failed, Toast.LENGTH_SHORT).show();
