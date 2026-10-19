@@ -567,6 +567,30 @@ Java_org_libreoffice_androidlib_LOActivity_saveAs(JNIEnv *env, jobject,
         env->ReleaseStringUTFChars(options_, options);
 }
 
+namespace {
+// iOS sends paste through the kit thread. Android used to run .uno:Paste on the
+// UI thread; the next kit-thread mouse event then crashed in ScModelObj.
+void postUnoOnLoMainThread(const std::string& command, const std::string& arguments, bool notify)
+{
+    std::shared_ptr<lok::Document> doc = getLOKDocumentForAndroidOnly();
+    if (!doc)
+        return;
+
+    auto* poll = KitSocketPoll::getMainPoll();
+    if (!poll || poll->getThreadOwner() == std::this_thread::get_id())
+    {
+        doc->postUnoCommand(command.c_str(), arguments.c_str(), notify);
+        return;
+    }
+
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "uno_posted_to_kit command=%s", command.c_str());
+    poll->addCallback([doc, command, arguments, notify] {
+        doc->postUnoCommand(command.c_str(), arguments.c_str(), notify);
+    });
+}
+}
+
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_libreoffice_androidlib_LOActivity_postUnoCommand(JNIEnv* pEnv, jobject,
@@ -577,7 +601,9 @@ Java_org_libreoffice_androidlib_LOActivity_postUnoCommand(JNIEnv* pEnv, jobject,
     if (arguments != nullptr)
         pArguments = pEnv->GetStringUTFChars(arguments, nullptr);
 
-    getLOKDocumentForAndroidOnly()->postUnoCommand(pCommand, pArguments, bNotifyWhenFinished);
+    postUnoOnLoMainThread(pCommand ? pCommand : "",
+                          pArguments ? pArguments : "",
+                          bNotifyWhenFinished == JNI_TRUE);
 
     pEnv->ReleaseStringUTFChars(command, pCommand);
     if (arguments != nullptr)
