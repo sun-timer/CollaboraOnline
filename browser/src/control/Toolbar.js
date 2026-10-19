@@ -869,16 +869,20 @@ window.L.Map.include({
 	onFormulaBarFocus: function() {
 		if (window.mode.isMobile() === true) {
 			var mobileTopBar = this.mobileTopBar;
-			mobileTopBar.showItem('undo', false);
-			mobileTopBar.showItem('redo', false);
-			mobileTopBar.showItem('cancelformula', true);
-			mobileTopBar.showItem('acceptformula', true);
+			if (mobileTopBar) {
+				mobileTopBar.showItem('undo', false);
+				mobileTopBar.showItem('redo', false);
+				mobileTopBar.showItem('cancelformula', true);
+				mobileTopBar.showItem('acceptformula', true);
+			}
 		} else {
 			var jsdialogFormulabar = this.formulabar;
-			jsdialogFormulabar.hide('startformula');
-			jsdialogFormulabar.hide('AutoSumMenu');
-			jsdialogFormulabar.show('cancelformula');
-			jsdialogFormulabar.show('acceptformula');
+			if (jsdialogFormulabar) {
+				jsdialogFormulabar.hide('startformula');
+				jsdialogFormulabar.hide('AutoSumMenu');
+				jsdialogFormulabar.show('cancelformula');
+				jsdialogFormulabar.show('acceptformula');
+			}
 		}
 	},
 
@@ -887,22 +891,27 @@ window.L.Map.include({
 
 		if (window.mode.isMobile() && this.isEditMode()) {
 			var mobileTopBar = map.mobileTopBar;
-			mobileTopBar.showItem('cancelformula', false);
-			mobileTopBar.showItem('acceptformula', false);
-			mobileTopBar.showItem('undo', true);
-			mobileTopBar.showItem('redo', true);
+			if (mobileTopBar) {
+				mobileTopBar.showItem('cancelformula', false);
+				mobileTopBar.showItem('acceptformula', false);
+				mobileTopBar.showItem('undo', true);
+				mobileTopBar.showItem('redo', true);
+			}
 		} else {
 			var jsdialogFormulabar = map.formulabar;
-			jsdialogFormulabar.hide('cancelformula');
-			jsdialogFormulabar.hide('acceptformula');
-			jsdialogFormulabar.show('startformula');
-			jsdialogFormulabar.show('AutoSumMenu');
+			if (jsdialogFormulabar) {
+				jsdialogFormulabar.hide('cancelformula');
+				jsdialogFormulabar.hide('acceptformula');
+				jsdialogFormulabar.show('startformula');
+				jsdialogFormulabar.show('AutoSumMenu');
+			}
 		}
 
 		$('#AutoSumMenu-button').css('margin-inline', '0');
 		$('#AutoSumMenu .unoarrow').css('margin', '0');
 
-		map.formulabar.blurField();
+		if (map.formulabar)
+			map.formulabar.blurField();
 		$('#addressInput input').blur();
 	},
 
@@ -912,7 +921,8 @@ window.L.Map.include({
 	},
 
 	formulabarFocus: function() {
-		this.formulabar.focusField();
+		if (this.formulabar)
+			this.formulabar.focusField();
 	},
 
 	formulabarSetDirty: function() {

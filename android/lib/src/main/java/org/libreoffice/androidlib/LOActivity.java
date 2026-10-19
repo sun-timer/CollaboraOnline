@@ -11082,20 +11082,24 @@ public class LOActivity extends AppCompatActivity {
 
     private void updateEditModeState(boolean isEditMode, String reason) {
         mIsEditModeActive = isEditMode;
-        if (mWebView != null) {
-            // Always consume WebView long-click so native bridge handles selection,
-            // and WebView default text-selection doesn't interfere with touch events.
-            // MobileWizard (for Calc) is triggered by core MOBILEWIZARD show messages,
-            // not by WebView long-click — so we don't need to toggle this.
-            mWebView.setConsumeWebViewLongClick(true);
-        }
-        ensureBottomToolbarController().updateEditModeState(isEditMode, reason);
-        ensureBottomToolbarController().updateDocumentType(mIsCalcDocument, mIsImpressDocument);
-        ensureTopToolbarController().updateDocumentType(mIsCalcDocument, mIsImpressDocument);
-        ensureTopToolbarController().updateEditModeState(isEditMode, reason);
-        if (isEditMode) {
-            detectDocumentType();
-        }
+        // EDITMODE is delivered on JavaBridge while the first document is loading.
+        // Keep state synchronous, but all View/WebView work must run on the UI thread.
+        runOnUiThread(() -> {
+            if (mWebView != null) {
+                // Always consume WebView long-click so native bridge handles selection,
+                // and WebView default text-selection doesn't interfere with touch events.
+                // MobileWizard (for Calc) is triggered by core MOBILEWIZARD show messages,
+                // not by WebView long-click — so we don't need to toggle this.
+                mWebView.setConsumeWebViewLongClick(true);
+            }
+            ensureBottomToolbarController().updateEditModeState(isEditMode, reason);
+            ensureBottomToolbarController().updateDocumentType(mIsCalcDocument, mIsImpressDocument);
+            ensureTopToolbarController().updateDocumentType(mIsCalcDocument, mIsImpressDocument);
+            ensureTopToolbarController().updateEditModeState(isEditMode, reason);
+            if (isEditMode) {
+                detectDocumentType();
+            }
+        });
     }
 
     private void hideQuickActionPanel() {

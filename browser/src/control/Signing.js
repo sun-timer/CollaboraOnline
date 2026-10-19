@@ -64,7 +64,8 @@ window.L.Map.include({
 
 		if (statusText) {
 			if (!window.mode.isMobile()) {
-				app.map.statusBar.showSigningItem(statusIcon, statusText);
+				if (app.map.statusBar)
+					app.map.statusBar.showSigningItem(statusIcon, statusText);
 
 				// If requested, show the signatures, now that the sign status
 				// changed.
@@ -73,7 +74,7 @@ window.L.Map.include({
 					eSignature.showSignaturesOnNextUpdate = false;
 					app.map.sendUnoCommand('.uno:Signature');
 				}
-			} else if (app.map.mobileTopBar.showSigningItem)
+			} else if (app.map.mobileTopBar && app.map.mobileTopBar.showSigningItem)
 				app.map.mobileTopBar.showSigningItem(statusIcon, statusText);
 		}
 	}

@@ -8,7 +8,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.view.inputmethod.InputType;
+import android.text.InputType;
 import android.widget.EditText;
 
 import org.json.JSONArray;
