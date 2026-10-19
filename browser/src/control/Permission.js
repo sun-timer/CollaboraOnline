@@ -51,11 +51,8 @@ window.L.Map.include({
 				var androidStartEdit = window.ThisIsTheAndroidApp &&
 					window.coolParams &&
 					window.coolParams.get('android_start_edit') === '1';
-				var iosStartEdit = window.ThisIsTheiOSApp &&
-					window.coolParams &&
-					window.coolParams.get('ios_start_edit') === '1';
 				// temporarily, before the user touches the floating action button
-				if (androidStartEdit || iosStartEdit) {
+				if (androidStartEdit) {
 					this._switchToEditMode();
 				} else {
 					this._enterReadOnlyMode('readonly');

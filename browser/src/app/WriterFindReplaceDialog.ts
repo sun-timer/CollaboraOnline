@@ -1,8 +1,7 @@
 /*
  * Writer find / find-replace sheet (iOS).
  *
- * Preview top-bar search + edit toolbar: full find/replace tabs (title 「查找替换」).
- * Preview「功能 → 审阅 → 查找」: find-only (title 「查找」, no tab bar).
+ * Edit toolbar / panels: find and replace. Preview search and review find: find-only.
  * Dispatches through AndroidFindReplaceBridge.
  */
 
@@ -80,7 +79,11 @@ class WriterFindReplaceDialog {
 	}
 
 	constructor(replaceEnabled: boolean) {
-		this.replaceEnabled = replaceEnabled;
+		const map = (window as any).app?.map;
+		this.replaceEnabled =
+			replaceEnabled &&
+			typeof map?.isEditMode === 'function' &&
+			map.isEditMode();
 	}
 
 	open(): void {
@@ -483,6 +486,15 @@ class WriterFindReplaceDialog {
 	}
 
 	private runReplace(replaceAll: boolean): void {
+		const map = (window as any).app?.map;
+		if (
+			!this.replaceEnabled ||
+			!map ||
+			typeof map.isEditMode !== 'function' ||
+			!map.isEditMode()
+		) {
+			return;
+		}
 		const query = this.replaceQueryInput.value.trim();
 		if (!query) {
 			return;

@@ -294,8 +294,10 @@ window.L.Map = window.L.Evented.extend({
 					this.focus();
 				}
 				app.idleHandler._activate();
-				if (window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) {
+				if (window.ThisIsTheAndroidApp) {
 					window.postMobileMessage('hideProgressbar');
+				} else if (window.ThisIsTheiOSApp) {
+					window.postMobileMessage('DOCUMENT_READY');
 				}
 
 				app.activeDocument.activeLayout.sendClientVisibleArea(true);

@@ -85,6 +85,8 @@
     BOOL kitConnectionTornDown;
     BOOL documentPickerOpeningDocument;
     BOOL pendingAutoGenerateHandled;
+    BOOL documentReady;
+    BOOL documentPageDidAppear;
     AiConversationStore *aiConversationStore;
     ImpressOutlineOverlayController *impressOutlineOverlay;
     dispatch_group_t forwardingThreadGroup;
@@ -160,6 +162,8 @@ static IMP standardImpOfInputAccessoryView = nil;
     documentCanvasRecoverAttempts = 0;
     documentCanvasRecoverSucceeded = NO;
     documentCanvasRecoverInFlight = NO;
+    documentReady = NO;
+    documentPageDidAppear = NO;
 
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     WKUserContentController *userContentController = [[WKUserContentController alloc] init];
@@ -588,25 +592,15 @@ static IMP standardImpOfInputAccessoryView = nil;
     aiResultModal = nil;
 }
 
-- (void)schedulePendingAutoGenerateFallbackIfNeeded
-{
-    if (pendingAutoGenerateHandled || self.launchOptions == nil) {
-        return;
-    }
-    BOOL wantsAuto = self.launchOptions.autoOpenImpressOutline || self.launchOptions.autoGenerateAiContent;
-    if (!wantsAuto) {
-        return;
-    }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (!pendingAutoGenerateHandled && self.launchOptions != nil) {
-            [self maybeAutoGenerateAiContentAfterLoad];
-        }
-    });
-}
-
 - (void)maybeAutoGenerateAiContentAfterLoad
 {
-    if (pendingAutoGenerateHandled || self.launchOptions == nil) {
+    if (isClosing || !documentReady || !documentPageDidAppear
+        || pendingAutoGenerateHandled || self.launchOptions == nil) {
+        return;
+    }
+    BOOL wantsAuto = self.launchOptions.autoOpenImpressOutline
+        || self.launchOptions.autoGenerateAiContent;
+    if (!wantsAuto) {
         return;
     }
     if (self.launchOptions.autoOpenImpressOutline) {
@@ -767,6 +761,11 @@ static IMP standardImpOfInputAccessoryView = nil;
 {
     [self.webView evaluateJavaScript:script completionHandler:nil];
 }
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    documentPageDidAppear = NO;
+}
+
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
 
@@ -778,12 +777,19 @@ static IMP standardImpOfInputAccessoryView = nil;
     if (self.document->fakeClientFd >= 0)
         return;
 
+    __weak DocumentViewController *weakSelf = self;
     [self.document openWithCompletionHandler:^(BOOL success) {
         if (success) {
-            // Display the content of the document
-        } else {
-            // Make sure to handle the failed import appropriately, e.g., by presenting an error message to the user.
+            return;
         }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            DocumentViewController *strongSelf = weakSelf;
+            if (strongSelf == nil) {
+                return;
+            }
+            strongSelf.launchOptions = nil;
+            strongSelf->documentReady = NO;
+        });
     }];
 }
 
@@ -898,6 +904,9 @@ static IMP standardImpOfInputAccessoryView = nil;
 }
 
 - (void)requestCloseWithCompletion:(void (^)(void))completion {
+    self.launchOptions = nil;
+    documentReady = NO;
+    documentPageDidAppear = NO;
     if (isClosing) {
         [self enqueueCloseCompletion:completion];
         return;
@@ -1755,8 +1764,13 @@ static IMP standardImpOfInputAccessoryView = nil;
         } else if ([message.body hasPrefix:@"NATIVE_UNDO_RECORD "]) {
             [self recordNativeUndoableEdit:message.body];
             return;
+        } else if ([message.body isEqualToString:@"DOCUMENT_READY"]) {
+            if (!isClosing) {
+                documentReady = YES;
+                [self maybeAutoGenerateAiContentAfterLoad];
+            }
+            return;
         } else if ([message.body isEqualToString:@"hideProgressbar"]) {
-            [self maybeAutoGenerateAiContentAfterLoad];
             return;
         } else if ([message.body hasPrefix:@"COMMENTCOUNT "]) {
             [self applyNativeCommentCount:message.body];
@@ -2268,9 +2282,10 @@ static IMP standardImpOfInputAccessoryView = nil;
 - (void)viewDidAppear:(BOOL)animated
 {
     [super viewDidAppear:animated];
+    documentPageDidAppear = YES;
     [self refreshOpenDocumentCount];
     [self scheduleDocumentCanvasRecover];
-    [self schedulePendingAutoGenerateFallbackIfNeeded];
+    [self maybeAutoGenerateAiContentAfterLoad];
 }
 
 - (void)refreshOpenDocumentCount
@@ -2337,10 +2352,13 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)topToolbarDidPressSearch
 {
-    // Top-bar search (preview + edit): full find/replace sheet with capsule tabs.
+    // The preview top bar is find-only; replacement is enabled in native edit mode.
     // Preview「功能 → 审阅 → 查找」uses previewFunctionSheetDidRequestFindReplace (find-only).
-    [self sendToolbarJavaScript:
-     @"if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open({replaceEnabled:true});}"];
+    NSString *replaceEnabled = nativeEditMode ? @"true" : @"false";
+    NSString *script = [NSString stringWithFormat:
+        @"if(window.__coolWriterFindReplace&&window.__coolWriterFindReplace.open){window.__coolWriterFindReplace.open({replaceEnabled:%@});}",
+        replaceEnabled];
+    [self sendToolbarJavaScript:script];
 }
 
 - (void)topToolbarDidPressShare

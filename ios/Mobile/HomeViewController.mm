@@ -863,7 +863,7 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 
     CGRect anchorRect = [sourceView convertRect:sourceView.bounds toView:self.view];
     CGFloat popupWidth = 180;
-    CGFloat popupHeight = 124;
+    CGFloat popupHeight = 126;
     CGFloat marginEnd = 16;
     CGFloat overlap = 8;
     CGFloat yBelow = CGRectGetMaxY(anchorRect) - overlap;

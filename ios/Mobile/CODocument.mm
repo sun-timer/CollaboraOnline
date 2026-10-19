@@ -99,9 +99,6 @@ static std::atomic<unsigned> appDocIdCounter(1);
                                [NSURLQueryItem queryItemWithName:@"userinterfacemode" value:([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad ? @"notebookbar" : @"classic")],
                                [NSURLQueryItem queryItemWithName:@"dir" value:app_text_direction],
                              ]];
-    if (!readOnly) {
-        [queryItems addObject:[NSURLQueryItem queryItemWithName:@"ios_start_edit" value:@"1"]];
-    }
     components.queryItems = queryItems;
 
     NSURLRequest *request = [[NSURLRequest alloc]initWithURL:components.URL];

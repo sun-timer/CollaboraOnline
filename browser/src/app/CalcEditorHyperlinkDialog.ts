@@ -148,13 +148,25 @@ class CalcEditorHyperlinkDialog {
 		if (!sheets.length) {
 			return;
 		}
+		const docLayer = (window as any).app?.map?._docLayer;
+		const selectedPart = docLayer?._selectedPart;
+		const selectedSheetName =
+			typeof selectedPart === 'number' && Number.isInteger(selectedPart)
+				? docLayer?._partNames?.[selectedPart]
+				: undefined;
+		const userSelected = sheets.find(
+			(item) => item.label && this.docTarget.value.trim() === item.label,
+		);
 		const active =
-			sheets.find((item) => item.label && this.docTarget.value === item.label) ||
-			sheets[0];
-		if (!this.selectedDocumentUrl) {
-			this.selectedDocumentUrl = active.url;
+			userSelected ||
+			(selectedSheetName
+				? sheets.find((item) => item.label === selectedSheetName)
+				: undefined);
+		if (!active) {
+			return;
 		}
-		if (!this.docTarget.value.trim()) {
+		this.selectedDocumentUrl = active.url;
+		if (!userSelected) {
 			this.docTarget.value = active.label;
 		}
 	}
