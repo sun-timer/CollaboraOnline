@@ -4,6 +4,8 @@ import android.content.Context;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -12,21 +14,25 @@ import androidx.constraintlayout.widget.ConstraintLayout;
 
 /**
  * Native floating menu for text selection in Writer preview and edit modes.
- * Compact 5+5+2 button panel positioned near the selection anchor.
+ * Compact horizontally scrolling button panel positioned near the selection anchor.
  */
 public class SelectionMenuController {
     private static final String TAG = "SelectionMenu";
     private static final float POPUP_MARGIN_DP = 16f;
     private static final float POPUP_ANCHOR_GAP_DP = 12f;
     private static final float POPUP_SELECTION_GAP_DP = 24f;
-    /** Figma 245:7964 outer frame 602px @2x → 301dp max content width. */
+    /** Existing compact preview/calc/graphic menu width. */
     private static final float POPUP_MAX_WIDTH_DP = 301f;
     private static final float POPUP_MIN_WIDTH_DP = 220f;
-    private static final int[] SELECTION_AI_SECTION_IDS = new int[] {
-            R.id.selection_divider_1,
-            R.id.selection_ai_row_1,
-            R.id.selection_divider_2,
-            R.id.selection_ai_row_2
+    private static final float POPUP_EDIT_MAX_WIDTH_DP = 320f;
+    private static final int[] SELECTION_AI_ACTION_IDS = new int[] {
+            R.id.selection_op_outline,
+            R.id.selection_op_continue_write,
+            R.id.selection_op_article_generate,
+            R.id.selection_op_expand,
+            R.id.selection_op_polish,
+            R.id.selection_op_condense,
+            R.id.selection_op_rewrite
     };
 
     public interface Host {
@@ -71,6 +77,7 @@ public class SelectionMenuController {
     private boolean visible = false;
     private boolean graphicMode = false;
     private boolean calcMode = false;
+    private boolean textEditMode = false;
     private float pendingAnchorX;
     private float pendingAnchorY;
     private float pendingAnchorBottomY;
@@ -91,6 +98,41 @@ public class SelectionMenuController {
 
         overlayView.setOnClickListener(v -> hide());
         menuView.setClickable(true);
+        View menuParent = (View) menuView.getParent();
+        if (menuParent != null) {
+            menuParent.addOnLayoutChangeListener((v, left, top, right, bottom,
+                    oldLeft, oldTop, oldRight, oldBottom) -> {
+                if (visible) {
+                    refreshWidthAndPosition();
+                }
+            });
+        }
+        menuView.addOnLayoutChangeListener((v, left, top, right, bottom,
+                oldLeft, oldTop, oldRight, oldBottom) -> {
+            boolean sizeChanged = right - left != oldRight - oldLeft
+                    || bottom - top != oldBottom - oldTop;
+            if (visible && sizeChanged) {
+                positionPopupNearAnchor();
+            }
+        });
+
+        ImageButton nextButton = menuView.findViewById(R.id.selection_strip_next);
+        HorizontalScrollView scrollView = menuView.findViewById(R.id.selection_basic_scroll);
+        if (nextButton != null && scrollView != null) {
+            nextButton.setOnClickListener(v -> {
+                int viewport = scrollView.getWidth();
+                if (viewport > 0) {
+                    scrollView.smoothScrollBy(viewport, 0);
+                }
+            });
+            scrollView.getViewTreeObserver().addOnScrollChangedListener(
+                    this::updateNextButtonState);
+            scrollView.addOnLayoutChangeListener((v, left, top, right, bottom,
+                    oldLeft, oldTop, oldRight, oldBottom) -> {
+                applyTextEditButtonLayout();
+                updateNextButtonState();
+            });
+        }
 
         bindOp(R.id.selection_op_copy, "copy", this::onCopy);
         bindOp(R.id.selection_op_delete, "delete", this::onDelete);
@@ -152,6 +194,12 @@ public class SelectionMenuController {
         pendingAnchorBottomY = anchorBottomY;
         positionRetry = 0;
         updateEditActionVisibility();
+        if (textEditMode) {
+            HorizontalScrollView scrollView = menuView.findViewById(R.id.selection_basic_scroll);
+            if (scrollView != null) {
+                scrollView.scrollTo(0, 0);
+            }
+        }
 
         menuView.setVisibility(View.VISIBLE);
         overlayView.setVisibility(View.VISIBLE);
@@ -195,7 +243,23 @@ public class SelectionMenuController {
             return;
         }
         positionRetry = 0;
-        menuView.post(this::positionPopupNearAnchor);
+        refreshWidthAndPosition();
+    }
+
+    private void refreshWidthAndPosition() {
+        if (textEditMode) {
+            updatePopupWidth(true);
+            applyTextEditStripLayout();
+        } else if (graphicMode) {
+            updatePopupWidthForGraphic();
+        } else if (calcMode) {
+            updatePopupWidth(false);
+        } else {
+            updatePopupWidth(true);
+        }
+        if (menuView != null && visible) {
+            menuView.post(this::positionPopupNearAnchor);
+        }
     }
 
     /** Switch to graphic/image selection mode showing Delete/Copy/Cut. */
@@ -371,6 +435,8 @@ public class SelectionMenuController {
     private void updateEditActionVisibility() {
         boolean docEditable = host.isDocEditable();
         boolean editMode = host.isEditModeActive();
+        textEditMode = !calcMode && !graphicMode && editMode;
+        applyPopupMaxWidthConstraint();
 
         if (calcMode) {
             setViewVisibility(R.id.selection_op_select_all, View.GONE);
@@ -381,9 +447,7 @@ public class SelectionMenuController {
             setViewVisibility(R.id.selection_op_image_edit, View.GONE);
             setViewVisibility(R.id.selection_op_save, View.GONE);
             setViewVisibility(R.id.selection_op_translate, editMode ? View.VISIBLE : View.GONE);
-            for (int sectionId : SELECTION_AI_SECTION_IDS) {
-                setViewVisibility(sectionId, View.GONE);
-            }
+            setAiActionsVisibility(View.GONE);
             updateActionLabel(R.id.selection_op_delete, "清除");
             updatePopupWidth(false);
             applyPopupButtonLayout(false);
@@ -398,9 +462,7 @@ public class SelectionMenuController {
             setViewVisibility(R.id.selection_op_save, View.VISIBLE);
             setViewVisibility(R.id.selection_op_select_all, View.GONE);
             setViewVisibility(R.id.selection_op_translate, View.GONE);
-            for (int sectionId : SELECTION_AI_SECTION_IDS) {
-                setViewVisibility(sectionId, View.GONE);
-            }
+            setAiActionsVisibility(View.GONE);
             updatePopupWidthForGraphic();
             applyPopupButtonLayout(false);
         } else {
@@ -414,12 +476,137 @@ public class SelectionMenuController {
             setViewVisibility(R.id.selection_op_paste, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_cut, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_translate, editMode ? View.VISIBLE : View.GONE);
-            for (int sectionId : SELECTION_AI_SECTION_IDS) {
-                setViewVisibility(sectionId, editMode ? View.VISIBLE : View.GONE);
-            }
+            setAiActionsVisibility(editMode ? View.VISIBLE : View.GONE);
             updatePopupWidth(true);
-            applyPopupButtonLayout(true);
+            if (textEditMode) {
+                applyTextEditStripLayout();
+            } else {
+                applyPopupButtonLayout(true);
+            }
         }
+        applyPopupAppearance();
+    }
+
+    private void setAiActionsVisibility(int visibility) {
+        for (int actionId : SELECTION_AI_ACTION_IDS) {
+            setViewVisibility(actionId, visibility);
+        }
+    }
+
+    private void applyPopupAppearance() {
+        if (menuView == null) {
+            return;
+        }
+        if (textEditMode) {
+            menuView.setBackgroundResource(R.drawable.lolib_bg_selection_popup_edit);
+            int padding = Math.round(dpToPx(4f));
+            menuView.setPadding(padding, padding, padding, padding);
+        } else {
+            menuView.setBackgroundResource(R.drawable.lolib_bg_selection_popup);
+            int padding = Math.round(dpToPx(8f));
+            menuView.setPadding(padding, padding, padding, padding);
+        }
+        ImageButton nextButton = menuView.findViewById(R.id.selection_strip_next);
+        HorizontalScrollView scrollView = menuView.findViewById(R.id.selection_basic_scroll);
+        if (nextButton != null) {
+            nextButton.setVisibility(textEditMode ? View.VISIBLE : View.GONE);
+        }
+        if (scrollView != null) {
+            ViewGroup.LayoutParams rawParams = scrollView.getLayoutParams();
+            if (rawParams instanceof LinearLayout.LayoutParams) {
+                LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) rawParams;
+                int width = textEditMode ? 0 : ViewGroup.LayoutParams.MATCH_PARENT;
+                float weight = textEditMode ? 1f : 0f;
+                if (params.width != width || params.weight != weight) {
+                    params.width = width;
+                    params.weight = weight;
+                    scrollView.setLayoutParams(params);
+                }
+            }
+        }
+        updateNextButtonState();
+    }
+
+    private void applyPopupMaxWidthConstraint() {
+        if (menuView == null || !(menuView.getLayoutParams() instanceof ConstraintLayout.LayoutParams)) {
+            return;
+        }
+        ConstraintLayout.LayoutParams params =
+                (ConstraintLayout.LayoutParams) menuView.getLayoutParams();
+        int maxWidth = Math.round(dpToPx(textEditMode ? POPUP_EDIT_MAX_WIDTH_DP : POPUP_MAX_WIDTH_DP));
+        if (params.matchConstraintMaxWidth != maxWidth) {
+            params.matchConstraintMaxWidth = maxWidth;
+            menuView.setLayoutParams(params);
+        }
+    }
+
+    private void applyTextEditStripLayout() {
+        applyTextEditButtonLayout();
+        View row = menuView != null ? menuView.findViewById(R.id.selection_basic_row) : null;
+        if (row != null && row.getLayoutParams() != null) {
+            ViewGroup.LayoutParams params = row.getLayoutParams();
+            if (params.width != ViewGroup.LayoutParams.WRAP_CONTENT) {
+                params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+                row.setLayoutParams(params);
+            }
+        }
+    }
+
+    private void applyTextEditButtonLayout() {
+        if (!textEditMode || menuView == null) {
+            return;
+        }
+        HorizontalScrollView scrollView = menuView.findViewById(R.id.selection_basic_scroll);
+        int viewport = scrollView != null ? scrollView.getWidth() : 0;
+        if (viewport <= 0) {
+            return;
+        }
+        int buttonWidth = Math.max(1, viewport / 5);
+        int[] actionIds = new int[] {
+                R.id.selection_op_copy,
+                R.id.selection_op_cut,
+                R.id.selection_op_paste,
+                R.id.selection_op_select_all,
+                R.id.selection_op_delete,
+                R.id.selection_op_image_edit,
+                R.id.selection_op_save,
+                R.id.selection_op_translate,
+                R.id.selection_op_outline,
+                R.id.selection_op_continue_write,
+                R.id.selection_op_article_generate,
+                R.id.selection_op_expand,
+                R.id.selection_op_polish,
+                R.id.selection_op_condense,
+                R.id.selection_op_rewrite,
+        };
+        for (int actionId : actionIds) {
+            View action = menuView.findViewById(actionId);
+            if (action == null || !(action.getLayoutParams() instanceof LinearLayout.LayoutParams)) {
+                continue;
+            }
+            LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) action.getLayoutParams();
+            if (params.width != buttonWidth || params.weight != 0f) {
+                params.width = buttonWidth;
+                params.weight = 0f;
+                action.setLayoutParams(params);
+            }
+        }
+    }
+
+    private void updateNextButtonState() {
+        if (menuView == null) {
+            return;
+        }
+        ImageButton nextButton = menuView.findViewById(R.id.selection_strip_next);
+        HorizontalScrollView scrollView = menuView.findViewById(R.id.selection_basic_scroll);
+        if (nextButton == null || scrollView == null || !textEditMode) {
+            return;
+        }
+        View row = menuView.findViewById(R.id.selection_basic_row);
+        boolean hasMore = row != null
+                && scrollView.getScrollX() + scrollView.getWidth() < row.getWidth() - 1;
+        nextButton.setEnabled(hasMore);
+        nextButton.setAlpha(hasMore ? 1f : 0.35f);
     }
 
     /** Weighted equal cells (Writer) vs fixed-width chips (graphic/calc). */
@@ -511,7 +698,9 @@ public class SelectionMenuController {
             return;
         }
         int targetWidth;
-        if (fillAvailable) {
+        if (textEditMode) {
+            targetWidth = computeTextEditPopupWidth();
+        } else if (fillAvailable) {
             targetWidth = computePopupTargetWidth();
         } else if (calcMode || graphicMode) {
             // Cap to the screen so chips wider than the viewport scroll inside
@@ -573,6 +762,18 @@ public class SelectionMenuController {
         if (parentWidth > 0) {
             int available = parentWidth - Math.round(dpToPx(32f));
             return Math.max(minWidth, Math.min(maxWidth, available));
+        }
+        return maxWidth;
+    }
+
+    /** Edit strip leaves at least 16dp at each side, including on narrow devices. */
+    private int computeTextEditPopupWidth() {
+        View parent = menuView != null ? (View) menuView.getParent() : null;
+        int parentWidth = parent != null ? parent.getWidth() : 0;
+        int maxWidth = Math.round(dpToPx(POPUP_EDIT_MAX_WIDTH_DP));
+        if (parentWidth > 0) {
+            int available = Math.max(1, parentWidth - Math.round(dpToPx(32f)));
+            return Math.min(maxWidth, available);
         }
         return maxWidth;
     }

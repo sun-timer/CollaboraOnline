@@ -1,5 +1,5 @@
 /*
- * iOS HTML selection menu (ticket 05 — 5+5+2 parity).
+ * iOS HTML selection menu for Writer and Impress text selections.
  *
  * Renders the Writer text-selection popup for iOS. Android keeps its native
  * SelectionMenuController; iOS consumes fabric selection events here.
@@ -36,6 +36,7 @@ class MobileSelectionMenu {
 	private container: HTMLDivElement | null = null;
 	private anchorBottomY = 0;
 	private menuMode: 'text' | 'calc' | 'graphic' = 'text';
+	private textEditMode = false;
 	/** Ignore taps until this time. iOS emits extra clicks when the long-press finger lifts. */
 	private static ignoreActionsUntil = 0;
 	private static readonly OPEN_CLICK_GUARD_MS = 500;
@@ -322,15 +323,18 @@ class MobileSelectionMenu {
 
 		const panel = document.createElement('div');
 		panel.className = MobileSelectionMenu.MENU_CLASS;
+		const editMode = MobileSelectionMenu.isEditModeActive();
+		const editable = MobileSelectionMenu.isDocEditable();
 		if (this.menuMode === 'graphic') {
 			panel.classList.add('fabric-selection-menu--graphic');
 		} else if (this.menuMode === 'calc') {
 			panel.classList.add('fabric-selection-menu--calc');
+		} else if (editMode) {
+			panel.classList.add('fabric-selection-menu--text-edit');
 		}
+		this.textEditMode = this.menuMode === 'text' && editMode;
 		panel.onclick = (e) => e.stopPropagation();
 
-		const editMode = MobileSelectionMenu.isEditModeActive();
-		const editable = MobileSelectionMenu.isDocEditable();
 		const rows = MobileSelectionMenu.buildRows(this.menuMode, editMode, editable);
 		rows.forEach((row) => panel.appendChild(row));
 
@@ -338,6 +342,14 @@ class MobileSelectionMenu {
 		document.body.appendChild(panel);
 		this.overlay = overlay;
 		this.container = panel;
+		if (this.textEditMode) {
+			const viewport = panel.querySelector<HTMLElement>(
+				'.fabric-selection-menu__text-edit-viewport',
+			);
+			if (viewport) {
+				viewport.scrollLeft = 0;
+			}
+		}
 		this.schedulePosition(detail.anchorX, detail.anchorY);
 	}
 
@@ -386,48 +398,178 @@ class MobileSelectionMenu {
 		}
 
 		const items = MobileSelectionMenu.editMenuItems();
-		const row1Ids = ['copy', 'cut', 'paste', 'select_all', 'translate'];
-		const row2Ids = [
-			'outline',
-			'continue_write',
-			'article_generate',
-			'expand',
-			'polish',
-		];
-		const row3Ids = ['condense', 'rewrite'];
-
-		const rows: HTMLElement[] = [];
-		const row1 = MobileSelectionMenu.buildButtonRow(
-			items.filter((item) => row1Ids.indexOf(item.id) >= 0),
-			{ editMode, editable, mode },
-		);
-		rows.push(row1);
-
 		if (editMode) {
-			rows.push(MobileSelectionMenu.buildDivider());
-			rows.push(
-				MobileSelectionMenu.buildButtonRow(
-					items.filter((item) => row2Ids.indexOf(item.id) >= 0),
-					{ editMode, editable, mode },
-				),
-			);
-			rows.push(MobileSelectionMenu.buildDivider());
-			const row3 = MobileSelectionMenu.buildButtonRow(
-				items.filter((item) => row3Ids.indexOf(item.id) >= 0),
-				{ editMode, editable, mode },
-			);
-			const spacer = document.createElement('div');
-			spacer.className = 'fabric-selection-menu__spacer';
-			row3.appendChild(spacer);
-			rows.push(row3);
+			return [
+				MobileSelectionMenu.buildTextEditStrip(items, { editMode, editable, mode }),
+			];
 		}
-		return rows;
+		const row1Ids = ['copy', 'cut', 'paste', 'select_all', 'translate'];
+		return [
+			MobileSelectionMenu.buildButtonRow(
+				items.filter((item) => row1Ids.indexOf(item.id) >= 0),
+				{ editMode, editable, mode },
+			),
+		];
 	}
 
-	private static buildDivider(): HTMLElement {
-		const divider = document.createElement('div');
-		divider.className = 'fabric-selection-menu__divider';
-		return divider;
+	private static buildTextEditStrip(
+		items: MobileSelectionMenuItemSpec[],
+		ctx: { editMode: boolean; editable: boolean; mode: 'text' | 'calc' | 'graphic' },
+	): HTMLElement {
+		const strip = document.createElement('div');
+		strip.className = 'fabric-selection-menu__text-edit-strip';
+		const viewport = document.createElement('div');
+		viewport.className = 'fabric-selection-menu__text-edit-viewport';
+		const row = document.createElement('div');
+		row.className = 'fabric-selection-menu__text-edit-row';
+		items.forEach((item) => {
+			if (!MobileSelectionMenu.isItemVisible(item, ctx)) {
+				return;
+			}
+			const button = MobileSelectionMenu.createButton(item);
+			button.classList.add('fabric-selection-menu__button--text-edit');
+			// Keep the document selection and its keyboard focus when tapping an action.
+			button.addEventListener('mousedown', (event) => event.preventDefault());
+			row.appendChild(button);
+		});
+		viewport.appendChild(row);
+
+		const next = document.createElement('button');
+		next.type = 'button';
+		next.className = 'fabric-selection-menu__next';
+		next.setAttribute('aria-label', '显示更多操作');
+		next.addEventListener('mousedown', (event) => event.preventDefault());
+		next.innerHTML =
+			'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>';
+		const suppressStripClicks = MobileSelectionMenu.installStripGestureGuard(strip, viewport);
+		const updateNextState = () => {
+			const hasMore = viewport.scrollLeft + viewport.clientWidth < row.scrollWidth - 1;
+			next.disabled = !hasMore;
+			next.setAttribute('aria-disabled', hasMore ? 'false' : 'true');
+		};
+		viewport.addEventListener('scroll', updateNextState, { passive: true });
+		next.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			if (!next.disabled) {
+				// Avoid a synthetic click landing on an action while the arrow scrolls.
+				suppressStripClicks(250);
+				viewport.scrollBy({ left: viewport.clientWidth, behavior: 'smooth' });
+			}
+		});
+
+		strip.appendChild(viewport);
+		strip.appendChild(next);
+		return strip;
+	}
+
+	private static installStripGestureGuard(
+		strip: HTMLElement,
+		viewport: HTMLElement,
+	): (durationMs: number) => void {
+		let startX = 0;
+		let startY = 0;
+		let pointerActive = false;
+		let dragged = false;
+		let suppressClickUntil = 0;
+		const gestureStart = (x: number, y: number) => {
+			startX = x;
+			startY = y;
+			pointerActive = true;
+			dragged = false;
+		};
+		const gestureMove = (x: number, y: number) => {
+			const deltaX = Math.abs(x - startX);
+			const deltaY = Math.abs(y - startY);
+			if (pointerActive && deltaX > 8 && deltaX > deltaY) {
+				dragged = true;
+			}
+		};
+		const gestureEnd = () => {
+			if (dragged) {
+				// Retain suppression briefly while native momentum scrolling settles.
+				suppressClickUntil = Date.now() + 400;
+			}
+			pointerActive = false;
+			dragged = false;
+		};
+		const gestureCancel = () => {
+			if (pointerActive) {
+				suppressClickUntil = Date.now() + 400;
+			}
+			pointerActive = false;
+			dragged = false;
+		};
+		viewport.addEventListener(
+			'scroll',
+			() => {
+				if (pointerActive || dragged || Date.now() < suppressClickUntil) {
+					if (pointerActive) {
+						dragged = true;
+					}
+					suppressClickUntil = Date.now() + 400;
+				}
+			},
+			{ passive: true },
+		);
+		if ('PointerEvent' in window) {
+			strip.addEventListener(
+				'pointerdown',
+				(event: PointerEvent) => {
+					if (event.pointerType !== 'mouse') {
+						gestureStart(event.clientX, event.clientY);
+					} else {
+						pointerActive = false;
+						dragged = false;
+						suppressClickUntil = 0;
+					}
+				},
+				{ passive: true },
+			);
+			strip.addEventListener(
+				'pointermove',
+				(event: PointerEvent) => gestureMove(event.clientX, event.clientY),
+				{ passive: true },
+			);
+			strip.addEventListener('pointerup', gestureEnd, { passive: true });
+			strip.addEventListener('pointercancel', gestureCancel, { passive: true });
+		} else {
+			strip.addEventListener(
+				'touchstart',
+				(event: TouchEvent) => {
+					const touch = event.changedTouches[0];
+					if (touch) {
+						gestureStart(touch.clientX, touch.clientY);
+					}
+				},
+				{ passive: true },
+			);
+			strip.addEventListener(
+				'touchmove',
+				(event: TouchEvent) => {
+					const touch = event.changedTouches[0];
+					if (touch) {
+						gestureMove(touch.clientX, touch.clientY);
+					}
+				},
+				{ passive: true },
+			);
+			strip.addEventListener('touchend', gestureEnd, { passive: true });
+			strip.addEventListener('touchcancel', gestureCancel, { passive: true });
+		}
+		strip.addEventListener(
+			'click',
+			(event) => {
+				if (dragged || Date.now() < suppressClickUntil) {
+					event.preventDefault();
+					event.stopImmediatePropagation();
+				}
+			},
+			true,
+		);
+		return (durationMs: number) => {
+			suppressClickUntil = Math.max(suppressClickUntil, Date.now() + durationMs);
+		};
 	}
 
 	private static buildButtonRow(
@@ -629,16 +771,36 @@ class MobileSelectionMenu {
 		const viewport = window.visualViewport;
 		const viewWidth = viewport ? viewport.width : window.innerWidth;
 		const viewHeight = viewport ? viewport.height : window.innerHeight;
+		const maxWidth = this.textEditMode ? 320 : MobileSelectionMenu.POPUP_MAX_WIDTH_PX;
 		const width = Math.min(
 			this.menuMode === 'graphic'
 				? viewWidth - MobileSelectionMenu.POPUP_MARGIN_PX * 2
-				: MobileSelectionMenu.POPUP_MAX_WIDTH_PX,
+				: maxWidth,
 			viewWidth - MobileSelectionMenu.POPUP_MARGIN_PX * 2,
 		);
 		if (this.menuMode === 'calc') {
 			this.container.style.width = 'max-content';
 		} else {
 			this.container.style.width = width + 'px';
+		}
+		if (this.textEditMode) {
+			const viewport = this.container.querySelector<HTMLElement>(
+				'.fabric-selection-menu__text-edit-viewport',
+			);
+			const row = this.container.querySelector<HTMLElement>(
+				'.fabric-selection-menu__text-edit-row',
+			);
+			if (viewport && row) {
+				row.style.setProperty('--text-edit-item-width', viewport.clientWidth / 5 + 'px');
+				const next = this.container.querySelector<HTMLButtonElement>(
+					'.fabric-selection-menu__next',
+				);
+				if (next) {
+					const hasMore = viewport.scrollLeft + viewport.clientWidth < row.scrollWidth - 1;
+					next.disabled = !hasMore;
+					next.setAttribute('aria-disabled', hasMore ? 'false' : 'true');
+				}
+			}
 		}
 
 		const menuWidth = this.container.offsetWidth || (this.menuMode === 'calc' ? 72 : width);

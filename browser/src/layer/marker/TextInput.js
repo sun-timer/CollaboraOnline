@@ -187,8 +187,17 @@ window.L.TextInput = window.L.Layer.extend({
 
 	_onPermission: function(e) {
 		if (e.detail.perm === 'edit') {
+			if (window.ThisIsTheiOSApp) {
+				this._textArea.setAttribute('contenteditable', 'true');
+			}
 			this._textArea.removeAttribute('disabled');
 		} else {
+			if (window.ThisIsTheiOSApp) {
+				this._textArea.setAttribute('contenteditable', 'false');
+				if (document.activeElement === this._textArea) {
+					this._textArea.blur();
+				}
+			}
 			this._textArea.setAttribute('disabled', true);
 		}
 	},
@@ -437,9 +446,13 @@ window.L.TextInput = window.L.Layer.extend({
 		// word, in order to make
 		this._textArea = window.L.DomUtil.create('div', 'clipboard', this._container);
 		this._textArea.id = 'clipboard-area';
-		this._textArea.setAttribute('contenteditable', 'true');
+		this._textArea.setAttribute('contenteditable', window.ThisIsTheiOSApp ? 'false' : 'true');
 		this._textArea.setAttribute('autocapitalize', 'off');
-		this._textArea.setAttribute('autofocus', 'true');
+		// WKWebView's iOS focus workaround treats scripted autofocus as a user
+		// interaction, so keep the hidden document input unfocused until a valid tap.
+		if (!window.ThisIsTheiOSApp) {
+			this._textArea.setAttribute('autofocus', 'true');
+		}
 		this._textArea.setAttribute('autocorrect', 'off');
 		this._textArea.setAttribute('autocomplete', 'off');
 		this._textArea.setAttribute('spellcheck', 'false');

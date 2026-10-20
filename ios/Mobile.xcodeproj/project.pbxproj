@@ -3962,6 +3962,7 @@
 			buildConfigurationList = BE8D77432136762600AC58EA /* Build configuration list for PBXNativeTarget "Mobile" */;
 			buildPhases = (
 				LLAMA010030 /* Ensure Llama XCFramework */,
+				B001E2026102000000000001 /* Build Browser Resources */,
 				BE8D77232136762500AC58EA /* Sources */,
 				BE8D77242136762500AC58EA /* Frameworks */,
 				LLAMA010040 /* Embed Frameworks */,
@@ -4159,6 +4160,33 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -eu\n\"${SOURCE_ROOT}/scripts/ensure-llama-xcframework.sh\"\n";
+		};
+		B001E2026102000000000001 /* Build Browser Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Browser Resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SOURCE_ROOT)/../browser/dist/bundle.js",
+				"$(SOURCE_ROOT)/../browser/dist/bundle.css",
+				"$(SOURCE_ROOT)/../browser/dist/global.js",
+				"$(SOURCE_ROOT)/../browser/dist/cool.html",
+				"$(SOURCE_ROOT)/../browser/dist/cool-help.html",
+				"$(SOURCE_ROOT)/../browser/dist/device-mobile.css",
+				"$(SOURCE_ROOT)/../browser/dist/device-tablet.css",
+				"$(SOURCE_ROOT)/../browser/dist/images",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\n\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}\"\nmake -C \"${SOURCE_ROOT}/../browser\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -4440,6 +4468,7 @@
 				CURRENT_PROJECT_VERSION = 1.0;
 				DEVELOPMENT_TEAM = 9RY28GXMM3;
 				ENABLE_BITCODE = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"IOS=IOS",
 					"DISABLE_DYNLOADING=1",
@@ -4530,6 +4559,7 @@
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 9RY28GXMM3;
 				ENABLE_BITCODE = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"IOS=IOS",
 					"DISABLE_DYNLOADING=1",

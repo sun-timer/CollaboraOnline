@@ -2374,7 +2374,7 @@
 	flex-shrink: 0;
 }
 
-/* ── iOS selection menu (5+5+2) ── */
+/* ── iOS selection menu ── */
 .fabric-selection-menu-overlay {
 	position: fixed;
 	inset: 0;
@@ -2446,6 +2446,97 @@
 .fabric-selection-menu__spacer {
 	flex: 3 1 0;
 	min-width: 0;
+}
+
+/* Writer/PPT edit selection actions: one fixed-height, continuously scrolling strip. */
+.fabric-selection-menu--text-edit {
+	box-sizing: border-box;
+	max-width: min(320px, calc(100vw - 32px));
+	min-height: 64px;
+	padding: 4px;
+	border-radius: 8px;
+}
+
+.fabric-selection-menu__text-edit-strip {
+	display: flex;
+	align-items: center;
+	width: 100%;
+	height: 56px;
+}
+
+.fabric-selection-menu__text-edit-viewport {
+	flex: 1 1 0;
+	min-width: 0;
+	height: 56px;
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-x: contain;
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: none;
+	touch-action: pan-x;
+}
+
+.fabric-selection-menu__text-edit-viewport::-webkit-scrollbar {
+	display: none;
+}
+
+.fabric-selection-menu__text-edit-row {
+	display: flex;
+	flex-flow: row nowrap;
+	align-items: stretch;
+	width: max-content;
+	min-width: 100%;
+	height: 56px;
+}
+
+.fabric-selection-menu__button--text-edit {
+	box-sizing: border-box;
+	flex: 0 0 var(--text-edit-item-width, calc((100vw - 64px) / 5));
+	width: var(--text-edit-item-width, calc((100vw - 64px) / 5));
+	max-width: none;
+	padding: 4px 2px;
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+.fabric-selection-menu--text-edit .fabric-selection-menu__button--text-edit:active {
+	border-radius: 4px;
+	background: #f2f3f5;
+}
+
+.fabric-selection-menu__next {
+	flex: 0 0 24px;
+	width: 24px;
+	height: 56px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: #666;
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
+}
+
+.fabric-selection-menu__next svg {
+	width: 20px;
+	height: 20px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.fabric-selection-menu__next:active:not(:disabled) {
+	background: #f2f3f5;
+}
+
+.fabric-selection-menu__next:disabled {
+	opacity: 0.35;
+	cursor: default;
 }
 
 /* Calc cell menu: hug the visible actions. A lone 复制 must not stretch to 301px. */

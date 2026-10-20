@@ -3,6 +3,18 @@
  * Self-contained hooks — do not patch CanvasSectionContainer / CanvasTileLayer.
  */
 
+type PendingMobileTextInputRequest = {
+	docLayer: any;
+	generation: number;
+	targetPoint: { x: number; y: number } | null;
+	startCaret: { x: number; y: number } | null;
+	calcCell: { part: number; address: string; bounds: number[] } | null;
+	allowCurrentCaretFallback: boolean;
+	tapResolved: boolean;
+	caretConfirmed: boolean;
+	timer: number;
+};
+
 class AndroidSelectionMenu {
 	private static hooksInstalled = false;
 	private static inputGestureHooksInstalled = false;
@@ -42,15 +54,7 @@ class AndroidSelectionMenu {
 	private static validTextInputDocLayer: any = null;
 	private static validTextInputExpiresAt = 0;
 	private static validTextInputTimer = 0;
-	private static pendingTextInputRequest: {
-		docLayer: any;
-		generation: number;
-		targetPoint: { x: number; y: number } | null;
-		startCaret: { x: number; y: number } | null;
-		tapResolved: boolean;
-		caretConfirmed: boolean;
-		timer: number;
-	} | null = null;
+	private static pendingTextInputRequest: PendingMobileTextInputRequest | null = null;
 	private static touchGesture: {
 		x: number;
 		y: number;
@@ -204,6 +208,7 @@ class AndroidSelectionMenu {
 
 	static beginTextInputRequest(
 		targetPoint: { x: number; y: number } | null = null,
+		allowCurrentCaretFallback: boolean = true,
 	): void {
 		if (
 			!AndroidSelectionMenu.isMobileApp() ||
@@ -220,6 +225,15 @@ class AndroidSelectionMenu {
 			targetPoint,
 			startCaret: app.file && app.file.textCursor && app.file.textCursor.visible
 				? { x: app.file.textCursor.rectangle!.x1, y: app.file.textCursor.rectangle!.y1 }
+				: null,
+			allowCurrentCaretFallback,
+			calcCell: app.map.getDocType() === 'spreadsheet' && app.calc?.cellCursorVisible &&
+				app.calc.cellCursorRectangle && app.calc.cellAddress
+				? {
+					part: app.map._docLayer._selectedPart,
+					address: app.calc.cellAddress.toArray().join(':'),
+					bounds: app.calc.cellCursorRectangle.toArray(),
+				}
 				: null,
 			tapResolved: false,
 			caretConfirmed: false,
@@ -242,15 +256,49 @@ class AndroidSelectionMenu {
 		request.tapResolved = true;
 		// Core may not emit visibility/invalidate when a tap lands on the caret
 		// that is already visible. Reuse it only for a very tight caret hit.
-		if (AndroidSelectionMenu.isCurrentCaretAtTap(request)) {
+		if (
+			request.allowCurrentCaretFallback &&
+			AndroidSelectionMenu.isCurrentCaretAtTap(request)
+		) {
 			request.caretConfirmed = true;
 		}
 		AndroidSelectionMenu.maybeShowKeyboardForTextInput(request);
 	}
 
-	private static isCurrentCaretAtTap(request: {
-		targetPoint: { x: number; y: number } | null;
-	}): boolean {
+	private static getRequestCalcCell(
+		request: PendingMobileTextInputRequest,
+	): cool.SimpleRectangle | null {
+		// Core may hide the cell cursor while the same cell is being edited.
+		const snapshot = request.calcCell;
+		if (
+			!snapshot ||
+			!app.map ||
+			app.map._docLayer !== request.docLayer ||
+			app.map.getDocType() !== 'spreadsheet' ||
+			app.map._docLayer?._selectedPart !== snapshot.part ||
+			!app.calc?.cellAddress ||
+			app.calc.cellAddress.toArray().join(':') !== snapshot.address
+		) {
+			return null;
+		}
+		if (
+			app.calc.cellCursorVisible &&
+			(!app.calc.cellCursorRectangle ||
+				!app.calc.cellCursorRectangle.equals(snapshot.bounds))
+		) {
+			return null;
+		}
+		return new cool.SimpleRectangle(
+			snapshot.bounds[0],
+			snapshot.bounds[1],
+			snapshot.bounds[2],
+			snapshot.bounds[3],
+		);
+	}
+
+	private static isCurrentCaretAtTap(
+		request: PendingMobileTextInputRequest,
+	): boolean {
 		if (
 			!request.targetPoint ||
 			!app.map ||
@@ -259,7 +307,7 @@ class AndroidSelectionMenu {
 			return false;
 		}
 		if (app.map.getDocType() === 'spreadsheet') {
-			const cell = app.calc?.cellCursorVisible ? app.calc.cellCursorRectangle : null;
+			const cell = AndroidSelectionMenu.getRequestCalcCell(request);
 			if (!cell || !cell.containsPoint([request.targetPoint.x, request.targetPoint.y])) {
 				return false;
 			}
@@ -299,15 +347,9 @@ class AndroidSelectionMenu {
 		}
 	}
 
-	private static maybeShowKeyboardForTextInput(request: {
-		docLayer: any;
-		generation: number;
-		targetPoint: { x: number; y: number } | null;
-		startCaret: { x: number; y: number } | null;
-		tapResolved: boolean;
-		caretConfirmed: boolean;
-		timer: number;
-	}): void {
+	private static maybeShowKeyboardForTextInput(
+		request: PendingMobileTextInputRequest,
+	): void {
 		if (
 			AndroidSelectionMenu.pendingTextInputRequest !== request ||
 			!request.tapResolved ||
@@ -348,7 +390,7 @@ class AndroidSelectionMenu {
 	}
 
 	private static onTextCursorVisibility(event: any): void {
-		AndroidSelectionMenu.onTextCaretUpdate(event && event.visible === true);
+		AndroidSelectionMenu.onTextCaretUpdate(event?.detail?.visible === true);
 	}
 
 	private static onTextCaretUpdate(cursorVisible: boolean): void {
@@ -371,9 +413,7 @@ class AndroidSelectionMenu {
 				Math.abs(caret.x1 - request.startCaret.x) > 1 ||
 				Math.abs(caret.y1 - request.startCaret.y) > 1;
 			if (app.map.getDocType() === 'spreadsheet') {
-				const cell = app.calc?.cellCursorVisible
-					? app.calc.cellCursorRectangle
-					: null;
+				const cell = AndroidSelectionMenu.getRequestCalcCell(request);
 				if (
 					!cell ||
 					!cell.containsPoint([caret.x1, caret.y1]) ||
@@ -1592,19 +1632,75 @@ class AndroidSelectionMenu {
 					buttons: buttons,
 					modifier: modifier,
 				};
+				const mouseControl = this as any;
+				const isPresentation = app.map.getDocType() === 'presentation';
+				const isTouchTap = AndroidSelectionMenu.isTouchTapEligible();
+				const textTarget = AndroidSelectionMenu.sectionPointToDocumentTwips(
+					clickInfo.sendingPosition,
+				);
+				let useCorePresentationDoubleTap = false;
+				let presentationDoubleTapAttempt: {
+					docLayer: any;
+					part: number;
+					requestGeneration: number;
+					targetPoint: { x: number; y: number };
+					hadTextCaretOrSelection: boolean;
+				} | null = null;
 
 				if (this.clickTimer) {
 					app.timerRegistry.clearTimeout(this.clickTimer);
-					AndroidSelectionMenu.cancelTextInputRequest('double_tap');
-				} else {
-					const textTarget = AndroidSelectionMenu.sectionPointToDocumentTwips(
-						clickInfo.sendingPosition,
+					// A first tap can select the shape. If it began outside text edit,
+					// let Core receive the second click to enter the shape's text.
+					const firstTap = mouseControl.__mobilePresentationTapSequence;
+					const samePresentationTap =
+						isPresentation &&
+						AndroidSelectionMenu.isEditMode() &&
+						isTouchTap &&
+						firstTap &&
+						firstTap.docLayer === app.map._docLayer &&
+						firstTap.part === app.map._docLayer._selectedPart &&
+						firstTap.targetPoint &&
+						textTarget &&
+						Math.abs(firstTap.targetPoint.x - textTarget.x) <=
+							Math.round(72 * app.pixelsToTwips) &&
+						Math.abs(firstTap.targetPoint.y - textTarget.y) <=
+							Math.round(72 * app.pixelsToTwips);
+					useCorePresentationDoubleTap = !!(
+						samePresentationTap && !firstTap.hadTextCaretOrSelection
 					);
+					if (useCorePresentationDoubleTap && textTarget) {
+						inputRequestForTap = true;
+						presentationDoubleTapAttempt = {
+							docLayer: app.map._docLayer,
+							part: app.map._docLayer._selectedPart,
+							requestGeneration: AndroidSelectionMenu.textInputGeneration,
+							targetPoint: textTarget,
+							hadTextCaretOrSelection: firstTap.hadTextCaretOrSelection,
+						};
+						mouseControl.__mobilePresentationTapSequence =
+							presentationDoubleTapAttempt;
+					} else {
+						mouseControl.__mobilePresentationTapSequence = null;
+						AndroidSelectionMenu.cancelTextInputRequest('double_tap');
+					}
+				} else {
 					inputRequestForTap =
 						AndroidSelectionMenu.isEditMode() &&
 						app.map.getDocType() !== 'spreadsheet' &&
-						AndroidSelectionMenu.isTouchTapEligible() &&
+						isTouchTap &&
 						!!textTarget;
+					if (isPresentation && inputRequestForTap) {
+						mouseControl.__mobilePresentationTapSequence = {
+							docLayer: app.map._docLayer,
+							part: app.map._docLayer._selectedPart,
+							targetPoint: textTarget,
+							hadTextCaretOrSelection:
+								!!app.file?.textCursor?.visible ||
+								AndroidSelectionMenu.hasVisibleTextSelection(),
+						};
+					} else {
+						mouseControl.__mobilePresentationTapSequence = null;
+					}
 					if (inputRequestForTap) {
 						AndroidSelectionMenu.beginTextInputRequest(textTarget);
 					}
@@ -1618,11 +1714,52 @@ class AndroidSelectionMenu {
 					'clicktimer',
 					() => {
 						if (this.clickCount === 2) {
-							AndroidSelectionMenu.cancelTextInputRequest('double_tap');
-							AndroidSelectionMenu.onDoubleTapAtSectionPoint(
-								clickInfo.sendingPosition,
-							);
+							if (useCorePresentationDoubleTap && inputRequestForTap) {
+								const attempt = presentationDoubleTapAttempt;
+								const canDispatchCoreDoubleTap = !!(
+									attempt &&
+									mouseControl.__mobilePresentationTapSequence === attempt &&
+									AndroidSelectionMenu.textInputGeneration ===
+										attempt.requestGeneration &&
+									app.map &&
+									app.map._docLayer === attempt.docLayer &&
+									app.map._docLayer._selectedPart === attempt.part &&
+									AndroidSelectionMenu.isEditMode() &&
+									AndroidSelectionMenu.isTouchTapEligible()
+								);
+								mouseControl.__mobilePresentationTapSequence = null;
+								if (canDispatchCoreDoubleTap && attempt) {
+									const caretConfirmedByFirstTap =
+										!attempt.hadTextCaretOrSelection &&
+										!!app.file?.textCursor?.visible &&
+										AndroidSelectionMenu.isCaretAtTarget(
+											app.file.textCursor.rectangle,
+											attempt.targetPoint,
+										);
+									AndroidSelectionMenu.beginTextInputRequest(
+										attempt.targetPoint,
+										caretConfirmedByFirstTap,
+									);
+									const request = AndroidSelectionMenu.pendingTextInputRequest;
+									if (
+										request &&
+										AndroidSelectionMenu.pendingTextInputRequest === request &&
+										request.docLayer === attempt.docLayer &&
+										request.generation ===
+											AndroidSelectionMenu.textInputGeneration
+									) {
+										(<any>this).sendClick(clickInfo, 2);
+										AndroidSelectionMenu.resolveTextInputTap();
+									}
+								}
+							} else {
+								AndroidSelectionMenu.cancelTextInputRequest('double_tap');
+								AndroidSelectionMenu.onDoubleTapAtSectionPoint(
+									clickInfo.sendingPosition,
+								);
+							}
 						} else if (this.clickCount > 1) {
+							mouseControl.__mobilePresentationTapSequence = null;
 							AndroidSelectionMenu.cancelTextInputRequest('multi_tap');
 							(<any>this).sendClick(
 								clickInfo,
@@ -1632,6 +1769,7 @@ class AndroidSelectionMenu {
 							AndroidSelectionMenu.resolveTextInputTap();
 						}
 
+						mouseControl.__mobilePresentationTapSequence = null;
 						this.clickTimer = null;
 						this.clickCount = 0;
 					},
