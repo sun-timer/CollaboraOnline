@@ -218,8 +218,8 @@ class AndroidSelectionMenu {
 			docLayer: app.map._docLayer,
 			generation: ++AndroidSelectionMenu.textInputGeneration,
 			targetPoint,
-			startCaret: app.file?.textCursor?.visible
-				? { x: app.file.textCursor.rectangle.x1, y: app.file.textCursor.rectangle.y1 }
+			startCaret: app.file && app.file.textCursor && app.file.textCursor.visible
+				? { x: app.file.textCursor.rectangle!.x1, y: app.file.textCursor.rectangle!.y1 }
 				: null,
 			tapResolved: false,
 			caretConfirmed: false,
@@ -364,8 +364,9 @@ class AndroidSelectionMenu {
 			AndroidSelectionMenu.cancelTextInputRequest('document_or_permission_changed');
 			return;
 		}
-		if (cursorVisible && app.file?.textCursor?.visible) {
-			const caret = app.file.textCursor.rectangle;
+		if (cursorVisible && app.file && app.file.textCursor && app.file.textCursor.visible) {
+			const textCursor = app.file.textCursor;
+			const caret = textCursor.rectangle!;
 			const caretChanged = !request.startCaret ||
 				Math.abs(caret.x1 - request.startCaret.x) > 1 ||
 				Math.abs(caret.y1 - request.startCaret.y) > 1;
