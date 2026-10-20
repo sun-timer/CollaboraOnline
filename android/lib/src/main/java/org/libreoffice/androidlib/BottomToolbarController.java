@@ -33,7 +33,6 @@ public class BottomToolbarController {
     };
     private static final int[] EDIT_MODE_COMMON_TOOLBAR_ITEM_IDS = new int[] {
             R.id.toolbar_item_ai_feature,
-            R.id.toolbar_item_keyboard,
             R.id.toolbar_item_character
     };
     private static final int[] EDIT_MODE_WRITER_ONLY_TOOLBAR_ITEM_IDS = new int[] {
@@ -52,7 +51,6 @@ public class BottomToolbarController {
             R.id.toolbar_item_function,
             R.id.toolbar_item_ai_assistant,
             R.id.toolbar_item_ai_feature,
-            R.id.toolbar_item_keyboard,
             R.id.toolbar_item_character,
             R.id.toolbar_item_paragraph,
             R.id.toolbar_item_insert_image,
@@ -115,8 +113,6 @@ public class BottomToolbarController {
         void showNativeAiOperationSheet();
 
         void toastTodo(String text);
-
-        void focusDocumentAndShowIme();
 
         void openLocalImagePickerFromWeb();
 
@@ -182,10 +178,6 @@ public class BottomToolbarController {
         bindToolbarClick(R.id.toolbar_item_ai_feature, v -> {
             hideQuickActionPanel();
             host.showNativeAiOperationSheet();
-        });
-        bindToolbarClick(R.id.toolbar_item_keyboard, v -> {
-            hideQuickActionPanel();
-            host.focusDocumentAndShowIme();
         });
         bindToolbarClick(R.id.toolbar_item_character, v -> toggleQuickActionPanel(QuickActionGroup.CHARACTER));
         bindToolbarClick(R.id.toolbar_item_paragraph, v -> toggleQuickActionPanel(QuickActionGroup.PARAGRAPH));

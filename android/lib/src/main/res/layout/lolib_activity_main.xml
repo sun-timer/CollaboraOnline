@@ -23,10 +23,7 @@
                                                 <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/lolib_ic_toolbar_ai_feature" android:contentDescription="AI功能"/>
                                                 <TextView android:textSize="14sp" android:textColor="#202124" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="AI功能"/>
                                         </LinearLayout>
-                                        <LinearLayout android:gravity="center" android:orientation="vertical" android:id="@+id/toolbar_item_keyboard" android:focusable="true" android:clickable="true" android:layout_width="100dp" android:layout_height="match_parent">
-                                                <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/lolib_ic_toolbar_keyboard" android:contentDescription="呼出键盘"/>
-                                                <TextView android:textSize="14sp" android:textColor="#202124" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="呼出键盘"/>
-                                        </LinearLayout>
+
                                         <LinearLayout android:gravity="center" android:orientation="vertical" android:id="@+id/toolbar_item_character" android:focusable="true" android:clickable="true" android:layout_width="92dp" android:layout_height="match_parent">
                                                 <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/lolib_ic_toolbar_character" android:contentDescription="字符"/>
                                                 <TextView android:textSize="14sp" android:textColor="#202124" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="字符"/>

@@ -210,7 +210,12 @@ class GraphicSelection {
 		if (this.hasActiveSelection()) {
 			// Hide the keyboard on graphic selection, unless cursor is visible.
 			// Don't interrupt editing in dialogs
-			if (!JSDialog.IsAnyInputFocused())
+			const selectionMenu = (window as any).AndroidSelectionMenu;
+			const preserveKeyboard =
+				selectionMenu &&
+				typeof selectionMenu.shouldPreserveKeyboardAfterTouch === 'function' &&
+				selectionMenu.shouldPreserveKeyboardAfterTouch();
+			if (!JSDialog.IsAnyInputFocused() && !preserveKeyboard)
 				app.map.focus(app.file.textCursor.visible);
 
 			let editMode = app.map.isEditMode();

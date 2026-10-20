@@ -61,7 +61,7 @@ class MobileSelectionMenu {
 		}
 	}
 
-	/** Soft keyboard covers the web view. Selection menu stays hidden until it closes. */
+	/** Soft keyboard covers part of the web view; used for input-state coordination. */
 	static iosKeyboardOpen(): boolean {
 		const menu = (window as any).__coolMobileSelectionMenu as MobileSelectionMenu | undefined;
 		if (menu && menu.keyboardOpen()) {
@@ -85,8 +85,13 @@ class MobileSelectionMenu {
 	/** Called from iOS DocumentViewController keyboardWillChangeFrame. */
 	setKeyboardVisible(visible: boolean): void {
 		this.nativeKeyboardVisible = visible;
-		if (visible && this.menuMode !== 'calc' && this.menuMode !== 'graphic') {
-			this.hide();
+		const selectionMenu = (window as any).AndroidSelectionMenu;
+		if (
+			!visible &&
+			selectionMenu &&
+			typeof selectionMenu.onIOSKeyboardVisibilityChanged === 'function'
+		) {
+			selectionMenu.onIOSKeyboardVisibilityChanged(false);
 		}
 	}
 
@@ -263,12 +268,6 @@ class MobileSelectionMenu {
 	}
 
 	private handleVisualViewport(): void {
-		if (this.keyboardOpen()) {
-			if (this.container) {
-				this.hide();
-			}
-			return;
-		}
 		if (this.container) {
 			this.positionNearAnchor(this.lastAnchorX, this.lastAnchorY);
 		}
@@ -288,15 +287,6 @@ class MobileSelectionMenu {
 	private show(event: CustomEvent): void {
 		const detail = event.detail as MobileSelectionShowDetail;
 		if (!detail || typeof detail.anchorX !== 'number') {
-			return;
-		}
-		// Calc cell menus and graphic object menus stay up while the keyboard
-		// is open. Text selection menus keep the keyboard guard.
-		if (
-			this.keyboardOpen() &&
-			detail.mode !== 'calc' &&
-			detail.mode !== 'graphic'
-		) {
 			return;
 		}
 		this.hide();

@@ -2583,11 +2583,6 @@ static IMP standardImpOfInputAccessoryView = nil;
     [self sendToolbarJavaScript:@"if(window.__coolWriterAiPanel){window.__coolWriterAiPanel.openOperationSheet();}"];
 }
 
-- (void)bottomToolbarDidPressKeyboard
-{
-    [self sendToolbarJavaScript:@"if(window.app&&app.map&&typeof app.map.focus==='function'){app.map.focus(true);}"];
-}
-
 - (void)bottomToolbarDidPressCharacter
 {
     // Android BottomToolbarController CHARACTER quick-action row (all edit doc types).

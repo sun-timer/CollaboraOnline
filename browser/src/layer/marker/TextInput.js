@@ -265,6 +265,14 @@ window.L.TextInput = window.L.Layer.extend({
 	focus: function(acceptInput) {
 		// Note that the acceptInput parameter intentionally
 		// is a tri-state boolean: undefined, false, or true.
+		if (
+			acceptInput === false &&
+			window.AndroidSelectionMenu &&
+			typeof window.AndroidSelectionMenu.shouldPreserveKeyboardAfterTouch === 'function' &&
+			window.AndroidSelectionMenu.shouldPreserveKeyboardAfterTouch()
+		) {
+			return;
+		}
 
 		// Clicking or otherwise focusing the map should focus on the clipboard
 		// container in order for the user to input text (and on-screen keyboards

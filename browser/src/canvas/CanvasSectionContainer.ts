@@ -602,7 +602,30 @@ class CanvasSectionContainer {
 	public dispatchCalcTapAtClient(
 		clientX: number,
 		clientY: number,
+		clickCount: number = 1,
 	): { x: number; y: number } | null {
+		const tap = this.calcTapSectionPointAtClient(clientX, clientY);
+		if (!tap) {
+			return null;
+		}
+		return tap.mouseSection.dispatchNativeCalcCellTap(tap.point, clickCount);
+	}
+
+	public getCalcTapPositionAtClient(
+		clientX: number,
+		clientY: number,
+	): { x: number; y: number } | null {
+		const tap = this.calcTapSectionPointAtClient(clientX, clientY);
+		if (!tap) {
+			return null;
+		}
+		return tap.mouseSection.getNativeCalcCellTapPosition(tap.point);
+	}
+
+	private calcTapSectionPointAtClient(
+		clientX: number,
+		clientY: number,
+	): { mouseSection: MouseControl; point: cool.SimplePoint } | null {
 		const mouseSection = this.getSectionWithName(
 			app.CSections.MouseControl.name,
 		) as MouseControl;
@@ -626,7 +649,7 @@ class CanvasSectionContainer {
 		const canvasPos = this.convertPositionToCanvasLocale(syntheticClick);
 		const sectionPos = this.convertPositionToSectionLocale(mouseSection, canvasPos);
 		const point = cool.SimplePoint.fromCorePixels(sectionPos);
-		return mouseSection.dispatchNativeCalcCellTap(point);
+		return { mouseSection, point };
 	}
 
 	/**

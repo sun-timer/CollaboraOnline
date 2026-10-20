@@ -12,7 +12,6 @@ static const NSInteger kMobilePreviewTag = 1;
 static const NSInteger kFunctionTag = 2;
 static const NSInteger kAIAssistantTag = 3;
 static const NSInteger kAIFeaturesTag = 4;
-static const NSInteger kKeyboardTag = 5;
 static const NSInteger kCharacterTag = 6;
 static const NSInteger kParagraphTag = 7;
 static const NSInteger kInsertImageTag = 8;
@@ -169,7 +168,6 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
         @[@"function", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
         @[@"ai-assistant", @"AI助手", [NSString stringWithFormat:@"%ld", (long)kAIAssistantTag]],
         @[@"ai-feature", @"AI功能", [NSString stringWithFormat:@"%ld", (long)kAIFeaturesTag]],
-        @[@"keyboard", @"呼出键盘", [NSString stringWithFormat:@"%ld", (long)kKeyboardTag]],
         @[@"character", @"字符", [NSString stringWithFormat:@"%ld", (long)kCharacterTag]],
     ];
 }
@@ -259,9 +257,6 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
             break;
         case kAIFeaturesTag:
             [self.delegate bottomToolbarDidPressAIFeatures];
-            break;
-        case kKeyboardTag:
-            [self.delegate bottomToolbarDidPressKeyboard];
             break;
         case kCharacterTag:
             [self.delegate bottomToolbarDidPressCharacter];

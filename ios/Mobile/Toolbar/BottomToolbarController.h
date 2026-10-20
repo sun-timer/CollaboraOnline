@@ -17,7 +17,6 @@ typedef NS_ENUM(NSInteger, IOSBottomToolbarMode) {
 - (void)bottomToolbarDidPressFunction;
 - (void)bottomToolbarDidPressAIAssistant;
 - (void)bottomToolbarDidPressAIFeatures;
-- (void)bottomToolbarDidPressKeyboard;
 - (void)bottomToolbarDidPressCharacter;
 - (void)bottomToolbarDidPressParagraph;
 - (void)bottomToolbarDidPressInsertImage;

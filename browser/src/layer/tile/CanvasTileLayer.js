@@ -3050,8 +3050,8 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 				!window.insertionMobileWizard && !hasMobileWizardOpened &&
 				!JSDialog.IsAnyInputFocused() && !hasIframeModalOpened && !app.sectionContainer.isPostZoomReplay() &&
 				!window.ThisIsTheiOSApp && !window.ThisIsTheAndroidApp) {
-				// Desktop only. iOS / Android Word、PPT、Excel 选中文字会走到这里，
-				// 若 focus(true) 软键盘会挡住正文。键盘只由「呼出键盘」打开。
+				// Desktop only. On iOS / Android, text selection does not open the
+				// keyboard; a text tap may request it after Core confirms a caret.
 				// We will focus map if no comment is being edited (writer only for now).
 				if (this.isWriter()) {
 					var section = app.sectionContainer.getSectionWithName(app.CSections.CommentList.name);
@@ -3065,7 +3065,10 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			this._map._textInput.hideCursor();
 			// Maintain input if a dialog or search-box has the focus.
 			if (this._map.editorHasFocus() && !this._map.uiManager.isAnyDialogOpen() && !this._map.isSearching()
-				&& !JSDialog.IsAnyInputFocused() && (this._map._docLayer._preview && !this._map._docLayer._preview.partsFocused))
+				&& !JSDialog.IsAnyInputFocused() && (this._map._docLayer._preview && !this._map._docLayer._preview.partsFocused)
+				&& !(window.AndroidSelectionMenu &&
+					typeof window.AndroidSelectionMenu.shouldPreserveKeyboardAfterTouch === 'function' &&
+					window.AndroidSelectionMenu.shouldPreserveKeyboardAfterTouch()))
 				this._map.focus(false);
 		}
 

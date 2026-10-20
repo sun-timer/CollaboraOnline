@@ -288,8 +288,8 @@ window.L.Map.include({
 			this.fire('editorgotfocus');
 			this.fire('closemobilewizard');
 			if (window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) {
-				// Word / PPT / Excel：进入编辑模式不弹键盘。选中文字也不弹，
-				// 只有底部「呼出键盘」调用 focus(true)。
+				// Entering edit mode and selecting text do not open the keyboard.
+				// A text tap opens it only after the document confirms a caret.
 				this.focus(false);
 				setTimeout(function() {
 					app.map.focus(false);

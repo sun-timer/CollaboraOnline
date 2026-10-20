@@ -3196,6 +3196,17 @@ public class LOActivity extends AppCompatActivity {
                 }
                 return false;
             }
+            case "SHOWTEXTIME": {
+                if (messageAndParam.length > 1) {
+                    try {
+                        final long generation = Long.parseLong(messageAndParam[1]);
+                        getMainHandler().post(() -> showImeForConfirmedTextCursor(generation));
+                    } catch (NumberFormatException e) {
+                        Log.w(TAG, "show_text_ime invalid_generation=" + messageAndParam[1]);
+                    }
+                }
+                return false;
+            }
             case "CALC_HEADER_DISPATCH": {
                 Log.i(TAG, "calc_header_dispatch "
                         + (messageAndParam.length > 1 ? messageAndParam[1] : ""));
@@ -3288,8 +3299,7 @@ public class LOActivity extends AppCompatActivity {
                         recoverVisibleTilesAfterEditMode("js_editmode_on");
                         // prompt for file conversion
                         requestForOdf();
-                        // Word / PPT / Excel：进入编辑模式不弹键盘。选中文字也不弹，
-                        // 只有底部「呼出键盘」调用 focusDocumentAndShowIme。
+                        // Word / PPT / Excel：进入编辑模式不弹键盘；轻点后由文本光标回包触发。
                         runPendingAfterEditMode();
                         break;
                     case "off":
@@ -10998,11 +11008,6 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
-                public void focusDocumentAndShowIme() {
-                    LOActivity.this.focusDocumentAndShowIme();
-                }
-
-                @Override
                 public void openLocalImagePickerFromWeb() {
                     LOActivity.this.openLocalImagePickerFromWeb();
                 }
@@ -11257,6 +11262,12 @@ public class LOActivity extends AppCompatActivity {
         updateSystemChromeForIme(imeVisible);
         if (mWebView == null) {
             return;
+        }
+        if (imeWasVisible != imeVisible) {
+            mWebView.evaluateJavascript(
+                    "if(window.AndroidSelectionMenu&&typeof window.AndroidSelectionMenu.onAndroidKeyboardVisibilityChanged==='function'){"
+                            + "window.AndroidSelectionMenu.onAndroidKeyboardVisibilityChanged(" + imeVisible + ");}",
+                    null);
         }
         if (imeVisible) {
             // Keyboard visible: keep editor mode so keystrokes reach the cell editor.
@@ -13037,7 +13048,8 @@ public class LOActivity extends AppCompatActivity {
         manualEditModeSwitchPending = true;
         lastPreviewModeSwitchMs = 0L;
         updateEditModeState(true, "manual_edit_switch");
-        // Excel 切到编辑模式不自动弹键盘，只由「呼出键盘」打开。
+        // Entering Calc edit mode keeps the keyboard hidden; a same-cell double tap
+        // opens it only after Core confirms the in-cell text caret.
         if (mWebView != null) {
             mWebView.evaluateJavascript(
                     "(function(){try{if(window.app&&app.map&&typeof app.map._switchToEditMode==='function')"
@@ -13186,6 +13198,37 @@ public class LOActivity extends AppCompatActivity {
         runWithImpressTextCursor(this::focusDocumentAndShowImeAllowed, true);
     }
 
+    /** Show the IME only after browser code has observed a current visible text caret. */
+    private void showImeForConfirmedTextCursor(long browserGeneration) {
+        if (mWebView == null || !mIsEditModeActive || isFinishing()
+                || exitingToHome || documentSwitchInProgress) {
+            return;
+        }
+        final COWebView requestWebView = mWebView;
+        final long requestTouchGeneration = requestWebView.getDocumentTouchGeneration();
+        final Uri requestDocumentUri = getIntent().getData();
+        requestWebView.evaluateJavascript(
+                "(function(){try{return !!(window.AndroidSelectionMenu"
+                        + "&&typeof window.AndroidSelectionMenu.isTextInputGenerationCurrent==='function'"
+                        + "&&window.AndroidSelectionMenu.isTextInputGenerationCurrent(" + browserGeneration + ")"
+                        + "&&window.app&&app.map"
+                        + "&&typeof app.map.isEditMode==='function'&&app.map.isEditMode()"
+                        + "&&app.file&&app.file.textCursor&&app.file.textCursor.visible);"
+                        + "}catch(e){return false;}})();",
+                result -> {
+                    if (mWebView != requestWebView || !mIsEditModeActive || isFinishing()
+                            || exitingToHome || documentSwitchInProgress
+                            || !Objects.equals(requestDocumentUri, getIntent().getData())
+                            || requestWebView.getDocumentTouchGeneration() != requestTouchGeneration
+                            || !"true".equals(result)) {
+                        return;
+                    }
+                    // This path has no deferred retry and does not hide an active selection menu.
+                    requestDocumentFocusAndShowIme(false);
+                    nudgeSocketIfStalled("show_ime_text_caret_tap");
+                });
+    }
+
     /** A selected slide object is not a text input target, even in edit mode. */
     private void runWithImpressTextCursor(Runnable action, boolean showHint) {
         if (mWebView == null || isFinishing() || exitingToHome || documentSwitchInProgress) {
@@ -13214,7 +13257,7 @@ public class LOActivity extends AppCompatActivity {
                             + " retry=" + !showHint);
                     if (!allowed) {
                         if (showHint) {
-                            Toast.makeText(this, "请在输入模式下呼出键盘", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, "请先在幻灯片可编辑文字中点按", Toast.LENGTH_SHORT).show();
                         }
                         return;
                     }
@@ -13231,7 +13274,8 @@ public class LOActivity extends AppCompatActivity {
         Log.i(TAG, "focus_ime_start selectionMenuVisible=" + selectionMenuVisible
                 + " webViewFocused=" + mWebView.isFocused()
                 + " imeAllowed=" + mWebView.isImeAllowedByUser());
-        // 呼出键盘前先关闭选区浮层，释放全屏 overlay 的焦点/触摸拦截
+        // Before showing the keyboard, close the native selection overlay so it
+        // cannot retain focus or intercept touches.
         if (selectionMenuVisible) {
             Log.i(TAG, "focus_ime_hide_selection_menu");
             menuController.hide();

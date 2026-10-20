@@ -54,6 +54,7 @@ public class COWebView extends WebView {
      *  LOActivity toggles this only transiently so Calc canvas taps still select cells. */
     private boolean imeAllowedByUser = false;
     private boolean imeAllowedBeforeDocumentTouch = false;
+    private long documentTouchGeneration = 0L;
     private Runnable touchEndImeRestoreCallback = null;
     private OnDocumentTapListener documentTapListener;
     private float documentTapDownX = 0f;
@@ -132,8 +133,8 @@ public class COWebView extends WebView {
     }
 
     /**
-     * Only report as text editor when user explicitly requested keyboard via
-     * the bottom-toolbar "呼出键盘" button. Prevents auto IME on document tap.
+     * Only report as text editor after native code allows a confirmed text-caret tap
+     * or while the existing document input connection is active.
      */
     @Override
     public boolean onCheckIsTextEditor() {
@@ -149,6 +150,11 @@ public class COWebView extends WebView {
 
     public boolean isImeAllowedByUser() {
         return imeAllowedByUser;
+    }
+
+    /** Monotonic native touch generation used to reject stale asynchronous IME requests. */
+    public long getDocumentTouchGeneration() {
+        return documentTouchGeneration;
     }
 
     /** Called after a document touch ends to restore IME editor mode if keyboard stays open. */
@@ -226,6 +232,7 @@ public class COWebView extends WebView {
 
         final int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
+            documentTouchGeneration++;
             documentTapDownX = event.getX();
             documentTapDownY = event.getY();
             documentTapDownAt = event.getEventTime();

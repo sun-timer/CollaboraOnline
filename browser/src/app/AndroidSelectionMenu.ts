@@ -5,6 +5,8 @@
 
 class AndroidSelectionMenu {
 	private static hooksInstalled = false;
+	private static inputGestureHooksInstalled = false;
+	private static inputLifecycleHooksInstalled = false;
 	private static pendingLongPressSelection = false;
 	private static selectionGestureComplete = false;
 	private static nativeSelectionDragActive = false;
@@ -34,6 +36,31 @@ class AndroidSelectionMenu {
 	 * click selects the shape and clears the text selection.
 	 */
 	private static suppressClickUntil = 0;
+	private static androidKeyboardVisible = false;
+	private static textInputGeneration = 0;
+	private static validTextInputGeneration = 0;
+	private static validTextInputDocLayer: any = null;
+	private static validTextInputExpiresAt = 0;
+	private static validTextInputTimer = 0;
+	private static pendingTextInputRequest: {
+		docLayer: any;
+		generation: number;
+		targetPoint: { x: number; y: number } | null;
+		startCaret: { x: number; y: number } | null;
+		tapResolved: boolean;
+		caretConfirmed: boolean;
+		timer: number;
+	} | null = null;
+	private static touchGesture: {
+		x: number;
+		y: number;
+		moved: boolean;
+	} | null = null;
+	private static lastTouchAt = 0;
+	private static lastTouchPoint: { x: number; y: number } | null = null;
+	private static lastTouchWasTap = true;
+	private static preserveKeyboardDuringTouch = false;
+	private static preserveKeyboardTimer = 0;
 
 	/** True while a native long-press selection gesture is in flight. */
 	static isLongPressGesturePending(): boolean {
@@ -94,6 +121,507 @@ class AndroidSelectionMenu {
 
 	static markNativeLongPress(): void {
 		// Reserved for native long-press guard extensions.
+	}
+
+	private static isKeyboardOpen(): boolean {
+		return AndroidSelectionMenu.isIOS()
+			? typeof MobileSelectionMenu !== 'undefined' &&
+				MobileSelectionMenu.iosKeyboardOpen()
+			: AndroidSelectionMenu.androidKeyboardVisible;
+	}
+
+	static onAndroidKeyboardVisibilityChanged(visible: boolean): void {
+		AndroidSelectionMenu.androidKeyboardVisible = visible;
+		if (!visible) {
+			AndroidSelectionMenu.clearKeyboardPreservation();
+		}
+	}
+
+	static onIOSKeyboardVisibilityChanged(visible: boolean): void {
+		if (!visible) {
+			AndroidSelectionMenu.clearKeyboardPreservation();
+		}
+	}
+
+	/** Distinguish the canvas's synthetic touch click from an actual mouse click. */
+	static isTouchGeneratedClick(event?: MouseEvent): boolean {
+		if (!event || event.detail === 0) {
+			return false;
+		}
+		const sourceCapabilities = (event as any).sourceCapabilities;
+		if (sourceCapabilities && typeof sourceCapabilities.firesTouchEvents === 'boolean') {
+			return sourceCapabilities.firesTouchEvents;
+		}
+		const pointerType = (event as any).pointerType;
+		if (pointerType === 'touch' || pointerType === 'pen') {
+			return true;
+		}
+		if (pointerType === 'mouse') {
+			return false;
+		}
+		const age = Date.now() - AndroidSelectionMenu.lastTouchAt;
+		const point = AndroidSelectionMenu.lastTouchPoint;
+		return !!(
+			AndroidSelectionMenu.lastTouchWasTap &&
+			point &&
+			age >= 0 &&
+			age <= 700 &&
+			Math.abs(event.clientX - point.x) <= 24 &&
+			Math.abs(event.clientY - point.y) <= 24
+		);
+	}
+
+	static isTextInputGenerationCurrent(generation: number): boolean {
+		return (
+			generation === AndroidSelectionMenu.validTextInputGeneration &&
+			Date.now() < AndroidSelectionMenu.validTextInputExpiresAt &&
+			!!app.map &&
+			app.map._docLayer === AndroidSelectionMenu.validTextInputDocLayer &&
+			AndroidSelectionMenu.isEditMode() &&
+			!AndroidSelectionMenu.pendingLongPressSelection
+		);
+	}
+
+	/** Keep focus(false) from dismissing an already-open keyboard during a touch selection. */
+	static shouldPreserveKeyboardAfterTouch(): boolean {
+		if (
+			!AndroidSelectionMenu.preserveKeyboardDuringTouch ||
+			!AndroidSelectionMenu.isKeyboardOpen() ||
+			!AndroidSelectionMenu.isEditMode() ||
+			!app.map
+		) {
+			return false;
+		}
+		if (
+			(app.map.uiManager && app.map.uiManager.isAnyDialogOpen &&
+				app.map.uiManager.isAnyDialogOpen()) ||
+			(typeof JSDialog !== 'undefined' && JSDialog.IsAnyInputFocused())
+		) {
+			return false;
+		}
+		return true;
+	}
+
+	static beginTextInputRequest(
+		targetPoint: { x: number; y: number } | null = null,
+	): void {
+		if (
+			!AndroidSelectionMenu.isMobileApp() ||
+			!AndroidSelectionMenu.isEditMode() ||
+			!AndroidSelectionMenu.isSelectionDoc() ||
+			!app.map?._docLayer
+		) {
+			return;
+		}
+		AndroidSelectionMenu.cancelTextInputRequest('replace');
+		const request = {
+			docLayer: app.map._docLayer,
+			generation: ++AndroidSelectionMenu.textInputGeneration,
+			targetPoint,
+			startCaret: app.file?.textCursor?.visible
+				? { x: app.file.textCursor.rectangle.x1, y: app.file.textCursor.rectangle.y1 }
+				: null,
+			tapResolved: false,
+			caretConfirmed: false,
+			timer: 0,
+		};
+		AndroidSelectionMenu.pendingTextInputRequest = request;
+		request.timer = window.setTimeout(() => {
+			if (AndroidSelectionMenu.pendingTextInputRequest === request) {
+				AndroidSelectionMenu.pendingTextInputRequest = null;
+				AndroidSelectionMenu.releaseKeyboardPreservation(0);
+			}
+		}, 1000);
+	}
+
+	static resolveTextInputTap(): void {
+		const request = AndroidSelectionMenu.pendingTextInputRequest;
+		if (!request) {
+			return;
+		}
+		request.tapResolved = true;
+		// Core may not emit visibility/invalidate when a tap lands on the caret
+		// that is already visible. Reuse it only for a very tight caret hit.
+		if (AndroidSelectionMenu.isCurrentCaretAtTap(request)) {
+			request.caretConfirmed = true;
+		}
+		AndroidSelectionMenu.maybeShowKeyboardForTextInput(request);
+	}
+
+	private static isCurrentCaretAtTap(request: {
+		targetPoint: { x: number; y: number } | null;
+	}): boolean {
+		if (
+			!request.targetPoint ||
+			!app.map ||
+			!app.file?.textCursor?.visible
+		) {
+			return false;
+		}
+		if (app.map.getDocType() === 'spreadsheet') {
+			const cell = app.calc?.cellCursorVisible ? app.calc.cellCursorRectangle : null;
+			if (!cell || !cell.containsPoint([request.targetPoint.x, request.targetPoint.y])) {
+				return false;
+			}
+		}
+		return AndroidSelectionMenu.isCaretAtTarget(
+			app.file.textCursor.rectangle,
+			request.targetPoint,
+		);
+	}
+
+	private static isCaretAtTarget(
+		caret: any,
+		targetPoint: { x: number; y: number },
+	): boolean {
+		const tolerance = Math.round(8 * app.pixelsToTwips);
+		const verticalTolerance = Math.round(3 * app.pixelsToTwips);
+		return (
+			Math.abs(targetPoint.x - caret.x1) <= tolerance &&
+			targetPoint.y >= Math.min(caret.y1, caret.y2) - verticalTolerance &&
+			targetPoint.y <= Math.max(caret.y1, caret.y2) + verticalTolerance
+		);
+	}
+
+	static cancelTextInputRequest(_reason: string = 'cancel'): void {
+		const request = AndroidSelectionMenu.pendingTextInputRequest;
+		if (request) {
+			window.clearTimeout(request.timer);
+			AndroidSelectionMenu.pendingTextInputRequest = null;
+		}
+		AndroidSelectionMenu.textInputGeneration++;
+		AndroidSelectionMenu.validTextInputGeneration = 0;
+		AndroidSelectionMenu.validTextInputDocLayer = null;
+		AndroidSelectionMenu.validTextInputExpiresAt = 0;
+		if (AndroidSelectionMenu.validTextInputTimer) {
+			window.clearTimeout(AndroidSelectionMenu.validTextInputTimer);
+			AndroidSelectionMenu.validTextInputTimer = 0;
+		}
+	}
+
+	private static maybeShowKeyboardForTextInput(request: {
+		docLayer: any;
+		generation: number;
+		targetPoint: { x: number; y: number } | null;
+		startCaret: { x: number; y: number } | null;
+		tapResolved: boolean;
+		caretConfirmed: boolean;
+		timer: number;
+	}): void {
+		if (
+			AndroidSelectionMenu.pendingTextInputRequest !== request ||
+			!request.tapResolved ||
+			!request.caretConfirmed ||
+			!app.map ||
+			app.map._docLayer !== request.docLayer ||
+			!AndroidSelectionMenu.isEditMode() ||
+			AndroidSelectionMenu.pendingLongPressSelection
+		) {
+			return;
+		}
+		window.clearTimeout(request.timer);
+		AndroidSelectionMenu.pendingTextInputRequest = null;
+		AndroidSelectionMenu.releaseKeyboardPreservation(800);
+		if (AndroidSelectionMenu.isKeyboardOpen()) {
+			app.map.focus(true);
+			return;
+		}
+		if (AndroidSelectionMenu.isIOS()) {
+			app.map.focus(true);
+		} else if (typeof window.postMobileMessage === 'function') {
+			AndroidSelectionMenu.validTextInputGeneration = request.generation;
+			AndroidSelectionMenu.validTextInputDocLayer = request.docLayer;
+			AndroidSelectionMenu.validTextInputExpiresAt = Date.now() + 1500;
+			if (AndroidSelectionMenu.validTextInputTimer) {
+				window.clearTimeout(AndroidSelectionMenu.validTextInputTimer);
+			}
+			AndroidSelectionMenu.validTextInputTimer = window.setTimeout(() => {
+				if (AndroidSelectionMenu.validTextInputGeneration === request.generation) {
+					AndroidSelectionMenu.validTextInputGeneration = 0;
+					AndroidSelectionMenu.validTextInputDocLayer = null;
+					AndroidSelectionMenu.validTextInputExpiresAt = 0;
+				}
+				AndroidSelectionMenu.validTextInputTimer = 0;
+			}, 1500);
+			window.postMobileMessage('SHOWTEXTIME ' + request.generation);
+		}
+	}
+
+	private static onTextCursorVisibility(event: any): void {
+		AndroidSelectionMenu.onTextCaretUpdate(event && event.visible === true);
+	}
+
+	private static onTextCaretUpdate(cursorVisible: boolean): void {
+		const request = AndroidSelectionMenu.pendingTextInputRequest;
+		if (!request) {
+			return;
+		}
+		if (
+			!app.map ||
+			app.map._docLayer !== request.docLayer ||
+			!AndroidSelectionMenu.isEditMode()
+		) {
+			AndroidSelectionMenu.cancelTextInputRequest('document_or_permission_changed');
+			return;
+		}
+		if (cursorVisible && app.file?.textCursor?.visible) {
+			const caret = app.file.textCursor.rectangle;
+			const caretChanged = !request.startCaret ||
+				Math.abs(caret.x1 - request.startCaret.x) > 1 ||
+				Math.abs(caret.y1 - request.startCaret.y) > 1;
+			if (app.map.getDocType() === 'spreadsheet') {
+				const cell = app.calc?.cellCursorVisible
+					? app.calc.cellCursorRectangle
+					: null;
+				if (
+					!cell ||
+					!cell.containsPoint([caret.x1, caret.y1]) ||
+					(request.targetPoint &&
+						!cell.containsPoint([request.targetPoint.x, request.targetPoint.y]))
+				) {
+					return;
+				}
+			} else if (
+				request.targetPoint &&
+				(!caretChanged && !AndroidSelectionMenu.isCaretAtTarget(caret, request.targetPoint))
+			) {
+				return;
+			} else if (request.targetPoint && caretChanged) {
+				const tolerance = Math.round(72 * app.pixelsToTwips);
+				if (
+					Math.abs(caret.x1 - request.targetPoint.x) > tolerance ||
+					Math.abs(caret.y1 - request.targetPoint.y) > tolerance
+				) {
+					return;
+				}
+			}
+			request.caretConfirmed = true;
+			AndroidSelectionMenu.maybeShowKeyboardForTextInput(request);
+		}
+	}
+
+	private static clearKeyboardPreservation(): void {
+		AndroidSelectionMenu.preserveKeyboardDuringTouch = false;
+		if (AndroidSelectionMenu.preserveKeyboardTimer) {
+			window.clearTimeout(AndroidSelectionMenu.preserveKeyboardTimer);
+			AndroidSelectionMenu.preserveKeyboardTimer = 0;
+		}
+	}
+
+	private static releaseKeyboardPreservation(delayMs: number): void {
+		if (AndroidSelectionMenu.preserveKeyboardTimer) {
+			window.clearTimeout(AndroidSelectionMenu.preserveKeyboardTimer);
+		}
+		AndroidSelectionMenu.preserveKeyboardTimer = window.setTimeout(() => {
+			if (
+				AndroidSelectionMenu.preserveKeyboardDuringTouch &&
+				AndroidSelectionMenu.isKeyboardOpen() &&
+				AndroidSelectionMenu.isEditMode() &&
+				AndroidSelectionMenu.hasActiveSelectionForKeyboardPreservation()
+			) {
+				AndroidSelectionMenu.releaseKeyboardPreservation(500);
+			} else {
+				AndroidSelectionMenu.clearKeyboardPreservation();
+			}
+		}, delayMs);
+	}
+
+	private static hasActiveSelectionForKeyboardPreservation(): boolean {
+		return (
+			AndroidSelectionMenu.nativeSelectionDragActive ||
+			AndroidSelectionMenu.pendingLongPressSelection ||
+			AndroidSelectionMenu.hasVisibleTextSelection() ||
+			(!!app.map && app.map.getDocType() === 'spreadsheet' &&
+				!!app.calc?.cellCursorVisible) ||
+			(typeof GraphicSelection !== 'undefined' &&
+				GraphicSelection.hasActiveSelection())
+		);
+	}
+
+	private static isTouchTapEligible(): boolean {
+		return !AndroidSelectionMenu.lastTouchAt ||
+			Date.now() - AndroidSelectionMenu.lastTouchAt > 800 ||
+			AndroidSelectionMenu.lastTouchWasTap;
+	}
+
+	private static installInputGestureHooks(): void {
+		if (AndroidSelectionMenu.inputGestureHooksInstalled) {
+			return;
+		}
+		AndroidSelectionMenu.inputGestureHooksInstalled = true;
+
+		const startGesture = (event: Event) => {
+			AndroidSelectionMenu.cancelTextInputRequest('new_touch');
+			AndroidSelectionMenu.clearKeyboardPreservation();
+			if (
+				event.type === 'pointerdown' &&
+				(event as PointerEvent).pointerType === 'mouse'
+			) {
+				AndroidSelectionMenu.lastTouchAt = 0;
+				AndroidSelectionMenu.lastTouchPoint = null;
+				AndroidSelectionMenu.lastTouchWasTap = false;
+				AndroidSelectionMenu.touchGesture = null;
+				return;
+			}
+			AndroidSelectionMenu.lastTouchAt = Date.now();
+			AndroidSelectionMenu.lastTouchWasTap = false;
+
+			const target = event.target as HTMLElement | null;
+			if (
+				!target ||
+				target.tagName !== 'CANVAS' ||
+				!AndroidSelectionMenu.isSelectionDoc()
+			) {
+				AndroidSelectionMenu.touchGesture = null;
+				return;
+			}
+
+			let x: number | null = null;
+			let y: number | null = null;
+			const touchEvent = event as TouchEvent;
+			if (touchEvent.touches && touchEvent.touches.length > 0) {
+				x = touchEvent.touches[0].clientX;
+				y = touchEvent.touches[0].clientY;
+			} else {
+				const pointerEvent = event as PointerEvent;
+				if (typeof pointerEvent.clientX === 'number') {
+					x = pointerEvent.clientX;
+					y = pointerEvent.clientY;
+				}
+			}
+			if (x === null || y === null) {
+				AndroidSelectionMenu.touchGesture = null;
+				return;
+			}
+			AndroidSelectionMenu.lastTouchPoint = { x, y };
+			AndroidSelectionMenu.touchGesture = { x, y, moved: false };
+			AndroidSelectionMenu.preserveKeyboardDuringTouch =
+				AndroidSelectionMenu.isEditMode() && AndroidSelectionMenu.isKeyboardOpen();
+			if (AndroidSelectionMenu.preserveKeyboardDuringTouch) {
+				AndroidSelectionMenu.releaseKeyboardPreservation(1600);
+			}
+		};
+
+		const moveGesture = (event: TouchEvent | PointerEvent) => {
+			const gesture = AndroidSelectionMenu.touchGesture;
+			if (!gesture) {
+				return;
+			}
+			const touch = (event as TouchEvent).touches?.[0];
+			const x = touch ? touch.clientX : (event as PointerEvent).clientX;
+			const y = touch ? touch.clientY : (event as PointerEvent).clientY;
+			const multiTouch = !!(event as TouchEvent).touches &&
+				(event as TouchEvent).touches.length > 1;
+			if (
+				multiTouch ||
+				Math.abs(x - gesture.x) + Math.abs(y - gesture.y) > 12
+			) {
+				gesture.moved = true;
+				AndroidSelectionMenu.lastTouchWasTap = false;
+				AndroidSelectionMenu.cancelTextInputRequest('scroll_or_zoom_gesture');
+				if (
+					!AndroidSelectionMenu.nativeSelectionDragActive &&
+					!AndroidSelectionMenu.hasActiveSelectionForKeyboardPreservation()
+				) {
+					AndroidSelectionMenu.clearKeyboardPreservation();
+				}
+			}
+		};
+
+		const endGesture = (cancelled: boolean = false) => {
+			const gesture = AndroidSelectionMenu.touchGesture;
+			if (!gesture) {
+				return;
+			}
+			AndroidSelectionMenu.lastTouchAt = Date.now();
+			AndroidSelectionMenu.lastTouchWasTap =
+				!cancelled && !gesture.moved && !AndroidSelectionMenu.nativeSelectionDragActive;
+			AndroidSelectionMenu.touchGesture = null;
+			if (
+				cancelled ||
+				(gesture.moved &&
+					!AndroidSelectionMenu.nativeSelectionDragActive &&
+					!AndroidSelectionMenu.hasActiveSelectionForKeyboardPreservation())
+			) {
+				AndroidSelectionMenu.cancelTextInputRequest('touch_cancelled_or_moved');
+				AndroidSelectionMenu.clearKeyboardPreservation();
+			} else if (AndroidSelectionMenu.preserveKeyboardDuringTouch) {
+				AndroidSelectionMenu.releaseKeyboardPreservation(1600);
+			}
+		};
+
+		document.addEventListener('pointerdown', startGesture, true);
+		document.addEventListener('touchstart', startGesture, { capture: true, passive: true });
+		document.addEventListener('pointermove', moveGesture, true);
+		document.addEventListener('touchmove', moveGesture, { capture: true, passive: true });
+		document.addEventListener('pointerup', () => endGesture(), true);
+		document.addEventListener('touchend', () => endGesture(), { capture: true, passive: true });
+		document.addEventListener('pointercancel', () => endGesture(true), true);
+		document.addEventListener('touchcancel', () => endGesture(true), { capture: true, passive: true });
+		document.addEventListener('visibilitychange', () => {
+			if (document.hidden) {
+				AndroidSelectionMenu.cancelTextInputRequest('page_hidden');
+				AndroidSelectionMenu.clearKeyboardPreservation();
+			}
+		});
+
+		if (app.events && typeof app.events.on === 'function') {
+			app.events.on(
+				'TextCursorVisibility',
+				AndroidSelectionMenu.onTextCursorVisibility,
+			);
+			app.events.on('updatepermission', () => {
+				if (!AndroidSelectionMenu.isEditMode()) {
+					AndroidSelectionMenu.cancelTextInputRequest('permission_changed');
+					AndroidSelectionMenu.clearKeyboardPreservation();
+				}
+			});
+		}
+	}
+
+	private static installTextInputLifecycleHooks(): void {
+		if (AndroidSelectionMenu.inputLifecycleHooksInstalled) {
+			return;
+		}
+		const map = app.map;
+		if (!map || typeof map.on !== 'function') {
+			window.setTimeout(AndroidSelectionMenu.installTextInputLifecycleHooks, 200);
+			return;
+		}
+		AndroidSelectionMenu.inputLifecycleHooksInstalled = true;
+		const cancelForDocumentChange = () => {
+			AndroidSelectionMenu.cancelTextInputRequest('document_changed');
+			AndroidSelectionMenu.clearKeyboardPreservation();
+			AndroidSelectionMenu.touchGesture = null;
+		};
+		map.on('docloaded', () => {
+			cancelForDocumentChange();
+			window.setTimeout(AndroidSelectionMenu.installCaretUpdateHook, 0);
+		});
+		map.on('closeapp', cancelForDocumentChange);
+		map.on('zoomstart', cancelForDocumentChange);
+		map.on('setpart', () =>
+			AndroidSelectionMenu.cancelTextInputRequest('part_changed'),
+		);
+		AndroidSelectionMenu.installCaretUpdateHook();
+	}
+
+	private static installCaretUpdateHook(): void {
+		const layer = app.map && app.map._docLayer;
+		if (
+			!layer ||
+			typeof layer._onInvalidateCursorMsg !== 'function' ||
+			layer.__androidSelectionImeCursorHookInstalled
+		) {
+			return;
+		}
+		const original = layer._onInvalidateCursorMsg;
+		layer._onInvalidateCursorMsg = function (textMsg: string) {
+			const result = original.call(this, textMsg);
+			AndroidSelectionMenu.onTextCaretUpdate(!!app.file?.textCursor?.visible);
+			return result;
+		};
+		layer.__androidSelectionImeCursorHookInstalled = true;
 	}
 
 	private static isAndroid(): boolean {
@@ -469,6 +997,9 @@ class AndroidSelectionMenu {
 
 		AndroidSelectionMenu.nativeSelectionDragActive = false;
 		AndroidSelectionMenu.selectionGestureComplete = true;
+		if (AndroidSelectionMenu.preserveKeyboardDuringTouch) {
+			AndroidSelectionMenu.releaseKeyboardPreservation(1200);
+		}
 
 		// Calc has no text range for a selected cell. Show the compact cell
 		// menu on finger-up, the same moment Writer/Impress show theirs.
@@ -499,6 +1030,11 @@ class AndroidSelectionMenu {
 	static onLongPressAt(viewX: number, viewY: number): void {
 		if (!AndroidSelectionMenu.isMobileApp() || !AndroidSelectionMenu.isSelectionDoc()) {
 			return;
+		}
+		AndroidSelectionMenu.cancelTextInputRequest('long_press');
+		if (AndroidSelectionMenu.isKeyboardOpen() && AndroidSelectionMenu.isEditMode()) {
+			AndroidSelectionMenu.preserveKeyboardDuringTouch = true;
+			AndroidSelectionMenu.releaseKeyboardPreservation(1800);
 		}
 
 		// An already-selected image or chart keeps the graphic menu.
@@ -614,18 +1150,6 @@ class AndroidSelectionMenu {
 	/** iOS: broadcast the selection to the DOM menu instead of a native popup. */
 	private static tryShowIOS(): void {
 		if (AndroidSelectionMenu.isProgrammaticSelectionSuppressed()) {
-			return;
-		}
-		const spreadsheet =
-			!!app.map && app.map.getDocType() === 'spreadsheet';
-		// Calc edit mode often still has the formula keyboard. The cell menu
-		// is allowed through; only text menus stay hidden while it is open.
-		if (
-			!spreadsheet &&
-			typeof MobileSelectionMenu !== 'undefined' &&
-			MobileSelectionMenu.iosKeyboardOpen()
-		) {
-			MobileSelectionEvents.broadcastHide();
 			return;
 		}
 		if (
@@ -966,6 +1490,7 @@ class AndroidSelectionMenu {
 			return;
 		}
 		AndroidSelectionMenu.hooksInstalled = true;
+		AndroidSelectionMenu.installInputGestureHooks();
 
 		document.addEventListener(
 			'contextmenu',
@@ -1016,6 +1541,20 @@ class AndroidSelectionMenu {
 					return originalOnClick.call(this, point, e);
 				}
 
+				const isCalcEdit =
+					app.map.isEditMode() &&
+					app.map._docLayer &&
+					app.map._docLayer._docType === 'spreadsheet';
+				if (
+					isCalcEdit &&
+					typeof (window as any).AndroidCalcTap?.shouldIgnoreWebClick === 'function' &&
+					(window as any).AndroidCalcTap.shouldIgnoreWebClick(e)
+				) {
+					// Mobile Calc touch input is dispatched once by the native/iOS touch
+					// bridge. Suppress its synthetic browser click before it reaches Core.
+					return;
+				}
+
 				if (Date.now() < AndroidSelectionMenu.suppressClickUntil) {
 					return;
 				}
@@ -1025,12 +1564,9 @@ class AndroidSelectionMenu {
 
 				(<any>this).refreshPosition(point);
 				this.clickCount++;
+				let inputRequestForTap = false;
 
 				if (!(<any>window).mode.isDesktop()) {
-					const isCalcEdit =
-						app.map.isEditMode() &&
-						app.map._docLayer &&
-						app.map._docLayer._docType === 'spreadsheet';
 					if (!isCalcEdit) {
 						app.map.fire('closemobilewizard');
 					}
@@ -1058,27 +1594,41 @@ class AndroidSelectionMenu {
 
 				if (this.clickTimer) {
 					app.timerRegistry.clearTimeout(this.clickTimer);
+					AndroidSelectionMenu.cancelTextInputRequest('double_tap');
 				} else {
-					(<any>this).sendClick(clickInfo, 1);
-					app.map.focus(
-						(<any>window).mode.isDesktop()
-							? undefined
-							: this.getMobileKeyboardVisibility(),
+					const textTarget = AndroidSelectionMenu.sectionPointToDocumentTwips(
+						clickInfo.sendingPosition,
 					);
+					inputRequestForTap =
+						AndroidSelectionMenu.isEditMode() &&
+						app.map.getDocType() !== 'spreadsheet' &&
+						AndroidSelectionMenu.isTouchTapEligible() &&
+						!!textTarget;
+					if (inputRequestForTap) {
+						AndroidSelectionMenu.beginTextInputRequest(textTarget);
+					}
+					(<any>this).sendClick(clickInfo, 1);
+					if (!AndroidSelectionMenu.isEditMode()) {
+						app.map.focus(false);
+					}
 				}
 
 				this.clickTimer = app.timerRegistry.setTimeout(
 					'clicktimer',
 					() => {
 						if (this.clickCount === 2) {
+							AndroidSelectionMenu.cancelTextInputRequest('double_tap');
 							AndroidSelectionMenu.onDoubleTapAtSectionPoint(
 								clickInfo.sendingPosition,
 							);
 						} else if (this.clickCount > 1) {
+							AndroidSelectionMenu.cancelTextInputRequest('multi_tap');
 							(<any>this).sendClick(
 								clickInfo,
 								this.clickCount,
 							);
+						} else if (inputRequestForTap) {
+							AndroidSelectionMenu.resolveTextInputTap();
 						}
 
 						this.clickTimer = null;
@@ -1089,6 +1639,7 @@ class AndroidSelectionMenu {
 			};
 		};
 		installMouseControlHook();
+		AndroidSelectionMenu.installTextInputLifecycleHooks();
 
 		const installTextSelectionHook = () => {
 			if (

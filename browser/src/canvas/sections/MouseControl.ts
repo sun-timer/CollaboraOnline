@@ -417,7 +417,7 @@ class MouseControl extends CanvasSectionObject {
 
 	public getMobileKeyboardVisibility(): boolean {
 		if (!app.map._docLayer) return false;
-		// Word / PPT / Excel：点按或选中文字都不自动弹键盘，只由「呼出键盘」打开。
+		// Mobile Writer/PPT only request the keyboard after a confirmed text caret.
 		if (
 			(window as any).ThisIsTheiOSApp ||
 			(window as any).ThisIsTheAndroidApp
@@ -440,7 +440,16 @@ class MouseControl extends CanvasSectionObject {
 	 * Android native Calc tap: send left click to core without closepopups /
 	 * editorgotfocus (Android native shell has no web mobileTopBar).
 	 */
-	public dispatchNativeCalcCellTap(point: cool.SimplePoint): { x: number; y: number } {
+	public getNativeCalcCellTapPosition(point: cool.SimplePoint): { x: number; y: number } {
+		this.refreshPosition(point);
+		// Return document twips, matching SimpleRectangle.containsPoint().
+		return { x: this.currentPosition.x, y: this.currentPosition.y };
+	}
+
+	public dispatchNativeCalcCellTap(
+		point: cool.SimplePoint,
+		clickCount: number = 1,
+	): { x: number; y: number } {
 		// Same coordinate transform as the preview onClick path. The section-local
 		// point does NOT include the scroll offset — visual scroll is done via
 		// _syncTilePanePos (Leaflet map-pane translation) + viewedRectangle, not via
@@ -449,10 +458,9 @@ class MouseControl extends CanvasSectionObject {
 		// a cell short by the scroll amount once the sheet is scrolled.
 		this.refreshPosition(point);
 		const buttons = app.LOButtons.left;
-		this.postCoreMouseEvent('buttondown', this.currentPosition, 1, buttons, 0);
-		this.postCoreMouseEvent('buttonup', this.currentPosition, 1, buttons, 0);
-		app.map.focus(this.getMobileKeyboardVisibility());
-		return { x: this.currentPosition.pX, y: this.currentPosition.pY };
+		this.postCoreMouseEvent('buttondown', this.currentPosition, clickCount, buttons, 0);
+		this.postCoreMouseEvent('buttonup', this.currentPosition, clickCount, buttons, 0);
+		return { x: this.currentPosition.x, y: this.currentPosition.y };
 	}
 
 	private sendClick(clickInfo: any, count: number) {
@@ -477,7 +485,7 @@ class MouseControl extends CanvasSectionObject {
 		if (
 			calcTap &&
 			typeof calcTap.shouldIgnoreWebClick === 'function' &&
-			calcTap.shouldIgnoreWebClick()
+			calcTap.shouldIgnoreWebClick(e)
 		) {
 			return;
 		}
