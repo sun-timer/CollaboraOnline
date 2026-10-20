@@ -173,8 +173,8 @@
     [self.closedTabButton setTitle:[NSString stringWithFormat:@"最近关闭 (%lu)", (unsigned long)closedCount]
                           forState:UIControlStateNormal];
 
-    self.visibleItems = self.showingOpened ? self.store.items : self.store.recentlyClosedItems;
-    self.emptyLabel.text = self.showingOpened ? @"暂无最近文档" : @"暂无最近关闭文档";
+    self.visibleItems = self.showingOpened ? self.store.sessionOpenItems : self.store.recentlyClosedItems;
+    self.emptyLabel.text = self.showingOpened ? @"暂无打开的文档" : @"暂无最近关闭文档";
     self.emptyLabel.hidden = self.visibleItems.count > 0;
     [self.tableView reloadData];
 }
@@ -256,7 +256,7 @@
         return;
     }
     RecentDocumentItem *item = self.visibleItems[(NSUInteger)sender.tag];
-    [self.store moveItemToRecentlyClosed:item];
+    [self.store removeSessionItem:item];
     [self reloadData];
     [self.actionDelegate documentTabsSheetDidChangeDocumentList];
 }

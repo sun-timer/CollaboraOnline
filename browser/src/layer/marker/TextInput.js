@@ -143,6 +143,24 @@ window.L.TextInput = window.L.Layer.extend({
 
 		if (window.ThisIsTheiOSApp) {
 			var that = this;
+			window.__coolSetIosNativeEditing = function(editing) {
+				window.__coolIosNativeEditing = !!editing;
+				if (!that._textArea)
+					return;
+				if (that._iosNativeEditing()) {
+					var docEditable = false;
+					if (that._map && typeof that._map.isEditMode === 'function')
+						docEditable = that._map.isEditMode();
+					else
+						docEditable = !that._textArea.hasAttribute('disabled');
+					if (docEditable)
+						that._textArea.setAttribute('contenteditable', 'true');
+				} else {
+					that._textArea.setAttribute('contenteditable', 'false');
+					if (document.activeElement === that._textArea)
+						that._textArea.blur();
+				}
+			};
 			window.MagicToGetHWKeyboardWorking = function() {
 				var that2 = that;
 				window.MagicKeyDownHandler = function(e) {
@@ -159,6 +177,7 @@ window.L.TextInput = window.L.Layer.extend({
 	},
 
 	onRemove: function() {
+		window.__coolSetIosNativeEditing = null;
 		window.MagicToGetHWKeyboardWorking = null;
 		window.MagicKeyDownHandler = null;
 		window.MagicKeyUpHandler = null;
@@ -185,10 +204,26 @@ window.L.TextInput = window.L.Layer.extend({
 		this._textArea.removeAttribute('disabled');
 	},
 
+	// Native top toolbar is in edit mode. Reading/preview leaves the flag false or unset.
+	_iosNativeEditing: function() {
+		return window.ThisIsTheiOSApp && window.__coolIosNativeEditing === true;
+	},
+
+	// iOS clipboard must ignore focus until native edit mode is on.
+	_iosReadingClipboardLocked: function() {
+		return window.ThisIsTheiOSApp && !window.__coolIosNativeEditing;
+	},
+
 	_onPermission: function(e) {
 		if (e.detail.perm === 'edit') {
 			if (window.ThisIsTheiOSApp) {
-				this._textArea.setAttribute('contenteditable', 'true');
+				if (this._iosNativeEditing()) {
+					this._textArea.setAttribute('contenteditable', 'true');
+				} else if (this._iosReadingClipboardLocked()) {
+					this._textArea.setAttribute('contenteditable', 'false');
+					if (document.activeElement === this._textArea)
+						this._textArea.blur();
+				}
 			}
 			this._textArea.removeAttribute('disabled');
 		} else {
@@ -332,7 +367,10 @@ window.L.TextInput = window.L.Layer.extend({
 			// "(anonymous function)" in hammer.js (an event handler), and when it is
 			// _onMessage (the WebSocket message handler in Socket.js).
 
-			this._textArea.focus();
+			// Reading mode: native chrome is not editing, so do not focus the
+			// hidden clipboard field (that is what raises the system keyboard).
+			if (!this._iosReadingClipboardLocked())
+				this._textArea.focus();
 		}
 
 		if (!window.ThisIsTheiOSApp && navigator.platform !== 'iPhone' && !window.mode.isChromebook()) {

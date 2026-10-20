@@ -74,7 +74,7 @@ static void attachOpenDocsCountLabel(UIButton *button, UILabel **labelOut)
     label.font = [UIFont systemFontOfSize:10 weight:UIFontWeightSemibold];
     label.textColor = topToolbarIconTintColor();
     label.textAlignment = NSTextAlignmentCenter;
-    label.text = @"1";
+    label.text = @"0";
     [button addSubview:label];
     [NSLayoutConstraint activateConstraints:@[
         [label.centerXAnchor constraintEqualToAnchor:button.centerXAnchor],
@@ -380,8 +380,7 @@ static UIView *toolbarSpacer(void)
 - (void)setOpenDocumentCount:(NSInteger)openDocumentCount
 {
     _openDocumentCount = openDocumentCount;
-    NSInteger displayCount = MAX(openDocumentCount, 1);
-    NSString *text = [NSString stringWithFormat:@"%ld", (long)displayCount];
+    NSString *text = [NSString stringWithFormat:@"%ld", (long)openDocumentCount];
     self.openDocsCountLabel.text = text;
     self.editOpenDocsCountLabel.text = text;
 }

@@ -91,13 +91,34 @@
     ImpressOutlineOverlayController *impressOutlineOverlay;
     dispatch_group_t forwardingThreadGroup;
     BOOL documentUiCloseStarted;
+    BOOL replacingDocument;
+    int documentOpenGeneration;
+    int documentOpenStartedGeneration;
     void (^pendingCloseCompletion)(void);
     CGSize lastWebViewLayoutSize;
     int documentCanvasRecoverAttempts;
     BOOL documentCanvasRecoverSucceeded;
     BOOL documentCanvasRecoverInFlight;
+    UIView *documentOpeningOverlay;
+    UIActivityIndicatorView *documentOpeningIndicator;
+    BOOL documentOpeningStateWanted;
+    BOOL documentOpeningCanvasMayHide;
+    int documentOpeningEpoch;
 }
 
+- (void)updateToolbarDocumentTitle;
+- (void)updateNativeDocumentTypeForURL:(NSURL *)documentURL;
+- (void)installDocumentWebView;
+- (void)pinDocumentWebViewToChrome;
+- (void)ensureKeyboardFrameObserver;
+- (void)openCurrentDocumentWhenKitIdleFromAttempt:(int)attempt;
+- (void)replaceDocumentInPlaceAtURL:(NSURL *)url;
+- (void)finishReplacingDocumentWithURL:(NSURL *)url;
+- (void)showDocumentOpeningState;
+- (void)hideDocumentOpeningState;
+- (BOOL)isDocumentOpeningStateVisible;
+- (void)attachDocumentOpeningOverlay;
+- (void)retryDocumentCanvasRecover;
 - (void)extractDocumentTextForDocQaWithCompletion:(void (^)(NSString *text))completion;
 - (void)extractCurrentSelectionWithCompletion:(void (^)(NSString *text))completion;
 - (NSString *)extractFullTextViaLokSelection;
@@ -146,7 +167,8 @@ static BOOL isExternalKeyboardAttached()
 
 @implementation DocumentViewController
 
-static IMP standardImpOfInputAccessoryView = nil;
+static const int kDocumentOpenKitIdleAttempts = 60;
+static const int kDocumentOpenKitIdleIntervalMs = 50;
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -157,6 +179,9 @@ static IMP standardImpOfInputAccessoryView = nil;
     kitConnectionTornDown = NO;
     forwardingThreadGroup = dispatch_group_create();
     documentUiCloseStarted = NO;
+    replacingDocument = NO;
+    documentOpenGeneration = 0;
+    documentOpenStartedGeneration = -1;
     pendingCloseCompletion = nil;
     lastWebViewLayoutSize = CGSizeZero;
     documentCanvasRecoverAttempts = 0;
@@ -165,141 +190,8 @@ static IMP standardImpOfInputAccessoryView = nil;
     documentReady = NO;
     documentPageDidAppear = NO;
 
-    WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
-    WKUserContentController *userContentController = [[WKUserContentController alloc] init];
-
-    [userContentController addScriptMessageHandler:self name:@"debug"];
-    [userContentController addScriptMessageHandler:self name:@"lok"];
-    [userContentController addScriptMessageHandler:self name:@"error"];
-    __weak DocumentViewController *weakSelf = self;
-    aiService = [[AIService alloc] init];
-    nativeBridgeHandler = [[NativeBridgeHandler alloc]
-        initWithSessionIdProvider:^NSString * {
-            DocumentViewController *strongSelf = weakSelf;
-            return strongSelf
-                ? [NSString stringWithFormat:@"ios-document-%u", strongSelf.document->appDocId]
-                : nil;
-        }
-        emitter:^(NSDictionary *message) {
-            DocumentViewController *strongSelf = weakSelf;
-            if (!strongSelf.webView) {
-                return;
-            }
-            NSData *data = [NSJSONSerialization dataWithJSONObject:message options:0 error:nil];
-            NSString *json = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-            if (!json) {
-                return;
-            }
-            NSString *script = [NSString stringWithFormat:
-                @"if(window.NativeBridge&&typeof window.NativeBridge.onMessage==='function'){window.NativeBridge.onMessage(%@);}",
-                json];
-            [strongSelf.webView evaluateJavaScript:script completionHandler:nil];
-        }
-        aiService:aiService];
-    impressOutlineOverlay = [[ImpressOutlineOverlayController alloc]
-        initWithHostViewController:self
-                         aiService:aiService];
-    nativeBridgeHandler.documentFileURLProvider = ^NSURL * {
-        DocumentViewController *strongSelf = weakSelf;
-        if (!strongSelf.document) {
-            return nil;
-        }
-        NSURL *backup = strongSelf.document->typesetSourceBackupURL;
-        if (backup && [[NSFileManager defaultManager] fileExistsAtPath:backup.path]) {
-            return backup;
-        }
-        return strongSelf.document->copyFileURL;
-    };
-    nativeBridgeHandler.originalDocumentURLProvider = ^NSURL * {
-        DocumentViewController *strongSelf = weakSelf;
-        return strongSelf.document.fileURL;
-    };
-    nativeBridgeHandler.reloadDocumentHandler = ^{
-        DocumentViewController *strongSelf = weakSelf;
-        if (!strongSelf.document) {
-            return;
-        }
-        NSURL *fileURL = strongSelf.document.fileURL;
-        NSURL *copyURL = strongSelf.document->copyFileURL;
-        if (fileURL && copyURL) {
-            [[NSFileManager defaultManager] removeItemAtURL:copyURL error:nil];
-            [[NSFileManager defaultManager] copyItemAtURL:fileURL toURL:copyURL error:nil];
-        }
-        UIViewController *presenter = strongSelf.presentingViewController;
-        if (!presenter || !fileURL) {
-            return;
-        }
-        [strongSelf requestCloseWithCompletion:^{
-            [DocumentPresentation presentDocumentAtURL:fileURL from:presenter];
-        }];
-    };
-    long long loadDocumentMillis = (long long)([NSDate date].timeIntervalSince1970 * 1000.0);
-    aiConversationStore = [[AiConversationStore alloc]
-        initWithDocumentCopyURL:self.document ? self.document->copyFileURL : nil
-           originalDocumentURL:self.document.fileURL
-                     urlToLoad:nil
-              loadDocumentMillis:loadDocumentMillis];
-    nativeBridgeHandler.conversationStoreProvider = ^AiConversationStore * {
-        DocumentViewController *strongSelf = weakSelf;
-        return strongSelf ? strongSelf->aiConversationStore : nil;
-    };
-    nativeBridgeHandler.documentTextExtractor = ^(NativeBridgeDocumentTextCompletion completion) {
-        DocumentViewController *strongSelf = weakSelf;
-        if (!strongSelf || !completion) {
-            if (completion) {
-                completion(@"");
-            }
-            return;
-        }
-        [strongSelf extractDocumentTextForDocQaWithCompletion:completion];
-    };
-    nativeBridgeHandler.documentSelectionExtractor = ^(NativeBridgeDocumentTextCompletion completion) {
-        DocumentViewController *strongSelf = weakSelf;
-        if (!strongSelf || !completion) {
-            if (completion) {
-                completion(@"");
-            }
-            return;
-        }
-        [strongSelf extractCurrentSelectionWithCompletion:completion];
-    };
-    [userContentController addScriptMessageHandler:nativeBridgeHandler name:@"nativeBridge"];
-    [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"clipboard"];
-    [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"aiConfiguration"];
-
-    configuration.userContentController = userContentController;
-    
-    CoolURLSchemeHandler * schemeHandler = [[CoolURLSchemeHandler alloc] initWithDocument:self.document];
-    [configuration setURLSchemeHandler:schemeHandler forURLScheme:@"cool"];
-    self.schemeHandler = (__bridge void*)schemeHandler;
-    
-    self.webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
-    self.webView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.webView.allowsLinkPreview = NO;
-
-    // Prevent the WebView from scrolling. Sadly I couldn't figure out how to do it in the JS,
-    // so the problem is still there when using Online from Mobile Safari.
-    self.webView.scrollView.scrollEnabled = NO;
-
-    // Reenable debugging from Safari
-    // The new WKWebView.inspectable property must be set to YES in order
-    // for Safari to connect to a debug version of the iOS app whether the
-    // app is running on an iOS device or on macOS.
-    if (@available(macOS 13.3, iOS 16.4, tvOS 16.4, *)) {
-#if ENABLE_DEBUG == 1
-        self.webView.inspectable = YES;
-#else
-        self.webView.inspectable = NO;
-#endif
-    }
-
-    // Prevent the user from zooming the WebView by assigning ourselves as the delegate, and
-    // stopping any zoom attempt in scrollViewWillBeginZooming: below. (The zooming of the document
-    // contents is handled fully in JavaScript, the WebView has no knowledge of that.)
-    self.webView.scrollView.delegate = self;
-
     self.view.backgroundColor = UIColor.whiteColor;
-    [self.view addSubview:self.webView];
+    [self installDocumentWebView];
 
     UIView *topToolbarContainer = [[UIView alloc] init];
     topToolbarContainer.translatesAutoresizingMaskIntoConstraints = NO;
@@ -315,23 +207,11 @@ static IMP standardImpOfInputAccessoryView = nil;
     [self.view addSubview:bottomToolbarContainer];
 
     nativeEditMode = NO;
-    NSURL *documentURL = self.document->copyFileURL;
-    NSString *extension = documentURL.pathExtension.lowercaseString;
-    if ([extension isEqualToString:@"xls"] || [extension isEqualToString:@"xlsx"]
-        || [extension isEqualToString:@"ods"] || [extension isEqualToString:@"csv"]) {
-        nativeDocumentType = @"spreadsheet";
-    } else if ([extension isEqualToString:@"ppt"] || [extension isEqualToString:@"pptx"]
-               || [extension isEqualToString:@"odp"]) {
-        nativeDocumentType = @"presentation";
-    } else {
-        nativeDocumentType = @"text";
-    }
     topToolbarController = [[IOSTopToolbarController alloc] initWithDelegate:self];
     bottomToolbarController = [[IOSBottomToolbarController alloc] initWithDelegate:self];
-    [topToolbarController setDocumentTitle:
-        [[documentURL.lastPathComponent stringByDeletingPathExtension] copy]];
-    [topToolbarController setDocumentType:nativeDocumentType];
-    [bottomToolbarController setDocumentType:nativeDocumentType];
+    [self updateNativeDocumentTypeForURL:self.document.fileURL];
+    [self updateToolbarDocumentTitle];
+    [self showDocumentOpeningState];
     [self refreshOpenDocumentCount];
     [topToolbarContainer addSubview:topToolbarController.view];
     [bottomToolbarContainer addSubview:bottomToolbarController.view];
@@ -359,78 +239,50 @@ static IMP standardImpOfInputAccessoryView = nil;
         constraintEqualToConstant:bottomToolbarController.preferredHeight];
     bottomToolbarHeightConstraint.active = YES;
 
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(keyboardWillChangeFrame:)
-                                                 name:UIKeyboardWillChangeFrameNotification
-                                               object:nil];
+    [self ensureKeyboardFrameObserver];
 
-    self.webView.navigationDelegate = self;
-    self.webView.UIDelegate = self;
-
-    // Hack for tdf#129380: Don't show the "shortcut bar" if a hardware keyboard is used.
-
-    // From https://inneka.com/programming/objective-c/hide-shortcut-keyboard-bar-for-uiwebview-in-ios-9/
+    // The system input accessory is the up/down/done bar between the keyboard
+    // and the bottom toolbar. Hide it for this document view, including when
+    // a software keyboard is visible. Editing still raises the keyboard itself.
     Class webBrowserClass = NSClassFromString(@"WKContentView");
-    Method method = class_getInstanceMethod(webBrowserClass, @selector(inputAccessoryView));
+    Method accessoryMethod = class_getInstanceMethod(webBrowserClass, @selector(inputAccessoryView));
+    static bool accessorySwizzled = false;
+    if (!accessorySwizzled && accessoryMethod != nil) {
+        accessorySwizzled = true;
+        IMP newImp = imp_implementationWithBlock(^id(id _s) {
+            return nil;
+        });
+        method_setImplementation(accessoryMethod, newImp);
+    }
 
-    if (isExternalKeyboardAttached()) {
-        IMP newImp = imp_implementationWithBlock(^(id _s) {
-                if ([self.webView respondsToSelector:@selector(inputAssistantItem)]) {
-                    UITextInputAssistantItem *inputAssistantItem = [self.webView inputAssistantItem];
-                    inputAssistantItem.leadingBarButtonGroups = @[];
-                    inputAssistantItem.trailingBarButtonGroups = @[];
-                }
-                return nil;
-            });
+    // Hack to make the on-screen keyboard pop up when JavaScript focuses the
+    // textarea during native edit mode.
+    // From https://stackoverflow.com/questions/32449870/programmatically-focus-on-a-form-in-a-webview-wkwebview/32845699
+    static bool doneThisAlready = false;
+    if (!doneThisAlready) {
+        const char * methodSignature;
+        doneThisAlready = true;
 
-        IMP oldImp = method_setImplementation(method, newImp);
-        if (standardImpOfInputAccessoryView == nil)
-            standardImpOfInputAccessoryView = oldImp;
-    } else {
-        // If the external keyboard has been disconnected, restore the normal behaviour.
-        if (standardImpOfInputAccessoryView != nil) {
-            method_setImplementation(method, standardImpOfInputAccessoryView);
+        if ([[NSProcessInfo processInfo] isOperatingSystemAtLeastVersion: (NSOperatingSystemVersion){13, 0, 0}]) {
+            methodSignature = "_elementDidFocus:userIsInteracting:blurPreviousNode:activityStateChanges:userObject:";
+        } else {
+            methodSignature = "_elementDidFocus:userIsInteracting:blurPreviousNode:changingActivityState:userObject:";
         }
 
-        // Hack to make the on-screen keyboard pop up more eagerly when focus set to the textarea
-        // using JavaScript.
-
-        // From https://stackoverflow.com/questions/32449870/programmatically-focus-on-a-form-in-a-webview-wkwebview/32845699
-
-        static bool doneThisAlready = false;
-        if (!doneThisAlready) {
-            const char * methodSignature;
-            doneThisAlready = true;
-
-            if ([[NSProcessInfo processInfo] isOperatingSystemAtLeastVersion: (NSOperatingSystemVersion){13, 0, 0}]) {
-                methodSignature = "_elementDidFocus:userIsInteracting:blurPreviousNode:activityStateChanges:userObject:";
-            } else {
-                methodSignature = "_elementDidFocus:userIsInteracting:blurPreviousNode:changingActivityState:userObject:";
-            }
-
-            // Override that internal method with an own wrapper that always passes the
-            // userIsInteracting parameter as TRUE. That will cause the on-screen keyboard to pop up
-            // when we call the focus() method on the textarea element in JavaScript.
-            SEL selector = sel_getUid(methodSignature);
-            Method method = class_getInstanceMethod(webBrowserClass, selector);
-            if (method != nil) {
-                IMP original = method_getImplementation(method);
-                IMP override = imp_implementationWithBlock(^void(id me, void* arg0, BOOL arg1, BOOL arg2, BOOL arg3, id arg4) {
-                        ((void (*)(id, SEL, void*, BOOL, BOOL, BOOL, id))original)(me, selector, arg0, TRUE, arg2, arg3, arg4);
-                    });
-                method_setImplementation(method, override);
-            }
+        // userIsInteracting TRUE lets an explicit edit-mode focus() raise the keyboard.
+        // Reading mode never focuses the clipboard field, so this does not pop it on open.
+        SEL selector = sel_getUid(methodSignature);
+        Method focusMethod = class_getInstanceMethod(webBrowserClass, selector);
+        if (focusMethod != nil) {
+            IMP original = method_getImplementation(focusMethod);
+            IMP override = imp_implementationWithBlock(^void(id me, void* arg0, BOOL arg1, BOOL arg2, BOOL arg3, id arg4) {
+                    ((void (*)(id, SEL, void*, BOOL, BOOL, BOOL, id))original)(me, selector, arg0, TRUE, arg2, arg3, arg4);
+                });
+            method_setImplementation(focusMethod, override);
         }
     }
 
-    webViewTopConstraint = [self.webView.topAnchor constraintEqualToAnchor:topToolbarContainer.bottomAnchor];
-    webViewBottomConstraint = [self.webView.bottomAnchor constraintEqualToAnchor:bottomToolbarContainer.topAnchor];
-    [NSLayoutConstraint activateConstraints:@[
-        [self.webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.webView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        webViewTopConstraint,
-        webViewBottomConstraint,
-    ]];
+    [self pinDocumentWebViewToChrome];
     aiDrawer = [AISettingsDrawerController attachToHost:self];
     [aiDrawer requireFailureOfScrollViewGestures:self.webView.scrollView];
 
@@ -761,6 +613,350 @@ static IMP standardImpOfInputAccessoryView = nil;
 {
     [self.webView evaluateJavaScript:script completionHandler:nil];
 }
+
+- (void)installDocumentWebView {
+    if (self.webView != nil) {
+        return;
+    }
+
+    WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+    WKUserContentController *userContentController = [[WKUserContentController alloc] init];
+
+    [userContentController addScriptMessageHandler:self name:@"debug"];
+    [userContentController addScriptMessageHandler:self name:@"lok"];
+    [userContentController addScriptMessageHandler:self name:@"error"];
+    __weak DocumentViewController *weakSelf = self;
+    aiService = [[AIService alloc] init];
+    nativeBridgeHandler = [[NativeBridgeHandler alloc]
+        initWithSessionIdProvider:^NSString * {
+            DocumentViewController *strongSelf = weakSelf;
+            return strongSelf
+                ? [NSString stringWithFormat:@"ios-document-%u", strongSelf.document->appDocId]
+                : nil;
+        }
+        emitter:^(NSDictionary *message) {
+            DocumentViewController *strongSelf = weakSelf;
+            if (!strongSelf.webView) {
+                return;
+            }
+            NSData *data = [NSJSONSerialization dataWithJSONObject:message options:0 error:nil];
+            NSString *json = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+            if (!json) {
+                return;
+            }
+            NSString *script = [NSString stringWithFormat:
+                @"if(window.NativeBridge&&typeof window.NativeBridge.onMessage==='function'){window.NativeBridge.onMessage(%@);}",
+                json];
+            [strongSelf.webView evaluateJavaScript:script completionHandler:nil];
+        }
+        aiService:aiService];
+    impressOutlineOverlay = [[ImpressOutlineOverlayController alloc]
+        initWithHostViewController:self
+                         aiService:aiService];
+    nativeBridgeHandler.documentFileURLProvider = ^NSURL * {
+        DocumentViewController *strongSelf = weakSelf;
+        if (!strongSelf.document) {
+            return nil;
+        }
+        NSURL *backup = strongSelf.document->typesetSourceBackupURL;
+        if (backup && [[NSFileManager defaultManager] fileExistsAtPath:backup.path]) {
+            return backup;
+        }
+        return strongSelf.document->copyFileURL;
+    };
+    nativeBridgeHandler.originalDocumentURLProvider = ^NSURL * {
+        DocumentViewController *strongSelf = weakSelf;
+        return strongSelf.document.fileURL;
+    };
+    nativeBridgeHandler.reloadDocumentHandler = ^{
+        DocumentViewController *strongSelf = weakSelf;
+        if (!strongSelf.document) {
+            return;
+        }
+        NSURL *fileURL = strongSelf.document.fileURL;
+        NSURL *copyURL = strongSelf.document->copyFileURL;
+        if (fileURL && copyURL) {
+            [[NSFileManager defaultManager] removeItemAtURL:copyURL error:nil];
+            [[NSFileManager defaultManager] copyItemAtURL:fileURL toURL:copyURL error:nil];
+        }
+        UIViewController *presenter = strongSelf.presentingViewController;
+        if (!presenter || !fileURL) {
+            return;
+        }
+        [strongSelf requestCloseWithCompletion:^{
+            [DocumentPresentation presentDocumentAtURL:fileURL from:presenter];
+        }];
+    };
+    long long loadDocumentMillis = (long long)([NSDate date].timeIntervalSince1970 * 1000.0);
+    aiConversationStore = [[AiConversationStore alloc]
+        initWithDocumentCopyURL:self.document ? self.document->copyFileURL : nil
+           originalDocumentURL:self.document.fileURL
+                     urlToLoad:nil
+              loadDocumentMillis:loadDocumentMillis];
+    nativeBridgeHandler.conversationStoreProvider = ^AiConversationStore * {
+        DocumentViewController *strongSelf = weakSelf;
+        return strongSelf ? strongSelf->aiConversationStore : nil;
+    };
+    nativeBridgeHandler.documentTextExtractor = ^(NativeBridgeDocumentTextCompletion completion) {
+        DocumentViewController *strongSelf = weakSelf;
+        if (!strongSelf || !completion) {
+            if (completion) {
+                completion(@"");
+            }
+            return;
+        }
+        [strongSelf extractDocumentTextForDocQaWithCompletion:completion];
+    };
+    nativeBridgeHandler.documentSelectionExtractor = ^(NativeBridgeDocumentTextCompletion completion) {
+        DocumentViewController *strongSelf = weakSelf;
+        if (!strongSelf || !completion) {
+            if (completion) {
+                completion(@"");
+            }
+            return;
+        }
+        [strongSelf extractCurrentSelectionWithCompletion:completion];
+    };
+    [userContentController addScriptMessageHandler:nativeBridgeHandler name:@"nativeBridge"];
+    [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"clipboard"];
+    [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"aiConfiguration"];
+
+    configuration.userContentController = userContentController;
+
+    CoolURLSchemeHandler * schemeHandler = [[CoolURLSchemeHandler alloc] initWithDocument:self.document];
+    [configuration setURLSchemeHandler:schemeHandler forURLScheme:@"cool"];
+    self.schemeHandler = (__bridge void*)schemeHandler;
+
+    self.webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
+    self.webView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.webView.allowsLinkPreview = NO;
+
+    // Prevent the WebView from scrolling. Sadly I couldn't figure out how to do it in the JS,
+    // so the problem is still there when using Online from Mobile Safari.
+    self.webView.scrollView.scrollEnabled = NO;
+
+    // Reenable debugging from Safari
+    // The new WKWebView.inspectable property must be set to YES in order
+    // for Safari to connect to a debug version of the iOS app whether the
+    // app is running on an iOS device or on macOS.
+    if (@available(macOS 13.3, iOS 16.4, tvOS 16.4, *)) {
+#if ENABLE_DEBUG == 1
+        self.webView.inspectable = YES;
+#else
+        self.webView.inspectable = NO;
+#endif
+    }
+
+    // Prevent the user from zooming the WebView by assigning ourselves as the delegate, and
+    // stopping any zoom attempt in scrollViewWillBeginZooming: below. (The zooming of the document
+    // contents is handled fully in JavaScript, the WebView has no knowledge of that.)
+    self.webView.scrollView.delegate = self;
+
+    self.webView.navigationDelegate = self;
+    self.webView.UIDelegate = self;
+    // First load adds the web view, then the toolbars. A later replace already
+    // has chrome on screen, so keep that chrome above the new web view.
+    if (topToolbarController != nil && topToolbarController.view.superview != nil) {
+        [self.view insertSubview:self.webView atIndex:0];
+    } else {
+        [self.view addSubview:self.webView];
+    }
+}
+
+- (void)updateToolbarDocumentTitle {
+    NSString *filename = self.document.fileURL.lastPathComponent;
+    if (filename.length > 0) {
+        NSString *decoded = filename.stringByRemovingPercentEncoding;
+        if (decoded.length > 0) {
+            filename = decoded;
+        }
+    }
+    NSString *title = [RecentDocumentItem stripExtensionFromFilename:filename ?: @""];
+    [topToolbarController setDocumentTitle:title];
+}
+
+- (void)updateNativeDocumentTypeForURL:(NSURL *)documentURL {
+    NSString *extension = documentURL.pathExtension.lowercaseString;
+    if ([extension isEqualToString:@"xls"] || [extension isEqualToString:@"xlsx"]
+        || [extension isEqualToString:@"ods"] || [extension isEqualToString:@"csv"]) {
+        nativeDocumentType = @"spreadsheet";
+    } else if ([extension isEqualToString:@"ppt"] || [extension isEqualToString:@"pptx"]
+               || [extension isEqualToString:@"odp"]) {
+        nativeDocumentType = @"presentation";
+    } else {
+        nativeDocumentType = @"text";
+    }
+    [topToolbarController setDocumentType:nativeDocumentType];
+    [bottomToolbarController setDocumentType:nativeDocumentType];
+}
+
+- (void)pinDocumentWebViewToChrome {
+    if (self.webView == nil || topToolbarController.view.superview == nil
+        || bottomToolbarContainer == nil) {
+        return;
+    }
+    UIView *topToolbarContainer = topToolbarController.view.superview;
+    if (webViewTopConstraint != nil) {
+        webViewTopConstraint.active = NO;
+    }
+    if (webViewBottomConstraint != nil) {
+        webViewBottomConstraint.active = NO;
+    }
+    webViewTopConstraint = [self.webView.topAnchor constraintEqualToAnchor:topToolbarContainer.bottomAnchor];
+    webViewBottomConstraint = [self.webView.bottomAnchor constraintEqualToAnchor:bottomToolbarContainer.topAnchor];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.webView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        webViewTopConstraint,
+        webViewBottomConstraint,
+    ]];
+}
+
+- (void)ensureKeyboardFrameObserver {
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIKeyboardWillChangeFrameNotification
+                                                  object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillChangeFrame:)
+                                                 name:UIKeyboardWillChangeFrameNotification
+                                               object:nil];
+}
+
+- (void)openCurrentDocumentWhenKitIdleFromAttempt:(int)attempt {
+    const int generation = documentOpenGeneration;
+    if (attempt == 0 && documentOpenStartedGeneration == generation) {
+        return;
+    }
+    if (self.document == nil || self.document->fakeClientFd >= 0 || isClosing || replacingDocument) {
+        return;
+    }
+    if (attempt == 0) {
+        documentOpenStartedGeneration = generation;
+    }
+    // First open: the kit map is empty, so polling cannot help. Wait only
+    // while a previous kit document is still allocated (in-place replace).
+    if (DocumentData::isAnyDocumentOpen() && attempt < kDocumentOpenKitIdleAttempts) {
+        __weak DocumentViewController *weakSelf = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                     (int64_t)(kDocumentOpenKitIdleIntervalMs * NSEC_PER_MSEC)),
+                       dispatch_get_main_queue(), ^{
+            DocumentViewController *strongSelf = weakSelf;
+            if (strongSelf == nil || strongSelf->documentOpenGeneration != generation) {
+                return;
+            }
+            [strongSelf openCurrentDocumentWhenKitIdleFromAttempt:attempt + 1];
+        });
+        return;
+    }
+
+    __weak DocumentViewController *weakSelf = self;
+    [self.document openWithCompletionHandler:^(BOOL success) {
+        if (!success) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                DocumentViewController *strongSelf = weakSelf;
+                if (strongSelf == nil || strongSelf->documentOpenGeneration != generation) {
+                    return;
+                }
+                if (strongSelf->documentOpenStartedGeneration == generation) {
+                    strongSelf->documentOpenStartedGeneration = -1;
+                }
+                strongSelf.launchOptions = nil;
+                strongSelf->documentReady = NO;
+                [strongSelf hideDocumentOpeningState];
+            });
+            return;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            DocumentViewController *strongSelf = weakSelf;
+            if (strongSelf == nil || strongSelf->isClosing
+                || strongSelf->documentOpenGeneration != generation) {
+                return;
+            }
+            [strongSelf updateToolbarDocumentTitle];
+        });
+    }];
+}
+
+- (void)replaceDocumentInPlaceAtURL:(NSURL *)url {
+    if (url == nil || self.document == nil || isClosing || replacingDocument) {
+        return;
+    }
+    NSString *nextPath = url.path.stringByStandardizingPath;
+    NSString *currentPath = self.document.fileURL.path.stringByStandardizingPath;
+    if (nextPath.length > 0 && currentPath.length > 0 && [nextPath isEqualToString:currentPath]) {
+        return;
+    }
+
+    [url startAccessingSecurityScopedResource];
+    RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
+    [store noteSessionOpenedURL:url];
+    [store recordURL:url];
+    [self refreshOpenDocumentCount];
+
+    // Drop any kit-idle poll that belongs to the document we are leaving.
+    documentOpenGeneration++;
+    replacingDocument = YES;
+    __weak DocumentViewController *weakSelf = self;
+    [self requestCloseWithCompletion:^{
+        DocumentViewController *strongSelf = weakSelf;
+        if (strongSelf == nil) {
+            return;
+        }
+        [strongSelf finishReplacingDocumentWithURL:url];
+    }];
+}
+
+- (void)finishReplacingDocumentWithURL:(NSURL *)url {
+    isClosing = NO;
+    documentUiCloseStarted = NO;
+    kitConnectionTornDown = NO;
+    replacingDocument = NO;
+    documentReady = NO;
+    documentPageDidAppear = NO;
+    documentCanvasRecoverAttempts = 0;
+    documentCanvasRecoverSucceeded = NO;
+    documentCanvasRecoverInFlight = NO;
+    lastWebViewLayoutSize = CGSizeZero;
+    [self showDocumentOpeningState];
+    nativeEditMode = NO;
+    if (closeNotificationPipeForForwardingThread[0] >= 0) {
+        fakeSocketClose(closeNotificationPipeForForwardingThread[0]);
+        closeNotificationPipeForForwardingThread[0] = -1;
+    }
+    if (closeNotificationPipeForForwardingThread[1] >= 0) {
+        fakeSocketClose(closeNotificationPipeForForwardingThread[1]);
+        closeNotificationPipeForForwardingThread[1] = -1;
+    }
+    if (self.document != nil) {
+        self.document->fakeClientFd = -1;
+        self.document.viewController = nil;
+    }
+
+    CODocument *nextDocument = [[CODocument alloc] initWithFileURL:url];
+    nextDocument->fakeClientFd = -1;
+    nextDocument->readOnly = false;
+    nextDocument.viewController = self;
+    self.document = nextDocument;
+
+    [topToolbarController setEditMode:NO];
+    [bottomToolbarController setEditMode:NO];
+    [bottomToolbarController setCompact:NO];
+    [self updateToolbarDocumentTitle];
+    [self refreshOpenDocumentCount];
+    [self updateNativeDocumentTypeForURL:url];
+
+    if (self.webView == nil) {
+        [self installDocumentWebView];
+        [self pinDocumentWebViewToChrome];
+    }
+    [self attachDocumentOpeningOverlay];
+    [self ensureKeyboardFrameObserver];
+    if (aiDrawer != nil && self.webView != nil) {
+        [aiDrawer requireFailureOfScrollViewGestures:self.webView.scrollView];
+    }
+    [self openCurrentDocumentWhenKitIdleFromAttempt:0];
+}
+
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     documentPageDidAppear = NO;
@@ -777,20 +973,7 @@ static IMP standardImpOfInputAccessoryView = nil;
     if (self.document->fakeClientFd >= 0)
         return;
 
-    __weak DocumentViewController *weakSelf = self;
-    [self.document openWithCompletionHandler:^(BOOL success) {
-        if (success) {
-            return;
-        }
-        dispatch_async(dispatch_get_main_queue(), ^{
-            DocumentViewController *strongSelf = weakSelf;
-            if (strongSelf == nil) {
-                return;
-            }
-            strongSelf.launchOptions = nil;
-            strongSelf->documentReady = NO;
-        });
-    }];
+    [self openCurrentDocumentWhenKitIdleFromAttempt:0];
 }
 
 - (void)tearDownKitConnectionIfNeeded {
@@ -830,6 +1013,10 @@ static IMP standardImpOfInputAccessoryView = nil;
     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"aiConfiguration"];
     nativeBridgeHandler = nil;
     aiService = nil;
+    webViewTopConstraint.active = NO;
+    webViewBottomConstraint.active = NO;
+    webViewTopConstraint = nil;
+    webViewBottomConstraint = nil;
     [self.webView removeFromSuperview];
     self.webView = nil;
 }
@@ -892,7 +1079,17 @@ static IMP standardImpOfInputAccessoryView = nil;
         [self.document closeWithCompletionHandler:^(BOOL success) {
             LOG_TRC("close completion handler gets " << (success ? "YES" : "NO"));
             [self tearDownWebView];
+            if (self->replacingDocument) {
+                void (^closeCompletion)(void) = self->pendingCloseCompletion;
+                self->pendingCloseCompletion = nil;
+                if (closeCompletion != nil) {
+                    closeCompletion();
+                }
+                return;
+            }
             [self dismissViewControllerAnimated:YES completion:^{
+                RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
+                [store endSession];
                 void (^closeCompletion)(void) = self->pendingCloseCompletion;
                 self->pendingCloseCompletion = nil;
                 if (closeCompletion != nil) {
@@ -971,6 +1168,9 @@ static IMP standardImpOfInputAccessoryView = nil;
             << " code=" << error.code
             << " message=" << [[error.localizedDescription description] UTF8String]
             << " url=" << [[webView.URL.absoluteString description] UTF8String]);
+    if (!([error.domain isEqualToString:NSURLErrorDomain] && error.code == NSURLErrorCancelled)) {
+        [self hideDocumentOpeningState];
+    }
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
@@ -979,12 +1179,23 @@ static IMP standardImpOfInputAccessoryView = nil;
             << " code=" << error.code
             << " message=" << [[error.localizedDescription description] UTF8String]
             << " url=" << [[webView.URL.absoluteString description] UTF8String]);
+    if (!([error.domain isEqualToString:NSURLErrorDomain] && error.code == NSURLErrorCancelled)) {
+        [self hideDocumentOpeningState];
+    }
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     LOG_TRC("didFinishNavigation: " << [[navigation description] UTF8String]
             << " url=" << [[webView.URL.absoluteString description] UTF8String]);
     [self notifyWebViewAiConversationDocumentReady];
+    [self syncIosNativeEditingFlag];
+    if ([self isDocumentOpeningStateVisible]) {
+        // The new page is committed. Earlier "visible" results belong to the
+        // document we just replaced, so the 24-attempt budget starts here.
+        documentOpeningCanvasMayHide = YES;
+        documentCanvasRecoverAttempts = 0;
+        documentCanvasRecoverSucceeded = NO;
+    }
     [self scheduleDocumentCanvasRecover];
 }
 
@@ -2076,6 +2287,103 @@ static IMP standardImpOfInputAccessoryView = nil;
             "}catch(e){console.error('canvas_recover '+String(e&&e.message||e));return 'err';}})();";
 }
 
+- (BOOL)isDocumentOpeningStateVisible
+{
+    return documentOpeningStateWanted && documentOpeningOverlay != nil
+        && !documentOpeningOverlay.hidden;
+}
+
+- (void)attachDocumentOpeningOverlay
+{
+    if (!documentOpeningStateWanted || self.webView == nil) {
+        return;
+    }
+    if (documentOpeningOverlay == nil) {
+        UIView *overlay = [[UIView alloc] init];
+        overlay.translatesAutoresizingMaskIntoConstraints = NO;
+        overlay.backgroundColor = UIColor.clearColor;
+        overlay.opaque = NO;
+
+        UILabel *label = [[UILabel alloc] init];
+        label.translatesAutoresizingMaskIntoConstraints = NO;
+        label.text = @"正在打开";
+        label.textAlignment = NSTextAlignmentCenter;
+        label.textColor = [UIColor colorWithRed:32.0 / 255.0
+                                           green:33.0 / 255.0
+                                            blue:36.0 / 255.0
+                                           alpha:1.0];
+        label.font = [UIFont systemFontOfSize:16.0];
+
+        UIActivityIndicatorView *indicator = [[UIActivityIndicatorView alloc]
+            initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+        indicator.translatesAutoresizingMaskIntoConstraints = NO;
+        indicator.color = label.textColor;
+        indicator.hidesWhenStopped = YES;
+
+        UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[ label, indicator ]];
+        stack.translatesAutoresizingMaskIntoConstraints = NO;
+        stack.axis = UILayoutConstraintAxisVertical;
+        stack.alignment = UIStackViewAlignmentCenter;
+        stack.spacing = 12.0;
+        [overlay addSubview:stack];
+        [NSLayoutConstraint activateConstraints:@[
+            [stack.centerXAnchor constraintEqualToAnchor:overlay.centerXAnchor],
+            [stack.centerYAnchor constraintEqualToAnchor:overlay.centerYAnchor],
+        ]];
+
+        documentOpeningOverlay = overlay;
+        documentOpeningIndicator = indicator;
+    }
+    if (documentOpeningOverlay.superview != self.view) {
+        [documentOpeningOverlay removeFromSuperview];
+        [self.view insertSubview:documentOpeningOverlay aboveSubview:self.webView];
+        [NSLayoutConstraint activateConstraints:@[
+            [documentOpeningOverlay.topAnchor constraintEqualToAnchor:self.webView.topAnchor],
+            [documentOpeningOverlay.leadingAnchor constraintEqualToAnchor:self.webView.leadingAnchor],
+            [documentOpeningOverlay.trailingAnchor constraintEqualToAnchor:self.webView.trailingAnchor],
+            [documentOpeningOverlay.bottomAnchor constraintEqualToAnchor:self.webView.bottomAnchor],
+        ]];
+    }
+    documentOpeningOverlay.hidden = NO;
+    [documentOpeningIndicator startAnimating];
+}
+
+- (void)showDocumentOpeningState
+{
+    documentOpeningEpoch += 1;
+    documentOpeningStateWanted = YES;
+    documentOpeningCanvasMayHide = NO;
+    documentCanvasRecoverAttempts = 0;
+    documentCanvasRecoverSucceeded = NO;
+    documentCanvasRecoverInFlight = NO;
+    [self attachDocumentOpeningOverlay];
+}
+
+- (void)hideDocumentOpeningState
+{
+    documentOpeningStateWanted = NO;
+    documentOpeningCanvasMayHide = NO;
+    [documentOpeningIndicator stopAnimating];
+    documentOpeningOverlay.hidden = YES;
+}
+
+- (void)retryDocumentCanvasRecover
+{
+    const int openingEpoch = documentOpeningEpoch;
+    documentCanvasRecoverInFlight = YES;
+    __weak DocumentViewController *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        DocumentViewController *retrySelf = weakSelf;
+        if (retrySelf == nil || retrySelf->isClosing
+            || retrySelf->documentOpeningEpoch != openingEpoch) {
+            return;
+        }
+        retrySelf->documentCanvasRecoverInFlight = NO;
+        [retrySelf scheduleDocumentCanvasRecover];
+    });
+}
+
 - (void)evaluateDocumentCanvasRecoverOnce
 {
     if (isClosing || self.webView == nil) {
@@ -2090,21 +2398,36 @@ static IMP standardImpOfInputAccessoryView = nil;
         || documentCanvasRecoverInFlight) {
         return;
     }
+    // The previous document's canvas is still in the web view until the new
+    // load finishes. Keep the indicator up without treating that as success.
+    if ([self isDocumentOpeningStateVisible] && !documentOpeningCanvasMayHide) {
+        [self retryDocumentCanvasRecover];
+        return;
+    }
     CGSize boundsSize = self.webView.bounds.size;
-    if (boundsSize.width < 1.0 || boundsSize.height < 1.0) {
+    const BOOL boundsReady = boundsSize.width >= 1.0 && boundsSize.height >= 1.0;
+    if (!boundsReady && ![self isDocumentOpeningStateVisible]) {
         return;
     }
     if (documentCanvasRecoverAttempts >= 24) {
         LOG_ERR("document canvas recover gave up after 24 attempts");
+        [self hideDocumentOpeningState];
+        return;
+    }
+    if (!boundsReady) {
+        documentCanvasRecoverAttempts += 1;
+        [self retryDocumentCanvasRecover];
         return;
     }
     documentCanvasRecoverAttempts += 1;
     documentCanvasRecoverInFlight = YES;
+    const int openingEpoch = documentOpeningEpoch;
     __weak DocumentViewController *weakSelf = self;
     [self.webView evaluateJavaScript:[self documentCanvasRecoverJavaScript]
                    completionHandler:^(id result, NSError *error) {
         DocumentViewController *strongSelf = weakSelf;
-        if (strongSelf == nil || strongSelf->isClosing) {
+        if (strongSelf == nil || strongSelf->isClosing
+            || strongSelf->documentOpeningEpoch != openingEpoch) {
             return;
         }
         strongSelf->documentCanvasRecoverInFlight = NO;
@@ -2114,13 +2437,20 @@ static IMP standardImpOfInputAccessoryView = nil;
         }
         NSString *status = [result isKindOfClass:[NSString class]] ? (NSString *)result : @"err";
         if ([status isEqualToString:@"visible"]) {
+            if ([strongSelf isDocumentOpeningStateVisible]
+                && !strongSelf->documentOpeningCanvasMayHide) {
+                [strongSelf retryDocumentCanvasRecover];
+                return;
+            }
             strongSelf->documentCanvasRecoverSucceeded = YES;
+            [strongSelf hideDocumentOpeningState];
             return;
         }
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             DocumentViewController *retrySelf = weakSelf;
-            if (retrySelf == nil || retrySelf->isClosing) {
+            if (retrySelf == nil || retrySelf->isClosing
+                || retrySelf->documentOpeningEpoch != openingEpoch) {
                 return;
             }
             [retrySelf scheduleDocumentCanvasRecover];
@@ -2138,6 +2468,18 @@ static IMP standardImpOfInputAccessoryView = nil;
     }];
 }
 
+- (void)syncIosNativeEditingFlag
+{
+    if (self.webView == nil) {
+        return;
+    }
+    NSString *flag = nativeEditMode ? @"true" : @"false";
+    NSString *script = [NSString stringWithFormat:
+        @"if(window.__coolSetIosNativeEditing){window.__coolSetIosNativeEditing(%@);}",
+        flag];
+    [self.webView evaluateJavaScript:script completionHandler:nil];
+}
+
 - (void)applyNativeEditMode:(BOOL)editMode
 {
     nativeEditMode = editMode;
@@ -2146,6 +2488,7 @@ static IMP standardImpOfInputAccessoryView = nil;
     [topToolbarController setEditMode:editMode];
     [bottomToolbarController setEditMode:editMode];
     [bottomToolbarController setCompact:NO];
+    [self syncIosNativeEditingFlag];
 }
 
 - (void)dismissWriterOverlayUi
@@ -2296,23 +2639,7 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)switchToDocumentAtURL:(NSURL *)url
 {
-    if (url == nil || self.document == nil) {
-        return;
-    }
-    NSURL *current = self.document->copyFileURL;
-    if (current != nil &&
-        [url.path.stringByStandardizingPath isEqualToString:current.path.stringByStandardizingPath]) {
-        return;
-    }
-    RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
-    [store recordURL:url];
-    UIViewController *presenter = self.presentingViewController;
-    if (presenter == nil) {
-        return;
-    }
-    [self requestCloseWithCompletion:^{
-        [DocumentPresentation presentDocumentAtURL:url from:presenter];
-    }];
+    [self replaceDocumentInPlaceAtURL:url];
 }
 
 - (void)showToolbarPlaceholder:(NSString *)message
@@ -2377,10 +2704,11 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (void)topToolbarDidPressDocuments
 {
+    [self refreshOpenDocumentCount];
     RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
     [DocumentTabsSheetController presentFrom:self
                                        store:store
-                                  currentURL:self.document->copyFileURL
+                                  currentURL:self.document.fileURL
                                     delegate:self];
 }
 
@@ -2813,7 +3141,7 @@ static IMP standardImpOfInputAccessoryView = nil;
 
 - (NSURL *)currentDocumentURLForDocumentTabsSheet
 {
-    return self.document->copyFileURL;
+    return self.document.fileURL;
 }
 
 - (void)documentTabsSheetDidSelectURL:(NSURL *)url
