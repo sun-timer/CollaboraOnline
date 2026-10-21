@@ -163,9 +163,10 @@ describe('WriterEditorController', function () {
 		);
 		assert.equal(
 			searchCmd['SearchItem.SearchFlags'].value,
-			WriterEditorSearch.FLAG_MATCH_CASE | WriterEditorSearch.FLAG_WHOLE_WORD,
+			WriterEditorSearch.FLAG_WHOLE_WORD,
 		);
 		assert.equal(searchCmd['SearchItem.Command'].value, WriterEditorSearch.CMD_REPLACE_ALL);
+		assert.equal(searchCmd['SearchItem.TransliterateFlags'].value, 0);
 	});
 
 	it('executes a find and replace over the adapter', function () {
@@ -449,6 +450,8 @@ describe('WriterEditorController', function () {
 		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.SearchString'].value, 'abc');
 		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.Command'].value, 0);
 		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.Backward'].value, false);
+		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.TransliterateFlags'].value, 0x100);
+		assert.equal('SearchItem.SearchStartPointX' in adapter.calls.sendExecuteSearch[0], false);
 	});
 
 	it('runs a backward find with the backward flag', function () {

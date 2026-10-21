@@ -22,6 +22,8 @@ class AndroidSelectionMenu {
 	private static pendingLongPressSelection = false;
 	private static selectionGestureComplete = false;
 	private static nativeSelectionDragActive = false;
+	/** A long-press range was canceled because a second finger joined it. */
+	private static iosPinchCancelledLongPress = false;
 	private static lastDragSelectionUpdateAt = 0;
 	private static readonly dragSelectionThrottleMs = 60;
 	private static lastSelectionStartAt = 0;
@@ -323,9 +325,27 @@ class AndroidSelectionMenu {
 		targetPoint: { x: number; y: number },
 	): boolean {
 		const tolerance = Math.round(8 * app.pixelsToTwips);
-		const verticalTolerance = Math.round(3 * app.pixelsToTwips);
 		return (
-			Math.abs(targetPoint.x - caret.x1) <= tolerance &&
+			(
+				Math.abs(targetPoint.x - caret.x1) <= tolerance ||
+				// iOS Writer can keep an empty paragraph's caret at line start while
+				// the tap lands in the blank body of that same empty line, within one
+				// line height of it, not only within 3 pixels of the caret.
+				(AndroidSelectionMenu.isIOS() && AndroidSelectionMenu.isWriterDoc() &&
+					AndroidSelectionMenu.isCaretOnTapLine(caret, targetPoint))
+			)
+		);
+	}
+
+	private static isCaretOnTapLine(
+		caret: any,
+		targetPoint: { x: number; y: number },
+	): boolean {
+		// Allow one caret line height above and below the line box; a 3px window
+		// misses blank body taps on empty paragraphs.
+		const lineHeight = Math.abs(caret.y2 - caret.y1);
+		const verticalTolerance = Math.max(lineHeight, Math.round(3 * app.pixelsToTwips));
+		return (
 			targetPoint.y >= Math.min(caret.y1, caret.y2) - verticalTolerance &&
 			targetPoint.y <= Math.max(caret.y1, caret.y2) + verticalTolerance
 		);
@@ -433,7 +453,13 @@ class AndroidSelectionMenu {
 					Math.abs(caret.x1 - request.targetPoint.x) > tolerance ||
 					Math.abs(caret.y1 - request.targetPoint.y) > tolerance
 				) {
+					if (
+						!AndroidSelectionMenu.isIOS() ||
+						!AndroidSelectionMenu.isWriterDoc() ||
+						!AndroidSelectionMenu.isCaretOnTapLine(caret, request.targetPoint)
+					) {
 					return;
+					}
 				}
 			}
 			request.caretConfirmed = true;
@@ -746,6 +772,21 @@ class AndroidSelectionMenu {
 		} catch (_e) {
 			// Best-effort cleanup only.
 		}
+	}
+
+	private static consumeIosPinchCancelledTextSelection(payload: string): boolean {
+		if (!AndroidSelectionMenu.iosPinchCancelledLongPress) {
+			return false;
+		}
+		AndroidSelectionMenu.clearLocalTextSelection();
+		AndroidSelectionMenu.clearTryShowRetry();
+		AndroidSelectionMenu.hide();
+		if (!payload || payload === 'EMPTY') {
+			// resetselection is ordered on the same socket as subsequent selection
+			// requests. Its empty acknowledgement closes the suppression window.
+			AndroidSelectionMenu.iosPinchCancelledLongPress = false;
+		}
+		return true;
 	}
 
 	/** Reset bridge flags and hide menu (no selecttext end). */
@@ -1794,13 +1835,15 @@ class AndroidSelectionMenu {
 			const original = layer._onTextSelectionMsg.bind(layer);
 			layer._onTextSelectionMsg = function (textMsg: string) {
 				original(textMsg);
+				const payload = textMsg.replace('textselection:', '').trim();
+				if (AndroidSelectionMenu.consumeIosPinchCancelledTextSelection(payload)) {
+					return;
+				}
 				if (AndroidSelectionMenu.isProgrammaticSelectionSuppressed()) {
 					AndroidSelectionMenu.clearTryShowRetry();
 					AndroidSelectionMenu.hide();
 					return;
 				}
-				const payload = textMsg.replace('textselection:', '').trim();
-
 				if (
 					AndroidSelectionMenu.pendingLongPressSelection &&
 					payload &&
@@ -1898,11 +1941,46 @@ class AndroidSelectionMenu {
 	 */
 	private static installIosLongPress(): void {
 		let longPressTimer = 0;
+		let multiTouchActive = false;
 		let startX = 0;
 		let startY = 0;
 		const scale = () => app.dpiScale || 1;
+		const clearLongPressTimer = () => {
+			if (longPressTimer) {
+				window.clearTimeout(longPressTimer);
+				longPressTimer = 0;
+			}
+		};
+		const cancelLongPressForPinch = () => {
+			if (
+				AndroidSelectionMenu.nativeSelectionDragActive ||
+				(AndroidSelectionMenu.pendingLongPressSelection &&
+					!AndroidSelectionMenu.selectionGestureComplete)
+			) {
+				// prepareWordSelectionGesture already cleared any older selection;
+				// clear only this unfinished long-press range and ignore its delayed
+				// textselection reply, which can otherwise re-show the handles.
+				AndroidSelectionMenu.iosPinchCancelledLongPress = true;
+				AndroidSelectionMenu.cancelGesture();
+				AndroidSelectionMenu.clearLocalTextSelection();
+				if (app.socket && typeof app.socket.sendMessage === 'function') {
+					app.socket.sendMessage('resetselection');
+				}
+			}
+		};
 
 		const onTouchStart = (e: TouchEvent) => {
+			if (e.touches.length !== 1 || multiTouchActive) {
+				clearLongPressTimer();
+				if (e.touches.length > 1) {
+					multiTouchActive = true;
+					cancelLongPressForPinch();
+				}
+				return;
+			}
+			// A repeated single touchstart must not orphan a previous timer.
+			clearLongPressTimer();
+			AndroidSelectionMenu.iosPinchCancelledLongPress = false;
 			const touch = e.touches[0];
 			if (!touch || !AndroidSelectionMenu.isSelectionDoc()) {
 				return;
@@ -1925,6 +2003,14 @@ class AndroidSelectionMenu {
 		};
 
 		const onTouchMove = (e: TouchEvent) => {
+			if (e.touches.length !== 1 || multiTouchActive) {
+				clearLongPressTimer();
+				if (e.touches.length > 1) {
+					multiTouchActive = true;
+					cancelLongPressForPinch();
+				}
+				return;
+			}
 			const touch = e.touches[0];
 			if (!touch) {
 				return;
@@ -1951,10 +2037,12 @@ class AndroidSelectionMenu {
 		};
 
 		const onTouchEnd = (e: TouchEvent) => {
-			if (longPressTimer) {
-				window.clearTimeout(longPressTimer);
-				longPressTimer = 0;
+			if (e.touches.length > 0) {
+				clearLongPressTimer();
+				if (multiTouchActive) return;
 			}
+			clearLongPressTimer();
+			multiTouchActive = false;
 			if (AndroidSelectionMenu.nativeSelectionDragActive) {
 				const touch = e.changedTouches[0];
 				if (touch) {
@@ -1975,9 +2063,15 @@ class AndroidSelectionMenu {
 		const onTouchCancel = (e: TouchEvent) => {
 			// iOS 系统中断(控制中心/来电/应用切换)会发 touchcancel:
 			// 清定时器,拖拽中则收尾,避免残留手势状态。
-			if (longPressTimer) {
-				window.clearTimeout(longPressTimer);
-				longPressTimer = 0;
+			clearLongPressTimer();
+			const wasMultiTouch = multiTouchActive || e.touches.length > 1;
+			if (wasMultiTouch && e.touches.length > 0) return;
+			if (wasMultiTouch) cancelLongPressForPinch();
+			multiTouchActive = false;
+			if (wasMultiTouch) {
+				if (AndroidSelectionMenu.nativeSelectionDragActive)
+					AndroidSelectionMenu.cancelGesture();
+				return;
 			}
 			if (AndroidSelectionMenu.nativeSelectionDragActive) {
 				const touch = e.changedTouches[0];

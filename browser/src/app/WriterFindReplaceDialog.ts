@@ -21,6 +21,8 @@ class WriterFindReplaceDialog {
 	private caseSensitive = false;
 	private wholeWord = false;
 	private syncingQuery = false;
+	private searchStatusLabel!: HTMLDivElement;
+	private searchStatusHandler: ((event: any) => void) | null = null;
 
 	private findQueryInput!: HTMLInputElement;
 	private replaceQueryInput!: HTMLInputElement;
@@ -92,6 +94,11 @@ class WriterFindReplaceDialog {
 
 	close(): void {
 		this.detachViewportLift();
+		const map = (window as any).app?.map;
+		if (map && this.searchStatusHandler) map.off('writersearchresult', this.searchStatusHandler);
+		const bridge = (window as any).AndroidFindReplaceBridge;
+		if (bridge && typeof bridge.cancelPending === 'function') bridge.cancelPending();
+		this.searchStatusHandler = null;
 		if (this.root) {
 			this.root.remove();
 			this.root = null;
@@ -137,6 +144,7 @@ class WriterFindReplaceDialog {
 		this.panel.appendChild(this.settingsView);
 
 		document.body.appendChild(this.root);
+		this.attachSearchResults();
 		this.pushOptionsToBridge();
 		this.refreshButtonStates();
 		this.attachViewportLift();
@@ -202,6 +210,11 @@ class WriterFindReplaceDialog {
 		this.findPanel.className = 'writer-find-sheet__section';
 		this.findQueryInput = this.makeSearchField('请输入查找内容');
 		this.findPanel.appendChild(this.findQueryInput);
+		this.searchStatusLabel = document.createElement('div');
+		this.searchStatusLabel.className = 'writer-find-sheet__status';
+		this.searchStatusLabel.setAttribute('role', 'status');
+		this.searchStatusLabel.style.display = 'none';
+		this.findPanel.appendChild(this.searchStatusLabel);
 		const findNav = document.createElement('div');
 		findNav.className = 'writer-find-sheet__nav-row';
 		this.findPrevBtn = this.makeNavButton('上一处', () =>
@@ -255,6 +268,7 @@ class WriterFindReplaceDialog {
 				this.mirrorQuery(this.findQueryInput, this.replaceQueryInput);
 			}
 			this.pushOptionsToBridge();
+			this.setSearchStatus('');
 			this.refreshButtonStates();
 		};
 		this.findQueryInput.addEventListener('input', onQueryInput);
@@ -295,12 +309,14 @@ class WriterFindReplaceDialog {
 			this.makeSettingsRow('区分大小写', '', this.caseSensitive, (on) => {
 				this.caseSensitive = on;
 				this.pushOptionsToBridge();
+				this.refreshSearchForOptions();
 			}),
 		);
 		list.appendChild(
 			this.makeSettingsRow('全字匹配', '', this.wholeWord, (on) => {
 				this.wholeWord = on;
 				this.pushOptionsToBridge();
+				this.refreshSearchForOptions();
 			}),
 		);
 		wrap.appendChild(list);
@@ -370,6 +386,7 @@ class WriterFindReplaceDialog {
 		const toggle = document.createElement('input');
 		toggle.type = 'checkbox';
 		toggle.className = 'writer-find-sheet__toggle';
+		toggle.setAttribute('aria-label', title);
 		toggle.checked = initial;
 		toggle.onchange = () => onChange(toggle.checked);
 		row.appendChild(toggle);
@@ -460,6 +477,33 @@ class WriterFindReplaceDialog {
 		});
 	}
 
+	private attachSearchResults(): void {
+		const map = (window as any).app?.map;
+		if (!map || typeof map.on !== 'function') {
+			return;
+		}
+		this.searchStatusHandler = (event: any) => {
+			const field = this.mode === 'replace' ? this.replaceQueryInput : this.findQueryInput;
+			const query = field.value.trim();
+			if (event && event.query === query) this.setSearchStatus(event.status === 'notFound' ? '未查到到关键词' : event.status === 'timeout' ? '查找超时，请重新打开文档' : event.status === 'error' ? '查找失败' : '');
+		};
+		map.on('writersearchresult', this.searchStatusHandler);
+	}
+
+	private refreshSearchForOptions(): void {
+		this.setSearchStatus('');
+		const field =
+			this.mode === 'replace' ? this.replaceQueryInput : this.findQueryInput;
+		if (this.hasQuery(field)) {
+			this.runFindNext(field);
+		}
+	}
+
+	private setSearchStatus(message: string): void {
+		this.searchStatusLabel.textContent = message;
+		this.searchStatusLabel.style.display = message ? '' : 'none';
+	}
+
 	private runFindNext(field: HTMLInputElement): void {
 		const query = field.value.trim();
 		if (!query) {
@@ -481,7 +525,7 @@ class WriterFindReplaceDialog {
 		this.pushOptionsToBridge();
 		const bridge = (window as any).AndroidFindReplaceBridge;
 		if (bridge && typeof bridge.findPrevious === 'function') {
-			bridge.findPrevious();
+			bridge.findPrevious(field.value.trim());
 		}
 	}
 
@@ -534,12 +578,8 @@ class WriterFindReplaceDialog {
 	}
 }
 
-/** Android lolib_ic_find_settings (gear, dark on light). */
-const WRITER_FIND_SETTINGS_ICON =
-	'<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">' +
-	'<path fill="none" stroke="#333333" stroke-width="1.8" d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/>' +
-	'<path fill="none" stroke="#333333" stroke-width="1.8" stroke-linecap="round" d="M19.4 15a7.97 7.97 0 0 0 .1-1 7.97 7.97 0 0 0-.1-1l2-1.5a.5.5 0 0 0 .12-.64l-1.9-3.3a.5.5 0 0 0-.58-.22l-2.35.95a8 8 0 0 0-1.7-.98l-.35-2.5A.5.5 0 0 0 14.5 3h-5a.5.5 0 0 0-.49.42l-.35 2.5a8 8 0 0 0-1.7.98l-2.35-.95a.5.5 0 0 0-.58.22l-1.9 3.3a.5.5 0 0 0 .12.64L4.6 13a7.97 7.97 0 0 0-.1 1 7.97 7.97 0 0 0 .1 1l-2 1.5a.5.5 0 0 0-.12.64l1.9 3.3a.5.5 0 0 0 .58.22l2.35-.95c.52.4 1.1.73 1.7.98l.35 2.5a.5.5 0 0 0 .49.42h5a.5.5 0 0 0 .49-.42l.35-2.5c.6-.25 1.18-.58 1.7-.98l2.35.95a.5.5 0 0 0 .58-.22l1.9-3.3a.5.5 0 0 0-.12-.64L19.4 15z"/>' +
-	'</svg>';
+/** Android-provided settings icon asset. */
+const WRITER_FIND_SETTINGS_ICON = '<img src="images/lolib_ic_find_settings.png" width="20" height="20" aria-hidden="true" />';
 
 /** Android lolib_ic_sheet_close_80. */
 const WRITER_FIND_SHEET_CLOSE_ICON =

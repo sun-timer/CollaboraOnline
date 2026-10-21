@@ -2380,11 +2380,13 @@
 	inset: 0;
 	z-index: 10001;
 	background: transparent;
+	pointer-events: none;
 }
 
 .fabric-selection-menu {
 	position: fixed;
 	z-index: 10002;
+	pointer-events: auto;
 	max-width: min(301px, calc(100vw - 32px));
 	padding: 8px;
 	border-radius: 16px;
@@ -2416,6 +2418,26 @@
 	border: 0;
 	background: transparent;
 	cursor: pointer;
+}
+
+/* Reading mode has only the compact Copy / Select All actions. */
+.fabric-selection-menu--text-reading {
+	box-sizing: border-box;
+	width: max-content;
+	padding: 8px;
+}
+
+.fabric-selection-menu--text-reading .fabric-selection-menu__row {
+	min-height: 56px;
+}
+
+.fabric-selection-menu--text-reading .fabric-selection-menu__button {
+	box-sizing: border-box;
+	flex: 0 0 56px;
+	width: 56px;
+	min-width: 56px;
+	min-height: 56px;
+	padding: 4px 2px;
 }
 
 .fabric-selection-menu__icon {
@@ -3021,6 +3043,12 @@
 
 .writer-find-sheet__field::placeholder {
 	color: #999;
+}
+
+.writer-find-sheet__status {
+	padding: 4px 8px 0;
+	font-size: 13px;
+	color: #c62828;
 }
 
 .writer-find-sheet__section .writer-find-sheet__field + .writer-find-sheet__field {

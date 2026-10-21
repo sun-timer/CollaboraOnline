@@ -46,6 +46,10 @@ class WriterAiPanel {
 	}
 
 	openAssistant(): void {
+		const findReplace = (window as any).__coolWriterFindReplace;
+		if (findReplace && typeof findReplace.close === 'function') {
+			findReplace.close();
+		}
 		this.assistantPanel.open();
 	}
 

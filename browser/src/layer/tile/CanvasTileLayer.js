@@ -28,6 +28,8 @@ window.L.TileSectionManager = window.L.Class.extend({
 		this._splitPos = splitPanesContext ?
 			splitPanesContext.getSplitPos() : new cool.Point(0, 0);
 		this._updatesRunning = false;
+		this._finishingZoom = false;
+		this._zoomFinishRAF = undefined;
 
 		var canvasContainer = document.getElementById('document-container');
 		var that = this;
@@ -268,8 +270,21 @@ window.L.TileSectionManager = window.L.Class.extend({
 	},
 
 	zoomStep: function (zoom, newCenter) {
-		if (this._finishingZoom) // finishing steps of animation still going on.
-			return;
+		if (this._finishingZoom) {
+			// On touch devices, allow a new pinch to take over while the previous
+			// gesture is settling or waiting for tiles. Otherwise each quick pinch
+			// is ignored for up to the tile wait timeout.
+			if (!(window.mode.isMobile() || window.mode.isTablet()))
+				return;
+
+			cancelAnimationFrame(this._zoomFinishRAF);
+			this._zoomFinishRAF = undefined;
+			this._finishingZoom = false;
+			if (this.waitForTiles()) {
+				this.setWaitForTiles(false);
+				app.sectionContainer.setZoomChanged(false);
+			}
+		}
 
 		this._calcZoomFrameParams(zoom, newCenter);
 
@@ -298,6 +313,7 @@ window.L.TileSectionManager = window.L.Class.extend({
 		var endZoom = this._calcZoomFrameScale(zoom);
 		var painter = this;
 		var map = this._map;
+		var deferZoomCanvasRelease = window.mode.isMobile() || window.mode.isTablet();
 
 		// Calculate the final center at final zoom in advance.
 		var newMapCenter = this._getZoomMapCenter(zoom).divideBy(app.dpiScale);
@@ -326,8 +342,9 @@ window.L.TileSectionManager = window.L.Class.extend({
 				// Draw one last frame at final zoom.
 				painter.rafFunc(undefined, true /* final? */);
 				painter._zoomFrameScale = undefined;
-				app.sectionContainer.setInZoomAnimation(false);
 				painter._inZoomAnim = false;
+				if (!deferZoomCanvasRelease)
+					app.sectionContainer.setInZoomAnimation(false);
 
 				painter.setWaitForTiles(true);
 				// Set view and paint the tiles if all available.
@@ -343,12 +360,18 @@ window.L.TileSectionManager = window.L.Class.extend({
 					cancelAnimationFrame(finishingRAF);
 					painter.setWaitForTiles(false);
 					app.sectionContainer.setZoomChanged(false);
+					// Keep the final zoom frame in place while waiting for tiles. In
+					// particular, a deferred canvas resize would clear it before the
+					// normal tile draw can take over.
+					if (deferZoomCanvasRelease)
+						app.sectionContainer.setInZoomAnimation(false);
 					map.enableTextInput();
 					map.focus(map.canAcceptKeyboardInput());
 					// Paint everything.
 					app.sectionContainer.requestReDraw();
 					// Don't let a subsequent pinchZoom start before finishing all steps till this point.
 					painter._finishingZoom = false;
+					painter._zoomFinishRAF = undefined;
 					// Run the finish callback.
 					runAtFinish();
 					return;
@@ -357,7 +380,7 @@ window.L.TileSectionManager = window.L.Class.extend({
 					waitTries -= 1;
 			}
 
-			finishingRAF = requestAnimationFrame(finishAnimation);
+			finishingRAF = painter._zoomFinishRAF = requestAnimationFrame(finishAnimation);
 		};
 
 		finishAnimation();

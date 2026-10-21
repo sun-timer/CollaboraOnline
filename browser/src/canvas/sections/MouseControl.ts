@@ -41,6 +41,8 @@ class MouseControl extends CanvasSectionObject {
 	zoom: any;
 	origCenter: any;
 	pinchLength: number = 0;
+	private pinchPreAnimationStarted: boolean = false;
+	private pinchZoomStarted: boolean = false;
 
 	constructor(name: string) {
 		super(name);
@@ -561,6 +563,19 @@ class MouseControl extends CanvasSectionObject {
 		if (this.inSwipeAction) this.containerObject.stopAnimating();
 
 		if (e.touches.length !== 2) return;
+		if (this.clickTimer) {
+			app.timerRegistry.clearTimeout(this.clickTimer);
+			this.clickTimer = null;
+		}
+		this.clickCount = 0;
+		clearTimeout(this.mouseMoveTimer);
+		this.mouseMoveTimer = null;
+		this.pinchStartCenter = undefined;
+		this.zoom = undefined;
+		this.origCenter = undefined;
+		this.pinchLength = 0;
+		this.pinchPreAnimationStarted = false;
+		this.pinchZoomStarted = false;
 
 		const centerX = Math.round(
 			(e.touches[0].clientX + e.touches[1].clientX) * 0.5,
@@ -577,11 +592,34 @@ class MouseControl extends CanvasSectionObject {
 		);
 
 		this.pinchStartCenter = { x: centerX, y: centerY };
-		const _pinchStartLatLng = app.map.mouseEventToLatLng({
-			clientX: centerX,
-			clientY: centerY,
-		});
-		app.map._docLayer.preZoomAnimation(_pinchStartLatLng);
+	}
+
+	cancelSingleTouchForMultiTouch(): void {
+		if (this.clickTimer) {
+			app.timerRegistry.clearTimeout(this.clickTimer);
+			this.clickTimer = null;
+		}
+		this.clickCount = 0;
+		clearTimeout(this.mouseMoveTimer);
+		this.mouseMoveTimer = null;
+
+		// End an already-started core drag without invoking section onMouseUp
+		// handlers, which can commit a text selection or selection-handle drag.
+		if (this.mouseDownSent) {
+			this.postCoreMouseEvent(
+				'buttonup',
+				this.currentPosition,
+				1,
+				app.LOButtons.left,
+				0,
+			);
+		}
+		this.mouseDownSent = false;
+		this.positionOnMouseDown = null;
+		this.localPositionOnMouseDown = null;
+		this.touchstart = 0;
+		if (this.inSwipeAction) this.cancelSwipe();
+		app.map.fire('scrollvelocity', { vx: 0, vy: 0 });
 	}
 
 	onMultiTouchMove(
@@ -589,6 +627,7 @@ class MouseControl extends CanvasSectionObject {
 		dragDistance: number,
 		e: TouchEvent,
 	): void {
+		if (e.touches.length !== 2) return;
 		const centerX = Math.round(
 			(e.touches[0].clientX + e.touches[1].clientX) * 0.5,
 		);
@@ -597,6 +636,14 @@ class MouseControl extends CanvasSectionObject {
 		);
 
 		if (!this.pinchStartCenter || isNaN(centerX) || isNaN(centerY)) return;
+		if (!this.pinchPreAnimationStarted) {
+			const pinchStartLatLng = app.map.mouseEventToLatLng({
+				clientX: this.pinchStartCenter.x,
+				clientY: this.pinchStartCenter.y,
+			});
+			app.map._docLayer.preZoomAnimation(pinchStartLatLng);
+			this.pinchPreAnimationStarted = true;
+		}
 
 		// we need to invert the offset or the map is moved in the opposite direction
 		var offset = {
@@ -621,25 +668,41 @@ class MouseControl extends CanvasSectionObject {
 			clientY: center.y,
 		});
 
-		if (app.map._docLayer.zoomStep)
+		if (app.map._docLayer.zoomStep) {
 			app.map._docLayer.zoomStep(this.zoom, this.origCenter);
+			this.pinchZoomStarted = true;
+		}
 
 		app.idleHandler.notifyActive();
 	}
 
 	onMultiTouchEnd(e: TouchEvent): void {
-		var oldZoom = app.map.getZoom();
-		var zoomDelta = this.zoom - oldZoom;
-		var finalZoom = app.map._limitZoom(
-			zoomDelta > 0 ? Math.ceil(this.zoom) : Math.floor(this.zoom),
-		);
-
+		const zoom = this.zoom;
+		const origCenter = this.origCenter;
+		const preAnimationStarted = this.pinchPreAnimationStarted;
+		const zoomStarted = this.pinchZoomStarted;
 		this.pinchStartCenter = undefined;
+		this.zoom = undefined;
+		this.origCenter = undefined;
+		this.pinchLength = 0;
+		this.pinchPreAnimationStarted = false;
+		this.pinchZoomStarted = false;
+		if (zoom === undefined || !origCenter || !zoomStarted) {
+			if (preAnimationStarted && !zoomStarted)
+				app.map._docLayer.postZoomAnimation();
+			return;
+		}
+
+		var oldZoom = app.map.getZoom();
+		var zoomDelta = zoom - oldZoom;
+		var finalZoom = app.map._limitZoom(
+			zoomDelta > 0 ? Math.ceil(zoom) : Math.floor(zoom),
+		);
 
 		if (app.map._docLayer.zoomStepEnd) {
 			app.map._docLayer.zoomStepEnd(
 				finalZoom,
-				this.origCenter,
+				origCenter,
 				function (newMapCenter: any) {
 					// mapUpdater
 					app.map.setView(newMapCenter, finalZoom);
