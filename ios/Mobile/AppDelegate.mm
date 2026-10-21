@@ -43,9 +43,13 @@ NSString *app_text_direction;
 @implementation AppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    auto trace = std::getenv("COOL_LOGLEVEL");
+    const char *trace = std::getenv("COOL_LOGLEVEL");
     if (!trace)
-        trace = strdup("warning");
+        trace = "warning";
+    else if (std::strcmp(trace, "info") == 0) {
+        setenv("COOL_LOGLEVEL", "information", 1);
+        trace = "information";
+    }
 
     if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad)
         setupKitEnvironment("notebookbar");

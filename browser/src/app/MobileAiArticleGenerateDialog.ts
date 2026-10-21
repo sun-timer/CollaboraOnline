@@ -28,6 +28,7 @@ class MobileAiArticleGenerateDialog {
 	private category: string | null = null;
 	private template: WriterAiArticleTemplate | null = null;
 	private stage: 'select' | 'form' | 'result' = 'select';
+	private disposed = false;
 
 	constructor() {
 		this.controller = WriterAiController.getInstance();
@@ -35,6 +36,7 @@ class MobileAiArticleGenerateDialog {
 			title: '文案生成',
 			presentation: 'writer',
 			taskType: 'article_generate',
+			onClose: () => this.dispose(),
 		});
 		this.root = document.createElement('div');
 		this.root.className = 'mobile-ai-article-dialog';
@@ -129,8 +131,8 @@ class MobileAiArticleGenerateDialog {
 		this.insertBtn.textContent = '插入文档';
 		this.insertBtn.onclick = async () => {
 			const html = MobileAiResultRenderer.toHtml(this.controller.getState().preview);
-			if ((window as any).ThisIsTheiOSApp && (window as any).app?.map?.getDocType?.() === 'presentation') {
-				if (await this.controller.acceptAsync(html)) this.close();
+			if ((window as any).ThisIsTheiOSApp) {
+				if (await this.controller.acceptAsync(html) && !this.disposed) this.close();
 			} else {
 				this.controller.accept(html);
 			}
@@ -149,15 +151,22 @@ class MobileAiArticleGenerateDialog {
 	}
 
 	open(): void {
+		this.controller.resetPreview();
 		this.sheet.open();
 		this.render();
 	}
 
 	close(): void {
+		this.sheet.close();
+		this.dispose();
+	}
+
+	private dispose(): void {
+		if (this.disposed) return;
+		this.disposed = true;
 		if (this.controller.getState().state !== 'accepted') this.controller.cancel();
 		MobileAiWaiDropdown.dismiss();
 		this.unsubscribe();
-		this.sheet.close();
 	}
 
 	private openCategoryPicker(): void {
@@ -283,6 +292,7 @@ class MobileAiArticleGenerateDialog {
 		this.insertBtn.disabled = !ready;
 		this.status.textContent =
 			state.error ||
+			state.warning ||
 			(active
 				? state.state === 'streaming'
 					? 'AI 正在输出…'

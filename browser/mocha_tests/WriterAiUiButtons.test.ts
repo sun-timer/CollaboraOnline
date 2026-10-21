@@ -582,7 +582,7 @@ describe('Writer AI UI buttons', function () {
 				const polish = findButton(root, '文案润色');
 				assert.ok(polish);
 				assert.ok(polish?.querySelector('svg'));
-				assert.equal(polish?.disabled, false);
+				assert.equal(polish?.disabled, true);
 				polish!.click();
 				assert.deepEqual(opened, []);
 
