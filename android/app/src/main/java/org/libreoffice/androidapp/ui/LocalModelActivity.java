@@ -48,6 +48,7 @@ public class LocalModelActivity extends AppCompatActivity {
         progressText = findViewById(R.id.localModelProgressText);
         downloadButton = findViewById(R.id.localModelDownloadButton);
         enableSwitch = findViewById(R.id.localModelEnableSwitch);
+        org.libreoffice.androidlib.SwitchUiHelper.applySettingsSwitch(enableSwitch);
         deleteButton = findViewById(R.id.localModelDeleteButton);
         cancelButton = findViewById(R.id.localModelCancelButton);
         chooseButton = findViewById(R.id.localModelChooseButton);
