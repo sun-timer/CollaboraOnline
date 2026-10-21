@@ -6,6 +6,7 @@
  */
 
 #import "FeedbackViewController.h"
+#import "../KeyboardAccessory.h"
 
 #import "FeedbackAppearance.h"
 #import "FeedbackApi.h"
@@ -662,6 +663,7 @@ static NSString *feedbackTruncateToCodePoints(NSString *string, NSUInteger maxPo
     self.descView.textColor = [FeedbackAppearance textPrimaryColor];
     self.descView.backgroundColor = UIColor.clearColor;
     self.descView.delegate = self;
+    [KeyboardAccessory installOnInput:self.descView];
     self.descView.textContainerInset = UIEdgeInsetsZero;
     self.descView.textContainer.lineFragmentPadding = 0;
 
@@ -712,6 +714,7 @@ static NSString *feedbackTruncateToCodePoints(NSString *string, NSUInteger maxPo
     self.contactField.layer.cornerRadius = 12;
     self.contactField.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 44)];
     self.contactField.leftViewMode = UITextFieldViewModeAlways;
+    [KeyboardAccessory installOnInput:self.contactField];
     [self.contactField.heightAnchor constraintEqualToConstant:44].active = YES;
 
     [contactSection addArrangedSubview:self.contactField];

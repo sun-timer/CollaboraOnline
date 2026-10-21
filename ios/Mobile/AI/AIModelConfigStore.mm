@@ -167,6 +167,10 @@ static NSString *const AIModelDefaultEndpoint = @"https://api.openai.com/v1/chat
     }
 }
 
+- (NSString *)defaultModelNameForModelType:(AIModelType)modelType {
+    return [self defaultModelName:modelType];
+}
+
 - (NSString *)defaultModelName:(AIModelType)modelType {
     switch (modelType) {
         case AIModelTypeThink:

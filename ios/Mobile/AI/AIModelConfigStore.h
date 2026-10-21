@@ -39,6 +39,7 @@ typedef NS_ENUM(NSInteger, AIModelType) {
 - (BOOL)saveForm:(AIModelConfigForm *)form modelType:(AIModelType)modelType error:(NSError * _Nullable * _Nullable)error;
 - (NSString *)displayNameForModelType:(AIModelType)modelType;
 - (NSString *)defaultTitleForModelType:(AIModelType)modelType;
+- (NSString *)defaultModelNameForModelType:(AIModelType)modelType;
 
 /// Sampling fields for chat completion body (align Android `loadSamplingParams`).
 - (NSDictionary<NSString *, id> *)samplingBodyFieldsForForm:(AIModelConfigForm *)form;

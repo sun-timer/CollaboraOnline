@@ -46,6 +46,7 @@
 #import "Toolbar/TopToolbarController.h"
 
 #import "DocumentViewController.h"
+#import "KeyboardAccessory.h"
 #import "AI/WriterAIComponents.h"
 #import "AI/AiConversationStore.h"
 #import "AI/ImpressOutlineOverlayController.h"
@@ -70,6 +71,8 @@
     NSString *aiFullText;
     CGFloat keyboardHeight;
     BOOL keyboardVisibleForCanvas;
+    BOOL keyboardTransitionActive;
+    NSInteger keyboardTransitionDepth;
     AIService *aiService;
     IOSTopToolbarController *topToolbarController;
     IOSBottomToolbarController *bottomToolbarController;
@@ -232,8 +235,10 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         [bottomToolbarController.view.trailingAnchor constraintEqualToAnchor:bottomToolbarContainer.trailingAnchor],
         [bottomToolbarController.view.bottomAnchor constraintEqualToAnchor:bottomToolbarContainer.bottomAnchor],
     ]];
+    self.view.keyboardLayoutGuide.usesBottomSafeArea = YES;
+    self.view.keyboardLayoutGuide.followsUndockedKeyboard = NO;
     bottomToolbarBottomConstraint = [bottomToolbarContainer.bottomAnchor
-        constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor];
+        constraintEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor];
     bottomToolbarBottomConstraint.active = YES;
     bottomToolbarHeightConstraint = [bottomToolbarContainer.heightAnchor
         constraintEqualToConstant:bottomToolbarController.preferredHeight];
@@ -241,10 +246,9 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
 
     [self ensureKeyboardFrameObserver];
 
-    // The system input accessory is the up/down/done bar between the keyboard
-    // and the bottom toolbar. Hide it for this document view, including when
-    // a software keyboard is visible. Editing still raises the keyboard itself.
     Class webBrowserClass = NSClassFromString(@"WKContentView");
+
+    // The document toolbar is the input accessory; native fields install KeyboardAccessory themselves.
     Method accessoryMethod = class_getInstanceMethod(webBrowserClass, @selector(inputAccessoryView));
     static bool accessorySwizzled = false;
     if (!accessorySwizzled && accessoryMethod != nil) {
@@ -734,6 +738,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     // Prevent the WebView from scrolling. Sadly I couldn't figure out how to do it in the JS,
     // so the problem is still there when using Online from Mobile Safari.
     self.webView.scrollView.scrollEnabled = NO;
+    self.webView.scrollView.pinchGestureRecognizer.enabled = NO;
 
     // Reenable debugging from Safari
     // The new WKWebView.inspectable property must be set to YES in order
@@ -816,9 +821,23 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                     name:UIKeyboardWillChangeFrameNotification
                                                   object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIKeyboardWillShowNotification
+                                                  object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIKeyboardWillHideNotification
+                                                  object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(keyboardWillChangeFrame:)
                                                  name:UIKeyboardWillChangeFrameNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillShow:)
+                                                 name:UIKeyboardWillShowNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillHide:)
+                                                 name:UIKeyboardWillHideNotification
                                                object:nil];
 }
 
@@ -1073,6 +1092,12 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     [nativeBridgeHandler cancelAllRequests];
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                     name:UIKeyboardWillChangeFrameNotification
+                                                  object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIKeyboardWillShowNotification
+                                                  object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIKeyboardWillHideNotification
                                                   object:nil];
     [self removeDocumentCopyIfNeeded];
     dispatch_group_notify(forwardingThreadGroup, dispatch_get_main_queue(), ^{
@@ -2146,26 +2171,32 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     [self sendToolbarJavaScript:script];
 }
 
-- (void)keyboardWillChangeFrame:(NSNotification *)notification
+// Single place that changes the compact bottom toolbar state. Only call it on a real transition.
+- (void)applyKeyboardVisibleState:(BOOL)keyboardVisible
 {
-    CGRect keyboardFrame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
-    CGRect localKeyboardFrame = [self.view convertRect:keyboardFrame fromView:nil];
-    CGFloat safeBottom = CGRectGetMaxY(self.view.bounds) - self.view.safeAreaInsets.bottom;
-    BOOL keyboardVisible = CGRectGetMinY(localKeyboardFrame) < CGRectGetMaxY(self.view.bounds);
-    BOOL keyboardWasVisible = keyboardVisibleForCanvas;
     keyboardVisibleForCanvas = keyboardVisible;
-    CGFloat bottomOffset = keyboardVisible ? MIN(0.0, CGRectGetMinY(localKeyboardFrame) - safeBottom) : 0.0;
-    NSTimeInterval duration = [notification.userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
-    UIViewAnimationOptions options =
-        ([notification.userInfo[UIKeyboardAnimationCurveUserInfoKey] integerValue] << 16)
-        | UIViewAnimationOptionBeginFromCurrentState;
-
     bottomToolbarController.compact = keyboardVisible;
     [self sendToolbarJavaScript:keyboardVisible
         ? @"if(window.__coolMobileSelectionMenu&&__coolMobileSelectionMenu.setKeyboardVisible){__coolMobileSelectionMenu.setKeyboardVisible(true);}"
         : @"if(window.__coolMobileSelectionMenu&&__coolMobileSelectionMenu.setKeyboardVisible){__coolMobileSelectionMenu.setKeyboardVisible(false);}"];
     bottomToolbarHeightConstraint.constant = bottomToolbarController.preferredHeight;
-    bottomToolbarBottomConstraint.constant = bottomOffset;
+}
+
+// Animates the layout pass that lets keyboardLayoutGuide move the bottom toolbar.
+// The toolbar's vertical position comes from the guide, so no constant is set here.
+- (void)animateKeyboardLayoutForNotification:(NSNotification *)notification
+                                  completion:(void (^)(void))completion
+{
+    NSTimeInterval duration = [notification.userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+    UIViewAnimationOptions options =
+        ([notification.userInfo[UIKeyboardAnimationCurveUserInfoKey] integerValue] << 16)
+        | UIViewAnimationOptionBeginFromCurrentState;
+
+    // WillShow and a covering WillChange are delivered together. A single flag
+    // would be cleared by the first completion while the second animation is
+    // still running, and viewSafeAreaInsetsDidChange would then lay the toolbar out.
+    keyboardTransitionDepth += 1;
+    keyboardTransitionActive = YES;
     [UIView animateWithDuration:duration
                           delay:0.0
                         options:options
@@ -2173,17 +2204,61 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         [self.view layoutIfNeeded];
     }
                      completion:^(BOOL finished) {
-        if (keyboardWasVisible && !keyboardVisible) {
+        if (self->keyboardTransitionDepth > 0)
+            self->keyboardTransitionDepth -= 1;
+        self->keyboardTransitionActive = self->keyboardTransitionDepth > 0;
+        if (completion != nil) {
+            completion();
+        }
+    }];
+}
+
+- (void)keyboardWillShow:(NSNotification *)notification
+{
+    [self applyKeyboardVisibleState:YES];
+    [self animateKeyboardLayoutForNotification:notification completion:nil];
+}
+
+- (void)keyboardWillHide:(NSNotification *)notification
+{
+    BOOL keyboardWasVisible = keyboardVisibleForCanvas;
+    [self applyKeyboardVisibleState:NO];
+    [self animateKeyboardLayoutForNotification:notification completion:^{
+        if (keyboardWasVisible) {
             [self recoverCalcCanvasAfterKeyboardHidden];
         }
     }];
+}
+
+// WillChange never clears the compact state. It only compacts when the end frame
+// clearly covers the view, so a show that delivers only WillChange still compacts.
+- (void)keyboardWillChangeFrame:(NSNotification *)notification
+{
+    CGRect keyboardFrame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    UIWindow *window = self.view.window;
+    CGRect localKeyboardFrame = window
+        ? [self.view convertRect:keyboardFrame fromCoordinateSpace:window.screen.coordinateSpace]
+        : [self.view convertRect:keyboardFrame fromView:nil];
+    BOOL keyboardCoversView = CGRectIntersectsRect(self.view.bounds, localKeyboardFrame)
+        && CGRectGetMinY(localKeyboardFrame) < CGRectGetMaxY(self.view.bounds);
+    // A second show often delivers a frame that misses the view. Laying out
+    // against that frame lets keyboardLayoutGuide drop the toolbar. WillHide
+    // owns a real dismiss.
+    if (!keyboardCoversView)
+        return;
+    if (!keyboardVisibleForCanvas)
+        [self applyKeyboardVisibleState:YES];
+    [self animateKeyboardLayoutForNotification:notification completion:nil];
 }
 
 - (void)viewSafeAreaInsetsDidChange
 {
     [super viewSafeAreaInsetsDidChange];
     [topToolbarController relayout];
-    [bottomToolbarController relayout];
+    // During a keyboard animation the guide drives the bottom toolbar; do not lay it out here.
+    if (!keyboardTransitionActive) {
+        [bottomToolbarController relayout];
+    }
     [self sendToolbarJavaScript:@"if(window.app&&app.map&&typeof app.map.invalidateSize==='function'){app.map.invalidateSize();}"];
 }
 
@@ -3012,6 +3087,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
                                                                    message:nil
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+        [KeyboardAccessory installOnInput:textField];
         textField.text = currentName;
         textField.clearButtonMode = UITextFieldViewModeWhileEditing;
     }];

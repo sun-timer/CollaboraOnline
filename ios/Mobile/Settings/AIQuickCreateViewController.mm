@@ -6,6 +6,7 @@
  */
 
 #import "AIQuickCreateViewController.h"
+#import "../KeyboardAccessory.h"
 
 #import "AI/AIService.h"
 #import "DocumentPresentation.h"
@@ -96,6 +97,7 @@ static NSString *const kQuickCreateSessionId = @"home-ai-quick-create";
     field.translatesAutoresizingMaskIntoConstraints = NO;
     field.placeholder = placeholder;
     field.borderStyle = UITextBorderStyleRoundedRect;
+    [KeyboardAccessory installOnInput:field];
     field.font = [UIFont systemFontOfSize:16];
     [field.heightAnchor constraintEqualToConstant:44].active = YES;
     return field;

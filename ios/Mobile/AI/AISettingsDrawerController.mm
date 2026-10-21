@@ -6,6 +6,8 @@
  */
 
 #import "AISettingsDrawerController.h"
+#import "../KeyboardAccessory.h"
+#import <WebKit/WebKit.h>
 
 #import "AIModelConfigStore.h"
 #import "AISettingsDrawerIcons.h"
@@ -84,6 +86,7 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
 @property (strong, nonatomic) UITextField *urlField;
 @property (strong, nonatomic) UITextField *apiKeyField;
 @property (strong, nonatomic) UITextField *modelNameField;
+@property (assign, nonatomic) BOOL configDetailsVisible;
 @property (strong, nonatomic) UISlider *topPSlider;
 @property (strong, nonatomic) UISlider *temperatureSlider;
 @property (strong, nonatomic) UISlider *presenceSlider;
@@ -159,6 +162,9 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     self.configPanel = [[UIView alloc] init];
     self.configPanel.translatesAutoresizingMaskIntoConstraints = NO;
     self.configPanel.backgroundColor = UIColor.whiteColor;
+    self.configPanel.userInteractionEnabled = NO;
+    self.configPanel.accessibilityIdentifier = @"aiSettings.modelConfigDetail";
+    self.configPanel.accessibilityElementsHidden = YES;
     [self.view addSubview:self.configPanel];
 
     self.panelLeading = [self.panelView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:-width];
@@ -586,19 +592,39 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     connectionTitleRow.spacing = 8;
     connectionTitleRow.alignment = UIStackViewAlignmentCenter;
     UIImageView *connectionIcon = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"ai-connection" size:20]];
+    connectionIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    connectionIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [NSLayoutConstraint activateConstraints:@[
+        [connectionIcon.widthAnchor constraintEqualToConstant:20],
+        [connectionIcon.heightAnchor constraintEqualToConstant:20],
+    ]];
     [connectionTitleRow addArrangedSubview:connectionIcon];
     [connectionTitleRow addArrangedSubview:[self makeSectionTitle:@"连接" icon:@"ai-connection"]];
     [connectionStack addArrangedSubview:connectionTitleRow];
     [connectionStack setCustomSpacing:16 afterView:connectionTitleRow];
 
     self.configNameField = [self addField:@"配置名称（如：公司 API、个人 DeepSeek）" placeholder:@"请输入配置名称" to:connectionStack];
+    self.configNameField.accessibilityIdentifier = @"aiModelConfig.name";
     self.providerField = [self addField:@"模型供应商（OpenAI / Azure / Ollama / Local / DeepSeek）" placeholder:@"OpenAI" to:connectionStack];
+    self.providerField.accessibilityIdentifier = @"aiModelConfig.provider";
     self.urlField = [self addField:@"URL（接口地址）" placeholder:@"https://api.openai.com/v1/chat/completions" to:connectionStack];
+    self.urlField.accessibilityIdentifier = @"aiModelConfig.url";
     self.urlField.keyboardType = UIKeyboardTypeURL;
     [self.urlField addTarget:self action:@selector(urlFieldDidChange:) forControlEvents:UIControlEventEditingChanged];
     self.apiKeyField = [self addField:@"API Key（密钥）" placeholder:@"sk-...（部分服务可留空）" to:connectionStack];
+    self.apiKeyField.accessibilityIdentifier = @"aiModelConfig.apiKey";
     self.apiKeyField.secureTextEntry = YES;
-    self.modelNameField = [self addField:@"模型名称（如 gpt-4o、llama3）" placeholder:@"点击获取模型列表" to:connectionStack];
+    self.modelNameField = [self addField:@"模型名称（如 gpt-4o、llama3）" placeholder:@"请输入模型名称" to:connectionStack];
+    self.modelNameField.accessibilityIdentifier = @"aiModelConfig.modelName";
+    UIButton *modelPickerButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    modelPickerButton.frame = CGRectMake(0, 0, 56, 40);
+    modelPickerButton.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    [modelPickerButton setTitle:@"获取" forState:UIControlStateNormal];
+    [modelPickerButton setTitleColor:AIDrawerColorOrange() forState:UIControlStateNormal];
+    [modelPickerButton addTarget:self action:@selector(fetchModelsForCurrentConfiguration)
+                forControlEvents:UIControlEventTouchUpInside];
+    self.modelNameField.rightView = modelPickerButton;
+    self.modelNameField.rightViewMode = UITextFieldViewModeAlways;
 
     UIView *paramsCard = [self makeSettingsCard];
     UIStackView *paramsStack = [[UIStackView alloc] init];
@@ -612,6 +638,12 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     paramsTitleRow.spacing = 8;
     paramsTitleRow.alignment = UIStackViewAlignmentCenter;
     UIImageView *paramsIcon = [[UIImageView alloc] initWithImage:[AISettingsDrawerIcons iconNamed:@"ai-params" size:20]];
+    paramsIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    paramsIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [NSLayoutConstraint activateConstraints:@[
+        [paramsIcon.widthAnchor constraintEqualToConstant:20],
+        [paramsIcon.heightAnchor constraintEqualToConstant:20],
+    ]];
     [paramsTitleRow addArrangedSubview:paramsIcon];
     [paramsTitleRow addArrangedSubview:[self makeSectionTitle:@"参数" icon:@"ai-params"]];
     [paramsStack addArrangedSubview:paramsTitleRow];
@@ -745,6 +777,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     field.leftViewMode = UITextFieldViewModeAlways;
     field.rightView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 1)];
     field.rightViewMode = UITextFieldViewModeAlways;
+    [KeyboardAccessory installOnInput:field];
     [field.heightAnchor constraintEqualToConstant:40].active = YES;
     [fieldGroup addArrangedSubview:field];
     [stack addArrangedSubview:fieldGroup];
@@ -801,6 +834,9 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     CGFloat width = self.panelView.bounds.size.width;
     CGFloat x = [gesture translationInView:self.host.view].x;
     if (gesture.state == UIGestureRecognizerStateBegan) {
+        [self.host.view endEditing:YES];
+        WKWebView *hostWebView = [self.host respondsToSelector:@selector(webView)] ? [self.host valueForKey:@"webView"] : nil;
+        [hostWebView evaluateJavaScript:@"if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();" completionHandler:nil];
         self.view.userInteractionEnabled = YES;
         [self.host.view bringSubviewToFront:self.view];
     } else if (gesture.state == UIGestureRecognizerStateChanged) {
@@ -818,9 +854,13 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 }
 
 - (void)openDrawer {
+    [self.host.view endEditing:YES];
+    WKWebView *hostWebView = [self.host respondsToSelector:@selector(webView)] ? [self.host valueForKey:@"webView"] : nil;
+    [hostWebView evaluateJavaScript:@"if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();" completionHandler:nil];
     [self.host.view bringSubviewToFront:self.view];
     self.view.userInteractionEnabled = YES;
     self.open = YES;
+    self.view.accessibilityIdentifier = @"aiSettings.drawer";
     [self reloadProfile];
     [self reloadLocalModelStatus];
     [self reloadModelRows];
@@ -833,6 +873,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 }
 
 - (void)closeDrawer {
+    [self.host.view endEditing:YES];
     [self hideConfigAnimated:NO];
     CGFloat width = self.panelView.bounds.size.width;
     [UIView animateWithDuration:0.25 animations:^{
@@ -869,6 +910,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 }
 
 - (void)showConfigForType:(AIModelType)type {
+    [self.view endEditing:YES];
     self.editingType = type;
     AIModelConfigForm *form = [self.modelStore loadForm:type];
     self.configTitleLabel.text = [self.modelStore defaultTitleForModelType:type];
@@ -892,15 +934,27 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     [self sliderChanged:self.seedSlider];
 
     CGFloat width = self.panelView.bounds.size.width;
+    self.configDetailsVisible = NO;
+    self.configPanel.userInteractionEnabled = NO;
     self.configLeading.constant = -width;
     [self.view layoutIfNeeded];
     [UIView animateWithDuration:0.25 animations:^{
         self.configLeading.constant = 0;
         [self.view layoutIfNeeded];
+    } completion:^(BOOL finished) {
+        if (!finished || !self.open) return;
+        self.configPanel.userInteractionEnabled = YES;
+        self.configPanel.accessibilityElementsHidden = NO;
+        self.configDetailsVisible = YES;
     }];
 }
 
 - (void)hideConfigAnimated:(BOOL)animated {
+    [self.view endEditing:YES];
+    [self.host.view endEditing:YES];
+    self.configDetailsVisible = NO;
+    self.configPanel.userInteractionEnabled = NO;
+    self.configPanel.accessibilityElementsHidden = YES;
     CGFloat width = self.panelView.bounds.size.width;
     void (^work)(void) = ^{
         self.configLeading.constant = -width;
@@ -1035,11 +1089,20 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 }
 
 - (BOOL)textFieldShouldBeginEditing:(UITextField *)textField {
-    if (textField == self.modelNameField) {
-        [self fetchModelsForCurrentConfiguration];
-        return NO;
+    if ([textField isDescendantOfView:self.configPanel]) {
+        return self.open && self.configDetailsVisible && self.configPanel.userInteractionEnabled;
     }
     return YES;
+}
+
+- (void)textFieldDidBeginEditing:(UITextField *)textField {
+    if ((textField == self.providerField || textField == self.urlField) &&
+        [textField.text isEqualToString:textField.placeholder]) {
+        textField.text = @"";
+    } else if (textField == self.modelNameField &&
+               [textField.text isEqualToString:[self.modelStore defaultModelNameForModelType:self.editingType]]) {
+        textField.text = @"";
+    }
 }
 
 - (void)urlFieldDidChange:(UITextField *)textField {
@@ -1326,6 +1389,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
                                                                    message:nil
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
+        [KeyboardAccessory installOnInput:field];
         field.placeholder = @"输入模型名称";
         field.text = self.modelNameField.text;
         field.autocorrectionType = UITextAutocorrectionTypeNo;

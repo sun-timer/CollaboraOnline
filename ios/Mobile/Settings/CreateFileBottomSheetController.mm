@@ -6,6 +6,7 @@
  */
 
 #import "CreateFileBottomSheetController.h"
+#import "../KeyboardAccessory.h"
 #import "../Typeset/TypesetService.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
@@ -304,6 +305,7 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
     field.leftViewMode = UITextFieldViewModeAlways;
     field.rightView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 1)];
     field.rightViewMode = UITextFieldViewModeAlways;
+    [KeyboardAccessory installOnInput:field];
     return field;
 }
 
@@ -466,6 +468,7 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
     inputCard.backgroundColor = UIColor.whiteColor;
     inputCard.layer.cornerRadius = 10;
     self.impressPromptView = [[UITextView alloc] init];
+    [KeyboardAccessory installOnInput:self.impressPromptView];
     self.impressPromptView.translatesAutoresizingMaskIntoConstraints = NO;
     self.impressPromptView.font = [UIFont systemFontOfSize:14];
     self.impressPromptView.backgroundColor = UIColor.clearColor;

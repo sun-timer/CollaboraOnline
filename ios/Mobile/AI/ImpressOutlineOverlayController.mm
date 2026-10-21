@@ -9,6 +9,7 @@
  */
 
 #import "ImpressOutlineOverlayController.h"
+#import "../KeyboardAccessory.h"
 
 #import "AIService.h"
 #import "../Typeset/PptxTemplateService.h"
@@ -402,6 +403,7 @@ static NSString *PptxSafeType(id value) {
     view.text = placeholder;
     view.textColor = [UIColor colorWithWhite:0.6 alpha:1];
     view.delegate = self;
+    [KeyboardAccessory installOnInput:view];
     view.tag = 1;
     return view;
 }
@@ -891,6 +893,7 @@ static NSString *PptxSafeType(id value) {
         type.text = [self typeLabelForKey:PptxSafeType(slide[@"type"])];
         UITextField *title = [[UITextField alloc] init];
         title.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+        [KeyboardAccessory installOnInput:title];
         title.text = slide[@"title"] ?: @"";
         title.tag = (NSInteger)idx;
         [title addTarget:self action:@selector(titleChanged:) forControlEvents:UIControlEventEditingChanged];
@@ -900,6 +903,7 @@ static NSString *PptxSafeType(id value) {
         content.backgroundColor = [UIColor clearColor];
         content.tag = (NSInteger)idx + 1000;
         content.delegate = self;
+        [KeyboardAccessory installOnInput:content];
         content.scrollEnabled = NO;
         [content.heightAnchor constraintGreaterThanOrEqualToConstant:36].active = YES;
         UIStackView *head = [[UIStackView alloc] initWithArrangedSubviews:@[page, type]];

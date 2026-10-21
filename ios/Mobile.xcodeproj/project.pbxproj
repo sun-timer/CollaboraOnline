@@ -81,6 +81,7 @@
 		C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE272026082400000001 /* RecentDocumentsStore.mm */; };
 		C0FFEE292026082400000001 /* AIModelConfigStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */; };
 		C0FFEE2C2026082400000001 /* AISettingsDrawerController.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */; };
+		A11CE0012026102000000001 /* KeyboardAccessory.mm in Sources */ = {isa = PBXBuildFile; fileRef = A11CE0022026102000000001 /* KeyboardAccessory.mm */; };
 		C0FFEE2E2026082400000002 /* AISettingsDrawerIcons.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2F2026082400000002 /* AISettingsDrawerIcons.mm */; };
 		C0FFEE302026091200000001 /* TypesetService.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE312026091200000001 /* TypesetService.mm */; };
 		C0FFEE342026091200000001 /* zip.c in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE352026091200000001 /* zip.c */; };
@@ -967,6 +968,8 @@
 		BE8D772E2136762500AC58EA /* DocumentBrowserViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DocumentBrowserViewController.mm; sourceTree = "<group>"; };
 		BE8D77302136762500AC58EA /* DocumentViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DocumentViewController.h; sourceTree = "<group>"; };
 		BE8D77312136762500AC58EA /* DocumentViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DocumentViewController.mm; sourceTree = "<group>"; };
+		A11CE0022026102000000001 /* KeyboardAccessory.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = KeyboardAccessory.mm; sourceTree = "<group>"; };
+		A11CE0032026102000000001 /* KeyboardAccessory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyboardAccessory.h; sourceTree = "<group>"; };
 		C0FFEE002026081200000001 /* NativeBridgeHandler.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = NativeBridgeHandler.mm; sourceTree = "<group>"; };
 		C0FFEE022026081200000001 /* NativeBridgeHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NativeBridgeHandler.h; sourceTree = "<group>"; };
 		C0FFEE102026081200000001 /* KeychainStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = KeychainStore.mm; sourceTree = "<group>"; };
@@ -2964,6 +2967,8 @@
 				C0FFEE272026082400000001 /* RecentDocumentsStore.mm */,
 				BE8D77302136762500AC58EA /* DocumentViewController.h */,
 				BE8D77312136762500AC58EA /* DocumentViewController.mm */,
+				A11CE0032026102000000001 /* KeyboardAccessory.h */,
+				A11CE0022026102000000001 /* KeyboardAccessory.mm */,
 				BEFB1EDF21C29CC70081D757 /* L10n.h */,
 				BEFB1EE021C29CC70081D757 /* L10n.mm */,
 				BEDCC8972456FFAC00FB02BD /* SceneDelegate.h */,
@@ -4250,6 +4255,7 @@
 				BEA2835621467F0D00848631 /* KitWebSocket.cpp in Sources */,
 				BE980C532CE3499900FED7BC /* Util-unix.cpp in Sources */,
 				BE8D77322136762500AC58EA /* DocumentViewController.mm in Sources */,
+				A11CE0012026102000000001 /* KeyboardAccessory.mm in Sources */,
 				C0FFEE012026081200000001 /* NativeBridgeHandler.mm in Sources */,
 				C0FFEE122026081200000001 /* KeychainStore.mm in Sources */,
 				C0FFEE132026081200000001 /* AIConfigurationStore.mm in Sources */,

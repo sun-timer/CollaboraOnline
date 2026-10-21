@@ -8,6 +8,7 @@
 #import "HomeViewController.h"
 
 #import "AI/AISettingsDrawerController.h"
+#import "KeyboardAccessory.h"
 #import "DocumentPresentation.h"
 #import "RecentDocumentsStore.h"
 #import "DocumentPresentationLaunchOptions.h"
@@ -263,6 +264,7 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
         NSFontAttributeName: [UIFont systemFontOfSize:16],
     }];
     self.searchField.delegate = self;
+    [KeyboardAccessory installOnInput:self.searchField];
     self.searchField.accessibilityIdentifier = @"homeSearchField";
     self.searchField.clearButtonMode = UITextFieldViewModeWhileEditing;
     self.searchField.returnKeyType = UIReturnKeySearch;
