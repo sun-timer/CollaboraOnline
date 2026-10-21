@@ -714,6 +714,7 @@ static UIColor *WriterAIIconColor(NSString *hex)
         @{ @"name": @"action-remove", @"vb": @48.0, @"fill": @YES, @"tint": @YES,
            @"paths": @[ @{ @"d": @"M45,10C45.5523,10 46,10.4477 46,11C46,11.5523 45.5523,12 45,12H39.501V42.667L39.4912,42.8975C39.4471,43.4314 39.2513,43.9336 38.9336,44.3164L38.791,44.4717C38.4464,44.8116 38.0128,44.9999 37.5635,45H10.4385C9.92474,45 9.43169,44.7538 9.06836,44.3164C8.75057,43.9336 8.55483,43.4314 8.51074,42.8975L8.50098,42.667V12H3C2.44772,12 2,11.5523 2,11C2,10.4477 2.44772,10 3,10H45ZM10.501,42.667C10.5011,42.8228 10.5443,42.9367 10.5811,43H37.4209C37.4577,42.9367 37.5009,42.8227 37.501,42.667V12H10.501V42.667ZM19,20C19.5523,20 20,20.4477 20,21V32C20,32.5523 19.5523,33 19,33C18.4477,33 18,32.5523 18,32V21C18,20.4477 18.4477,20 19,20ZM29,20C29.5523,20 30,20.4477 30,21V32C30,32.5523 29.5523,33 29,33C28.4477,33 28,32.5523 28,32V21C28,20.4477 28.4477,20 29,20ZM33,4C33.5523,4 34,4.4477 34,5C34,5.5523 33.5523,6 33,6H15C14.4477,6 14,5.5523 14,5C14,4.4477 14.4477,4 15,4H33Z" } ] },
         @{ @"name": @"open-docs", @"vb": @48.0, @"sw": @2.0, @"tint": @YES,
+           @"ox": @8.0, @"oy": @5.0,
            @"paths": @[ @{ @"d": @"M1.948,38.5L29.219,38.5C30.295,38.5 31.167,37.638 31.167,36.575L31.181,11.917L20.472,11.917L20.472,0L1.948,0C0.872,0 0,0.862 0,1.925L0,36.575C0,37.638 0.872,38.5 1.948,38.5Z" },
                         @{ @"d": @"M20.472,0L31.181,11.917" } ] },
         @{ @"name": @"undo", @"vb": @48.0, @"sw": @2.0, @"tint": @YES,
@@ -948,6 +949,10 @@ static UIColor *WriterAIIconColor(NSString *hex)
     double outputPx = spec[@"px"] != nil ? [spec[@"px"] doubleValue] : 24.0;
     double scale = outputPx / viewBox;
     double strokeWidth = [spec[@"sw"] doubleValue] * scale;
+    // Spec offset is in viewBox units (Android open-docs translates by 8, 5).
+    // Translate first, then scale, so the offset is scaled with the path.
+    double offsetX = [spec[@"ox"] doubleValue];
+    double offsetY = [spec[@"oy"] doubleValue];
     BOOL defaultFill = [spec[@"fill"] boolValue];
     BOOL tint = [spec[@"tint"] boolValue];
 
@@ -970,6 +975,7 @@ static UIColor *WriterAIIconColor(NSString *hex)
                 if (!WriterAIIconAppendPath(path, pathSpec[@"d"])) {
                     continue;
                 }
+                [path applyTransform:CGAffineTransformMakeTranslation(offsetX, offsetY)];
                 [path applyTransform:CGAffineTransformMakeScale(scale, scale)];
             }
             if (pathFill) {

@@ -20,7 +20,6 @@
     dispatch_once(&once, ^{
         homeAssets = @{
             @"search": @"HomeSearch",
-            @"folder": @"HomeFolder",
             @"more": @"HomeMoreDots",
             @"avatar": @"HomeAvatar",
             @"file-writer": @"HomeFileWriter",

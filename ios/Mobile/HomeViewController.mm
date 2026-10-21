@@ -39,6 +39,8 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
     self = [super initWithStyle:style reuseIdentifier:reuseIdentifier];
     if (self) {
         self.selectionStyle = UITableViewCellSelectionStyleDefault;
+        self.backgroundColor = UIColor.whiteColor;
+        self.contentView.backgroundColor = UIColor.whiteColor;
         self.fileIconView = [[UIImageView alloc] init];
         self.fileIconView.translatesAutoresizingMaskIntoConstraints = NO;
         self.fileIconView.contentMode = UIViewContentModeScaleAspectFit;
@@ -104,6 +106,8 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
+        self.backgroundColor = UIColor.whiteColor;
+        self.contentView.backgroundColor = UIColor.whiteColor;
         self.fileIconView = [[UIImageView alloc] init];
         self.fileIconView.translatesAutoresizingMaskIntoConstraints = NO;
         self.fileIconView.contentMode = UIViewContentModeScaleAspectFit;
@@ -178,6 +182,7 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    self.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
     self.view.backgroundColor = UIColor.whiteColor;
     self.view.accessibilityIdentifier = @"homeRoot";
     self.recentStore = [[RecentDocumentsStore alloc] init];
@@ -332,6 +337,8 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
     self.tableView.delegate = self;
     self.tableView.rowHeight = 59;
     self.tableView.contentInset = UIEdgeInsetsMake(0, 0, 140, 0);
+    self.tableView.backgroundColor = UIColor.whiteColor;
+    self.tableView.separatorColor = [UIColor colorWithWhite:0 alpha:0.08];
     self.tableView.separatorInset = UIEdgeInsetsMake(0, 16, 0, 16);
     self.tableView.tableFooterView = [[UIView alloc] init];
     self.tableView.accessibilityIdentifier = @"homeRecentsTable";
@@ -425,9 +432,9 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
     [self.view addSubview:self.emptyRecentState];
 
     self.emptySearchState = [self buildEmptyContainerWithImage:@"empty-search"
-                                                         title:@"搜索结果为空"
+                                                         title:@"未找到相关文档"
                                                       subtitle:nil
-                                                  retryVisible:YES];
+                                                  retryVisible:NO];
     self.emptySearchState.accessibilityIdentifier = @"homeEmptySearch";
     [self.view addSubview:self.emptySearchState];
 }

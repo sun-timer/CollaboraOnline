@@ -12,7 +12,6 @@
 #import "DocumentPresentationLaunchOptions.h"
 #import "DocumentViewController.h"
 #import "RecentDocumentsStore.h"
-#import "MobileApp.hpp"
 
 static NSString *const DocumentPresentationErrorDomain = @"com.xunlong.xloffice.document";
 static const int kKitIdlePollAttempts = 60;
@@ -76,7 +75,9 @@ static const int kKitIdlePollIntervalMs = 50;
         return;
     }
 
-    [self waitForKitIdleThenPresent:documentURL from:presenter options:options attempt:0];
+    // Show the document chrome immediately. Kit idle is waited out inside
+    // DocumentViewController before openWithCompletionHandler.
+    [self presentDocumentNowAtURL:documentURL from:presenter options:options];
 }
 
 + (void)waitForKitIdleThenPresent:(NSURL *)documentURL
@@ -84,15 +85,6 @@ static const int kKitIdlePollIntervalMs = 50;
                           options:(DocumentPresentationLaunchOptions *)options
                           attempt:(int)attempt {
     if (presenter.presentedViewController != nil && attempt < kKitIdlePollAttempts) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-                                     (int64_t)(kKitIdlePollIntervalMs * NSEC_PER_MSEC)),
-                       dispatch_get_main_queue(), ^{
-            [self waitForKitIdleThenPresent:documentURL from:presenter options:options attempt:attempt + 1];
-        });
-        return;
-    }
-
-    if (DocumentData::isAnyDocumentOpen() && attempt < kKitIdlePollAttempts) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
                                      (int64_t)(kKitIdlePollIntervalMs * NSEC_PER_MSEC)),
                        dispatch_get_main_queue(), ^{
@@ -110,6 +102,7 @@ static const int kKitIdlePollIntervalMs = 50;
     [documentURL startAccessingSecurityScopedResource];
     RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
     [store recordURL:documentURL];
+    [store beginSessionWithURL:documentURL];
 
     UIStoryboard *storyBoard = [UIStoryboard storyboardWithName:@"Main" bundle:nil];
     DocumentViewController *documentViewController =

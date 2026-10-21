@@ -30,9 +30,19 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (NSArray<RecentDocumentItem *> *)items;
 - (NSArray<RecentDocumentItem *> *)recentlyClosedItems;
+/// Opened-tab session count. Zero when no document is in the session.
 - (NSUInteger)openDocumentCount;
 - (NSArray<RecentDocumentItem *> *)itemsMatchingQuery:(NSString *)query;
 - (void)recordURL:(NSURL *)url;
+/// Home open: session becomes exactly this URL. Does not remove other recent records.
+- (void)beginSessionWithURL:(nullable NSURL *)url;
+/// Tab open: insert this URL into the session if it is not already there.
+- (void)noteSessionOpenedURL:(nullable NSURL *)url;
+- (void)endSession;
+- (NSArray<RecentDocumentItem *> *)sessionOpenItems;
+/// Drop the row from the opened-tab session and prepend it to recently closed.
+/// Home recents (`records`) are left in place.
+- (void)removeSessionItem:(RecentDocumentItem *)item;
 /** Re-read RECENT_* keys from NSUserDefaults (other screens persist via new store instances). */
 - (void)reloadFromPersistentStorage;
 - (void)importLocalTestFiles;

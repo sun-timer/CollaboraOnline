@@ -11,6 +11,17 @@ static NSString *const RecentDocumentsStoreKey = @"RECENT_DOCUMENTS_BOOKMARKS";
 static NSString *const RecentlyClosedDocumentsStoreKey = @"RECENTLY_CLOSED_DOCUMENTS_BOOKMARKS";
 static const NSUInteger RecentDocumentsStoreMaxItems = 30;
 
+// Opened tabs are a process-wide session. RecentDocumentsStore is alloc/init
+// on each screen, so an ivar would not be shared, and this list is not persisted.
+static NSMutableArray<RecentDocumentItem *> *RecentDocumentsSessionItems(void) {
+    static NSMutableArray<RecentDocumentItem *> *items;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        items = [NSMutableArray array];
+    });
+    return items;
+}
+
 @implementation RecentDocumentItem
 
 - (NSURL *)resolvedURL {
@@ -112,6 +123,7 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
 @interface RecentDocumentsStore ()
 @property (strong, nonatomic) NSMutableArray<RecentDocumentItem *> *records;
 @property (strong, nonatomic) NSMutableArray<RecentDocumentItem *> *closedRecords;
+- (nullable RecentDocumentItem *)itemForFileURL:(NSURL *)url;
 @end
 
 @implementation RecentDocumentsStore
@@ -130,7 +142,64 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
 }
 
 - (NSUInteger)openDocumentCount {
-    return MAX((NSUInteger)1, self.records.count);
+    return RecentDocumentsSessionItems().count;
+}
+
+- (NSArray<RecentDocumentItem *> *)sessionOpenItems {
+    return [RecentDocumentsSessionItems() copy];
+}
+
+- (void)beginSessionWithURL:(NSURL *)url {
+    if (url == nil || !url.isFileURL) {
+        return;
+    }
+    [RecentDocumentsSessionItems() removeAllObjects];
+    [self noteSessionOpenedURL:url];
+}
+
+- (void)noteSessionOpenedURL:(NSURL *)url {
+    RecentDocumentItem *item = [self itemForFileURL:url];
+    if (item == nil) {
+        return;
+    }
+    NSMutableArray<RecentDocumentItem *> *session = RecentDocumentsSessionItems();
+    for (RecentDocumentItem *existing in session) {
+        if ([self item:existing matchesItem:item]) {
+            return;
+        }
+    }
+    [session insertObject:item atIndex:0];
+}
+
+- (void)endSession {
+    [RecentDocumentsSessionItems() removeAllObjects];
+}
+
+- (void)removeSessionItem:(RecentDocumentItem *)item {
+    if (item == nil) {
+        return;
+    }
+    NSMutableArray<RecentDocumentItem *> *session = RecentDocumentsSessionItems();
+    NSMutableArray<RecentDocumentItem *> *nextSession = [NSMutableArray array];
+    for (RecentDocumentItem *existing in session) {
+        if (existing != item && ![self item:existing matchesItem:item]) {
+            [nextSession addObject:existing];
+        }
+    }
+    [session removeAllObjects];
+    [session addObjectsFromArray:nextSession];
+
+    NSMutableArray<RecentDocumentItem *> *nextClosed = [NSMutableArray arrayWithObject:item];
+    for (RecentDocumentItem *existing in self.closedRecords) {
+        if (![self item:existing matchesItem:item]) {
+            [nextClosed addObject:existing];
+        }
+    }
+    while (nextClosed.count > RecentDocumentsStoreMaxItems) {
+        [nextClosed removeLastObject];
+    }
+    self.closedRecords = nextClosed;
+    [self persistRecords:self.closedRecords forKey:RecentlyClosedDocumentsStoreKey];
 }
 
 - (NSArray<RecentDocumentItem *> *)items {
@@ -156,9 +225,9 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
     self.closedRecords = [[self loadRecordsForKey:RecentlyClosedDocumentsStoreKey] mutableCopy];
 }
 
-- (void)recordURL:(NSURL *)url {
+- (RecentDocumentItem *)itemForFileURL:(NSURL *)url {
     if (url == nil || !url.isFileURL) {
-        return;
+        return nil;
     }
     NSString *path = url.path.stringByStandardizingPath;
     RecentDocumentItem *item = [[RecentDocumentItem alloc] init];
@@ -178,6 +247,15 @@ static const NSUInteger RecentDocumentsStoreMaxItems = 30;
     if (scopedAccess) {
         [url stopAccessingSecurityScopedResource];
     }
+    return item;
+}
+
+- (void)recordURL:(NSURL *)url {
+    RecentDocumentItem *item = [self itemForFileURL:url];
+    if (item == nil) {
+        return;
+    }
+    NSString *path = item.path;
 
     NSMutableArray<RecentDocumentItem *> *next = [NSMutableArray array];
     [next addObject:item];
