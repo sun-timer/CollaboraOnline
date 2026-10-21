@@ -3,6 +3,7 @@ package org.libreoffice.androidlib;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -77,6 +78,7 @@ public class WordCountSheetController {
         });
         dialog.setOnShowListener(d -> expandSheet(panel));
         dialog.show();
+        AiDialogHelper.applyNoDimScrim(dialog);
     }
 
     public void update(JSONObject payload) {
@@ -174,17 +176,37 @@ public class WordCountSheetController {
     }
 
     private void expandSheet(View contentRoot) {
-        if (dialog == null) {
+        if (dialog == null || contentRoot == null) {
             return;
         }
+        int measured = measurePanelHeightPx(contentRoot);
         BottomSheetStyleHelper.applyFigmaPanel(dialog, contentRoot, host.dpToPx(28));
-        BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
-        options.logTag = "WordCountSheet";
+        int screenHeight = host.getContext().getResources().getDisplayMetrics().heightPixels;
+        int maxHeight = Math.round(screenHeight * 0.92f);
+        int targetHeight = Math.min(Math.max(measured, 1), maxHeight);
+
+        BottomSheetAnchorHelper.Options options =
+                BottomSheetAnchorHelper.overlayDocumentSheetOptions(host.getContext(), "WordCountSheet");
         options.draggable = false;
-        options.applyNavBarPadding = false;
-        options.internalBottomDesignPadPx = contentRoot.getResources()
-                .getDimensionPixelSize(org.libreoffice.androidlib.R.dimen.lolib_function_sheet_bottom_pad);
         BottomSheetAnchorHelper.clearAppliedHeight(dialog);
-        BottomSheetAnchorHelper.expandWrapContent(dialog, 0.92f, options);
+        BottomSheetAnchorHelper.expandFixed(dialog, targetHeight, options);
+
+        FrameLayout bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+        if (bottomSheet != null && bottomSheet.getChildCount() > 0) {
+            View root = bottomSheet.getChildAt(0);
+            ViewGroup.LayoutParams params = root.getLayoutParams();
+            if (params != null) {
+                params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                root.setLayoutParams(params);
+            }
+        }
+    }
+
+    private int measurePanelHeightPx(View panel) {
+        int screenWidth = host.getContext().getResources().getDisplayMetrics().widthPixels;
+        int widthSpec = View.MeasureSpec.makeMeasureSpec(screenWidth, View.MeasureSpec.EXACTLY);
+        int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+        panel.measure(widthSpec, heightSpec);
+        return Math.max(panel.getMeasuredHeight(), 1);
     }
 }
