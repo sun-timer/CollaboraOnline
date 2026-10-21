@@ -19147,26 +19147,34 @@ public class LOActivity extends AppCompatActivity {
                 }
             });
         }
-        View cancelButton = root.findViewById(R.id.ai_model_required_cancel);
-        if (cancelButton != null) {
-            cancelButton.setOnClickListener(v -> {
+        LinearLayout buttonRow = root.findViewById(R.id.ai_model_required_button_row);
+        if (buttonRow != null) {
+            buttonRow.removeAllViews();
+            TextView cancelBtn = buildExternalLinkDialogButton("取消", false);
+            TextView confirmBtn = buildExternalLinkDialogButton("确定", true);
+            LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(0, dpToPx(52), 1f);
+            cancelBtn.setLayoutParams(cancelLp);
+            LinearLayout.LayoutParams confirmLp = new LinearLayout.LayoutParams(0, dpToPx(52), 1f);
+            confirmLp.setMarginStart(dpToPx(12));
+            confirmBtn.setLayoutParams(confirmLp);
+            cancelBtn.setOnClickListener(v -> {
                 if (aiModelRequiredDialog != null) {
                     aiModelRequiredDialog.dismiss();
                 }
             });
-        }
-        View confirmButton = root.findViewById(R.id.ai_model_required_confirm);
-        if (confirmButton != null) {
-            confirmButton.setOnClickListener(v -> {
+            confirmBtn.setOnClickListener(v -> {
                 if (aiModelRequiredDialog != null) {
                     aiModelRequiredDialog.dismiss();
                 }
                 openModelSettingsActivity(aiModelRequiredModelType);
             });
+            buttonRow.addView(cancelBtn);
+            buttonRow.addView(confirmBtn);
         }
+        AiDialogHelper.applyCloseOnlyDismiss(aiModelRequiredDialog);
         aiModelRequiredDialog.show();
         if (aiModelRequiredDialog.getWindow() != null) {
-            int widthPx = getResources().getDimensionPixelSize(R.dimen.ai_model_required_dialog_width);
+            int widthPx = AiDialogHelper.computeWriterDialogWidthPx(getResources());
             AiDialogHelper.applyFlexibleWidth(root, aiModelRequiredDialog, widthPx,
                     AiDialogHelper.computeMaxHeightHugPx(getResources()));
         }
