@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="LolibShapePickerTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="lolibShapeAccentStroke">#1278D9</item>
+        <item name="lolibShapeAccentFill">@android:color/transparent</item>
+    </style>
+</resources>

@@ -41,9 +41,7 @@ public final class ImpressShapeCatalog {
             new Entry(6, R.drawable.lolib_ic_impress_shape_006, ".uno:LineArrowStart"),
             new Entry(7, R.drawable.lolib_ic_impress_shape_007, ".uno:LineArrowCircle"),
             new Entry(8, R.drawable.lolib_ic_impress_shape_008, ".uno:LineArrowSquare"),
-            new Entry(9, R.drawable.lolib_ic_impress_shape_009, ".uno:MeasureLine"),
-            new Entry(10, R.drawable.lolib_ic_impress_shape_010, ".uno:Line_Diagonal"),
-            new Entry(11, R.drawable.lolib_ic_impress_shape_011, ".uno:Line")
+            new Entry(9, R.drawable.lolib_ic_impress_shape_009, ".uno:MeasureLine")
         }),
         new Section("曲线和多边形", new Entry[] {
             new Entry(12, R.drawable.lolib_ic_impress_shape_012, ".uno:BezierFill"),
