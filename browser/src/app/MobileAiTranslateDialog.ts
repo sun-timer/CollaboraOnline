@@ -50,10 +50,14 @@ class MobileAiTranslateDialog {
 		this.layout.stopButton.onclick = () => this.controller.cancel();
 		this.layout.copyRow.onclick = () => this.controller.copy();
 		this.layout.regenerateButton.onclick = () => this.request();
-		this.layout.applyButton.onclick = () =>
-			this.controller.accept(
-				MobileAiResultRenderer.toHtml(this.controller.getState().preview),
-			);
+		this.layout.applyButton.onclick = async () => {
+			const html = MobileAiResultRenderer.toHtml(this.controller.getState().preview);
+			if ((window as any).ThisIsTheiOSApp && (window as any).app?.map?.getDocType?.() === 'presentation') {
+				if (await this.controller.acceptAsync(html)) this.close();
+			} else {
+				this.controller.accept(html);
+			}
+		};
 
 		this.sheet.setBody(this.layout.root);
 		this.unsubscribe = this.controller.subscribe(() => this.render());
@@ -77,7 +81,7 @@ class MobileAiTranslateDialog {
 	}
 
 	close(): void {
-		this.controller.cancel();
+		if (this.controller.getState().state !== 'accepted') this.controller.cancel();
 		this.unsubscribe();
 		this.sheet.close();
 	}
@@ -134,9 +138,9 @@ class MobileAiTranslateDialog {
 			this.layout.resultPreview,
 			state.preview,
 		);
-		const active = state.state === 'loading' || state.state === 'streaming';
+		const active = state.state === 'loading' || state.state === 'streaming' || state.state === 'inserting';
 		const ready = state.state === 'ready' && !!state.preview;
-		if (ready) {
+		if (ready || state.state === 'inserting') {
 			this.layout.setStage('result');
 		} else if (active) {
 			this.layout.setStage('generating');

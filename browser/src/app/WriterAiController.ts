@@ -19,6 +19,7 @@ interface WriterAiDocumentAdapter {
 	pastePlainText(text: string): boolean;
 	postMobileMessage?(message: string): void;
 	pasteHtml?(html: string, plainText: string): boolean;
+	insertPresentationHtml?(html: string, sourceRequestId: string): Promise<boolean>;
 	replaceSelection?(text: string): boolean;
 	appendAfterSelection?(text: string, originalSelection?: string): boolean;
 	insertAtEnd?(text: string): boolean;
@@ -27,7 +28,7 @@ interface WriterAiDocumentAdapter {
 }
 
 interface WriterAiControllerState {
-	state: 'idle' | 'loading' | 'streaming' | 'ready' | 'accepted' | 'cancelled' | 'error';
+	state: 'idle' | 'loading' | 'streaming' | 'ready' | 'inserting' | 'accepted' | 'cancelled' | 'error';
 	requestId?: string;
 	taskType?: string;
 	preview: string;
@@ -101,12 +102,35 @@ class WriterAiController {
 		};
 	}
 
+	/**
+	 * A newly opened task must not show the previous dialog's preview or loading
+	 * state. An unfinished generation belongs to the closed dialog, so cancel it.
+	 * A native paste still in progress is left alone; its result is not discardable.
+	 */
+	resetPreview(): boolean {
+		if (this.state.state === 'inserting') {
+			return false;
+		}
+		if (
+			this.state.requestId &&
+			(this.state.state === 'loading' || this.state.state === 'streaming' || this.state.state === 'ready')
+		) {
+			this.bridge.cancel(this.state.requestId);
+		}
+		this.state = { state: 'idle', preview: '' };
+		this.lastRequest = null;
+		this.originalSelection = '';
+		this.notify();
+		return true;
+	}
+
 	request(
 		taskType: string,
 		context: { [key: string]: any } = {},
 		selectionOverride?: string,
 		images?: string[],
 	): string | null {
+		if (this.state.state === 'inserting') return null;
 		if (this.state.state === 'loading' || this.state.state === 'streaming') {
 			this.setError('已有 AI 请求正在进行');
 			return null;
@@ -197,7 +221,7 @@ class WriterAiController {
 		if (!this.lastRequest) {
 			return null;
 		}
-		if (this.state.state === 'loading' || this.state.state === 'streaming') {
+		if (this.state.state === 'loading' || this.state.state === 'streaming' || this.state.state === 'inserting') {
 			return null;
 		}
 		return this.request(
@@ -291,6 +315,50 @@ class WriterAiController {
 		};
 		this.notify();
 		return true;
+	}
+
+	/** iOS Impress uses LOK's native paste result instead of a queued socket send. */
+	async acceptAsync(html: string): Promise<boolean> {
+		if (
+			!(window as any).ThisIsTheiOSApp || !this.isPresentationDocument() ||
+			!this.documentAdapter.insertPresentationHtml
+		) {
+			return this.accept(html);
+		}
+		if (this.state.state !== 'ready' || !this.state.requestId || !this.state.preview) {
+			return false;
+		}
+		const requestId = this.state.requestId;
+		this.state = { ...this.state, state: 'inserting', error: undefined };
+		this.notify();
+		try {
+			const insertionHtml = this.resultMode === 'appendAfterSelection'
+				? MobileAiResultRenderer.toHtml(this.originalSelection + this.state.preview)
+				: html;
+			const inserted = await this.documentAdapter.insertPresentationHtml(insertionHtml, requestId);
+			if (this.state.requestId !== requestId || this.state.state !== 'inserting') {
+				return false;
+			}
+			if (!inserted) {
+				throw new Error('无法将 AI 结果插入文档，请保留文本框选区后重试');
+			}
+			// Native insertion records its own undo state after LOK confirms paste.
+			this.bridge.accept(requestId, this.state.preview);
+			this.state = { ...this.state, state: 'accepted' };
+			this.notify();
+			return true;
+		} catch (error) {
+			if (this.state.requestId === requestId) {
+				// Preserve the generated result and allow retry after an insertion
+				// failure; a failed native paste must never dismiss the dialog.
+				this.state = {
+					...this.state, state: 'ready',
+					error: error instanceof Error ? error.message : 'AI 结果插入失败',
+				};
+				this.notify();
+			}
+			return false;
+		}
 	}
 
 	dispose(): void {
@@ -422,6 +490,55 @@ class WriterAiController {
 					// Native undo state is best-effort and must not block AI insertion.
 				}
 			},
+			insertPresentationHtml(html: string, sourceRequestId: string): Promise<boolean> {
+				const nativeBridge = NativeBridge.getInstance();
+				// Stable across retries: native can return the first successful paste's
+				// acknowledgement even when its original reply was lost.
+				const requestId = 'ai-insert-' + sourceRequestId;
+				const documentSessionId = nativeBridge.getDocumentSessionId();
+				const map = (window as any).app?.map;
+				const viewId = map?._docLayer?._viewId;
+				if (!sourceRequestId || !Number.isInteger(viewId) || viewId < 0) {
+					return Promise.reject(new Error('文档视图未准备好，未插入 AI 结果'));
+				}
+				// Entering preview clears the Core selection. Do not issue EditDoc
+				// again when already editing, so the selected text stays active.
+				if (map?.isEditMode && !map.isEditMode() && map._switchToEditMode) {
+					map._switchToEditMode();
+				}
+				map?.focus?.(false);
+				return new Promise((resolve, reject) => {
+					let settled = false;
+					const cleanup = {
+						timer: undefined as number | undefined,
+						unsubscribe: (): void => undefined,
+					};
+					const finish = (inserted: boolean, message?: string): void => {
+						if (settled) return;
+						settled = true;
+						if (cleanup.timer !== undefined) window.clearTimeout(cleanup.timer);
+						cleanup.unsubscribe();
+						if (message) reject(new Error(message));
+						else resolve(inserted);
+					};
+					cleanup.unsubscribe = nativeBridge.subscribe((message) => {
+						if (message.requestId !== requestId ||
+							message.documentSessionId !== documentSessionId) return;
+						if (message.type === 'ai.text.insert.done') {
+							finish(message.payload?.inserted === true);
+						} else if (message.type === 'ai.text.insert.error' || message.type === 'native.error') {
+							finish(false, message.payload?.message || 'AI 结果插入失败');
+						}
+					});
+					cleanup.timer = window.setTimeout(() => finish(false, '插入结果确认超时，请检查文档内容后再操作'), 15000);
+					if (!settled && !nativeBridge.postMessage({
+						protocolVersion: NativeBridge.PROTOCOL_VERSION,
+						channel: 'native', type: 'ai.text.insert', requestId,
+						documentSessionId, targetPlatform: 'ios', payload: { html, sourceRequestId, viewId },
+					})) finish(false, '文档连接不可用，未插入 AI 结果');
+				});
+			},
+
 			pastePlainText(text: string): boolean {
 				try {
 					const clip = (window as any).app?.map?._clip;

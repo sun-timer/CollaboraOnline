@@ -75,7 +75,23 @@ class WriterEditorController {
 		if (!feature) {
 			return { dispatched: 'none', reason: 'missing_feature' };
 		}
-		if (!this.isWriterDocument()) {
+		const presentationQuickAction =
+			this.adapter.getDocType() === 'presentation' &&
+			(feature.id === 'char-quick' || feature.id === 'para-quick') &&
+			feature.kind === 'command' &&
+			[
+				'.uno:Bold',
+				'.uno:Italic',
+				'.uno:Underline',
+				'.uno:Strikeout',
+				'.uno:LeftPara',
+				'.uno:CenterPara',
+				'.uno:RightPara',
+				'.uno:JustifyPara',
+				'.uno:DefaultBullet',
+				'.uno:DefaultNumbering',
+			].includes(feature.unocmd || '');
+		if (!this.isWriterDocument() && !presentationQuickAction) {
 			return { dispatched: 'none', reason: 'not_writer_document' };
 		}
 		switch (feature.kind) {

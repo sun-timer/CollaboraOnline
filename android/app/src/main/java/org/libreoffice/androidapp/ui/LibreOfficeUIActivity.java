@@ -1637,7 +1637,8 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         View aiSwitchTrack = dialog.findViewById(R.id.aiSwitch);
         View aiSwitchThumb = dialog.findViewById(R.id.aiSwitchThumb);
         final EditText aiPromptInput = dialog.findViewById(R.id.aiPromptInput);
-        final boolean[] aiSwitchChecked = {isImpress};
+        // New-PPT "内容使用 AI 生成" defaults OFF; the user turns it on explicitly.
+        final boolean[] aiSwitchChecked = {false};
         final int[] pptChoices = {0, 1, 0, 4};
         if (isImpress) bindPresentationCreationOptions(dialog, aiPromptInput, pptChoices);
         final int aiSwitchThumbMarginPx = (int) (2.5f * getResources().getDisplayMetrics().density);

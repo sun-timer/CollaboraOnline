@@ -1,5 +1,5 @@
 /*
- * iOS Writer comment list bridge: export CO comments to native shell and
+ * iOS document comment list bridge: export CO comments to native shell and
  * navigate/focus on selection.
  */
 
@@ -22,6 +22,7 @@ function summarizeWriterComments(
 		resolved?: string | boolean;
 	}>,
 	showResolved: boolean,
+	authorAliases: Record<string, string> = {},
 ): WriterCommentSummary[] {
 	const out: WriterCommentSummary[] = [];
 	for (const item of items) {
@@ -40,7 +41,10 @@ function summarizeWriterComments(
 		}
 		out.push({
 			id: String(item.id),
-			author: item.author || '',
+			author:
+				item.author && typeof authorAliases[item.author] === 'string'
+					? authorAliases[item.author]
+					: item.author || '',
 			text: item.text || '',
 			dateTime: item.dateTime || '',
 			resolved,
@@ -51,6 +55,22 @@ function summarizeWriterComments(
 
 class MobileWriterComments {
 	static summarizeWriterComments = summarizeWriterComments;
+	private static readonly ownAuthorAliases: Record<string, string> = Object.create(null);
+
+	/** Map an exact current-view author name to the updated Settings nickname. */
+	static registerOwnAuthorAlias(
+		author: string,
+		displayName: string,
+		aliases: Record<string, string> = MobileWriterComments.ownAuthorAliases,
+	): boolean {
+		const source = (author || '').trim();
+		const target = (displayName || '').trim();
+		if (!source || !target || source === target) {
+			return false;
+		}
+		aliases[source] = target;
+		return true;
+	}
 
 	static isIOs(): boolean {
 		return typeof window !== 'undefined' && !!(window as any).ThisIsTheiOSApp;
@@ -81,11 +101,24 @@ class MobileWriterComments {
 				resolved: data.resolved,
 			};
 		});
-		return summarizeWriterComments(raw, showResolved);
+		return summarizeWriterComments(
+			raw,
+			showResolved,
+			MobileWriterComments.ownAuthorAliases,
+		);
 	}
 
 	static countVisibleComments(): number {
 		return MobileWriterComments.collectWriterComments().length;
+	}
+
+	static requestNativeCommentList(postMessage?: (message: string) => void): boolean {
+		const send = postMessage || (window as any).postMobileMessage;
+		if (!MobileWriterComments.isIOs() || typeof send !== 'function') {
+			return false;
+		}
+		send('SHOWCOMMENTLIST');
+		return true;
 	}
 
 	static syncCommentCountToNative(): void {
@@ -164,6 +197,19 @@ if (typeof window !== 'undefined') {
 	(window as any).__coolFetchWriterComments = () => MobileWriterComments.fetchCommentsJson();
 	(window as any).__coolNavigateWriterComment = (id: string) =>
 		MobileWriterComments.navigateToComment(id);
+	(window as any).__coolOpenCommentList = () =>
+		MobileWriterComments.requestNativeCommentList();
+	(window as any).__coolRegisterOwnCommentAuthorAlias = (displayName: string) => {
+		const map = (window as any).app?.map;
+		const viewId = map?._docLayer?._viewId;
+		if (!map || !Number.isInteger(viewId) || typeof map.getViewName !== 'function') {
+			return false;
+		}
+		return MobileWriterComments.registerOwnAuthorAlias(
+			map.getViewName(viewId),
+			displayName,
+		);
+	};
 }
 
 if (typeof window !== 'undefined' && (window as any).ThisIsTheiOSApp) {

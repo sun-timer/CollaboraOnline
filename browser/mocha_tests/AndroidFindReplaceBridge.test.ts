@@ -111,13 +111,15 @@ describe('AndroidFindReplaceBridge', function () {
 			(window as any).setTimeout = (callback: () => void) => { timers.push(callback); return timers.length; };
 			AndroidFindReplaceBridge.find('slow');
 			timers[timers.length - 1](); // report timeout while keeping the command in flight
-			const beforeDelayedResult = findCommands().length;
-			AndroidFindReplaceBridge.find('after-timeout');
-			assert.equal(findCommands().length, beforeDelayedResult, 'timeout does not start a request that could steal a late completion');
+			assert.equal(statuses[statuses.length - 1].status, 'timeout');
+			const beforeUserAction = findCommands().length;
+			assert.equal(findCommands().length, beforeUserAction, 'a timeout alone does not start a request');
+			AndroidFindReplaceBridge.find('after-timeout'); // next user action force-releases the stuck request
+			assert.equal(findCommands().length, beforeUserAction + 1);
+			assert.equal(findCommands()[beforeUserAction]['SearchItem.SearchString'].value, 'after-timeout');
 			map.fire('commandresult', {commandName: '.uno:ExecuteSearch', success: true, result: false});
-			assert.equal(findCommands().length, beforeDelayedResult + 1);
-			assert.equal(findCommands()[beforeDelayedResult]['SearchItem.SearchString'].value, 'after-timeout');
-			assert.equal(statuses.length, 5, 'timed-out completion does not report a result for the new query');
+			assert.equal(statuses[statuses.length - 1].query, 'after-timeout');
+			assert.equal(statuses[statuses.length - 1].status, 'notFound');
 		} finally {
 			window.setTimeout = original.setTimeout;
 			(window as any).AndroidSelectionMenu = original.selectionMenu;

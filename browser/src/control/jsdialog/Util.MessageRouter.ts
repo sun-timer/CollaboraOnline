@@ -28,6 +28,14 @@ class JSDialogMessageRouter {
 	}
 
 	public processMessage(msgData: JSDialogJSON, callbackFn: JSDialogCallback) {
+		// The iOS Impress function panel only needs Core's populated presets;
+		// showing the original sidebar here would cover its custom panel.
+		if (
+			window.ThisIsTheiOSApp &&
+			typeof ImpressTransitionBridge !== 'undefined' &&
+			ImpressTransitionBridge.handlePayload(msgData)
+		)
+			return;
 		// update existing component
 		if (msgData.action) {
 			if (

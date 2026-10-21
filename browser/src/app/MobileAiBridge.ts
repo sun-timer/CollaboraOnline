@@ -79,6 +79,18 @@ class MobileAiBridge {
 		const nativePosted = this.nativeBridge.postMessage(envelope);
 		if (!legacyPosted && !nativePosted) {
 			delete this.activeRequests[requestId];
+			// Report asynchronously: callers store the returned requestId after this
+			// method returns, and they must see the failure to leave the loading state.
+			Promise.resolve().then(() =>
+				this.emitLocal({
+					protocolVersion: NativeBridge.PROTOCOL_VERSION,
+					channel: 'native',
+					type: 'ai.error',
+					requestId,
+					documentSessionId,
+					payload: { message: 'AI 请求发送失败，请检查连接后重试' },
+				}),
+			);
 		}
 		return requestId;
 	}
@@ -452,6 +464,10 @@ class MobileAiBridge {
 				resolve({});
 			}
 		});
+	}
+
+	private emitLocal(message: NativeBridgeEnvelope): void {
+		this.listeners.slice().forEach((listener) => listener(message));
 	}
 
 	private handleNativeMessage(message: NativeBridgeEnvelope): void {

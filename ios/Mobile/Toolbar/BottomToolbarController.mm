@@ -154,6 +154,14 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
 
 - (NSArray<NSArray<NSString *> *> *)previewItems
 {
+    if ([self.documentType isEqualToString:@"presentation"]) {
+        return @[
+            @[@"mobile-preview", @"手机预览", @"1"],
+            @[@"function", @"功能", @"2"],
+            @[@"ai-assistant", @"AI助手", @"3"],
+            @[@"slideshow-play", @"幻灯片放映", @"11"],
+        ];
+    }
     return @[
         @[@"mobile-preview", @"手机预览", [NSString stringWithFormat:@"%ld", (long)kMobilePreviewTag]],
         @[@"function", @"功能", [NSString stringWithFormat:@"%ld", (long)kFunctionTag]],
@@ -176,6 +184,17 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
 {
     // Matches Android BottomToolbarController: preview trio + edit tools;
     // Writer/Impress share paragraph + insert image; Calc adds fill + merge.
+    if ([self.documentType isEqualToString:@"presentation"]) {
+        return @[
+            @[@"function", @"功能", @"2"],
+            @[@"ai-assistant", @"AI助手", @"3"],
+            @[@"ai-feature", @"AI功能", @"4"],
+            @[@"character", @"字符", @"6"],
+            @[@"paragraph", @"段落", @"7"],
+            @[@"insert-image", @"插入图片", @"8"],
+            @[@"slideshow-play", @"幻灯片放映", @"11"],
+        ];
+    }
     BOOL isCalc = [self.documentType isEqualToString:@"spreadsheet"];
 
     NSMutableArray<NSArray<NSString *> *> *items =

@@ -15,6 +15,8 @@
 #import <cstdlib>
 #import <string>
 #import <vector>
+#import <algorithm>
+#import <comphelper/solarmutex.hxx>
 
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -133,6 +135,9 @@
 @end
 
 // From https://gist.github.com/myell0w/d8dfabde43f8da543f9c
+// Must match the notification posted by refreshIOSUserName() in ios/ios.mm.
+static NSString *const kCOIOSUserNameDidChangeNotification = @"COIOSUserNameDidChange";
+
 static BOOL isExternalKeyboardAttached()
 {
     BOOL externalKeyboardAttached = NO;
@@ -245,6 +250,11 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     bottomToolbarHeightConstraint.active = YES;
 
     [self ensureKeyboardFrameObserver];
+    // Posted by refreshIOSUserName() (ios.mm) after the Settings nickname is saved.
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(iosUserNameDidChange:)
+                                                 name:kCOIOSUserNameDidChangeNotification
+                                               object:nil];
 
     Class webBrowserClass = NSClassFromString(@"WKContentView");
 
@@ -721,6 +731,51 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         }
         [strongSelf extractCurrentSelectionWithCompletion:completion];
     };
+    nativeBridgeHandler.documentTextInserter = ^(NSString *html, NSInteger viewId, NativeBridgeTextInsertCompletion completion) {
+        DocumentViewController *strongSelf = weakSelf;
+        if (!strongSelf || strongSelf->isClosing || !strongSelf->nativeEditMode) {
+            completion(NO, @"请先进入编辑模式并选择要插入的文本框");
+            return;
+        }
+        lok::Document *doc = [strongSelf loKitDocumentOrNull];
+        NSData *data = [html dataUsingEncoding:NSUTF8StringEncoding];
+        if (!doc || data.length == 0) {
+            completion(NO, @"文档未准备好，暂时无法插入");
+            return;
+        }
+        BOOL inserted = NO;
+        BOOL undoRose = NO;
+        {
+            auto *mutex = comphelper::SolarMutex::get();
+            if (!mutex) { completion(NO, @"文档未准备好"); return; }
+            osl::Guard<comphelper::SolarMutex> guard(mutex);
+            std::vector<int> viewIds(std::max(1, doc->getViewsCount()));
+            if (!doc->getViewIds(viewIds.data(), viewIds.size())
+                || std::find(viewIds.begin(), viewIds.end(), viewId) == viewIds.end()) {
+                completion(NO, @"文档视图已失效，请重新打开后重试");
+                return;
+            }
+            doc->setView(static_cast<int>(viewId));
+            auto undoCount = [doc]() -> long {
+                char *raw = doc->getCommandValues(".uno:UndoCount");
+                if (!raw) return -1;
+                long value = std::strtol(raw, nullptr, 10);
+                std::free(raw);
+                return value;
+            };
+            long before = undoCount();
+            BOOL dispatched = doc->paste("text/html", static_cast<const char *>(data.bytes), data.length);
+            long after = undoCount();
+            // Success = paste dispatched. The undo count can lag a frame behind
+            // (first paste after focus change), so it only drives the undo hint.
+            inserted = dispatched;
+            undoRose = dispatched && before >= 0 && after > before;
+        }
+        if (undoRose) [strongSelf->topToolbarController recordUndoableNativeEdit:@"ai_text_insert"];
+        // Synchronous on the same main-queue turn as the paste; NativeBridgeHandler
+        // emits ai.text.insert.done/error from this completion.
+        completion(inserted, inserted ? nil : @"未能插入当前文本框，请选择文本后重试");
+    };
     [userContentController addScriptMessageHandler:nativeBridgeHandler name:@"nativeBridge"];
     [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"clipboard"];
     [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"aiConfiguration"];
@@ -1098,6 +1153,9 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
                                                   object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                     name:UIKeyboardWillHideNotification
+                                                  object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:kCOIOSUserNameDidChangeNotification
                                                   object:nil];
     [self removeDocumentCopyIfNeeded];
     dispatch_group_notify(forwardingThreadGroup, dispatch_get_main_queue(), ^{
@@ -2003,6 +2061,8 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         } else if ([message.body isEqualToString:@"DOCUMENT_READY"]) {
             if (!isClosing) {
                 documentReady = YES;
+                [self injectIOSUserNameIntoWebView:[self currentIOSUserNameForWeb]];
+                [self installCaretKeyboardHookIntoWebView];
                 [self maybeAutoGenerateAiContentAfterLoad];
             }
             return;
@@ -2010,6 +2070,9 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             return;
         } else if ([message.body hasPrefix:@"COMMENTCOUNT "]) {
             [self applyNativeCommentCount:message.body];
+            return;
+        } else if ([message.body isEqualToString:@"SHOWCOMMENTLIST"]) {
+            [self topToolbarDidPressComment];
             return;
         } else if ([message.body hasPrefix:@"SHEET_TAB_POPUP"]) {
             [self presentSheetTabPopupFromMessage:message.body];
@@ -2171,9 +2234,95 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     [self sendToolbarJavaScript:script];
 }
 
+- (NSString *)currentIOSUserNameForWeb
+{
+    // Read USER_PROFILE_NAME (and the same fallbacks as Settings). Do not use
+    // the LOK user_name pointer: that is still LocalUser#N when LocalStorage
+    // captured an empty name at document load.
+    return iosSettingsUserName();
+}
+
+// Exposes the Settings nickname to the web layer as window.__coolIOSUserName.
+// WriterEditorCommentDialog reads it before the core view name.
+- (void)injectIOSUserNameIntoWebView:(NSString *)name
+{
+    if (name.length == 0 || [name hasPrefix:@"LocalUser#"]) {
+        name = iosSettingsUserName();
+    }
+    if (name.length == 0 || isClosing || self.webView == nil) {
+        return;
+    }
+    NSData *data = [NSJSONSerialization dataWithJSONObject:@[name] options:0 error:nil];
+    NSString *encodedArray = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+    if (encodedArray.length < 2) {
+        return;
+    }
+    // ["name"] -> "name": a JSON string literal that is safe to embed in JS.
+    NSString *literal = [encodedArray substringWithRange:NSMakeRange(1, encodedArray.length - 2)];
+    NSString *script = [NSString stringWithFormat:
+        @"(function(){if(typeof window.__coolRegisterOwnCommentAuthorAlias==='function'){window.__coolRegisterOwnCommentAuthorAlias(%@);}window.__coolIOSUserName=%@;var id=window.app&&app.map&&app.map._docLayer?app.map._docLayer._viewId:null;return Number.isInteger(id)?id:-1;})();",
+        literal, literal];
+    __weak DocumentViewController *weakSelf = self;
+    [self.webView evaluateJavaScript:script completionHandler:^(id result, NSError *error) {
+        DocumentViewController *owner = weakSelf;
+        if (!owner || owner->isClosing || error || ![result isKindOfClass:NSNumber.class] || [result intValue] < 0) return;
+        lok::Document *doc = [owner loKitDocumentOrNull];
+        if (doc && setIOSViewAuthor(doc, [result intValue], name.UTF8String)) {
+            NSLog(@"[Comments] view_author_synced viewId=%d", [result intValue]);
+        }
+    }];
+}
+
+- (void)iosUserNameDidChange:(NSNotification *)notification
+{
+    id name = notification.userInfo[@"name"];
+    NSString *newName = [name isKindOfClass:[NSString class]] ? name : nil;
+    if (newName.length == 0 || [newName hasPrefix:@"LocalUser#"]) {
+        newName = iosSettingsUserName();
+    }
+    // refreshIOSUserName() may run off the main thread; WKWebView must be touched on main.
+    __weak __typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [weakSelf injectIOSUserNameIntoWebView:newName];
+    });
+}
+
+// Shows the on-screen keyboard when the core reports a text caret appearing in edit mode.
+// This replaces the old manual "呼出键盘" action. Only the hidden -> visible transition
+// calls focus(true), so the keyboard is not re-raised on every cursor message.
+- (void)installCaretKeyboardHookIntoWebView
+{
+    [self sendToolbarJavaScript:
+     @"(function(){"
+      "if(window.__coolIOSCaretKeyboardHooked){return;}"
+      "if(!(window.app&&app.events&&app.map)){return;}"
+      "window.__coolIOSCaretKeyboardHooked=true;"
+      "var caretVisible=false;"
+      "app.events.on('TextCursorVisibility',function(e){"
+      "var visible=!!(e&&e.detail&&e.detail.visible);"
+      "var caretAppeared=visible&&!caretVisible;"
+      "caretVisible=visible;"
+      "if(!caretAppeared){return;}"
+      "var map=app.map;"
+      "if(!map||typeof map.isEditMode!=='function'||!map.isEditMode()){return;}"
+      "if(document.querySelector('[data-cool-mobile-ai-ui=\"1\"]')){return;}"
+      "if(typeof map.focus==='function'){map.focus(true);}"
+      "});"
+      "})();"];
+}
+
+
+// A hardware (external) keyboard reports an end frame only as tall as the input accessory bar.
+// Only an on-screen keyboard frame may compact the bottom toolbar.
+static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
+
 // Single place that changes the compact bottom toolbar state. Only call it on a real transition.
 - (void)applyKeyboardVisibleState:(BOOL)keyboardVisible
 {
+    // Equal state is a no-op. Skipping it avoids re-sending toolbar JS on repeated notifications.
+    if (keyboardVisibleForCanvas == keyboardVisible && bottomToolbarController.compact == keyboardVisible) {
+        return;
+    }
     keyboardVisibleForCanvas = keyboardVisible;
     bottomToolbarController.compact = keyboardVisible;
     [self sendToolbarJavaScript:keyboardVisible
@@ -2215,7 +2364,11 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
 
 - (void)keyboardWillShow:(NSNotification *)notification
 {
-    [self applyKeyboardVisibleState:YES];
+    CGRect keyboardFrame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    // An external keyboard shows a short frame; it must not compact the bottom toolbar.
+    if (CGRectGetHeight(keyboardFrame) >= kOnScreenKeyboardMinHeight) {
+        [self applyKeyboardVisibleState:YES];
+    }
     [self animateKeyboardLayoutForNotification:notification completion:nil];
 }
 
@@ -2239,13 +2392,23 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     CGRect localKeyboardFrame = window
         ? [self.view convertRect:keyboardFrame fromCoordinateSpace:window.screen.coordinateSpace]
         : [self.view convertRect:keyboardFrame fromView:nil];
-    BOOL keyboardCoversView = CGRectIntersectsRect(self.view.bounds, localKeyboardFrame)
+    BOOL onScreenKeyboard = CGRectGetHeight(keyboardFrame) >= kOnScreenKeyboardMinHeight;
+    BOOL keyboardCoversView = onScreenKeyboard
+        && CGRectIntersectsRect(self.view.bounds, localKeyboardFrame)
         && CGRectGetMinY(localKeyboardFrame) < CGRectGetMaxY(self.view.bounds);
     // A second show often delivers a frame that misses the view. Laying out
     // against that frame lets keyboardLayoutGuide drop the toolbar. WillHide
     // owns a real dismiss.
-    if (!keyboardCoversView)
+    if (!keyboardCoversView) {
+        // With no transition in flight, a missing frame means the keyboard is gone
+        // (external keyboard, floating keyboard, or a dismiss without WillHide), so
+        // fall back to the expanded toolbar. An in-flight transition may report a
+        // transient miss, so leave it alone.
+        if (!keyboardTransitionActive && keyboardVisibleForCanvas) {
+            [self applyKeyboardVisibleState:NO];
+        }
         return;
+    }
     if (!keyboardVisibleForCanvas)
         [self applyKeyboardVisibleState:YES];
     [self animateKeyboardLayoutForNotification:notification completion:nil];
@@ -3250,11 +3413,10 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
 {
     [self sendToolbarJavaScript:
      @"(function(){try{"
-      "if(window.app&&app.map&&app.map.slideShow){"
-      "app.map.slideShow._startFullscreenSlideshow();"
-      "}else if(window.L&&window.L.Map&&window.app&&app.map){"
-      "app.map.downloadAs('slideshow.svg','svg',null,'slideshow');"
-      "}"
+      "if(!(window.app&&app.map)){console.error('start_slide_show map_missing');return;}"
+      "var eventName=window.canvasSlideshowEnabled?'newfullscreen':'fullscreen';"
+      "app.map.fire(eventName);"
+      "console.log('start_slide_show event='+eventName);"
       "}catch(e){console.error('slideshow_error',e);}})();"];
 }
 

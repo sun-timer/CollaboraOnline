@@ -89,6 +89,7 @@ static std::atomic<unsigned> appDocIdCounter(1);
 
     NSURL *url = [[NSBundle mainBundle] URLForResource:@"cool" withExtension:@"html"];
     NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+    refreshIOSUserName();
     DocumentData::allocate(appDocId).coDocument = self;
     NSMutableArray<NSURLQueryItem *> *queryItems = [NSMutableArray arrayWithArray:@[
                                [NSURLQueryItem queryItemWithName:@"file_path" value:[copyFileURL absoluteString]],

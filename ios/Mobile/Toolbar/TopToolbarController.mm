@@ -389,7 +389,7 @@ static UIView *toolbarSpacer(void)
 {
     _documentType = [documentType copy];
     [self applyDoneButtonTheme];
-    BOOL hideSearch = [_documentType isEqualToString:@"presentation"];
+    BOOL hideSearch = NO;
     for (UIButton *searchBtn in @[ self.searchButton, self.editSearchButton ]) {
         if (!searchBtn) {
             continue;

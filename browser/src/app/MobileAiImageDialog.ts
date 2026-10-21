@@ -115,10 +115,15 @@ class MobileAiImageDialog {
 		if (!this.pendingImage) {
 			return;
 		}
-		WriterEditorController.getInstance().insertImage(
+		const result = WriterEditorController.getInstance().insertImage(
 			'ai-image.png',
 			this.pendingImage,
 		);
+		if (result.dispatched === 'message' && (window as any).ThisIsTheiOSApp &&
+			(window as any).app?.map?.getDocType?.() === 'presentation') {
+			this.close();
+			return;
+		}
 		this.layout.status.textContent = '已插入文档';
 	}
 

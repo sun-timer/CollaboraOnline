@@ -9,6 +9,7 @@ class WriterEditorCommentDialog {
 	private readonly subpage: { open(): void; close(): void };
 	private readonly controller: WriterEditorController;
 	private readonly input: HTMLTextAreaElement;
+	private authorNameEl!: HTMLSpanElement;
 
 	private readonly onInserted?: () => void;
 
@@ -59,6 +60,7 @@ class WriterEditorCommentDialog {
 
 	open(): void {
 		this.input.value = '';
+		this.authorNameEl.textContent = this.resolveAuthorName();
 		this.subpage.open();
 		this.input.focus();
 	}
@@ -97,6 +99,7 @@ class WriterEditorCommentDialog {
 		const name = document.createElement('span');
 		name.className = 'writer-comment-author__name';
 		name.textContent = this.resolveAuthorName();
+		this.authorNameEl = name;
 		meta.appendChild(name);
 
 		const date = document.createElement('span');
@@ -109,11 +112,43 @@ class WriterEditorCommentDialog {
 	}
 
 	private resolveAuthorName(): string {
-		const map = (window as any).app && (window as any).app.map;
-		const viewId = map && map._viewId;
-		const info = viewId != null && map._viewInfo ? map._viewInfo[viewId] : null;
-		const username = info && info.username ? String(info.username).trim() : '';
-		return username || '用户昵称';
+		return WriterEditorCommentDialog.resolveAuthorNameFrom(window);
+	}
+
+	/**
+	 * Author precedence:
+	 * 1. window.__coolIOSUserName: the Settings nickname (USER_PROFILE_NAME) that
+	 *    the iOS shell injects on document ready and re-injects when it is saved.
+	 *    A non-empty settings name is never replaced by the core view name.
+	 * 2. The core view name of this view (set at document load; can be stale).
+	 * 3. The placeholder.
+	 *
+	 * LocalUser#N is a LOK placeholder, not a nickname. It never wins over a
+	 * settings name and is not shown as a fallback.
+	 */
+	static isGeneratedLocalUserName(name: string): boolean {
+		return /^LocalUser#\d+$/.test(name);
+	}
+
+	static resolveAuthorNameFrom(win: any): string {
+		const settingsName =
+			win && typeof win.__coolIOSUserName === 'string' ? win.__coolIOSUserName.trim() : '';
+		if (settingsName && !WriterEditorCommentDialog.isGeneratedLocalUserName(settingsName)) {
+			return settingsName;
+		}
+
+		const map = win && win.app && win.app.map;
+		const docLayer = map && map._docLayer;
+		const viewId = docLayer ? docLayer._viewId : undefined;
+		const name =
+			map && typeof map.getViewName === 'function' && Number.isInteger(viewId)
+				? map.getViewName(viewId)
+				: '';
+		const username = typeof name === 'string' ? name.trim() : '';
+		if (username && !WriterEditorCommentDialog.isGeneratedLocalUserName(username)) {
+			return username;
+		}
+		return '用户昵称';
 	}
 
 	private static formatDate(date: Date): string {

@@ -9,6 +9,8 @@
 
 #import "AI/AISettingsDrawerController.h"
 #import "KeyboardAccessory.h"
+#import "AI/AIService.h"
+#import "AI/ImpressOutlineOverlayController.h"
 #import "DocumentPresentation.h"
 #import "RecentDocumentsStore.h"
 #import "DocumentPresentationLaunchOptions.h"
@@ -173,6 +175,8 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 @property (strong, nonatomic) UIView *actionsDismissOverlay;
 @property (strong, nonatomic) UIView *actionsPopup;
 @property (strong, nonatomic) RecentDocumentItem *actionsPopupItem;
+@property (strong, nonatomic) ImpressOutlineOverlayController *impressCreationOverlay;
+@property (strong, nonatomic) AIService *impressCreationService;
 @end
 
 @implementation HomeViewController
@@ -762,6 +766,17 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
                         aiEnabled:(BOOL)aiEnabled
                 aiUserDescription:(NSString *)aiUserDescription
                 presentationOptions:(NSDictionary *)presentationOptions {
+    // AI presentation creation produces its own PPTX. Do not open a blank ODP
+    // while waiting for the editor's load callbacks to start that separate job.
+    if (aiEnabled && docKind == CreateFileDocKindImpress) {
+        [self.impressCreationOverlay dismiss];
+        if (!self.impressCreationService) self.impressCreationService = [[AIService alloc] init];
+        self.impressCreationOverlay = [[ImpressOutlineOverlayController alloc]
+            initWithHostViewController:self aiService:self.impressCreationService];
+        [self.impressCreationOverlay startCreationWithInput:aiUserDescription ?: @""
+                                                   options:presentationOptions ?: @{}];
+        return;
+    }
     NSError *error = nil;
     NSURL *url = [DocumentPresentation createBlankDocumentWithExtension:extension
                                                               basename:basename
@@ -783,12 +798,6 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
                                                                   aiPrompt:prompt
                                                            userDescription:aiUserDescription
                                                                 calcNewTable:(docKind == CreateFileDocKindCalc)];
-        if (docKind == CreateFileDocKindImpress) {
-            options.autoGenerateAiContent = YES;
-            options.autoGenerateImpress = YES;
-            options.impressCreationOptions = presentationOptions;
-            options.autoOpenImpressOutline = NO;
-        }
     }
     [DocumentPresentation presentDocumentAtURL:url from:self options:options];
 }

@@ -13,6 +13,14 @@
 #include <LibreOfficeKit/LibreOfficeKit.hxx>
 
 extern const char *user_name;
+void refreshIOSUserName();
+// Update only a validated live document view; historical comments are untouched.
+bool setIOSViewAuthor(lok::Document *document, int viewId, const char *name);
+#ifdef __OBJC__
+@class NSString;
+// Settings nickname (USER_PROFILE_NAME). Never a LOK LocalUser#N placeholder.
+NSString *iosSettingsUserName(void);
+#endif
 
 extern int coolwsd_server_socket_fd;
 

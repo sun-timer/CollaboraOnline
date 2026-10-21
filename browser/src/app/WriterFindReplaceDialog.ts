@@ -165,7 +165,8 @@ class WriterFindReplaceDialog {
 
 		const settingsBtn = document.createElement('button');
 		settingsBtn.type = 'button';
-		settingsBtn.className = 'writer-find-sheet__icon-btn';
+		settingsBtn.className =
+			'writer-find-sheet__icon-btn writer-find-sheet__icon-btn--settings';
 		settingsBtn.setAttribute('aria-label', '查找设置');
 		settingsBtn.innerHTML = WRITER_FIND_SETTINGS_ICON;
 		settingsBtn.onclick = () => this.showSettings(true);
@@ -509,6 +510,7 @@ class WriterFindReplaceDialog {
 		if (!query) {
 			return;
 		}
+		this.setSearchStatus('');
 		this.pushOptionsToBridge();
 		const bridge = (window as any).AndroidFindReplaceBridge;
 		if (bridge && typeof bridge.find === 'function') {
@@ -522,6 +524,7 @@ class WriterFindReplaceDialog {
 		if (!this.hasQuery(field)) {
 			return;
 		}
+		this.setSearchStatus('');
 		this.pushOptionsToBridge();
 		const bridge = (window as any).AndroidFindReplaceBridge;
 		if (bridge && typeof bridge.findPrevious === 'function') {
@@ -543,6 +546,7 @@ class WriterFindReplaceDialog {
 		if (!query) {
 			return;
 		}
+		this.setSearchStatus('');
 		this.pushOptionsToBridge();
 		const bridge = (window as any).AndroidFindReplaceBridge;
 		if (bridge && typeof bridge.replaceForQuery === 'function') {
@@ -578,8 +582,12 @@ class WriterFindReplaceDialog {
 	}
 }
 
-/** Android-provided settings icon asset. */
-const WRITER_FIND_SETTINGS_ICON = '<img src="images/lolib_ic_find_settings.png" width="20" height="20" aria-hidden="true" />';
+/** Figma find-sheet gear: icon/28/AI工具栏/设置 (phone sheet 1689:55629, header 1689:55633). */
+const WRITER_FIND_SETTINGS_ICON =
+	'<svg viewBox="0 0 48 48" width="24" height="24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">' +
+	'<path d="M24 4L18 10H10V18L4 24L10 30V38H18L24 44L30 38H38V30L44 24L38 18V10H30L24 4Z" stroke="#6A6A6A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+	'<path d="M24 30C27.3137 30 30 27.3137 30 24C30 20.6863 27.3137 18 24 18C20.6863 18 18 20.6863 18 24C18 27.3137 20.6863 30 24 30Z" stroke="#6A6A6A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+	'</svg>';
 
 /** Android lolib_ic_sheet_close_80. */
 const WRITER_FIND_SHEET_CLOSE_ICON =

@@ -127,10 +127,14 @@ class MobileAiArticleGenerateDialog {
 		this.insertBtn.className =
 			'mobile-ai-task-dialog__btn mobile-ai-task-dialog__btn--primary';
 		this.insertBtn.textContent = '插入文档';
-		this.insertBtn.onclick = () =>
-			this.controller.accept(
-				MobileAiResultRenderer.toHtml(this.controller.getState().preview),
-			);
+		this.insertBtn.onclick = async () => {
+			const html = MobileAiResultRenderer.toHtml(this.controller.getState().preview);
+			if ((window as any).ThisIsTheiOSApp && (window as any).app?.map?.getDocType?.() === 'presentation') {
+				if (await this.controller.acceptAsync(html)) this.close();
+			} else {
+				this.controller.accept(html);
+			}
+		};
 		this.resultBar.appendChild(this.insertBtn);
 		this.root.appendChild(this.resultBar);
 
@@ -150,7 +154,7 @@ class MobileAiArticleGenerateDialog {
 	}
 
 	close(): void {
-		this.controller.cancel();
+		if (this.controller.getState().state !== 'accepted') this.controller.cancel();
 		MobileAiWaiDropdown.dismiss();
 		this.unsubscribe();
 		this.sheet.close();
@@ -268,7 +272,7 @@ class MobileAiArticleGenerateDialog {
 		if (this.stage === 'result' || state.state === 'loading' || state.state === 'streaming') {
 			MobileAiResultRenderer.renderInto(this.resultPreview, state.preview);
 		}
-		const active = state.state === 'loading' || state.state === 'streaming';
+		const active = state.state === 'loading' || state.state === 'streaming' || state.state === 'inserting';
 		const ready = state.state === 'ready' && !!state.preview;
 		if (active && this.stage !== 'result') {
 			this.setStage('result');

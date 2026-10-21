@@ -38,11 +38,15 @@ class AndroidFindReplaceBridge {
 		if (options.wholeWord) {
 			flags |= AndroidFindReplaceBridge.FLAG_WHOLE_WORD;
 		}
-		if (flags === AndroidFindReplaceBridge.searchFlags && !!options.caseSensitive === AndroidFindReplaceBridge.caseSensitive) {
+		const caseSensitive = !!options.caseSensitive;
+		if (flags === AndroidFindReplaceBridge.searchFlags && caseSensitive === AndroidFindReplaceBridge.caseSensitive) {
 			return;
 		}
+		// Highlights were computed with the previous options; drop them now so they do not linger until the next search.
+		const layer = (window as any).app?.map?._docLayer;
+		layer?._clearSearchResults?.();
 		AndroidFindReplaceBridge.searchFlags = flags;
-		AndroidFindReplaceBridge.caseSensitive = !!options.caseSensitive;
+		AndroidFindReplaceBridge.caseSensitive = caseSensitive;
 		AndroidFindReplaceBridge.generation++;
 		AndroidFindReplaceBridge.searchStarted = false;
 		AndroidFindReplaceBridge.pendingResults = [];
@@ -173,10 +177,13 @@ class AndroidFindReplaceBridge {
 		if (AndroidFindReplaceBridge.suppressSelectionMenuTimer) {
 			window.clearTimeout(AndroidFindReplaceBridge.suppressSelectionMenuTimer);
 		}
-		AndroidFindReplaceBridge.suppressSelectionMenuTimer = window.setTimeout(() => {
-			AndroidFindReplaceBridge.suppressSelectionMenuTimer = 0;
-			AndroidFindReplaceBridge.clearSuppressSelectionMenu();
-		}, AndroidFindReplaceBridge.suppressSelectionMenuTimeoutMs);
+		AndroidFindReplaceBridge.suppressSelectionMenuTimer = window.setTimeout(
+			() => {
+				AndroidFindReplaceBridge.suppressSelectionMenuTimer = 0;
+				AndroidFindReplaceBridge.clearSuppressSelectionMenu();
+			},
+			AndroidFindReplaceBridge.suppressSelectionMenuTimeoutMs,
+		);
 		const selectionMenu = (window as any).AndroidSelectionMenu;
 		if (selectionMenu && typeof selectionMenu.hide === 'function') {
 			selectionMenu.hide();
@@ -218,11 +225,26 @@ class AndroidFindReplaceBridge {
 		if (!text && command === AndroidFindReplaceBridge.CMD_FIND) {
 			return;
 		}
+		AndroidFindReplaceBridge.releaseStuckRequest();
 		AndroidFindReplaceBridge.reconcileMapScope();
 		AndroidFindReplaceBridge.suppressSelectionMenuForSearch();
 		void expand;
 		AndroidFindReplaceBridge.pendingResults.push({ query: text, generation: AndroidFindReplaceBridge.generation, command, backward, replace: replaceString });
 		AndroidFindReplaceBridge.dispatchNext();
+	}
+
+	// Second-stage fallback. The 15s result timeout keeps inFlight set on purpose, so a late
+	// commandresult cannot be mistaken for a newer request. If the user acts again and the Core
+	// still has not answered, release the queue now and invalidate the older generation.
+	private static releaseStuckRequest(): void {
+		const stuck = AndroidFindReplaceBridge.inFlightRequest;
+		if (!AndroidFindReplaceBridge.inFlight || !stuck || !stuck.timedOut) return;
+		AndroidFindReplaceBridge.inFlight = false;
+		AndroidFindReplaceBridge.inFlightRequest = null;
+		AndroidFindReplaceBridge.inFlightMap = null;
+		AndroidFindReplaceBridge.generation++;
+		AndroidFindReplaceBridge.searchStarted = false;
+		AndroidFindReplaceBridge.pendingResults = [];
 	}
 
 	private static dispatchNext(): void {
@@ -297,4 +319,6 @@ class AndroidFindReplaceBridge {
 
 }
 
-(window as any).AndroidFindReplaceBridge = AndroidFindReplaceBridge;
+if (typeof window !== 'undefined') {
+	(window as any).AndroidFindReplaceBridge = AndroidFindReplaceBridge;
+}

@@ -18,6 +18,9 @@
 @property (strong, nonatomic) AIRequestSession *session;
 @property (copy, nonatomic) AIServiceEventEmitter emitter;
 @property (assign, nonatomic) NSInteger statusCode;
+@property (copy, nonatomic) NSString *finishReason;
+@property (copy, nonatomic) NSDictionary *sourcePayload;
+@property (assign, nonatomic) BOOL jsonResponseMode;
 /** Non-streaming image generation accumulates the raw JSON response. */
 @property (assign, nonatomic) BOOL imageGeneration;
 @property (strong, nonatomic) NSMutableData *responseData;
@@ -82,6 +85,16 @@
     [self cancelRequest:requestId documentSessionId:documentSessionId];
     NSString *taskType = [payload[@"taskType"] isKindOfClass:[NSString class]]
         ? payload[@"taskType"] : @"";
+    if ([taskType isEqualToString:@"impress_outline"]) {
+        NSDictionary *context = [payload[@"context"] isKindOfClass:[NSDictionary class]]
+            ? payload[@"context"] : @{};
+        NSString *inputType = [context[@"inputType"] isKindOfClass:[NSString class]]
+            ? context[@"inputType"] : @"quick";
+        NSString *input = [context[@"userInput"] isKindOfClass:[NSString class]]
+            ? context[@"userInput"] : @"";
+        NSLog(@"[AI] impress_outline request_started requestId=%@ taskType=%@ inputType=%@ inputChars=%lu",
+              requestId, taskType, inputType, (unsigned long)input.length);
+    }
     BOOL isImageGeneration = [taskType isEqualToString:@"image_generate"];
 
     if (isImageGeneration) {
@@ -129,6 +142,10 @@
     if (messages == nil) {
         NSString *errorCode = messagesError.code == 2
             ? @"unsupported_task_type" : @"invalid_payload";
+        if ([taskType isEqualToString:@"impress_outline"]) {
+            NSLog(@"[AI] impress_outline messages_failed requestId=%@ taskType=%@ code=%@",
+                  requestId, taskType, errorCode);
+        }
         [self emitType:@"ai.error"
               requestId:requestId
            documentSessionId:documentSessionId
@@ -152,7 +169,14 @@
                                                               modelMode:modelMode
                                                             docCharCount:docCharCount
                                                               localState:localState];
-    if (route.backend == AiBackendKindLocal) {
+    BOOL useLocalBackend = route.backend == AiBackendKindLocal;
+    if ([taskType isEqualToString:@"impress_outline"]) {
+        NSLog(@"[AI] impress_outline route requestId=%@ taskType=%@ backend=%@ reason=%@",
+              requestId, taskType,
+              route.backend == AiBackendKindLocal ? @"local" : @"cloud",
+              route.reason ?: @"unknown");
+    }
+    if (useLocalBackend) {
         [self startLocalRequestWithMessages:messages
                                    taskType:taskType
                                   requestId:requestId
@@ -183,6 +207,9 @@
         }
     }
     if (endpoint.length == 0 || model.length == 0) {
+        if ([taskType isEqualToString:@"impress_outline"]) {
+            NSLog(@"[AI] impress_outline config_failed requestId=%@ code=config_missing", requestId);
+        }
         [self emitType:@"ai.error"
               requestId:requestId
            documentSessionId:documentSessionId
@@ -195,6 +222,9 @@
     NSString *urlScheme = url.scheme.lowercaseString;
     if (url == nil || url.host.length == 0
         || (![urlScheme isEqualToString:@"http"] && ![urlScheme isEqualToString:@"https"])) {
+        if ([taskType isEqualToString:@"impress_outline"]) {
+            NSLog(@"[AI] impress_outline config_failed requestId=%@ code=config_invalid", requestId);
+        }
         [self emitType:@"ai.error"
               requestId:requestId
            documentSessionId:documentSessionId
@@ -231,12 +261,31 @@
         body[@"frequency_penalty"] = @(form.frequencyPenalty);
     }
     [body addEntriesFromDictionary:[self.modelStore samplingBodyFieldsForForm:form]];
+    BOOL structuredPpt = [taskType isEqualToString:@"impress_outline"] || [taskType isEqualToString:@"impress_generate"];
+    NSDictionary *context = [payload[@"context"] isKindOfClass:NSDictionary.class] ? payload[@"context"] : @{};
+    BOOL jsonResponseMode = structuredPpt && ![context[@"__pptPlainJsonRetry"] boolValue];
+    if (structuredPpt) {
+        // These replies are machine-readable data, not conversational prose.
+        // Penalizing repeated tokens also penalizes JSON keys and punctuation.
+        body[@"temperature"] = @0.2;
+        [body removeObjectForKey:@"presence_penalty"];
+        [body removeObjectForKey:@"frequency_penalty"];
+        [body removeObjectForKey:@"seed"];
+        if (jsonResponseMode) body[@"response_format"] = @{@"type": @"json_object"};
+    }
+    if ([taskType isEqualToString:@"impress_outline"]) {
+        NSLog(@"[AI] impress_outline request_prepared requestId=%@ taskType=%@ maxTokens=%@ jsonMode=%@",
+              requestId, taskType, body[@"max_tokens"], jsonResponseMode ? @"yes" : @"no");
+    }
     request.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
 
     AIServiceRequest *serviceRequest = [[AIServiceRequest alloc] init];
     serviceRequest.session = [[AIRequestSession alloc] initWithRequestId:requestId
                                                        documentSessionId:documentSessionId];
     serviceRequest.emitter = [emit copy];
+    serviceRequest.sourcePayload = structuredPpt ? [payload copy] : nil;
+    serviceRequest.jsonResponseMode = jsonResponseMode;
+    serviceRequest.responseData = [NSMutableData data];
     NSURLSessionDataTask *task = [self.urlSession dataTaskWithRequest:request];
     [serviceRequest.session bindTask:task];
     self.requestsByTask[task] = serviceRequest;
@@ -378,10 +427,36 @@
 didReceiveResponse:(NSURLResponse *)response
  completionHandler:(void (^)(NSURLSessionResponseDisposition disposition))completionHandler {
     AIServiceRequest *serviceRequest = self.requestsByTask[dataTask];
+    if (serviceRequest == nil || !serviceRequest.session.canEmit) {
+        completionHandler(NSURLSessionResponseCancel);
+        return;
+    }
     NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
     serviceRequest.statusCode = httpResponse.statusCode;
     if (httpResponse.statusCode < 200 || httpResponse.statusCode >= 300) {
+        if ([serviceRequest.session.requestId hasPrefix:@"impress-outline-"]) {
+            NSLog(@"[AI] impress_outline http_error status=%ld", (long)httpResponse.statusCode);
+        }
         completionHandler(NSURLSessionResponseCancel);
+        // A few otherwise compatible providers reject response_format. Retry
+        // once without that optional field, retaining the same UI request id.
+        if (serviceRequest.jsonResponseMode && serviceRequest.sourcePayload != nil &&
+            (httpResponse.statusCode == 400 || httpResponse.statusCode == 422)) {
+            NSMutableDictionary *retry = [serviceRequest.sourcePayload mutableCopy];
+            id originalContext = retry[@"context"];
+            NSMutableDictionary *context = [originalContext isKindOfClass:NSDictionary.class]
+                ? [originalContext mutableCopy] : [NSMutableDictionary dictionary];
+            context[@"__pptPlainJsonRetry"] = @YES;
+            retry[@"context"] = context;
+            NSString *rid = serviceRequest.session.requestId;
+            NSString *sid = serviceRequest.session.documentSessionId;
+            AIServiceEventEmitter emitter = serviceRequest.emitter;
+            [serviceRequest.session cancel];
+            [self removeRequest:serviceRequest];
+            NSLog(@"[AI] ppt_json_mode_fallback requestId=%@ status=%ld", rid, (long)httpResponse.statusCode);
+            [self startRequest:retry requestId:rid documentSessionId:sid emit:emitter];
+            return;
+        }
         [self finishErrorForRequest:serviceRequest code:[NSString stringWithFormat:@"http_%ld",
                                                          (long)httpResponse.statusCode]
                             message:@"AI request failed"];
@@ -400,6 +475,14 @@ didReceiveResponse:(NSURLResponse *)response
     if (serviceRequest.imageGeneration) {
         [serviceRequest.responseData appendData:data];
         return;
+    }
+    // Compatible providers may ignore stream=true and return normal JSON.
+    // Retain bytes until the first SSE text is received, for that fallback.
+    if (serviceRequest.session.fullText.length == 0) {
+        if (serviceRequest.responseData == nil) serviceRequest.responseData = [NSMutableData data];
+        [serviceRequest.responseData appendData:data];
+    } else {
+        serviceRequest.responseData = nil;
     }
     for (NSString *line in [serviceRequest.session consumeLinesFromData:data]) {
         if ([line hasPrefix:@"data:"]) {
@@ -438,8 +521,29 @@ didCompleteWithError:(NSError *)error {
         if ([line hasPrefix:@"data:"]) {
             [self handleSSEData:[line substringFromIndex:5] request:serviceRequest];
         }
-        [self finishDoneForRequest:serviceRequest];
     }
+    if (serviceRequest.session.fullText.length == 0 && serviceRequest.responseData.length > 0) {
+        id response = [NSJSONSerialization JSONObjectWithData:serviceRequest.responseData options:0 error:nil];
+        if ([response isKindOfClass:NSDictionary.class]) {
+            id choices = response[@"choices"];
+            NSDictionary *choice = [choices isKindOfClass:NSArray.class] && [choices count] > 0 &&
+                [choices[0] isKindOfClass:NSDictionary.class] ? choices[0] : nil;
+            id message = choice[@"message"];
+            NSString *content = [message isKindOfClass:NSDictionary.class] &&
+                [message[@"content"] isKindOfClass:NSString.class] ? message[@"content"] : nil;
+            if (content.length == 0 && [choice[@"text"] isKindOfClass:NSString.class]) content = choice[@"text"];
+            if (content.length > 0) [serviceRequest.session appendDelta:content];
+            if ([choice[@"finish_reason"] isKindOfClass:NSString.class]) serviceRequest.finishReason = choice[@"finish_reason"];
+            if ([response[@"error"] isKindOfClass:NSDictionary.class]) {
+                [self finishErrorForRequest:serviceRequest code:@"provider_error" message:@"AI服务返回错误，请检查模型配置后重试"];
+                return;
+            }
+        }
+    }
+    // A successful response can end at a line boundary without a [DONE]
+    // sentinel. There may then be no pending lines, but the request still
+    // needs a terminal event so the UI can leave its generating state.
+    [self finishDoneForRequest:serviceRequest];
 }
 
 - (void)handleSSEData:(NSString *)rawData request:(AIServiceRequest *)serviceRequest {
@@ -455,12 +559,26 @@ didCompleteWithError:(NSError *)error {
 
     NSData *jsonData = [data dataUsingEncoding:NSUTF8StringEncoding];
     NSDictionary *chunk = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
-    NSArray *choices = [chunk isKindOfClass:[NSDictionary class]] ? chunk[@"choices"] : nil;
-    NSDictionary *choice = choices.count > 0 && [choices[0] isKindOfClass:[NSDictionary class]]
+    id choices = [chunk isKindOfClass:[NSDictionary class]] ? chunk[@"choices"] : nil;
+    NSDictionary *choice = [choices isKindOfClass:NSArray.class] && [choices count] > 0 && [choices[0] isKindOfClass:[NSDictionary class]]
         ? choices[0] : nil;
+    NSString *finishReason = [choice[@"finish_reason"] isKindOfClass:NSString.class]
+        ? choice[@"finish_reason"] : @"";
+    if (finishReason.length > 0) {
+        serviceRequest.finishReason = finishReason;
+        if ([serviceRequest.session.requestId hasPrefix:@"impress-outline-"]) {
+            NSLog(@"[AI] impress_outline stream_finish requestId=%@ finishReason=%@",
+                  serviceRequest.session.requestId, finishReason);
+        }
+    }
     NSDictionary *delta = [choice[@"delta"] isKindOfClass:[NSDictionary class]]
         ? choice[@"delta"] : nil;
     NSString *text = [delta[@"content"] isKindOfClass:[NSString class]] ? delta[@"content"] : nil;
+    id message = choice[@"message"];
+    if (text.length == 0 && [message isKindOfClass:NSDictionary.class] &&
+        [message[@"content"] isKindOfClass:NSString.class]) {
+        text = message[@"content"];
+    }
     if (text.length == 0 && [choice[@"text"] isKindOfClass:[NSString class]]) {
         text = choice[@"text"];
     }
@@ -536,10 +654,23 @@ didCompleteWithError:(NSError *)error {
     if (![serviceRequest.session markTerminal]) {
         return;
     }
+    if ([serviceRequest.session.requestId hasPrefix:@"impress-outline-"]) {
+        NSLog(@"[AI] impress_outline stream_done requestId=%@ chars=%lu finishReason=%@",
+              serviceRequest.session.requestId,
+              (unsigned long)serviceRequest.session.fullText.length,
+              serviceRequest.finishReason ?: @"unknown");
+    }
+    NSMutableDictionary *payload = [@{
+        @"state": @"ready",
+        @"fullText": serviceRequest.session.fullText,
+    } mutableCopy];
+    if (serviceRequest.finishReason.length > 0) {
+        payload[@"finishReason"] = serviceRequest.finishReason;
+    }
     [self emitType:@"ai.done"
           requestId:serviceRequest.session.requestId
        documentSessionId:serviceRequest.session.documentSessionId
-              payload:@{@"state": @"ready", @"fullText": serviceRequest.session.fullText}
+              payload:payload
                emitter:serviceRequest.emitter];
     [self removeRequest:serviceRequest];
 }
@@ -549,6 +680,10 @@ didCompleteWithError:(NSError *)error {
                        message:(NSString *)message {
     if (![serviceRequest.session markTerminal]) {
         return;
+    }
+    if ([serviceRequest.session.requestId hasPrefix:@"impress-outline-"]) {
+        NSLog(@"[AI] impress_outline request_failed requestId=%@ status=%ld code=%@",
+              serviceRequest.session.requestId, (long)serviceRequest.statusCode, code ?: @"unknown");
     }
     [self emitType:@"ai.error"
           requestId:serviceRequest.session.requestId
@@ -916,6 +1051,9 @@ didCompleteWithError:(NSError *)error {
                                                               audience:audience
                                                                  style:style];
         systemPrompt = prompts[@"system"];
+        if ([context[@"compactOutline"] boolValue]) {
+            systemPrompt = [systemPrompt stringByAppendingString:@"\n上一次结果未形成完整JSON。请重新生成完整大纲，只返回一个JSON对象。每页title不超过20字、content不超过40字；只列要点，不展开正文，不输出思考过程或代码块。必须完整闭合slides数组及根对象。"];
+        }
         userPrompt = prompts[@"user"];
         if (userPrompt.length == 0) {
             if (error != NULL) {
@@ -1024,6 +1162,8 @@ didCompleteWithError:(NSError *)error {
          "  ]\n"
          "}\n\n"
          "type枚举：cover(封面)、toc(目录)、section_divider(章节分割页)、section(章节正文)、end(结尾)\n"
+         "title 和 content 的值必须用英文双引号包住，不能输出缺少引号的字段值。\n"
+         "content 必须是字符串，不能输出数组。\n"
          "每章结构：先一条 section_divider（title=章名，content=本章概述），再一条或多条 section（正文页）\n"
          "title: 每页标题（简洁有力）\n"
          "content: 内容要点（Markdown格式，用•开头的列表）\n"
