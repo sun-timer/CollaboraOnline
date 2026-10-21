@@ -10,6 +10,8 @@ class MobileAiOperationDialog {
 	private readonly requirement?: HTMLTextAreaElement;
 	private readonly styleSelect?: HTMLSelectElement;
 	private polishStyleValue?: HTMLSpanElement;
+	private polishStyleCard?: HTMLElement;
+	private disposed = false;
 	private readonly outlineTypeSelect?: HTMLSelectElement;
 	private outlineTypeValue?: HTMLSpanElement;
 	private readonly outlineDescription?: HTMLTextAreaElement;
@@ -33,6 +35,7 @@ class MobileAiOperationDialog {
 			title: entry?.label || 'AI 文案处理',
 			presentation: 'writer',
 			taskType,
+			onClose: () => this.dispose(),
 		});
 
 		const input = this.layout.inputSlot;
@@ -64,6 +67,7 @@ class MobileAiOperationDialog {
 				initialLabel,
 				() => this.openStyleSelect(),
 			);
+			this.polishStyleCard = card;
 			this.polishStyleValue = card.querySelector(
 				'.mobile-ai-task-dialog__picker-card-value',
 			) as HTMLSpanElement;
@@ -79,9 +83,8 @@ class MobileAiOperationDialog {
 		}
 
 		if (
-			taskType === 'expand' ||
-			taskType === 'condense' ||
-			taskType === 'rewrite'
+			(taskType === 'expand' || taskType === 'condense' || taskType === 'rewrite') &&
+			!(this.isPresentation() && taskType !== 'rewrite')
 		) {
 			const hint =
 				taskType === 'condense'
@@ -163,16 +166,22 @@ class MobileAiOperationDialog {
 		this.layout.stopButton.onclick = () => this.controller.cancel();
 		this.layout.copyRow.onclick = () => this.controller.copy();
 		this.layout.regenerateButton.onclick = () => this.regenerate();
-		this.layout.applyButton.onclick = () =>
-			this.controller.accept(
-				MobileAiResultRenderer.toHtml(this.controller.getState().preview),
-			);
+		this.layout.applyButton.onclick = async () => {
+			const html = MobileAiResultRenderer.toHtml(this.controller.getState().preview);
+			if (this.isPresentation() && (window as any).ThisIsTheiOSApp) {
+				if (await this.controller.acceptAsync(html)) this.close();
+			} else {
+				this.controller.accept(html);
+			}
+		};
 
 		this.sheet.setBody(this.layout.root);
 		this.unsubscribe = this.controller.subscribe(() => this.render());
 	}
 
 	open(): void {
+		// Clears any loading or preview left by a previously opened task.
+		this.controller.resetPreview();
 		this.sheet.open();
 		const state = this.controller.getState();
 		if (this.taskType === 'continue' && state.state !== 'ready') {
@@ -193,18 +202,26 @@ class MobileAiOperationDialog {
 	}
 
 	private openStyleSelect(): void {
-		if (!this.styleSelect) {
+		if (!this.styleSelect || !this.polishStyleCard) {
 			return;
 		}
-		this.styleSelect.focus();
-		const picker = (this.styleSelect as HTMLSelectElement & {
-			showPicker?: () => void;
-		}).showPicker;
-		if (typeof picker === 'function') {
-			picker.call(this.styleSelect);
-		} else {
-			this.styleSelect.click();
-		}
+		// A hidden HTML select cannot present its native picker in WKWebView.
+		// Use the same anchored menu as Android, while keeping the select as
+		// the task's value model for request validation.
+		const options = Array.from(this.styleSelect.options);
+		MobileAiWaiDropdown.show({
+			anchor: this.polishStyleCard,
+			labels: options.map((option) => option.textContent || option.value),
+			selectedIndex: this.styleSelect.selectedIndex,
+			onPick: (index, label) => {
+				if (this.styleSelect) {
+					this.styleSelect.value = options[index].value;
+				}
+				if (this.polishStyleValue) {
+					this.polishStyleValue.textContent = label;
+				}
+			},
+		});
 	}
 
 	private openOutlineTypeSelect(): void {
@@ -252,9 +269,24 @@ class MobileAiOperationDialog {
 	}
 
 	close(): void {
-		this.controller.cancel();
-		this.unsubscribe();
 		this.sheet.close();
+	}
+
+	private dispose(): void {
+		if (this.disposed) {
+			return;
+		}
+		this.disposed = true;
+		const state = this.controller.getState().state;
+		if (state === 'loading' || state === 'streaming' || state === 'ready') {
+			this.controller.cancel();
+		}
+		this.unsubscribe();
+		MobileAiWaiDropdown.dismiss();
+	}
+
+	private isPresentation(): boolean {
+		return (window as any).app?.map?.getDocType?.() === 'presentation';
 	}
 
 	private async request(): Promise<void> {
@@ -303,7 +335,7 @@ class MobileAiOperationDialog {
 		);
 		const active = state.state === 'loading' || state.state === 'streaming';
 		const ready = state.state === 'ready' && !!state.preview;
-		if (ready) {
+		if (ready || state.state === 'inserting') {
 			this.layout.setStage('result');
 		} else if (active) {
 			this.layout.setStage('generating');
@@ -319,7 +351,7 @@ class MobileAiOperationDialog {
 		this.layout.applyButton.disabled = !ready;
 		this.layout.status.textContent =
 			state.error ||
-			(active
+			(state.state === 'inserting' ? '正在插入文档…' : active
 				? state.state === 'streaming'
 					? 'AI 正在输出…'
 					: 'AI 正在生成…'

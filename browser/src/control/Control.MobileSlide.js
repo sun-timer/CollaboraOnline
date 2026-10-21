@@ -29,7 +29,7 @@ window.L.Control.MobileSlide = window.L.Control.extend({
 		if (map) {
 			this._map = map;
 		}
-		if (this._attached) {
+		if (this._attached && this._container && this._container.isConnected) {
 			return;
 		}
 		if (!this._container) {
@@ -38,8 +38,10 @@ window.L.Control.MobileSlide = window.L.Control.extend({
 		var wrapper = window.L.DomUtil.get('presentation-controls-wrapper');
 		if (wrapper) {
 			wrapper.appendChild(this._container);
+			this._attached = true;
+		} else {
+			this._attached = false;
 		}
-		this._attached = true;
 	},
 
 	detach: function () {
@@ -60,7 +62,9 @@ window.L.Control.MobileSlide = window.L.Control.extend({
 		this._container = window.L.DomUtil.create('div', 'mobile-slide-strip');
 		this._button = window.L.DomUtil.create('a', 'mobile-slide-strip-btn', this._container);
 		this._button.href = '#';
-		this._button.title = '';
+		this._button.title = '添加幻灯片';
+		this._button.setAttribute('aria-label', '添加幻灯片');
+		this._button.setAttribute('role', 'button');
 		// 设计稿 + 图标 32px ÷ 2 = 16px,垂直水平居中
 		this._button.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">'
 			+ '<path d="M10 3.5V16.5M3.5 10H16.5" stroke="#333333" stroke-width="2.5" stroke-linecap="round"/>'

@@ -45,7 +45,9 @@ class WriterQuickActionBar {
 
 	setActions(items: WriterQuickActionSpec[]): void {
 		this.row.replaceChildren();
-		Object.keys(this.toggleButtons).forEach((key) => delete this.toggleButtons[key]);
+		Object.keys(this.toggleButtons).forEach(
+			(key) => delete this.toggleButtons[key],
+		);
 		items.forEach((item) => {
 			const button = document.createElement('button');
 			button.type = 'button';
@@ -55,7 +57,12 @@ class WriterQuickActionBar {
 			icon.className = 'writer-quick-action-bar__icon';
 			icon.innerHTML = item.iconHtml;
 			button.appendChild(icon);
-			button.onclick = item.onTap;
+			button.onmousedown = (event) => event.preventDefault();
+			button.onclick = () => {
+				const map = (window as any).app?.map;
+				if (map?.getDocType?.() === 'presentation') map.focus(false);
+				item.onTap();
+			};
 			if (item.command) {
 				this.toggleButtons[item.command] = button;
 			}

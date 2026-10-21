@@ -163,6 +163,7 @@ window.L.ImpressTileLayer = window.L.CanvasTileLayer.extend({
 	},
 
 	onResizeImpress: function () {
+		this._syncMobileAddSlideButton();
 		window.L.DomUtil.updateElementsOrientation(['presentation-controls-wrapper', 'document-container', 'slide-sorter']);
 
 		var mobileEditButton = document.getElementById('mobile-edit-button');

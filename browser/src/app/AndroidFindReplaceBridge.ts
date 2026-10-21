@@ -10,6 +10,7 @@ interface AndroidFindReplaceOptions {
 
 class AndroidFindReplaceBridge {
 	private static searchFlags = 0;
+	private static transliterateFlags = 1;
 	private static lastQuery = '';
 	private static lastReplace = '';
 	private static suppressSelectionMenu = false;
@@ -20,17 +21,22 @@ class AndroidFindReplaceBridge {
 	private static readonly CMD_REPLACE = 2;
 	private static readonly CMD_REPLACE_ALL = 3;
 
-	private static readonly FLAG_MATCH_CASE = 0x00000001;
 	private static readonly FLAG_WHOLE_WORD = 0x00000010;
 
 	static setOptions(options: AndroidFindReplaceOptions): void {
 		let flags = 0;
-		if (options.caseSensitive) {
-			flags |= AndroidFindReplaceBridge.FLAG_MATCH_CASE;
-		}
 		if (options.wholeWord) {
 			flags |= AndroidFindReplaceBridge.FLAG_WHOLE_WORD;
 		}
+		const transliterateFlags = options.caseSensitive ? 0 : 1;
+		if (
+			flags !== AndroidFindReplaceBridge.searchFlags ||
+			transliterateFlags !== AndroidFindReplaceBridge.transliterateFlags
+		) {
+			const layer = (window as any).app?.map?._docLayer;
+			layer?._clearSearchResults?.();
+		}
+		AndroidFindReplaceBridge.transliterateFlags = transliterateFlags;
 		AndroidFindReplaceBridge.searchFlags = flags;
 	}
 
@@ -58,7 +64,8 @@ class AndroidFindReplaceBridge {
 		);
 	}
 
-	static findPrevious(): void {
+	static findPrevious(query?: string): void {
+		if (query !== undefined) AndroidFindReplaceBridge.lastQuery = query;
 		if (!AndroidFindReplaceBridge.lastQuery) {
 			return;
 		}
@@ -113,10 +120,13 @@ class AndroidFindReplaceBridge {
 		if (AndroidFindReplaceBridge.suppressSelectionMenuTimer) {
 			window.clearTimeout(AndroidFindReplaceBridge.suppressSelectionMenuTimer);
 		}
-		AndroidFindReplaceBridge.suppressSelectionMenuTimer = window.setTimeout(() => {
-			AndroidFindReplaceBridge.suppressSelectionMenuTimer = 0;
-			AndroidFindReplaceBridge.clearSuppressSelectionMenu();
-		}, AndroidFindReplaceBridge.suppressSelectionMenuTimeoutMs);
+		AndroidFindReplaceBridge.suppressSelectionMenuTimer = window.setTimeout(
+			() => {
+				AndroidFindReplaceBridge.suppressSelectionMenuTimer = 0;
+				AndroidFindReplaceBridge.clearSuppressSelectionMenu();
+			},
+			AndroidFindReplaceBridge.suppressSelectionMenuTimeoutMs,
+		);
 		const selectionMenu = (window as any).AndroidSelectionMenu;
 		if (selectionMenu && typeof selectionMenu.hide === 'function') {
 			selectionMenu.hide();
@@ -160,14 +170,16 @@ class AndroidFindReplaceBridge {
 		}
 		AndroidFindReplaceBridge.suppressSelectionMenuForSearch();
 		const map = app.map;
-		if (!map || !map._docLayer || !app.activeDocument || !app.activeDocument.activeLayout) {
+		if (
+			!map ||
+			!map._docLayer ||
+			!app.activeDocument ||
+			!app.activeDocument.activeLayout
+		) {
 			return;
 		}
 
-		if (
-			map._docLayer._searchResults &&
-			text !== map._docLayer._searchTerm
-		) {
+		if (map._docLayer._searchResults && text !== map._docLayer._searchTerm) {
 			map._docLayer._clearSearchResults();
 		}
 
@@ -189,17 +201,31 @@ class AndroidFindReplaceBridge {
 			'SearchItem.SearchString': { type: 'string', value: text },
 			'SearchItem.ReplaceString': { type: 'string', value: replaceString },
 			'SearchItem.Backward': { type: 'boolean', value: backward },
-			'SearchItem.SearchStartPointX': { type: 'long', value: searchStartPointX },
-			'SearchItem.SearchStartPointY': { type: 'long', value: searchStartPointY },
+			'SearchItem.SearchStartPointX': {
+				type: 'long',
+				value: searchStartPointX,
+			},
+			'SearchItem.SearchStartPointY': {
+				type: 'long',
+				value: searchStartPointY,
+			},
 			'SearchItem.Command': { type: 'long', value: command },
+			'SearchItem.TransliterateFlags': {
+				type: 'long',
+				value: AndroidFindReplaceBridge.transliterateFlags,
+			},
 			'SearchItem.SearchFlags': {
 				type: 'long',
 				value: AndroidFindReplaceBridge.searchFlags,
 			},
 		};
 
-		app.socket.sendMessage('uno .uno:ExecuteSearch ' + JSON.stringify(searchCmd));
+		app.socket.sendMessage(
+			'uno .uno:ExecuteSearch ' + JSON.stringify(searchCmd),
+		);
 	}
 }
 
-(window as any).AndroidFindReplaceBridge = AndroidFindReplaceBridge;
+if (typeof window !== 'undefined') {
+	(window as any).AndroidFindReplaceBridge = AndroidFindReplaceBridge;
+}

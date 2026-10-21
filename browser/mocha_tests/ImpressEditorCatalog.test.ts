@@ -1,4 +1,5 @@
 /* -*- js-indent-level: 8 -*- */
+/* eslint-disable @typescript-eslint/no-var-requires -- mocha main.ts concatenates global test scripts. */
 /*
  * Copyright the Collabora Online contributors.
  *
@@ -39,7 +40,10 @@ describe('ImpressEditorCatalog', function () {
 	});
 
 	it('includes insert image and 36 Android transitions', function () {
-		assert.equal(ImpressEditorCatalog.getFeature('insert-image')?.dialog, 'image');
+		assert.equal(
+			ImpressEditorCatalog.getFeature('insert-image')?.dialog,
+			'image',
+		);
 		assert.equal(ImpressEditorCatalog.TRANSITIONS.length, 36);
 		assert.equal(ImpressEditorCatalog.getFeatures('transition').length, 36);
 		assert.equal(ImpressEditorCatalog.TRANSITIONS[0].iconViewIndex, 0);
@@ -48,38 +52,128 @@ describe('ImpressEditorCatalog', function () {
 	});
 
 	it('wires insert table, shape, hyperlink, and comment from Android catalogs', function () {
-		assert.equal(ImpressEditorCatalog.getFeature('insert-table')?.dialog, 'table');
-		assert.equal(ImpressEditorCatalog.getFeature('insert-table')?.unocmd, '.uno:InsertTable');
-		assert.equal(ImpressEditorCatalog.getFeature('insert-shape')?.dialog, 'shape');
-		assert.equal(ImpressEditorCatalog.getFeature('insert-hyperlink')?.dialog, 'hyperlink');
-		assert.equal(ImpressEditorCatalog.getFeature('insert-hyperlink')?.unocmd, '.uno:SetHyperlink');
-		assert.equal(ImpressEditorCatalog.getFeature('insert-comment')?.dialog, 'comment');
-		assert.equal(ImpressEditorCatalog.getFeature('insert-comment')?.unocmd, '.uno:InsertAnnotation');
-		assert.equal(ImpressEditorCatalog.getFeature('review-comment')?.dialog, 'comment');
+		assert.equal(
+			ImpressEditorCatalog.getFeature('insert-table')?.dialog,
+			'table',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('insert-table')?.unocmd,
+			'.uno:InsertTable',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('insert-shape')?.dialog,
+			'shape',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('insert-hyperlink')?.dialog,
+			'hyperlink',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('insert-hyperlink')?.unocmd,
+			'.uno:SetHyperlink',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('insert-comment')?.dialog,
+			'comment',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('insert-comment')?.unocmd,
+			'.uno:InsertAnnotation',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('review-comment')?.dialog,
+			'commentList',
+		);
+		assert.equal(ImpressEditorCatalog.getFeature('review-comment')?.label, '批注');
+		assert.equal(
+			ImpressEditorCatalog.getFeature('review-comment')?.unocmd,
+			undefined,
+		);
 	});
 
 	it('removes local image from common tab but keeps insert tab image', function () {
 		assert.equal(ImpressEditorCatalog.getFeature('common-insert-image'), null);
-		assert.equal(ImpressEditorCatalog.getFeature('insert-image')?.tab, 'insert');
-		assert.equal(ImpressEditorCatalog.getFeature('insert-image')?.dialog, 'image');
-		const defaultIds = ImpressEditorCatalog.getFeatures('default').map(function (f) {
-			return f.id;
-		});
+		assert.equal(
+			ImpressEditorCatalog.getFeature('insert-image')?.tab,
+			'insert',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('insert-image')?.dialog,
+			'image',
+		);
+		const defaultIds = ImpressEditorCatalog.getFeatures('default').map(
+			function (f) {
+				return f.id;
+			},
+		);
 		assert.equal(defaultIds.indexOf('common-insert-image'), -1);
 	});
 
-	it('registers slide format and orientation matching Android UNO', function () {
-		assert.equal(ImpressEditorCatalog.getFeature('slide-format')?.dialog, 'slideFormat');
-		assert.equal(ImpressEditorCatalog.getFeature('slide-orientation')?.dialog, 'slideOrientation');
-		assert.equal(ImpressEditorCatalog.SLIDE_FORMATS[0].label, 'A4');
+	it('lists the 20 Android paper formats with A4 first and PaperFormat:short commands', function () {
+		assert.equal(
+			ImpressEditorCatalog.getFeature('slide-format')?.dialog,
+			'slideFormat',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('slide-orientation')?.dialog,
+			'slideOrientation',
+		);
+		assert.deepEqual(
+			ImpressEditorCatalog.SLIDE_FORMATS.map(function (entry) {
+				return entry.label;
+			}),
+			[
+				'A4',
+				'A3',
+				'A5',
+				'A6',
+				'A2',
+				'A1',
+				'A0',
+				'B6(ISO)',
+				'B5(ISO)',
+				'B4(ISO)',
+				'B6(JIS)',
+				'B5(JIS)',
+				'B4(JIS)',
+				'Letter',
+				'Legal',
+				'Tabloid',
+				'16开',
+				'32开',
+				'大32开',
+				'自定义',
+			],
+		);
+		assert.equal(ImpressEditorCatalog.SLIDE_FORMATS.length, 20);
 		assert.equal(ImpressEditorCatalog.SLIDE_FORMATS[0].paperFormat, '4');
 		assert.equal(
+			ImpressEditorCatalog.paperFormatCommand(
+				ImpressEditorCatalog.SLIDE_FORMATS[0].paperFormat,
+			),
+			'.uno:AttributePageSize?PaperFormat:short=4',
+		);
+		assert.equal(
+			ImpressEditorCatalog.paperFormatCommand('56'),
+			'.uno:AttributePageSize?PaperFormat:short=56',
+		);
+		assert.equal(
+			ImpressEditorCatalog.SLIDE_FORMATS[19].paperFormat,
+			ImpressEditorCatalog.CUSTOM_PAPER_FORMAT,
+		);
+		const letter = ImpressEditorCatalog.SLIDE_FORMATS.find(
+			(entry) => entry.label === 'Letter',
+		);
+		assert.equal(letter?.paperFormat, '8');
+		assert.equal(letter?.width, 21590);
+		assert.equal(letter?.height, 27940);
+		assert.equal(
 			ImpressEditorCatalog.SLIDE_ORIENTATIONS[0].unocmd,
-			'.uno:Orientation?isLandscape:bool=true',
+			'.uno:AttributePage?AttributePage.Landscape:bool=true',
 		);
 		assert.equal(
 			ImpressEditorCatalog.SLIDE_ORIENTATIONS[1].unocmd,
-			'.uno:Orientation?isLandscape:bool=false',
+			'.uno:AttributePage?AttributePage.Landscape:bool=false',
 		);
 	});
 
@@ -101,9 +195,11 @@ describe('ImpressEditorCatalog', function () {
 	});
 
 	it('keeps first three layouts on default and all eleven on layout tab', function () {
-		const commonLayouts = ImpressEditorCatalog.getFeatures('default').filter(function (f) {
-			return f.row === 'layoutPreview';
-		});
+		const commonLayouts = ImpressEditorCatalog.getFeatures('default').filter(
+			function (f) {
+				return f.row === 'layoutPreview';
+			},
+		);
 		assert.equal(commonLayouts.length, 3);
 		assert.equal(commonLayouts[0].id, 'common-layout-title');
 		assert.equal(commonLayouts[2].id, 'common-layout-section');
@@ -111,11 +207,19 @@ describe('ImpressEditorCatalog', function () {
 		assert.equal(layoutTab.length, 11);
 		assert.equal(layoutTab[0].id, 'layout-title');
 		assert.equal(layoutTab[10].id, 'layout-end');
-		const defaultIds = ImpressEditorCatalog.getFeatures('default').map(function (f) {
-			return f.id;
-		});
-		assert.equal(defaultIds.indexOf('sec-layout') + 1, defaultIds.indexOf('common-layout-title'));
-		assert.ok(defaultIds.indexOf('common-layout-section') < defaultIds.indexOf('sec-char'));
+		const defaultIds = ImpressEditorCatalog.getFeatures('default').map(
+			function (f) {
+				return f.id;
+			},
+		);
+		assert.equal(
+			defaultIds.indexOf('sec-layout') + 1,
+			defaultIds.indexOf('common-layout-title'),
+		);
+		assert.ok(
+			defaultIds.indexOf('common-layout-section') <
+				defaultIds.indexOf('sec-char'),
+		);
 	});
 
 	it('registers common tab sections 幻灯片 / 布局 / 字符 / 段落', function () {
@@ -130,9 +234,11 @@ describe('ImpressEditorCatalog', function () {
 	});
 
 	it('places character pickers and tools between 字符 and 段落 sections', function () {
-		const defaultIds = ImpressEditorCatalog.getFeatures('default').map(function (f) {
-			return f.id;
-		});
+		const defaultIds = ImpressEditorCatalog.getFeatures('default').map(
+			function (f) {
+				return f.id;
+			},
+		);
 		const charSection = defaultIds.indexOf('sec-char');
 		const paraSection = defaultIds.indexOf('sec-para');
 		assert.ok(charSection >= 0 && paraSection > charSection);
@@ -140,10 +246,22 @@ describe('ImpressEditorCatalog', function () {
 			const index = defaultIds.indexOf(id);
 			assert.ok(index > charSection && index < paraSection, id);
 		});
-		assert.equal(ImpressEditorCatalog.getFeature('font-name')?.dialog, 'fontName');
-		assert.equal(ImpressEditorCatalog.getFeature('font-size')?.dialog, 'fontSize');
-		assert.equal(ImpressEditorCatalog.getFeature('font-color')?.dialog, 'fontColor');
-		assert.equal(ImpressEditorCatalog.getFeature('font-name')?.pickerDefault, '宋体');
+		assert.equal(
+			ImpressEditorCatalog.getFeature('font-name')?.dialog,
+			'fontName',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('font-size')?.dialog,
+			'fontSize',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('font-color')?.dialog,
+			'fontColor',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('font-name')?.pickerDefault,
+			'宋体',
+		);
 	});
 
 	it('maps char tool UNO commands like Android Impress CHAR_TOOL_COMMANDS', function () {
@@ -164,14 +282,29 @@ describe('ImpressEditorCatalog', function () {
 			assert.equal(feature?.unocmd, pair[1]);
 			assert.equal(feature?.row, 'charTool');
 		});
-		assert.equal(ImpressEditorCatalog.getFeature('char-highlight')?.dialog, 'highlightColor');
+		assert.equal(
+			ImpressEditorCatalog.getFeature('char-highlight')?.dialog,
+			'highlightColor',
+		);
 	});
 
 	it('registers slide background and master pickers on common tab', function () {
-		assert.equal(ImpressEditorCatalog.getFeature('slide-background')?.dialog, 'slideBackground');
-		assert.equal(ImpressEditorCatalog.getFeature('slide-master')?.dialog, 'slideMaster');
-		assert.equal(ImpressEditorCatalog.getFeature('slide-background')?.pickerDefault, '无');
-		assert.equal(ImpressEditorCatalog.getFeature('slide-master')?.pickerDefault, '默认');
+		assert.equal(
+			ImpressEditorCatalog.getFeature('slide-background')?.dialog,
+			'slideBackground',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('slide-master')?.dialog,
+			'slideMaster',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('slide-background')?.pickerDefault,
+			'无',
+		);
+		assert.equal(
+			ImpressEditorCatalog.getFeature('slide-master')?.pickerDefault,
+			'默认',
+		);
 	});
 
 	it('maps slide background options matching Android BACKGROUND_LABELS/COMMANDS', function () {
@@ -191,9 +324,11 @@ describe('ImpressEditorCatalog', function () {
 			expectedLabels,
 		);
 		assert.equal(ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS.length, 7);
-		const fillStyles = ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS.filter(function (entry) {
-			return entry.fillPageStyle !== undefined;
-		}).map(function (entry) {
+		const fillStyles = ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS.filter(
+			function (entry) {
+				return entry.fillPageStyle !== undefined;
+			},
+		).map(function (entry) {
 			return entry.fillPageStyle;
 		});
 		assert.deepEqual(fillStyles, [0, 1, 2, 3, 4]);
@@ -209,8 +344,14 @@ describe('ImpressEditorCatalog', function () {
 			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[6].unocmd,
 			'.uno:DisplayMasterBackground?DisplayMasterBackground:bool=true',
 		);
-		assert.equal(ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[1].afterSelect, 'colorPicker');
-		assert.equal(ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[4].afterSelect, 'imagePicker');
+		assert.equal(
+			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[1].afterSelect,
+			'colorPicker',
+		);
+		assert.equal(
+			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[4].afterSelect,
+			'imagePicker',
+		);
 	});
 
 	it('maps master slide options matching Android MASTER_SLIDE_LABELS', function () {
@@ -225,6 +366,295 @@ describe('ImpressEditorCatalog', function () {
 			ImpressEditorCatalog.buildFillPageStyleCommand(0),
 		);
 		assert.equal(ImpressEditorCatalog.SLIDE_MASTER_OPTIONS[1].unocmd, null);
-		assert.equal(ImpressEditorCatalog.SLIDE_MASTER_OPTIONS[1].afterSelect, 'colorPicker');
+		assert.equal(
+			ImpressEditorCatalog.SLIDE_MASTER_OPTIONS[1].afterSelect,
+			'colorPicker',
+		);
+	});
+});
+
+describe('Impress editor interaction regressions', function () {
+	let originalWindow: any;
+	let originalDocument: any;
+	let dom: any;
+	let commands: string[];
+	let listeners: Record<string, Array<(event: any) => void>>;
+
+	beforeEach(function () {
+		const JSDOM = require('jsdom').JSDOM;
+		dom = new JSDOM('<!doctype html><html><body></body></html>', {
+			pretendToBeVisual: true,
+		});
+		originalWindow = (global as any).window;
+		originalDocument = (global as any).document;
+		(global as any).window = dom.window;
+		(global as any).document = dom.window.document;
+		commands = [];
+		listeners = {};
+		(dom.window as any).app = {
+			socket: { sendMessage: (message: string) => commands.push(message) },
+			map: {
+				getDocType: () => 'presentation',
+				sendUnoCommand: (command: string) => commands.push(command),
+				_docLayer: { _partWidthTwips: 15874, _partHeightTwips: 8929 },
+				stateChangeHandler: {
+					getItemValue: (command: string) =>
+						(
+							({
+								'.uno:FontHeight': '24',
+								'.uno:Color': 0xff0000,
+							}) as Record<string, any>
+						)[command],
+				},
+				on: (name: string, fn: (event: any) => void) =>
+					(listeners[name] ||= []).push(fn),
+				off: (name: string, fn: (event: any) => void) => {
+					listeners[name] = (listeners[name] || []).filter(
+						(item) => item !== fn,
+					);
+				},
+			},
+		};
+	});
+
+	afterEach(function () {
+		dom.window.close();
+		(global as any).window = originalWindow;
+		(global as any).document = originalDocument;
+	});
+
+	it('shows actual font state and hides tabs on nested color pages', function () {
+		const panel = new (ImpressEditorPanel as any)();
+		panel.open();
+		assert.equal(panel.pickerLabels['font-size'], '小一');
+		assert.equal(panel.fontColorRgb, 0xff0000);
+		panel.openFontColorDialog();
+		assert.ok(
+			dom.window.document.querySelector(
+				'.writer-function-tab-bar.writer-function-subpage-host__hidden',
+			),
+		);
+		panel.close();
+		assert.equal(listeners.commandstatechanged.length, 0);
+	});
+
+	it('opens hyperlink inside the function panel and provides a return action', function () {
+		const panel = new (ImpressEditorPanel as any)();
+		panel.open();
+		panel.onFeature(ImpressEditorCatalog.getFeature('insert-hyperlink'));
+		assert.equal(
+			dom.window.document.querySelectorAll('.mobile-ai-sheet').length,
+			0,
+		);
+		assert.equal(
+			dom.window.document.querySelector(
+				'.writer-function-inline-subpage__frame h2',
+			).textContent,
+			'插入超链接',
+		);
+		dom.window.document.querySelector('button[aria-label="返回"]').click();
+		assert.equal(
+			dom.window.document.querySelectorAll('.writer-function-inline-subpage')
+				.length,
+			0,
+		);
+		panel.close();
+	});
+
+	it('dismisses the Impress panel before opening the native comment list', function () {
+		const panel = new (ImpressEditorPanel as any)();
+		const openedWithPanelVisible: boolean[] = [];
+		(dom.window as any).__coolOpenCommentList = () => {
+			openedWithPanelVisible.push(
+				!!dom.window.document.querySelector('.writer-function-sheet'),
+			);
+		};
+		panel.open();
+		panel.onFeature(ImpressEditorCatalog.getFeature('review-comment'));
+		assert.deepEqual(openedWithPanelVisible, [false]);
+	});
+
+	it('sends a numeric font size and refreshes the selected size label', async function () {
+		const panel = new (ImpressEditorPanel as any)();
+		panel.open();
+		panel.openFontSizeDialog();
+		dom.window.document.querySelector('button[aria-label="四号"]').click();
+		await new Promise((resolve) => dom.window.setTimeout(resolve, 5));
+		assert.equal(
+			commands[0],
+			'.uno:FontHeight {"FontHeight.Height":{"type":"float","value":"14"}}',
+		);
+		assert.equal(panel.pickerLabels['font-size'], '四号');
+		panel.close();
+	});
+
+	it('swaps actual slide dimensions when choosing portrait', async function () {
+		const panel = new (ImpressEditorPanel as any)();
+		panel.open();
+		panel.openSlideOrientationDialog();
+		dom.window.document.querySelector('button[aria-label="纵向"]').click();
+		await new Promise((resolve) => dom.window.setTimeout(resolve, 5));
+		const size = JSON.parse(
+			commands[0].slice('.uno:AttributePageSize '.length),
+		);
+		assert.ok(
+			size['AttributePageSize.Width'].value <
+				size['AttributePageSize.Height'].value,
+		);
+		assert.equal(
+			commands[1],
+			'.uno:AttributePage?AttributePage.Landscape:bool=false',
+		);
+		panel.close();
+	});
+
+	it('keeps Impress row and column counts distinct when inserting a table', function () {
+		const panel = new (ImpressEditorPanel as any)();
+		panel.open();
+		panel.onFeature(ImpressEditorCatalog.getFeature('insert-table'));
+		dom.window.document.querySelector('button[aria-label="增加行"]').click();
+		const buttons = Array.from(
+			dom.window.document.querySelectorAll('button'),
+		) as HTMLButtonElement[];
+		buttons.find((button) => button.textContent === '插入表格')?.click();
+		assert.equal(
+			commands[0],
+			'.uno:InsertTable {"Columns":{"type":"long","value":2},"Rows":{"type":"long","value":3}}',
+		);
+		panel.close();
+	});
+
+	it('leaves a newly opened subpage in place after choosing an option', async function () {
+		const anchor = dom.window.document.createElement('div');
+		dom.window.document.body.appendChild(anchor);
+		const host = new WriterEditorInlineSubpage(anchor, []);
+		const picker = new WriterEditorChooseDialog(
+			'一级',
+			[{ label: '下一步', value: 'next' }],
+			() => host.pushSubpage('二级', dom.window.document.createElement('div')),
+			undefined,
+			host,
+		);
+		picker.open();
+		anchor.querySelector('.writer-editor-option-row').click();
+		await new Promise((resolve) => dom.window.setTimeout(resolve, 5));
+		assert.equal(anchor.querySelector('h2').textContent, '二级');
+	});
+
+	it('chooses slide background from Android options without opening PageSetup', async function () {
+		const panel = new (ImpressEditorPanel as any)();
+		panel.open();
+		panel.openSlideBackgroundDialog();
+		dom.window.document.querySelector('button[aria-label="渐变"]').click();
+		await new Promise((resolve) => dom.window.setTimeout(resolve, 5));
+		assert.deepEqual(commands, [
+			ImpressEditorCatalog.buildFillPageStyleCommand(2),
+		]);
+		assert.equal(panel.pickerLabels['slide-background'], '渐变');
+		panel.close();
+	});
+
+	it('dismisses the panel before sending the text box command', async function () {
+		const panel = new (ImpressEditorPanel as any)();
+		const focusCalls: boolean[] = [];
+		(dom.window as any).app.map.focus = (acceptInput?: boolean) => {
+			focusCalls.push(!!acceptInput);
+		};
+		panel.open();
+		panel.sendUno = (command: string) =>
+			commands.push(
+				(panel.sheet.root.isConnected ? 'panel-open:' : 'panel-closed:') +
+					command,
+			);
+		panel.onFeature(ImpressEditorCatalog.getFeature('insert-textbox'));
+		await new Promise((resolve) => dom.window.setTimeout(resolve, 5));
+		assert.deepEqual(commands, ['panel-closed:.uno:DrawText']);
+		assert.deepEqual(focusCalls, []);
+	});
+
+	it('does not activate transition presets before the populated Core icon view arrives', async function () {
+		ImpressTransitionBridge.apply(2, false);
+		assert.deepEqual(commands, [
+			'uno .uno:SidebarShow',
+			'uno .uno:SlideChangeWindow',
+		]);
+		const emit = (entries: any[]) =>
+			listeners.mobilewizard.slice().forEach((fn) =>
+				fn({
+					data: {
+						id: -1,
+						children: [{ id: 'transitions_icons', type: 'iconview', entries }],
+					},
+				}),
+			);
+		emit([]);
+		assert.equal(commands.length, 2);
+		emit([{ row: 0 }, { row: 1 }]);
+		assert.equal(commands.length, 2);
+		emit([{ row: 0 }, { row: 1 }, { row: 2 }]);
+		await new Promise((resolve) => dom.window.setTimeout(resolve, 5));
+		assert.equal(commands.length, 4);
+		assert.equal(
+			commands[2],
+			'dialogevent -1 {"id":"transitions_icons","cmd":"select","data":"2","type":"iconview"}',
+		);
+		assert.equal(
+			commands[3],
+			'dialogevent -1 {"id":"transitions_icons","cmd":"activate","data":"2","type":"iconview"}',
+		);
+		assert.equal(listeners.mobilewizard.length, 0);
+	});
+
+	it('keeps unmatched messages on the original route and permits retry after missing presets', function () {
+		const timers: Array<{ run: () => void; delay: number }> = [];
+		dom.window.setTimeout = (run: () => void, delay: number) => {
+			timers.push({ run, delay });
+			return timers.length;
+		};
+		ImpressTransitionBridge.apply(2, false);
+		assert.equal(
+			ImpressTransitionBridge.handlePayload({ id: 9, children: [] }),
+			false,
+		);
+		assert.equal(
+			ImpressTransitionBridge.handlePayload({
+				id: -1,
+				control: {
+					id: 'transitions_icons',
+					type: 'iconview',
+					entries: [],
+				},
+			}),
+			true,
+		);
+		timers.find((timer) => timer.delay === 6000)?.run();
+		assert.equal(commands.length, 2);
+		assert.equal(
+			ImpressTransitionBridge.handlePayload({
+				id: -1,
+				control: {
+					id: 'transitions_icons',
+					type: 'iconview',
+					entries: [{ row: 2 }],
+				},
+			}),
+			false,
+		);
+		ImpressTransitionBridge.apply(2, false);
+		assert.equal(
+			ImpressTransitionBridge.handlePayload({
+				id: -1,
+				control: {
+					id: 'transitions_icons',
+					type: 'iconview',
+					entries: [{ row: 2 }],
+				},
+			}),
+			true,
+		);
+		timers.find((timer) => timer.delay === 0)?.run();
+		assert.equal(commands.length, 6);
+		assert.ok(commands[4].indexOf('"cmd":"select"') > 0);
+		assert.ok(commands[5].indexOf('"cmd":"activate"') > 0);
 	});
 });

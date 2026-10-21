@@ -1673,7 +1673,7 @@
 
 [data-mobile-doc-theme='impress'] .writer-function-layout-preview__item {
 	display: flex;
-	flex: 0 0 108px;
+	flex: 0 0 116px;
 	flex-direction: column;
 	align-items: stretch;
 	min-height: 88px;
@@ -1689,14 +1689,15 @@
 	flex: 1;
 	align-items: center;
 	justify-content: center;
-	min-height: 48px;
+	min-height: 56px;
 }
 
+/* Android LAYOUT_THUMB_W_DP x LAYOUT_THUMB_H_DP (100 x 56). */
 [data-mobile-doc-theme='impress'] .writer-function-layout-preview__icon svg {
-	width: 24px;
-	height: 24px;
-	max-width: 24px;
-	max-height: 24px;
+	width: 100px;
+	height: 56px;
+	max-width: 100px;
+	max-height: 56px;
 }
 
 [data-mobile-doc-theme='impress'] .writer-function-layout-preview__label {
@@ -2937,6 +2938,8 @@
 
 .writer-find-sheet__icon-btn {
 	display: flex;
+	appearance: none;
+	-webkit-appearance: none;
 	align-items: center;
 	justify-content: center;
 	width: 40px;
@@ -2954,6 +2957,12 @@
 	flex-shrink: 0;
 	width: 20px;
 	height: 20px;
+}
+
+/* Figma gear: 40pt chrome, 24pt glyph (same as the close button). */
+.writer-find-sheet__icon-btn--settings svg {
+	width: 24px;
+	height: 24px;
 }
 
 .writer-find-sheet__icon-btn--close svg {

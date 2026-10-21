@@ -11,6 +11,7 @@
 #import "ImpressOutlineOverlayController.h"
 
 #import "AIService.h"
+#import "ImpressModelJson.h"
 #import "../Typeset/PptxTemplateService.h"
 #import "../Typeset/TypesetService.h"
 #import "../RecentDocumentsStore.h"
@@ -18,6 +19,7 @@
 #import "../DocumentViewController.h"
 
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import <PDFKit/PDFKit.h>
 #import <objc/runtime.h>
 
 typedef NS_ENUM(NSInteger, ImpressOutlineState) {
@@ -37,7 +39,19 @@ static NSString *PptxSafeType(id value) {
     return [value isKindOfClass:[NSString class]] ? value : @"section";
 }
 
-@interface ImpressOutlineOverlayController () <UIDocumentPickerDelegate, UITextViewDelegate>
+static NSString *PptxOutlineText(id value) {
+    if ([value isKindOfClass:NSString.class]) return value;
+    if ([value isKindOfClass:NSArray.class]) {
+        NSMutableArray<NSString *> *lines = [NSMutableArray array];
+        for (id line in value) {
+            if ([line isKindOfClass:NSString.class] && [line length] > 0) [lines addObject:line];
+        }
+        return [lines componentsJoinedByString:@"\n"];
+    }
+    return @"";
+}
+
+@interface ImpressOutlineOverlayController () <UIDocumentPickerDelegate, UITextViewDelegate, UIGestureRecognizerDelegate>
 @property (weak, nonatomic) UIViewController *host;
 @property (strong, nonatomic) AIService *aiService;
 @property (strong, nonatomic) UIView *overlay;
@@ -52,6 +66,9 @@ static NSString *PptxSafeType(id value) {
 @property (strong, nonatomic) UITextView *pasteInput;
 @property (strong, nonatomic) UIView *docGroup;
 @property (strong, nonatomic) UILabel *docLabel;
+@property (strong, nonatomic) UILabel *docHintLabel;
+@property (strong, nonatomic) UILabel *docFileNameLabel;
+@property (strong, nonatomic) UILabel *docReselectLabel;
 @property (strong, nonatomic) UIButton *pagePill;
 @property (strong, nonatomic) UIButton *audiencePill;
 @property (strong, nonatomic) UIButton *stylePill;
@@ -88,6 +105,9 @@ static NSString *PptxSafeType(id value) {
 @property (copy, nonatomic) NSString *docContent;
 @property (copy, nonatomic) NSString *docDisplayName;
 @property (copy, nonatomic) NSString *activeRequestId;
+@property (copy, nonatomic) NSString *completedRequestId;
+@property (copy, nonatomic) NSString *completedFinishReason;
+@property (assign, nonatomic) NSInteger outlineRetryAttempt;
 @property (copy, nonatomic) NSString *generateRequestId;
 @property (copy, nonatomic) NSString *selectedTemplateId;
 @property (strong, nonatomic) NSMutableArray<NSMutableDictionary *> *slides;
@@ -97,6 +117,8 @@ static NSString *PptxSafeType(id value) {
 @property (assign, nonatomic) BOOL cancelled;
 @property (assign, nonatomic) BOOL lastErrorWasPpt;
 @property (assign, nonatomic) BOOL panelPinned;
+@property (copy, nonatomic) NSString *fillRequestId;
+- (id)jsonObjectFromModelText:(NSString *)raw truncated:(BOOL *)truncatedOut;
 @end
 
 @implementation ImpressOutlineOverlayController
@@ -158,6 +180,8 @@ static NSString *PptxSafeType(id value) {
     self.overlay.hidden = YES;
     self.overlay.translatesAutoresizingMaskIntoConstraints = YES;
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismiss)];
+    tap.delegate = self;
+    tap.cancelsTouchesInView = NO;
     [self.overlay addGestureRecognizer:tap];
 
     self.panel = [[UIView alloc] init];
@@ -165,8 +189,6 @@ static NSString *PptxSafeType(id value) {
     self.panel.layer.cornerRadius = 16;
     self.panel.clipsToBounds = YES;
     self.panel.translatesAutoresizingMaskIntoConstraints = NO;
-    UITapGestureRecognizer *eat = [[UITapGestureRecognizer alloc] initWithTarget:nil action:nil];
-    [self.panel addGestureRecognizer:eat];
     [self.overlay addSubview:self.panel];
 
     self.backButton = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -205,25 +227,52 @@ static NSString *PptxSafeType(id value) {
     ]];
 
     self.quickInput = [self makeTextViewPlaceholder:@"请输入PPT主题和要求"];
-    self.pasteInput = [self makeTextViewPlaceholder:@"粘贴已有大纲文本..."];
+    self.pasteInput = [self makeTextViewPlaceholder:@"粘贴已有大纲文本…"];
     self.pasteInput.hidden = YES;
     self.docGroup = [[UIView alloc] init];
     self.docGroup.hidden = YES;
     self.docGroup.backgroundColor = [UIColor colorWithWhite:0.96 alpha:1];
     self.docGroup.layer.cornerRadius = 8;
+    // Empty state ("点击选择文件") and selected-file state share one stack;
+    // updateDocUi toggles rows, matching Android updateImpressOutlineDocUi.
     self.docLabel = [[UILabel alloc] init];
-    self.docLabel.text = @"点击选择文件\n支持 Doc、PDF、ODT 等";
-    self.docLabel.numberOfLines = 0;
+    self.docLabel.text = @"点击选择文件";
+    self.docLabel.font = [UIFont systemFontOfSize:16];
+    self.docLabel.textColor = [UIColor colorWithWhite:0.2 alpha:1];
     self.docLabel.textAlignment = NSTextAlignmentCenter;
-    self.docLabel.font = [UIFont systemFontOfSize:14];
-    self.docLabel.textColor = [UIColor colorWithWhite:0.4 alpha:1];
-    self.docLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.docGroup addSubview:self.docLabel];
+    self.docHintLabel = [[UILabel alloc] init];
+    self.docHintLabel.text = @"支持 TXT、DOCX、PDF 文档导入\n最多读取 15 万字";
+    self.docHintLabel.numberOfLines = 0;
+    self.docHintLabel.font = [UIFont systemFontOfSize:13];
+    self.docHintLabel.textColor = [UIColor colorWithWhite:0.6 alpha:1];
+    self.docHintLabel.textAlignment = NSTextAlignmentCenter;
+    self.docFileNameLabel = [[UILabel alloc] init];
+    self.docFileNameLabel.font = [UIFont systemFontOfSize:14];
+    self.docFileNameLabel.textColor = [UIColor colorWithWhite:0.2 alpha:1];
+    self.docFileNameLabel.textAlignment = NSTextAlignmentCenter;
+    self.docFileNameLabel.numberOfLines = 2;
+    self.docFileNameLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
+    self.docFileNameLabel.hidden = YES;
+    self.docReselectLabel = [[UILabel alloc] init];
+    self.docReselectLabel.text = @"重新选择";
+    self.docReselectLabel.font = [UIFont systemFontOfSize:14];
+    self.docReselectLabel.textColor = ImpressOrange();
+    self.docReselectLabel.textAlignment = NSTextAlignmentCenter;
+    self.docReselectLabel.hidden = YES;
+    UIStackView *docStack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        self.docLabel, self.docHintLabel, self.docFileNameLabel, self.docReselectLabel
+    ]];
+    docStack.axis = UILayoutConstraintAxisVertical;
+    docStack.alignment = UIStackViewAlignmentFill;
+    docStack.spacing = 6;
+    docStack.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.docGroup addSubview:docStack];
     UITapGestureRecognizer *docTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(pickDocument)];
     [self.docGroup addGestureRecognizer:docTap];
     [NSLayoutConstraint activateConstraints:@[
-        [self.docLabel.centerXAnchor constraintEqualToAnchor:self.docGroup.centerXAnchor],
-        [self.docLabel.centerYAnchor constraintEqualToAnchor:self.docGroup.centerYAnchor],
+        [docStack.centerYAnchor constraintEqualToAnchor:self.docGroup.centerYAnchor],
+        [docStack.leadingAnchor constraintEqualToAnchor:self.docGroup.leadingAnchor constant:16],
+        [docStack.trailingAnchor constraintEqualToAnchor:self.docGroup.trailingAnchor constant:-16],
         [self.docGroup.heightAnchor constraintEqualToConstant:88],
     ]];
 
@@ -250,7 +299,8 @@ static NSString *PptxSafeType(id value) {
         [inputStack.trailingAnchor constraintEqualToAnchor:self.inputGroup.trailingAnchor],
         [inputStack.bottomAnchor constraintEqualToAnchor:self.inputGroup.bottomAnchor],
         [self.quickInput.heightAnchor constraintEqualToConstant:96],
-        [self.pasteInput.heightAnchor constraintEqualToConstant:96],
+        // Paste outline is a separate large input area.
+        [self.pasteInput.heightAnchor constraintEqualToConstant:220],
     ]];
 
     self.generatingGroup = [[UIView alloc] init];
@@ -393,6 +443,12 @@ static NSString *PptxSafeType(id value) {
     ]];
 }
 
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
+    // Only the dimmed backdrop dismisses. A recognizer on the panel used to
+    // consume taps intended for outline editing and template controls.
+    return touch.view == self.overlay;
+}
+
 - (UITextView *)makeTextViewPlaceholder:(NSString *)placeholder {
     UITextView *view = [[UITextView alloc] init];
     view.font = [UIFont systemFontOfSize:15];
@@ -458,6 +514,7 @@ static NSString *PptxSafeType(id value) {
 }
 
 - (void)showWithPrefill:(NSString *)prefill {
+    [self cancelActiveRequests];
     self.directCreation = NO;
     self.creationTitle = @"";
     UIView *hostView = self.host.view;
@@ -477,8 +534,12 @@ static NSString *PptxSafeType(id value) {
         }
     }
     self.inputType = @"quick";
+    self.lastErrorWasPpt = NO;
+    [self.slides removeAllObjects];
+    [self.generatedByIndex removeAllObjects];
     self.docContent = @"";
     self.docDisplayName = @"";
+    [self updateDocUi];
     [self switchInputType:@"quick"];
     if (prefill.length > 0) {
         self.quickInput.text = prefill;
@@ -499,10 +560,17 @@ static NSString *PptxSafeType(id value) {
     self.pageIndex = MAX(0, MIN(3, [options[@"pageIndex"] respondsToSelector:@selector(integerValue)] ? [options[@"pageIndex"] integerValue] : 1));
     self.audienceIndex = MAX(0, MIN(4, [options[@"audienceIndex"] integerValue]));
     self.styleIndex = MAX(0, MIN(5, [options[@"styleIndex"] respondsToSelector:@selector(integerValue)] ? [options[@"styleIndex"] integerValue] : 4));
+    [self.pagePill setTitle:self.pageOptions[self.pageIndex] forState:UIControlStateNormal];
+    [self.audiencePill setTitle:self.audienceOptions[self.audienceIndex] forState:UIControlStateNormal];
+    [self.stylePill setTitle:self.styleOptions[self.styleIndex] forState:UIControlStateNormal];
     NSString *type = [options[@"inputType"] isKindOfClass:NSString.class] ? options[@"inputType"] : @"quick";
     if (![self.modeTypes containsObject:type]) type = @"quick";
     [self switchInputType:type];
-    if ([type isEqualToString:@"document"]) self.docContent = input;
+    if ([type isEqualToString:@"document"]) {
+        self.docContent = input;
+        self.docDisplayName = @"已导入新建演示时选择的文档正文";
+        [self updateDocUi];
+    }
     UITextView *field = [type isEqualToString:@"outline"] ? self.pasteInput : self.quickInput;
     field.text = input;
     field.tag = 0;
@@ -522,6 +590,7 @@ static NSString *PptxSafeType(id value) {
 
 - (void)cancelActiveRequests {
     self.cancelled = YES;
+    self.fillRequestId = nil;
     if (self.activeRequestId.length > 0) {
         [self.aiService cancelRequest:self.activeRequestId documentSessionId:@"impress-outline"];
         self.activeRequestId = @"";
@@ -630,34 +699,67 @@ static NSString *PptxSafeType(id value) {
     [self.host presentViewController:picker animated:YES completion:nil];
 }
 
+- (NSString *)plainTextFromPDFAtURL:(NSURL *)url {
+    // Same page-walk as the create sheet: stop once we have enough text.
+    PDFDocument *pdf = [[PDFDocument alloc] initWithURL:url];
+    NSMutableString *pages = [NSMutableString string];
+    for (NSUInteger page = 0; page < pdf.pageCount && pages.length < 150000; ++page) {
+        NSString *pageText = [pdf pageAtIndex:page].string;
+        if (pageText.length > 0) {
+            if (pages.length > 0) [pages appendString:@"\n\n"];
+            [pages appendString:pageText];
+        }
+    }
+    return pages;
+}
+
+- (void)updateDocUi {
+    BOOL hasFile = self.docContent.length > 0;
+    self.docLabel.hidden = hasFile;
+    self.docHintLabel.hidden = hasFile;
+    self.docFileNameLabel.hidden = !hasFile;
+    self.docReselectLabel.hidden = !hasFile;
+    self.docFileNameLabel.text = self.docDisplayName ?: @"";
+    if (!hasFile) {
+        self.docLabel.text = @"点击选择文件";
+    }
+}
+
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSURL *url = urls.firstObject;
     if (!url) {
         return;
     }
-    [url startAccessingSecurityScopedResource];
+    BOOL scoped = [url startAccessingSecurityScopedResource];
     NSString *ext = url.pathExtension.lowercaseString;
-    self.docDisplayName = url.lastPathComponent;
     NSString *content = @"";
     if ([ext isEqualToString:@"txt"] || [ext isEqualToString:@"md"]) {
         content = [NSString stringWithContentsOfURL:url encoding:NSUTF8StringEncoding error:nil] ?: @"";
     } else if ([ext isEqualToString:@"docx"]) {
         NSDictionary *extracted = [TypesetService extractStructuredFromFile:url];
         content = [extracted[@"fullText"] isKindOfClass:[NSString class]] ? extracted[@"fullText"] : @"";
+    } else if ([ext isEqualToString:@"pdf"]) {
+        content = [self plainTextFromPDFAtURL:url];
     } else {
         content = [NSString stringWithContentsOfURL:url encoding:NSUTF8StringEncoding error:nil] ?: @"";
-        if (content.length == 0) {
-            self.docLabel.text = @"暂不支持该文件类型，请使用 TXT / DOCX";
-            [url stopAccessingSecurityScopedResource];
-            return;
-        }
+    }
+    if (scoped) {
+        [url stopAccessingSecurityScopedResource];
+    }
+    if (content.length == 0) {
+        // Unreadable or scanned PDF: drop any previous selection and show the empty state with the reason.
+        self.docContent = @"";
+        self.docDisplayName = @"";
+        [self updateDocUi];
+        self.docLabel.text = @"未读取到文字，请选择 TXT / DOCX / PDF 文件";
+        return;
     }
     if (content.length > 150000) {
         content = [content substringToIndex:150000];
     }
     self.docContent = content;
-    self.docLabel.text = [NSString stringWithFormat:@"已选择：%@\n%lu 字符", self.docDisplayName, (unsigned long)content.length];
-    [url stopAccessingSecurityScopedResource];
+    self.docDisplayName = url.lastPathComponent;
+    [self updateDocUi];
 }
 
 - (void)onErrorRetry {
@@ -686,6 +788,12 @@ static NSString *PptxSafeType(id value) {
         return;
     }
     self.lastInput = userInput;
+    self.outlineRetryAttempt = 0;
+    [self startOutlineRequest];
+}
+
+- (void)startOutlineRequest {
+    NSString *userInput = self.lastInput ?: @"";
     self.generatingQuery.text = userInput;
     self.cancelled = NO;
     [self setState:ImpressOutlineStateGenerating];
@@ -696,6 +804,7 @@ static NSString *PptxSafeType(id value) {
         @"selection": userInput,
         @"context": @{
             @"inputType": self.inputType,
+            @"compactOutline": @(self.outlineRetryAttempt > 0),
             @"userInput": userInput,
             @"pageRange": @([self pageRangeValue]),
             @"audience": self.audienceOptions[self.audienceIndex],
@@ -761,21 +870,19 @@ static NSString *PptxSafeType(id value) {
 }
 
 - (id)jsonObjectFromModelText:(NSString *)raw {
-    NSString *clean = [self sanitizeGenerateJson:[self stripFences:raw]];
-    NSData *data = [clean dataUsingEncoding:NSUTF8StringEncoding];
-    id obj = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
-    if (obj) {
-        return obj;
+    return [self jsonObjectFromModelText:raw truncated:NULL];
+}
+
+- (id)jsonObjectFromModelText:(NSString *)raw truncated:(BOOL *)truncatedOut {
+    NSError *error = nil;
+    id object = ImpressParseModelJson(raw, truncatedOut, &error);
+    if (!object) {
+        NSLog(@"[AI] impress_outline json_parse_error requestId=%@ domain=%@ code=%ld chars=%lu detail=%@",
+              self.completedRequestId ?: @"unknown", error.domain ?: @"json", (long)error.code,
+              (unsigned long)raw.length, error.userInfo[@"NSDebugDescription"] ?: @"unknown");
     }
-    NSRange open = [clean rangeOfString:@"{"];
-    NSRange close = [clean rangeOfString:@"}" options:NSBackwardsSearch];
-    if (open.location == NSNotFound || close.location == NSNotFound || close.location <= open.location) {
-        return nil;
-    }
-    NSString *slice = [clean substringWithRange:NSMakeRange(open.location, close.location - open.location + 1)];
-    slice = [self sanitizeGenerateJson:slice];
-    data = [slice dataUsingEncoding:NSUTF8StringEncoding];
-    return data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if ([object isKindOfClass:NSArray.class]) return @{@"slides": object};
+    return object;
 }
 
 - (NSDictionary *)fallbackGeneratedSlideAtIndex:(NSInteger)index {
@@ -816,9 +923,16 @@ static NSString *PptxSafeType(id value) {
     }
     if ([type isEqualToString:@"ai.done"]) {
         NSString *text = [self aiResultText:payload];
+        self.completedRequestId = requestId;
+        self.completedFinishReason = [payload[@"finishReason"] isKindOfClass:NSString.class]
+            ? payload[@"finishReason"] : @"unknown";
+        NSLog(@"[AI] impress_outline overlay_done requestId=%@ receivedChars=%lu finishReason=%@",
+              requestId, (unsigned long)text.length, self.completedFinishReason);
         self.activeRequestId = @"";
         [self parseAndShowOutline:text];
     } else if ([type isEqualToString:@"ai.error"]) {
+        NSLog(@"[AI] impress_outline overlay_error requestId=%@ code=%@",
+              requestId, [payload[@"code"] isKindOfClass:NSString.class] ? payload[@"code"] : @"unknown");
         NSString *message = [payload[@"message"] isKindOfClass:[NSString class]] ? payload[@"message"] : @"大纲生成失败";
         self.activeRequestId = @"";
         self.errorText.text = [NSString stringWithFormat:@"大纲生成失败：%@", message];
@@ -828,25 +942,35 @@ static NSString *PptxSafeType(id value) {
 }
 
 - (NSString *)stripFences:(NSString *)text {
-    NSString *clean = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if ([clean hasPrefix:@"```"]) {
-        NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:@"^```(?:json)?\\s*|\\s*```$"
-                                                                            options:NSRegularExpressionDotMatchesLineSeparators
-                                                                              error:nil];
-        clean = [re stringByReplacingMatchesInString:clean options:0 range:NSMakeRange(0, clean.length) withTemplate:@""];
-    }
-    return [clean stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    return ImpressStripMarkdownFences(text);
 }
 
 - (void)parseAndShowOutline:(NSString *)jsonText {
-    id obj = [self jsonObjectFromModelText:jsonText];
-    NSString *clean = [self stripFences:jsonText];
+    BOOL truncated = NO;
+    id obj = [self jsonObjectFromModelText:jsonText truncated:&truncated];
     NSArray *slides = nil;
     if ([obj isKindOfClass:[NSDictionary class]]) {
         slides = obj[@"slides"];
     }
     if (![slides isKindOfClass:[NSArray class]] || slides.count == 0) {
-        self.errorText.text = [NSString stringWithFormat:@"大纲解析失败，AI返回原始文本：\n\n%@", clean];
+        NSLog(@"[AI] impress_outline parse_failed requestId=%@ parseError=%@ chars=%lu truncated=%@ shape=%@",
+              self.completedRequestId ?: @"unknown", @"missing_slides",
+              (unsigned long)jsonText.length, truncated ? @"yes" : @"no",
+              [obj isKindOfClass:NSDictionary.class] ? @"object" :
+                  ([obj isKindOfClass:NSArray.class] ? @"array" : @"invalid"));
+        if (!self.cancelled && self.outlineRetryAttempt == 0 && self.lastInput.length > 0) {
+            self.outlineRetryAttempt++;
+            NSLog(@"[AI] impress_outline retry_compact requestId=%@", self.completedRequestId ?: @"unknown");
+            [self startOutlineRequest];
+            return;
+        }
+        if ([self.completedFinishReason isEqualToString:@"length"]) {
+            self.errorText.text = @"AI输出达到长度上限，大纲不完整，请减少页数后重试";
+        } else {
+            self.errorText.text = [self.completedFinishReason isEqualToString:@"stop"]
+                ? @"AI返回的大纲格式不正确，请重试"
+                : (truncated ? @"大纲解析失败，结果不完整，请重试" : @"大纲解析失败，请重试");
+        }
         self.lastErrorWasPpt = NO;
         [self setState:ImpressOutlineStateError];
         return;
@@ -854,21 +978,26 @@ static NSString *PptxSafeType(id value) {
     [self.slides removeAllObjects];
     for (id item in slides) {
         if ([item isKindOfClass:[NSDictionary class]]) {
-            [self.slides addObject:[item mutableCopy]];
+            NSMutableDictionary *slide = [item mutableCopy];
+            slide[@"title"] = PptxOutlineText(slide[@"title"]);
+            NSString *content = PptxOutlineText(slide[@"content"]);
+            slide[@"content"] = content.length > 0 ? content : PptxOutlineText(slide[@"content_points"]);
+            slide[@"type"] = PptxSafeType(slide[@"type"]);
+            if ([slide[@"title"] length] > 0 || [slide[@"content"] length] > 0) {
+                [self.slides addObject:slide];
+            }
         }
     }
-    if (self.directCreation) {
-        NSString *preferred = self.styleIndex == 4 ? @"minimalist" : self.styleIndex == 5 ? @"fresh" : @"business";
-        PptxTemplateInfo *info = [PptxTemplateService templateWithId:preferred];
-        if (!info) info = [PptxTemplateService loadIndex].firstObject;
-        if (!info) {
-            [self failStop:@"PPT模板不可用，请检查安装包资源"];
-            return;
-        }
-        self.selectedTemplateId = info.templateId;
-        [self onTemplateSelected];
+    if (self.slides.count == 0) {
+        self.errorText.text = @"大纲解析失败：没有有效的幻灯片，请重新生成";
+        self.lastErrorWasPpt = NO;
+        [self setState:ImpressOutlineStateError];
         return;
     }
+    NSLog(@"[AI] impress_outline parse_succeeded requestId=%@ slides=%lu",
+          self.completedRequestId ?: @"unknown", (unsigned long)self.slides.count);
+    // Match Android: confirm/edit the outline, then choose a template. Creating
+    // from Home must not skip those steps and silently choose a template.
     [self renderCards];
     [self setState:ImpressOutlineStateCompleted];
 }
@@ -1153,21 +1282,36 @@ static NSString *PptxSafeType(id value) {
     self.generatingPptText.text = @"正在写入模板…";
     NSString *cover = self.directCreation && self.creationTitle.length > 0
         ? self.creationTitle : (self.slides.firstObject[@"title"] ?: @"AI生成PPT");
+    NSString *fillRequestId = NSUUID.UUID.UUIDString;
+    self.fillRequestId = fillRequestId;
+    NSString *templateId = [self.selectedTemplateId copy];
+    NSArray *outlineSlides = [[NSArray alloc] initWithArray:self.slides copyItems:YES];
+    NSDictionary *generatedSlides = [self.generatedByIndex copy];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSError *error = nil;
-        NSURL *output = [PptxTemplateService fillAndAssembleTemplateId:self.selectedTemplateId
-                                                         outlineSlides:self.slides
-                                                     generatedByIndex:self.generatedByIndex
+        NSURL *output = [PptxTemplateService fillAndAssembleTemplateId:templateId
+                                                         outlineSlides:outlineSlides
+                                                     generatedByIndex:generatedSlides
                                                            outputName:cover
                                                                 error:&error];
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (self.cancelled || ![self isVisible]) return;
+            if (self.cancelled || ![self isVisible] || ![self.fillRequestId isEqualToString:fillRequestId]) {
+                // This URL belongs exclusively to this generation job. A
+                // cancelled/obsolete job must not leave an untracked document.
+                if (output) [[NSFileManager defaultManager] removeItemAtURL:output error:nil];
+                return;
+            }
+            self.fillRequestId = nil;
             if (!output) {
                 [self failStop:error.localizedDescription ?: @"模板填充失败"];
                 return;
             }
             RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
             [store recordURL:output];
+            if (self.directCreation) {
+                [self openGeneratedPresentation:output];
+                return;
+            }
             [self setState:ImpressOutlineStateCompleted];
             NSString *message = [NSString stringWithFormat:@"已生成文件：%@\n可立即打开查看，或稍后在首页「最近」中打开。", output.lastPathComponent];
             UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"PPT 已生成"
@@ -1177,24 +1321,25 @@ static NSString *PptxSafeType(id value) {
                 [self dismiss];
             }]];
             [alert addAction:[UIAlertAction actionWithTitle:@"立即打开" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-                [self dismiss];
-                NSURL *pptxURL = output;
-                UIViewController *host = self.host;
-                if ([host isKindOfClass:[DocumentViewController class]]) {
-                    DocumentViewController *docVC = (DocumentViewController *)host;
-                    UIViewController *presenter = docVC.presentingViewController;
-                    [docVC requestCloseWithCompletion:^{
-                        if (presenter != nil) {
-                            [DocumentPresentation presentDocumentAtURL:pptxURL from:presenter];
-                        }
-                    }];
-                } else if (host != nil) {
-                    [DocumentPresentation presentDocumentAtURL:pptxURL from:host];
-                }
+                [self openGeneratedPresentation:output];
             }]];
             [self.host presentViewController:alert animated:YES completion:nil];
         });
     });
+}
+
+- (void)openGeneratedPresentation:(NSURL *)url {
+    [self dismiss];
+    UIViewController *host = self.host;
+    if ([host isKindOfClass:DocumentViewController.class]) {
+        DocumentViewController *document = (DocumentViewController *)host;
+        UIViewController *presenter = document.presentingViewController;
+        [document requestCloseWithCompletion:^{
+            if (presenter) [DocumentPresentation presentDocumentAtURL:url from:presenter];
+        }];
+    } else if (host) {
+        [DocumentPresentation presentDocumentAtURL:url from:host];
+    }
 }
 
 - (void)toast:(NSString *)text {

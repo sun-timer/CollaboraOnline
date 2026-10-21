@@ -37,6 +37,11 @@ class WriterFindReplaceDialog {
 	private replacePanel!: HTMLDivElement;
 	private tabBar!: HTMLDivElement;
 
+	private searchResultStatus: HTMLDivElement | null = null;
+	private searchMap: any = null;
+	private readonly searchHandler = (event: any): void =>
+		this.showSearchResult(event);
+
 	private viewportHandler: (() => void) | null = null;
 
 	static titleForReplaceEnabled(replaceEnabled: boolean): string {
@@ -92,6 +97,9 @@ class WriterFindReplaceDialog {
 
 	close(): void {
 		this.detachViewportLift();
+		this.searchMap?.off('search', this.searchHandler);
+		this.searchMap = null;
+		this.searchResultStatus = null;
 		if (this.root) {
 			this.root.remove();
 			this.root = null;
@@ -136,6 +144,16 @@ class WriterFindReplaceDialog {
 		this.settingsView.style.display = 'none';
 		this.panel.appendChild(this.settingsView);
 
+		this.searchResultStatus = document.createElement('div');
+		this.searchResultStatus.className = 'writer-find-sheet__result-status';
+		this.searchResultStatus.setAttribute('role', 'status');
+		this.searchResultStatus.setAttribute('aria-live', 'polite');
+		this.searchResultStatus.style.cssText =
+			'padding:0 20px 12px;color:#666;font-size:14px;';
+		this.searchResultStatus.hidden = true;
+		this.mainView.appendChild(this.searchResultStatus);
+		this.searchMap = (window as any).app?.map;
+		this.searchMap?.on('search', this.searchHandler);
 		document.body.appendChild(this.root);
 		this.pushOptionsToBridge();
 		this.refreshButtonStates();
@@ -157,7 +175,8 @@ class WriterFindReplaceDialog {
 
 		const settingsBtn = document.createElement('button');
 		settingsBtn.type = 'button';
-		settingsBtn.className = 'writer-find-sheet__icon-btn';
+		settingsBtn.className =
+			'writer-find-sheet__icon-btn writer-find-sheet__icon-btn--settings';
 		settingsBtn.setAttribute('aria-label', '查找设置');
 		settingsBtn.innerHTML = WRITER_FIND_SETTINGS_ICON;
 		settingsBtn.onclick = () => this.showSettings(true);
@@ -346,6 +365,20 @@ class WriterFindReplaceDialog {
 		return button;
 	}
 
+	private showSearchResult(event: any): void {
+		if (!this.searchResultStatus) return;
+		const field =
+			this.mode === 'replace' ? this.replaceQueryInput : this.findQueryInput;
+		if (
+			event.originalPhrase !== undefined &&
+			event.originalPhrase !== field.value.trim()
+		)
+			return;
+		this.searchResultStatus.textContent =
+			Number(event.count) === 0 ? '未找到匹配内容' : '';
+		this.searchResultStatus.hidden = Number(event.count) !== 0;
+	}
+
 	private makeSettingsRow(
 		title: string,
 		subtitle: string,
@@ -450,6 +483,7 @@ class WriterFindReplaceDialog {
 	}
 
 	private pushOptionsToBridge(): void {
+		if (this.searchResultStatus) this.searchResultStatus.hidden = true;
 		const bridge = (window as any).AndroidFindReplaceBridge;
 		if (!bridge || typeof bridge.setOptions !== 'function') {
 			return;
@@ -465,6 +499,7 @@ class WriterFindReplaceDialog {
 		if (!query) {
 			return;
 		}
+		if (this.searchResultStatus) this.searchResultStatus.hidden = true;
 		this.pushOptionsToBridge();
 		const bridge = (window as any).AndroidFindReplaceBridge;
 		if (bridge && typeof bridge.find === 'function') {
@@ -478,10 +513,11 @@ class WriterFindReplaceDialog {
 		if (!this.hasQuery(field)) {
 			return;
 		}
+		if (this.searchResultStatus) this.searchResultStatus.hidden = true;
 		this.pushOptionsToBridge();
 		const bridge = (window as any).AndroidFindReplaceBridge;
 		if (bridge && typeof bridge.findPrevious === 'function') {
-			bridge.findPrevious();
+			bridge.findPrevious(field.value.trim());
 		}
 	}
 
@@ -499,6 +535,7 @@ class WriterFindReplaceDialog {
 		if (!query) {
 			return;
 		}
+		if (this.searchResultStatus) this.searchResultStatus.hidden = true;
 		this.pushOptionsToBridge();
 		const bridge = (window as any).AndroidFindReplaceBridge;
 		if (bridge && typeof bridge.replaceForQuery === 'function') {
@@ -534,11 +571,11 @@ class WriterFindReplaceDialog {
 	}
 }
 
-/** Android lolib_ic_find_settings (gear, dark on light). */
+/** Figma find-sheet gear: icon/28/AI工具栏/设置 (phone sheet 1689:55629, header 1689:55633). */
 const WRITER_FIND_SETTINGS_ICON =
-	'<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">' +
-	'<path fill="none" stroke="#333333" stroke-width="1.8" d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/>' +
-	'<path fill="none" stroke="#333333" stroke-width="1.8" stroke-linecap="round" d="M19.4 15a7.97 7.97 0 0 0 .1-1 7.97 7.97 0 0 0-.1-1l2-1.5a.5.5 0 0 0 .12-.64l-1.9-3.3a.5.5 0 0 0-.58-.22l-2.35.95a8 8 0 0 0-1.7-.98l-.35-2.5A.5.5 0 0 0 14.5 3h-5a.5.5 0 0 0-.49.42l-.35 2.5a8 8 0 0 0-1.7.98l-2.35-.95a.5.5 0 0 0-.58.22l-1.9 3.3a.5.5 0 0 0 .12.64L4.6 13a7.97 7.97 0 0 0-.1 1 7.97 7.97 0 0 0 .1 1l-2 1.5a.5.5 0 0 0-.12.64l1.9 3.3a.5.5 0 0 0 .58.22l2.35-.95c.52.4 1.1.73 1.7.98l.35 2.5a.5.5 0 0 0 .49.42h5a.5.5 0 0 0 .49-.42l.35-2.5c.6-.25 1.18-.58 1.7-.98l2.35.95a.5.5 0 0 0 .58-.22l1.9-3.3a.5.5 0 0 0-.12-.64L19.4 15z"/>' +
+	'<svg viewBox="0 0 48 48" width="24" height="24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">' +
+	'<path d="M24 4L18 10H10V18L4 24L10 30V38H18L24 44L30 38H38V30L44 24L38 18V10H30L24 4Z" stroke="#6A6A6A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+	'<path d="M24 30C27.3137 30 30 27.3137 30 24C30 20.6863 27.3137 18 24 18C20.6863 18 18 20.6863 18 24C18 27.3137 20.6863 30 24 30Z" stroke="#6A6A6A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
 	'</svg>';
 
 /** Android lolib_ic_sheet_close_80. */

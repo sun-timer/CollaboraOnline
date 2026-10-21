@@ -78,6 +78,7 @@
 /// <reference path="../src/app/CalcEditorPanel.ts" />
 /// <reference path="../src/app/WriterEditorChooseDialog.ts" />
 /// <reference path="../src/app/WriterFindReplaceDialog.ts" />
+/// <reference path="../src/app/AndroidFindReplaceBridge.ts" />
 /// <reference path="../src/app/WriterEditorInsertTableDialog.ts" />
 /// <reference path="../src/app/WriterEditorImageDialog.ts" />
 /// <reference path="../src/app/WriterEditorCommentDialog.ts" />

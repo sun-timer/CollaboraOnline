@@ -76,7 +76,23 @@ class WriterEditorController {
 		if (!feature) {
 			return { dispatched: 'none', reason: 'missing_feature' };
 		}
-		if (!this.isWriterDocument()) {
+		const presentationQuickAction =
+			this.adapter.getDocType() === 'presentation' &&
+			(feature.id === 'char-quick' || feature.id === 'para-quick') &&
+			feature.kind === 'command' &&
+			[
+				'.uno:Bold',
+				'.uno:Italic',
+				'.uno:Underline',
+				'.uno:Strikeout',
+				'.uno:LeftPara',
+				'.uno:CenterPara',
+				'.uno:RightPara',
+				'.uno:JustifyPara',
+				'.uno:DefaultBullet',
+				'.uno:DefaultNumbering',
+			].includes(feature.unocmd || '');
+		if (!this.isWriterDocument() && !presentationQuickAction) {
 			return { dispatched: 'none', reason: 'not_writer_document' };
 		}
 		switch (feature.kind) {
@@ -558,9 +574,6 @@ class WriterEditorController {
 		options?: WriterFindReplaceOptions,
 	): { [key: string]: any } {
 		let flags = 0;
-		if (options && options.caseSensitive) {
-			flags |= WriterEditorSearch.FLAG_MATCH_CASE;
-		}
 		if (options && options.wholeWord) {
 			flags |= WriterEditorSearch.FLAG_WHOLE_WORD;
 		}
@@ -572,6 +585,10 @@ class WriterEditorController {
 			'SearchItem.SearchStartPointY': { type: 'long', value: 0 },
 			'SearchItem.Command': { type: 'long', value: command },
 			'SearchItem.SearchFlags': { type: 'long', value: flags },
+			'SearchItem.TransliterateFlags': {
+				type: 'long',
+				value: options?.caseSensitive ? 0 : 1,
+			},
 		};
 	}
 

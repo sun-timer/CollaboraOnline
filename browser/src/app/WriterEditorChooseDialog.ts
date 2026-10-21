@@ -33,8 +33,7 @@ class WriterEditorChooseDialog {
 			row.type = 'button';
 			row.className = 'writer-editor-option-row';
 			row.setAttribute('aria-label', option.label);
-			const selected =
-				option.label === current || option.value === current;
+			const selected = option.label === current || option.value === current;
 			if (selected) {
 				row.classList.add('writer-editor-option-row--selected');
 			}
@@ -52,8 +51,8 @@ class WriterEditorChooseDialog {
 				// Remove the sheet after this click finishes. WKWebView crashes
 				// if the event target is detached inside the touch handler.
 				window.setTimeout(() => {
-					this.onSelect(option);
 					this.close();
+					this.onSelect(option);
 				}, 0);
 			};
 			list.appendChild(row);

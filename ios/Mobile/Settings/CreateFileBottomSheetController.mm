@@ -8,6 +8,7 @@
 #import "CreateFileBottomSheetController.h"
 #import "../Typeset/TypesetService.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import <PDFKit/PDFKit.h>
 
 static UIColor *CreateFileInputBorderColor(void) {
     return [UIColor colorWithRed:0xA2 / 255.0 green:0xA9 / 255.0 blue:0xB2 / 255.0 alpha:1];
@@ -22,6 +23,51 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
         default:
             return [UIColor colorWithRed:0x12 / 255.0 green:0x78 / 255.0 blue:0xD9 / 255.0 alpha:1];
     }
+}
+
+static UIColor *ImpressTextColor(void) {
+    return [UIColor colorWithRed:0x1F / 255.0 green:0x23 / 255.0 blue:0x29 / 255.0 alpha:1];
+}
+
+static UIColor *ImpressHintColor(void) {
+    return [UIColor colorWithRed:0x9A / 255.0 green:0xA0 / 255.0 blue:0xA8 / 255.0 alpha:1];
+}
+
+static UIColor *ImpressCardColor(void) {
+    return [UIColor colorWithRed:0xF5 / 255.0 green:0xF6 / 255.0 blue:0xF8 / 255.0 alpha:1];
+}
+
+static UIColor *ImpressChipColor(void) {
+    return [UIColor colorWithRed:0xF3 / 255.0 green:0xF4 / 255.0 blue:0xF6 / 255.0 alpha:1];
+}
+
+static UIColor *ImpressSwitchOnColor(void) {
+    return [UIColor colorWithRed:0x12 / 255.0 green:0x78 / 255.0 blue:0xD9 / 255.0 alpha:1];
+}
+
+static UIColor *ImpressSparkleColor(void) {
+    return [UIColor colorWithRed:0x7C / 255.0 green:0x5C / 255.0 blue:0xF5 / 255.0 alpha:1];
+}
+
+static UIColor *ImpressErrorColor(void) {
+    return [UIColor colorWithRed:0xD9 / 255.0 green:0x30 / 255.0 blue:0x25 / 255.0 alpha:1];
+}
+
+static void ImpressStyleGradient(CAGradientLayer *layer) {
+    layer.colors = @[(id)[UIColor colorWithRed:0.26 green:0.55 blue:1 alpha:1].CGColor,
+                     (id)[UIColor colorWithRed:0.55 green:0.31 blue:1 alpha:1].CGColor,
+                     (id)[UIColor colorWithRed:0.9 green:0 blue:0.92 alpha:1].CGColor];
+    layer.startPoint = CGPointMake(0, 0.5);
+    layer.endPoint = CGPointMake(1, 0.5);
+}
+
+static NSString *ImpressModeTitle(NSInteger mode) {
+    NSArray<NSString *> *titles = @[@"快速生成", @"文档生成", @"粘贴大纲"];
+    return titles[MAX(0, MIN((NSInteger)titles.count - 1, mode))];
+}
+
+static NSString *ImpressTrimmed(NSString *text) {
+    return [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] ?: @"";
 }
 
 @interface CreateFileBottomSheetController () <UIGestureRecognizerDelegate, UITextFieldDelegate, UITextViewDelegate, UIDocumentPickerDelegate>
@@ -39,16 +85,28 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
 @property (strong, nonatomic) NSLayoutConstraint *cardBottomConstraint;
 @property (strong, nonatomic) UITextView *impressPromptView;
 @property (strong, nonatomic) UILabel *impressPlaceholder;
+@property (strong, nonatomic) UIView *impressInputBox;
+@property (strong, nonatomic) UIButton *impressModeButton;
+@property (strong, nonatomic) UIView *impressDocZone;
+@property (strong, nonatomic) UILabel *impressDocTitle;
+@property (strong, nonatomic) UILabel *impressDocHint;
+@property (strong, nonatomic) CAShapeLayer *impressDocBorder;
 @property (strong, nonatomic) UIStackView *impressOptionsView;
 @property (strong, nonatomic) UISwitch *impressAiSwitch;
 @property (strong, nonatomic) UIButton *impressCreateButton;
-@property (strong, nonatomic) UIButton *impressSourceButton;
 @property (strong, nonatomic) CAGradientLayer *impressGradient;
+@property (strong, nonatomic) UIView *impressPasteBox;
+@property (strong, nonatomic) UITextView *impressPasteView;
+@property (strong, nonatomic) UILabel *impressPasteHint;
+@property (copy, nonatomic) NSString *impressPasteText;
+@property (copy, nonatomic) NSString *impressDocContent;
+@property (copy, nonatomic) NSString *impressDocName;
 @property (assign, nonatomic) NSInteger impressMode;
 @property (assign, nonatomic) NSInteger impressPage;
 @property (assign, nonatomic) NSInteger impressAudience;
 @property (assign, nonatomic) NSInteger impressStyle;
 @property (assign, nonatomic) BOOL impressSourceLoading;
+@property (assign, nonatomic) NSUInteger impressSourceGeneration;
 @end
 
 @implementation CreateFileBottomSheetController
@@ -326,6 +384,7 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
 }
 
 - (void)dismissSheet {
+    ++self.impressSourceGeneration;
     [self.view endEditing:YES];
     [self dismissViewControllerAnimated:YES completion:nil];
 }
@@ -336,251 +395,410 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
         self.fileNameField.layer.borderColor = [UIColor colorWithRed:0xD9 / 255.0 green:0x30 / 255.0 blue:0x25 / 255.0 alpha:1].CGColor;
         return;
     }
-    NSString *input = self.docKind == CreateFileDocKindImpress ? self.impressPromptView.text : self.aiPromptField.text;
-    NSString *desc = [input stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] ?: @"";
-    if (self.docKind == CreateFileDocKindImpress && self.aiSwitchOn) {
-        if (self.impressSourceLoading || desc.length == 0) {
-            self.impressPromptView.layer.borderWidth = 1;
-            self.impressPromptView.layer.borderColor = UIColor.systemRedColor.CGColor;
-            [self.impressPromptView becomeFirstResponder];
-            return;
-        }
+    if (self.docKind == CreateFileDocKindImpress) {
+        [self createImpressPresentationWithName:name];
+        return;
     }
+    NSString *desc = [self.aiPromptField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] ?: @"";
     if (self.aiSwitchOn && self.docKind == CreateFileDocKindCalc && desc.length == 0) {
         self.aiPromptField.layer.borderColor = [UIColor colorWithRed:0xD9 / 255.0 green:0x30 / 255.0 blue:0x25 / 255.0 alpha:1].CGColor;
         return;
     }
     BOOL aiOn = self.aiSwitchOn;
-    NSDictionary *options = self.docKind == CreateFileDocKindImpress ? @{
-        @"title": name,
-        @"inputType": @[@"quick", @"outline", @"document"][self.impressMode],
-        @"pageIndex": @(self.impressPage),
-        @"audienceIndex": @(self.impressAudience),
-        @"styleIndex": @(self.impressStyle),
-    } : @{};
     void (^block)(NSString *, BOOL, NSString *, NSDictionary *) = self.completion;
     [self dismissViewControllerAnimated:YES completion:^{
         if (block) {
-            block(name, aiOn, desc, options);
+            block(name, aiOn, desc, @{});
         }
     }];
 }
 
-
-- (UIButton *)impressOptionButton:(NSString *)title tag:(NSInteger)tag {
-    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-    [button setTitle:[title stringByAppendingString:@"  ⌄"] forState:UIControlStateNormal];
-    [button setTitleColor:[UIColor colorWithWhite:0.12 alpha:1] forState:UIControlStateNormal];
-    button.titleLabel.font = [UIFont systemFontOfSize:13];
-    button.backgroundColor = [UIColor colorWithWhite:0.96 alpha:1];
-    button.layer.cornerRadius = 8;
+- (UIButton *)impressDropdownButtonWithTitle:(NSString *)title
+                                         tag:(NSInteger)tag
+                                      height:(CGFloat)height
+                                    fontSize:(CGFloat)fontSize
+                                  background:(UIColor *)background {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
     button.tag = tag;
-    [button.heightAnchor constraintEqualToConstant:36].active = YES;
+    button.backgroundColor = background;
+    button.layer.cornerRadius = 8;
+    button.titleLabel.font = [UIFont systemFontOfSize:fontSize];
+    button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+    button.contentEdgeInsets = UIEdgeInsetsMake(0, 12, 0, 26);
+    [button setTitle:title forState:UIControlStateNormal];
+    [button setTitleColor:ImpressTextColor() forState:UIControlStateNormal];
+    [button.heightAnchor constraintEqualToConstant:height].active = YES;
+
+    UIImageView *chevron = [[UIImageView alloc] initWithImage:
+        [[UIImage systemImageNamed:@"chevron.down"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]];
+    chevron.tintColor = [UIColor colorWithWhite:0.45 alpha:1];
+    chevron.contentMode = UIViewContentModeScaleAspectFit;
+    chevron.translatesAutoresizingMaskIntoConstraints = NO;
+    chevron.userInteractionEnabled = NO;
+    [button addSubview:chevron];
+    [NSLayoutConstraint activateConstraints:@[
+        [chevron.trailingAnchor constraintEqualToAnchor:button.trailingAnchor constant:-10],
+        [chevron.centerYAnchor constraintEqualToAnchor:button.centerYAnchor],
+        [chevron.widthAnchor constraintEqualToConstant:12],
+        [chevron.heightAnchor constraintEqualToConstant:12],
+    ]];
     [button addTarget:self action:@selector(pickImpressOption:) forControlEvents:UIControlEventTouchUpInside];
     return button;
+}
+
+- (UIView *)impressHeaderWithTitle:(NSString *)titleText closeAction:(SEL)closeAction {
+    UILabel *title = [[UILabel alloc] init];
+    title.translatesAutoresizingMaskIntoConstraints = NO;
+    title.text = titleText;
+    title.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
+    title.textColor = ImpressTextColor();
+    title.textAlignment = NSTextAlignmentCenter;
+
+    UIButton *close = [UIButton buttonWithType:UIButtonTypeCustom];
+    close.translatesAutoresizingMaskIntoConstraints = NO;
+    [close setImage:[[UIImage systemImageNamed:@"xmark"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]
+           forState:UIControlStateNormal];
+    close.tintColor = ImpressTextColor();
+    [close addTarget:self action:closeAction forControlEvents:UIControlEventTouchUpInside];
+
+    UIView *header = [[UIView alloc] init];
+    header.translatesAutoresizingMaskIntoConstraints = NO;
+    [header addSubview:title];
+    [header addSubview:close];
+    [NSLayoutConstraint activateConstraints:@[
+        [header.heightAnchor constraintEqualToConstant:44],
+        [title.centerXAnchor constraintEqualToAnchor:header.centerXAnchor],
+        [title.centerYAnchor constraintEqualToAnchor:header.centerYAnchor],
+        [close.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-8],
+        [close.centerYAnchor constraintEqualToAnchor:header.centerYAnchor],
+        [close.widthAnchor constraintEqualToConstant:44],
+        [close.heightAnchor constraintEqualToConstant:44],
+    ]];
+    return header;
 }
 
 - (void)buildImpressCreationUi {
     self.impressPage = 1;
     self.impressStyle = 4;
-    self.aiSwitchOn = YES;
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillChangeFrame:)
-                                               name:UIKeyboardWillChangeFrameNotification object:nil];
+    self.impressAudience = 0;
+    self.impressMode = 0;
+    // "内容使用AI生成" defaults OFF on iOS: the sheet only creates a blank deck until the user opts in.
+    self.aiSwitchOn = NO;
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillChangeFrame:)
+                                                 name:UIKeyboardWillChangeFrameNotification
+                                               object:nil];
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissSheet)];
     tap.delegate = self;
     tap.cancelsTouchesInView = NO;
     [self.view addGestureRecognizer:tap];
 
+    // Same presentation as Writer/Calc: dimmed overlay + content-height card
+    // pinned to the bottom. Do not pin the card to the top — that stretched
+    // Impress into a full-screen page with a large empty region under the button.
     UIView *card = [[UIView alloc] init];
     card.translatesAutoresizingMaskIntoConstraints = NO;
     card.backgroundColor = UIColor.whiteColor;
     card.layer.cornerRadius = 24;
+    card.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
     card.clipsToBounds = YES;
     [self.view addSubview:card];
-    UIScrollView *scroll = [[UIScrollView alloc] init];
-    scroll.translatesAutoresizingMaskIntoConstraints = NO;
-    scroll.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
-    [card addSubview:scroll];
-    UIStackView *stack = [[UIStackView alloc] init];
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    stack.axis = UILayoutConstraintAxisVertical;
-    stack.spacing = 12;
-    [scroll addSubview:stack];
-    UILabel *title = [[UILabel alloc] init];
-    title.text = @"创建演示";
-    title.font = [UIFont boldSystemFontOfSize:18];
-    title.textAlignment = NSTextAlignmentCenter;
-    UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
-    [close setTitle:@"✕" forState:UIControlStateNormal];
-    [close setTitleColor:UIColor.labelColor forState:UIControlStateNormal];
-    [close.widthAnchor constraintEqualToConstant:40].active = YES;
-    [close addTarget:self action:@selector(dismissSheet) forControlEvents:UIControlEventTouchUpInside];
-    UIView *spacer = [[UIView alloc] init];
-    [spacer.widthAnchor constraintEqualToConstant:40].active = YES;
-    UIStackView *header = [[UIStackView alloc] initWithArrangedSubviews:@[spacer, title, close]];
-    [header.heightAnchor constraintEqualToConstant:40].active = YES;
-    [stack addArrangedSubview:header];
-    UILabel *name = [[UILabel alloc] init];
-    name.text = @"标题";
-    name.font = [UIFont systemFontOfSize:16];
-    [stack addArrangedSubview:name];
+
+    // Header: 创建演示 (centered) with close on the trailing edge.
+    UIView *header = [self impressHeaderWithTitle:@"创建演示" closeAction:@selector(dismissSheet)];
+
+    UILabel *nameLabel = [[UILabel alloc] init];
+    nameLabel.text = @"标题";
+    nameLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+    nameLabel.textColor = ImpressTextColor();
+
     self.fileNameField = [self borderedFieldWithPlaceholder:@"请输入文件名称"];
-    self.fileNameField.text = @"演示";
     self.fileNameField.delegate = self;
+    self.fileNameField.returnKeyType = UIReturnKeyDone;
     [self.fileNameField.heightAnchor constraintEqualToConstant:44].active = YES;
-    [stack addArrangedSubview:self.fileNameField];
 
-    UIStackView *aiCard = [[UIStackView alloc] init];
-    aiCard.axis = UILayoutConstraintAxisVertical;
-    aiCard.spacing = 8;
-    aiCard.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1];
-    aiCard.layer.cornerRadius = 12;
-    aiCard.layoutMarginsRelativeArrangement = YES;
-    aiCard.layoutMargins = UIEdgeInsetsMake(10, 10, 10, 10);
+    // AI card: sparkle + label + switch (row), then the mode/input options when the switch is ON.
+    UIImageView *sparkle = [[UIImageView alloc] initWithImage:
+        [[UIImage systemImageNamed:@"sparkles"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]];
+    sparkle.tintColor = ImpressSparkleColor();
+    sparkle.contentMode = UIViewContentModeScaleAspectFit;
+    [sparkle.widthAnchor constraintEqualToConstant:18].active = YES;
+    [sparkle.heightAnchor constraintEqualToConstant:18].active = YES;
+
     UILabel *aiLabel = [[UILabel alloc] init];
-    aiLabel.text = @"✨ 内容使用AI生成";
-    aiLabel.font = [UIFont systemFontOfSize:14];
+    aiLabel.text = @"内容使用AI生成";
+    aiLabel.font = [UIFont systemFontOfSize:15];
+    aiLabel.textColor = ImpressTextColor();
+
     self.impressAiSwitch = [[UISwitch alloc] init];
-    self.impressAiSwitch.on = YES;
-    self.impressAiSwitch.onTintColor = [UIColor colorWithRed:0.07 green:0.47 blue:0.85 alpha:1];
+    self.impressAiSwitch.on = NO;
+    self.impressAiSwitch.onTintColor = ImpressSwitchOnColor();
+    self.impressAiSwitch.transform = CGAffineTransformMakeScale(0.85, 0.85);
     [self.impressAiSwitch addTarget:self action:@selector(impressAiChanged) forControlEvents:UIControlEventValueChanged];
-    UIStackView *aiHeader = [[UIStackView alloc] initWithArrangedSubviews:@[aiLabel, self.impressAiSwitch]];
-    aiHeader.alignment = UIStackViewAlignmentCenter;
-    [aiCard addArrangedSubview:aiHeader];
 
-    self.impressOptionsView = [[UIStackView alloc] init];
-    self.impressOptionsView.axis = UILayoutConstraintAxisVertical;
-    self.impressOptionsView.spacing = 8;
-    UIButton *mode = [self impressOptionButton:@"快速生成" tag:0];
-    mode.backgroundColor = UIColor.whiteColor;
-    [self.impressOptionsView addArrangedSubview:mode];
-    self.impressSourceButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [self.impressSourceButton setTitle:@"选择 TXT / DOCX 文件" forState:UIControlStateNormal];
-    self.impressSourceButton.titleLabel.font = [UIFont systemFontOfSize:13];
-    self.impressSourceButton.hidden = YES;
-    [self.impressSourceButton.heightAnchor constraintEqualToConstant:36].active = YES;
-    [self.impressSourceButton addTarget:self action:@selector(pickImpressSource) forControlEvents:UIControlEventTouchUpInside];
-    [self.impressOptionsView addArrangedSubview:self.impressSourceButton];
+    UIView *aiSpacer = [[UIView alloc] init];
+    [aiSpacer setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    UIStackView *aiRow = [[UIStackView alloc] initWithArrangedSubviews:@[sparkle, aiLabel, aiSpacer, self.impressAiSwitch]];
+    aiRow.axis = UILayoutConstraintAxisHorizontal;
+    aiRow.spacing = 6;
+    aiRow.alignment = UIStackViewAlignmentCenter;
+    [aiRow.heightAnchor constraintEqualToConstant:44].active = YES;
 
-    UIView *inputCard = [[UIView alloc] init];
-    inputCard.backgroundColor = UIColor.whiteColor;
-    inputCard.layer.cornerRadius = 10;
+    // Mode dropdown (快速生成 / 文档生成 / 粘贴大纲).
+    self.impressModeButton = [self impressDropdownButtonWithTitle:ImpressModeTitle(self.impressMode)
+                                                              tag:0
+                                                           height:50
+                                                         fontSize:16
+                                                       background:UIColor.whiteColor];
+    self.impressModeButton.layer.borderWidth = 1;
+    self.impressModeButton.layer.borderColor = [UIColor colorWithRed:0xE3 / 255.0 green:0xE6 / 255.0 blue:0xEB / 255.0 alpha:1].CGColor;
+
+    // Quick input box: multi-line prompt with the three pills inside the bottom edge.
+    self.impressInputBox = [[UIView alloc] init];
+    self.impressInputBox.backgroundColor = UIColor.whiteColor;
+    self.impressInputBox.layer.cornerRadius = 8;
+    self.impressInputBox.clipsToBounds = YES;
+
     self.impressPromptView = [[UITextView alloc] init];
     self.impressPromptView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.impressPromptView.font = [UIFont systemFontOfSize:14];
+    self.impressPromptView.font = [UIFont systemFontOfSize:15];
     self.impressPromptView.backgroundColor = UIColor.clearColor;
+    self.impressPromptView.textColor = ImpressTextColor();
     self.impressPromptView.delegate = self;
-    self.impressPromptView.textContainerInset = UIEdgeInsetsMake(10, 6, 10, 6);
+    self.impressPromptView.textContainerInset = UIEdgeInsetsMake(10, 8, 0, 8);
     self.impressPromptView.accessibilityLabel = @"PPT主题和要求";
-    [inputCard addSubview:self.impressPromptView];
+    [self.impressInputBox addSubview:self.impressPromptView];
+
     self.impressPlaceholder = [[UILabel alloc] init];
     self.impressPlaceholder.translatesAutoresizingMaskIntoConstraints = NO;
     self.impressPlaceholder.text = @"请输入PPT主题和要求";
-    self.impressPlaceholder.textColor = UIColor.placeholderTextColor;
-    self.impressPlaceholder.font = [UIFont systemFontOfSize:14];
+    self.impressPlaceholder.textColor = ImpressHintColor();
+    self.impressPlaceholder.font = [UIFont systemFontOfSize:15];
     self.impressPlaceholder.userInteractionEnabled = NO;
-    [inputCard addSubview:self.impressPlaceholder];
-    UIButton *pages = [self impressOptionButton:@"11-20页" tag:1];
-    UIButton *audience = [self impressOptionButton:@"大众" tag:2];
-    UIButton *style = [self impressOptionButton:@"学术报告" tag:3];
+    [self.impressInputBox addSubview:self.impressPlaceholder];
+
+    UIButton *pages = [self impressDropdownButtonWithTitle:@"11-20页" tag:1 height:30 fontSize:13 background:ImpressChipColor()];
+    UIButton *audience = [self impressDropdownButtonWithTitle:@"大众" tag:2 height:30 fontSize:13 background:ImpressChipColor()];
+    UIButton *style = [self impressDropdownButtonWithTitle:@"学术报告" tag:3 height:30 fontSize:13 background:ImpressChipColor()];
     UIStackView *pills = [[UIStackView alloc] initWithArrangedSubviews:@[pages, audience, style]];
     pills.translatesAutoresizingMaskIntoConstraints = NO;
+    pills.axis = UILayoutConstraintAxisHorizontal;
     pills.distribution = UIStackViewDistributionFillEqually;
-    pills.spacing = 6;
-    [inputCard addSubview:pills];
+    pills.spacing = 10;
+    [self.impressInputBox addSubview:pills];
+
     [NSLayoutConstraint activateConstraints:@[
-        [self.impressPromptView.topAnchor constraintEqualToAnchor:inputCard.topAnchor],
-        [self.impressPromptView.leadingAnchor constraintEqualToAnchor:inputCard.leadingAnchor],
-        [self.impressPromptView.trailingAnchor constraintEqualToAnchor:inputCard.trailingAnchor],
-        [self.impressPromptView.heightAnchor constraintEqualToConstant:82],
-        [self.impressPlaceholder.topAnchor constraintEqualToAnchor:inputCard.topAnchor constant:10],
-        [self.impressPlaceholder.leadingAnchor constraintEqualToAnchor:inputCard.leadingAnchor constant:11],
-        [pills.topAnchor constraintEqualToAnchor:self.impressPromptView.bottomAnchor constant:4],
-        [pills.leadingAnchor constraintEqualToAnchor:inputCard.leadingAnchor constant:8],
-        [pills.trailingAnchor constraintEqualToAnchor:inputCard.trailingAnchor constant:-8],
-        [pills.bottomAnchor constraintEqualToAnchor:inputCard.bottomAnchor constant:-8],
+        [self.impressInputBox.heightAnchor constraintEqualToConstant:113],
+        [self.impressPromptView.topAnchor constraintEqualToAnchor:self.impressInputBox.topAnchor],
+        [self.impressPromptView.leadingAnchor constraintEqualToAnchor:self.impressInputBox.leadingAnchor],
+        [self.impressPromptView.trailingAnchor constraintEqualToAnchor:self.impressInputBox.trailingAnchor],
+        [self.impressPromptView.bottomAnchor constraintEqualToAnchor:pills.topAnchor constant:-4],
+        [self.impressPlaceholder.topAnchor constraintEqualToAnchor:self.impressInputBox.topAnchor constant:10],
+        [self.impressPlaceholder.leadingAnchor constraintEqualToAnchor:self.impressInputBox.leadingAnchor constant:13],
+        [pills.leadingAnchor constraintEqualToAnchor:self.impressInputBox.leadingAnchor constant:10],
+        [pills.trailingAnchor constraintEqualToAnchor:self.impressInputBox.trailingAnchor constant:-10],
+        [pills.bottomAnchor constraintEqualToAnchor:self.impressInputBox.bottomAnchor constant:-11],
     ]];
-    [self.impressOptionsView addArrangedSubview:inputCard];
-    [aiCard addArrangedSubview:self.impressOptionsView];
-    [stack addArrangedSubview:aiCard];
-    self.impressCreateButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [self.impressCreateButton setTitle:@"生成和创建" forState:UIControlStateNormal];
+
+    // Document mode: dashed drop zone that opens the file picker.
+    self.impressDocZone = [[UIView alloc] init];
+    self.impressDocZone.userInteractionEnabled = YES;
+    [self.impressDocZone.heightAnchor constraintEqualToConstant:113].active = YES;
+    self.impressDocBorder = [CAShapeLayer layer];
+    self.impressDocBorder.fillColor = UIColor.clearColor.CGColor;
+    self.impressDocBorder.strokeColor = [UIColor colorWithRed:0xC4 / 255.0 green:0xC9 / 255.0 blue:0xD1 / 255.0 alpha:1].CGColor;
+    self.impressDocBorder.lineWidth = 1;
+    self.impressDocBorder.lineDashPattern = @[@5, @4];
+    [self.impressDocZone.layer addSublayer:self.impressDocBorder];
+    UITapGestureRecognizer *docTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(pickImpressSource)];
+    [self.impressDocZone addGestureRecognizer:docTap];
+
+    self.impressDocTitle = [[UILabel alloc] init];
+    self.impressDocTitle.font = [UIFont systemFontOfSize:16];
+    self.impressDocTitle.textColor = ImpressTextColor();
+    self.impressDocTitle.textAlignment = NSTextAlignmentCenter;
+    self.impressDocTitle.lineBreakMode = NSLineBreakByTruncatingMiddle;
+
+    self.impressDocHint = [[UILabel alloc] init];
+    self.impressDocHint.font = [UIFont systemFontOfSize:12];
+    self.impressDocHint.textColor = ImpressHintColor();
+    self.impressDocHint.textAlignment = NSTextAlignmentCenter;
+    self.impressDocHint.numberOfLines = 0;
+
+    UIStackView *docStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.impressDocTitle, self.impressDocHint]];
+    docStack.axis = UILayoutConstraintAxisVertical;
+    docStack.alignment = UIStackViewAlignmentFill;
+    docStack.spacing = 8;
+    docStack.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.impressDocZone addSubview:docStack];
+    [NSLayoutConstraint activateConstraints:@[
+        [docStack.centerYAnchor constraintEqualToAnchor:self.impressDocZone.centerYAnchor],
+        [docStack.leadingAnchor constraintEqualToAnchor:self.impressDocZone.leadingAnchor constant:16],
+        [docStack.trailingAnchor constraintEqualToAnchor:self.impressDocZone.trailingAnchor constant:-16],
+    ]];
+    [self updateImpressDocZoneUi];
+
+    // Paste-outline stays on this same sheet (not a second modal).
+    self.impressPasteBox = [[UIView alloc] init];
+    self.impressPasteBox.backgroundColor = UIColor.whiteColor;
+    self.impressPasteBox.layer.cornerRadius = 8;
+    self.impressPasteBox.layer.borderWidth = 1;
+    self.impressPasteBox.layer.borderColor = [UIColor colorWithRed:0xE3 / 255.0 green:0xE6 / 255.0 blue:0xEB / 255.0 alpha:1].CGColor;
+    self.impressPasteBox.clipsToBounds = YES;
+    [self.impressPasteBox.heightAnchor constraintEqualToConstant:160].active = YES;
+
+    self.impressPasteView = [[UITextView alloc] init];
+    self.impressPasteView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.impressPasteView.font = [UIFont systemFontOfSize:15];
+    self.impressPasteView.backgroundColor = UIColor.clearColor;
+    self.impressPasteView.textColor = ImpressTextColor();
+    self.impressPasteView.delegate = self;
+    self.impressPasteView.textContainerInset = UIEdgeInsetsMake(10, 8, 8, 8);
+    self.impressPasteView.accessibilityLabel = @"粘贴大纲内容";
+    [self.impressPasteBox addSubview:self.impressPasteView];
+
+    self.impressPasteHint = [[UILabel alloc] init];
+    self.impressPasteHint.translatesAutoresizingMaskIntoConstraints = NO;
+    self.impressPasteHint.text = @"在此处输入或粘贴大纲，大纲层级尽量不超过4级，AI将为你整理幻灯片大纲";
+    self.impressPasteHint.font = [UIFont systemFontOfSize:15];
+    self.impressPasteHint.textColor = ImpressHintColor();
+    self.impressPasteHint.numberOfLines = 0;
+    self.impressPasteHint.userInteractionEnabled = NO;
+    [self.impressPasteBox addSubview:self.impressPasteHint];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.impressPasteView.topAnchor constraintEqualToAnchor:self.impressPasteBox.topAnchor],
+        [self.impressPasteView.leadingAnchor constraintEqualToAnchor:self.impressPasteBox.leadingAnchor],
+        [self.impressPasteView.trailingAnchor constraintEqualToAnchor:self.impressPasteBox.trailingAnchor],
+        [self.impressPasteView.bottomAnchor constraintEqualToAnchor:self.impressPasteBox.bottomAnchor],
+        [self.impressPasteHint.topAnchor constraintEqualToAnchor:self.impressPasteBox.topAnchor constant:10],
+        [self.impressPasteHint.leadingAnchor constraintEqualToAnchor:self.impressPasteBox.leadingAnchor constant:13],
+        [self.impressPasteHint.trailingAnchor constraintEqualToAnchor:self.impressPasteBox.trailingAnchor constant:-13],
+    ]];
+
+    self.impressOptionsView = [[UIStackView alloc] initWithArrangedSubviews:
+        @[self.impressModeButton, self.impressInputBox, self.impressDocZone, self.impressPasteBox]];
+    self.impressOptionsView.axis = UILayoutConstraintAxisVertical;
+    self.impressOptionsView.spacing = 8;
+    self.impressInputBox.hidden = self.impressMode != 0;
+    self.impressDocZone.hidden = self.impressMode != 1;
+    self.impressPasteBox.hidden = self.impressMode != 2;
+
+    UIStackView *aiCard = [[UIStackView alloc] initWithArrangedSubviews:@[aiRow, self.impressOptionsView]];
+    aiCard.axis = UILayoutConstraintAxisVertical;
+    aiCard.spacing = 0;
+    aiCard.backgroundColor = ImpressCardColor();
+    aiCard.layer.cornerRadius = 12;
+    aiCard.layoutMarginsRelativeArrangement = YES;
+    aiCard.layoutMargins = UIEdgeInsetsMake(0, 12, 12, 12);
+
+    // Primary action: gradient when AI is on, solid orange "创建演示" when off.
+    self.impressCreateButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.impressCreateButton.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
     [self.impressCreateButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    self.impressCreateButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
     self.impressCreateButton.layer.cornerRadius = 8;
     self.impressCreateButton.clipsToBounds = YES;
     [self.impressCreateButton.heightAnchor constraintEqualToConstant:44].active = YES;
     [self.impressCreateButton addTarget:self action:@selector(createTapped) forControlEvents:UIControlEventTouchUpInside];
     self.impressGradient = [CAGradientLayer layer];
-    self.impressGradient.colors = @[(id)[UIColor colorWithRed:0.26 green:0.55 blue:1 alpha:1].CGColor,
-                                   (id)[UIColor colorWithRed:0.55 green:0.31 blue:1 alpha:1].CGColor,
-                                   (id)[UIColor colorWithRed:0.9 green:0 blue:0.92 alpha:1].CGColor];
-    self.impressGradient.startPoint = CGPointMake(0, 0.5);
-    self.impressGradient.endPoint = CGPointMake(1, 0.5);
+    ImpressStyleGradient(self.impressGradient);
     [self.impressCreateButton.layer insertSublayer:self.impressGradient atIndex:0];
-    [stack addArrangedSubview:self.impressCreateButton];
+
+    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:
+        @[header, nameLabel, self.fileNameField, aiCard, self.impressCreateButton]];
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.spacing = 12;
+    [stack setCustomSpacing:20 afterView:header];
+    [stack setCustomSpacing:20 afterView:self.fileNameField];
+    [stack setCustomSpacing:20 afterView:aiCard];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    // Required hugging: a vertical stack only resists stretching at priority 250,
+    // so without this the bottom-pinned card can grow to the full screen.
+    [stack setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisVertical];
+    [stack setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisVertical];
+    [card addSubview:stack];
+
     self.cardBottomConstraint = [card.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor];
-    NSLayoutConstraint *width = [card.widthAnchor constraintEqualToAnchor:self.view.widthAnchor];
-    width.priority = 750;
-    NSLayoutConstraint *height = [card.heightAnchor constraintEqualToAnchor:stack.heightAnchor constant:28];
-    height.priority = 749;
     [NSLayoutConstraint activateConstraints:@[
-        [card.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor], width, height,
-        [card.widthAnchor constraintLessThanOrEqualToConstant:540],
-        [card.widthAnchor constraintLessThanOrEqualToAnchor:self.view.widthAnchor],
-        [card.topAnchor constraintGreaterThanOrEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
+        [card.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [card.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         self.cardBottomConstraint,
-        [scroll.topAnchor constraintEqualToAnchor:card.topAnchor],
-        [scroll.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
-        [scroll.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
-        [scroll.bottomAnchor constraintEqualToAnchor:card.safeAreaLayoutGuide.bottomAnchor],
-        [stack.topAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.topAnchor constant:8],
-        [stack.leadingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.leadingAnchor constant:16],
-        [stack.trailingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.trailingAnchor constant:-16],
-        [stack.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor constant:-32],
-        [stack.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor constant:-20],
+        [stack.topAnchor constraintEqualToAnchor:card.topAnchor constant:8],
+        [stack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16],
+        [stack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-16],
+        [stack.bottomAnchor constraintEqualToAnchor:card.safeAreaLayoutGuide.bottomAnchor constant:-24],
     ]];
+
+    [self impressAiChanged];
 }
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     self.impressGradient.frame = self.impressCreateButton.bounds;
+    if (self.impressDocBorder) {
+        self.impressDocBorder.frame = self.impressDocZone.bounds;
+        self.impressDocBorder.path = [UIBezierPath bezierPathWithRoundedRect:CGRectInset(self.impressDocZone.bounds, 0.5, 0.5)
+                                                                cornerRadius:8].CGPath;
+    }
 }
 
 - (void)impressAiChanged {
     self.aiSwitchOn = self.impressAiSwitch.isOn;
     self.impressOptionsView.hidden = !self.aiSwitchOn;
+    [self updateImpressCreateButtonUi];
+    [self.view layoutIfNeeded];
+}
+
+- (void)updateImpressCreateButtonUi {
     self.impressGradient.hidden = !self.aiSwitchOn;
-    self.impressCreateButton.backgroundColor = self.aiSwitchOn ? UIColor.clearColor : CreateFileButtonColorForKind(self.docKind);
+    self.impressCreateButton.backgroundColor = self.aiSwitchOn ? UIColor.clearColor : CreateFileButtonColorForKind(CreateFileDocKindImpress);
     [self.impressCreateButton setTitle:self.aiSwitchOn ? @"生成和创建" : @"创建演示" forState:UIControlStateNormal];
 }
 
-- (void)textViewDidChange:(UITextView *)textView {
-    self.impressPlaceholder.hidden = textView.text.length > 0;
-}
-
-- (BOOL)textView:(UITextView *)textView shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text {
-    return textView.text.length - range.length + text.length <= 150000;
+- (void)updateImpressDocZoneUi {
+    if (self.impressSourceLoading) {
+        self.impressDocTitle.text = @"正在读取文档…";
+        self.impressDocHint.text = @"";
+    } else if (self.impressDocContent.length > 0) {
+        self.impressDocTitle.text = self.impressDocName.length > 0 ? self.impressDocName : @"已选择文档";
+        self.impressDocHint.text = @"点击重新选择";
+    } else {
+        self.impressDocTitle.text = @"点击选择文件";
+        self.impressDocHint.text = @"支持Doc文档、PDF文档、思维导图、在线只能文档导入\n文档<120M，思维导入<5M，字数<15万字";
+    }
 }
 
 - (void)pickImpressOption:(UIButton *)button {
-    NSArray *groups = @[@[@"快速生成", @"粘贴大纲", @"文档生成"],
-                        @[@"1-10页", @"11-20页", @"21-30页", @"30+页"],
-                        @[@"大众", @"投资者", @"学生", @"教师", @"领导"],
-                        @[@"通用", @"行业调研", @"市场推广", @"工作汇报", @"学术报告", @"教学课件"]];
+    NSArray<NSString *> *titles = nil;
+    switch (button.tag) {
+        case 0:
+            titles = @[@"快速生成", @"文档生成", @"粘贴大纲"];
+            break;
+        case 1:
+            titles = @[@"1-10页", @"11-20页", @"21-30页", @"30+页"];
+            break;
+        case 2:
+            titles = @[@"大众", @"投资者", @"学生", @"教师", @"领导"];
+            break;
+        default:
+            titles = @[@"通用", @"行业调研", @"市场推广", @"工作汇报", @"学术报告", @"教学课件"];
+            break;
+    }
     UIAlertController *picker = [UIAlertController alertControllerWithTitle:nil message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    [groups[button.tag] enumerateObjectsUsingBlock:^(NSString *title, NSUInteger index, BOOL *stop) {
+    [titles enumerateObjectsUsingBlock:^(NSString *title, NSUInteger index, BOOL *stop) {
         [picker addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             if (button.tag == 0) {
-                self.impressMode = index;
-                self.impressPromptView.text = @"";
-                self.impressSourceButton.hidden = index != 2;
-                self.impressPlaceholder.text = index == 0 ? @"请输入PPT主题和要求" : index == 1 ? @"粘贴已有大纲文本…" : @"选择来源文档后可编辑正文";
-                [self textViewDidChange:self.impressPromptView];
-            } else if (button.tag == 1) self.impressPage = index;
-            else if (button.tag == 2) self.impressAudience = index;
-            else self.impressStyle = index;
-            [button setTitle:[title stringByAppendingString:@"  ⌄"] forState:UIControlStateNormal];
+                [self selectImpressMode:(NSInteger)index];
+            } else if (button.tag == 1) {
+                self.impressPage = index + 1;
+                [button setTitle:title forState:UIControlStateNormal];
+            } else if (button.tag == 2) {
+                self.impressAudience = index;
+                [button setTitle:title forState:UIControlStateNormal];
+            } else {
+                self.impressStyle = index;
+                [button setTitle:title forState:UIControlStateNormal];
+            }
         }]];
     }];
     [picker addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
@@ -589,9 +807,47 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
     [self presentViewController:picker animated:YES completion:nil];
 }
 
+- (void)selectImpressMode:(NSInteger)mode {
+    // Switching modes invalidates any in-flight document read.
+    ++self.impressSourceGeneration;
+    self.impressSourceLoading = NO;
+    if (self.impressMode == 2) {
+        self.impressPasteText = ImpressTrimmed(self.impressPasteView.text);
+    }
+    self.impressMode = mode;
+    [self.impressModeButton setTitle:ImpressModeTitle(mode) forState:UIControlStateNormal];
+    self.impressInputBox.hidden = mode != 0;
+    self.impressDocZone.hidden = mode != 1;
+    self.impressPasteBox.hidden = mode != 2;
+    [self updateImpressDocZoneUi];
+    if (mode == 2) {
+        self.impressPasteView.text = self.impressPasteText ?: @"";
+        self.impressPasteHint.hidden = self.impressPasteView.text.length > 0;
+        self.impressPasteBox.layer.borderColor =
+            [UIColor colorWithRed:0xE3 / 255.0 green:0xE6 / 255.0 blue:0xEB / 255.0 alpha:1].CGColor;
+    }
+    [self.view layoutIfNeeded];
+}
+
+- (void)textViewDidChange:(UITextView *)textView {
+    if (textView == self.impressPasteView) {
+        self.impressPasteHint.hidden = textView.text.length > 0;
+        self.impressPasteText = textView.text;
+        self.impressPasteBox.layer.borderColor =
+            [UIColor colorWithRed:0xE3 / 255.0 green:0xE6 / 255.0 blue:0xEB / 255.0 alpha:1].CGColor;
+    } else if (textView == self.impressPromptView) {
+        self.impressPlaceholder.hidden = textView.text.length > 0;
+        self.impressInputBox.layer.borderWidth = 0;
+    }
+}
+
+- (BOOL)textView:(UITextView *)textView shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text {
+    return textView.text.length - range.length + text.length <= 150000;
+}
+
 - (void)pickImpressSource {
     UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
-        initForOpeningContentTypes:@[UTTypePlainText, [UTType typeWithFilenameExtension:@"docx"]] asCopy:YES];
+        initForOpeningContentTypes:@[UTTypePlainText, [UTType typeWithFilenameExtension:@"docx"], UTTypePDF] asCopy:YES];
     picker.delegate = self;
     picker.allowsMultipleSelection = NO;
     [self presentViewController:picker animated:YES completion:nil];
@@ -600,25 +856,101 @@ static UIColor *CreateFileButtonColorForKind(CreateFileDocKind kind) {
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSURL *url = urls.firstObject;
     if (!url) return;
+    NSUInteger generation = ++self.impressSourceGeneration;
     self.impressSourceLoading = YES;
-    [self.impressSourceButton setTitle:@"正在读取文档…" forState:UIControlStateNormal];
+    [self updateImpressDocZoneUi];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         BOOL scoped = [url startAccessingSecurityScopedResource];
         NSString *text = @"";
         if ([url.pathExtension.lowercaseString isEqualToString:@"docx"]) {
             NSDictionary *extracted = [TypesetService extractStructuredFromFile:url];
             text = [extracted[@"fullText"] isKindOfClass:NSString.class] ? extracted[@"fullText"] : @"";
-        } else text = [NSString stringWithContentsOfURL:url encoding:NSUTF8StringEncoding error:nil] ?: @"";
+        } else if ([url.pathExtension.lowercaseString isEqualToString:@"pdf"]) {
+            PDFDocument *pdf = [[PDFDocument alloc] initWithURL:url];
+            NSMutableString *pages = [NSMutableString string];
+            for (NSUInteger page = 0; page < pdf.pageCount && pages.length < 150000; ++page) {
+                NSString *pageText = [pdf pageAtIndex:page].string;
+                if (pageText.length > 0) {
+                    if (pages.length > 0) [pages appendString:@"\n\n"];
+                    [pages appendString:pageText];
+                }
+            }
+            text = pages;
+        } else {
+            text = [NSString stringWithContentsOfURL:url encoding:NSUTF8StringEncoding error:nil]
+                ?: [NSString stringWithContentsOfURL:url usedEncoding:NULL error:nil] ?: @"";
+        }
         if (scoped) [url stopAccessingSecurityScopedResource];
         NSString *content = [text substringToIndex:MIN(text.length, 150000)];
         dispatch_async(dispatch_get_main_queue(), ^{
+            if (generation != self.impressSourceGeneration || self.impressMode != 1 || !self.view.window) return;
             self.impressSourceLoading = NO;
-            if (self.impressMode != 2) return;
-            self.impressPromptView.text = content;
-            [self textViewDidChange:self.impressPromptView];
-            [self.impressSourceButton setTitle:content.length > 0 ? url.lastPathComponent : @"读取失败，请选择 TXT / DOCX 文件" forState:UIControlStateNormal];
+            self.impressDocContent = ImpressTrimmed(content);
+            self.impressDocName = url.lastPathComponent ?: @"";
+            [self updateImpressDocZoneUi];
+            if (self.impressDocContent.length == 0) {
+                self.impressDocName = @"";
+                [self updateImpressDocZoneUi];
+                [self showImpressInputError:[url.pathExtension.lowercaseString isEqualToString:@"pdf"]
+                    ? @"未读取到文字。扫描版或加密 PDF 请先转换为可复制的文字，或选择 TXT / DOCX 文件。"
+                    : @"未读取到文档正文，请选择包含文字的 TXT / DOCX / PDF 文件。"];
+            }
         });
     });
+}
+
+- (void)showImpressInputError:(NSString *)message {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"无法生成演示"
+        message:message preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)createImpressPresentationWithName:(NSString *)name {
+    NSString *input = @"";
+    if (self.aiSwitchOn) {
+        if (self.impressMode == 1) {
+            if (self.impressSourceLoading) {
+                [self showImpressInputError:@"文档正在读取，请稍候"];
+                return;
+            }
+            input = self.impressDocContent ?: @"";
+            if (input.length == 0) {
+                [self showImpressInputError:@"请先选择来源文档"];
+                return;
+            }
+        } else if (self.impressMode == 2) {
+            input = ImpressTrimmed(self.impressPasteView.text);
+            self.impressPasteText = input;
+            if (input.length == 0) {
+                self.impressPasteBox.layer.borderColor = ImpressErrorColor().CGColor;
+                [self.impressPasteView becomeFirstResponder];
+                return;
+            }
+        } else {
+            input = ImpressTrimmed(self.impressPromptView.text);
+            if (input.length == 0) {
+                self.impressInputBox.layer.borderWidth = 1;
+                self.impressInputBox.layer.borderColor = ImpressErrorColor().CGColor;
+                [self.impressPromptView becomeFirstResponder];
+                return;
+            }
+        }
+    }
+    NSDictionary *options = @{
+        @"title": name,
+        @"inputType": @[@"quick", @"document", @"outline"][self.impressMode],
+        @"pageIndex": @(self.impressPage),
+        @"audienceIndex": @(self.impressAudience),
+        @"styleIndex": @(self.impressStyle),
+    };
+    BOOL aiOn = self.aiSwitchOn;
+    void (^block)(NSString *, BOOL, NSString *, NSDictionary *) = self.completion;
+    [self dismissViewControllerAnimated:YES completion:^{
+        if (block) {
+            block(name, aiOn, input, options);
+        }
+    }];
 }
 
 @end

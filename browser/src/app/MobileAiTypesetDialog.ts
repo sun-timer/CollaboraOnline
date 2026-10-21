@@ -110,7 +110,7 @@ class MobileAiTypesetDialog {
 	}
 
 	close(): void {
-		this.controller.cancel();
+		if (this.controller.getState().state !== 'accepted') this.controller.cancel();
 		this.unsubscribe();
 		this.sheet.close();
 	}
@@ -184,9 +184,13 @@ class MobileAiTypesetDialog {
 		}, 500);
 	}
 
+	private isPresentation(): boolean {
+		return (window as any).app?.map?.getDocType?.() === 'presentation';
+	}
+
 	private extractAndRequest(): Promise<void> {
 		const bridge = TypesetBridge.getInstance();
-		if (bridge.isAvailable()) {
+		if (bridge.isAvailable() && !this.isPresentation()) {
 			return bridge.extractStructured().then((result) => {
 				this.paragraphs = result.paragraphs || [];
 				this.typesetImages = result.images || null;
@@ -240,7 +244,14 @@ class MobileAiTypesetDialog {
 				this.paragraphs,
 			);
 		}
-		if (sections && TypesetBridge.getInstance().isAvailable()) {
+		if (sections && (this.isPresentation() || TypesetBridge.getInstance().isAvailable())) {
+			if (this.isPresentation()) {
+				this.sections = sections;
+				this.previewHtml = TypesetPreviewHtml.build(this.selectedType, sections);
+				this.preview.innerHTML = this.previewHtml;
+				this.render();
+				return;
+			}
 			this.sections = sections;
 			this.previewHtml = TypesetPreviewHtml.build(this.selectedType, sections);
 			this.preview.innerHTML = this.previewHtml;
@@ -254,7 +265,7 @@ class MobileAiTypesetDialog {
 	}
 
 	private fillTemplate(sections: { [key: string]: string }): void {
-		if (!TypesetBridge.getInstance().isAvailable()) {
+		if (this.isPresentation() || !TypesetBridge.getInstance().isAvailable()) {
 			this.render();
 			return;
 		}
@@ -283,8 +294,8 @@ class MobileAiTypesetDialog {
 			});
 	}
 
-	private applyResult(): void {
-		if (this.docxPath && TypesetBridge.getInstance().isAvailable()) {
+	private async applyResult(): Promise<void> {
+		if (!this.isPresentation() && this.docxPath && TypesetBridge.getInstance().isAvailable()) {
 			this.inserting = true;
 			this.status.textContent = '正在写入排版文档...';
 			this.render();
@@ -311,7 +322,11 @@ class MobileAiTypesetDialog {
 		const html = this.previewHtml
 			? this.previewHtml
 			: MobileAiResultRenderer.sanitizeTypesetHtml(state.preview);
-		this.controller.accept(html);
+		if (this.isPresentation() && (window as any).ThisIsTheiOSApp) {
+			if (await this.controller.acceptAsync(html)) this.close();
+		} else {
+			this.controller.accept(html);
+		}
 	}
 
 	private render(): void {
@@ -328,7 +343,7 @@ class MobileAiTypesetDialog {
 			this.filling ||
 			this.inserting ||
 			state.state === 'loading' ||
-			state.state === 'streaming';
+			state.state === 'streaming' || state.state === 'inserting';
 		const ready =
 			(state.state === 'ready' && !!state.preview && !this.filling) ||
 			(!!this.docxPath && !this.filling);
