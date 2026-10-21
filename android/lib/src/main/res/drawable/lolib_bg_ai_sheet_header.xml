@@ -1,5 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-        <gradient android:startColor="#f7e6ff" android:endColor="#dff2ff" android:angle="270" android:type="linear"/>
-        <corners android:topLeftRadius="24dp" android:topRightRadius="24dp" android:bottomLeftRadius="0dp" android:bottomRightRadius="0dp"/>
-</shape>
+<!-- tmp/AI功能渐变.svg：#F7E6FF → #DFF2FF，顶缘淡紫 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="0"
+                android:endColor="#DFF2FF"
+                android:startColor="#F7E6FF"
+                android:type="linear" />
+            <corners
+                android:bottomLeftRadius="0dp"
+                android:bottomRightRadius="0dp"
+                android:topLeftRadius="24dp"
+                android:topRightRadius="24dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:endColor="#00C45DFF"
+                android:startColor="#33C45DFF"
+                android:type="linear" />
+            <corners
+                android:bottomLeftRadius="0dp"
+                android:bottomRightRadius="0dp"
+                android:topLeftRadius="24dp"
+                android:topRightRadius="24dp" />
+        </shape>
+    </item>
+</layer-list>

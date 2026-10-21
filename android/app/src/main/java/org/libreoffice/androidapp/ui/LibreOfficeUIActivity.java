@@ -1640,7 +1640,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         final boolean[] aiSwitchChecked = {isImpress};
         final int[] pptChoices = {0, 1, 0, 4};
         if (isImpress) bindPresentationCreationOptions(dialog, aiPromptInput, pptChoices);
-        final int aiSwitchThumbMarginPx = (int) (2.5f * getResources().getDisplayMetrics().density);
+        final int aiSwitchThumbMarginPx = (int) (3f * getResources().getDisplayMetrics().density);
 
         Runnable updateAiSwitchUi = () -> {
             GradientDrawable track = new GradientDrawable();
