@@ -50,6 +50,9 @@ class NativeBridge {
 		'ai.doc_extract': true,
 		'ai.doc_extract.done': true,
 		'ai.doc_extract.error': true,
+		'ai.text.insert': true,
+		'ai.text.insert.done': true,
+		'ai.text.insert.error': true,
 		'ai.selection': true,
 		'ai.selection.done': true,
 		'ai.selection.error': true,
@@ -129,6 +132,9 @@ class NativeBridge {
 				value.type === 'ai.doc_extract' ||
 				value.type === 'ai.doc_extract.done' ||
 				value.type === 'ai.doc_extract.error' ||
+				value.type === 'ai.text.insert' ||
+				value.type === 'ai.text.insert.done' ||
+				value.type === 'ai.text.insert.error' ||
 				value.type === 'ai.selection' ||
 				value.type === 'ai.selection.done' ||
 				value.type === 'ai.selection.error' ||
@@ -149,6 +155,18 @@ class NativeBridge {
 				value.documentSessionId.trim() === '')
 		) {
 			return { valid: false, errorCode: 'invalid_document_session' };
+		}
+		if (value.type === 'ai.text.insert') {
+			if (typeof value.documentSessionId !== 'string' || !value.documentSessionId.trim()) {
+				return { valid: false, errorCode: 'invalid_document_session' };
+			}
+			if (typeof value.payload?.sourceRequestId !== 'string' || !value.payload.sourceRequestId.trim() ||
+				!Number.isInteger(value.payload?.viewId) || value.payload.viewId < 0) {
+				return { valid: false, errorCode: 'invalid_payload' };
+			}
+			if (typeof value.payload?.html !== 'string' || !value.payload.html.trim()) {
+				return { valid: false, errorCode: 'invalid_payload' };
+			}
 		}
 		return { valid: true };
 	}

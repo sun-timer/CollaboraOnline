@@ -4,7 +4,8 @@
  *
  * SPDX-License-Identifier: MPL-2.0
  *
- * PPTX fill using Typeset minizip unzip/zip + Poco DOM (DrawingML a:t).
+ * PPTX fill using Typeset minizip unzip/zip + regex over raw slide XML (DrawingML a:t).
+ * Slide XML is never re-serialized through a DOM, so OOXML prefixes stay intact.
  * Do not port Android java.util.zip 1:1.
  */
 
@@ -13,29 +14,7 @@
 #import "minizip/unzip.h"
 #import "minizip/zip.h"
 
-#include <Poco/AutoPtr.h>
-#include <Poco/DOM/DOMParser.h>
-#include <Poco/DOM/DOMWriter.h>
-#include <Poco/DOM/Document.h>
-#include <Poco/DOM/Element.h>
-#include <Poco/DOM/Node.h>
-#include <Poco/DOM/NodeList.h>
-#include <Poco/DOM/Text.h>
-#include <Poco/Exception.h>
-#include <Poco/XML/XMLWriter.h>
-
-#include <sstream>
 #include <string>
-#include <vector>
-
-using Poco::AutoPtr;
-using Poco::XML::DOMParser;
-using Poco::XML::DOMWriter;
-using Poco::XML::Document;
-using Poco::XML::Element;
-using Poco::XML::Node;
-using Poco::XML::NodeList;
-using Poco::XML::XMLWriter;
 
 @implementation PptxTemplateInfo
 @end
@@ -113,96 +92,12 @@ static BOOL PptxWriteZip(NSDictionary<NSString *, NSData *> *entries, NSURL *out
             zipClose(zip, NULL);
             return NO;
         }
-        zipCloseFileInZip(zip);
-    }
-    zipClose(zip, NULL);
-    return YES;
-}
-
-static const char *kPptxDrawingNS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-
-static std::string PptxUTF8(NSString *value) {
-    return value ? std::string(value.UTF8String ?: "") : std::string();
-}
-
-static NSString *PptxNSString(const std::string& value) {
-    return [[NSString alloc] initWithBytes:value.data()
-                                   length:value.size()
-                                 encoding:NSUTF8StringEncoding] ?: @"";
-}
-
-static AutoPtr<Document> PptxParseXml(NSData *data) {
-    if (!data) {
-        return nullptr;
-    }
-    try {
-        DOMParser parser;
-        return AutoPtr<Document>(parser.parseMemory(static_cast<const char *>(data.bytes), data.length));
-    } catch (const Poco::Exception&) {
-        return nullptr;
-    } catch (const std::exception&) {
-        return nullptr;
-    }
-}
-
-static NSData *PptxSerializeXml(Document *document) {
-    if (!document) {
-        return nil;
-    }
-    try {
-        std::ostringstream stream;
-        DOMWriter writer;
-        writer.setOptions(XMLWriter::WRITE_XML_DECLARATION);
-        writer.writeNode(stream, document);
-        const std::string xml = stream.str();
-        return [NSData dataWithBytes:xml.data() length:xml.size()];
-    } catch (const Poco::Exception&) {
-        return nil;
-    } catch (const std::exception&) {
-        return nil;
-    }
-}
-
-static std::vector<Element *> PptxElementsNS(Node *node, const char *localName, const char *ns) {
-    std::vector<Element *> elements;
-    if (!node) {
-        return elements;
-    }
-    AutoPtr<NodeList> list;
-    if (node->nodeType() == Node::DOCUMENT_NODE) {
-        list = static_cast<Document *>(node)->getElementsByTagNameNS(ns, localName);
-    } else if (node->nodeType() == Node::ELEMENT_NODE) {
-        list = static_cast<Element *>(node)->getElementsByTagNameNS(ns, localName);
-    }
-    if (!list) {
-        return elements;
-    }
-    elements.reserve(list->length());
-    for (unsigned long i = 0; i < list->length(); ++i) {
-        Node *item = list->item(i);
-        if (item && item->nodeType() == Node::ELEMENT_NODE) {
-            elements.push_back(static_cast<Element *>(item));
+        if (zipCloseFileInZip(zip) != ZIP_OK) {
+            zipClose(zip, NULL);
+            return NO;
         }
     }
-    return elements;
-}
-
-static NSString *PptxElementText(Element *element) {
-    return element ? PptxNSString(element->innerText()) : @"";
-}
-
-static void PptxSetElementText(Element *element, NSString *value) {
-    if (!element) {
-        return;
-    }
-    while (Node *child = element->firstChild()) {
-        element->removeChild(child);
-    }
-    Document *owner = element->ownerDocument();
-    if (!owner) {
-        return;
-    }
-    element->appendChild(owner->createTextNode(PptxUTF8(value ?: @"")));
+    return zipClose(zip, NULL) == ZIP_OK;
 }
 
 static NSString *PptxXmlEscape(NSString *value) {
@@ -236,29 +131,6 @@ static NSString *PptxLookupPlaceholder(NSString *key, NSDictionary<NSString *, N
     return @"";
 }
 
-static NSString *PptxReplacePlaceholdersInText(NSString *joined, NSDictionary<NSString *, NSString *> *placeholders) {
-    if (joined.length == 0 || [joined rangeOfString:@"{{"].location == NSNotFound) {
-        return joined;
-    }
-    NSRegularExpression *phRe = [NSRegularExpression regularExpressionWithPattern:@"\\{\\{([^{}]+)\\}\\}"
-                                                                          options:0
-                                                                            error:nil];
-    NSMutableString *replaced = [NSMutableString string];
-    __block NSUInteger last = 0;
-    [phRe enumerateMatchesInString:joined options:0 range:NSMakeRange(0, joined.length) usingBlock:^(NSTextCheckingResult *result, NSMatchingFlags flags, BOOL *stop) {
-        if (result.range.location > last) {
-            [replaced appendString:[joined substringWithRange:NSMakeRange(last, result.range.location - last)]];
-        }
-        NSString *key = [[joined substringWithRange:[result rangeAtIndex:1]] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        [replaced appendString:PptxLookupPlaceholder(key, placeholders)];
-        last = result.range.location + result.range.length;
-    }];
-    if (last < joined.length) {
-        [replaced appendString:[joined substringFromIndex:last]];
-    }
-    return replaced;
-}
-
 static NSString *PptxFillParagraphBody(NSString *body, NSDictionary<NSString *, NSString *> *placeholders) {
     NSRegularExpression *runRe = [NSRegularExpression regularExpressionWithPattern:@"(<a:t(?:\\s[^>]*)?>)([^<]*)(</a:t>)"
                                                                            options:0
@@ -279,6 +151,9 @@ static NSString *PptxFillParagraphBody(NSString *body, NSDictionary<NSString *, 
     NSRegularExpression *phRe = [NSRegularExpression regularExpressionWithPattern:@"\\{\\{([^{}]+)\\}\\}"
                                                                           options:0
                                                                             error:nil];
+    // `joined` is the raw XML text of the runs (entities such as &amp; still encoded).
+    // Only substituted values are escaped; untouched template text is already valid XML
+    // and must not be escaped a second time.
     NSMutableString *replaced = [NSMutableString string];
     __block NSUInteger last = 0;
     __block BOOL changed = NO;
@@ -287,7 +162,7 @@ static NSString *PptxFillParagraphBody(NSString *body, NSDictionary<NSString *, 
             [replaced appendString:[joined substringWithRange:NSMakeRange(last, result.range.location - last)]];
         }
         NSString *key = [[joined substringWithRange:[result rangeAtIndex:1]] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        [replaced appendString:PptxLookupPlaceholder(key, placeholders)];
+        [replaced appendString:PptxXmlEscape(PptxLookupPlaceholder(key, placeholders))];
         last = result.range.location + result.range.length;
         changed = YES;
     }];
@@ -297,7 +172,7 @@ static NSString *PptxFillParagraphBody(NSString *body, NSDictionary<NSString *, 
     if (!changed) {
         return body;
     }
-    NSString *finalText = PptxXmlEscape(replaced);
+    NSString *finalText = replaced;
     NSMutableString *newBody = [NSMutableString string];
     NSUInteger cursor = 0;
     NSInteger runIndex = 0;
@@ -347,40 +222,13 @@ static NSData *PptxFillSlideBytesRegex(NSData *slideXml, NSDictionary<NSString *
     return [out dataUsingEncoding:NSUTF8StringEncoding];
 }
 
+// Always the byte-preserving regex path. Re-serializing the slide through a DOM
+// rewrites namespace prefixes and breaks OOXML for Core (text boxes come out empty).
 static NSData *PptxFillSlideBytes(NSData *slideXml, NSDictionary<NSString *, NSString *> *placeholders) {
     if (!slideXml || placeholders.count == 0) {
         return slideXml;
     }
-    AutoPtr<Document> document = PptxParseXml(slideXml);
-    if (!document) {
-        return PptxFillSlideBytesRegex(slideXml, placeholders);
-    }
-    std::vector<Element *> paragraphs = PptxElementsNS(document, "p", kPptxDrawingNS);
-    BOOL changed = NO;
-    for (Element *paragraph : paragraphs) {
-        std::vector<Element *> texts = PptxElementsNS(paragraph, "t", kPptxDrawingNS);
-        if (texts.empty()) {
-            continue;
-        }
-        NSMutableString *joined = [NSMutableString string];
-        for (Element *textNode : texts) {
-            [joined appendString:PptxElementText(textNode)];
-        }
-        if ([joined rangeOfString:@"{{"].location == NSNotFound) {
-            continue;
-        }
-        NSString *replaced = PptxReplacePlaceholdersInText(joined, placeholders);
-        PptxSetElementText(texts[0], replaced);
-        for (size_t i = 1; i < texts.size(); ++i) {
-            PptxSetElementText(texts[i], @"");
-        }
-        changed = YES;
-    }
-    if (!changed) {
-        return slideXml;
-    }
-    NSData *serialized = PptxSerializeXml(document);
-    return serialized ?: PptxFillSlideBytesRegex(slideXml, placeholders);
+    return PptxFillSlideBytesRegex(slideXml, placeholders);
 }
 
 static NSSet<NSString *> *PptxCollectPlaceholderKeys(NSString *xml) {
@@ -397,20 +245,30 @@ static NSSet<NSString *> *PptxCollectPlaceholderKeys(NSString *xml) {
     return keys;
 }
 
+// Whole-slide regex scan. Each <a:p> body is joined from its <a:t> runs first, so a
+// {{key}} split across several runs is still found. Joining per paragraph (not across
+// the whole slide) avoids matching braces that belong to different paragraphs.
 static NSSet<NSString *> *PptxExtractPlaceholderKeys(NSData *slideXml) {
-    AutoPtr<Document> document = PptxParseXml(slideXml);
-    if (document) {
-        NSMutableSet<NSString *> *keys = [NSMutableSet set];
-        std::vector<Element *> texts = PptxElementsNS(document, "t", kPptxDrawingNS);
-        for (Element *textNode : texts) {
-            [keys unionSet:PptxCollectPlaceholderKeys(PptxElementText(textNode))];
-        }
-        if (keys.count > 0) {
-            return keys;
-        }
-    }
     NSString *xml = [[NSString alloc] initWithData:slideXml encoding:NSUTF8StringEncoding] ?: @"";
-    return PptxCollectPlaceholderKeys(xml);
+    if ([xml rangeOfString:@"{{"].location == NSNotFound) {
+        return [NSSet set];
+    }
+    NSRegularExpression *pRe = [NSRegularExpression regularExpressionWithPattern:@"(<a:p\\b[^>]*>)(.*?)(</a:p>)"
+                                                                         options:NSRegularExpressionDotMatchesLineSeparators
+                                                                           error:nil];
+    NSRegularExpression *runRe = [NSRegularExpression regularExpressionWithPattern:@"(<a:t(?:\\s[^>]*)?>)([^<]*)(</a:t>)"
+                                                                           options:0
+                                                                             error:nil];
+    NSMutableSet<NSString *> *keys = [NSMutableSet set];
+    [pRe enumerateMatchesInString:xml options:0 range:NSMakeRange(0, xml.length) usingBlock:^(NSTextCheckingResult *result, NSMatchingFlags flags, BOOL *stop) {
+        NSString *body = [xml substringWithRange:[result rangeAtIndex:2]];
+        NSMutableString *joined = [NSMutableString string];
+        for (NSTextCheckingResult *run in [runRe matchesInString:body options:0 range:NSMakeRange(0, body.length)]) {
+            [joined appendString:[body substringWithRange:[run rangeAtIndex:2]]];
+        }
+        [keys unionSet:PptxCollectPlaceholderKeys(joined)];
+    }];
+    return keys;
 }
 
 static NSInteger PptxCountContentPointSlots(NSSet<NSString *> *keys) {
@@ -927,21 +785,36 @@ static NSString *PptxString(id value) {
 
     NSString *safe = outputName.length > 0 ? outputName : @"AI生成PPT";
     safe = [[safe componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"\\/:*?\"<>|"]] componentsJoinedByString:@""];
+    safe = [safe stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (safe.length == 0) safe = @"AI生成PPT";
     if (safe.length > 40) {
         safe = [safe substringToIndex:40];
     }
     NSURL *documents = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
-    NSURL *destination = [documents URLByAppendingPathComponent:[NSString stringWithFormat:@"%@.pptx", safe]];
-    NSUInteger suffix = 2;
-    while ([[NSFileManager defaultManager] fileExistsAtPath:destination.path]) {
-        destination = [documents URLByAppendingPathComponent:[NSString stringWithFormat:@"%@ %lu.pptx", safe, (unsigned long)suffix]];
-        suffix++;
-    }
-    if (!PptxWriteZip(entries, destination)) {
+    // Assemble privately first. A failed ZIP must not leave a broken document,
+    // and concurrent/retried jobs must never truncate an existing user's file.
+    NSURL *temporary = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
+        URLByAppendingPathComponent:[NSUUID.UUID.UUIDString stringByAppendingPathExtension:@"pptx"]];
+    NSFileManager *manager = [NSFileManager defaultManager];
+    if (!PptxWriteZip(entries, temporary)) {
+        [manager removeItemAtURL:temporary error:nil];
         if (error) {
             *error = [NSError errorWithDomain:kPptxErrorDomain code:6 userInfo:@{NSLocalizedDescriptionKey: @"写入 PPTX 失败"}];
         }
         return nil;
+    }
+    NSURL *destination = [documents URLByAppendingPathComponent:[NSString stringWithFormat:@"%@.pptx", safe]];
+    NSUInteger suffix = 2;
+    NSError *moveError = nil;
+    while (![manager moveItemAtURL:temporary toURL:destination error:&moveError]) {
+        if (![moveError.domain isEqualToString:NSCocoaErrorDomain] || moveError.code != NSFileWriteFileExistsError) {
+            [manager removeItemAtURL:temporary error:nil];
+            if (error) *error = moveError;
+            return nil;
+        }
+        destination = [documents URLByAppendingPathComponent:[NSString stringWithFormat:@"%@ %lu.pptx", safe, (unsigned long)suffix]];
+        suffix++;
+        moveError = nil;
     }
     return destination;
 }

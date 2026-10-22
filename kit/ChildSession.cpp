@@ -2377,7 +2377,11 @@ bool ChildSession::unoCommand(const StringVector& tokens)
     SigUtil::addActivity(getId(), formatUnoCommandInfo(tokens[1]));
 
     // we need to get LOK_CALLBACK_UNO_COMMAND_RESULT callback when saving
-    const bool notify = (tokens.equals(1, ".uno:Save") ||
+    const bool notify = (
+#if defined(__ANDROID__) || defined(IOS)
+                          tokens.equals(1, ".uno:ExecuteSearch") ||
+#endif
+                          tokens.equals(1, ".uno:Save") ||
                           tokens.equals(1, ".uno:Undo") ||
                           tokens.equals(1, ".uno:Redo") ||
                           tokens.equals(1, ".uno:Cut") ||

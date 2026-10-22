@@ -18,8 +18,12 @@ typedef void (^NativeBridgeReloadDocumentHandler)(void);
 typedef void (^NativeBridgeDocumentTextCompletion)(NSString * _Nullable text);
 typedef void (^NativeBridgeDocumentTextExtractor)(NativeBridgeDocumentTextCompletion completion);
 
+typedef void (^NativeBridgeTextInsertCompletion)(BOOL inserted, NSString * _Nullable error);
+typedef void (^NativeBridgeTextInserter)(NSString *html, NSInteger viewId, NSString *resultMode, NativeBridgeTextInsertCompletion completion);
+
 @interface NativeBridgeHandler : NSObject <WKScriptMessageHandler>
 
+@property (copy, nonatomic, nullable) NativeBridgeTextInserter documentTextInserter;
 @property (copy, nonatomic, nullable) NativeBridgeDocumentURLProvider documentFileURLProvider;
 @property (copy, nonatomic, nullable) NativeBridgeDocumentURLProvider originalDocumentURLProvider;
 @property (copy, nonatomic, nullable) NativeBridgeReloadDocumentHandler reloadDocumentHandler;

@@ -7,6 +7,8 @@
  */
 
 class MobileAiDocumentExtractor {
+	private static readonly EMPTY_EXTRACT_RESULT = { success: false, text: '' };
+
 	static toPlainText(htmlOrText: string): string {
 		const raw = typeof htmlOrText === 'string' ? htmlOrText : '';
 		if (!raw) {
@@ -33,22 +35,36 @@ class MobileAiDocumentExtractor {
 		);
 	}
 
-	static extractFullText(): Promise<string> {
+	static extractFullText(options: { allowEmpty?: boolean } = {}): Promise<string> {
 		MobileAiDocumentExtractor.debug('extractFullText start');
-		return MobileAiDocumentExtractor.extractViaNative()
-			.then((nativeText) => {
+		return MobileAiDocumentExtractor.extractViaNative(options.allowEmpty === true)
+			.then((nativeResult) => {
 				MobileAiDocumentExtractor.debug(
-					'native chars=' + (nativeText ? nativeText.length : 0),
+					'native chars=' + nativeResult.text.length +
+					' success=' + nativeResult.success,
 				);
-				if (nativeText) {
-					return nativeText;
+				if (nativeResult.success && nativeResult.text.length > 0) {
+					return { text: nativeResult.text, emptyDocument: false };
 				}
-				return MobileAiDocumentExtractor.extractViaSelection();
+				if (nativeResult.success && options.allowEmpty === true) {
+					return { text: '', emptyDocument: true };
+				}
+				if (options.allowEmpty === true) {
+					throw new Error('文档全文提取失败');
+				}
+				return MobileAiDocumentExtractor.extractViaSelection().then((text) => ({
+					text,
+					emptyDocument: false,
+				}));
 			})
-			.then((text) => {
-				if (text) {
-					MobileAiDocumentExtractor.debug('extract ok chars=' + text.length);
-					return text;
+			.then((result) => {
+				if (result.text) {
+					MobileAiDocumentExtractor.debug('extract ok chars=' + result.text.length);
+					return result.text;
+				}
+				if (result.emptyDocument) {
+					MobileAiDocumentExtractor.debug('extract empty document');
+					return '';
 				}
 				MobileAiDocumentExtractor.debug('extract empty');
 				throw new Error('文档全文提取失败');
@@ -66,17 +82,19 @@ class MobileAiDocumentExtractor {
 		}
 	}
 
-	private static extractViaNative(): Promise<string> {
+	private static extractViaNative(
+		allowEmpty: boolean,
+	): Promise<{ success: boolean; text: string }> {
 		return new Promise((resolve) => {
 			let releaseSelectionMenuSuppression = (): void => undefined;
 			try {
 				if (typeof window === 'undefined' || !(window as any).ThisIsTheiOSApp) {
-					resolve('');
+					resolve(MobileAiDocumentExtractor.EMPTY_EXTRACT_RESULT);
 					return;
 				}
 				const nativeBridge = NativeBridge.getInstance();
 				if (!nativeBridge.isAvailable()) {
-					resolve('');
+					resolve(MobileAiDocumentExtractor.EMPTY_EXTRACT_RESULT);
 					return;
 				}
 				const requestId = NativeBridge.createId('doc-extract');
@@ -84,7 +102,7 @@ class MobileAiDocumentExtractor {
 				releaseSelectionMenuSuppression =
 					MobileAiDocumentExtractor.suppressProgrammaticSelectionMenu();
 				let settled = false;
-				const finish = (text: string): void => {
+				const finish = (success: boolean, text: string): void => {
 					if (settled) {
 						return;
 					}
@@ -92,7 +110,10 @@ class MobileAiDocumentExtractor {
 					releaseSelectionMenuSuppression();
 					window.clearTimeout(timer);
 					unsubscribe();
-					resolve(typeof text === 'string' ? text.trim() : '');
+					resolve({
+						success,
+						text: typeof text === 'string' ? text.trim() : '',
+					});
 				};
 				const unsubscribe = nativeBridge.subscribe((message) => {
 					if (message.requestId !== requestId) {
@@ -100,9 +121,7 @@ class MobileAiDocumentExtractor {
 					}
 					if (message.type === 'ai.doc_extract.done') {
 						const payload = message.payload || {};
-						finish(
-							typeof payload.text === 'string' ? payload.text : '',
-						);
+						finish(true, typeof payload.text === 'string' ? payload.text : '');
 						return;
 					}
 					if (
@@ -110,10 +129,10 @@ class MobileAiDocumentExtractor {
 						message.type === 'native.error' ||
 						message.type === 'ai.error'
 					) {
-						finish('');
+						finish(false, '');
 					}
 				});
-				const timer = window.setTimeout(() => finish(''), 8000);
+				const timer = window.setTimeout(() => finish(false, ''), 8000);
 				const posted = nativeBridge.postMessage({
 					protocolVersion: NativeBridge.PROTOCOL_VERSION,
 					channel: 'native',
@@ -121,14 +140,14 @@ class MobileAiDocumentExtractor {
 					requestId,
 					documentSessionId,
 					targetPlatform: 'ios',
-					payload: {},
+					payload: allowEmpty ? { allowEmpty: true } : {},
 				});
 				if (!posted) {
-					finish('');
+					finish(false, '');
 				}
 			} catch (_error) {
 				releaseSelectionMenuSuppression();
-				resolve('');
+				resolve(MobileAiDocumentExtractor.EMPTY_EXTRACT_RESULT);
 			}
 		});
 	}

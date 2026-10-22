@@ -14,7 +14,7 @@ class ImpressEditorPanel {
 	private readonly pickerLabels: Record<string, string> = {
 		'slide-format': 'A4',
 		'slide-orientation': '横向',
-		'slide-background': '渐变',
+		'slide-background': '无',
 		'slide-master': '默认',
 		'font-name': '宋体',
 		'font-size': '四号',
@@ -24,10 +24,18 @@ class ImpressEditorPanel {
 	private fontColorRgb = 0x000000;
 	private slideBackgroundColorRgb = 0xffffff;
 	private slideMasterSolidColorRgb = 0xffffff;
+	private stateHandler: ((event: any) => void) | null = null;
 	private readonly controller = WriterEditorController.getInstance();
 
 	private constructor() {
-		this.sheet = new WriterEditorSheet('', undefined, { editMode: true });
+		this.sheet = new WriterEditorSheet('', () => this.close(), {
+			editMode: true,
+		});
+		// Toolbar buttons must not move the editor's focus/selection into the DOM.
+		this.sheet.root.addEventListener('mousedown', (event) => {
+			if ((event.target as HTMLElement).closest('button'))
+				event.preventDefault();
+		});
 		const content = document.createElement('div');
 		content.className = 'writer-function-panel';
 		this.tabBar = document.createElement('div');
@@ -40,7 +48,11 @@ class ImpressEditorPanel {
 		const actions = document.createElement('div');
 		actions.className = 'writer-function-tab-actions';
 		[
-			{ icon: 'ai-sparkle', aria: 'AI功能', handler: () => this.openAiFeatures() },
+			{
+				icon: 'ai-sparkle',
+				aria: 'AI功能',
+				handler: () => this.openAiFeatures(),
+			},
 			{ icon: 'keyboard', aria: '键盘', handler: () => this.showKeyboard() },
 			{ icon: 'collapse', aria: '收起', handler: () => this.close() },
 		].forEach((action) => {
@@ -67,6 +79,7 @@ class ImpressEditorPanel {
 		content.appendChild(scrollContent);
 		this.sheet.setBody(content);
 		this.inlineSubpage = new WriterEditorInlineSubpage(this.sheet.body, [
+			this.tabBar,
 			scrollContent,
 		]);
 	}
@@ -90,6 +103,28 @@ class ImpressEditorPanel {
 
 	open(): void {
 		MobileDocTheme.applyFromMap();
+		this.refreshCommandState();
+		const map = (window as any).app?.map;
+		if (!this.stateHandler && map?.on) {
+			this.stateHandler = (event: any) => {
+				if (
+					[
+						'.uno:FontHeight',
+						'.uno:CharFontName',
+						'.uno:Color',
+						'.uno:FontColor',
+						'.uno:AttributePage',
+						'.uno:AttributePageSize',
+						'.uno:FillPageColor',
+						'.uno:FillPageStyle',
+					].indexOf(event?.commandName) < 0
+				)
+					return;
+				this.refreshCommandState();
+				if (this.activeTab === 'default') this.renderGrid();
+			};
+			map.on('commandstatechanged', this.stateHandler);
+		}
 		this.renderTabs();
 		this.renderGrid();
 		this.sheet.open();
@@ -112,6 +147,10 @@ class ImpressEditorPanel {
 	}
 
 	close(): void {
+		const map = (window as any).app?.map;
+		if (this.stateHandler && map?.off)
+			map.off('commandstatechanged', this.stateHandler);
+		this.stateHandler = null;
 		const children = this.subDialogs.splice(0);
 		children.forEach((dialog) => dialog.close());
 		this.inlineSubpage.clearSubpages();
@@ -188,7 +227,8 @@ class ImpressEditorPanel {
 	private createActionRow(feature: ImpressEditorFeature): HTMLButtonElement {
 		const row = document.createElement('button');
 		row.type = 'button';
-		row.className = 'writer-function-action-row writer-function-action-row--grouped';
+		row.className =
+			'writer-function-action-row writer-function-action-row--grouped';
 		row.setAttribute('aria-label', feature.label);
 		if (feature.icon) {
 			const iconWrap = document.createElement('span');
@@ -265,7 +305,9 @@ class ImpressEditorPanel {
 		applyLabel.textContent = '应用到全部幻灯片';
 		applyAll.appendChild(applyLabel);
 		applyAll.onclick = () => {
-			const feature = ImpressEditorCatalog.getFeature(this.selectedTransitionId);
+			const feature = ImpressEditorCatalog.getFeature(
+				this.selectedTransitionId,
+			);
 			if (!feature || feature.iconViewIndex === undefined) {
 				return;
 			}
@@ -317,7 +359,7 @@ class ImpressEditorPanel {
 		this.grid.appendChild(stack);
 	}
 
-	private renderLayoutTab(): void {
+	private renderLayoutTab(target: HTMLElement = this.grid): void {
 		const wrap = document.createElement('div');
 		wrap.className = 'writer-function-impress-layout-grid';
 		const features = ImpressEditorCatalog.getFeatures('layout');
@@ -357,7 +399,7 @@ class ImpressEditorPanel {
 			}
 			wrap.appendChild(row);
 		}
-		this.grid.appendChild(wrap);
+		target.appendChild(wrap);
 	}
 
 	private renderDefaultTab(): void {
@@ -444,7 +486,9 @@ class ImpressEditorPanel {
 		flushLayoutPreview();
 	}
 
-	private createSplitFontSizeColorRow(features: ImpressEditorFeature[]): HTMLDivElement {
+	private createSplitFontSizeColorRow(
+		features: ImpressEditorFeature[],
+	): HTMLDivElement {
 		const sizeFeature =
 			features.find((item) => item.splitPart === 'size') || features[0];
 		const colorFeature =
@@ -459,7 +503,9 @@ class ImpressEditorPanel {
 		const sizeValue = document.createElement('span');
 		sizeValue.className = 'writer-function-split-picker-row__value';
 		sizeValue.textContent =
-			this.pickerLabels['font-size'] || sizeFeature.pickerDefault || sizeFeature.label;
+			this.pickerLabels['font-size'] ||
+			sizeFeature.pickerDefault ||
+			sizeFeature.label;
 		sizeButton.appendChild(sizeValue);
 		const sizeChevron = document.createElement('span');
 		sizeChevron.className = 'writer-function-split-picker-row__chevron';
@@ -493,7 +539,8 @@ class ImpressEditorPanel {
 		const container = document.createElement('div');
 		container.className = 'writer-function-char-tools';
 		const row1 = document.createElement('div');
-		row1.className = 'writer-function-char-tools__row writer-function-char-tools__row--fill';
+		row1.className =
+			'writer-function-char-tools__row writer-function-char-tools__row--fill';
 		const row2 = document.createElement('div');
 		row2.className = 'writer-function-char-tools__row';
 		features.forEach((feature) => {
@@ -547,9 +594,9 @@ class ImpressEditorPanel {
 		all.className = 'writer-function-section-header-row__link';
 		all.textContent = '全部 >';
 		all.onclick = () => {
-			this.activeTab = 'layout';
-			this.renderTabs();
-			this.renderGrid();
+			const host = document.createElement('div');
+			this.renderLayoutTab(host);
+			this.inlineSubpage.pushSubpage('布局', host);
 		};
 		header.appendChild(title);
 		header.appendChild(all);
@@ -575,9 +622,7 @@ class ImpressEditorPanel {
 		const value = document.createElement('span');
 		value.className = 'writer-function-picker-row__value';
 		value.textContent =
-			this.pickerLabels[feature.id] ||
-			feature.pickerDefault ||
-			feature.label;
+			this.pickerLabels[feature.id] || feature.pickerDefault || feature.label;
 		row.appendChild(value);
 		const chevron = document.createElement('span');
 		chevron.className = 'writer-function-picker-row__chevron';
@@ -587,7 +632,9 @@ class ImpressEditorPanel {
 		return row;
 	}
 
-	private createParagraphChip(feature: ImpressEditorFeature): HTMLButtonElement {
+	private createParagraphChip(
+		feature: ImpressEditorFeature,
+	): HTMLButtonElement {
 		const chip = document.createElement('button');
 		chip.type = 'button';
 		chip.className = 'writer-function-para-chip';
@@ -607,7 +654,9 @@ class ImpressEditorPanel {
 		return chip;
 	}
 
-	private createLayoutPreviewRow(features: ImpressEditorFeature[]): HTMLDivElement {
+	private createLayoutPreviewRow(
+		features: ImpressEditorFeature[],
+	): HTMLDivElement {
 		const row = document.createElement('div');
 		row.className = 'writer-function-layout-preview';
 		features.forEach((feature) => {
@@ -638,9 +687,7 @@ class ImpressEditorPanel {
 	): void {
 		if (feature.kind === 'stub') {
 			if (feature.id === 'insert-more-fields') {
-				(window as any).app?.console?.log(
-					'ImpressEditorPanel: insert_more_fields todo (Android parity stub)',
-				);
+				this.openMoreFieldsDialog();
 			}
 			return;
 		}
@@ -655,7 +702,11 @@ class ImpressEditorPanel {
 				);
 			} else if (feature.dialog === 'table') {
 				this.presentSub(
-					new WriterEditorInsertTableDialog(this.controller, this.subHost()),
+					new WriterEditorInsertTableDialog(
+						this.controller,
+						this.subHost(),
+						true,
+					),
 				);
 			} else if (feature.dialog === 'shape') {
 				this.presentSub(
@@ -665,8 +716,13 @@ class ImpressEditorPanel {
 				this.presentSub(
 					new WriterEditorCommentDialog(this.controller, this.subHost()),
 				);
+			} else if (feature.dialog === 'commentList') {
+				this.close();
+				(window as any).__coolOpenCommentList?.();
 			} else if (feature.dialog === 'hyperlink') {
-				this.presentSub(new ImpressEditorHyperlinkDialog(this.controller));
+				this.presentSub(
+					new ImpressEditorHyperlinkDialog(this.controller, this.subHost()),
+				);
 			} else if (feature.dialog === 'saveAs') {
 				this.openSaveAsDialog();
 			} else if (feature.dialog === 'slideFormat') {
@@ -735,6 +791,20 @@ class ImpressEditorPanel {
 			return;
 		}
 		if (feature.kind === 'command' && feature.unocmd) {
+			if (feature.dismissBeforeCommand && !options?.keepPanelOpen) {
+				// Android runAndDismiss: dismiss, then execute. Blur first so
+				// removing the focused sheet does not move DOM focus onto a
+				// slide thumbnail (tabindex=0). That onfocus sets partsFocused
+				// and selection type "slide", which is the slide picker.
+				// Do not call map.focus(true): it shows the keyboard, the short
+				// web view is treated as landscape, and the sorter docks on the left.
+				const unocmd = feature.unocmd;
+				this.releaseSheetFocus();
+				this.close();
+				this.releaseSheetFocus();
+				this.sendUno(unocmd);
+				return;
+			}
 			this.sendUno(feature.unocmd);
 			if (!options?.keepPanelOpen) {
 				this.sheet.close();
@@ -756,8 +826,9 @@ class ImpressEditorPanel {
 					this.controller.applyFontName(
 						WriterEditorCatalog.aliasFont(option.value),
 					);
+					this.renderGrid();
 				},
-				undefined,
+				this.pickerLabels['font-name'],
 				this.subHost(),
 			),
 		);
@@ -765,16 +836,20 @@ class ImpressEditorPanel {
 
 	private openFontSizeDialog(): void {
 		const table = WriterEditorCatalog.CHAR_HEIGHT_CN;
-		const options = Object.keys(table).map((label) => ({ label, value: table[label] }));
+		const options = Object.keys(table).map((label) => ({
+			label,
+			value: table[label],
+		}));
 		this.presentSub(
 			new WriterEditorChooseDialog(
 				'字号',
 				options,
 				(option) => {
 					this.pickerLabels['font-size'] = option.label;
-					this.controller.applyFontSize(option.value);
+					this.controller.applyFontSize(String(parseFloat(option.value)));
+					this.renderGrid();
 				},
-				undefined,
+				this.pickerLabels['font-size'],
 				this.subHost(),
 			),
 		);
@@ -788,6 +863,7 @@ class ImpressEditorPanel {
 				(rgb) => {
 					this.fontColorRgb = rgb;
 					this.applyImpressFontColor(rgb);
+					this.renderGrid();
 				},
 				this.subHost(),
 			),
@@ -820,40 +896,105 @@ class ImpressEditorPanel {
 		return names.length ? names : WriterEditorCatalog.FONT_FALLBACK_OPTIONS;
 	}
 
-	private openSlideFormatDialog(): void {
-		const options: WriterChooseOption[] = ImpressEditorCatalog.SLIDE_FORMATS.map(
-			(preset) => ({
-				label: preset.label,
-				value: preset.paperFormat || preset.pageSizeUno || preset.label,
-			}),
+	private refreshCommandState(): void {
+		const map = (window as any).app?.map;
+		const size = this.currentSlideSizeTwips();
+		const width = (size[0] * 2540) / 1440;
+		const height = (size[1] * 2540) / 1440;
+		if (width > 0 && height > 0) {
+			this.pickerLabels['slide-orientation'] =
+				width >= height ? '横向' : '纵向';
+			const preset = ImpressEditorCatalog.SLIDE_FORMATS.find(
+				(entry) =>
+					entry.width &&
+					entry.height &&
+					Math.abs(
+						Math.min(width, height) - Math.min(entry.width, entry.height),
+					) < 10 &&
+					Math.abs(
+						Math.max(width, height) - Math.max(entry.width, entry.height),
+					) < 10,
+			);
+			this.pickerLabels['slide-format'] = preset?.label || '自定义';
+		}
+		const handler = map?.stateChangeHandler;
+		if (!handler?.getItemValue) return;
+		const font = handler.getItemValue('.uno:CharFontName');
+		if (typeof font === 'string' && font && font !== 'disabled') {
+			this.pickerLabels['font-name'] = font;
+		}
+		const fontSize = parseFloat(handler.getItemValue('.uno:FontHeight'));
+		if (isFinite(fontSize) && fontSize > 0) {
+			const table = WriterEditorCatalog.CHAR_HEIGHT_CN;
+			this.pickerLabels['font-size'] =
+				Object.keys(table).find(
+					(label) => parseFloat(table[label]) === fontSize,
+				) || fontSize + ' 磅';
+		}
+		const rawColor =
+			handler.getItemValue('.uno:Color') ??
+			handler.getItemValue('.uno:FontColor');
+		const color =
+			typeof rawColor === 'number' ? rawColor : parseInt(rawColor, 10);
+		if (isFinite(color) && color >= 0) this.fontColorRgb = color & 0xffffff;
+	}
+
+	private openMoreFieldsDialog(): void {
+		// Use the same field commands as the original Impress insert menu.
+		const options = [
+			{ label: '日期（固定）', value: '.uno:InsertDateFieldFix' },
+			{ label: '日期（可变）', value: '.uno:InsertDateFieldVar' },
+			{ label: '时间（固定）', value: '.uno:InsertTimeFieldFix' },
+			{ label: '时间（可变）', value: '.uno:InsertTimeFieldVar' },
+			{ label: '幻灯片编号', value: '.uno:InsertPageField' },
+			{ label: '幻灯片标题', value: '.uno:InsertPageTitleField' },
+			{ label: '幻灯片总数', value: '.uno:InsertPagesField' },
+		];
+		this.presentSub(
+			new WriterEditorChooseDialog(
+				'更多字段',
+				options,
+				(option) => {
+					this.sendUno(option.value);
+				},
+				undefined,
+				this.subHost(),
+			),
 		);
+	}
+
+	private openSlideFormatDialog(): void {
+		const options: WriterChooseOption[] =
+			ImpressEditorCatalog.SLIDE_FORMATS.map((preset) => ({
+				label: preset.label,
+				value: preset.paperFormat,
+			}));
 		this.presentSub(
 			new WriterEditorChooseDialog(
 				'格式',
 				options,
 				(option) => {
-					this.pickerLabels['slide-format'] = option.label;
 					const preset = ImpressEditorCatalog.SLIDE_FORMATS.find(
 						(entry) => entry.label === option.label,
 					);
-					if (preset?.pageSizeUno) {
-						this.sendUno(preset.pageSizeUno);
+					if (!preset) {
 						return;
 					}
-					if (option.value === '11') {
+					this.pickerLabels['slide-format'] = preset.label;
+					if (
+						preset.paperFormat === ImpressEditorCatalog.CUSTOM_PAPER_FORMAT
+					) {
 						this.presentSub(
-							new WriterEditorPaperSizeDialog(
-								this.controller,
-								this.subHost(),
-							),
+							new WriterEditorPaperSizeDialog(this.controller, this.subHost()),
 						);
 						return;
 					}
-					if (preset?.paperFormat) {
-						this.controller.applyPaperFormat(preset.paperFormat);
-					}
+					this.sendUno(
+						ImpressEditorCatalog.paperFormatCommand(preset.paperFormat),
+					);
+					this.renderGrid();
 				},
-				undefined,
+				this.pickerLabels['slide-format'],
 				this.subHost(),
 			),
 		);
@@ -871,14 +1012,24 @@ class ImpressEditorPanel {
 				options,
 				(option) => {
 					this.pickerLabels['slide-orientation'] = option.label;
+					const [width, height] = this.currentSlideSizeTwips();
+					if (width > 0 && height > 0) {
+						this.applySlideSize(
+							(width * 2540) / 1440,
+							(height * 2540) / 1440,
+							option.label === '横向',
+						);
+					}
 					this.sendUno(option.value);
+					this.renderGrid();
 				},
-				undefined,
+				this.pickerLabels['slide-orientation'],
 				this.subHost(),
 			),
 		);
 	}
 
+	/** Android BACKGROUND_LABELS / BACKGROUND_COMMANDS; never opens PageSetup. */
 	private openSlideBackgroundDialog(): void {
 		const options: WriterChooseOption[] =
 			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS.map((entry) => ({
@@ -890,78 +1041,75 @@ class ImpressEditorPanel {
 				'背景',
 				options,
 				(option) => {
-			const entry = ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS.find(
-				(item) => item.label === option.label,
-			);
-			if (!entry) {
-				return;
-			}
-			this.pickerLabels['slide-background'] = entry.label;
-			this.renderGrid();
-			if (entry.unocmd) {
-				this.sendUno(entry.unocmd);
-			}
-			if (entry.afterSelect === 'colorPicker') {
-				this.presentSub(
-					new WriterColorPickerDialog(
-						'背景颜色',
-						this.slideBackgroundColorRgb,
-						(rgb) => {
-							this.slideBackgroundColorRgb = rgb;
-							this.applyImpressSlideBackgroundColor(rgb);
-						},
-						this.subHost(),
-					),
-				);
-				return;
-			}
-			if (entry.afterSelect === 'imagePicker') {
-				this.controller.requestNativeImagePicker();
-			}
+					const entry = ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS.find(
+						(item) => item.label === option.label,
+					);
+					if (!entry) {
+						return;
+					}
+					this.pickerLabels['slide-background'] = entry.label;
+					this.renderGrid();
+					if (entry.unocmd) {
+						this.sendUno(entry.unocmd);
+					}
+					if (entry.afterSelect === 'colorPicker') {
+						this.presentSub(
+							new ImpressSolidColorPickerDialog(
+								'颜色',
+								this.slideBackgroundColorRgb,
+								(rgb) => {
+									this.slideBackgroundColorRgb = rgb;
+									this.applyImpressSlideBackgroundColor(rgb);
+									this.pickerLabels['slide-background'] = '颜色';
+									this.renderGrid();
+								},
+								this.subHost(),
+							),
+						);
+					}
 				},
-				undefined,
+				this.pickerLabels['slide-background'],
 				this.subHost(),
 			),
 		);
 	}
 
 	private openSlideMasterDialog(): void {
-		const options: WriterChooseOption[] = ImpressEditorCatalog.SLIDE_MASTER_OPTIONS.map(
-			(entry) => ({
+		const options: WriterChooseOption[] =
+			ImpressEditorCatalog.SLIDE_MASTER_OPTIONS.map((entry) => ({
 				label: entry.label,
 				value: entry.label,
-			}),
-		);
+			}));
 		this.presentSub(
 			new WriterEditorChooseDialog(
 				'母版幻灯片',
 				options,
 				(option) => {
-			const entry = ImpressEditorCatalog.SLIDE_MASTER_OPTIONS.find(
-				(item) => item.label === option.label,
-			);
-			if (!entry) {
-				return;
-			}
-			this.pickerLabels['slide-master'] = entry.label;
-			this.renderGrid();
-			if (entry.unocmd) {
-				this.sendUno(entry.unocmd);
-			}
-			if (entry.afterSelect === 'colorPicker') {
-				this.presentSub(
-					new ImpressSolidColorPickerDialog(
-						'纯色',
-						this.slideMasterSolidColorRgb,
-						(rgb) => {
-							this.slideMasterSolidColorRgb = rgb;
-							this.applyImpressMasterSolidColor(rgb);
-							this.pickerLabels['slide-master'] = '纯色';
-						},
-						this.subHost(),
-					),
-				);
-			}
+					const entry = ImpressEditorCatalog.SLIDE_MASTER_OPTIONS.find(
+						(item) => item.label === option.label,
+					);
+					if (!entry) {
+						return;
+					}
+					this.pickerLabels['slide-master'] = entry.label;
+					this.renderGrid();
+					if (entry.unocmd) {
+						this.sendUno(entry.unocmd);
+					}
+					if (entry.afterSelect === 'colorPicker') {
+						this.presentSub(
+							new ImpressSolidColorPickerDialog(
+								'纯色',
+								this.slideMasterSolidColorRgb,
+								(rgb) => {
+									this.slideMasterSolidColorRgb = rgb;
+									this.applyImpressMasterSolidColor(rgb);
+									this.pickerLabels['slide-master'] = '纯色';
+								},
+								this.subHost(),
+							),
+						);
+					}
 				},
 				undefined,
 				this.subHost(),
@@ -974,8 +1122,62 @@ class ImpressEditorPanel {
 		this.sendUno(ImpressEditorCatalog.buildBackgroundColorCommand(rgb));
 	}
 
+	private applySlideSize(
+		width: number,
+		height: number,
+		landscape: boolean,
+	): void {
+		const shortSide = Math.round(Math.min(width, height));
+		const longSide = Math.round(Math.max(width, height));
+		this.sendUno(
+			'.uno:AttributePageSize ' +
+				JSON.stringify({
+					'AttributePageSize.Width': {
+						type: 'long',
+						value: landscape ? longSide : shortSide,
+					},
+					'AttributePageSize.Height': {
+						type: 'long',
+						value: landscape ? shortSide : longSide,
+					},
+				}),
+		);
+	}
+
+	private currentSlideSizeTwips(): [number, number] {
+		const layer = (window as any).app?.map?._docLayer;
+		// getPartDimensions supports decks containing different slide sizes.
+		return [
+			layer?.getPartWidth?.(layer._selectedPart) || layer?._partWidthTwips || 0,
+			layer?.getPartHeight?.(layer._selectedPart) ||
+				layer?._partHeightTwips ||
+				0,
+		];
+	}
+
 	private applyImpressMasterSolidColor(rgb: number): void {
 		this.sendUno(ImpressEditorCatalog.buildBackgroundColorCommand(rgb));
+	}
+
+	/**
+	 * Drop DOM focus held by the sheet or a slide thumbnail.
+	 * Thumbnail focus is the slide-picker (partsFocused / selection type slide).
+	 */
+	private releaseSheetFocus(): void {
+		const active = document.activeElement;
+		if (active instanceof HTMLElement) {
+			const inSheet = this.sheet.root.contains(active);
+			const inSorter = !!active.closest(
+				'#slide-sorter, .preview-img, .preview-frame',
+			);
+			if (inSheet || inSorter) {
+				active.blur();
+			}
+		}
+		const preview = (window as any).app?.map?._docLayer?._preview;
+		if (preview) {
+			preview.partsFocused = false;
+		}
 	}
 
 	private sendUno(command: string): void {
@@ -1031,7 +1233,6 @@ class ImpressEditorPanel {
 			),
 		);
 	}
-
 }
 
 /** Char tool icons (reuse WriterCharPanelIcons where available). */
@@ -1059,12 +1260,9 @@ class ImpressCharToolIcons {
 		}
 	}
 
+	/** Same shadow glyph as Android lolib_ic_calc_shadow. */
 	private static readonly shadow =
-		'<svg viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg">' +
-		'<path d="M14 32h16" stroke="#101010" stroke-width="3" stroke-linecap="round"/>' +
-		'<path d="M18 24h12" stroke="#101010" stroke-width="3" stroke-linecap="round"/>' +
-		'<path d="M22 16h4" stroke="#101010" stroke-width="3" stroke-linecap="round"/>' +
-		'<path d="M20 36h16" stroke="#80868B" stroke-width="2.5" stroke-linecap="round"/></svg>';
+		'<svg viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="#3b8040" d="M17.4146 32.8018C19.9712 34.9209 22.8765 35.9805 26.1304 35.9805C27.9761 35.9805 29.3638 35.666 30.2935 35.0371C31.2231 34.3945 31.688 33.5742 31.688 32.5762C31.688 31.7148 31.3188 30.9014 30.5806 30.1357C29.8423 29.3701 27.894 28.3311 24.7358 27.0186C19.7729 24.9131 17.2915 21.8506 17.2915 17.8311C17.2915 14.8779 18.4126 12.5879 20.6548 10.9609C22.9106 9.32031 25.8911 8.5 29.5962 8.5C32.6997 8.5 35.3042 8.90332 37.4097 9.70996V16.0674C35.2769 14.6182 32.7817 13.8936 29.9243 13.8936C28.2563 13.8936 26.9233 14.2012 25.9253 14.8164C24.9272 15.418 24.4282 16.2314 24.4282 17.2568C24.4282 18.0771 24.77 18.8359 25.4536 19.5332C26.1372 20.2168 27.8257 21.1465 30.519 22.3223C33.6772 23.6758 35.8442 25.1045 37.02 26.6084C38.2095 28.1123 38.8042 29.9033 38.8042 31.9814C38.8042 35.0303 37.7241 37.3545 35.564 38.9541C33.4038 40.5537 30.3345 41.3535 26.356 41.3535C22.7192 41.3535 19.7388 40.7656 17.4146 39.5898V32.8018Z"/><path fill="#101010" d="M13.5205 31.4209C16.1989 33.641 19.2425 34.751 22.6514 34.751C24.585 34.751 26.0387 34.4215 27.0127 33.7627C27.9867 33.0895 28.4736 32.2301 28.4736 31.1846C28.4736 30.2822 28.0869 29.43 27.3135 28.6279C26.54 27.8258 24.499 26.7373 21.1904 25.3623C15.9912 23.1566 13.3916 19.9482 13.3916 15.7373C13.3916 12.6436 14.5661 10.2445 16.915 8.54004C19.2783 6.82129 22.4007 5.96191 26.2822 5.96191C29.5335 5.96191 32.262 6.38444 34.4678 7.22949V13.8896C32.2334 12.3714 29.6195 11.6123 26.626 11.6123C24.8786 11.6123 23.4821 11.9346 22.4365 12.5791C21.391 13.2093 20.8682 14.0615 20.8682 15.1357C20.8682 15.9951 21.2262 16.79 21.9424 17.5205C22.6585 18.2367 24.4274 19.2106 27.249 20.4424C30.5576 21.8604 32.8278 23.3571 34.0596 24.9326C35.3057 26.5081 35.9287 28.3844 35.9287 30.5615C35.9287 33.7555 34.7972 36.1904 32.5342 37.8662C30.2712 39.542 27.0557 40.3799 22.8877 40.3799C19.0778 40.3799 15.9554 39.764 13.5205 38.5322V31.4209Z"/></svg>';
 
 	private static readonly superscript =
 		'<svg viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg">' +

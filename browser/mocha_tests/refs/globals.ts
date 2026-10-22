@@ -9,6 +9,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+if (typeof window === 'undefined') {
+	(global as any).window = global;
+}
+
 /** Stubs for CalcEditorValidationBridge (full types live in AndroidNativeDialogRouter). */
 interface NativeDialogPayload {
 	[key: string]: any;

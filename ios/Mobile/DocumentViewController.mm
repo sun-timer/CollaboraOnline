@@ -15,6 +15,13 @@
 #import <cstdlib>
 #import <string>
 #import <vector>
+#import <algorithm>
+#import <comphelper/solarmutex.hxx>
+#import <rtl/ustring.hxx>
+using rtl::OUString;
+#import <comphelper/dispatchcommand.hxx>
+#import <com/sun/star/beans/PropertyValue.hpp>
+#import <com/sun/star/uno/Sequence.hxx>
 
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -46,6 +53,7 @@
 #import "Toolbar/TopToolbarController.h"
 
 #import "DocumentViewController.h"
+#import "KeyboardAccessory.h"
 #import "AI/WriterAIComponents.h"
 #import "AI/AiConversationStore.h"
 #import "AI/ImpressOutlineOverlayController.h"
@@ -70,6 +78,8 @@
     NSString *aiFullText;
     CGFloat keyboardHeight;
     BOOL keyboardVisibleForCanvas;
+    BOOL keyboardTransitionActive;
+    NSInteger keyboardTransitionDepth;
     AIService *aiService;
     IOSTopToolbarController *topToolbarController;
     IOSBottomToolbarController *bottomToolbarController;
@@ -83,6 +93,7 @@
     AISettingsDrawerController *aiDrawer;
     BOOL isClosing;
     BOOL kitConnectionTornDown;
+    UIView *documentKeyboardAccessory;
     BOOL documentPickerOpeningDocument;
     BOOL pendingAutoGenerateHandled;
     BOOL documentReady;
@@ -119,17 +130,44 @@
 - (BOOL)isDocumentOpeningStateVisible;
 - (void)attachDocumentOpeningOverlay;
 - (void)retryDocumentCanvasRecover;
-- (void)extractDocumentTextForDocQaWithCompletion:(void (^)(NSString *text))completion;
+- (void)extractDocumentTextForDocQaWithCompletion:(void (^)(NSString * _Nullable text))completion;
 - (void)extractCurrentSelectionWithCompletion:(void (^)(NSString *text))completion;
 - (NSString *)extractFullTextViaLokSelection;
 - (NSString *)lokClipboardPlainText;
 - (NSString *)extractDocumentTextFromFile;
+- (NSString * _Nullable)extractWriterTextViaExport;
 - (NSString *)extractPresentationTextViaExport;
 - (NSString *)textFromStructuredExtract:(NSDictionary *)extracted;
+- (UIView *)documentKeyboardAccessory;
+- (void)moveDocumentFocusPrevious;
+- (void)moveDocumentFocusNext;
+- (void)dismissDocumentAccessoryKeyboard;
+- (void)attachKeyboardAccessoryToWebContentView;
 
 @end
 
+static const void *DocumentKeyboardAccessoryWeakOwnerKey = &DocumentKeyboardAccessoryWeakOwnerKey;
+static IMP DocumentOriginalInputAccessoryImplementation = NULL;
+
+@interface DocumentKeyboardAccessoryWeakOwner : NSObject
+@property (weak, nonatomic) DocumentViewController *owner;
+@end
+@implementation DocumentKeyboardAccessoryWeakOwner
+@end
+
+static UIView *FindSubviewWithClassName(UIView *view, NSString *className) {
+    if ([NSStringFromClass(view.class) isEqualToString:className]) return view;
+    for (UIView *child in view.subviews) {
+        UIView *match = FindSubviewWithClassName(child, className);
+        if (match) return match;
+    }
+    return nil;
+}
+
 // From https://gist.github.com/myell0w/d8dfabde43f8da543f9c
+// Must match the notification posted by refreshIOSUserName() in ios/ios.mm.
+static NSString *const kCOIOSUserNameDidChangeNotification = @"COIOSUserNameDidChange";
+
 static BOOL isExternalKeyboardAttached()
 {
     BOOL externalKeyboardAttached = NO;
@@ -166,6 +204,105 @@ static BOOL isExternalKeyboardAttached()
 }
 
 @implementation DocumentViewController
+
+// Product-required document keyboard accessory: keep the navigation and check
+// controls together in one capsule. Do not remove it unless it causes a bug.
+- (UIView *)documentKeyboardAccessory {
+    if (documentKeyboardAccessory) return documentKeyboardAccessory;
+    UIView *bar = [[UIView alloc] initWithFrame:CGRectMake(0, 0, UIScreen.mainScreen.bounds.size.width, 64)];
+    bar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    bar.backgroundColor = UIColor.clearColor;
+    bar.opaque = NO;
+
+    UIView *capsule = [[UIView alloc] initWithFrame:CGRectZero];
+    capsule.translatesAutoresizingMaskIntoConstraints = NO;
+    capsule.backgroundColor = UIColor.whiteColor;
+    capsule.layer.cornerRadius = 24.0;
+    capsule.layer.borderWidth = 1.0;
+    capsule.layer.borderColor = [UIColor colorWithWhite:0.0 alpha:0.08].CGColor;
+    capsule.layer.shadowColor = UIColor.blackColor.CGColor;
+    capsule.layer.shadowOpacity = 0.08;
+    capsule.layer.shadowRadius = 8.0;
+    capsule.layer.shadowOffset = CGSizeMake(0, 2);
+    [bar addSubview:capsule];
+
+    UIButton *previous = [UIButton buttonWithType:UIButtonTypeCustom];
+    previous.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *chevronConfiguration = [UIImageSymbolConfiguration configurationWithPointSize:20.0 weight:UIImageSymbolWeightRegular];
+    [previous setImage:[[UIImage systemImageNamed:@"chevron.up"] imageWithConfiguration:chevronConfiguration] forState:UIControlStateNormal];
+    previous.tintColor = [UIColor colorWithWhite:0.42 alpha:1.0];
+    [previous addTarget:self action:@selector(moveDocumentFocusPrevious) forControlEvents:UIControlEventTouchUpInside];
+    previous.accessibilityIdentifier = @"document.keyboard.previous";
+    previous.accessibilityLabel = @"上一个输入框";
+    UIButton *next = [UIButton buttonWithType:UIButtonTypeCustom];
+    next.translatesAutoresizingMaskIntoConstraints = NO;
+    [next setImage:[[UIImage systemImageNamed:@"chevron.down"] imageWithConfiguration:chevronConfiguration] forState:UIControlStateNormal];
+    next.tintColor = [UIColor colorWithWhite:0.42 alpha:1.0];
+    [next addTarget:self action:@selector(moveDocumentFocusNext) forControlEvents:UIControlEventTouchUpInside];
+    next.accessibilityIdentifier = @"document.keyboard.next";
+    next.accessibilityLabel = @"下一个输入框";
+    UIButton *done = [UIButton buttonWithType:UIButtonTypeCustom];
+    done.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *checkConfiguration = [UIImageSymbolConfiguration configurationWithPointSize:22.0 weight:UIImageSymbolWeightRegular];
+    [done setImage:[[UIImage systemImageNamed:@"checkmark"] imageWithConfiguration:checkConfiguration] forState:UIControlStateNormal];
+    done.tintColor = UIColor.blackColor;
+    [done addTarget:self action:@selector(dismissDocumentAccessoryKeyboard) forControlEvents:UIControlEventTouchUpInside];
+    done.accessibilityIdentifier = @"document.keyboard.dismiss";
+    done.accessibilityLabel = @"收起键盘";
+    [capsule addSubview:previous];
+    [capsule addSubview:next];
+    [capsule addSubview:done];
+    [NSLayoutConstraint activateConstraints:@[
+        [capsule.topAnchor constraintEqualToAnchor:bar.topAnchor constant:8.0],
+        [capsule.bottomAnchor constraintEqualToAnchor:bar.bottomAnchor constant:-8.0],
+        [capsule.leadingAnchor constraintEqualToAnchor:bar.safeAreaLayoutGuide.leadingAnchor constant:16.0],
+        [capsule.trailingAnchor constraintEqualToAnchor:bar.safeAreaLayoutGuide.trailingAnchor constant:-16.0],
+        [previous.leadingAnchor constraintEqualToAnchor:capsule.leadingAnchor constant:12.0],
+        [previous.centerYAnchor constraintEqualToAnchor:capsule.centerYAnchor],
+        [previous.widthAnchor constraintEqualToConstant:44.0],
+        [previous.heightAnchor constraintEqualToConstant:44.0],
+        [next.leadingAnchor constraintEqualToAnchor:previous.trailingAnchor constant:12.0],
+        [next.centerYAnchor constraintEqualToAnchor:capsule.centerYAnchor],
+        [next.widthAnchor constraintEqualToConstant:44.0],
+        [next.heightAnchor constraintEqualToConstant:44.0],
+        [done.trailingAnchor constraintEqualToAnchor:capsule.trailingAnchor constant:-8.0],
+        [done.centerYAnchor constraintEqualToAnchor:capsule.centerYAnchor],
+        [done.widthAnchor constraintEqualToConstant:44.0],
+        [done.heightAnchor constraintEqualToConstant:44.0],
+    ]];
+    documentKeyboardAccessory = bar;
+    return bar;
+}
+
+- (void)postDocumentTabWithShift:(BOOL)shift {
+    if (!self.webView) return;
+    // UNOKey.TAB is 0x0502; SHIFT is UNO modifier 0x1000. Route both the
+    // press and release through the same document key path as a hardware key.
+    NSInteger keyCode = 0x0502 | (shift ? 0x1000 : 0);
+    NSString *script = [NSString stringWithFormat:
+        @"(function(){var l=window.app&&window.app.map&&window.app.map._docLayer;"
+         "if(!l||!l.postKeyboardEvent)return false;"
+         "l.postKeyboardEvent('input',0,%ld);l.postKeyboardEvent('up',0,%ld);return true;})()",
+        (long)keyCode, (long)keyCode];
+    [self.webView evaluateJavaScript:script completionHandler:nil];
+}
+
+- (void)moveDocumentFocusPrevious { [self postDocumentTabWithShift:YES]; }
+- (void)moveDocumentFocusNext { [self postDocumentTabWithShift:NO]; }
+- (void)dismissDocumentAccessoryKeyboard {
+    [self.webView endEditing:YES];
+    [self.view endEditing:YES];
+}
+- (void)attachKeyboardAccessoryToWebContentView {
+    UIView *contentView = self.webView ? FindSubviewWithClassName(self.webView, @"WKContentView") : nil;
+    if (!contentView) return;
+    DocumentKeyboardAccessoryWeakOwner *weakOwner = objc_getAssociatedObject(contentView, DocumentKeyboardAccessoryWeakOwnerKey);
+    if (weakOwner.owner == self) return;
+    if (!weakOwner) weakOwner = [DocumentKeyboardAccessoryWeakOwner new];
+    weakOwner.owner = self;
+    objc_setAssociatedObject(contentView, DocumentKeyboardAccessoryWeakOwnerKey, weakOwner, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (contentView.isFirstResponder) [contentView reloadInputViews];
+}
 
 static const int kDocumentOpenKitIdleAttempts = 60;
 static const int kDocumentOpenKitIdleIntervalMs = 50;
@@ -232,25 +369,39 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         [bottomToolbarController.view.trailingAnchor constraintEqualToAnchor:bottomToolbarContainer.trailingAnchor],
         [bottomToolbarController.view.bottomAnchor constraintEqualToAnchor:bottomToolbarContainer.bottomAnchor],
     ]];
+    self.view.keyboardLayoutGuide.usesBottomSafeArea = YES;
+    self.view.keyboardLayoutGuide.followsUndockedKeyboard = NO;
     bottomToolbarBottomConstraint = [bottomToolbarContainer.bottomAnchor
-        constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor];
+        constraintEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor];
     bottomToolbarBottomConstraint.active = YES;
     bottomToolbarHeightConstraint = [bottomToolbarContainer.heightAnchor
         constraintEqualToConstant:bottomToolbarController.preferredHeight];
     bottomToolbarHeightConstraint.active = YES;
 
     [self ensureKeyboardFrameObserver];
+    // Posted by refreshIOSUserName() (ios.mm) after the Settings nickname is saved.
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(iosUserNameDidChange:)
+                                                 name:kCOIOSUserNameDidChangeNotification
+                                               object:nil];
 
-    // The system input accessory is the up/down/done bar between the keyboard
-    // and the bottom toolbar. Hide it for this document view, including when
-    // a software keyboard is visible. Editing still raises the keyboard itself.
     Class webBrowserClass = NSClassFromString(@"WKContentView");
+
+    // Keep this WebKit override: WKContentView's own accessory is suppressed so
+    // the document can provide its navigation/dismiss controls. Native UITextField
+    // and UITextView accessories remain owned by KeyboardAccessory.
     Method accessoryMethod = class_getInstanceMethod(webBrowserClass, @selector(inputAccessoryView));
     static bool accessorySwizzled = false;
     if (!accessorySwizzled && accessoryMethod != nil) {
         accessorySwizzled = true;
+        DocumentOriginalInputAccessoryImplementation = method_getImplementation(accessoryMethod);
         IMP newImp = imp_implementationWithBlock(^id(id _s) {
-            return nil;
+            DocumentKeyboardAccessoryWeakOwner *weakOwner = objc_getAssociatedObject(_s, DocumentKeyboardAccessoryWeakOwnerKey);
+            DocumentViewController *owner = weakOwner.owner;
+            if (owner) return [owner documentKeyboardAccessory];
+            return DocumentOriginalInputAccessoryImplementation
+                ? ((id (*)(id, SEL))DocumentOriginalInputAccessoryImplementation)(_s, @selector(inputAccessoryView))
+                : nil;
         });
         method_setImplementation(accessoryMethod, newImp);
     }
@@ -701,7 +852,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         DocumentViewController *strongSelf = weakSelf;
         if (!strongSelf || !completion) {
             if (completion) {
-                completion(@"");
+                completion(nil);
             }
             return;
         }
@@ -717,6 +868,74 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         }
         [strongSelf extractCurrentSelectionWithCompletion:completion];
     };
+    nativeBridgeHandler.documentTextInserter = ^(NSString *html, NSInteger viewId, NSString *resultMode, NativeBridgeTextInsertCompletion completion) {
+        DocumentViewController *strongSelf = weakSelf;
+        if (!strongSelf || strongSelf->isClosing || !strongSelf->nativeEditMode) {
+            completion(NO, @"请先进入编辑模式并选择要插入的文本框");
+            return;
+        }
+        lok::Document *doc = [strongSelf loKitDocumentOrNull];
+        NSData *data = [html dataUsingEncoding:NSUTF8StringEncoding];
+        if (!doc || data.length == 0) {
+            completion(NO, @"文档未准备好，暂时无法插入");
+            return;
+        }
+        BOOL inserted = NO;
+        BOOL undoRose = NO;
+        {
+            auto *mutex = comphelper::SolarMutex::get();
+            if (!mutex) { completion(NO, @"文档未准备好"); return; }
+            osl::Guard<comphelper::SolarMutex> guard(mutex);
+            std::vector<int> viewIds(std::max(1, doc->getViewsCount()));
+            if (!doc->getViewIds(viewIds.data(), viewIds.size())
+                || std::find(viewIds.begin(), viewIds.end(), viewId) == viewIds.end()) {
+                completion(NO, @"文档视图已失效，请重新打开后重试");
+                return;
+            }
+            doc->setView(static_cast<int>(viewId));
+            auto dispatchSynchronously = [&](const char *command) -> BOOL {
+                css::uno::Sequence<css::beans::PropertyValue> arguments(1);
+                arguments[0].Name = "SynchronMode";
+                arguments[0].Value <<= true;
+                // doc->setView() makes the requested document view active; the
+                // active-frame overload dispatches into that view synchronously.
+                return comphelper::dispatchCommand(OUString::fromUtf8(command), arguments);
+            };
+            if ([resultMode isEqualToString:@"insertAtEnd"]) {
+                // postUnoCommand is asynchronous; SynchronMode guarantees the
+                // caret is at document end before the paste below begins.
+                if (!dispatchSynchronously(".uno:GoToEndOfDoc")) {
+                    completion(NO, @"无法定位到文档末尾");
+                    return;
+                }
+            } else if ([resultMode isEqualToString:@"appendAfterSelection"]) {
+                // Right collapses the active Writer selection to its end before
+                // the HTML is pasted. This preserves the selected source text.
+                if (!dispatchSynchronously(".uno:GoRight")) {
+                    completion(NO, @"无法定位到原文选区末尾");
+                    return;
+                }
+            }
+            auto undoCount = [doc]() -> long {
+                char *raw = doc->getCommandValues(".uno:UndoCount");
+                if (!raw) return -1;
+                long value = std::strtol(raw, nullptr, 10);
+                std::free(raw);
+                return value;
+            };
+            long before = undoCount();
+            BOOL dispatched = doc->paste("text/html", static_cast<const char *>(data.bytes), data.length);
+            long after = undoCount();
+            // Success = paste dispatched. The undo count can lag a frame behind
+            // (first paste after focus change), so it only drives the undo hint.
+            inserted = dispatched;
+            undoRose = dispatched && before >= 0 && after > before;
+        }
+        if (undoRose) [strongSelf->topToolbarController recordUndoableNativeEdit:@"ai_text_insert"];
+        // Synchronous on the same main-queue turn as the paste; NativeBridgeHandler
+        // emits ai.text.insert.done/error from this completion.
+        completion(inserted, inserted ? nil : @"未能插入当前文本框，请选择文本后重试");
+    };
     [userContentController addScriptMessageHandler:nativeBridgeHandler name:@"nativeBridge"];
     [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"clipboard"];
     [userContentController addScriptMessageHandlerWithReply:self contentWorld:[WKContentWorld pageWorld] name:@"aiConfiguration"];
@@ -730,10 +949,12 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     self.webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
     self.webView.translatesAutoresizingMaskIntoConstraints = NO;
     self.webView.allowsLinkPreview = NO;
+    [self attachKeyboardAccessoryToWebContentView];
 
     // Prevent the WebView from scrolling. Sadly I couldn't figure out how to do it in the JS,
     // so the problem is still there when using Online from Mobile Safari.
     self.webView.scrollView.scrollEnabled = NO;
+    self.webView.scrollView.pinchGestureRecognizer.enabled = NO;
 
     // Reenable debugging from Safari
     // The new WKWebView.inspectable property must be set to YES in order
@@ -816,9 +1037,23 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                     name:UIKeyboardWillChangeFrameNotification
                                                   object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIKeyboardWillShowNotification
+                                                  object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIKeyboardWillHideNotification
+                                                  object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(keyboardWillChangeFrame:)
                                                  name:UIKeyboardWillChangeFrameNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillShow:)
+                                                 name:UIKeyboardWillShowNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillHide:)
+                                                 name:UIKeyboardWillHideNotification
                                                object:nil];
 }
 
@@ -1073,6 +1308,15 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     [nativeBridgeHandler cancelAllRequests];
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                     name:UIKeyboardWillChangeFrameNotification
+                                                  object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIKeyboardWillShowNotification
+                                                  object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIKeyboardWillHideNotification
+                                                  object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:kCOIOSUserNameDidChangeNotification
                                                   object:nil];
     [self removeDocumentCopyIfNeeded];
     dispatch_group_notify(forwardingThreadGroup, dispatch_get_main_queue(), ^{
@@ -1337,6 +1581,32 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     return text;
 }
 
+- (NSString * _Nullable)extractWriterTextViaExport {
+    __weak DocumentViewController *weakSelf = self;
+    __block NSURL *exportURL = nil;
+    __block BOOL exported = NO;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        DocumentViewController *strongSelf = weakSelf;
+        lok::Document *doc = strongSelf ? [strongSelf loKitDocumentOrNull] : nullptr;
+        if (!doc) return;
+        NSString *name = [NSString stringWithFormat:@"ai-writer-extract-%@.txt", [[NSUUID UUID] UUIDString]];
+        NSURL *url = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:name]];
+        [[NSFileManager defaultManager] removeItemAtURL:url error:nil];
+        // The default LOK saveAs mode stores a snapshot without changing the
+        // open document URL; unlike package extraction this includes unsaved edits.
+        exported = doc->saveAs([[url absoluteString] UTF8String], "txt", "UTF8,LF,,,FALSE");
+        if (exported) exportURL = url;
+    });
+    if (!exported || !exportURL) return nil;
+    NSError *readError = nil;
+    NSString *text = [NSString stringWithContentsOfURL:exportURL
+        encoding:NSUTF8StringEncoding error:&readError];
+    [[NSFileManager defaultManager] removeItemAtURL:exportURL error:nil];
+    if (!text || readError) return nil;
+    NSLog(@"[AIExtract] writer current export chars=%lu", (unsigned long)text.length);
+    return [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
+
 - (NSString *)extractDocumentTextFromFile {
     NSURL *fileURL = [self documentExtractFileURL];
     unsigned long long fileSize = 0;
@@ -1357,10 +1627,13 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     __block NSInteger partCount = 1;
     __block NSInteger originalPart = 0;
     __block BOOL isPresentation = NO;
+    __block BOOL extractionFailed = NO;
+    __block BOOL gotAnySelectionResult = NO;
     dispatch_sync(dispatch_get_main_queue(), ^{
         DocumentViewController *strongSelf = weakSelf;
         lok::Document *doc = strongSelf ? [strongSelf loKitDocumentOrNull] : nullptr;
         if (!doc) {
+            extractionFailed = YES;
             return;
         }
         isPresentation = [strongSelf->nativeDocumentType isEqualToString:@"presentation"];
@@ -1377,6 +1650,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             DocumentViewController *strongSelf = weakSelf;
             lok::Document *doc = strongSelf ? [strongSelf loKitDocumentOrNull] : nullptr;
             if (!doc) {
+                extractionFailed = YES;
                 return;
             }
             if (isPresentation) {
@@ -1407,6 +1681,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
                 }
                 char *raw = doc->getTextSelection("text/plain;charset=utf-8", nullptr);
                 if (raw) {
+                    gotAnySelectionResult = YES;
                     cur = [[NSString alloc] initWithUTF8String:raw] ?: @"";
                     free(raw);
                 }
@@ -1444,6 +1719,8 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             if (isPresentation) {
                 doc->setPart((int)originalPart);
             }
+        } else {
+            extractionFailed = YES;
         }
     });
 
@@ -1452,7 +1729,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
           (long)partCount,
           (unsigned long)partTexts.count,
           (unsigned long)text.length);
-    return text;
+    return extractionFailed || !gotAnySelectionResult ? nil : text;
 }
 
 - (void)extractCurrentSelectionWithCompletion:(void (^)(NSString *text))completion {
@@ -1479,7 +1756,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     });
 }
 
-- (void)extractDocumentTextForDocQaWithCompletion:(void (^)(NSString *text))completion {
+- (void)extractDocumentTextForDocQaWithCompletion:(void (^)(NSString * _Nullable text))completion {
     if (!completion) {
         return;
     }
@@ -1489,7 +1766,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         DocumentViewController *strongSelf = weakSelf;
         if (!strongSelf) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                completion(@"");
+                completion(nil);
             });
             return;
         }
@@ -1500,24 +1777,24 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         NSLog(@"[AIExtract] type=%@ skipZip=%d", docType, isSpreadsheet);
         NSString *fileText = @"";
         // 演示文稿与 Writer/Calc 分开：先导出读文本框，全选读不到字。
-        if (isPresentation) {
-            fileText = [strongSelf extractPresentationTextViaExport];
-        }
-        if (fileText.length == 0 && !isSpreadsheet) {
-            fileText = [strongSelf extractDocumentTextFromFile];
-        }
-
-        NSString *result = fileText;
-        NSString *used = @"empty";
-        if (fileText.length > 0) {
-            used = @"file";
+        NSString *result = nil;
+        NSString *used = @"failed";
+        if (!isPresentation && !isSpreadsheet) {
+            // Writer's saved file can lag behind unsaved edits. Export a
+            // temporary snapshot from the live LOK document without moving its selection.
+            result = [strongSelf extractWriterTextViaExport];
+            used = result ? @"writer-current-export" : @"writer-export-failed";
         } else {
-            NSString *lokText = [strongSelf extractFullTextViaLokSelection];
-            if (lokText.length > 0) {
-                result = lokText;
-                used = @"lok";
+            if (isPresentation) fileText = [strongSelf extractPresentationTextViaExport];
+            if (fileText.length == 0 && !isSpreadsheet) {
+                fileText = [strongSelf extractDocumentTextFromFile];
+            }
+            if (fileText.length > 0) {
+                result = fileText;
+                used = @"file";
             } else {
-                result = @"";
+                result = [strongSelf extractFullTextViaLokSelection];
+                used = result ? @"lok" : @"lok-failed";
             }
         }
 
@@ -1525,7 +1802,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
               (unsigned long)fileText.length,
               used);
         dispatch_async(dispatch_get_main_queue(), ^{
-            completion(result ?: @"");
+            completion(result);
         });
     });
 }
@@ -1978,6 +2255,8 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         } else if ([message.body isEqualToString:@"DOCUMENT_READY"]) {
             if (!isClosing) {
                 documentReady = YES;
+                [self injectIOSUserNameIntoWebView:[self currentIOSUserNameForWeb]];
+                [self installCaretKeyboardHookIntoWebView];
                 [self maybeAutoGenerateAiContentAfterLoad];
             }
             return;
@@ -1985,6 +2264,9 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             return;
         } else if ([message.body hasPrefix:@"COMMENTCOUNT "]) {
             [self applyNativeCommentCount:message.body];
+            return;
+        } else if ([message.body isEqualToString:@"SHOWCOMMENTLIST"]) {
+            [self topToolbarDidPressComment];
             return;
         } else if ([message.body hasPrefix:@"SHEET_TAB_POPUP"]) {
             [self presentSheetTabPopupFromMessage:message.body];
@@ -2146,26 +2428,118 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     [self sendToolbarJavaScript:script];
 }
 
-- (void)keyboardWillChangeFrame:(NSNotification *)notification
+- (NSString *)currentIOSUserNameForWeb
 {
-    CGRect keyboardFrame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
-    CGRect localKeyboardFrame = [self.view convertRect:keyboardFrame fromView:nil];
-    CGFloat safeBottom = CGRectGetMaxY(self.view.bounds) - self.view.safeAreaInsets.bottom;
-    BOOL keyboardVisible = CGRectGetMinY(localKeyboardFrame) < CGRectGetMaxY(self.view.bounds);
-    BOOL keyboardWasVisible = keyboardVisibleForCanvas;
-    keyboardVisibleForCanvas = keyboardVisible;
-    CGFloat bottomOffset = keyboardVisible ? MIN(0.0, CGRectGetMinY(localKeyboardFrame) - safeBottom) : 0.0;
-    NSTimeInterval duration = [notification.userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
-    UIViewAnimationOptions options =
-        ([notification.userInfo[UIKeyboardAnimationCurveUserInfoKey] integerValue] << 16)
-        | UIViewAnimationOptionBeginFromCurrentState;
+    // Read USER_PROFILE_NAME (and the same fallbacks as Settings). Do not use
+    // the LOK user_name pointer: that is still LocalUser#N when LocalStorage
+    // captured an empty name at document load.
+    return iosSettingsUserName();
+}
 
+// Exposes the Settings nickname to the web layer as window.__coolIOSUserName.
+// WriterEditorCommentDialog reads it before the core view name.
+- (void)injectIOSUserNameIntoWebView:(NSString *)name
+{
+    if (name.length == 0 || [name hasPrefix:@"LocalUser#"]) {
+        name = iosSettingsUserName();
+    }
+    if (name.length == 0 || isClosing || self.webView == nil) {
+        return;
+    }
+    NSData *data = [NSJSONSerialization dataWithJSONObject:@[name] options:0 error:nil];
+    NSString *encodedArray = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+    if (encodedArray.length < 2) {
+        return;
+    }
+    // ["name"] -> "name": a JSON string literal that is safe to embed in JS.
+    NSString *literal = [encodedArray substringWithRange:NSMakeRange(1, encodedArray.length - 2)];
+    NSString *script = [NSString stringWithFormat:
+        @"(function(){if(typeof window.__coolRegisterOwnCommentAuthorAlias==='function'){window.__coolRegisterOwnCommentAuthorAlias(%@);}window.__coolIOSUserName=%@;var id=window.app&&app.map&&app.map._docLayer?app.map._docLayer._viewId:null;return Number.isInteger(id)?id:-1;})();",
+        literal, literal];
+    __weak DocumentViewController *weakSelf = self;
+    [self.webView evaluateJavaScript:script completionHandler:^(id result, NSError *error) {
+        DocumentViewController *owner = weakSelf;
+        if (!owner || owner->isClosing || error || ![result isKindOfClass:NSNumber.class] || [result intValue] < 0) return;
+        lok::Document *doc = [owner loKitDocumentOrNull];
+        if (doc && setIOSViewAuthor(doc, [result intValue], name.UTF8String)) {
+            NSLog(@"[Comments] view_author_synced viewId=%d", [result intValue]);
+        }
+    }];
+}
+
+- (void)iosUserNameDidChange:(NSNotification *)notification
+{
+    id name = notification.userInfo[@"name"];
+    NSString *newName = [name isKindOfClass:[NSString class]] ? name : nil;
+    if (newName.length == 0 || [newName hasPrefix:@"LocalUser#"]) {
+        newName = iosSettingsUserName();
+    }
+    // refreshIOSUserName() may run off the main thread; WKWebView must be touched on main.
+    __weak __typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [weakSelf injectIOSUserNameIntoWebView:newName];
+    });
+}
+
+// Shows the on-screen keyboard when the core reports a text caret appearing in edit mode.
+// This replaces the old manual "呼出键盘" action. Only the hidden -> visible transition
+// calls focus(true), so the keyboard is not re-raised on every cursor message.
+- (void)installCaretKeyboardHookIntoWebView
+{
+    [self sendToolbarJavaScript:
+     @"(function(){"
+      "if(window.__coolIOSCaretKeyboardHooked){return;}"
+      "if(!(window.app&&app.events&&app.map)){return;}"
+      "window.__coolIOSCaretKeyboardHooked=true;"
+      "var caretVisible=false;"
+      "app.events.on('TextCursorVisibility',function(e){"
+      "var visible=!!(e&&e.detail&&e.detail.visible);"
+      "var caretAppeared=visible&&!caretVisible;"
+      "caretVisible=visible;"
+      "if(!caretAppeared){return;}"
+      "var map=app.map;"
+      "if(!map||typeof map.isEditMode!=='function'||!map.isEditMode()){return;}"
+      "if(document.querySelector('[data-cool-mobile-ai-ui=\"1\"]')){return;}"
+      "if(typeof map.focus==='function'){map.focus(true);}"
+      "});"
+      "})();"];
+}
+
+
+// A hardware (external) keyboard reports an end frame only as tall as the input accessory bar.
+// Only an on-screen keyboard frame may compact the bottom toolbar.
+static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
+
+// Single place that changes the compact bottom toolbar state. Only call it on a real transition.
+- (void)applyKeyboardVisibleState:(BOOL)keyboardVisible
+{
+    // Equal state is a no-op. Skipping it avoids re-sending toolbar JS on repeated notifications.
+    if (keyboardVisibleForCanvas == keyboardVisible && bottomToolbarController.compact == keyboardVisible) {
+        return;
+    }
+    keyboardVisibleForCanvas = keyboardVisible;
     bottomToolbarController.compact = keyboardVisible;
     [self sendToolbarJavaScript:keyboardVisible
         ? @"if(window.__coolMobileSelectionMenu&&__coolMobileSelectionMenu.setKeyboardVisible){__coolMobileSelectionMenu.setKeyboardVisible(true);}"
         : @"if(window.__coolMobileSelectionMenu&&__coolMobileSelectionMenu.setKeyboardVisible){__coolMobileSelectionMenu.setKeyboardVisible(false);}"];
     bottomToolbarHeightConstraint.constant = bottomToolbarController.preferredHeight;
-    bottomToolbarBottomConstraint.constant = bottomOffset;
+}
+
+// Animates the layout pass that lets keyboardLayoutGuide move the bottom toolbar.
+// The toolbar's vertical position comes from the guide, so no constant is set here.
+- (void)animateKeyboardLayoutForNotification:(NSNotification *)notification
+                                  completion:(void (^)(void))completion
+{
+    NSTimeInterval duration = [notification.userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+    UIViewAnimationOptions options =
+        ([notification.userInfo[UIKeyboardAnimationCurveUserInfoKey] integerValue] << 16)
+        | UIViewAnimationOptionBeginFromCurrentState;
+
+    // WillShow and a covering WillChange are delivered together. A single flag
+    // would be cleared by the first completion while the second animation is
+    // still running, and viewSafeAreaInsetsDidChange would then lay the toolbar out.
+    keyboardTransitionDepth += 1;
+    keyboardTransitionActive = YES;
     [UIView animateWithDuration:duration
                           delay:0.0
                         options:options
@@ -2173,17 +2547,76 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         [self.view layoutIfNeeded];
     }
                      completion:^(BOOL finished) {
-        if (keyboardWasVisible && !keyboardVisible) {
+        if (self->keyboardTransitionDepth > 0)
+            self->keyboardTransitionDepth -= 1;
+        self->keyboardTransitionActive = self->keyboardTransitionDepth > 0;
+        if (completion != nil) {
+            completion();
+        }
+    }];
+}
+
+- (void)keyboardWillShow:(NSNotification *)notification
+{
+    [self attachKeyboardAccessoryToWebContentView];
+    CGRect keyboardFrame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    // An external keyboard shows a short frame; it must not compact the bottom toolbar.
+    if (CGRectGetHeight(keyboardFrame) >= kOnScreenKeyboardMinHeight) {
+        [self applyKeyboardVisibleState:YES];
+    }
+    [self animateKeyboardLayoutForNotification:notification completion:nil];
+}
+
+- (void)keyboardWillHide:(NSNotification *)notification
+{
+    BOOL keyboardWasVisible = keyboardVisibleForCanvas;
+    [self applyKeyboardVisibleState:NO];
+    [self animateKeyboardLayoutForNotification:notification completion:^{
+        if (keyboardWasVisible) {
             [self recoverCalcCanvasAfterKeyboardHidden];
         }
     }];
+}
+
+// WillChange never clears the compact state. It only compacts when the end frame
+// clearly covers the view, so a show that delivers only WillChange still compacts.
+- (void)keyboardWillChangeFrame:(NSNotification *)notification
+{
+    CGRect keyboardFrame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    UIWindow *window = self.view.window;
+    CGRect localKeyboardFrame = window
+        ? [self.view convertRect:keyboardFrame fromCoordinateSpace:window.screen.coordinateSpace]
+        : [self.view convertRect:keyboardFrame fromView:nil];
+    BOOL onScreenKeyboard = CGRectGetHeight(keyboardFrame) >= kOnScreenKeyboardMinHeight;
+    BOOL keyboardCoversView = onScreenKeyboard
+        && CGRectIntersectsRect(self.view.bounds, localKeyboardFrame)
+        && CGRectGetMinY(localKeyboardFrame) < CGRectGetMaxY(self.view.bounds);
+    // A second show often delivers a frame that misses the view. Laying out
+    // against that frame lets keyboardLayoutGuide drop the toolbar. WillHide
+    // owns a real dismiss.
+    if (!keyboardCoversView) {
+        // With no transition in flight, a missing frame means the keyboard is gone
+        // (external keyboard, floating keyboard, or a dismiss without WillHide), so
+        // fall back to the expanded toolbar. An in-flight transition may report a
+        // transient miss, so leave it alone.
+        if (!keyboardTransitionActive && keyboardVisibleForCanvas) {
+            [self applyKeyboardVisibleState:NO];
+        }
+        return;
+    }
+    if (!keyboardVisibleForCanvas)
+        [self applyKeyboardVisibleState:YES];
+    [self animateKeyboardLayoutForNotification:notification completion:nil];
 }
 
 - (void)viewSafeAreaInsetsDidChange
 {
     [super viewSafeAreaInsetsDidChange];
     [topToolbarController relayout];
-    [bottomToolbarController relayout];
+    // During a keyboard animation the guide drives the bottom toolbar; do not lay it out here.
+    if (!keyboardTransitionActive) {
+        [bottomToolbarController relayout];
+    }
     [self sendToolbarJavaScript:@"if(window.app&&app.map&&typeof app.map.invalidateSize==='function'){app.map.invalidateSize();}"];
 }
 
@@ -2599,6 +3032,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
 - (void)viewDidLayoutSubviews
 {
     [super viewDidLayoutSubviews];
+    [self attachKeyboardAccessoryToWebContentView];
     if (self.webView == nil) {
         return;
     }
@@ -3012,6 +3446,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
                                                                    message:nil
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+        [KeyboardAccessory installOnInput:textField];
         textField.text = currentName;
         textField.clearButtonMode = UITextFieldViewModeWhileEditing;
     }];
@@ -3174,11 +3609,10 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
 {
     [self sendToolbarJavaScript:
      @"(function(){try{"
-      "if(window.app&&app.map&&app.map.slideShow){"
-      "app.map.slideShow._startFullscreenSlideshow();"
-      "}else if(window.L&&window.L.Map&&window.app&&app.map){"
-      "app.map.downloadAs('slideshow.svg','svg',null,'slideshow');"
-      "}"
+      "if(!(window.app&&app.map)){console.error('start_slide_show map_missing');return;}"
+      "var eventName=window.canvasSlideshowEnabled?'newfullscreen':'fullscreen';"
+      "app.map.fire(eventName);"
+      "console.log('start_slide_show event='+eventName);"
       "}catch(e){console.error('slideshow_error',e);}})();"];
 }
 

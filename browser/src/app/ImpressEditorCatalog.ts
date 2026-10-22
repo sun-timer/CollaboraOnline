@@ -6,12 +6,7 @@
  */
 
 type ImpressEditorTab =
-	| 'default'
-	| 'file'
-	| 'insert'
-	| 'transition'
-	| 'layout'
-	| 'review';
+	'default' | 'file' | 'insert' | 'transition' | 'layout' | 'review';
 
 type ImpressEditorFeatureKind =
 	| 'section'
@@ -32,6 +27,7 @@ type ImpressEditorDialogType =
 	| 'chart'
 	| 'saveAs'
 	| 'comment'
+	| 'commentList'
 	| 'hyperlink'
 	| 'slideFormat'
 	| 'slideOrientation'
@@ -59,6 +55,8 @@ interface ImpressEditorFeature {
 	row?: 'picker' | 'chip' | 'layoutPreview' | 'splitPicker' | 'charTool';
 	splitPart?: ImpressEditorSplitPart;
 	pickerDefault?: string;
+	/** Close the sheet, then send unocmd. Does not call map.focus. */
+	dismissBeforeCommand?: boolean;
 }
 
 interface ImpressEditorTabDefinition {
@@ -174,38 +172,56 @@ class ImpressEditorCatalog {
 		},
 	];
 
-	/** Android ImpressFunctionPanelController FORMAT_LABELS / FORMAT_COMMANDS. */
+	/**
+	 * Android ImpressFunctionPanelController FORMAT_LABELS / FORMAT_COMMANDS
+	 * (20 items, A4 first). Dimensions in 1/100 mm are used only to recognise
+	 * the current preset; applying a preset sends PaperFormat:short=N.
+	 */
 	static readonly SLIDE_FORMATS: {
 		label: string;
-		paperFormat?: string;
-		pageSizeUno?: string;
+		paperFormat: string;
+		width?: number;
+		height?: number;
 	}[] = [
-		{ label: 'A4', paperFormat: '4' },
-		{ label: 'A3', paperFormat: '3' },
-		{ label: 'A5', paperFormat: '5' },
-		{ label: 'A6', paperFormat: '56' },
-		{ label: 'A2', paperFormat: '2' },
-		{ label: 'A1', paperFormat: '1' },
-		{ label: 'A0', paperFormat: '0' },
-		{ label: 'B6(ISO)', paperFormat: '12' },
-		{ label: 'B5(ISO)', paperFormat: '7' },
-		{ label: 'B4(ISO)', paperFormat: '6' },
-		{ label: 'B6(JIS)', paperFormat: '36' },
-		{ label: 'B5(JIS)', paperFormat: '35' },
-		{ label: 'B4(JIS)', paperFormat: '34' },
-		{ label: 'Letter', paperFormat: '8' },
-		{ label: 'Legal', paperFormat: '9' },
-		{ label: 'Tabloid', paperFormat: '10' },
-		{ label: '16开', paperFormat: '31' },
-		{ label: '32开', paperFormat: '32' },
-		{ label: '大32开', paperFormat: '33' },
+		{ label: 'A4', paperFormat: '4', width: 21000, height: 29700 },
+		{ label: 'A3', paperFormat: '3', width: 29700, height: 42000 },
+		{ label: 'A5', paperFormat: '5', width: 14800, height: 21000 },
+		{ label: 'A6', paperFormat: '56', width: 10500, height: 14800 },
+		{ label: 'A2', paperFormat: '2', width: 42000, height: 59400 },
+		{ label: 'A1', paperFormat: '1', width: 59400, height: 84100 },
+		{ label: 'A0', paperFormat: '0', width: 84100, height: 118900 },
+		{ label: 'B6(ISO)', paperFormat: '12', width: 12500, height: 17600 },
+		{ label: 'B5(ISO)', paperFormat: '7', width: 17600, height: 25000 },
+		{ label: 'B4(ISO)', paperFormat: '6', width: 25000, height: 35300 },
+		{ label: 'B6(JIS)', paperFormat: '36', width: 12800, height: 18200 },
+		{ label: 'B5(JIS)', paperFormat: '35', width: 18200, height: 25700 },
+		{ label: 'B4(JIS)', paperFormat: '34', width: 25700, height: 36400 },
+		{ label: 'Letter', paperFormat: '8', width: 21590, height: 27940 },
+		{ label: 'Legal', paperFormat: '9', width: 21590, height: 35560 },
+		{ label: 'Tabloid', paperFormat: '10', width: 27940, height: 43180 },
+		{ label: '16开', paperFormat: '31', width: 18400, height: 26000 },
+		{ label: '32开', paperFormat: '32', width: 13000, height: 18400 },
+		{ label: '大32开', paperFormat: '33', width: 14000, height: 20300 },
 		{ label: '自定义', paperFormat: '11' },
 	];
 
-	/** Android ORIENTATION_LABELS / ORIENTATION_COMMANDS. */
+	/** Paper preset id used by Android FORMAT_COMMANDS; 11 is the user-defined size. */
+	static readonly CUSTOM_PAPER_FORMAT = '11';
+
+	static paperFormatCommand(paperFormat: string): string {
+		return '.uno:AttributePageSize?PaperFormat:short=' + paperFormat;
+	}
+
+	/** Impress registers AttributePage, rather than Writer's Orientation slot. */
 	static readonly SLIDE_ORIENTATIONS: { label: string; unocmd: string }[] = [
-		{ label: '横向', unocmd: '.uno:Orientation?isLandscape:bool=true' },
-		{ label: '纵向', unocmd: '.uno:Orientation?isLandscape:bool=false' },
+		{
+			label: '横向',
+			unocmd: '.uno:AttributePage?AttributePage.Landscape:bool=true',
+		},
+		{
+			label: '纵向',
+			unocmd: '.uno:AttributePage?AttributePage.Landscape:bool=false',
+		},
 	];
 
 	/** Android BACKGROUND_LABELS / BACKGROUND_COMMANDS + createBackgroundActions. */
@@ -269,29 +285,51 @@ class ImpressEditorCatalog {
 
 	static buildFillPageStyleCommand(fillStyle: ImpressFillPageStyle): string {
 		return (
-			'.uno:FillPageStyle {"FillPageStyle":{"type":"short","value":' + fillStyle + '}}'
+			'.uno:FillPageStyle {"FillPageStyle":{"type":"short","value":' +
+			fillStyle +
+			'}}'
 		);
 	}
 
 	static buildBackgroundColorCommand(rgb: number): string {
 		return (
-			'.uno:BackgroundColor {"BackgroundColor.Color":{"type":"long","value":' +
+			'.uno:FillPageColor {"FillPageColor.Color":{"type":"long","value":' +
 			rgb +
 			'}}'
 		);
 	}
 
-	static readonly TRANSITIONS: { id: string; label: string; setId: string; iconViewIndex: number }[] = [
+	static readonly TRANSITIONS: {
+		id: string;
+		label: string;
+		setId: string;
+		iconViewIndex: number;
+	}[] = [
 		{ id: 'tr-none', label: '无', setId: '', iconViewIndex: 0 },
 		{ id: 'tr-wipe', label: '擦除', setId: 'wipe', iconViewIndex: 1 },
 		{ id: 'tr-wheel', label: '滚轮', setId: 'wheel', iconViewIndex: 2 },
 		{ id: 'tr-uncover', label: '揭开', setId: 'uncover', iconViewIndex: 3 },
-		{ id: 'tr-random-bars', label: '条形', setId: 'random-bars', iconViewIndex: 4 },
-		{ id: 'tr-checkerboard', label: '棋盘', setId: 'checkerboard', iconViewIndex: 5 },
+		{
+			id: 'tr-random-bars',
+			label: '条形',
+			setId: 'random-bars',
+			iconViewIndex: 4,
+		},
+		{
+			id: 'tr-checkerboard',
+			label: '棋盘',
+			setId: 'checkerboard',
+			iconViewIndex: 5,
+		},
 		{ id: 'tr-shape', label: '形状', setId: 'shape', iconViewIndex: 6 },
 		{ id: 'tr-box', label: '框', setId: 'box', iconViewIndex: 7 },
 		{ id: 'tr-wedge', label: '楔形', setId: 'wedge', iconViewIndex: 8 },
-		{ id: 'tr-venetian', label: '百叶窗', setId: 'venetian-blinds', iconViewIndex: 9 },
+		{
+			id: 'tr-venetian',
+			label: '百叶窗',
+			setId: 'venetian-blinds',
+			iconViewIndex: 9,
+		},
 		{ id: 'tr-fade', label: '淡入', setId: 'fade', iconViewIndex: 10 },
 		{ id: 'tr-cut', label: '切入', setId: 'cut', iconViewIndex: 11 },
 		{ id: 'tr-cover', label: '覆盖', setId: 'cover', iconViewIndex: 12 },
@@ -300,27 +338,78 @@ class ImpressEditorCatalog {
 		{ id: 'tr-comb', label: '梳动', setId: 'comb', iconViewIndex: 15 },
 		{ id: 'tr-push', label: '推出', setId: 'push', iconViewIndex: 16 },
 		{ id: 'tr-split', label: '拆分', setId: 'split', iconViewIndex: 17 },
-		{ id: 'tr-diagonal', label: '斜角方块', setId: 'diagonal-squares', iconViewIndex: 18 },
+		{
+			id: 'tr-diagonal',
+			label: '斜角方块',
+			setId: 'diagonal-squares',
+			iconViewIndex: 18,
+		},
 		{ id: 'tr-tile', label: '磁贴', setId: 'tile-flip', iconViewIndex: 19 },
-		{ id: 'tr-cube', label: '立方体', setId: 'cube-turning', iconViewIndex: 20 },
-		{ id: 'tr-circles', label: '多重圆', setId: 'revolving-circles', iconViewIndex: 21 },
-		{ id: 'tr-helix', label: '螺旋', setId: 'turning-helix', iconViewIndex: 22 },
+		{
+			id: 'tr-cube',
+			label: '立方体',
+			setId: 'cube-turning',
+			iconViewIndex: 20,
+		},
+		{
+			id: 'tr-circles',
+			label: '多重圆',
+			setId: 'revolving-circles',
+			iconViewIndex: 21,
+		},
+		{
+			id: 'tr-helix',
+			label: '螺旋',
+			setId: 'turning-helix',
+			iconViewIndex: 22,
+		},
 		{ id: 'tr-fall', label: '跌落', setId: 'fall', iconViewIndex: 23 },
 		{ id: 'tr-turn', label: '翻转', setId: 'turn-around', iconViewIndex: 24 },
 		{ id: 'tr-iris', label: '光圈', setId: 'iris', iconViewIndex: 25 },
-		{ id: 'tr-turn-down', label: '向下转', setId: 'turn-down', iconViewIndex: 26 },
-		{ id: 'tr-rochade', label: '左右互换', setId: 'rochade', iconViewIndex: 27 },
-		{ id: 'tr-venetian-3d', label: '3D百叶窗', setId: 'venetian-blinds-3d', iconViewIndex: 28 },
+		{
+			id: 'tr-turn-down',
+			label: '向下转',
+			setId: 'turn-down',
+			iconViewIndex: 26,
+		},
+		{
+			id: 'tr-rochade',
+			label: '左右互换',
+			setId: 'rochade',
+			iconViewIndex: 27,
+		},
+		{
+			id: 'tr-venetian-3d',
+			label: '3D百叶窗',
+			setId: 'venetian-blinds-3d',
+			iconViewIndex: 28,
+		},
 		{ id: 'tr-static', label: '静电干扰', setId: 'static', iconViewIndex: 29 },
-		{ id: 'tr-fine-dissolve', label: '精细溶解', setId: 'finedissolve', iconViewIndex: 30 },
+		{
+			id: 'tr-fine-dissolve',
+			label: '精细溶解',
+			setId: 'finedissolve',
+			iconViewIndex: 30,
+		},
 		{ id: 'tr-vortex', label: '漩涡', setId: 'vortex', iconViewIndex: 31 },
 		{ id: 'tr-ripple', label: '涟漪', setId: 'ripple', iconViewIndex: 32 },
 		{ id: 'tr-glitter', label: '闪耀', setId: 'glitter', iconViewIndex: 33 },
-		{ id: 'tr-honeycomb', label: '蜂巢', setId: 'honeycomb', iconViewIndex: 34 },
-		{ id: 'tr-newsflash', label: '新闻快讯', setId: 'newsflash', iconViewIndex: 35 },
+		{
+			id: 'tr-honeycomb',
+			label: '蜂巢',
+			setId: 'honeycomb',
+			iconViewIndex: 34,
+		},
+		{
+			id: 'tr-newsflash',
+			label: '新闻快讯',
+			setId: 'newsflash',
+			iconViewIndex: 35,
+		},
 	];
 
-	private static readonly FEATURES: ImpressEditorFeature[] = ImpressEditorCatalog.buildFeatures();
+	private static readonly FEATURES: ImpressEditorFeature[] =
+		ImpressEditorCatalog.buildFeatures();
 
 	private static buildFeatures(): ImpressEditorFeature[] {
 		const features: ImpressEditorFeature[] = [
@@ -688,7 +777,11 @@ class ImpressEditorCatalog {
 				tab: 'insert',
 				icon: 'impress-insert-textbox',
 				kind: 'command',
+				// Android insert_textbox: dismiss the sheet, then bare .uno:DrawText.
+				// CreateDirectly is not used. map.focus(true) is not used either —
+				// it raises the keyboard and focuses the slide sorter.
 				unocmd: '.uno:DrawText',
+				dismissBeforeCommand: true,
 				group: 'insert',
 			},
 			{
@@ -722,8 +815,7 @@ class ImpressEditorCatalog {
 				tab: 'review',
 				icon: 'impress-review-comment',
 				kind: 'dialog',
-				dialog: 'comment',
-				unocmd: '.uno:InsertAnnotation',
+				dialog: 'commentList',
 				group: 'review',
 			},
 		);
@@ -758,14 +850,20 @@ class ImpressEditorCatalog {
 	}
 
 	static getFeatures(tab: ImpressEditorTab): ImpressEditorFeature[] {
-		return ImpressEditorCatalog.FEATURES.filter((feature) => feature.tab === tab);
+		return ImpressEditorCatalog.FEATURES.filter(
+			(feature) => feature.tab === tab,
+		);
 	}
 
 	static getFeature(id: string): ImpressEditorFeature | null {
-		return ImpressEditorCatalog.FEATURES.find((feature) => feature.id === id) || null;
+		return (
+			ImpressEditorCatalog.FEATURES.find((feature) => feature.id === id) || null
+		);
 	}
 
-	static validateFeature(feature: ImpressEditorFeature): ImpressEditorValidationResult {
+	static validateFeature(
+		feature: ImpressEditorFeature,
+	): ImpressEditorValidationResult {
 		if (!feature.id) {
 			return { valid: false, errorCode: 'empty_id' };
 		}

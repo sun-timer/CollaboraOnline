@@ -6,6 +6,7 @@
  */
 
 #import "HomeCardDialogPresenter.h"
+#import "../KeyboardAccessory.h"
 
 #import "AI/WriterAIComponents.h"
 
@@ -113,6 +114,7 @@ static UIColor *CardDestructiveAccent(void) {
     field.returnKeyType = UIReturnKeyDone;
     field.delegate = self;
     field.clearButtonMode = UITextFieldViewModeWhileEditing;
+    [KeyboardAccessory installOnInput:field];
     [card addSubview:field];
     self.inputField = field;
 

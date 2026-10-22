@@ -74,6 +74,8 @@ public class FindReplaceSheetController {
     private EditText findQueryView;
     private EditText replaceQueryView;
     private EditText replaceWithView;
+    private TextView searchStatusView;
+    private TextView replaceSearchStatusView;
     private TextView findPrevView;
     private TextView findNextView;
     private TextView replacePrevView;
@@ -99,6 +101,7 @@ public class FindReplaceSheetController {
     }
 
     public void dismiss() {
+        host.runFindBridge("AndroidFindReplaceBridge.cancelPending()");
         dismissSettings();
         portraitSheetTargetHeightPx = 0;
         floatingPlaced = false;
@@ -331,6 +334,22 @@ public class FindReplaceSheetController {
         replaceNextView = replaceNext;
         replaceAllView = replaceAll;
         replaceOneView = replaceOne;
+		if (findQuery != null && findQuery.getParent() instanceof LinearLayout) {
+			searchStatusView = new TextView(host.getContext());
+			searchStatusView.setTextColor(Color.rgb(190, 45, 45));
+			searchStatusView.setTextSize(12);
+			searchStatusView.setVisibility(View.GONE);
+			((LinearLayout) findQuery.getParent()).addView(searchStatusView, 1,
+					new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		}
+		if (replaceQuery != null && replaceQuery.getParent() instanceof LinearLayout) {
+			replaceSearchStatusView = new TextView(host.getContext());
+			replaceSearchStatusView.setTextColor(Color.rgb(190, 45, 45));
+			replaceSearchStatusView.setTextSize(12);
+			replaceSearchStatusView.setVisibility(View.GONE);
+			((LinearLayout) replaceQuery.getParent()).addView(replaceSearchStatusView, 1,
+					new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+		}
 
         Runnable showFindTab = () -> {
             replaceTabActive = false;
@@ -384,6 +403,8 @@ public class FindReplaceSheetController {
             }
             refreshStateColors();
             pushOptionsToBridge();
+			if (searchStatusView != null) searchStatusView.setVisibility(View.GONE);
+			if (replaceSearchStatusView != null) replaceSearchStatusView.setVisibility(View.GONE);
         });
         findQuery.addTextChangedListener(syncWatcher);
         replaceQuery.addTextChangedListener(syncWatcher);
@@ -414,6 +435,19 @@ public class FindReplaceSheetController {
         showFindTab.run();
         pushOptionsToBridge();
     }
+
+	public void onSearchResult(String query, String status) {
+		if (findQueryView == null || query == null) return;
+		String activeQuery = (replaceTabActive && replaceQueryView != null)
+				? replaceQueryView.getText().toString().trim() : findQueryView.getText().toString().trim();
+		if (!query.equals(activeQuery)) return;
+		TextView target = replaceTabActive ? replaceSearchStatusView : searchStatusView;
+		if (target == null) return;
+		String message = "notFound".equals(status) ? "未查到到关键词" : "timeout".equals(status) ? "查找超时，请重新打开文档" : "error".equals(status) ? "查找失败" : "";
+		target.setText(message);
+		target.setVisibility(message.isEmpty() ? View.GONE : View.VISIBLE);
+		if (mainPanel != null) relayoutFloating(mainPanel);
+	}
 
     private void showSettings() {
         View panel = LayoutInflater.from(host.getContext()).inflate(R.layout.lolib_sheet_find_settings, null);
@@ -466,12 +500,16 @@ public class FindReplaceSheetController {
     }
 
     private void runFindAction(String js) {
+		if (searchStatusView != null) searchStatusView.setVisibility(View.GONE);
+		if (replaceSearchStatusView != null) replaceSearchStatusView.setVisibility(View.GONE);
         pushOptionsToBridge();
         host.runFindBridge(js);
     }
 
     private void runReplaceNavigation(String js) {
         host.ensureEditModeThen(() -> {
+			if (searchStatusView != null) searchStatusView.setVisibility(View.GONE);
+			if (replaceSearchStatusView != null) replaceSearchStatusView.setVisibility(View.GONE);
             pushOptionsToBridge();
             host.runFindBridge(js);
         });

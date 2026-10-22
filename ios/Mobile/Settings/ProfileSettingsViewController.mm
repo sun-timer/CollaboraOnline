@@ -14,6 +14,7 @@
 #import "FeedbackConfig.h"
 #import "FeedbackApiException.h"
 #import "FeedbackIdentityStore.h"
+#import "ios.h"
 
 #import <PhotosUI/PhotosUI.h>
 
@@ -192,6 +193,9 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
                                          currentName:current
                                           completion:^(NSString *nickname) {
         [[NSUserDefaults standardUserDefaults] setObject:nickname forKey:kProfileNameKey];
+        [[NSUserDefaults standardUserDefaults] setObject:nickname forKey:@"userName"];
+        // Push the saved nickname into the core user name used for new comments/views.
+        refreshIOSUserName();
         weakSelf.profileChanged = YES;
         [weakSelf reloadProfile];
     }];

@@ -6,7 +6,7 @@
  */
 
 class ImpressEditorHyperlinkDialog {
-	private readonly sheet: MobileAiSheet;
+	private readonly sheet: { open(): void; close(): void };
 	private readonly controller: WriterEditorController;
 	private readonly textInput: HTMLInputElement;
 	private readonly urlInput: HTMLInputElement;
@@ -14,9 +14,11 @@ class ImpressEditorHyperlinkDialog {
 	private readonly mailTab: HTMLButtonElement;
 	private mode: 'internet' | 'mail' = 'internet';
 
-	constructor(controller: WriterEditorController) {
+	constructor(
+		controller: WriterEditorController,
+		host?: WriterEditorInlineSubpageHost,
+	) {
 		this.controller = controller;
-		this.sheet = new MobileAiSheet({ title: '插入超链接' });
 
 		const content = document.createElement('div');
 		content.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
@@ -44,7 +46,7 @@ class ImpressEditorHyperlinkDialog {
 		insert.onclick = () => this.insert();
 		content.appendChild(insert);
 
-		this.sheet.setBody(content);
+		this.sheet = writerEditorMountSubpageDialog('插入超链接', content, host);
 	}
 
 	open(): void {

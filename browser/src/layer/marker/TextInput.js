@@ -600,6 +600,12 @@ window.L.TextInput = window.L.Layer.extend({
 		// Move the hidden text area with the cursor
 		this._latlng = window.L.latLng(top);
 		this.update();
+		if (this._isComposing) {
+			// The handler's style is only refreshed on draw; sync it so the underline uses the new caret.
+			if (this._cursorHandler)
+				this._cursorHandler.adjustHTMLObjectPosition();
+			this._updateCompositionUnderline();
+		}
 		// shape handlers hidden (if selected)
 		this._map.fire('handlerstatus', {hidden: true});
 		if (this._map._docLoaded && this._map.getDocType() === 'spreadsheet')
@@ -608,6 +614,7 @@ window.L.TextInput = window.L.Layer.extend({
 
 	// Hides the caret and the under-caret marker.
 	hideCursor: function() {
+		this._hideCompositionUnderline();
 		if (!this._map._docLayer._cursorMarker) {
 			return;
 		}
@@ -828,7 +835,10 @@ window.L.TextInput = window.L.Layer.extend({
 		// And that is caused because after entering the first character
 		// cursor position is never updated by keyboard (I know it is strange)
 		// so here we manually correct the position
-		if (window.mode.isMobile() && content.length === 1 && this._lastContent.length === 0)
+		// On iOS, resetting the DOM selection during marked text can cancel
+		// composition and make the following commit resend the prefix.
+		if (window.mode.isMobile() && !window.ThisIsTheiOSApp &&
+			content.length === 1 && this._lastContent.length === 0)
 			this._setCursorPosition(1);
 
 		var matchTo = 0;
@@ -1030,8 +1040,99 @@ window.L.TextInput = window.L.Layer.extend({
 		this._ignoreInputCount--;
 	},
 
-	_onCompositionStart: function(/*ev*/) {
+	// iOS only: draw a system-blue underline under the uncommitted (marked) text.
+	// WebKit's own marked-text underline is drawn inside #clipboard-area, which is
+	// invisible (opacity 0, 1x1 px), so a separate element is drawn next to the
+	// cursor handler instead. The glyphs themselves stay on the canvas.
+	_updateCompositionUnderline: function(ev) {
+		if (typeof document === 'undefined')
+			return;
+
+		var underline = document.getElementById('ios-composition-underline');
+		var handler = document.querySelector('.cursor-handler');
+		var parent = handler ? handler.parentNode : null;
+		var caretX = handler ? parseFloat(handler.style.left) : NaN;
+		var caretY = handler ? parseFloat(handler.style.top) : NaN;
+
+		// Composing string: contenteditable text without the sentinel spaces.
+		var text = (this._textArea && typeof this._textArea.textContent === 'string')
+			? this._textArea.textContent : '';
+		if (text.charAt(0) === ' ')
+			text = text.slice(1);
+		if (text.charAt(text.length - 1) === ' ')
+			text = text.slice(0, -1);
+		if (text === '' && ev && typeof ev.data === 'string')
+			text = ev.data;
+
+		var show = !!window.ThisIsTheiOSApp && !!this._isComposing && !!parent &&
+			!isNaN(caretX) && !isNaN(caretY) && text !== '';
+
+		// Font size follows the caret height; 16px when the caret rectangle is unknown.
+		var fontSize = 16;
+		var rect = (typeof app !== 'undefined' && app.file && app.file.textCursor)
+			? app.file.textCursor.rectangle : null;
+		if (rect && typeof rect.pY1 === 'number' && typeof rect.pY2 === 'number') {
+			var caretHeight = Math.abs(rect.pY2 - rect.pY1) / (app.dpiScale || 1);
+			if (caretHeight >= 4)
+				fontSize = caretHeight;
+		}
+
+		var width = 0;
+		if (show) {
+			if (this._underlineMeasureCtx === undefined) {
+				var canvas = document.createElement('canvas');
+				this._underlineMeasureCtx = (canvas && canvas.getContext) ? canvas.getContext('2d') : null;
+			}
+			var ctx = this._underlineMeasureCtx;
+			if (ctx && typeof ctx.measureText === 'function') {
+				ctx.font = fontSize + 'px -apple-system, "Helvetica Neue", Arial, sans-serif';
+				width = ctx.measureText(text).width;
+			} else {
+				// No canvas text measurement available (e.g. a headless DOM): rough estimate.
+				width = text.length * fontSize * 0.6;
+			}
+		}
+		if (!(width >= 1))
+			show = false;
+
+		if (!show) {
+			if (underline)
+				underline.style.display = 'none';
+			return;
+		}
+
+		if (!underline) {
+			underline = document.createElement('div');
+			underline.id = 'ios-composition-underline';
+			underline.style.position = 'absolute';
+			underline.style.height = '2px';
+			underline.style.background = '#007AFF';
+			underline.style.pointerEvents = 'none';
+			underline.style.zIndex = '12';
+		}
+		// Same containing block as the cursor handler, so the caret coordinates match.
+		if (underline.parentNode !== parent)
+			parent.appendChild(underline);
+
+		// The handler is centred on the caret: right edge at caret X, bottom at caret Y.
+		underline.style.width = width + 'px';
+		underline.style.left = (caretX - width) + 'px';
+		underline.style.top = (caretY - 2) + 'px';
+		underline.style.display = '';
+	},
+
+	_hideCompositionUnderline: function() {
+		if (typeof document === 'undefined')
+			return;
+		var underline = document.getElementById('ios-composition-underline');
+		if (underline)
+			underline.style.display = 'none';
+	},
+
+	_onCompositionStart: function(ev) {
 		this._isComposing = true;
+		if (this._updateCompositionUnderline)
+			this._updateCompositionUnderline(ev);
 	},
 
 	// Handled only in legacy situations ('input' events with an inputType
@@ -1039,6 +1140,8 @@ window.L.TextInput = window.L.Layer.extend({
 	_onCompositionUpdate: function(ev) {
 		app.idleHandler.notifyActive();
 		this._onInput(ev);
+		if (this._updateCompositionUnderline)
+			this._updateCompositionUnderline(ev);
 	},
 
 	// Chrome doesn't fire any "input/insertCompositionText" with "isComposing" set to false.
@@ -1049,6 +1152,8 @@ window.L.TextInput = window.L.Layer.extend({
 	_onCompositionEnd: function(ev) {
 		app.idleHandler.notifyActive();
 		this._isComposing = false;
+		if (this._hideCompositionUnderline)
+			this._hideCompositionUnderline();
 		if (ev.data && ev.data.charCodeAt(ev.data.length-1) === 10) // 10 === charCode('\n')
 			this._newlineHint = true;
 		if (this.hasAccessibilitySupport()) {
@@ -1070,6 +1175,7 @@ window.L.TextInput = window.L.Layer.extend({
 		this._fancyLog('abort-composition', ev.type);
 		if (this._isComposing)
 			this._isComposing = false;
+		this._hideCompositionUnderline();
 		if (this.hasAccessibilitySupport()) {
 			this._isLeftRightArrow = 0;
 			this._updateFocusedParagraph();

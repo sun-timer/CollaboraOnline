@@ -27,6 +27,8 @@ class MobileAiTypesetDialog {
 	private docxPath = '';
 	private previewHtml = '';
 	private readonly unsubscribe: () => void;
+	private disposed = false;
+	private extractionEpoch = 0;
 
 	constructor() {
 		this.controller = WriterAiController.getInstance();
@@ -34,6 +36,7 @@ class MobileAiTypesetDialog {
 			title: 'AI 排版',
 			presentation: 'writer',
 			taskType: 'typeset',
+			onClose: () => this.dispose(),
 		});
 		this.content = document.createElement('div');
 		this.content.className = 'mobile-ai-task-dialog';
@@ -103,6 +106,7 @@ class MobileAiTypesetDialog {
 	}
 
 	open(): void {
+		this.controller.resetPreview();
 		this.sheet.open();
 		this.resetResultState();
 		this.showSelectPanel();
@@ -110,9 +114,16 @@ class MobileAiTypesetDialog {
 	}
 
 	close(): void {
-		this.controller.cancel();
-		this.unsubscribe();
 		this.sheet.close();
+		this.dispose();
+	}
+
+	private dispose(): void {
+		if (this.disposed) return;
+		this.disposed = true;
+		this.extractionEpoch++;
+		if (this.controller.getState().state !== 'accepted') this.controller.cancel();
+		this.unsubscribe();
 	}
 
 	private resetResultState(): void {
@@ -161,6 +172,7 @@ class MobileAiTypesetDialog {
 		}
 		this.resetResultState();
 		this.extracting = true;
+		const epoch = ++this.extractionEpoch;
 		this.status.textContent = '正在提取文档全文...';
 		this.showPreviewPanel();
 		this.startButton.disabled = true;
@@ -169,8 +181,10 @@ class MobileAiTypesetDialog {
 			map.sendUnoCommand('.uno:Save');
 		}
 		window.setTimeout(() => {
-			this.extractAndRequest()
+			if (this.disposed || epoch !== this.extractionEpoch) return;
+			this.extractAndRequest(epoch)
 				.catch((error: Error) => {
+					if (this.disposed || epoch !== this.extractionEpoch) return;
 					this.extracting = false;
 					this.status.textContent =
 						error && error.message ? error.message : '文档全文提取失败';
@@ -178,16 +192,22 @@ class MobileAiTypesetDialog {
 					this.showSelectPanel();
 				})
 				.finally(() => {
+					if (this.disposed || epoch !== this.extractionEpoch) return;
 					this.extracting = false;
 					this.render();
 				});
 		}, 500);
 	}
 
-	private extractAndRequest(): Promise<void> {
+	private isPresentation(): boolean {
+		return (window as any).app?.map?.getDocType?.() === 'presentation';
+	}
+
+	private extractAndRequest(epoch: number): Promise<void> {
 		const bridge = TypesetBridge.getInstance();
-		if (bridge.isAvailable()) {
+		if (bridge.isAvailable() && !this.isPresentation()) {
 			return bridge.extractStructured().then((result) => {
+				if (this.disposed || epoch !== this.extractionEpoch) return;
 				this.paragraphs = result.paragraphs || [];
 				this.typesetImages = result.images || null;
 				this.paragraphMode = this.paragraphs.length > 1;
@@ -207,6 +227,7 @@ class MobileAiTypesetDialog {
 			});
 		}
 		return MobileAiDocumentExtractor.extractFullText().then((fullText) => {
+			if (this.disposed || epoch !== this.extractionEpoch) return;
 			this.controller.request(
 				'typeset',
 				{
@@ -240,7 +261,14 @@ class MobileAiTypesetDialog {
 				this.paragraphs,
 			);
 		}
-		if (sections && TypesetBridge.getInstance().isAvailable()) {
+		if (sections && (this.isPresentation() || TypesetBridge.getInstance().isAvailable())) {
+			if (this.isPresentation()) {
+				this.sections = sections;
+				this.previewHtml = TypesetPreviewHtml.build(this.selectedType, sections);
+				this.preview.innerHTML = this.previewHtml;
+				this.render();
+				return;
+			}
 			this.sections = sections;
 			this.previewHtml = TypesetPreviewHtml.build(this.selectedType, sections);
 			this.preview.innerHTML = this.previewHtml;
@@ -254,7 +282,7 @@ class MobileAiTypesetDialog {
 	}
 
 	private fillTemplate(sections: { [key: string]: string }): void {
-		if (!TypesetBridge.getInstance().isAvailable()) {
+		if (this.isPresentation() || !TypesetBridge.getInstance().isAvailable()) {
 			this.render();
 			return;
 		}
@@ -269,11 +297,13 @@ class MobileAiTypesetDialog {
 				this.typesetImages || undefined,
 			)
 			.then((result) => {
+				if (this.disposed) return;
 				this.docxPath = result.docxPath || '';
 				this.filling = false;
 				this.render();
 			})
 			.catch((error: Error) => {
+				if (this.disposed) return;
 				this.filling = false;
 				this.docxPath = '';
 				this.status.textContent =
@@ -283,14 +313,15 @@ class MobileAiTypesetDialog {
 			});
 	}
 
-	private applyResult(): void {
-		if (this.docxPath && TypesetBridge.getInstance().isAvailable()) {
+	private async applyResult(): Promise<void> {
+		if (!this.isPresentation() && this.docxPath && TypesetBridge.getInstance().isAvailable()) {
 			this.inserting = true;
 			this.status.textContent = '正在写入排版文档...';
 			this.render();
 			TypesetBridge.getInstance()
 				.insertDocument(this.docxPath)
 				.then((ok) => {
+					if (this.disposed) return;
 					this.inserting = false;
 					if (!ok) {
 						this.status.textContent = '插入文档失败';
@@ -298,9 +329,10 @@ class MobileAiTypesetDialog {
 						return;
 					}
 					this.status.textContent = '排版文档已写入，正在重新加载...';
-					this.sheet.close();
+					this.close();
 				})
 				.catch(() => {
+					if (this.disposed) return;
 					this.inserting = false;
 					this.status.textContent = '插入文档失败';
 					this.render();
@@ -311,7 +343,11 @@ class MobileAiTypesetDialog {
 		const html = this.previewHtml
 			? this.previewHtml
 			: MobileAiResultRenderer.sanitizeTypesetHtml(state.preview);
-		this.controller.accept(html);
+		if ((window as any).ThisIsTheiOSApp) {
+			if (await this.controller.acceptAsync(html) && !this.disposed) this.close();
+		} else {
+			this.controller.accept(html);
+		}
 	}
 
 	private render(): void {
@@ -328,7 +364,7 @@ class MobileAiTypesetDialog {
 			this.filling ||
 			this.inserting ||
 			state.state === 'loading' ||
-			state.state === 'streaming';
+			state.state === 'streaming' || state.state === 'inserting';
 		const ready =
 			(state.state === 'ready' && !!state.preview && !this.filling) ||
 			(!!this.docxPath && !this.filling);
@@ -345,6 +381,8 @@ class MobileAiTypesetDialog {
 			this.status.textContent = '正在写入排版文档...';
 		} else if (state.error) {
 			this.status.textContent = state.error;
+		} else if (state.warning) {
+			this.status.textContent = state.warning;
 		} else if (active) {
 			this.status.textContent =
 				state.state === 'streaming' ? 'AI 正在排版...' : 'AI 正在生成...';

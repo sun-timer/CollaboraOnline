@@ -43,6 +43,7 @@ class MobileSelectionMenu {
 	private readonly onShow: (event: Event) => void;
 	private readonly onHide: (event: Event) => void;
 	private readonly onVisualViewport: () => void;
+	private readonly onOutsideClick: (event: MouseEvent) => void;
 	/** Native keyboard frame is on screen (DocumentViewController). */
 	private nativeKeyboardVisible = false;
 	private lastAnchorX = 0;
@@ -53,6 +54,14 @@ class MobileSelectionMenu {
 		this.onShow = (event: Event) => this.show(event as CustomEvent);
 		this.onHide = () => this.hide();
 		this.onVisualViewport = () => this.handleVisualViewport();
+		this.onOutsideClick = (event: MouseEvent) => {
+			if (MobileSelectionMenu.consumeOpeningClick(event)) {
+				return;
+			}
+			if (this.container && !this.container.contains(event.target as Node)) {
+				this.hide();
+			}
+		};
 		window.addEventListener(MobileSelectionEvents.SHOW_EVENT, this.onShow);
 		window.addEventListener(MobileSelectionEvents.HIDE_EVENT, this.onHide);
 		const viewport = window.visualViewport;
@@ -174,8 +183,8 @@ class MobileSelectionMenu {
 	static calcMenuItems(): MobileSelectionMenuItemSpec[] {
 		return [
 			{ id: 'copy', label: '复制', iconKey: 'copy', kind: 'clipboard' },
-			{ id: 'cut', label: '剪切', iconKey: 'cut', kind: 'clipboard' },
 			{ id: 'paste', label: '粘贴', iconKey: 'paste', kind: 'clipboard' },
+			{ id: 'cut', label: '剪切', iconKey: 'cut', kind: 'clipboard' },
 			{
 				id: 'clear',
 				label: '清除',
@@ -275,6 +284,7 @@ class MobileSelectionMenu {
 	}
 
 	hide(): void {
+		document.removeEventListener('click', this.onOutsideClick, true);
 		if (this.overlay && this.overlay.parentNode) {
 			this.overlay.parentNode.removeChild(this.overlay);
 		}
@@ -314,12 +324,6 @@ class MobileSelectionMenu {
 
 		const overlay = document.createElement('div');
 		overlay.className = MobileSelectionMenu.OVERLAY_CLASS;
-		overlay.onclick = (event) => {
-			if (MobileSelectionMenu.consumeOpeningClick(event)) {
-				return;
-			}
-			this.hide();
-		};
 
 		const panel = document.createElement('div');
 		panel.className = MobileSelectionMenu.MENU_CLASS;
@@ -331,6 +335,8 @@ class MobileSelectionMenu {
 			panel.classList.add('fabric-selection-menu--calc');
 		} else if (editMode) {
 			panel.classList.add('fabric-selection-menu--text-edit');
+		} else {
+			panel.classList.add('fabric-selection-menu--text-reading');
 		}
 		this.textEditMode = this.menuMode === 'text' && editMode;
 		panel.onclick = (e) => e.stopPropagation();
@@ -340,6 +346,7 @@ class MobileSelectionMenu {
 
 		document.body.appendChild(overlay);
 		document.body.appendChild(panel);
+		document.addEventListener('click', this.onOutsideClick, true);
 		this.overlay = overlay;
 		this.container = panel;
 		if (this.textEditMode) {
@@ -780,6 +787,8 @@ class MobileSelectionMenu {
 		);
 		if (this.menuMode === 'calc') {
 			this.container.style.width = 'max-content';
+		} else if (this.menuMode === 'text' && !this.textEditMode) {
+			this.container.style.width = 'max-content';
 		} else {
 			this.container.style.width = width + 'px';
 		}
@@ -803,7 +812,9 @@ class MobileSelectionMenu {
 			}
 		}
 
-		const menuWidth = this.container.offsetWidth || (this.menuMode === 'calc' ? 72 : width);
+		const compactReadingMode = this.menuMode === 'text' && !this.textEditMode;
+		const menuWidth = this.container.offsetWidth ||
+			(this.menuMode === 'calc' ? 72 : compactReadingMode ? 128 : width);
 		const menuHeight = this.container.offsetHeight || 200;
 		const margin = MobileSelectionMenu.POPUP_MARGIN_PX;
 		const bottomReserved =

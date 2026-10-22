@@ -61,6 +61,29 @@ describe('Mobile Selection Menu', function () {
 		]);
 	});
 
+	it('Writer reading menu hugs its two visible actions', function () {
+		const previousApp = (window as any).app;
+		const previousRaf = window.requestAnimationFrame;
+		const menu: any = new MobileSelectionMenu();
+		try {
+			(window as any).app = {
+				isReadOnly: () => true,
+				map: { getDocType: () => 'text', isEditMode: () => false },
+			};
+			window.requestAnimationFrame = () => 0;
+			menu.show({ detail: { anchorX: 120, anchorY: 160, anchorBottomY: 170 } });
+
+			const panel = document.querySelector('.fabric-selection-menu') as HTMLElement;
+			assert.ok(panel.classList.contains('fabric-selection-menu--text-reading'));
+			assert.equal(panel.querySelectorAll('.fabric-selection-menu__button').length, 2);
+			assert.equal(panel.style.left, '56px', 'placement uses the compact 128px two-action width');
+		} finally {
+			menu.dispose();
+			(window as any).app = previousApp;
+			window.requestAnimationFrame = previousRaf;
+		}
+	});
+
 	it('ships Figma/Android icons for every menu item', function () {
 		const allItems = [
 			...MobileSelectionMenu.editMenuItems(),

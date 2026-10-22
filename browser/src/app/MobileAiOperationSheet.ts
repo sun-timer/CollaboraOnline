@@ -92,7 +92,7 @@ class MobileAiOperationSheet {
 		const selection =
 			this.selectionOverride !== null
 				? this.selectionOverride
-				: MobileAiBridge.getInstance().getSelectedText().trim();
+				: MobileAiBridge.getInstance().getSelectedText();
 		this.updateHint(documentType, selection);
 
 		this.sections.replaceChildren();
@@ -205,13 +205,26 @@ class MobileAiOperationSheet {
 			button.disabled = true;
 			button.title = 'iOS 尚未支持';
 		}
+		if (entry.selectionRequired && !selection.trim()) {
+			button.disabled = true;
+		}
 		button.onclick = () => {
 			if (!entry.iosSupport) {
 				return;
 			}
-			if (entry.selectionRequired && !selection) {
+			if (entry.selectionRequired && !selection.trim()) {
 				this.hint.textContent = '请先在文档中选择文本';
 				this.hint.style.color = '#5f6368';
+				return;
+			}
+			if (
+				this.getDocumentType() === 'text' &&
+				entry.selectionRequired &&
+				['expand', 'condense', 'rewrite'].indexOf(entry.taskType) >= 0 &&
+				WriterAiCatalog.countUnicodeCodePoints(selection) > 5000
+			) {
+				this.hint.textContent = '选中内容不可超过5000字符';
+				this.hint.style.color = '#d93025';
 				return;
 			}
 			this.onSelect(entry);
@@ -230,7 +243,7 @@ class MobileAiOperationSheet {
 		}
 		this.hint.style.display = '';
 		this.hint.textContent = selection
-			? `已选中 ${selection.length} 字`
+			? `已选中 ${WriterAiCatalog.countUnicodeCodePoints(selection)} 字`
 			: '请先在文档中选择文本';
 		this.hint.style.color = selection ? '#188038' : '#5f6368';
 	}

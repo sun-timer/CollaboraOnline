@@ -175,6 +175,7 @@ class CanvasSectionContainer {
 	private sectionUnderMouse: string = null; // For mouse enter & leave events.
 	private draggingTolerance: number = 5; // This is for only desktop, mobile browsers seem to distinguish dragging and clicking nicely.
 	private multiTouch: boolean = false;
+	private multiTouchEndSent: boolean = false;
 	private touchCenter: Array<number> = null;
 	private longPressTimer: any = null;
 	private clearColor: string = '#f8f9fa';
@@ -199,6 +200,7 @@ class CanvasSectionContainer {
 	private deferredDrawCallback: () => void = null;
 	private sectionsDirty: boolean = false;
 	private framesRendered: number = 0; // Total frame count for debugging
+	private redrawAfterZoom: boolean = false;
 
 	// For window sections.
 	private windowSectionList: Array<CanvasSectionObject> = [];
@@ -318,6 +320,10 @@ class CanvasSectionContainer {
 
 	public setInZoomAnimation (inZoomAnimation: boolean) {
 		this.inZoomAnimation = inZoomAnimation;
+		if (!inZoomAnimation && this.redrawAfterZoom) {
+			this.redrawAfterZoom = false;
+			this.requestReDraw();
+		}
 	}
 
 	public isInZoomAnimation (): boolean {
@@ -883,6 +889,10 @@ class CanvasSectionContainer {
 
 	private redrawCallback(timestamp: number) {
 		this.drawRequest = null;
+		if (this.isMobileZoomAnimation()) {
+			this.redrawAfterZoom = true;
+			return;
+		}
 
 		if (!this.isCanvasSizeValidAfterDisplayChange())
 			return;
@@ -898,12 +908,25 @@ class CanvasSectionContainer {
 
 	public requestReDraw() {
 		if (!this.drawingAllowed()) return;
+		if (this.isMobileZoomAnimation()) {
+			this.redrawAfterZoom = true;
+			return;
+		}
 		if (this.deferredDrawCallback) {
 			this.deferredDrawCallback();
 			return;
 		}
 		if (this.drawRequest === null)
 			this.drawRequest = requestAnimationFrame(this.redrawCallback.bind(this));
+	}
+
+	private isMobileZoomAnimation(): boolean {
+		const deviceMode = (window as any).mode;
+		return (
+			this.inZoomAnimation &&
+			!!deviceMode &&
+			(deviceMode.isMobile() || deviceMode.isTablet())
+		);
 	}
 
 	private propagateCursorPositionChanged() {
@@ -1580,6 +1603,22 @@ class CanvasSectionContainer {
 	}
 
 	public onTouchStart (e: TouchEvent) { // Should be ignored unless this.draggingSomething = true.
+		if (this.multiTouch) {
+			if (e.touches.length === 2 && this.multiTouchEndSent) {
+				// A second finger can rejoin while the first pinch finger is still
+				// down. Start a fresh pinch without briefly treating that finger as
+				// a single-touch selection.
+				this.multiTouchEndSent = false;
+				this.touchCenter = null;
+				if (app.CSections.MouseControl)
+					this.sectionOnMouseDown = app.CSections.MouseControl.name;
+				const section = this.getSectionWithName(this.sectionOnMouseDown);
+				if (section)
+					this.propagateOnMultiTouchStart(section, e);
+			}
+			return;
+		}
+
 		if (e.touches.length === 1) {
 			this.clearMousePositions();
 			this.startLongPress(e);
@@ -1593,7 +1632,31 @@ class CanvasSectionContainer {
 		}
 		else if (!this.multiTouch) {
 			this.stopLongPress();
+			if (e.touches.length === 2) {
+				const upgradingSingleTouch = this.positionOnMouseDown !== null;
+				// Some browsers report both fingers in the first touchstart. Pick a
+				// document target even when the first finger hit a selection handle.
+				// Do not synthesize a single-touch down event, which could select text.
+				if (this.positionOnMouseDown === null) {
+					const center = [
+						(e.touches[0].clientX + e.touches[1].clientX) * 0.5,
+						(e.touches[0].clientY + e.touches[1].clientY) * 0.5,
+					];
+					this.positionOnMouseDown = this.convertPointToCanvasLocale(center);
+				}
+				if (app.CSections.MouseControl) {
+					if (upgradingSingleTouch) {
+						const mouseControl = this.getSectionWithName(app.CSections.MouseControl.name) as any;
+						if (mouseControl && mouseControl.cancelSingleTouchForMultiTouch)
+							mouseControl.cancelSingleTouchForMultiTouch();
+						else
+							app.map.fire('scrollvelocity', { vx: 0, vy: 0 });
+					}
+					this.sectionOnMouseDown = app.CSections.MouseControl.name;
+				}
+			}
 			this.multiTouch = true;
+			this.multiTouchEndSent = false;
 			var section: CanvasSectionObject = this.getSectionWithName(this.sectionOnMouseDown);
 			if (section)
 				this.propagateOnMultiTouchStart(section, e);
@@ -1652,17 +1715,34 @@ class CanvasSectionContainer {
 				this.propagateOnMouseUp(section, this.convertPositionToSectionLocale(section, this.positionOnMouseUp), <MouseEvent><any>e);
 			}
 		}
-		else if (e.touches.length === 0) {
-			this.multiTouch = false;
-			var section: CanvasSectionObject = this.getSectionWithName(this.sectionOnMouseDown);
-			if (section) {
-				this.propagateOnMultiTouchEnd(section, e);
+		else {
+			if (e.touches.length < 2 && !this.multiTouchEndSent) {
+				this.multiTouchEndSent = true;
+				var section: CanvasSectionObject = this.getSectionWithName(this.sectionOnMouseDown);
+				if (section)
+					this.propagateOnMultiTouchEnd(section, e);
+			}
+			// Keep consuming the remaining finger after the pinch ends. Otherwise its
+			// touchend is misrouted as a one-finger mouseup/click.
+			if (e.touches.length === 0) {
+				this.multiTouch = false;
+				this.multiTouchEndSent = false;
+				this.clearMousePositions();
 			}
 		}
 		this.touchEventInProgress = true;
 	}
 
 	public onTouchCancel (e: TouchEvent) {
+		if (this.multiTouch) {
+			if (!this.multiTouchEndSent) {
+				var section: CanvasSectionObject = this.getSectionWithName(this.sectionOnMouseDown);
+				if (section)
+					this.propagateOnMultiTouchEnd(section, e);
+			}
+		}
+		this.multiTouch = false;
+		this.multiTouchEndSent = false;
 		this.clearMousePositions();
 		this.stopLongPress();
 	}

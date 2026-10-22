@@ -55,7 +55,7 @@ class TextSelectionHandle extends HTMLObjectSection {
 
 	private postSelectionUpdate(point: cool.SimplePoint, throttle: boolean) {
 		if (throttle) {
-			if (!window.ThisIsTheAndroidApp || !window.touch.currentlyUsingTouchscreen()) {
+			if (!window.touch.currentlyUsingTouchscreen()) {
 				return;
 			}
 

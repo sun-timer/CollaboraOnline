@@ -36,7 +36,7 @@ final class Launch {
         let homeSearch = app.textFields["homeSearchField"]
         XCTAssert(homeSearch.waitForExistence(timeout: 10), "Home screen did not appear")
 
-        let recent = app.cells["homeRecent-\(filename)"]
+        let recent = app.cells.matching(identifier: "homeRecent-\(filename)").firstMatch
         Input.tapWithTimeout(element: recent, timeout: 5)
 
         let webview = app.webViews.containing(.other, identifier: "Online Editor").firstMatch;

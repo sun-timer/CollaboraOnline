@@ -43,9 +43,13 @@ NSString *app_text_direction;
 @implementation AppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    auto trace = std::getenv("COOL_LOGLEVEL");
+    const char *trace = std::getenv("COOL_LOGLEVEL");
     if (!trace)
-        trace = strdup("warning");
+        trace = "warning";
+    else if (std::strcmp(trace, "info") == 0) {
+        setenv("COOL_LOGLEVEL", "information", 1);
+        trace = "information";
+    }
 
     if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad)
         setupKitEnvironment("notebookbar");
@@ -137,16 +141,7 @@ NSString *app_text_direction;
     // First check managed configuration, if present
     NSDictionary *managedConfig = [[NSUserDefaults standardUserDefaults] dictionaryForKey:@"com.apple.configuration.managed"];
 
-    // Look for managed configuration setting of the user name.
-
-    if (managedConfig != nil) {
-        NSString *userName = managedConfig[@"userName"];
-        if (userName != nil && [userName isKindOfClass:[NSString class]])
-            user_name = [userName UTF8String];
-    }
-
-    if (user_name == nullptr)
-        user_name = [[[NSUserDefaults standardUserDefaults] stringForKey:@"userName"] UTF8String];
+    refreshIOSUserName();
 
     // Remove any leftover allegedly temporary folders with copies of documents left behind from
     // previous instances of the app that were killed while editing, various random files that for

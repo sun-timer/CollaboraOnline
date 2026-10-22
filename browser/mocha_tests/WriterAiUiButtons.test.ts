@@ -148,9 +148,11 @@ describe('Writer AI UI buttons', function () {
 	}
 
 	describe('MobileAiOperationDialog', function () {
-		it('runs 生成 → 停止 → 重新生成 → 复制 → 插入文档', async function () {
+		it('runs 生成 → 重新生成 → 复制 → 插入文档 and dismisses after insertion', async function () {
 			const dom = setupDom();
 			try {
+				(window as any).ThisIsTheiOSApp = true;
+				(window as any).app.map.getDocType = () => 'presentation';
 				const bridge = createFakeWriterBridge('原始段落');
 				const copied: string[] = [];
 				const pastedHtml: Array<{ html: string; plain: string }> = [];
@@ -193,15 +195,102 @@ describe('Writer AI UI buttons', function () {
 				bridge.emit(aiDone('req-2', '润色第二版'));
 
 				clickButton(root, '插入文档');
-				assert.equal(bridge.calls.accept.length, 1);
-
-				clickButton(root, '生成');
 				await new Promise((resolve) => setTimeout(resolve, 0));
-				clickButton(root, '停止生成');
-				assert.deepEqual(bridge.calls.cancel, ['req-3']);
+				assert.equal(bridge.calls.accept.length, 1);
+				assert.equal(root.querySelector('[data-cool-mobile-ai-ui]'), null);
+				assert.deepEqual(bridge.calls.cancel, []);
 			} finally {
 				dom.restore();
 			}
+		});
+
+		['expand', 'condense'].forEach((taskType) => {
+			it('generates Impress ' + taskType + ' without a requirements field', async function () {
+				const dom = setupDom();
+				try {
+					(window as any).app.map.getDocType = () => 'presentation';
+					const bridge = createFakeWriterBridge('原始内容');
+					injectWriterController(bridge, { pastePlainText: () => true });
+					const dialog = new MobileAiOperationDialog(taskType);
+					dialog.open();
+					assert.equal(dom.document.querySelector('textarea'), null);
+					clickButton(dom.document.body, '生成');
+					await Promise.resolve();
+					assert.equal(bridge.calls.request.length, 1);
+					assert.equal(bridge.calls.request[0].selection, '原始内容');
+					assert.equal(bridge.calls.request[0].context.requirement, '');
+					dialog.close();
+					assert.equal(bridge.calls.cancel.length, 1);
+				} finally { dom.restore(); }
+			});
+		});
+
+		it('shows all polish styles in a tappable menu and submits the selected style', async function () {
+			const dom = setupDom();
+			try {
+				const bridge = createFakeWriterBridge('原始内容');
+				injectWriterController(bridge, { pastePlainText: () => true });
+				const dialog = new MobileAiOperationDialog('polish');
+				dialog.open();
+				(dom.document.querySelector('.mobile-ai-task-dialog__picker-card') as HTMLElement).click();
+				assert.equal(dom.document.querySelectorAll('[role=option]').length, 7);
+				clickButton(dom.document.body, '更正式');
+				assert.equal(dom.document.querySelector('[role=listbox]'), null);
+				clickButton(dom.document.body, '生成');
+				await Promise.resolve();
+				assert.equal(bridge.calls.request[0].context.polishStyle, 'formal');
+				dialog.close();
+			} finally { dom.restore(); }
+		});
+
+		it('waits for native Impress insertion and retains the result when paste fails', async function () {
+			const dom = setupDom();
+			try {
+				(window as any).ThisIsTheiOSApp = true;
+				(window as any).app.map.getDocType = () => 'presentation';
+				const bridge = createFakeWriterBridge('原始内容');
+				let complete: (inserted: boolean) => void = () => {};
+				const controller = injectWriterController(bridge, {
+					pastePlainText: () => { throw new Error('must use native insertion'); },
+					insertPresentationHtml: () => new Promise((resolve) => { complete = resolve; }),
+				});
+				const dialog = new MobileAiOperationDialog('rewrite');
+				dialog.open();
+				clickButton(dom.document.body, '生成');
+				await Promise.resolve();
+				bridge.emit(aiDone('req-1', '重写结果'));
+				clickButton(dom.document.body, '插入文档');
+				assert.equal(controller.getState().state, 'inserting');
+				assert.equal(findButton(dom.document.body, '插入文档')?.disabled, true);
+				complete(false);
+				await Promise.resolve(); await Promise.resolve();
+				assert.equal(controller.getState().state, 'ready');
+				assert.equal(bridge.calls.accept.length, 0);
+				assert.ok(dom.document.querySelector('[data-cool-mobile-ai-ui]'));
+				clickButton(dom.document.body, '插入文档');
+				complete(true);
+				await Promise.resolve(); await Promise.resolve();
+				assert.equal(controller.getState().state, 'accepted');
+				assert.equal(bridge.calls.accept.length, 1);
+				assert.equal(dom.document.querySelector('[data-cool-mobile-ai-ui]'), null);
+			} finally { dom.restore(); }
+		});
+
+		it('starts a newly opened operation with its own input instead of a prior result', function () {
+			const dom = setupDom();
+			try {
+				(window as any).app.map.getDocType = () => 'presentation';
+				const bridge = createFakeWriterBridge('原始内容');
+				const controller = injectWriterController(bridge, { pastePlainText: () => true });
+				controller.request('expand');
+				bridge.emit(aiDone('req-1', '上一次扩写结果'));
+				const dialog = new MobileAiOperationDialog('polish');
+				dialog.open();
+				assert.equal(controller.getState().preview, '');
+				assert.equal(controller.getState().state, 'idle');
+				assert.equal(findButton(dom.document.body, '生成')?.disabled, false);
+				dialog.close();
+			} finally { dom.restore(); }
 		});
 
 		it('auto-starts continue on open and supports 开始生成', async function () {
@@ -227,6 +316,56 @@ describe('Writer AI UI buttons', function () {
 			} finally {
 				dom.restore();
 			}
+		});
+	});
+
+	describe('Impress AI result insertion', function () {
+		['translate', 'article_generate', 'typeset'].forEach((taskType) => {
+			it('acknowledges ' + taskType + ' insertion before dismissing and never overwrites PPT with docx', async function () {
+				const dom = setupDom();
+				const getTypesetBridge = TypesetBridge.getInstance;
+				try {
+					(window as any).ThisIsTheiOSApp = true;
+					(window as any).app.map.getDocType = () => 'presentation';
+					let insertionHtml = '';
+					let complete: (ok: boolean) => void = () => {};
+					const bridge = createFakeWriterBridge('幻灯片原文');
+					const controller = injectWriterController(bridge, {
+						pastePlainText: () => false,
+						insertPresentationHtml: (html) => {
+							insertionHtml = html;
+							return new Promise((resolve) => { complete = resolve; });
+						},
+					});
+					TypesetBridge.getInstance = () => ({
+						isAvailable: () => true,
+						fillTemplate: () => { throw new Error('PPT must not generate a docx replacement'); },
+						insertDocument: () => { throw new Error('PPT must not be overwritten by docx'); },
+					} as any);
+					const dialog = taskType === 'translate' ? new MobileAiTranslateDialog()
+						: taskType === 'typeset' ? new MobileAiTypesetDialog() : new MobileAiArticleGenerateDialog();
+					dialog.open();
+					const context = taskType === 'article_generate'
+						? { template: 'leave_apply', variables: ['张三', '事假', '三天', '今天'] }
+						: taskType === 'typeset' ? { typesetType: 'paper' } : {};
+					controller.request(taskType, context);
+					bridge.emit(aiDone('req-1', taskType === 'typeset'
+						? '{"sections":{"title":"结果标题","body":"生成正文"}}' : '生成正文'));
+					if (taskType === 'article_generate') (dialog as any).setStage('result');
+					if (taskType === 'typeset') {
+						(dialog as any).docxPath = '/tmp/must-not-overwrite.docx';
+						void (dialog as any).applyResult();
+					} else clickButton(dom.document.body, '插入文档');
+					assert.ok(insertionHtml.indexOf('生成正文') >= 0);
+					assert.ok(dom.document.querySelector('[data-cool-mobile-ai-ui]'));
+					complete(true);
+					await Promise.resolve(); await Promise.resolve();
+					assert.equal(dom.document.querySelector('[data-cool-mobile-ai-ui]'), null);
+				} finally {
+					TypesetBridge.getInstance = getTypesetBridge;
+					dom.restore();
+				}
+			});
 		});
 	});
 
@@ -443,7 +582,7 @@ describe('Writer AI UI buttons', function () {
 				const polish = findButton(root, '文案润色');
 				assert.ok(polish);
 				assert.ok(polish?.querySelector('svg'));
-				assert.equal(polish?.disabled, false);
+				assert.equal(polish?.disabled, true);
 				polish!.click();
 				assert.deepEqual(opened, []);
 

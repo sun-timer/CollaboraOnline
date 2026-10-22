@@ -2775,6 +2775,14 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+	@JavascriptInterface
+	public void onFindSearchResult(String query, String status) {
+		if (query == null) return;
+		runOnUiThread(() -> {
+			if (findReplaceSheetController != null) findReplaceSheetController.onSearchResult(query, status);
+		});
+	}
+
     /**
      * Call the post method form C++
      */

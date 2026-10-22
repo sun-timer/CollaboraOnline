@@ -79,6 +79,37 @@ describe('WriterEditorController', function () {
 		assert.deepEqual(adapter.calls.sendUnoCommand, []);
 	});
 
+	it('dispatches all ten Impress character and paragraph quick actions', function () {
+		const adapter = createFakeAdapter('presentation');
+		const controller = new WriterEditorController(adapter);
+		const commands = ['.uno:Bold', '.uno:Italic', '.uno:Underline', '.uno:Strikeout',
+			'.uno:LeftPara', '.uno:CenterPara', '.uno:RightPara', '.uno:JustifyPara',
+			'.uno:DefaultBullet', '.uno:DefaultNumbering'];
+		commands.forEach((command, index) => {
+			const result = controller.run({ id: index < 4 ? 'char-quick' : 'para-quick',
+				label: '', tab: 'default', icon: '', kind: 'command', unocmd: command });
+			assert.deepEqual(result, { dispatched: 'unocmd', command });
+		});
+		assert.deepEqual(adapter.calls.sendUnoCommand, commands);
+	});
+
+	it('keeps unrelated presentation commands and spreadsheet quick actions blocked', function () {
+		['presentation', 'spreadsheet', 'drawing'].forEach((docType) => {
+			const adapter = createFakeAdapter(docType);
+			const controller = new WriterEditorController(adapter);
+			const feature: WriterEditorFeature = { id: 'char-quick', label: '', tab: 'default',
+				icon: '', kind: 'command', unocmd: '.uno:Bold' };
+			if (docType !== 'presentation') {
+				assert.deepEqual(controller.run(feature), { dispatched: 'none', reason: 'not_writer_document' });
+			}
+			assert.deepEqual(controller.run({ ...feature, unocmd: '.uno:InsertPageHeader' }),
+				{ dispatched: 'none', reason: 'not_writer_document' });
+			assert.deepEqual(controller.run({ ...feature, id: 'writer-only' }),
+				{ dispatched: 'none', reason: 'not_writer_document' });
+			assert.deepEqual(adapter.calls.sendUnoCommand, []);
+		});
+	});
+
 	it('exports a PDF via downloadAs', function () {
 		const adapter = createFakeAdapter('text');
 		const controller = new WriterEditorController(adapter);
@@ -150,6 +181,7 @@ describe('WriterEditorController', function () {
 		assert.equal(searchCmd['SearchItem.ReplaceString'].value, 'def');
 		assert.equal(searchCmd['SearchItem.Command'].value, WriterEditorSearch.CMD_REPLACE);
 		assert.equal(searchCmd['SearchItem.SearchFlags'].value, 0);
+		assert.equal(searchCmd['SearchItem.TransliterateFlags'].value, 0x100);
 		assert.equal(searchCmd['SearchItem.Backward'].value, false);
 	});
 
@@ -163,9 +195,20 @@ describe('WriterEditorController', function () {
 		);
 		assert.equal(
 			searchCmd['SearchItem.SearchFlags'].value,
-			WriterEditorSearch.FLAG_MATCH_CASE | WriterEditorSearch.FLAG_WHOLE_WORD,
+			WriterEditorSearch.FLAG_WHOLE_WORD,
 		);
+		assert.equal(searchCmd['SearchItem.TransliterateFlags'].value, 0);
 		assert.equal(searchCmd['SearchItem.Command'].value, WriterEditorSearch.CMD_REPLACE_ALL);
+		assert.equal(searchCmd['SearchItem.TransliterateFlags'].value, 0);
+	});
+
+	it('keeps case matching independent of whole-word matching in all four combinations', function () {
+		[false, true].forEach((caseSensitive) => [false, true].forEach((wholeWord) => {
+			const payload = WriterEditorController.buildSearchCmd('Aa', '', false, 0,
+				{ caseSensitive, wholeWord });
+			assert.equal(payload['SearchItem.SearchFlags'].value, wholeWord ? 16 : 0);
+			assert.equal(payload['SearchItem.TransliterateFlags'].value, caseSensitive ? 0 : 0x100);
+		}));
 	});
 
 	it('executes a find and replace over the adapter', function () {
@@ -408,6 +451,56 @@ describe('WriterEditorController', function () {
 		assert.equal(adapter.calls.sendUnoCommand.length, 0);
 	});
 
+	it('resolves the comment author from the Settings nickname first', function () {
+		const withView = (name: string) => ({
+			app: { map: { _docLayer: { _viewId: 3 }, getViewName: () => name } },
+		});
+
+		// Injected iOS Settings nickname wins over a stale core view name.
+		assert.equal(
+			WriterEditorCommentDialog.resolveAuthorNameFrom({
+				__coolIOSUserName: '  小明  ',
+				...withView('orangepi'),
+			}),
+			'小明',
+		);
+		// A saved Settings nickname wins over LocalUser#N and is never replaced by it.
+		assert.equal(
+			WriterEditorCommentDialog.resolveAuthorNameFrom({
+				__coolIOSUserName: '小明',
+				...withView('LocalUser#2'),
+			}),
+			'小明',
+		);
+		assert.notEqual(
+			WriterEditorCommentDialog.resolveAuthorNameFrom({
+				__coolIOSUserName: '小明',
+				...withView('LocalUser#2'),
+			}),
+			'LocalUser#2',
+		);
+		// Without an injected nickname, fall back to the core view name.
+		assert.equal(WriterEditorCommentDialog.resolveAuthorNameFrom(withView('Alice')), 'Alice');
+		// A blank injected nickname is ignored.
+		assert.equal(
+			WriterEditorCommentDialog.resolveAuthorNameFrom({
+				__coolIOSUserName: '   ',
+				...withView('Bob'),
+			}),
+			'Bob',
+		);
+		// Injected or core LocalUser#N is a LOK placeholder, not a nickname.
+		assert.equal(
+			WriterEditorCommentDialog.resolveAuthorNameFrom({
+				__coolIOSUserName: 'LocalUser#2',
+				...withView('LocalUser#2'),
+			}),
+			'用户昵称',
+		);
+		// Nothing known: placeholder.
+		assert.equal(WriterEditorCommentDialog.resolveAuthorNameFrom({}), '用户昵称');
+	});
+
 	it('saves as via a downloadas message', function () {
 		const adapter = createFakeAdapter('text');
 		const controller = new WriterEditorController(adapter);
@@ -449,6 +542,8 @@ describe('WriterEditorController', function () {
 		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.SearchString'].value, 'abc');
 		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.Command'].value, 0);
 		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.Backward'].value, false);
+		assert.equal(adapter.calls.sendExecuteSearch[0]['SearchItem.TransliterateFlags'].value, 0x100);
+		assert.equal('SearchItem.SearchStartPointX' in adapter.calls.sendExecuteSearch[0], false);
 	});
 
 	it('runs a backward find with the backward flag', function () {

@@ -87,4 +87,97 @@ describe('MobileAiDocumentExtractor', function () {
 			},
 		);
 	});
+
+	it('returns native successful empty text only when allowEmpty is requested', function (done) {
+		const previousIOSFlag = (window as any).ThisIsTheiOSApp;
+		const previousApp = (window as any).app;
+		const previousGetBridge = NativeBridge.getInstance;
+		let listener: ((message: any) => void) | null = null;
+		let posted: any;
+		const fakeBridge = {
+			isAvailable: () => true,
+			getDocumentSessionId: () => 'session-1',
+			subscribe(callback: (message: any) => void) {
+				listener = callback;
+				return () => { listener = null; };
+			},
+			postMessage(message: any) {
+				posted = message;
+				window.setTimeout(() => {
+					listener && listener({
+						requestId: message.requestId,
+						type: 'ai.doc_extract.done',
+						payload: { text: '' },
+					});
+				}, 0);
+				return true;
+			},
+		};
+		(window as any).ThisIsTheiOSApp = true;
+		(window as any).app = {};
+		NativeBridge.getInstance = () => fakeBridge as any;
+		MobileAiDocumentExtractor.extractFullText({ allowEmpty: true }).then(
+			(text) => {
+				assert.equal(text, '');
+				assert.deepEqual(posted.payload, { allowEmpty: true });
+				NativeBridge.getInstance = previousGetBridge;
+				(window as any).app = previousApp;
+				if (previousIOSFlag === undefined) delete (window as any).ThisIsTheiOSApp;
+				else (window as any).ThisIsTheiOSApp = previousIOSFlag;
+				done();
+			},
+			(error) => {
+				NativeBridge.getInstance = previousGetBridge;
+				(window as any).app = previousApp;
+				if (previousIOSFlag === undefined) delete (window as any).ThisIsTheiOSApp;
+				else (window as any).ThisIsTheiOSApp = previousIOSFlag;
+				done(error);
+			},
+		);
+	});
+
+	it('does not treat a native extraction error as an empty document', function (done) {
+		const previousIOSFlag = (window as any).ThisIsTheiOSApp;
+		const previousApp = (window as any).app;
+		const previousGetBridge = NativeBridge.getInstance;
+		let listener: ((message: any) => void) | null = null;
+		const fakeBridge = {
+			isAvailable: () => true,
+			getDocumentSessionId: () => 'session-1',
+			subscribe(callback: (message: any) => void) {
+				listener = callback;
+				return () => { listener = null; };
+			},
+			postMessage(message: any) {
+				window.setTimeout(() => {
+					listener && listener({
+						requestId: message.requestId,
+						type: 'ai.doc_extract.error',
+						payload: {},
+					});
+				}, 0);
+				return true;
+			},
+		};
+		(window as any).ThisIsTheiOSApp = true;
+		(window as any).app = {};
+		NativeBridge.getInstance = () => fakeBridge as any;
+		MobileAiDocumentExtractor.extractFullText({ allowEmpty: true }).then(
+			() => {
+				NativeBridge.getInstance = previousGetBridge;
+				(window as any).app = previousApp;
+				if (previousIOSFlag === undefined) delete (window as any).ThisIsTheiOSApp;
+				else (window as any).ThisIsTheiOSApp = previousIOSFlag;
+				done(new Error('expected extract failure'));
+			},
+			(error: Error) => {
+				assert.equal(error.message, '文档全文提取失败');
+				NativeBridge.getInstance = previousGetBridge;
+				(window as any).app = previousApp;
+				if (previousIOSFlag === undefined) delete (window as any).ThisIsTheiOSApp;
+				else (window as any).ThisIsTheiOSApp = previousIOSFlag;
+				done();
+			},
+		);
+	});
 });

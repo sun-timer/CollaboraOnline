@@ -1,118 +1,117 @@
 /*
- * Apply Impress slide transitions via Core Sidebar (SlideTransitionPane).
- * Mirrors Android ImpressTransitionApplier: wait for pane init, then
- * iconview select + activate on windowId -1 (mobile has no sidebar DOM).
+ * Apply Impress transitions only after Core has populated the sidebar icon view.
+ * SlideTransitionPane fills its presets from a delayed initialization callback;
+ * dispatching activate immediately after opening the deck can dereference an
+ * empty selection in Core. Listen to its real JSON rather than guessing a delay.
  */
-
 class ImpressTransitionBridge {
-	/** Core Definitions.WindowId.Sidebar */
-	private static readonly SIDEBAR_WINDOW_ID = -1;
-	private static readonly MAX_ATTEMPTS = 8;
-	private static readonly INITIAL_DELAY_MS = 600;
-	private static readonly RETRY_DELAY_MS = 400;
+	private static cancelPending: (() => void) | null = null;
+	private static pendingReceiver: ((event: any) => void) | null = null;
+	private static readonly EVENTS = [
+		'sidebar',
+		'mobilewizard',
+		'jsdialogupdate',
+	];
 
 	static apply(iconViewIndex: number, applyToAll: boolean): void {
-		ImpressTransitionBridge.scheduleAttempt(iconViewIndex, applyToAll, 0);
-	}
-
-	private static scheduleAttempt(
-		iconViewIndex: number,
-		applyToAll: boolean,
-		attempt: number,
-	): void {
-		if (attempt >= ImpressTransitionBridge.MAX_ATTEMPTS) {
-			console.warn(
-				'ImpressTransitionBridge: timeout attempts=' +
-					ImpressTransitionBridge.MAX_ATTEMPTS,
-			);
-			return;
-		}
-		const delay =
-			ImpressTransitionBridge.INITIAL_DELAY_MS +
-			attempt * ImpressTransitionBridge.RETRY_DELAY_MS;
-		window.setTimeout(() => {
-			const phase = ImpressTransitionBridge.tryApply(
-				iconViewIndex,
-				applyToAll,
-			);
-			if (
-				phase === 'activated' ||
-				phase === 'apply_all' ||
-				phase === 'done'
-			) {
-				return;
-			}
-			if (attempt + 1 < ImpressTransitionBridge.MAX_ATTEMPTS) {
-				ImpressTransitionBridge.scheduleAttempt(
-					iconViewIndex,
-					applyToAll,
-					attempt + 1,
-				);
-			}
-		}, delay);
-	}
-
-	private static tryApply(
-		iconViewIndex: number,
-		applyToAll: boolean,
-	): string {
-		const socket = (window as any).app?.socket;
-		if (!socket || typeof socket.sendMessage !== 'function') {
-			return 'waiting';
-		}
-		try {
-			socket.sendMessage('uno .uno:SidebarShow');
-			socket.sendMessage('uno .uno:SlideChangeWindow');
-		} catch (_e) {
-			return 'waiting';
-		}
+		ImpressTransitionBridge.cancelPending?.();
 		const map = (window as any).app?.map;
-		if (map?.sidebar && typeof map.sidebar.setupTargetDeck === 'function') {
-			try {
-				map.sidebar.setupTargetDeck('.uno:SlideChangeWindow');
-			} catch (_err) {
-				// Deck may be unavailable until Core finishes building the pane.
-			}
-		}
+		const socket = (window as any).app?.socket;
+		if (
+			!map?.on ||
+			!map?.off ||
+			!socket?.sendMessage ||
+			!Number.isInteger(iconViewIndex) ||
+			iconViewIndex < 0
+		)
+			return;
 
-		const windowId = ImpressTransitionBridge.sidebarDialogWindowId();
-		ImpressTransitionBridge.sendDialogEvent(
-			windowId,
-			'transitions_icons',
-			'select',
-			String(iconViewIndex),
-			'iconview',
-		);
-		ImpressTransitionBridge.sendDialogEvent(
-			windowId,
-			'transitions_icons',
-			'activate',
-			String(iconViewIndex),
-			'iconview',
-		);
-		if (applyToAll) {
-			ImpressTransitionBridge.sendDialogEvent(
-				windowId,
-				'apply_to_all',
-				'click',
-				'0',
-				'pushbutton',
+		let finished = false;
+		let timeout = 0;
+		const cleanup = () => {
+			finished = true;
+			window.clearTimeout(timeout);
+			ImpressTransitionBridge.EVENTS.forEach((name) => map.off(name, onData));
+			ImpressTransitionBridge.cancelPending = null;
+			ImpressTransitionBridge.pendingReceiver = null;
+		};
+		const onData = (event: any) => {
+			const data = event?.data;
+			const icons = ImpressTransitionBridge.findIcons(data);
+			if (finished || !icons || !Array.isArray(icons.entries)) return;
+			// Use the actual row reported by Core. An unavailable preset must
+			// never be passed to item_activated (which expects a valid entry).
+			const entry = icons.entries.find(
+				(item: any) => item.row === iconViewIndex,
 			);
-			return 'apply_all';
-		}
-		return 'activated';
+			if (!entry || icons.enabled === false) return;
+			// iOS always targets window -1; data.id belongs to the document
+			// window and must not be echoed back as the dialog target.
+			const windowId = -1;
+			cleanup();
+			window.setTimeout(() => {
+				// Select the row first so the iconview shows the choice, then
+				// activate it to apply the transition.
+				ImpressTransitionBridge.sendDialogEvent(
+					windowId,
+					'transitions_icons',
+					'select',
+					String(entry.row),
+					'iconview',
+				);
+				ImpressTransitionBridge.sendDialogEvent(
+					windowId,
+					'transitions_icons',
+					'activate',
+					String(entry.row),
+					'iconview',
+				);
+				if (applyToAll)
+					ImpressTransitionBridge.sendDialogEvent(
+						windowId,
+						'apply_to_all',
+						'click',
+						'0',
+						'pushbutton',
+					);
+			}, 0);
+		};
+		ImpressTransitionBridge.EVENTS.forEach((name) => map.on(name, onData));
+		ImpressTransitionBridge.cancelPending = cleanup;
+		ImpressTransitionBridge.pendingReceiver = onData;
+		timeout = window.setTimeout(() => {
+			cleanup();
+			console.warn(
+				'ImpressTransitionBridge: Core transition presets not ready',
+			);
+			map.uiManager?.showSnackbar?.('切换效果尚未加载，请重试');
+		}, 6000);
+		map.sidebar?.setupTargetDeck?.('.uno:SlideChangeWindow');
+		socket.sendMessage('uno .uno:SidebarShow');
+		socket.sendMessage('uno .uno:SlideChangeWindow');
 	}
 
-	/** iOS function panel: always target Core sidebar (-1), not stale jsdialog ids. */
-	private static sidebarDialogWindowId(): number {
-		if ((window as any).ThisIsTheiOSApp) {
-			return ImpressTransitionBridge.SIDEBAR_WINDOW_ID;
+	/** Consume only matching transition messages while a selection is pending. */
+	static handlePayload(data: any): boolean {
+		const receiver = ImpressTransitionBridge.pendingReceiver;
+		if (!receiver || !ImpressTransitionBridge.findIcons(data)) return false;
+		receiver({ data });
+		return true;
+	}
+
+	private static findIcons(node: any): any {
+		if (!node || typeof node !== 'object') return null;
+		if (node.id === 'transitions_icons' && node.type === 'iconview')
+			return node;
+		if (node.control) {
+			const found = ImpressTransitionBridge.findIcons(node.control);
+			if (found) return found;
 		}
-		const sid = (window as any).sidebarId;
-		if (sid !== undefined && sid !== null) {
-			return sid;
+		for (const child of node.children || []) {
+			const found = ImpressTransitionBridge.findIcons(child);
+			if (found) return found;
 		}
-		return ImpressTransitionBridge.SIDEBAR_WINDOW_ID;
+		return null;
 	}
 
 	private static sendDialogEvent(
@@ -122,22 +121,8 @@ class ImpressTransitionBridge {
 		data: string,
 		type: string,
 	): void {
-		const socket = (window as any).app?.socket;
-		if (!socket || typeof socket.sendMessage !== 'function') {
-			return;
-		}
-		socket.sendMessage(
-			'dialogevent ' +
-				windowId +
-				' {"id":"' +
-				id +
-				'", "cmd": "' +
-				cmd +
-				'", "data": "' +
-				data +
-				'", "type": "' +
-				type +
-				'"}',
+		(window as any).app?.socket?.sendMessage(
+			'dialogevent ' + windowId + ' ' + JSON.stringify({ id, cmd, data, type }),
 		);
 	}
 }

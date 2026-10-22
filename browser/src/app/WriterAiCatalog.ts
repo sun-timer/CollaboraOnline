@@ -64,6 +64,21 @@ class WriterAiCatalog {
 		{ key: 'general', label: '通用文档' },
 	];
 
+	/** iOS Writer outline styles; Android keeps the broader shared list above. */
+	static readonly IOS_WORD_OUTLINE_TYPES = [
+		{ key: 'general', label: '生成大纲' },
+		{ key: 'meeting', label: '会议纪要' },
+		{ key: 'summary', label: '工作总结' },
+	];
+
+	static countUnicodeCodePoints(text: string): number {
+		let count = 0;
+		for (const _character of text) {
+			count++;
+		}
+		return count;
+	}
+
 	static readonly TYPESET_TYPES = [
 		{ key: 'paper', label: '论文' },
 		{ key: 'gov', label: '党政公文' },

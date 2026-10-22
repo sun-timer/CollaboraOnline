@@ -477,11 +477,16 @@ public class SelectionMenuController {
             setViewVisibility(R.id.selection_op_cut, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_translate, editMode ? View.VISIBLE : View.GONE);
             setAiActionsVisibility(editMode ? View.VISIBLE : View.GONE);
-            updatePopupWidth(true);
             if (textEditMode) {
+                updatePopupWidth(true);
                 applyTextEditStripLayout();
-            } else {
+            } else if (editMode) {
+                updatePopupWidth(true);
                 applyPopupButtonLayout(true);
+            } else {
+                // Reading mode exposes Copy and Select All in two 56dp cells.
+                applyPopupButtonLayout(false);
+                updatePopupWidth(false);
             }
         }
         applyPopupAppearance();
@@ -706,11 +711,13 @@ public class SelectionMenuController {
             // Cap to the screen so chips wider than the viewport scroll inside
             // the row. WRAP_CONTENT grows with the chips and never scrolls.
             int available = computeAvailablePopupWidth();
-            int content = computeVisibleChipRowWidthPx();
+            int content = computeVisibleChipRowWidthPx(62f);
             // One visible chip (Calc preview: copy only) stays one cell wide.
             targetWidth = Math.min(content, available);
         } else {
-            targetWidth = computePopupTargetWidth();
+            targetWidth = Math.min(
+                    computeVisibleChipRowWidthPx(56f, 8f),
+                    computeAvailablePopupWidth());
         }
         if (lp.width != targetWidth) {
             lp.width = targetWidth;
@@ -729,8 +736,13 @@ public class SelectionMenuController {
         return Math.round(dpToPx(POPUP_MAX_WIDTH_DP));
     }
 
-    /** Fixed 62dp chips plus the popup's horizontal padding. */
-    private int computeVisibleChipRowWidthPx() {
+    /** Visible fixed-width actions plus the popup's horizontal padding. */
+    private int computeVisibleChipRowWidthPx(float cellWidthDp) {
+        return computeVisibleChipRowWidthPx(cellWidthDp, -1f);
+    }
+
+    /** Use explicit horizontal padding when layout is about to change appearance. */
+    private int computeVisibleChipRowWidthPx(float cellWidthDp, float horizontalPaddingDp) {
         int[] chipIds = new int[] {
                 R.id.selection_op_copy,
                 R.id.selection_op_cut,
@@ -748,9 +760,11 @@ public class SelectionMenuController {
                 visible++;
             }
         }
-        int padding = menuView != null
-                ? menuView.getPaddingLeft() + menuView.getPaddingRight() : 0;
-        return visible * Math.round(dpToPx(62f)) + padding;
+        int padding = horizontalPaddingDp >= 0
+                ? 2 * Math.round(dpToPx(horizontalPaddingDp))
+                : menuView != null
+                        ? menuView.getPaddingLeft() + menuView.getPaddingRight() : 0;
+        return visible * Math.round(dpToPx(cellWidthDp)) + padding;
     }
 
     /** Available document width capped at Figma max (245:7964). */

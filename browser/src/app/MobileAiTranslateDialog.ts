@@ -10,6 +10,7 @@ class MobileAiTranslateDialog {
 	private readonly targetLanguage: HTMLSelectElement;
 	private readonly sourceText: HTMLTextAreaElement;
 	private readonly unsubscribe: () => void;
+	private disposed = false;
 
 	constructor() {
 		this.controller = WriterAiController.getInstance();
@@ -21,6 +22,7 @@ class MobileAiTranslateDialog {
 			title: 'AI 翻译',
 			presentation: 'writer',
 			taskType: 'translate',
+			onClose: () => this.dispose(),
 		});
 
 		const languageRow = document.createElement('div');
@@ -50,16 +52,21 @@ class MobileAiTranslateDialog {
 		this.layout.stopButton.onclick = () => this.controller.cancel();
 		this.layout.copyRow.onclick = () => this.controller.copy();
 		this.layout.regenerateButton.onclick = () => this.request();
-		this.layout.applyButton.onclick = () =>
-			this.controller.accept(
-				MobileAiResultRenderer.toHtml(this.controller.getState().preview),
-			);
+		this.layout.applyButton.onclick = async () => {
+			const html = MobileAiResultRenderer.toHtml(this.controller.getState().preview);
+			if ((window as any).ThisIsTheiOSApp) {
+				if (await this.controller.acceptAsync(html) && !this.disposed) this.close();
+			} else {
+				this.controller.accept(html);
+			}
+		};
 
 		this.sheet.setBody(this.layout.root);
 		this.unsubscribe = this.controller.subscribe(() => this.render());
 	}
 
 	open(): void {
+		this.controller.resetPreview();
 		this.sourceText.value = MobileAiBridge.getInstance().getSelectedText();
 		this.targetLanguage.value = WriterAiCatalog.DEFAULT_TARGET_LANGUAGE;
 		this.sourceLanguage.value = WriterAiCatalog.DEFAULT_SOURCE_LANGUAGE;
@@ -71,15 +78,21 @@ class MobileAiTranslateDialog {
 	private async refreshSelection(): Promise<void> {
 		const initialText = this.sourceText.value;
 		const text = await MobileAiBridge.getInstance().getSelectedTextAsync();
-		if (this.sourceText.value === initialText) {
+		if (!this.disposed && this.sourceText.value === initialText) {
 			this.sourceText.value = text;
 		}
 	}
 
 	close(): void {
-		this.controller.cancel();
-		this.unsubscribe();
 		this.sheet.close();
+		this.dispose();
+	}
+
+	private dispose(): void {
+		if (this.disposed) return;
+		this.disposed = true;
+		if (this.controller.getState().state !== 'accepted') this.controller.cancel();
+		this.unsubscribe();
 	}
 
 	private request(): void {
@@ -134,9 +147,9 @@ class MobileAiTranslateDialog {
 			this.layout.resultPreview,
 			state.preview,
 		);
-		const active = state.state === 'loading' || state.state === 'streaming';
+		const active = state.state === 'loading' || state.state === 'streaming' || state.state === 'inserting';
 		const ready = state.state === 'ready' && !!state.preview;
-		if (ready) {
+		if (ready || state.state === 'inserting') {
 			this.layout.setStage('result');
 		} else if (active) {
 			this.layout.setStage('generating');
@@ -150,6 +163,7 @@ class MobileAiTranslateDialog {
 		this.layout.applyButton.disabled = !ready;
 		this.layout.status.textContent =
 			state.error ||
+			state.warning ||
 			(active
 				? state.state === 'streaming'
 					? 'AI 正在输出…'
