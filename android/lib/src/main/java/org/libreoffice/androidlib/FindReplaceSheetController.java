@@ -455,8 +455,8 @@ public class FindReplaceSheetController {
         SwitchCompat wholeWordSwitch = panel.findViewById(R.id.find_opt_whole_word);
         ImageButton back = panel.findViewById(R.id.find_settings_back);
 
-        styleFindSwitch(caseSensitiveSwitch);
-        styleFindSwitch(wholeWordSwitch);
+        SwitchUiHelper.applySettingsSwitch(caseSensitiveSwitch);
+        SwitchUiHelper.applySettingsSwitch(wholeWordSwitch);
 
         caseSensitiveSwitch.setChecked(caseSensitive);
         wholeWordSwitch.setChecked(wholeWord);
@@ -497,16 +497,6 @@ public class FindReplaceSheetController {
             floatingSettingsDialog.dismiss();
             floatingSettingsDialog = null;
         }
-    }
-
-    private static void styleFindSwitch(SwitchCompat toggle) {
-        if (toggle == null) {
-            return;
-        }
-        toggle.setTrackResource(R.drawable.lolib_bg_find_toggle_track);
-        toggle.setThumbResource(R.drawable.lolib_bg_find_toggle_thumb);
-        toggle.setShowText(false);
-        toggle.setSplitTrack(false);
     }
 
     private void runFindAction(String js) {

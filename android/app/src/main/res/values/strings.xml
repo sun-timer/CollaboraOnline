@@ -60,6 +60,7 @@
     <string name="file_actions_icon_desc">File actions</string>
     <string name="title_recents">Recently opened</string>
     <string name="action_confirm">Confirm</string>
+    <string name="action_delete">Delete</string>
     <string name="rename_document_name_label">Document name</string>
     <string name="rename_failed">Unable to rename this file.</string>
     <string name="action_share_home">Share</string>

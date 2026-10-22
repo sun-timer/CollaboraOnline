@@ -90,27 +90,6 @@ class MobileAiOperationDialog {
 			this.styleSelect.hidden = true;
 		}
 
-		if (
-			(taskType === 'expand' || taskType === 'condense' || taskType === 'rewrite') &&
-			!this.iosWord &&
-			!(this.isPresentation() && taskType !== 'rewrite')
-		) {
-			const hint =
-				taskType === 'condense'
-					? '请输入文案缩写要求'
-					: taskType === 'rewrite'
-						? '请输入文案重写要求'
-						: '请输入文案扩写要求';
-			this.requirement = MobileAiTaskDialogLayout.multilineInput(
-				hint,
-				'文案要求',
-				5,
-			);
-			input.appendChild(
-				MobileAiTaskDialogLayout.cardField('', this.requirement),
-			);
-		}
-
 		if (taskType === 'outline') {
 			this.outlineTypeSelect = document.createElement('select');
 			this.outlineTypeSelect.setAttribute('aria-label', '大纲类型');
@@ -391,14 +370,6 @@ class MobileAiOperationDialog {
 		if (this.taskType === 'polish') {
 			context.polishStyle =
 				this.styleSelect?.value || WriterAiCatalog.DEFAULT_POLISH_STYLE;
-		} else if (
-			this.taskType === 'expand' ||
-			this.taskType === 'condense' ||
-			this.taskType === 'rewrite'
-		) {
-			if (!this.iosWord) {
-				context.requirement = this.requirement?.value.trim() || '';
-			}
 		} else if (this.taskType === 'outline') {
 			context.outlineType = this.outlineTypeSelect?.value || 'general';
 			context.requirement = this.outlineDescription?.value.trim() || '';

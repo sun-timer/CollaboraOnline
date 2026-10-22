@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
-        <solid android:color="#ffffff"/>
-        <size android:height="16dp" android:width="16dp"/>
-</shape>
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/lolib_ic_switch_thumb_circle"
+    android:insetLeft="0dp"
+    android:insetTop="0dp"
+    android:insetRight="0dp"
+    android:insetBottom="0dp" />

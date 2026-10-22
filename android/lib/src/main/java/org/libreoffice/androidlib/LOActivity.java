@@ -13799,11 +13799,14 @@ public class LOActivity extends AppCompatActivity {
             // Hide loading bar (not used for Calc AI yet)
             View loadingBar = panel.findViewById(R.id.ai_op_loading_bar);
             if (loadingBar != null) loadingBar.setVisibility(View.GONE);
-            // Hide selection hint (Calc doesn't need text selection for formula)
             View selHint = panel.findViewById(R.id.ai_op_selection_hint);
             if (selHint != null) selHint.setVisibility(View.GONE);
         } else {
             if (calcBlock != null) calcBlock.setVisibility(View.GONE);
+        }
+        View selectionHint = panel.findViewById(R.id.ai_op_selection_hint);
+        if (selectionHint != null) {
+            selectionHint.setVisibility(View.GONE);
         }
 
         // Impress 文档：显示 Impress 区块，隐藏 Writer
@@ -14050,34 +14053,39 @@ public class LOActivity extends AppCompatActivity {
             }
             if (mIsCalcDocument) {
                 getMainHandler().postDelayed(() -> preReadCalcSelectionForSheet(), 200);
+            } else {
+                preReadSelectionForPopup();
+                getMainHandler().postDelayed(() -> refreshAiOperationSelectionState(panel), 250);
             }
         });
 
         aiOperationSheet.show();
         Log.i(TAG, "ai_op_sheet_shown");
+        if (!mIsCalcDocument) {
+            refreshAiOperationSelectionState(panel);
+        }
+    }
 
-        // Read selection from JS and update hint
-        getSelectedTextFromJs(selection -> {
-            aiOpPendingSelection = selection;
-            runOnUiThread(() -> {
-                if (aiOpSelectionHint != null) {
-                    if (selection.isEmpty()) {
-                        aiOpSelectionHint.setText("请先在文档中选择文本");
-                        aiOpSelectionHint.setTextColor(Color.parseColor("#E53935"));
-                        setAiOpButtonsEnabled(panel, false);
-                    } else {
-                        aiOpSelectionHint.setText("已选中 " + selection.length() + " 字");
-                        aiOpSelectionHint.setTextColor(Color.parseColor("#43A047"));
-                        setAiOpButtonsEnabled(panel, true);
-                    }
+    private void refreshAiOperationSelectionState(View panel) {
+        new Thread(() -> {
+            String nativeText = getTextSelection("text/plain;charset=utf-8");
+            if (nativeText != null && !nativeText.isEmpty()) {
+                aiOpPendingSelection = nativeText;
+            }
+            getSelectedTextFromJs(selection -> {
+                if (selection != null && !selection.isEmpty()) {
+                    aiOpPendingSelection = selection;
                 }
+                final boolean hasSelection = aiOpPendingSelection != null
+                        && !aiOpPendingSelection.trim().isEmpty();
+                runOnUiThread(() -> setAiOpButtonsEnabled(panel, hasSelection));
             });
-        });
+        }, "ai-op-selection-refresh").start();
     }
 
     private static final int AI_FUNCTION_GRID_COLUMNS = 3;
-    private static final int AI_FUNCTION_ICON_DP = 64;
-    private static final int AI_FUNCTION_CARD_HEIGHT_DP = 112;
+    private static final int AI_FUNCTION_ICON_DP = 24;
+    private static final int AI_FUNCTION_CARD_HEIGHT_DP = 80;
     /** Impress AI 功能图标（Figma 放大版）。 */
     private static final int AI_FUNCTION_IMPRESS_ICON_DP = 80;
     private static final int AI_FUNCTION_IMPRESS_CARD_HEIGHT_DP = 120;
@@ -14280,10 +14288,6 @@ public class LOActivity extends AppCompatActivity {
         View button = panel.findViewById(viewId);
         if (button != null) {
             button.setOnClickListener(v -> {
-                if (aiOpPendingSelection == null || aiOpPendingSelection.isEmpty()) {
-                    Toast.makeText(LOActivity.this, "请先在文档中选择文本", Toast.LENGTH_SHORT).show();
-                    return;
-                }
                 // 弹窗流程：直接打开对话框，不走 operate-mode 加载条
                 if (AiChatCoordinator.MODE_CONTINUE.equals(mode)
                         || AiChatCoordinator.MODE_EXPAND.equals(mode)
@@ -14294,17 +14298,13 @@ public class LOActivity extends AppCompatActivity {
                     if (aiOperationSheet != null) {
                         aiOperationSheet.dismiss();
                     }
-                    runAiOperation(mode);
+                    startAiOperationFromSelection(mode);
                     return;
                 }
-                // Show loading bar
-                View loadingBar = panel.findViewById(R.id.ai_op_loading_bar);
-                if (loadingBar != null) {
-                    loadingBar.setVisibility(View.VISIBLE);
+                if (aiOperationSheet != null) {
+                    aiOperationSheet.dismiss();
                 }
-                // Disable all buttons during request
-                setAiOpButtonsEnabled(panel, false);
-                runAiOperation(mode);
+                startAiOperationFromSelection(mode);
             });
         }
     }
@@ -17961,21 +17961,14 @@ public class LOActivity extends AppCompatActivity {
             if (textOperatePolishStyleCard != null) {
                 textOperatePolishStyleCard.setOnClickListener(v -> showPolishStylePicker());
             }
+        } else if (isTextOperateDirectGenerateMode(mode)) {
+            textOperateInputContainer.setVisibility(View.GONE);
         } else {
             View reqInput = getLayoutInflater().inflate(
                     R.layout.lolib_wai_text_op_require, textOperateInputContainer, false);
             textOperateInputContainer.addView(reqInput);
             textOperateRequirementEdit = reqInput.findViewById(R.id.wai_text_op_require_edit);
             if (textOperateRequirementEdit != null) {
-                String hint;
-                if (AiChatCoordinator.MODE_CONDENSE.equals(mode)) {
-                    hint = "请输入文案缩写要求";
-                } else if (AiChatCoordinator.MODE_REWRITE.equals(mode)) {
-                    hint = "请输入文案重写要求";
-                } else {
-                    hint = "请输入文案扩写要求";
-                }
-                textOperateRequirementEdit.setHint(hint);
                 AiDialogHelper.bindDialogTextInput(textOperateRequirementEdit);
             }
         }
@@ -18141,12 +18134,19 @@ public class LOActivity extends AppCompatActivity {
         scrollTextOperateResultToBottom();
     }
 
+    private static boolean isTextOperateDirectGenerateMode(String mode) {
+        return AiChatCoordinator.MODE_EXPAND.equals(mode)
+                || AiChatCoordinator.MODE_CONDENSE.equals(mode)
+                || AiChatCoordinator.MODE_REWRITE.equals(mode);
+    }
+
     private void switchTextOperateStage(int stage) {
         boolean input = stage == TEXT_OP_STAGE_INPUT;
         boolean result = stage == TEXT_OP_STAGE_RESULT;
+        boolean showInputArea = input && !isTextOperateDirectGenerateMode(textOperateMode);
 
         if (textOperateInputContainer != null) {
-            textOperateInputContainer.setVisibility(input ? View.VISIBLE : View.GONE);
+            textOperateInputContainer.setVisibility(showInputArea ? View.VISIBLE : View.GONE);
         }
         if (textOperateCtaBar != null) {
             textOperateCtaBar.setVisibility(input ? View.VISIBLE : View.GONE);
@@ -19155,26 +19155,34 @@ public class LOActivity extends AppCompatActivity {
                 }
             });
         }
-        View cancelButton = root.findViewById(R.id.ai_model_required_cancel);
-        if (cancelButton != null) {
-            cancelButton.setOnClickListener(v -> {
+        LinearLayout buttonRow = root.findViewById(R.id.ai_model_required_button_row);
+        if (buttonRow != null) {
+            buttonRow.removeAllViews();
+            TextView cancelBtn = buildExternalLinkDialogButton("取消", false);
+            TextView confirmBtn = buildExternalLinkDialogButton("确定", true);
+            LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(0, dpToPx(52), 1f);
+            cancelBtn.setLayoutParams(cancelLp);
+            LinearLayout.LayoutParams confirmLp = new LinearLayout.LayoutParams(0, dpToPx(52), 1f);
+            confirmLp.setMarginStart(dpToPx(12));
+            confirmBtn.setLayoutParams(confirmLp);
+            cancelBtn.setOnClickListener(v -> {
                 if (aiModelRequiredDialog != null) {
                     aiModelRequiredDialog.dismiss();
                 }
             });
-        }
-        View confirmButton = root.findViewById(R.id.ai_model_required_confirm);
-        if (confirmButton != null) {
-            confirmButton.setOnClickListener(v -> {
+            confirmBtn.setOnClickListener(v -> {
                 if (aiModelRequiredDialog != null) {
                     aiModelRequiredDialog.dismiss();
                 }
                 openModelSettingsActivity(aiModelRequiredModelType);
             });
+            buttonRow.addView(cancelBtn);
+            buttonRow.addView(confirmBtn);
         }
+        AiDialogHelper.applyCloseOnlyDismiss(aiModelRequiredDialog);
         aiModelRequiredDialog.show();
         if (aiModelRequiredDialog.getWindow() != null) {
-            int widthPx = getResources().getDimensionPixelSize(R.dimen.ai_model_required_dialog_width);
+            int widthPx = AiDialogHelper.computeWriterDialogWidthPx(getResources());
             AiDialogHelper.applyFlexibleWidth(root, aiModelRequiredDialog, widthPx,
                     AiDialogHelper.computeMaxHeightHugPx(getResources()));
         }

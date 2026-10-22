@@ -189,6 +189,10 @@ public class FunctionPanelController {
     private View sheetContentRoot;
     private boolean fontPickerVisible;
     private boolean optionPickerVisible;
+    /** 审阅：接收/拒绝修订互斥选中，右侧 √ 仅展示在选中项。 */
+    private String selectedReviewTrackedAction = "accept_change";
+    /** 打开纸张方向等二级页前缓存的 sheet 高度，避免内容隐藏后自适应变矮。 */
+    private int functionPanelLockedHeightPx = -1;
     private final List<TextView> tabViews = new ArrayList<>();
     private View tabIndicator;
     private final List<FunctionTab> tabs;
@@ -242,6 +246,7 @@ public class FunctionPanelController {
         optionPickerPanel = panel.findViewById(R.id.function_option_picker_panel);
         tabBar = panel.findViewById(R.id.function_edit_tab_bar);
         contentContainer = panel.findViewById(R.id.function_edit_content_container);
+        applyFunctionPanelContentPadding();
         tabIndicator = panel.findViewById(R.id.function_edit_tab_indicator);
         ImageButton aiBtn = panel.findViewById(R.id.function_edit_btn_ai);
         ImageButton keyboardBtn = panel.findViewById(R.id.function_edit_btn_keyboard);
@@ -371,7 +376,6 @@ public class FunctionPanelController {
         if (dialog == null) {
             return;
         }
-        BottomSheetAnchorHelper.clearAppliedHeight(dialog);
         AiDialogHelper.applyNoDimScrim(dialog);
         FrameLayout bottomSheet = dialog.findViewById(
                 com.google.android.material.R.id.design_bottom_sheet);
@@ -379,9 +383,59 @@ public class FunctionPanelController {
             bottomSheet.setBackgroundResource(R.drawable.lolib_bg_font_picker_sheet);
             bottomSheet.setElevation(host.dpToPx(28));
         }
-        BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
+        BottomSheetAnchorHelper.Options options =
+                BottomSheetAnchorHelper.overlayDocumentSheetOptions(host.getContext(), TAG);
         options.logTag = TAG;
+        if (shouldLockFunctionPanelSheetHeight()) {
+            reapplyFunctionPanelSheetHeightLock(options);
+            applyFunctionPanelContentPadding();
+            return;
+        }
+        functionPanelLockedHeightPx = -1;
+        BottomSheetAnchorHelper.clearAppliedHeight(dialog);
         BottomSheetAnchorHelper.expandFunctionPanel(dialog, SHEET_HEIGHT_RATIO, options);
+        functionPanelLockedHeightPx = BottomSheetAnchorHelper.getAppliedHeightPx(dialog);
+        applyFunctionPanelContentPadding();
+    }
+
+    private boolean shouldLockFunctionPanelSheetHeight() {
+        return optionPickerVisible || fontPickerVisible;
+    }
+
+    private void captureFunctionPanelSheetHeightForLock() {
+        if (dialog == null) {
+            return;
+        }
+        int applied = BottomSheetAnchorHelper.getAppliedHeightPx(dialog);
+        if (applied > 0) {
+            functionPanelLockedHeightPx = applied;
+            return;
+        }
+        FrameLayout bottomSheet = dialog.findViewById(
+                com.google.android.material.R.id.design_bottom_sheet);
+        if (bottomSheet != null && bottomSheet.getHeight() > 0) {
+            functionPanelLockedHeightPx = bottomSheet.getHeight();
+        }
+    }
+
+    private void reapplyFunctionPanelSheetHeightLock(BottomSheetAnchorHelper.Options options) {
+        if (dialog == null || functionPanelLockedHeightPx <= 0) {
+            return;
+        }
+        BottomSheetAnchorHelper.expandFixed(dialog, functionPanelLockedHeightPx, options);
+    }
+
+    private void applyFunctionPanelContentPadding() {
+        if (contentContainer == null) {
+            return;
+        }
+        int horizontal = host.dpToPx(16);
+        int top = host.dpToPx(8);
+        int designPad = host.getContext().getResources().getDimensionPixelSize(
+                R.dimen.lolib_function_sheet_bottom_pad);
+        int navPad = Math.max(0, host.getBottomChromeHeightPx());
+        contentContainer.setClipToPadding(false);
+        contentContainer.setPadding(horizontal, top, horizontal, Math.max(designPad, navPad));
     }
 
     private void updateTabIndicator(int index) {
@@ -398,6 +452,17 @@ public class FunctionPanelController {
         root.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        if ("review".equals(tab.id)) {
+            renderReviewTabContent(root, tab);
+            contentContainer.addView(root);
+            return;
+        }
+        if ("file".equals(tab.id)) {
+            renderFileTabContent(root, tab);
+            contentContainer.addView(root);
+            return;
+        }
 
         List<FunctionItem> pendingParagraphChips = new ArrayList<>();
         List<FunctionItem> pendingGridActions = new ArrayList<>();
@@ -445,7 +510,6 @@ public class FunctionPanelController {
                     flushGridActions(root, pendingGridActions);
                     flushLayoutPickers(root, pendingLayoutPickers);
                     root.addView(createWatermarkRow(item));
-                    root.addView(createLayoutSectionSpacer());
                     break;
                 default:
                     break;
@@ -595,7 +659,8 @@ public class FunctionPanelController {
 
                 ImageView icon = new ImageView(host.getContext());
                 icon.setImageResource(chip.iconResId);
-                icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                icon.setAdjustViewBounds(true);
                 LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(
                         host.dpToPx(24), host.dpToPx(24));
                 card.addView(icon, iconLp);
@@ -706,18 +771,26 @@ public class FunctionPanelController {
     }
 
     private View createActionRow(FunctionItem item) {
+        return createActionRow(item, false, true);
+    }
+
+    private View createActionRow(FunctionItem item, boolean indent, boolean wrapCard) {
         LinearLayout row = new LinearLayout(host.getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
-        row.setPadding(host.dpToPx(16), host.dpToPx(14), host.dpToPx(16), host.dpToPx(14));
+        if (wrapCard) {
+            row.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
+        }
+        int startPad = indent ? host.dpToPx(40) : host.dpToPx(16);
+        row.setPadding(startPad, host.dpToPx(14), host.dpToPx(16), host.dpToPx(14));
         row.setMinimumHeight(host.dpToPx(56));
 
-        if (item.iconResId != 0) {
+        int leadingIcon = item.iconResId;
+        if (leadingIcon != 0) {
             ImageView icon = new ImageView(host.getContext());
-            icon.setImageResource(item.iconResId);
-            icon.setLayoutParams(new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
-            row.addView(icon);
+            icon.setImageResource(leadingIcon);
+            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            row.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
         }
 
         TextView label = new TextView(host.getContext());
@@ -725,8 +798,8 @@ public class FunctionPanelController {
         label.setTextColor(COLOR_TAB_INACTIVE_TEXT);
         label.setTextSize(16);
         LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        labelLp.setMarginStart(host.dpToPx(14));
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        labelLp.setMarginStart(host.dpToPx(leadingIcon != 0 ? 14 : 0));
         row.addView(label, labelLp);
 
         row.setOnClickListener(v -> runItemAction(item));
@@ -768,8 +841,174 @@ public class FunctionPanelController {
             toggleStates.put(item.id, isChecked);
             dispatchToggle(item, isChecked, buttonView);
         });
-        row.addView(toggle);
+        SwitchUiHelper.applySettingsSwitch(toggle);
+        row.addView(toggle, SwitchUiHelper.createSettingsSwitchLayoutParams(host.getContext()));
         return row;
+    }
+
+    private View createGroupedToggleRow(FunctionItem item) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(host.dpToPx(16), host.dpToPx(12), host.dpToPx(12), host.dpToPx(12));
+        row.setMinimumHeight(host.dpToPx(52));
+
+        if (item.iconResId != 0) {
+            ImageView icon = new ImageView(host.getContext());
+            icon.setImageResource(item.iconResId);
+            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            row.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
+        }
+
+        TextView label = new TextView(host.getContext());
+        label.setText(item.label);
+        label.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+        label.setTextSize(16);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        labelLp.setMarginStart(host.dpToPx(item.iconResId != 0 ? 16 : 0));
+        row.addView(label, labelLp);
+
+        SwitchCompat toggle = new SwitchCompat(host.getContext());
+        boolean initial = toggleStates.getOrDefault(item.id, item.defaultToggleOn);
+        toggle.setChecked(initial);
+        toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            toggleStates.put(item.id, isChecked);
+            dispatchToggle(item, isChecked, buttonView);
+        });
+        SwitchUiHelper.applySettingsSwitch(toggle);
+        row.addView(toggle, SwitchUiHelper.createSettingsSwitchLayoutParams(host.getContext()));
+        return row;
+    }
+
+    private View createGroupedCard(List<View> rows) {
+        LinearLayout group = new LinearLayout(host.getContext());
+        group.setOrientation(LinearLayout.VERTICAL);
+        group.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
+        LinearLayout.LayoutParams groupLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        groupLp.bottomMargin = host.dpToPx(10);
+        group.setLayoutParams(groupLp);
+        for (int i = 0; i < rows.size(); i++) {
+            group.addView(rows.get(i));
+            if (i < rows.size() - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x14000000);
+                group.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+        return group;
+    }
+
+    private void renderReviewTabContent(LinearLayout root, FunctionTab tab) {
+        FunctionItem findReplace = null;
+        FunctionItem spellCheck = null;
+        FunctionItem trackChanges = null;
+        FunctionItem showChanges = null;
+        FunctionItem acceptChange = null;
+        FunctionItem rejectChange = null;
+        for (FunctionItem item : tab.items) {
+            switch (item.id) {
+                case "find_replace":
+                    findReplace = item;
+                    break;
+                case "spell_check":
+                    spellCheck = item;
+                    break;
+                case "track_changes":
+                    trackChanges = item;
+                    break;
+                case "show_changes":
+                    showChanges = item;
+                    break;
+                case "accept_change":
+                    acceptChange = item;
+                    break;
+                case "reject_change":
+                    rejectChange = item;
+                    break;
+                default:
+                    break;
+            }
+        }
+        if (findReplace != null) {
+            root.addView(createActionRow(findReplace));
+            View gap = new View(host.getContext());
+            gap.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(10)));
+            root.addView(gap);
+        }
+        List<View> cardOne = new ArrayList<>();
+        if (spellCheck != null) {
+            cardOne.add(createActionRow(spellCheck, false, false));
+        }
+        if (trackChanges != null) {
+            cardOne.add(createGroupedToggleRow(trackChanges));
+        }
+        if (!cardOne.isEmpty()) {
+            root.addView(createGroupedCard(cardOne));
+        }
+        List<View> cardTwo = new ArrayList<>();
+        if (showChanges != null) {
+            cardTwo.add(createGroupedToggleRow(showChanges));
+        }
+        if (!cardTwo.isEmpty()) {
+            root.addView(createGroupedCard(cardTwo));
+        }
+        if (acceptChange != null) {
+            root.addView(createReviewTrackedChangeRow(acceptChange));
+        }
+        if (rejectChange != null) {
+            root.addView(createReviewTrackedChangeRow(rejectChange));
+        }
+    }
+
+    private View createReviewTrackedChangeRow(FunctionItem item) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setBackgroundColor(Color.WHITE);
+        row.setPadding(host.dpToPx(40), host.dpToPx(14), host.dpToPx(16), host.dpToPx(14));
+        row.setMinimumHeight(host.dpToPx(52));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.bottomMargin = host.dpToPx(10);
+        row.setLayoutParams(rowLp);
+
+        TextView label = new TextView(host.getContext());
+        label.setText(item.label);
+        label.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+        label.setTextSize(16);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        row.addView(label, labelLp);
+
+        boolean selected = item.id.equals(selectedReviewTrackedAction);
+        ImageView trailing = new ImageView(host.getContext());
+        trailing.setImageResource(R.drawable.lolib_ic_review_accept_change);
+        trailing.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        trailing.setVisibility(selected ? View.VISIBLE : View.GONE);
+        row.addView(trailing, new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
+
+        row.setOnClickListener(v -> {
+            selectedReviewTrackedAction = item.id;
+            renderTabContent(tabs.get(selectedTabIndex));
+            runItemAction(item);
+        });
+        return row;
+    }
+
+    private void renderFileTabContent(LinearLayout root, FunctionTab tab) {
+        for (int i = 0; i < tab.items.size(); i++) {
+            root.addView(createActionRow(tab.items.get(i), false, false));
+            if (i < tab.items.size() - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(COLOR_DIVIDER);
+                root.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
     }
 
     private View createWatermarkRow(FunctionItem item) {
@@ -807,7 +1046,8 @@ public class FunctionPanelController {
             dispatchWatermarkToggle(isChecked, buttonView);
         });
         watermarkToggleView = toggle;
-        row.addView(toggle);
+        SwitchUiHelper.applySettingsSwitch(toggle);
+        row.addView(toggle, SwitchUiHelper.createSettingsSwitchLayoutParams(host.getContext()));
 
         ImageView chevron = new ImageView(host.getContext());
         chevron.setImageResource(R.drawable.lolib_ic_chevron_right);
@@ -863,6 +1103,18 @@ public class FunctionPanelController {
                 cell.setLayoutParams(lp);
                 cell.setOnClickListener(v -> runItemAction(action));
                 row.addView(cell);
+            }
+            int cellsInRow = Math.min(rowStart + cols, actions.size()) - rowStart;
+            for (int pad = cellsInRow; pad < cols; pad++) {
+                View placeholder = new View(host.getContext());
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        0, host.dpToPx(84), 1f);
+                if (pad < cols - 1) {
+                    lp.setMarginEnd(host.dpToPx(12));
+                }
+                lp.bottomMargin = host.dpToPx(10);
+                placeholder.setLayoutParams(lp);
+                row.addView(placeholder);
             }
             grid.addView(row, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -926,12 +1178,14 @@ public class FunctionPanelController {
         scroll.setVerticalScrollBarEnabled(true);
         scroll.setBackgroundResource(R.drawable.lolib_bg_font_size_popup);
         scroll.setClipToOutline(true);
+        scroll.setElevation(host.dpToPx(24));
+        scroll.setOutlineProvider(android.view.ViewOutlineProvider.BOUNDS);
         scroll.addView(rows);
 
         int width = host.dpToPx(160);
         int height = host.dpToPx(230);
         fontSizePopup = new PopupWindow(scroll, width, height, true);
-        fontSizePopup.setElevation(host.dpToPx(16));
+        fontSizePopup.setElevation(host.dpToPx(24));
         fontSizePopup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         fontSizePopup.setOutsideTouchable(true);
         fontSizePopup.showAsDropDown(anchor, 0, -host.dpToPx(4));
@@ -1004,6 +1258,7 @@ public class FunctionPanelController {
         populateFontPickerList(list, valueView);
 
         dismissOptionPicker();
+        captureFunctionPanelSheetHeightForLock();
         setTabChromeVisible(false);
         if (contentContainer != null) {
             contentContainer.setVisibility(View.GONE);
@@ -1684,6 +1939,7 @@ public class FunctionPanelController {
         }
         dismissFontPickerDialog();
         dismissPaperSizePickerPage();
+        captureFunctionPanelSheetHeightForLock();
         setTabChromeVisible(false);
         if (contentContainer != null) {
             contentContainer.setVisibility(View.GONE);
@@ -1701,7 +1957,7 @@ public class FunctionPanelController {
         }
         optionPickerPanel.setVisibility(View.VISIBLE);
         optionPickerVisible = true;
-        if (dialog != null && dialog.isShowing()) {
+        if (dialog != null && dialog.isShowing() && optionPickerPanel != null) {
             optionPickerPanel.post(this::applyAdaptiveSheetHeight);
         }
     }
@@ -1763,6 +2019,12 @@ public class FunctionPanelController {
         }
         if (optionPickerPanel != null) {
             optionPickerPanel.setVisibility(View.GONE);
+        }
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(selectedTabIndex));
+            if (contentContainer != null) {
+                contentContainer.post(this::applyAdaptiveSheetHeight);
+            }
         }
     }
 
@@ -2008,10 +2270,6 @@ public class FunctionPanelController {
             showCommentPickerPage();
             return;
         }
-        if ("insert_chart".equals(item.id)) {
-            showChartTypePickerPage();
-            return;
-        }
         Runnable action = () -> {
             if (item.hostAction != null) {
                 item.hostAction.run();
@@ -2064,9 +2322,9 @@ public class FunctionPanelController {
         fileItems.add(new FunctionItem(ItemType.ACTION, "file_save", "保存",
                 R.drawable.lolib_ic_function_save, host::saveDocument));
         fileItems.add(new FunctionItem(ItemType.ACTION, "file_save_as", "另存为",
-                R.drawable.lolib_ic_function_download, host::saveDocumentAs));
+                R.drawable.lolib_ic_function_save_as, host::saveDocumentAs));
         fileItems.add(new FunctionItem(ItemType.ACTION, "file_export", "导出为",
-                R.drawable.lolib_ic_function_download, host::exportDocumentAsPdf));
+                R.drawable.lolib_ic_function_export, host::exportDocumentAsPdf));
         fileItems.add(new FunctionItem(ItemType.ACTION, "file_print", "打印",
                 R.drawable.lolib_ic_function_print, host::initiatePrint));
         result.add(new FunctionTab("file", "文件", fileItems));
@@ -2074,8 +2332,6 @@ public class FunctionPanelController {
         List<FunctionItem> insertItems = new ArrayList<>();
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_image", "图片",
                 R.drawable.lolib_ic_insert_image, host::openLocalImagePickerFromWeb));
-        insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_chart", "图表",
-                R.drawable.lolib_ic_calc_insert_chart, ""));
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_table", "表格",
                 R.drawable.lolib_ic_insert_table, ".uno:InsertTable?Columns=2&Rows=2"));
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_shape", "形状",
@@ -2115,9 +2371,9 @@ public class FunctionPanelController {
                 R.drawable.lolib_ic_review_show_changes, ".uno:ShowTrackedChanges",
                 null, null, null, true));
         reviewItems.add(new FunctionItem(ItemType.ACTION, "accept_change", "接收修订",
-                android.R.drawable.ic_menu_send, ".uno:AcceptTrackedChange"));
+                0, ".uno:AcceptTrackedChange"));
         reviewItems.add(new FunctionItem(ItemType.ACTION, "reject_change", "拒绝修订",
-                android.R.drawable.ic_menu_close_clear_cancel, ".uno:RejectTrackedChange"));
+                0, ".uno:RejectTrackedChange"));
         result.add(new FunctionTab("review", "审阅", reviewItems));
 
         return result;
