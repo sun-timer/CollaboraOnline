@@ -2,10 +2,10 @@
  * Android-style AI Assistant sheet: document Q&A and chat tabs.
  */
 
-/** Android lolib_ic_ai_send_plane */
+/** Android lolib_ic_ai_send_plane — tmp/发送.svg */
 const MOBILE_AI_SEND_PLANE_SVG =
-	'<svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
-	'<path fill="#ffffff" d="M12,3 L16,18 L12,15 L8,18 Z"/></svg>';
+	'<svg viewBox="22 20 28 28" width="20" height="20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+	'<path fill="#ffffff" d="M50 47.7988L37.036 44.8868L36.028 28.7868L34.936 44.8868L22 47.7988L36 19.7988L50 47.7988Z"/></svg>';
 
 const MOBILE_AI_STOP_SVG =
 	'<svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
@@ -97,7 +97,7 @@ class MobileAiAssistantPanel {
 		this.sendButton.style.cssText =
 			'display:flex;align-items:center;justify-content:center;flex-shrink:0;' +
 			'width:36px;height:36px;padding:0;border:none;border-radius:50%;cursor:pointer;' +
-			'background:linear-gradient(315deg,#3a7bff 0%,#b925f3 100%);';
+			'background:linear-gradient(135deg,#1DA8FF 0%,#DD00CE 100%);';
 		this.sendButton.innerHTML = MOBILE_AI_SEND_PLANE_SVG;
 		this.sendButton.onclick = () => this.onSendOrStop();
 		this.inputRow.appendChild(this.sendButton);

@@ -21,6 +21,8 @@ typedef NS_ENUM(NSInteger, AIModelType) {
 @property (copy, nonatomic) NSString *configName;
 @property (copy, nonatomic) NSString *provider;
 @property (copy, nonatomic) NSString *url;
+/// `automatic` appends the OpenAI-compatible chat-completions route; `manual` uses url verbatim.
+@property (copy, nonatomic) NSString *endpointMode;
 @property (copy, nonatomic) NSString *apiKey;
 @property (copy, nonatomic) NSString *modelName;
 @property (assign, nonatomic) float topP;
@@ -43,6 +45,9 @@ typedef NS_ENUM(NSInteger, AIModelType) {
 
 /// Sampling fields for chat completion body (align Android `loadSamplingParams`).
 - (NSDictionary<NSString *, id> *)samplingBodyFieldsForForm:(AIModelConfigForm *)form;
+
+/// Resolve the configured URL for an OpenAI-compatible chat completion.
+- (nullable NSURL *)chatCompletionsURLForForm:(AIModelConfigForm *)form error:(NSError * _Nullable * _Nullable)error;
 
 @end
 

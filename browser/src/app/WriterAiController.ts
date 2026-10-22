@@ -20,11 +20,16 @@ interface WriterAiDocumentAdapter {
 	postMobileMessage?(message: string): void;
 	pasteHtml?(html: string, plainText: string): boolean;
 	insertPresentationHtml?(html: string, sourceRequestId: string): Promise<boolean>;
+	insertWriterHtml?(
+		html: string,
+		sourceRequestId: string,
+		resultMode: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd',
+	): Promise<boolean>;
 	replaceSelection?(text: string): boolean;
 	appendAfterSelection?(text: string, originalSelection?: string): boolean;
 	insertAtEnd?(text: string): boolean;
 	insertHtmlAtEnd?(html: string, plainText: string): boolean;
-	copyText?(text: string): boolean;
+	copyText?(text: string): boolean | Promise<boolean>;
 }
 
 interface WriterAiControllerState {
@@ -33,9 +38,59 @@ interface WriterAiControllerState {
 	taskType?: string;
 	preview: string;
 	error?: string;
+	warning?: string;
 }
 
 type WriterAiStateListener = (state: WriterAiControllerState) => void;
+
+function insertIosNativeHtml(
+	html: string,
+	sourceRequestId: string,
+	resultMode?: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd',
+): Promise<boolean> {
+	const nativeBridge = NativeBridge.getInstance();
+	const requestId = (resultMode ? 'ai-writer-insert-' : 'ai-insert-') + sourceRequestId;
+	const documentSessionId = nativeBridge.getDocumentSessionId();
+	const map = (window as any).app?.map;
+	const viewId = map?._docLayer?._viewId;
+	if (!sourceRequestId || !Number.isInteger(viewId) || viewId < 0) {
+		return Promise.reject(new Error('文档视图未准备好，未插入 AI 结果'));
+	}
+	if (map?.isEditMode && !map.isEditMode() && map._switchToEditMode) {
+		map._switchToEditMode();
+	}
+	map?.focus?.(false);
+	return new Promise((resolve, reject) => {
+		let settled = false;
+		const cleanup = { timer: undefined as number | undefined };
+		let unsubscribe = (): void => undefined;
+		const finish = (inserted: boolean, message?: string): void => {
+			if (settled) return;
+			settled = true;
+			if (cleanup.timer !== undefined) window.clearTimeout(cleanup.timer);
+			unsubscribe();
+			if (message) reject(new Error(message));
+			else resolve(inserted);
+		};
+		unsubscribe = nativeBridge.subscribe((message) => {
+			if (message.requestId !== requestId ||
+				message.documentSessionId !== documentSessionId) return;
+			if (message.type === 'ai.text.insert.done') {
+				finish(message.payload?.inserted === true);
+			} else if (message.type === 'ai.text.insert.error' || message.type === 'native.error') {
+				finish(false, message.payload?.message || 'AI 结果插入失败');
+			}
+		});
+		cleanup.timer = window.setTimeout(() => finish(false, '插入结果确认超时，请检查文档内容后再操作'), 15000);
+		const payload: { [key: string]: any } = { html, sourceRequestId, viewId };
+		if (resultMode) payload.resultMode = resultMode;
+		if (!nativeBridge.postMessage({
+			protocolVersion: NativeBridge.PROTOCOL_VERSION,
+			channel: 'native', type: 'ai.text.insert', requestId,
+			documentSessionId, targetPlatform: 'ios', payload,
+		})) finish(false, '文档连接不可用，未插入 AI 结果');
+	});
+}
 
 class WriterAiController {
 	private readonly bridge: WriterAiBridgeLike;
@@ -89,6 +144,7 @@ class WriterAiController {
 			taskType: this.state.taskType,
 			preview: this.state.preview,
 			error: this.state.error,
+			warning: this.state.warning,
 		};
 	}
 
@@ -232,21 +288,33 @@ class WriterAiController {
 		);
 	}
 
-	copy(): boolean {
+	async copy(): Promise<boolean> {
 		if (!this.state.preview) {
 			return false;
 		}
-		if (this.documentAdapter.copyText) {
-			return this.documentAdapter.copyText(this.state.preview);
-		}
+		const requestId = this.state.requestId;
 		try {
+			if (this.documentAdapter.copyText) {
+				const copied = await this.documentAdapter.copyText(this.state.preview);
+				if (!copied) throw new Error('复制失败，请检查剪贴板权限后重试');
+				this.clearCopyError(requestId);
+				return true;
+			}
 			const clipboard = (navigator as any).clipboard;
 			if (!clipboard || typeof clipboard.writeText !== 'function') {
-				return false;
+				throw new Error('当前环境不支持复制');
 			}
-			clipboard.writeText(this.state.preview);
+			await clipboard.writeText(this.state.preview);
+			this.clearCopyError(requestId);
 			return true;
-		} catch (_error) {
+		} catch (error) {
+			if (this.state.requestId === requestId && this.state.state === 'ready') {
+				this.state = {
+					...this.state,
+					error: error instanceof Error ? error.message : '复制失败，请检查剪贴板权限后重试',
+				};
+				this.notify();
+			}
 			return false;
 		}
 	}
@@ -317,12 +385,15 @@ class WriterAiController {
 		return true;
 	}
 
-	/** iOS Impress uses LOK's native paste result instead of a queued socket send. */
+	/** iOS Writer and Impress wait for LOK's native paste acknowledgement. */
 	async acceptAsync(html: string): Promise<boolean> {
-		if (
-			!(window as any).ThisIsTheiOSApp || !this.isPresentationDocument() ||
-			!this.documentAdapter.insertPresentationHtml
-		) {
+		const isIOS = typeof window !== 'undefined' && !!(window as any).ThisIsTheiOSApp;
+		const isPresentation = this.isPresentationDocument();
+		const isWriter = this.isWriterDocument();
+		const nativeInsert = isPresentation
+			? this.documentAdapter.insertPresentationHtml
+			: this.documentAdapter.insertWriterHtml;
+		if (!isIOS || (!isPresentation && !isWriter) || !nativeInsert) {
 			return this.accept(html);
 		}
 		if (this.state.state !== 'ready' || !this.state.requestId || !this.state.preview) {
@@ -332,10 +403,12 @@ class WriterAiController {
 		this.state = { ...this.state, state: 'inserting', error: undefined };
 		this.notify();
 		try {
-			const insertionHtml = this.resultMode === 'appendAfterSelection'
+			const insertionHtml = isPresentation && this.resultMode === 'appendAfterSelection'
 				? MobileAiResultRenderer.toHtml(this.originalSelection + this.state.preview)
 				: html;
-			const inserted = await this.documentAdapter.insertPresentationHtml(insertionHtml, requestId);
+			const inserted = isPresentation
+				? await this.documentAdapter.insertPresentationHtml!(insertionHtml, requestId)
+				: await this.documentAdapter.insertWriterHtml!(insertionHtml, requestId, this.resultMode);
 			if (this.state.requestId !== requestId || this.state.state !== 'inserting') {
 				return false;
 			}
@@ -378,6 +451,14 @@ class WriterAiController {
 			return;
 		}
 		if (
+			this.state.state === 'accepted' ||
+			this.state.state === 'cancelled' ||
+			this.state.state === 'error' ||
+			this.state.state === 'inserting'
+		) {
+			return;
+		}
+		if (
 			message.documentSessionId &&
 			message.documentSessionId !==
 				(typeof window !== 'undefined'
@@ -417,6 +498,7 @@ class WriterAiController {
 						typeof payload.fullText === 'string'
 							? payload.fullText
 							: this.state.preview,
+					warning: typeof payload.warning === 'string' ? payload.warning : undefined,
 				};
 				this.notify();
 				break;
@@ -462,6 +544,18 @@ class WriterAiController {
 		return !!map && typeof map.getDocType === 'function' && map.getDocType() === 'presentation';
 	}
 
+	private isWriterDocument(): boolean {
+		const map = typeof window !== 'undefined' ? (window as any).app?.map : null;
+		return !!map && typeof map.getDocType === 'function' && map.getDocType() === 'text';
+	}
+
+	private clearCopyError(requestId?: string): void {
+		if (this.state.requestId === requestId && this.state.state === 'ready' && this.state.error) {
+			this.state = { ...this.state, error: undefined };
+			this.notify();
+		}
+	}
+
 	private notify(): void {
 		const snapshot = this.getState();
 		this.listeners.slice().forEach((listener) => listener(snapshot));
@@ -491,52 +585,14 @@ class WriterAiController {
 				}
 			},
 			insertPresentationHtml(html: string, sourceRequestId: string): Promise<boolean> {
-				const nativeBridge = NativeBridge.getInstance();
-				// Stable across retries: native can return the first successful paste's
-				// acknowledgement even when its original reply was lost.
-				const requestId = 'ai-insert-' + sourceRequestId;
-				const documentSessionId = nativeBridge.getDocumentSessionId();
-				const map = (window as any).app?.map;
-				const viewId = map?._docLayer?._viewId;
-				if (!sourceRequestId || !Number.isInteger(viewId) || viewId < 0) {
-					return Promise.reject(new Error('文档视图未准备好，未插入 AI 结果'));
-				}
-				// Entering preview clears the Core selection. Do not issue EditDoc
-				// again when already editing, so the selected text stays active.
-				if (map?.isEditMode && !map.isEditMode() && map._switchToEditMode) {
-					map._switchToEditMode();
-				}
-				map?.focus?.(false);
-				return new Promise((resolve, reject) => {
-					let settled = false;
-					const cleanup = {
-						timer: undefined as number | undefined,
-						unsubscribe: (): void => undefined,
-					};
-					const finish = (inserted: boolean, message?: string): void => {
-						if (settled) return;
-						settled = true;
-						if (cleanup.timer !== undefined) window.clearTimeout(cleanup.timer);
-						cleanup.unsubscribe();
-						if (message) reject(new Error(message));
-						else resolve(inserted);
-					};
-					cleanup.unsubscribe = nativeBridge.subscribe((message) => {
-						if (message.requestId !== requestId ||
-							message.documentSessionId !== documentSessionId) return;
-						if (message.type === 'ai.text.insert.done') {
-							finish(message.payload?.inserted === true);
-						} else if (message.type === 'ai.text.insert.error' || message.type === 'native.error') {
-							finish(false, message.payload?.message || 'AI 结果插入失败');
-						}
-					});
-					cleanup.timer = window.setTimeout(() => finish(false, '插入结果确认超时，请检查文档内容后再操作'), 15000);
-					if (!settled && !nativeBridge.postMessage({
-						protocolVersion: NativeBridge.PROTOCOL_VERSION,
-						channel: 'native', type: 'ai.text.insert', requestId,
-						documentSessionId, targetPlatform: 'ios', payload: { html, sourceRequestId, viewId },
-					})) finish(false, '文档连接不可用，未插入 AI 结果');
-				});
+				return insertIosNativeHtml(html, sourceRequestId);
+			},
+			insertWriterHtml(
+				html: string,
+				sourceRequestId: string,
+				resultMode: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd',
+			): Promise<boolean> {
+				return insertIosNativeHtml(html, sourceRequestId, resultMode);
 			},
 
 			pastePlainText(text: string): boolean {
@@ -616,13 +672,13 @@ class WriterAiController {
 					return false;
 				}
 			},
-			copyText(text: string): boolean {
+			async copyText(text: string): Promise<boolean> {
 				try {
 					const clipboard = (navigator as any).clipboard;
 					if (!clipboard || typeof clipboard.writeText !== 'function') {
 						return false;
 					}
-					clipboard.writeText(text);
+				await clipboard.writeText(text);
 					return true;
 				} catch (_error) {
 					return false;

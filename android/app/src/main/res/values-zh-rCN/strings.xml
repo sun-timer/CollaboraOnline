@@ -173,6 +173,7 @@
     <string name="title_browser">全部文件</string>
     <string name="title_recents">最近打开</string>
     <string name="action_confirm">确定</string>
+    <string name="action_delete">删除</string>
     <string name="rename_document_name_label">文档名称</string>
     <string name="action_rename">重命名</string>
     <string name="rename_failed">无法重命名该文件。</string>

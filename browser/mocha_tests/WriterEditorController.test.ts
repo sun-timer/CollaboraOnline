@@ -732,4 +732,36 @@ describe('WriterEditorController', function () {
 		const command = result.dispatched === 'unocmd' ? result.command : '';
 		assert.equal(command, '.uno:CharBackColor {"CharBackColor.Color":{"type":"long","value":16776960}}');
 	});
+
+	it('dispatches image sizing and 90 degree rotations through core transform args', function () {
+		const adapter = createFakeAdapter('text');
+		const controller = new WriterEditorController(adapter);
+		const previousSelection = (global as any).GraphicSelection;
+		const previousApp = (global as any).app;
+		const previousIOS = (global as any).ThisIsTheiOSApp;
+		(global as any).ThisIsTheiOSApp = true;
+		(global as any).app = { map: { getDocType: () => 'text', isEditMode: () => true, options: { doc: 'doc-a' }, _docLayer: { _viewId: 9 } } };
+		(global as any).GraphicSelection = {
+			extraInfo: { id: 'image-1', isWriterGraphic: true, isResizable: true, isRotatable: true, handles: { kinds: { rectangle: {} } } },
+			handlesSection: {},
+			rectangle: { center: [1200, 2400] },
+			hasActiveSelection: () => true,
+		};
+		try {
+			const size = controller.editImage('size', 5670, 2835, 'image-1', 9, 'doc-a');
+			assert.equal(size.dispatched, 'unocmd');
+			assert.equal(adapter.calls.sendUnoCommand[0], '.uno:TransformDialog {"TransformWidth":{"type":"unsigned long","value":5670},"TransformHeight":{"type":"unsigned long","value":2835}}');
+			controller.editImage('rotateLeft', undefined, undefined, 'image-1', 9, 'doc-a');
+			assert.equal(adapter.calls.sendUnoCommand[1], '.uno:TransformDialog {"TransformRotationDeltaAngle":{"type":"long","value":-9000},"TransformRotationX":{"type":"long","value":1200},"TransformRotationY":{"type":"long","value":2400}}');
+			controller.editImage('rotateRight', undefined, undefined, 'image-1', 9, 'doc-a');
+			assert.match(adapter.calls.sendUnoCommand[2], /TransformRotationDeltaAngle.*9000/);
+			assert.deepEqual(controller.editImage('size', -1, 2835, 'image-1', 9, 'doc-a'), { dispatched: 'none', reason: 'invalid_image_size' });
+			assert.deepEqual(controller.editImage('crop', undefined, undefined, 'stale-image', 9, 'doc-a'), { dispatched: 'none', reason: 'image_selection_changed' });
+			assert.equal(adapter.calls.sendUnoCommand.length, 3);
+		} finally {
+			(global as any).GraphicSelection = previousSelection;
+			(global as any).app = previousApp;
+			(global as any).ThisIsTheiOSApp = previousIOS;
+		}
+	});
 });

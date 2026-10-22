@@ -11,10 +11,9 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.appcompat.widget.AppCompatImageButton;
-
 import org.libreoffice.androidlib.R;
 import org.libreoffice.androidlib.ai.AiDialogHelper;
+import org.libreoffice.androidlib.impress.ImpressSubpageHeader;
 
 /**
  * Calc 合并单元格选项弹窗（Figma 5274:56201）：标题栏 + 提示 + 3 单选（各带示意图）+ 确定。
@@ -24,7 +23,6 @@ public final class CalcMergeCellOptionsController {
 
     private static final String TAG = "CalcMergeCellOptions";
     private static final String PANEL_TAG = "BottomToolbarController:merge";
-
     private static final String[] OPTION_LABELS = {
             "合并内容", "合并单元格", "合并相同单元格"
     };
@@ -54,60 +52,45 @@ public final class CalcMergeCellOptionsController {
     }
 
     public void show() {
+        final AiDialogHelper.CompactPanelSession[] dialogRef = new AiDialogHelper.CompactPanelSession[1];
+
         LinearLayout root = new LinearLayout(host.getContext());
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.WHITE);
 
-        LinearLayout header = new LinearLayout(host.getContext());
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setMinimumHeight(host.dpToPx(43));
-        header.setPadding(host.dpToPx(8), 0, host.dpToPx(16), 0);
-        header.setBackground(createHeaderBottomLineBackground());
-
-        AppCompatImageButton backBtn = new AppCompatImageButton(host.getContext());
-        backBtn.setImageResource(R.drawable.lolib_ic_top_back);
-        TypedValue rippleAttr = new TypedValue();
-        if (host.getContext().getTheme().resolveAttribute(
-                android.R.attr.selectableItemBackgroundBorderless, rippleAttr, true)) {
-            backBtn.setBackgroundResource(rippleAttr.resourceId);
-        }
-        backBtn.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        backBtn.setPadding(host.dpToPx(10), host.dpToPx(10), host.dpToPx(10), host.dpToPx(10));
-        header.addView(backBtn, new LinearLayout.LayoutParams(host.dpToPx(48), host.dpToPx(48)));
-
-        TextView title = new TextView(host.getContext());
-        title.setText("合并单元格");
-        title.setTextColor(Color.parseColor("#333333"));
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        header.addView(title, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(header);
+        root.addView(ImpressSubpageHeader.create(
+                host.getContext(), host::dpToPx, "合并单元格",
+                v -> {
+                    if (dialogRef[0] != null) {
+                        dialogRef[0].dismiss();
+                    }
+                }));
+        root.addView(ImpressSubpageHeader.createDivider(host.getContext()));
 
         LinearLayout content = new LinearLayout(host.getContext());
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(host.dpToPx(20), host.dpToPx(8), host.dpToPx(20), host.dpToPx(20));
+        content.setPadding(host.dpToPx(20), host.dpToPx(12), host.dpToPx(20), host.dpToPx(20));
 
         TextView hint = new TextView(host.getContext());
         hint.setText("部分单元格不为空。");
         hint.setTextColor(Color.parseColor("#101010"));
         hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        hint.setPadding(0, host.dpToPx(4), 0, host.dpToPx(8));
+        hint.setPadding(0, 0, 0, host.dpToPx(8));
         content.addView(hint);
 
         final int[] selectedIndex = {0};
         final ImageView[] radioViews = new ImageView[OPTION_LABELS.length];
-        final AiDialogHelper.CompactPanelSession[] dialogRef = new AiDialogHelper.CompactPanelSession[1];
 
         for (int i = 0; i < OPTION_LABELS.length; i++) {
             final int index = i;
             LinearLayout row = new LinearLayout(host.getContext());
             row.setOrientation(LinearLayout.VERTICAL);
-            row.setPadding(host.dpToPx(8), host.dpToPx(4), host.dpToPx(8), host.dpToPx(8));
+            row.setPadding(0, host.dpToPx(8), 0, host.dpToPx(8));
 
             LinearLayout rowHeader = new LinearLayout(host.getContext());
             rowHeader.setOrientation(LinearLayout.HORIZONTAL);
             rowHeader.setGravity(Gravity.CENTER_VERTICAL);
+            rowHeader.setMinimumHeight(host.dpToPx(28));
 
             TextView label = new TextView(host.getContext());
             label.setText(OPTION_LABELS[i]);
@@ -119,19 +102,23 @@ public final class CalcMergeCellOptionsController {
             radio.setImageResource(i == 0
                     ? R.drawable.lolib_ic_calc_toggle_checked
                     : R.drawable.lolib_ic_calc_toggle_unchecked);
-            rowHeader.addView(radio, new LinearLayout.LayoutParams(host.dpToPx(20), host.dpToPx(20)));
+            radio.setImageTintList(null);
+            int radioSize = host.dpToPx(20);
+            rowHeader.addView(radio, new LinearLayout.LayoutParams(radioSize, radioSize));
             radioViews[i] = radio;
 
             ImageView preview = new ImageView(host.getContext());
             preview.setImageResource(PREVIEW_DRAWABLES[i]);
-            preview.setScaleType(ImageView.ScaleType.FIT_START);
+            // 等比缩放至内容区宽度（618×57 资源），不横向拉伸；三图同尺寸 PNG 线宽一致
+            preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
             preview.setAdjustViewBounds(true);
             LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(51));
-            previewLp.topMargin = host.dpToPx(4);
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            previewLp.topMargin = host.dpToPx(8);
+            preview.setLayoutParams(previewLp);
 
             row.addView(rowHeader);
-            row.addView(preview, previewLp);
+            row.addView(preview);
 
             row.setOnClickListener(v -> {
                 selectedIndex[0] = index;
@@ -152,7 +139,7 @@ public final class CalcMergeCellOptionsController {
         confirm.setBackground(createConfirmBackground());
         LinearLayout.LayoutParams confirmLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(44));
-        confirmLp.topMargin = host.dpToPx(12);
+        confirmLp.topMargin = host.dpToPx(8);
         confirm.setLayoutParams(confirmLp);
         confirm.setOnClickListener(v -> {
             host.executeUnoCommand(OPTION_COMMANDS[selectedIndex[0]]);
@@ -165,25 +152,7 @@ public final class CalcMergeCellOptionsController {
         root.addView(content);
 
         dialogRef[0] = AiDialogHelper.showCompactPanel(host.getContext(), root, PANEL_TAG);
-        backBtn.setOnClickListener(v -> {
-            if (dialogRef[0] != null) {
-                dialogRef[0].dismiss();
-            }
-        });
         Log.i(TAG, "show_merge_options");
-    }
-
-    private android.graphics.drawable.Drawable createHeaderBottomLineBackground() {
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.RECTANGLE);
-        bg.setColor(Color.WHITE);
-        GradientDrawable line = new GradientDrawable();
-        line.setShape(GradientDrawable.RECTANGLE);
-        line.setColor(Color.parseColor("#A2A9B2"));
-        android.graphics.drawable.LayerDrawable layer = new android.graphics.drawable.LayerDrawable(
-                new android.graphics.drawable.Drawable[]{bg, line});
-        layer.setLayerInset(1, 0, host.dpToPx(42), 0, 0);
-        return layer;
     }
 
     private GradientDrawable createConfirmBackground() {

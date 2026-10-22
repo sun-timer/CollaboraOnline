@@ -392,6 +392,104 @@ describe('WriterAiController', function () {
 		controller.request('polish', {});
 		assert.equal(bridge.calls.request[0].images, undefined);
 	});
+	it('awaits clipboard completion and keeps a failed copy visible without rejecting the preview', async function () {
+		const bridge = createFakeBridge('选区');
+		const controller = new WriterAiController(bridge, {
+			pastePlainText(): boolean { return false; },
+			copyText(): Promise<boolean> { return Promise.resolve(true); },
+		});
+		controller.request('polish');
+		bridge.emit(aiMessage('ai.done', { fullText: '结果' }));
+		assert.equal(await controller.copy(), true);
+		assert.equal(controller.getState().error, undefined);
+
+		const failedBridge = createFakeBridge('选区');
+		const failedController = new WriterAiController(failedBridge, {
+			pastePlainText(): boolean { return false; },
+			copyText(): Promise<boolean> { return Promise.reject(new Error('剪贴板拒绝访问')); },
+		});
+		failedController.request('polish');
+		failedBridge.emit(aiMessage('ai.done', { fullText: '另一个结果' }));
+		assert.equal(await failedController.copy(), false);
+		assert.equal(failedController.getState().state, 'ready');
+		assert.equal(failedController.getState().error, '剪贴板拒绝访问');
+	});
+	it('ignores a late clipboard result after a new task replaces the preview', async function () {
+		const bridge = createFakeBridge('选区');
+		let resolveCopy: ((copied: boolean) => void) | undefined;
+		const controller = new WriterAiController(bridge, {
+			pastePlainText(): boolean { return false; },
+			copyText(): Promise<boolean> {
+				return new Promise((resolve) => { resolveCopy = resolve; });
+			},
+		});
+		controller.request('polish');
+		bridge.emit(aiMessage('ai.done', { fullText: '旧结果' }));
+		const copy = controller.copy();
+		controller.resetPreview();
+		controller.request('polish');
+		resolveCopy!(false);
+		assert.equal(await copy, false);
+		assert.equal(controller.getState().state, 'loading');
+		assert.equal(controller.getState().error, undefined);
+	});
+	it('reports the native clipboard API rejection as a failed copy', async function () {
+		const previousNavigator = Object.getOwnPropertyDescriptor(global, 'navigator');
+		Object.defineProperty(global, 'navigator', {
+			configurable: true,
+			value: { clipboard: { writeText: () => Promise.reject(new Error('denied')) } },
+		});
+		try {
+			const adapter = (WriterAiController as any).defaultDocumentAdapter() as WriterAiDocumentAdapter;
+			assert.equal(await adapter.copyText!('text'), false);
+		} finally {
+			if (previousNavigator) Object.defineProperty(global, 'navigator', previousNavigator);
+			else delete (global as any).navigator;
+		}
+	});
+	it('keeps native truncation warnings visible while the result remains ready', function () {
+		const bridge = createFakeBridge('选区');
+		const controller = new WriterAiController(bridge, { pastePlainText: () => false });
+		controller.request('polish');
+		bridge.emit(aiMessage('ai.done', { fullText: '结果', warning: '回答已截断' }));
+		assert.equal(controller.getState().state, 'ready');
+		assert.equal(controller.getState().warning, '回答已截断');
+	});
+	it('waits for native Writer insertion acknowledgement and sends the catalog result mode', async function () {
+		const previousWindow = (global as any).window;
+		const originalGetInstance = NativeBridge.getInstance;
+		const posted: NativeBridgeEnvelope[] = [];
+		const nativeBridge = new (NativeBridge as any)({
+			postMessage: (message: string) => posted.push(JSON.parse(message)),
+		}) as NativeBridge;
+		NativeBridge.getInstance = () => nativeBridge;
+		(global as any).window = {
+			ThisIsTheiOSApp: true, setTimeout, clearTimeout,
+			app: { map: { getDocType: () => 'text', isEditMode: () => true,
+				focus: () => undefined, _docLayer: { _viewId: 42 } } },
+		};
+		try {
+			const bridge = createFakeBridge('原文');
+			const controller = new WriterAiController(bridge);
+			controller.request('continue');
+			bridge.emit(aiMessage('ai.done', { fullText: '续写' }));
+			const insertion = controller.acceptAsync('<p>续写</p>');
+			assert.equal(controller.getState().state, 'inserting');
+			assert.equal(posted.length, 1);
+			assert.equal(posted[0].type, 'ai.text.insert');
+			assert.equal(posted[0].payload?.resultMode, 'appendAfterSelection');
+			assert.equal(bridge.calls.accept.length, 0);
+			nativeBridge.onMessage({
+				...posted[0], type: 'ai.text.insert.done', payload: { inserted: true },
+			});
+			assert.equal(await insertion, true);
+			assert.equal(bridge.calls.accept.length, 1);
+			assert.equal(controller.getState().state, 'accepted');
+		} finally {
+			NativeBridge.getInstance = originalGetInstance;
+			(global as any).window = previousWindow;
+		}
+	});
 	it('uses native Impress paste and ignores insertion replies from another document', async function () {
 		const previousWindow = (global as any).window;
 		const originalGetInstance = NativeBridge.getInstance;

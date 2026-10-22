@@ -365,14 +365,14 @@ describe('Writer AI integration', function () {
 			assert.equal(tracking.calls.replaceSelection.length, 0);
 		});
 
-		it('copies preview text through the document adapter', function () {
+		it('copies preview text through the document adapter', async function () {
 			const bridge = createFakeBridge('选区');
 			const tracking = createTrackingAdapter();
 			const controller = new WriterAiController(bridge, tracking.adapter);
 
 			const requestId = controller.request('summarize');
 			completeRequest(bridge, requestId!, '摘要内容');
-			assert.equal(controller.copy(), true);
+			assert.equal(await controller.copy(), true);
 			assert.deepEqual(tracking.calls.copyText, ['摘要内容']);
 		});
 	});

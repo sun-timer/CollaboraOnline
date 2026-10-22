@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Figma / writer-find-sheet：44×26 开关轨道，22dp 滑块 -->
+    <dimen name="lolib_settings_switch_track_width">44dp</dimen>
+    <dimen name="lolib_settings_switch_track_height">26dp</dimen>
+    <dimen name="lolib_settings_switch_thumb_size">18dp</dimen>
+    <dimen name="lolib_settings_switch_min_width">44dp</dimen>
+    <dimen name="lolib_settings_switch_padding">0dp</dimen>
+</resources>

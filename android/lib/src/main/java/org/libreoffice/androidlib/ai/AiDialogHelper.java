@@ -297,6 +297,72 @@ public final class AiDialogHelper {
     }
 
     /**
+     * 小型居中 Hug 弹窗（Sheet 重命名等）：固定宽度 + 高度随内容；
+     * 在安全区 padding 应用后需 {@link View#post(Runnable)} 再调一次。
+     */
+    public static void applyFlexibleWidthHug(android.view.View root, AlertDialog dialog,
+            int targetWidthPx, int maxHeightPx) {
+        if (dialog == null || dialog.getWindow() == null || root == null) {
+            return;
+        }
+        int widthSpec = android.view.View.MeasureSpec.makeMeasureSpec(targetWidthPx,
+                android.view.View.MeasureSpec.EXACTLY);
+        int heightSpec = android.view.View.MeasureSpec.makeMeasureSpec(0,
+                android.view.View.MeasureSpec.UNSPECIFIED);
+        root.measure(widthSpec, heightSpec);
+        int contentHeight = root.getMeasuredHeight();
+        int windowHeight = contentHeight <= maxHeightPx
+                ? android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                : Math.min(Math.max(contentHeight, 1), maxHeightPx);
+
+        dialog.getWindow().setLayout(targetWidthPx, windowHeight);
+        android.view.ViewGroup.LayoutParams lp = root.getLayoutParams();
+        if (lp == null) {
+            lp = new android.view.ViewGroup.LayoutParams(targetWidthPx,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        } else {
+            lp.width = targetWidthPx;
+            lp.height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+        }
+        root.setLayoutParams(lp);
+        root.requestLayout();
+    }
+
+    /** 居中 Hug 确认框（未配置模型等）：335dp 宽 + 高度随内容，insets 后 post 再量。 */
+    public static void applyCenteredHugDialogSize(Context context, AlertDialog dialog, View root) {
+        if (context == null || dialog == null || dialog.getWindow() == null || root == null) {
+            return;
+        }
+        Resources res = context.getResources();
+        final int widthPx = computeWriterDialogWidthPx(res);
+        final int maxHeightPx = computeCenteredDialogMaxHeightPx(context, false);
+        Runnable remeasure = () -> applyFlexibleWidthHug(root, dialog, widthPx, maxHeightPx);
+        View decor = dialog.getWindow().getDecorView();
+        Runnable scheduleRemeasure = () -> {
+            remeasure.run();
+            root.post(remeasure);
+            decor.post(remeasure);
+        };
+        scheduleRemeasure.run();
+        root.getViewTreeObserver().addOnGlobalLayoutListener(
+                new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+                    private int passes;
+
+                    @Override
+                    public void onGlobalLayout() {
+                        remeasure.run();
+                        if (++passes >= 3) {
+                            root.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                        }
+                    }
+                });
+        decor.postDelayed(scheduleRemeasure, 48);
+        WindowManager.LayoutParams params = dialog.getWindow().getAttributes();
+        params.gravity = Gravity.CENTER;
+        dialog.getWindow().setAttributes(params);
+    }
+
+    /**
      * Writer(文档)AI 弹窗宽度:Figma 设计稿 335dp、左右边距 20dp。
      * 旧 computeTargetWidthPx 的 670dp 上限是 2 倍图错误,勿混用。
      */
@@ -406,6 +472,42 @@ public final class AiDialogHelper {
         DisplayMetrics dm = context.getResources().getDisplayMetrics();
         int screenMax = dm.heightPixels - dpToPx(context.getResources(), 48);
         return Math.max(centeredMax, screenMax);
+    }
+
+    /**
+     * 居中悬浮 Hug 弹窗（Sheet 重命名等）：始终 AlertDialog 居中 + 可调键盘，
+     * 与设计稿白卡浮层一致，不用竖屏 BottomSheet 全宽贴底。
+     */
+    public static CompactPanelSession showCenteredFloatingPanel(Context context, View panel) {
+        if (context == null || panel == null) {
+            return new CompactPanelSession(null, null);
+        }
+        if (panel.getParent() instanceof android.view.ViewGroup) {
+            ((android.view.ViewGroup) panel.getParent()).removeView(panel);
+        }
+        AlertDialog dialog = new AlertDialog.Builder(context).create();
+        dialog.setView(panel);
+        applyCloseOnlyDismiss(dialog);
+        applyTransparentWindow(dialog);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                            | WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED);
+            WindowManager.LayoutParams params = dialog.getWindow().getAttributes();
+            params.gravity = Gravity.CENTER;
+            dialog.getWindow().setAttributes(params);
+        }
+        Resources res = context.getResources();
+        final int widthPx = computeWriterDialogWidthPx(res);
+        final int maxHeightPx = computeCenteredDialogMaxHeightPx(context, false);
+        Runnable remeasure = () -> applyFlexibleWidthHug(panel, dialog, widthPx, maxHeightPx);
+        remeasure.run();
+        panel.post(remeasure);
+        CompactPanelSession session = new CompactPanelSession(dialog, null);
+        dialog.setOnDismissListener(d -> untrackCompactPanel(session));
+        trackCompactPanel(session);
+        return session;
     }
 
     /**

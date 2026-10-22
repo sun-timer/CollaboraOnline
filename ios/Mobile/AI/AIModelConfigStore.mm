@@ -59,6 +59,10 @@ static NSString *const AIModelDefaultEndpoint = @"https://api.openai.com/v1/chat
         if ([[NSUserDefaults standardUserDefaults] stringForKey:urlKey].length == 0) {
             [[NSUserDefaults standardUserDefaults] setObject:AIModelDefaultEndpoint forKey:urlKey];
         }
+        NSString *endpointModeKey = [self keyForType:type field:@"endpoint_mode"];
+        if ([[NSUserDefaults standardUserDefaults] stringForKey:endpointModeKey].length == 0) {
+            [[NSUserDefaults standardUserDefaults] setObject:@"automatic" forKey:endpointModeKey];
+        }
         [self setFloatIfMissing:0.5f type:type field:@"top_p"];
         [self setFloatIfMissing:0.9f type:type field:@"temperature"];
         [self setFloatIfMissing:0.0f type:type field:@"presence_penalty"];
@@ -95,6 +99,7 @@ static NSString *const AIModelDefaultEndpoint = @"https://api.openai.com/v1/chat
                                       fallback:[NSString stringWithFormat:@"%@配置", [self defaultTitleForModelType:modelType]]];
     form.provider = [self stringFromDefaults:defaults key:[self keyForType:modelType field:@"provider"] fallback:@"OpenAI"];
     form.url = [self stringFromDefaults:defaults key:[self keyForType:modelType field:@"url"] fallback:AIModelDefaultEndpoint];
+    form.endpointMode = [self stringFromDefaults:defaults key:[self keyForType:modelType field:@"endpoint_mode"] fallback:@"automatic"];
     form.modelName = [self stringFromDefaults:defaults key:[self keyForType:modelType field:@"model_name"]
                                      fallback:[self defaultModelName:modelType]];
     form.topP = [self floatFromDefaults:defaults key:[self keyForType:modelType field:@"top_p"] fallback:0.5f];
@@ -121,6 +126,8 @@ static NSString *const AIModelDefaultEndpoint = @"https://api.openai.com/v1/chat
     [defaults setObject:[self trimmed:form.configName] forKey:[self keyForType:modelType field:@"config_name"]];
     [defaults setObject:[self trimmed:form.provider] forKey:[self keyForType:modelType field:@"provider"]];
     [defaults setObject:[self trimmed:form.url] forKey:[self keyForType:modelType field:@"url"]];
+    [defaults setObject:[@[@"manual", @"automatic"] containsObject:form.endpointMode] ? form.endpointMode : @"automatic"
+                   forKey:[self keyForType:modelType field:@"endpoint_mode"]];
     [defaults setObject:[self trimmed:form.modelName] forKey:[self keyForType:modelType field:@"model_name"]];
     [defaults setFloat:[self clamp:form.topP] forKey:[self keyForType:modelType field:@"top_p"]];
     [defaults setFloat:[self clamp:form.temperature] forKey:[self keyForType:modelType field:@"temperature"]];
@@ -245,6 +252,39 @@ static NSString *const AIModelDefaultEndpoint = @"https://api.openai.com/v1/chat
         fields[@"seed"] = @(MAX(1, (int)lround(seedRatio * kMaxSeed)));
     }
     return fields;
+}
+
+- (NSURL *)chatCompletionsURLForForm:(AIModelConfigForm *)form error:(NSError **)error {
+    NSString *raw = [self trimmed:form.url];
+    NSURLComponents *components = [NSURLComponents componentsWithString:raw];
+    NSString *scheme = components.scheme.lowercaseString;
+    if (components.host.length == 0 ||
+        (![scheme isEqualToString:@"http"] && ![scheme isEqualToString:@"https"]) ||
+        [raw rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].location != NSNotFound) {
+        if (error != NULL) *error = [NSError errorWithDomain:AIModelConfigErrorDomain code:3
+            userInfo:@{NSLocalizedDescriptionKey: @"AI endpoint is invalid"}];
+        return nil;
+    }
+    BOOL manual = [form.endpointMode isEqualToString:@"manual"];
+    NSString *path = components.path ?: @"";
+    NSString *trimmedPath = path;
+    while ([trimmedPath hasSuffix:@"/"] && trimmedPath.length > 0) {
+        trimmedPath = [trimmedPath substringToIndex:trimmedPath.length - 1];
+    }
+    if (!manual && ![trimmedPath.lowercaseString hasSuffix:@"/chat/completions"]) {
+        if (trimmedPath.length == 0) {
+            path = @"/v1/chat/completions";
+        } else if ([trimmedPath.lowercaseString hasSuffix:@"/v1"]) {
+            path = [trimmedPath stringByAppendingString:@"/chat/completions"];
+        } else {
+            path = [trimmedPath stringByAppendingString:@"/chat/completions"];
+        }
+        components.path = path;
+    }
+    NSURL *url = components.URL;
+    if (url == nil && error != NULL) *error = [NSError errorWithDomain:AIModelConfigErrorDomain code:4
+        userInfo:@{NSLocalizedDescriptionKey: @"AI endpoint is invalid"}];
+    return url;
 }
 
 @end

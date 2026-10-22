@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Writer 插入形状：文档主题蓝 -->
+    <style name="LolibShapePickerThemeWriter" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="lolibShapeAccentStroke">#1278D9</item>
+        <item name="lolibShapeAccentFill">@android:color/transparent</item>
+    </style>
+    <!-- Impress 插入形状：演示主题橙红（与功能 Tab #EC5D1F 一致） -->
+    <style name="LolibShapePickerThemeImpress" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="lolibShapeAccentStroke">#EC5D1F</item>
+        <item name="lolibShapeAccentFill">@android:color/transparent</item>
+    </style>
+    <!-- Calc 插入形状：表格主题绿 -->
+    <style name="LolibShapePickerThemeCalc" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="lolibShapeAccentStroke">#3B8040</item>
+        <item name="lolibShapeAccentFill">@android:color/transparent</item>
+    </style>
+    <!-- 兼容旧引用，等同 Writer -->
+    <style name="LolibShapePickerTheme" parent="LolibShapePickerThemeWriter"/>
+</resources>

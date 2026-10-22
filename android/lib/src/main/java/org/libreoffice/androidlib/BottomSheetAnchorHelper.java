@@ -126,6 +126,15 @@ public final class BottomSheetAnchorHelper {
         }
     }
 
+    /** 功能面板二级页锁定高度时读取上次 {@link #expandFunctionPanel} / {@link #expandFixed} 结果。 */
+    public static int getAppliedHeightPx(BottomSheetDialog dialog) {
+        if (dialog == null) {
+            return -1;
+        }
+        Integer applied = sAppliedHeights.get(dialog);
+        return applied != null ? applied : -1;
+    }
+
     public static void expandWrapContent(BottomSheetDialog dialog, float maxScreenRatio, Options options) {
         if (dialog == null) {
             return;

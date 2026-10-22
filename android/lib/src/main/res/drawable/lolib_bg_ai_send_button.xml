@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
-        <size android:height="36dp" android:width="36dp"/>
-        <gradient android:startColor="#3a7bff" android:endColor="#b925f3" android:angle="315"/>
+<!-- Design source: tmp/发送.svg (72×72 circle gradient) -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <size
+        android:width="36dp"
+        android:height="36dp" />
+    <gradient
+        android:angle="135"
+        android:endColor="#DD00CE"
+        android:startColor="#1DA8FF"
+        android:type="linear" />
 </shape>

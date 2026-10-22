@@ -28,6 +28,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.ai.AiDialogHelper;
 import org.libreoffice.androidlib.calc.CalcFontColorPickerController;
+import org.libreoffice.androidlib.impress.ImpressShapePickerController;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -285,6 +286,7 @@ public class CalcFunctionPanelController {
     private final Host host;
     private List<PanelTab> tabs;
     private BottomSheetDialog dialog;
+    private ImpressShapePickerController shapePickerController;
     private PopupWindow fontSizePopup;
     private LinearLayout tabBar;
     private NestedScrollView contentContainer;
@@ -457,6 +459,9 @@ public class CalcFunctionPanelController {
         dismissOptionPickerPage();
         dismissCommentPickerPage();
         dismissFontSizePopup();
+        if (shapePickerController != null) {
+            shapePickerController.onConfigurationChanged();
+        }
         applyAdaptiveSheetHeight();
     }
 
@@ -1415,7 +1420,7 @@ public class CalcFunctionPanelController {
         }
     }
 
-    /** 纸张方向 / 打印区域二级页：返回头 + 可选项（选中 #1278D9 + 右侧对勾）。Figma 3094:61223。 */
+    /** 纸张方向 / 打印区域二级页：返回头 + 可选项（选中 Calc 主题绿 + 右侧对勾）。Figma 3094:61223。 */
     private void showOptionPickerPage(String title, String[] labels, String[] commands,
             String pickerId, TextView valueView) {
         dismissFontPicker();
@@ -1485,13 +1490,13 @@ public class CalcFunctionPanelController {
             name.setText(label);
             name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
             boolean selected = label.equals(selectedLabel);
-            name.setTextColor(selected
-                    ? Color.parseColor("#1278D9") : Color.parseColor("#333333"));
+            name.setTextColor(selected ? COLOR_TAB_ACTIVE : Color.parseColor("#333333"));
             row.addView(name, new LinearLayout.LayoutParams(
                     0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
             ImageView check = new ImageView(host.getContext());
-            check.setImageResource(R.drawable.lolib_ic_font_picker_check);
+            check.setImageResource(R.drawable.lolib_ic_calc_toggle_checked);
+            check.setImageTintList(null);
             check.setVisibility(selected ? View.VISIBLE : View.GONE);
             row.addView(check, new LinearLayout.LayoutParams(
                     host.dpToPx(24), host.dpToPx(24)));
@@ -2342,16 +2347,38 @@ public class CalcFunctionPanelController {
     }
 
     private void showShapePickerDialog() {
-        new AlertDialog.Builder(host.getContext())
-                .setTitle("插入形状")
-                .setItems(SHAPE_LABELS, (dialog, which) -> {
-                    if (which >= 0 && which < SHAPE_COMMANDS.length) {
-                        dismiss();
-                        host.executeUnoCommand(SHAPE_COMMANDS[which]);
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        dismiss();
+        if (shapePickerController == null) {
+            shapePickerController = new ImpressShapePickerController(
+                    new ImpressShapePickerController.Host() {
+                        @Override
+                        public android.content.Context getContext() {
+                            return host.getContext();
+                        }
+
+                        @Override
+                        public int dpToPx(int dp) {
+                            return host.dpToPx(dp);
+                        }
+
+                        @Override
+                        public int getBottomChromeHeightPx() {
+                            return host.getBottomChromeHeightPx();
+                        }
+
+                        @Override
+                        public void executeUnoCommand(String command) {
+                            host.executeUnoCommand(command);
+                        }
+
+                        @Override
+                        public void runAfterDismiss(Runnable action) {
+                            host.runAfterFunctionPanelDismiss(action);
+                        }
+                    },
+                    R.style.LolibShapePickerThemeCalc);
+        }
+        host.runAfterFunctionPanelDismiss(() -> shapePickerController.show());
     }
 
     private List<PanelTab> buildTabs() {
@@ -2623,17 +2650,5 @@ public class CalcFunctionPanelController {
     private static final String[] PRINT_AREA_COMMANDS = {
             ".uno:DefinePrintArea",
             ".uno:ResetAttributes"
-    };
-
-    private static final String[] SHAPE_LABELS = {
-            "矩形", "椭圆", "圆角矩形", "等腰三角形", "直线", "箭头"
-    };
-    private static final String[] SHAPE_COMMANDS = {
-            ".uno:BasicShapes.rectangle",
-            ".uno:BasicShapes.ellipse",
-            ".uno:BasicShapes.round-rectangle",
-            ".uno:BasicShapes.isosceles-triangle",
-            ".uno:BasicShapes.line",
-            ".uno:BasicShapes.arrow"
     };
 }

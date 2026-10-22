@@ -1641,7 +1641,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         final boolean[] aiSwitchChecked = {false};
         final int[] pptChoices = {0, 1, 0, 4};
         if (isImpress) bindPresentationCreationOptions(dialog, aiPromptInput, pptChoices);
-        final int aiSwitchThumbMarginPx = (int) (2.5f * getResources().getDisplayMetrics().density);
+        final int aiSwitchThumbMarginPx = (int) (3f * getResources().getDisplayMetrics().density);
 
         Runnable updateAiSwitchUi = () -> {
             GradientDrawable track = new GradientDrawable();
@@ -1877,9 +1877,15 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         if (messageView != null) {
             messageView.setText(R.string.remove_from_list_confirm_message);
         }
+        if (confirmButton instanceof TextView) {
+            TextView confirm = (TextView) confirmButton;
+            confirm.setText(R.string.action_delete);
+            confirm.setBackgroundResource(R.drawable.bg_confirm_dialog_btn_destructive);
+        }
 
         if (card != null) {
             card.setOnClickListener(v -> { /* keep dialog open when tapping card */ });
+            card.setElevation(0f);
         }
         Runnable dismiss = dialog::dismiss;
         closeButton.setOnClickListener(v -> dismiss.run());

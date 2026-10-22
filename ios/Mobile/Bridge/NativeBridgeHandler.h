@@ -19,7 +19,7 @@ typedef void (^NativeBridgeDocumentTextCompletion)(NSString * _Nullable text);
 typedef void (^NativeBridgeDocumentTextExtractor)(NativeBridgeDocumentTextCompletion completion);
 
 typedef void (^NativeBridgeTextInsertCompletion)(BOOL inserted, NSString * _Nullable error);
-typedef void (^NativeBridgeTextInserter)(NSString *html, NSInteger viewId, NativeBridgeTextInsertCompletion completion);
+typedef void (^NativeBridgeTextInserter)(NSString *html, NSInteger viewId, NSString *resultMode, NativeBridgeTextInsertCompletion completion);
 
 @interface NativeBridgeHandler : NSObject <WKScriptMessageHandler>
 

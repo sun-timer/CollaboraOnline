@@ -12,6 +12,17 @@ interface MobileAiWaiDropdownOptions {
 
 class MobileAiWaiDropdown {
 	private static activeRoot: HTMLDivElement | null = null;
+	private static activeAnchor: HTMLElement | null = null;
+	private static activeDismiss?: () => void;
+
+	static toggle(options: MobileAiWaiDropdownOptions): boolean {
+		if (MobileAiWaiDropdown.activeAnchor === options.anchor) {
+			MobileAiWaiDropdown.dismiss();
+			return false;
+		}
+		MobileAiWaiDropdown.show(options);
+		return MobileAiWaiDropdown.activeAnchor === options.anchor;
+	}
 
 	static show(options: MobileAiWaiDropdownOptions): void {
 		MobileAiWaiDropdown.dismiss();
@@ -29,7 +40,7 @@ class MobileAiWaiDropdown {
 		root.setAttribute('role', 'presentation');
 		root.onclick = (event) => {
 			if (event.target === root) {
-				MobileAiWaiDropdown.dismiss(options.onDismiss);
+				MobileAiWaiDropdown.dismiss();
 			}
 		};
 
@@ -58,7 +69,7 @@ class MobileAiWaiDropdown {
 			row.textContent = label;
 			row.onclick = () => {
 				options.onPick(index, label);
-				MobileAiWaiDropdown.dismiss(options.onDismiss);
+				MobileAiWaiDropdown.dismiss();
 			};
 			panel.appendChild(row);
 		});
@@ -66,15 +77,19 @@ class MobileAiWaiDropdown {
 		root.appendChild(panel);
 		document.body.appendChild(root);
 		MobileAiWaiDropdown.activeRoot = root;
+		MobileAiWaiDropdown.activeAnchor = options.anchor;
+		MobileAiWaiDropdown.activeDismiss = options.onDismiss;
 	}
 
-	static dismiss(onDismiss?: () => void): void {
-		if (MobileAiWaiDropdown.activeRoot) {
-			MobileAiWaiDropdown.activeRoot.remove();
-			MobileAiWaiDropdown.activeRoot = null;
+	static dismiss(): void {
+		if (!MobileAiWaiDropdown.activeRoot) {
+			return;
 		}
-		if (onDismiss) {
-			onDismiss();
-		}
+		MobileAiWaiDropdown.activeRoot.remove();
+		MobileAiWaiDropdown.activeRoot = null;
+		MobileAiWaiDropdown.activeAnchor = null;
+		const onDismiss = MobileAiWaiDropdown.activeDismiss;
+		MobileAiWaiDropdown.activeDismiss = undefined;
+		if (onDismiss) onDismiss();
 	}
 }

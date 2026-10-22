@@ -10,6 +10,7 @@ class MobileAiTranslateDialog {
 	private readonly targetLanguage: HTMLSelectElement;
 	private readonly sourceText: HTMLTextAreaElement;
 	private readonly unsubscribe: () => void;
+	private disposed = false;
 
 	constructor() {
 		this.controller = WriterAiController.getInstance();
@@ -21,6 +22,7 @@ class MobileAiTranslateDialog {
 			title: 'AI 翻译',
 			presentation: 'writer',
 			taskType: 'translate',
+			onClose: () => this.dispose(),
 		});
 
 		const languageRow = document.createElement('div');
@@ -52,8 +54,8 @@ class MobileAiTranslateDialog {
 		this.layout.regenerateButton.onclick = () => this.request();
 		this.layout.applyButton.onclick = async () => {
 			const html = MobileAiResultRenderer.toHtml(this.controller.getState().preview);
-			if ((window as any).ThisIsTheiOSApp && (window as any).app?.map?.getDocType?.() === 'presentation') {
-				if (await this.controller.acceptAsync(html)) this.close();
+			if ((window as any).ThisIsTheiOSApp) {
+				if (await this.controller.acceptAsync(html) && !this.disposed) this.close();
 			} else {
 				this.controller.accept(html);
 			}
@@ -64,6 +66,7 @@ class MobileAiTranslateDialog {
 	}
 
 	open(): void {
+		this.controller.resetPreview();
 		this.sourceText.value = MobileAiBridge.getInstance().getSelectedText();
 		this.targetLanguage.value = WriterAiCatalog.DEFAULT_TARGET_LANGUAGE;
 		this.sourceLanguage.value = WriterAiCatalog.DEFAULT_SOURCE_LANGUAGE;
@@ -75,15 +78,21 @@ class MobileAiTranslateDialog {
 	private async refreshSelection(): Promise<void> {
 		const initialText = this.sourceText.value;
 		const text = await MobileAiBridge.getInstance().getSelectedTextAsync();
-		if (this.sourceText.value === initialText) {
+		if (!this.disposed && this.sourceText.value === initialText) {
 			this.sourceText.value = text;
 		}
 	}
 
 	close(): void {
+		this.sheet.close();
+		this.dispose();
+	}
+
+	private dispose(): void {
+		if (this.disposed) return;
+		this.disposed = true;
 		if (this.controller.getState().state !== 'accepted') this.controller.cancel();
 		this.unsubscribe();
-		this.sheet.close();
 	}
 
 	private request(): void {
@@ -154,6 +163,7 @@ class MobileAiTranslateDialog {
 		this.layout.applyButton.disabled = !ready;
 		this.layout.status.textContent =
 			state.error ||
+			state.warning ||
 			(active
 				? state.state === 'streaming'
 					? 'AI 正在输出…'

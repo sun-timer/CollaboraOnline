@@ -84,6 +84,8 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
 @property (strong, nonatomic) UITextField *configNameField;
 @property (strong, nonatomic) UITextField *providerField;
 @property (strong, nonatomic) UITextField *urlField;
+@property (strong, nonatomic) UISegmentedControl *endpointModeControl;
+@property (strong, nonatomic) UILabel *endpointPreviewLabel;
 @property (strong, nonatomic) UITextField *apiKeyField;
 @property (strong, nonatomic) UITextField *modelNameField;
 @property (assign, nonatomic) BOOL configDetailsVisible;
@@ -611,6 +613,16 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     self.urlField.accessibilityIdentifier = @"aiModelConfig.url";
     self.urlField.keyboardType = UIKeyboardTypeURL;
     [self.urlField addTarget:self action:@selector(urlFieldDidChange:) forControlEvents:UIControlEventEditingChanged];
+    self.endpointModeControl = [[UISegmentedControl alloc] initWithItems:@[@"自动补全", @"完整接口"]];
+    self.endpointModeControl.accessibilityIdentifier = @"aiModelConfig.endpointMode";
+    [self.endpointModeControl addTarget:self action:@selector(endpointModeDidChange:) forControlEvents:UIControlEventValueChanged];
+    [connectionStack addArrangedSubview:self.endpointModeControl];
+    self.endpointPreviewLabel = [[UILabel alloc] init];
+    self.endpointPreviewLabel.font = [UIFont systemFontOfSize:12];
+    self.endpointPreviewLabel.textColor = AIDrawerColorTextSecondary();
+    self.endpointPreviewLabel.numberOfLines = 0;
+    self.endpointPreviewLabel.accessibilityIdentifier = @"aiModelConfig.endpointPreview";
+    [connectionStack addArrangedSubview:self.endpointPreviewLabel];
     self.apiKeyField = [self addField:@"API Key（密钥）" placeholder:@"sk-...（部分服务可留空）" to:connectionStack];
     self.apiKeyField.accessibilityIdentifier = @"aiModelConfig.apiKey";
     self.apiKeyField.secureTextEntry = YES;
@@ -917,6 +929,9 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     self.configNameField.text = form.configName;
     self.providerField.text = form.provider;
     self.urlField.text = form.url;
+    self.endpointModeControl.selectedSegmentIndex = [form.endpointMode isEqualToString:@"manual"] ? 1 : 0;
+    self.endpointModeControl.hidden = type == AIModelTypeImage;
+    [self updateEndpointPreview];
     [self updateURLFieldError:NO];
     self.apiKeyField.text = form.apiKey;
     self.modelNameField.text = form.modelName;
@@ -978,6 +993,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     form.configName = self.configNameField.text;
     form.provider = self.providerField.text;
     form.url = self.urlField.text;
+    form.endpointMode = self.endpointModeControl.selectedSegmentIndex == 1 ? @"manual" : @"automatic";
     form.apiKey = self.apiKeyField.text;
     form.modelName = self.modelNameField.text;
     form.topP = self.topPSlider.value;
@@ -1109,6 +1125,28 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     if ([self isCompleteBaseURL:textField.text]) {
         [self updateURLFieldError:NO];
     }
+    [self updateEndpointPreview];
+}
+
+- (void)endpointModeDidChange:(UISegmentedControl *)sender {
+    [self updateEndpointPreview];
+}
+
+- (void)updateEndpointPreview {
+    if (self.editingType == AIModelTypeImage) {
+        NSString *rawURL = [self.urlField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        self.endpointPreviewLabel.text = rawURL.length > 0
+            ? [NSString stringWithFormat:@"实际图片请求地址：%@", rawURL]
+            : @"实际图片请求地址：请填写图片生成接口地址";
+        return;
+    }
+    AIModelConfigForm *form = [[AIModelConfigForm alloc] init];
+    form.url = self.urlField.text ?: @"";
+    form.endpointMode = self.endpointModeControl.selectedSegmentIndex == 1 ? @"manual" : @"automatic";
+    NSURL *resolved = [self.modelStore chatCompletionsURLForForm:form error:nil];
+    self.endpointPreviewLabel.text = resolved != nil
+        ? [NSString stringWithFormat:@"实际请求地址：%@", resolved.absoluteString]
+        : @"实际请求地址：请填写有效的 http:// 或 https:// 地址";
 }
 
 - (BOOL)isCompleteBaseURL:(NSString *)value {
@@ -1226,12 +1264,28 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     }
     NSString *host = components.host.lowercaseString;
     NSString *path = components.path ?: @"";
+    path = [self pathByTrimmingTrailingSlash:path];
+    components.path = path;
+    AIModelConfigForm *endpointForm = [[AIModelConfigForm alloc] init];
+    endpointForm.url = endpoint;
+    endpointForm.endpointMode = self.endpointModeControl.selectedSegmentIndex == 1 ? @"manual" : @"automatic";
     NSString *lowerProvider = provider.lowercaseString;
     BOOL azure = [lowerProvider containsString:@"azure"] || [host containsString:@"openai.azure.com"];
     BOOL anthropic = [lowerProvider containsString:@"anthropic"] || [host containsString:@"anthropic.com"];
     BOOL gemini = [lowerProvider containsString:@"gemini"] || [lowerProvider containsString:@"google"]
         || [host containsString:@"generativelanguage.googleapis.com"];
     BOOL ollama = [lowerProvider containsString:@"ollama"];
+    BOOL nativeProviderRoute = azure || anthropic || gemini || ollama || self.editingType == AIModelTypeImage;
+    BOOL alreadyModelRoute = [path hasSuffix:@"/models"] || [path hasSuffix:@"/completions"];
+    if (!nativeProviderRoute && !alreadyModelRoute) {
+        NSURL *resolvedChatURL = [self.modelStore chatCompletionsURLForForm:endpointForm error:nil];
+        NSURLComponents *resolvedComponents = resolvedChatURL != nil
+            ? [NSURLComponents componentsWithURL:resolvedChatURL resolvingAgainstBaseURL:NO] : nil;
+        if (resolvedComponents.path.length > 0) {
+            components = resolvedComponents;
+            path = components.path;
+        }
+    }
     NSString *keyHeader = nil;
     BOOL bearer = YES;
 
@@ -1279,22 +1333,17 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
         path = [NSString stringWithFormat:@"%@/api/tags", [self pathByTrimmingTrailingSlash:prefix]];
         components.query = nil;
     } else if ([path hasSuffix:@"/models"]) {
-        components.query = nil;
+        // Keep caller query parameters attached to the configured service URL.
     } else if ([path hasSuffix:@"/chat/completions"]) {
         path = [[path substringToIndex:path.length - @"/chat/completions".length] stringByAppendingString:@"/models"];
-        components.query = nil;
     } else if ([path hasSuffix:@"/completions"]) {
         path = [[path substringToIndex:path.length - @"/completions".length] stringByAppendingString:@"/models"];
-        components.query = nil;
     } else if ([path hasSuffix:@"/v1"] || [path hasSuffix:@"/v1beta/openai"]) {
         path = [path stringByAppendingString:@"/models"];
-        components.query = nil;
     } else if (path.length == 0 || [path isEqualToString:@"/"]) {
         path = gemini ? @"/v1beta/openai/models" : @"/v1/models";
-        components.query = nil;
     } else {
         path = [NSString stringWithFormat:@"%@/models", [self pathByTrimmingTrailingSlash:path]];
-        components.query = nil;
     }
     components.path = path;
     NSURL *url = components.URL;

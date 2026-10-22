@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="24dp" android:width="24dp" android:viewportWidth="24" android:viewportHeight="24">
-        <path android:fillColor="#ffffff" android:pathData="M12,3 L16,18 L12,15 L8,18 Z"/>
+<!-- Design: tmp/发送.svg — plane glyph only -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="28"
+    android:viewportHeight="29">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,28L15.036,25.088L14.028,9L12.936,25.088L0,28L14,0L28,28Z" />
 </vector>

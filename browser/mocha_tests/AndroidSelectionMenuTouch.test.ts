@@ -16,6 +16,130 @@ interface Window {
 }
 
 describe('AndroidSelectionMenu iOS touch routing', function () {
+	it('keeps the handle grab offset in document twips while the finger moves', function () {
+		const endpoint = { x: 8400, y: 9000 };
+		const initialFinger = { x: 8800, y: 10400 };
+		const grabOffset = {
+			x: initialFinger.x - endpoint.x,
+			y: initialFinger.y - endpoint.y,
+		};
+		assert.deepEqual(
+			TextSelectionHandle.adjustForGrabOffset(initialFinger, grabOffset),
+			endpoint,
+			'the first mapped event stays at the original text boundary',
+		);
+		assert.deepEqual(
+			TextSelectionHandle.adjustForGrabOffset({ x: 9600, y: 10400 }, grabOffset),
+			{ x: 9200, y: 9000 },
+			'a horizontal drag does not jump down to the handle touch point',
+		);
+	});
+
+	it('hands a selection-handle touch off before the long-press timer can restart selection', function () {
+		const menu: any = AndroidSelectionMenu;
+		const originalSetTimeout = window.setTimeout;
+		const originalClearTimeout = window.clearTimeout;
+		const originalAddEventListener = document.addEventListener;
+		const originalRemoveEventListener = document.removeEventListener;
+		const originalIsIOS = menu.isIOS;
+		const originalIsWriterDoc = menu.isWriterDoc;
+		const originalIsSelectionDoc = menu.isSelectionDoc;
+		const originalLongPress = menu.onLongPressAt;
+		const originalFinish = menu.finishTextSelectionDrag;
+		const originalHide = menu.hide;
+		const originalSchedule = menu.scheduleTryShowFromCoreSelection;
+		const originalOwner = menu.iosWriterHandleTouchActive;
+		const originalClearOwnerTimer = menu.clearIosLongPressForHandle;
+		const listeners: Array<{ type: string; listener: EventListenerOrEventListenerObject; options: any }> = [];
+		const callbacks = new Map<number, () => void>();
+		const cleared = new Set<number>();
+		let nextTimer = 1;
+		let longPresses = 0;
+		let finishes = 0;
+		let menusShown = 0;
+		let hides = 0;
+		const touch = (x: number, y: number) => ({ clientX: x, clientY: y });
+		const canvas = document.createElement('canvas');
+		document.body.appendChild(canvas);
+		const dispatchTouch = (type: string, touches: any[], changedTouches: any[] = touches) => {
+			const event = new window.Event(type, { bubbles: true, cancelable: true });
+			Object.defineProperties(event, {
+				touches: { value: touches },
+				changedTouches: { value: changedTouches },
+				targetTouches: { value: touches },
+			});
+			canvas.dispatchEvent(event);
+		};
+		try {
+			window.setTimeout = ((callback: TimerHandler) => {
+				const id = nextTimer++;
+				callbacks.set(id, callback as () => void);
+				return id;
+			}) as any;
+			window.clearTimeout = ((id: number) => { cleared.add(id); }) as any;
+			document.addEventListener = function (type: string, listener: any, options: any) {
+				listeners.push({ type, listener, options });
+				return originalAddEventListener.call(this, type, listener, options);
+			} as any;
+			document.removeEventListener = function (type: string, listener: any, options: any) {
+				return originalRemoveEventListener.call(this, type, listener, options);
+			} as any;
+			menu.isIOS = () => true;
+			menu.isWriterDoc = () => true;
+			menu.isSelectionDoc = () => true;
+			menu.onLongPressAt = () => { longPresses++; };
+			menu.finishTextSelectionDrag = () => { finishes++; };
+			menu.hide = () => { hides++; };
+			menu.scheduleTryShowFromCoreSelection = () => { menusShown++; };
+			menu.iosWriterHandleTouchActive = false;
+			menu.installIosLongPress();
+
+			dispatchTouch('touchstart', [touch(40, 50)]);
+			const timerId = nextTimer - 1;
+			menu.beginIOSWriterHandleTouch();
+			assert.ok(cleared.has(timerId), 'handle mousedown clears the document long-press timer');
+			const queuedTimer = callbacks.get(timerId);
+			assert.ok(queuedTimer, 'the long-press callback was scheduled');
+			if (queuedTimer) queuedTimer();
+			assert.equal(longPresses, 0, 'a queued timer cannot restart word selection');
+
+			dispatchTouch('touchend', [], [touch(40, 50)]);
+			assert.equal(finishes, 0, 'global touchend leaves the endpoint update to its handle');
+			assert.equal(menu.iosWriterHandleTouchActive, false);
+			assert.equal(menusShown, 1, 'selection menu is reconsidered after the handle releases');
+			assert.equal(hides, 1, 'the existing selection menu is hidden while the handle moves');
+
+			const matchingClick = new MouseEvent('click', {
+				bubbles: true, cancelable: true, detail: 1, clientX: 40, clientY: 50,
+			});
+			canvas.dispatchEvent(matchingClick);
+			assert.equal(matchingClick.defaultPrevented, true, 'only the synthesized click at release is consumed');
+			const unrelatedClick = new MouseEvent('click', {
+				bubbles: true, cancelable: true, detail: 1, clientX: 100, clientY: 120,
+			});
+			canvas.dispatchEvent(unrelatedClick);
+			assert.equal(unrelatedClick.defaultPrevented, false, 'a later unrelated tap remains available');
+		} finally {
+			for (const listener of listeners) {
+				originalRemoveEventListener.call(document, listener.type, listener.listener, listener.options);
+			}
+			document.addEventListener = originalAddEventListener;
+			document.removeEventListener = originalRemoveEventListener;
+			window.setTimeout = originalSetTimeout;
+			window.clearTimeout = originalClearTimeout;
+			menu.isIOS = originalIsIOS;
+			menu.isWriterDoc = originalIsWriterDoc;
+			menu.isSelectionDoc = originalIsSelectionDoc;
+			menu.onLongPressAt = originalLongPress;
+			menu.finishTextSelectionDrag = originalFinish;
+			menu.hide = originalHide;
+			menu.scheduleTryShowFromCoreSelection = originalSchedule;
+			menu.iosWriterHandleTouchActive = originalOwner;
+			menu.clearIosLongPressForHandle = originalClearOwnerTimer;
+			canvas.remove();
+		}
+	});
+
 	it('cancels the pending long press throughout a multi-touch sequence', function () {
 		const menu: any = AndroidSelectionMenu;
 		const originalSetTimeout = window.setTimeout;

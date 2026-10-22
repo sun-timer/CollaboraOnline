@@ -20,8 +20,8 @@
                         <LinearLayout android:orientation="horizontal" android:gravity="center_vertical" android:layout_width="match_parent" android:layout_height="32dp">
                             <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_ai_sparkle" android:importantForAccessibility="no"/>
                             <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="内容使用AI生成" android:textSize="14sp" android:textColor="#1F2329" android:layout_marginStart="6dp"/>
-                            <FrameLayout android:id="@+id/aiSwitch" android:layout_width="41dp" android:layout_height="24dp" android:clickable="true" android:focusable="true" android:contentDescription="内容使用AI生成" android:background="@drawable/bg_ai_switch_track_off">
-                                <View android:id="@+id/aiSwitchThumb" android:layout_width="16dp" android:layout_height="16dp" android:layout_gravity="start|center_vertical" android:layout_marginStart="2.5dp" android:background="@drawable/bg_ai_switch_thumb_circle"/>
+                            <FrameLayout android:id="@+id/aiSwitch" android:layout_width="44dp" android:layout_height="26dp" android:clickable="true" android:focusable="true" android:contentDescription="内容使用AI生成" android:background="@drawable/bg_ai_switch_track_off">
+                                <View android:id="@+id/aiSwitchThumb" android:layout_width="18dp" android:layout_height="18dp" android:layout_gravity="start|center_vertical" android:layout_marginStart="4dp" android:background="@drawable/bg_ai_switch_thumb_circle"/>
                             </FrameLayout>
                         </LinearLayout>
                         <LinearLayout android:id="@+id/pptCreateOptions" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content">

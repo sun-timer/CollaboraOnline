@@ -83,6 +83,8 @@ static NSString *ImpressTrimmed(NSString *text) {
 @property (strong, nonatomic) NSLayoutConstraint *aiSwitchThumbTrailing;
 @property (strong, nonatomic) NSLayoutConstraint *aiPromptHeight;
 @property (strong, nonatomic) NSLayoutConstraint *createButtonTopToPrompt;
+@property (strong, nonatomic) UIButton *createButton;
+@property (strong, nonatomic) CAGradientLayer *createGradient;
 @property (strong, nonatomic) NSLayoutConstraint *cardBottomConstraint;
 @property (strong, nonatomic) UITextView *impressPromptView;
 @property (strong, nonatomic) UILabel *impressPlaceholder;
@@ -153,7 +155,19 @@ static NSString *ImpressTrimmed(NSString *text) {
         case CreateFileDocKindImpress:
             return @"创建演示文稿";
         default:
-            return @"创建文本文档";
+            return @"创建文档";
+    }
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    if (self.docKind == CreateFileDocKindWriter) {
+        self.aiSwitchOn = NO;
+        if (self.isViewLoaded) {
+            self.aiPromptField.hidden = YES;
+            self.aiPromptHeight.constant = 0;
+            [self updateAiSwitchUi];
+        }
     }
 }
 
@@ -247,17 +261,23 @@ static NSString *ImpressTrimmed(NSString *text) {
     self.aiPromptField.returnKeyType = UIReturnKeyDone;
     self.aiPromptField.hidden = YES;
 
-    UIButton *createButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    createButton.translatesAutoresizingMaskIntoConstraints = NO;
-    createButton.backgroundColor = CreateFileButtonColorForKind(self.docKind);
-    createButton.layer.cornerRadius = 8;
-    [createButton setTitle:[self createButtonTitle] forState:UIControlStateNormal];
-    [createButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    createButton.titleLabel.font = [UIFont boldSystemFontOfSize:18];
-    [createButton addTarget:self action:@selector(createTapped) forControlEvents:UIControlEventTouchUpInside];
+    self.createButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.createButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.createButton.backgroundColor = CreateFileButtonColorForKind(self.docKind);
+    self.createButton.layer.cornerRadius = 8;
+    self.createButton.clipsToBounds = YES;
+    [self.createButton setTitle:[self createButtonTitle] forState:UIControlStateNormal];
+    [self.createButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    self.createButton.titleLabel.font = [UIFont boldSystemFontOfSize:18];
+    [self.createButton addTarget:self action:@selector(createTapped) forControlEvents:UIControlEventTouchUpInside];
+    if (self.docKind == CreateFileDocKindWriter) {
+        self.createGradient = [CAGradientLayer layer];
+        ImpressStyleGradient(self.createGradient);
+        [self.createButton.layer insertSublayer:self.createGradient atIndex:0];
+    }
 
     for (UIView *v in @[ card, close, title, nameLabel, self.fileNameField, aiRow, aiLabel,
-                         self.aiSwitchTrack, self.aiPromptField, createButton ]) {
+                         self.aiSwitchTrack, self.aiPromptField, self.createButton ]) {
         if (v != card) {
             [card addSubview:v];
         }
@@ -312,13 +332,13 @@ static NSString *ImpressTrimmed(NSString *text) {
     ]];
     self.aiPromptHeight = [self.aiPromptField.heightAnchor constraintEqualToConstant:0];
     self.aiPromptHeight.active = YES;
-    self.createButtonTopToPrompt = [createButton.topAnchor constraintEqualToAnchor:self.aiPromptField.bottomAnchor constant:20];
+    self.createButtonTopToPrompt = [self.createButton.topAnchor constraintEqualToAnchor:self.aiPromptField.bottomAnchor constant:20];
     self.createButtonTopToPrompt.active = YES;
     [NSLayoutConstraint activateConstraints:@[
-        [createButton.leadingAnchor constraintEqualToAnchor:self.fileNameField.leadingAnchor],
-        [createButton.trailingAnchor constraintEqualToAnchor:self.fileNameField.trailingAnchor],
-        [createButton.heightAnchor constraintEqualToConstant:44],
-        [createButton.bottomAnchor constraintEqualToAnchor:card.safeAreaLayoutGuide.bottomAnchor constant:-24],
+        [self.createButton.leadingAnchor constraintEqualToAnchor:self.fileNameField.leadingAnchor],
+        [self.createButton.trailingAnchor constraintEqualToAnchor:self.fileNameField.trailingAnchor],
+        [self.createButton.heightAnchor constraintEqualToConstant:44],
+        [self.createButton.bottomAnchor constraintEqualToAnchor:card.safeAreaLayoutGuide.bottomAnchor constant:-24],
     ]];
 
     [self updateAiSwitchUi];
@@ -394,6 +414,13 @@ static NSString *ImpressTrimmed(NSString *text) {
         self.aiSwitchTrack.backgroundColor = self.aiSwitchOn
             ? CreateFileButtonColorForKind(CreateFileDocKindCalc)
             : [UIColor colorWithRed:0xCB / 255.0 green:0xD1 / 255.0 blue:0xD7 / 255.0 alpha:1];
+    } else if (self.docKind == CreateFileDocKindWriter) {
+        self.aiSwitchTrack.backgroundColor = self.aiSwitchOn
+            ? ImpressSwitchOnColor()
+            : [UIColor colorWithRed:0xCB / 255.0 green:0xD1 / 255.0 blue:0xD7 / 255.0 alpha:1];
+        self.createGradient.hidden = !self.aiSwitchOn;
+        self.createButton.backgroundColor = self.aiSwitchOn ? UIColor.clearColor : CreateFileButtonColorForKind(self.docKind);
+        [self.createButton setTitle:self.aiSwitchOn ? @"生成和创建" : [self createButtonTitle] forState:UIControlStateNormal];
     }
     [self.view layoutIfNeeded];
 }
@@ -750,6 +777,7 @@ static NSString *ImpressTrimmed(NSString *text) {
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    self.createGradient.frame = self.createButton.bounds;
     self.impressGradient.frame = self.impressCreateButton.bounds;
     if (self.impressDocBorder) {
         self.impressDocBorder.frame = self.impressDocZone.bounds;

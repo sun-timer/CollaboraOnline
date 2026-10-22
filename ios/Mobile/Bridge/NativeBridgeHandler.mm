@@ -171,12 +171,15 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
             ? envelope[@"payload"][@"html"] : nil;
         NSDictionary *payload = [envelope[@"payload"] isKindOfClass:[NSDictionary class]] ? envelope[@"payload"] : @{};
         NSString *sourceId = [payload[@"sourceRequestId"] isKindOfClass:[NSString class]] ? payload[@"sourceRequestId"] : nil;
+        NSString *resultMode = [payload[@"resultMode"] isKindOfClass:[NSString class]] ? payload[@"resultMode"] : @"replaceSelection";
         NSNumber *viewId = [payload[@"viewId"] isKindOfClass:[NSNumber class]] ? payload[@"viewId"] : nil;
         BOOL cached = sourceId.length > 0 && documentSessionId.length > 0
             && [self.insertedRequestIds[sourceId] isEqualToString:documentSessionId];
         BOOL sessionKnown = sourceId.length > 0 && documentSessionId.length > 0
             && [self.requestSessions[sourceId] isEqualToString:documentSessionId];
+        BOOL validResultMode = [@[@"replaceSelection", @"appendAfterSelection", @"insertAtEnd"] containsObject:resultMode];
         if (self.closed || (!sessionKnown && !cached) || !self.documentTextInserter || html.length == 0
+            || !validResultMode
             || !viewId || viewId.integerValue < 0 || viewId.doubleValue != viewId.integerValue) {
             [self emitErrorType:@"ai.text.insert.error" requestId:requestId
                 documentSessionId:documentSessionId code:@"insert_unavailable"
@@ -189,7 +192,7 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
             return;
         }
         __weak NativeBridgeHandler *weakSelf = self;
-        self.documentTextInserter(html, viewId.integerValue, ^(BOOL inserted, NSString *error) {
+        self.documentTextInserter(html, viewId.integerValue, resultMode, ^(BOOL inserted, NSString *error) {
             NativeBridgeHandler *strongSelf = weakSelf;
             if (!strongSelf || strongSelf.closed) return;
             if (inserted) {
@@ -325,6 +328,8 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
 
     if ([type isEqualToString:@"ai.doc_extract"]) {
         NSLog(@"[AIExtract] nativeBridge received ai.doc_extract requestId=%@", requestId ?: @"");
+        NSDictionary *extractPayload = [envelope[@"payload"] isKindOfClass:[NSDictionary class]] ? envelope[@"payload"] : @{};
+        BOOL allowEmpty = [extractPayload[@"allowEmpty"] boolValue];
         if (!self.documentTextExtractor) {
             NSLog(@"[AIExtract] missing documentTextExtractor");
             [self emitErrorType:@"ai.doc_extract.error"
@@ -335,10 +340,18 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
             return;
         }
         self.documentTextExtractor(^(NSString *text) {
+            if (text == nil) {
+                [self emitErrorType:@"ai.doc_extract.error"
+                          requestId:requestId
+                documentSessionId:documentSessionId
+                               code:@"doc_extract_failed"
+                            message:@"文档全文提取失败，请稍后重试"];
+                return;
+            }
             NSString *trimmed = [(text ?: @"") stringByTrimmingCharactersInSet:
                 [NSCharacterSet whitespaceAndNewlineCharacterSet]];
             NSLog(@"[AIExtract] extractor callback chars=%lu", (unsigned long)trimmed.length);
-            if (trimmed.length == 0) {
+            if (trimmed.length == 0 && !allowEmpty) {
                 [self emitErrorType:@"ai.doc_extract.error"
                           requestId:requestId
                     documentSessionId:documentSessionId

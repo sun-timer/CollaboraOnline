@@ -97,6 +97,7 @@
 		C0FFEE2C2026082400000001 /* AISettingsDrawerController.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */; };
 		C0FFEE2E2026082400000002 /* AISettingsDrawerIcons.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2F2026082400000002 /* AISettingsDrawerIcons.mm */; };
 		C0FFEE2F2026082400000001 /* PhotosUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE302026082400000001 /* PhotosUI.framework */; };
+		AFA202610220000000000101 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AFA202610220000000000102 /* AVFoundation.framework */; };
 		C0FFEE302026091200000001 /* TypesetService.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE312026091200000001 /* TypesetService.mm */; };
 		C0FFEE312026093000000001 /* OSLog.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE312026093000000002 /* OSLog.framework */; };
 		C0FFEE342026091200000001 /* zip.c in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE352026091200000001 /* zip.c */; };
@@ -1599,6 +1600,7 @@
 		C0FFEE2E2026082400000001 /* AISettingsDrawerController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AISettingsDrawerController.h; sourceTree = "<group>"; };
 		C0FFEE2F2026082400000002 /* AISettingsDrawerIcons.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AISettingsDrawerIcons.mm; sourceTree = "<group>"; };
 		C0FFEE302026082400000001 /* PhotosUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PhotosUI.framework; path = System/Library/Frameworks/PhotosUI.framework; sourceTree = SDKROOT; };
+		AFA202610220000000000102 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		C0FFEE302026082400000002 /* AISettingsDrawerIcons.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AISettingsDrawerIcons.h; sourceTree = "<group>"; };
 		C0FFEE312026091200000001 /* TypesetService.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = TypesetService.mm; sourceTree = "<group>"; };
 		C0FFEE312026093000000002 /* OSLog.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OSLog.framework; path = System/Library/Frameworks/OSLog.framework; sourceTree = SDKROOT; };
@@ -1706,6 +1708,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AFA202610220000000000101 /* AVFoundation.framework in Frameworks */,
 				C0FFEE2F2026082400000001 /* PhotosUI.framework in Frameworks */,
 				C0FFEE312026093000000001 /* OSLog.framework in Frameworks */,
 				D49B580F2D1077F700E0E607 /* UniformTypeIdentifiers.framework in Frameworks */,
@@ -1777,6 +1780,7 @@
 		BE00F8B3213ED542001CE2D4 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				AFA202610220000000000102 /* AVFoundation.framework */,
 				C0FFEE302026082400000001 /* PhotosUI.framework */,
 				C0FFEE312026093000000002 /* OSLog.framework */,
 				D49B580E2D1077F700E0E607 /* UniformTypeIdentifiers.framework */,

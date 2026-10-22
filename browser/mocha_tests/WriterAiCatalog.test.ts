@@ -118,6 +118,15 @@ describe('Writer AI Catalog v1', function () {
 			WriterAiCatalog.OUTLINE_TYPES.map((item) => item.key),
 			['paper', 'report', 'speech', 'event', 'general'],
 		);
+		assert.deepEqual(
+			WriterAiCatalog.IOS_WORD_OUTLINE_TYPES,
+			[
+				{ key: 'general', label: '生成大纲' },
+				{ key: 'meeting', label: '会议纪要' },
+				{ key: 'summary', label: '工作总结' },
+			],
+		);
+		assert.equal(WriterAiCatalog.countUnicodeCodePoints('A😀文'), 3);
 	});
 
 	it('defines the image-based text_extract task', function () {

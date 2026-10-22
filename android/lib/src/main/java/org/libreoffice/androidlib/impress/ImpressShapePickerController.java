@@ -1,7 +1,9 @@
 package org.libreoffice.androidlib.impress;
 
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.view.ContextThemeWrapper;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -20,6 +22,8 @@ import androidx.core.widget.NestedScrollView;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.BottomSheetAnchorHelper;
+import androidx.annotation.StyleRes;
+
 import org.libreoffice.androidlib.R;
 import org.libreoffice.androidlib.ai.AiDialogHelper;
 
@@ -51,17 +55,25 @@ public class ImpressShapePickerController {
     }
 
     private final Host host;
+    private final @StyleRes int themeResId;
     private BottomSheetDialog dialog;
+    private Context shapeThemedContext;
 
     public ImpressShapePickerController(Host host) {
+        this(host, R.style.LolibShapePickerThemeWriter);
+    }
+
+    public ImpressShapePickerController(Host host, @StyleRes int themeResId) {
         this.host = host;
+        this.themeResId = themeResId;
     }
 
     public void show() {
         if (dialog != null && dialog.isShowing()) {
             return;
         }
-        View panel = LayoutInflater.from(host.getContext())
+        shapeThemedContext = new ContextThemeWrapper(host.getContext(), themeResId);
+        View panel = LayoutInflater.from(shapeThemedContext)
                 .inflate(R.layout.lolib_sheet_impress_shape_picker, null, false);
 
         ImageButton backBtn = panel.findViewById(R.id.impress_shape_picker_back);
@@ -74,7 +86,7 @@ public class ImpressShapePickerController {
             buildShapeSections(content);
         }
 
-        dialog = new BottomSheetDialog(host.getContext());
+        dialog = new BottomSheetDialog(shapeThemedContext);
         dialog.setContentView(panel);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
         dialog.setOnDismissListener(d -> dialog = null);
@@ -87,7 +99,12 @@ public class ImpressShapePickerController {
         if (dialog != null) {
             dialog.dismiss();
             dialog = null;
+            shapeThemedContext = null;
         }
+    }
+
+    private Context pickerContext() {
+        return shapeThemedContext != null ? shapeThemedContext : host.getContext();
     }
 
     public boolean isShowing() {
@@ -130,7 +147,7 @@ public class ImpressShapePickerController {
     }
 
     private TextView createSectionLabel(String title) {
-        TextView label = new TextView(host.getContext());
+        TextView label = new TextView(pickerContext());
         label.setText(title);
         label.setTextColor(COLOR_SECTION);
         label.setTextSize(TypedValue.COMPLEX_UNIT_SP, SECTION_TITLE_SP);
@@ -141,7 +158,7 @@ public class ImpressShapePickerController {
     }
 
     private View createShapeGrid(ImpressShapeCatalog.Entry[] entries) {
-        LinearLayout card = new LinearLayout(host.getContext());
+        LinearLayout card = new LinearLayout(pickerContext());
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
         int hPad = host.dpToPx(GRID_H_PAD_DP);
@@ -163,7 +180,7 @@ public class ImpressShapePickerController {
 
         for (int i = 0; i < entries.length; i++) {
             if (i % GRID_COLS == 0) {
-                row = new LinearLayout(host.getContext());
+                row = new LinearLayout(pickerContext());
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 row.setGravity(Gravity.CENTER_VERTICAL);
                 if (i > 0) {
@@ -178,14 +195,15 @@ public class ImpressShapePickerController {
                 card.addView(row);
             }
             ImpressShapeCatalog.Entry entry = entries[i];
-            FrameLayout cell = new FrameLayout(host.getContext());
+            FrameLayout cell = new FrameLayout(pickerContext());
             LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(0, rowHeight, 1f);
             cell.setLayoutParams(cellLp);
             if (entry != null) {
-                cell.setForeground(host.getContext().getDrawable(android.R.drawable.list_selector_background));
+                cell.setForeground(pickerContext().getDrawable(android.R.drawable.list_selector_background));
 
-                ImageView icon = new ImageView(host.getContext());
+                ImageView icon = new ImageView(pickerContext());
                 icon.setImageResource(entry.iconResId);
+                icon.setImageTintList(null);
                 icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 FrameLayout.LayoutParams iconLp = new FrameLayout.LayoutParams(iconSize, iconSize);
                 iconLp.gravity = Gravity.CENTER;
@@ -195,6 +213,15 @@ public class ImpressShapePickerController {
             }
             if (row != null) {
                 row.addView(cell);
+            }
+        }
+        int remainder = entries.length % GRID_COLS;
+        if (remainder != 0 && row != null) {
+            for (int p = remainder; p < GRID_COLS; p++) {
+                View placeholder = new View(pickerContext());
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, rowHeight, 1f);
+                placeholder.setLayoutParams(lp);
+                row.addView(placeholder);
             }
         }
         return card;

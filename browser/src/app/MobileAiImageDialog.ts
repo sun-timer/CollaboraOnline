@@ -15,6 +15,7 @@ class MobileAiImageDialog {
 	private readonly unsubscribe: () => void;
 	private requestId = '';
 	private pendingImage = '';
+	private disposed = false;
 
 	static buildPayload(description: string): { [key: string]: any } {
 		return {
@@ -37,13 +38,7 @@ class MobileAiImageDialog {
 			title: 'AI 图片',
 			presentation: 'writer',
 			taskType: 'image_generate',
-			onClose: () => {
-				if (this.requestId) {
-					this.bridge.cancel(this.requestId);
-					this.requestId = '';
-				}
-				this.unsubscribe();
-			},
+			onClose: () => this.dispose(),
 		});
 
 		this.description = MobileAiTaskDialogLayout.multilineInput(
@@ -79,11 +74,18 @@ class MobileAiImageDialog {
 	}
 
 	close(): void {
+		this.sheet.close();
+		this.dispose();
+	}
+
+	private dispose(): void {
+		if (this.disposed) return;
+		this.disposed = true;
 		if (this.requestId) {
 			this.bridge.cancel(this.requestId);
+			this.requestId = '';
 		}
 		this.unsubscribe();
-		this.sheet.close();
 	}
 
 	private generate(): void {
@@ -119,12 +121,13 @@ class MobileAiImageDialog {
 			'ai-image.png',
 			this.pendingImage,
 		);
-		if (result.dispatched === 'message' && (window as any).ThisIsTheiOSApp &&
-			(window as any).app?.map?.getDocType?.() === 'presentation') {
+		if (result.dispatched === 'message' && (window as any).ThisIsTheiOSApp) {
 			this.close();
 			return;
 		}
-		this.layout.status.textContent = '已插入文档';
+		this.layout.status.textContent = result.dispatched === 'message'
+			? '已插入文档'
+			: '插入图片失败';
 	}
 
 	private handleMessage(message: NativeBridgeEnvelope): void {
