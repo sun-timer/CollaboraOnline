@@ -16,6 +16,7 @@
 #import <string>
 #import <vector>
 #import <algorithm>
+#import <climits>
 #import <comphelper/solarmutex.hxx>
 
 #import <objc/message.h>
@@ -42,6 +43,8 @@
 #import "Toolbar/PreviewFunctionSheetController.h"
 #import "Toolbar/CommentListSheetController.h"
 #import "Toolbar/DocumentTabsSheetController.h"
+#import "Toolbar/CalcSheetTabMenuController.h"
+#import "Toolbar/CalcSheetRenameController.h"
 #import "DocumentPresentation.h"
 #import "DocumentPresentationLaunchOptions.h"
 #import "RecentDocumentsStore.h"
@@ -109,6 +112,7 @@
     BOOL documentOpeningStateWanted;
     BOOL documentOpeningCanvasMayHide;
     int documentOpeningEpoch;
+    NSMutableSet<NSString *> *calcTextFormatRequests;
 }
 
 - (void)updateToolbarDocumentTitle;
@@ -116,6 +120,7 @@
 - (void)installDocumentWebView;
 - (void)pinDocumentWebViewToChrome;
 - (void)ensureKeyboardFrameObserver;
+- (void)installCalcTouchDiagnosticsIntoWebView;
 - (void)openCurrentDocumentWhenKitIdleFromAttempt:(int)attempt;
 - (void)replaceDocumentInPlaceAtURL:(NSURL *)url;
 - (void)finishReplacingDocumentWithURL:(NSURL *)url;
@@ -2062,6 +2067,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             if (!isClosing) {
                 documentReady = YES;
                 [self injectIOSUserNameIntoWebView:[self currentIOSUserNameForWeb]];
+                [self installCalcTouchDiagnosticsIntoWebView];
                 [self installCaretKeyboardHookIntoWebView];
                 [self maybeAutoGenerateAiContentAfterLoad];
             }
@@ -2076,6 +2082,12 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             return;
         } else if ([message.body hasPrefix:@"SHEET_TAB_POPUP"]) {
             [self presentSheetTabPopupFromMessage:message.body];
+            return;
+        } else if ([message.body hasPrefix:@"CALC_TEXT_FORMAT "]) {
+            [self applyCalcTextFormatMessage:message.body];
+            return;
+        } else if ([message.body hasPrefix:@"CALC_FORMAT_STATE "]) {
+            [self readCalcFormatStateMessage:message.body];
             return;
         } else if ([message.body hasPrefix:@"CALC_CELL_TAP"]
                    || [message.body hasPrefix:@"CALC_CELL_DISPATCH"]
@@ -2287,6 +2299,93 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     });
 }
 
+// Keep touch diagnostics in the iOS Debug shell so device logs do not depend on
+// Safari's console forwarding or require a shared Browser change to investigate.
+- (void)installCalcTouchDiagnosticsIntoWebView
+{
+#if ENABLE_DEBUG == 1
+    NSString *script = [NSString stringWithUTF8String:R"CALCDIAG(
+(function () {
+    if (window.__coolIOSCalcTouchDiagnostics || !window.app || !app.map) return;
+    window.__coolIOSCalcTouchDiagnostics = true;
+    var tap = window.AndroidCalcTap;
+    var menu = window.AndroidCalcCellMenu;
+    var input = window.AndroidSelectionMenu;
+    function active() { return app.map && app.map._docLayer && app.map._docLayer._docType === 'spreadsheet'; }
+    function state() {
+        var last = tap && tap.iosLastCellTap;
+        var down = tap && tap.iosDown;
+        var request = input && input.pendingTextInputRequest;
+        return {
+            edit: app.map.isEditMode(), part: app.map._docLayer._selectedPart,
+            address: app.calc && app.calc.cellAddress && app.calc.cellAddress.toArray(),
+            cursor: !!(app.calc && app.calc.cellCursorVisible),
+            caret: !!(app.file && app.file.textCursor && app.file.textCursor.visible),
+            down: down && {x: down.x, y: down.y, age: Date.now() - down.at, section: down.section.name},
+            last: last && {cell: last.cell, age: Date.now() - last.at},
+            dragging: app.sectionContainer && app.sectionContainer.isDraggingSomething(),
+            menuRequest: !!(menu && menu.iosTapRequest),
+            menuShown: !!(menu && menu.calcMenuShownOnIOS),
+            input: request && {resolved: request.tapResolved, caret: request.caretConfirmed, cell: request.calcCell},
+            socket: window.socket && {ready: window.socket.readyState, inflight: window.socket.msgInflight},
+            focus: document.activeElement && (document.activeElement.id || document.activeElement.tagName)
+        };
+    }
+    function log(stage, extra) {
+        try {
+            if (!active()) return;
+            window.postMobileDebug('calc_touch_diag ' + JSON.stringify({stage: stage, state: state(), extra: extra}));
+        } catch (_) { /* Diagnostics must never interrupt document events. */ }
+    }
+    function wrap(owner, name) {
+        if (!owner || typeof owner[name] !== 'function') return;
+        var original = owner[name];
+        owner[name] = function () {
+            log(name + ':before');
+            try {
+                var result = original.apply(this, arguments);
+                log(name + ':after', {result: result});
+                return result;
+            } catch (error) {
+                log(name + ':error', String(error && (error.stack || error.message) || error));
+                throw error;
+            }
+        };
+    }
+    ['beginIOSTouch', 'endIOSTouch', 'dispatchIOSTapAt', 'resetIOSState', 'onIOSCellCursor'].forEach(function (name) { wrap(tap, name); });
+    ['showForIOSTap', 'tryShow'].forEach(function (name) { wrap(menu, name); });
+    ['beginTextInputRequest', 'resolveTextInputTap', 'onTextCaretUpdate', 'maybeShowKeyboardForTextInput'].forEach(function (name) { wrap(input, name); });
+    ['touchstart', 'touchend', 'touchcancel'].forEach(function (name) {
+        document.addEventListener(name, function (event) {
+            try {
+                if (!active()) return;
+                var touch = event.changedTouches[0];
+                var section = touch && app.sectionContainer.getIOSCalcSectionAtClient(touch.clientX, touch.clientY, event.target);
+                log(name + ':capture', {target: event.target && (event.target.id || event.target.tagName), touches: event.touches.length,
+                    x: touch && touch.clientX, y: touch && touch.clientY, section: section && section.name});
+            } catch (error) { log(name + ':diagnostic_error', String(error)); }
+        }, true);
+    });
+    window.addEventListener('error', function (event) { log('window_error', String(event.error && event.error.stack || event.message)); });
+    window.addEventListener('unhandledrejection', function (event) { log('promise_error', String(event.reason && event.reason.stack || event.reason)); });
+    if (window.socket && typeof window.socket.doSend === 'function') {
+        var receive = window.socket.doSend;
+        window.socket.doSend = function () {
+            try { return receive.apply(this, arguments); }
+            catch (error) {
+                log('receive:error', String(error && (error.stack || error.message) || error));
+                throw error;
+            }
+        };
+    }
+    wrap(app.map, 'focus');
+    log('installed', {tap: !!tap, menu: !!menu, input: !!input, ios: !!window.ThisIsTheiOSApp});
+})();
+)CALCDIAG"];
+    [self sendToolbarJavaScript:script];
+#endif
+}
+
 // Shows the on-screen keyboard when the core reports a text caret appearing in edit mode.
 // This replaces the old manual "呼出键盘" action. Only the hidden -> visible transition
 // calls focus(true), so the keyboard is not re-raised on every cursor message.
@@ -2331,6 +2430,27 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
     bottomToolbarHeightConstraint.constant = bottomToolbarController.preferredHeight;
 }
 
+- (void)publishCalcKeyboardFrame:(NSNotification *)notification hiding:(BOOL)hiding
+{
+    if (isClosing || ![nativeDocumentType isEqualToString:@"spreadsheet"] || !self.webView)
+        return;
+    CGRect endFrame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    CGRect local = self.view.window
+        ? [self.webView convertRect:endFrame fromCoordinateSpace:self.view.window.screen.coordinateSpace]
+        : [self.webView convertRect:endFrame fromView:nil];
+    CGFloat webHeight = CGRectGetHeight(self.webView.bounds);
+    // Measure within the WebView, not the screen: the toolbar/keyboard guide
+    // may already have reduced the WebView's frame.
+    CGFloat overlap = !hiding && CGRectGetHeight(endFrame) >= kOnScreenKeyboardMinHeight
+        && CGRectIntersectsRect(self.webView.bounds, local)
+        ? MAX(0, webHeight - MAX(0, CGRectGetMinY(local))) : 0;
+    CGFloat visibleHeight = MAX(0, webHeight - overlap);
+    NSString *script = [NSString stringWithFormat:
+        @"window.dispatchEvent(new CustomEvent('cool-ios-keyboard-frame',{detail:{visibleHeight:%.3f,keyboardOverlap:%.3f,webViewHeight:%.3f}}));",
+        (double)visibleHeight, (double)overlap, (double)webHeight];
+    [self.webView evaluateJavaScript:script completionHandler:nil];
+}
+
 // Animates the layout pass that lets keyboardLayoutGuide move the bottom toolbar.
 // The toolbar's vertical position comes from the guide, so no constant is set here.
 - (void)animateKeyboardLayoutForNotification:(NSNotification *)notification
@@ -2365,18 +2485,27 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
 - (void)keyboardWillShow:(NSNotification *)notification
 {
     CGRect keyboardFrame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+#if ENABLE_DEBUG == 1
+    if ([nativeDocumentType isEqualToString:@"spreadsheet"])
+        NSLog(@"calc_touch_diag native_keyboard_show height=%.1f", CGRectGetHeight(keyboardFrame));
+#endif
     // An external keyboard shows a short frame; it must not compact the bottom toolbar.
     if (CGRectGetHeight(keyboardFrame) >= kOnScreenKeyboardMinHeight) {
         [self applyKeyboardVisibleState:YES];
     }
-    [self animateKeyboardLayoutForNotification:notification completion:nil];
+    [self publishCalcKeyboardFrame:notification hiding:NO];
+    [self animateKeyboardLayoutForNotification:notification completion:^{
+        [self publishCalcKeyboardFrame:notification hiding:NO];
+    }];
 }
 
 - (void)keyboardWillHide:(NSNotification *)notification
 {
     BOOL keyboardWasVisible = keyboardVisibleForCanvas;
     [self applyKeyboardVisibleState:NO];
+    [self publishCalcKeyboardFrame:notification hiding:YES];
     [self animateKeyboardLayoutForNotification:notification completion:^{
+        [self publishCalcKeyboardFrame:notification hiding:YES];
         if (keyboardWasVisible) {
             [self recoverCalcCanvasAfterKeyboardHidden];
         }
@@ -2407,11 +2536,15 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
         if (!keyboardTransitionActive && keyboardVisibleForCanvas) {
             [self applyKeyboardVisibleState:NO];
         }
+        [self publishCalcKeyboardFrame:notification hiding:YES];
         return;
     }
     if (!keyboardVisibleForCanvas)
         [self applyKeyboardVisibleState:YES];
-    [self animateKeyboardLayoutForNotification:notification completion:nil];
+    [self publishCalcKeyboardFrame:notification hiding:NO];
+    [self animateKeyboardLayoutForNotification:notification completion:^{
+        [self publishCalcKeyboardFrame:notification hiding:NO];
+    }];
 }
 
 - (void)viewSafeAreaInsetsDidChange
@@ -3168,6 +3301,179 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
      @"if(window.__coolMobileToolbarColorPicker){window.__coolMobileToolbarColorPicker.open('background');}"];
 }
 
+- (void)replyCalcTextFormat:(NSDictionary *)payload success:(BOOL)success
+                   changed:(NSInteger)changed message:(NSString *)message
+{
+    if (isClosing || !self.webView) return;
+    NSDictionary *result = @{
+        @"requestId": [payload[@"requestId"] isKindOfClass:NSString.class] ? payload[@"requestId"] : @"",
+        @"documentSessionId": [payload[@"documentSessionId"] isKindOfClass:NSString.class] ? payload[@"documentSessionId"] : @"",
+        @"success": @(success), @"changed": @(changed), @"message": message ?: @""
+    };
+    NSData *data = [NSJSONSerialization dataWithJSONObject:result options:0 error:nil];
+    NSString *json = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+    if (json) [self.webView evaluateJavaScript:[NSString stringWithFormat:
+        @"if(window.CalcTextFormatBridge){window.CalcTextFormatBridge.onResult(%@);}", json]
+        completionHandler:nil];
+}
+
+- (void)applyCalcTextFormatMessage:(NSString *)message
+{
+    NSData *data = [[message substringFromIndex:[@"CALC_TEXT_FORMAT " length]] dataUsingEncoding:NSUTF8StringEncoding];
+    id decoded = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if (![decoded isKindOfClass:NSDictionary.class]) return;
+    NSDictionary *payload = decoded;
+    NSString *requestId = [payload[@"requestId"] isKindOfClass:NSString.class] ? payload[@"requestId"] : nil;
+    NSString *session = [payload[@"documentSessionId"] isKindOfClass:NSString.class] ? payload[@"documentSessionId"] : nil;
+    NSString *operation = [payload[@"operation"] isKindOfClass:NSString.class] ? payload[@"operation"] : nil;
+    NSDictionary *range = [payload[@"range"] isKindOfClass:NSDictionary.class] ? payload[@"range"] : nil;
+    BOOL valid = requestId.length > 0 && requestId.length <= 160 && session.length > 0
+        && [@[@"highlight", @"superscript", @"subscript"] containsObject:operation ?: @""];
+    NSArray<NSString *> *rangeKeys = @[@"sheet", @"col1", @"row1", @"col2", @"row2"];
+    for (NSString *key in rangeKeys) {
+        id number = range[key];
+        valid = valid && [number isKindOfClass:NSNumber.class]
+            && [number doubleValue] >= 0 && [number doubleValue] <= INT_MAX
+            && [number doubleValue] == (double)[number intValue];
+    }
+    id rawViewId = payload[@"viewId"];
+    id rawPart = payload[@"part"];
+    id rawValue = payload[@"value"];
+    valid = valid && [rawViewId isKindOfClass:NSNumber.class] && [rawViewId doubleValue] >= 0
+        && [rawViewId doubleValue] <= INT_MAX && [rawViewId doubleValue] == (double)[rawViewId intValue]
+        && [rawPart isKindOfClass:NSNumber.class] && [rawPart doubleValue] == (double)[rawPart intValue]
+        && [rawPart intValue] == [range[@"sheet"] intValue]
+        && [rawValue isKindOfClass:NSNumber.class]
+        && [rawValue doubleValue] >= -1 && [rawValue doubleValue] <= 0xffffff
+        && [rawValue doubleValue] == (double)[rawValue intValue]
+        && [range[@"col2"] intValue] >= [range[@"col1"] intValue]
+        && [range[@"row2"] intValue] >= [range[@"row1"] intValue];
+    int value = [rawValue isKindOfClass:NSNumber.class] ? [rawValue intValue] : 0;
+    valid = valid && ([operation isEqualToString:@"highlight"] ? value >= -1 && value <= 0xffffff : value == 0 || value == 1);
+    if (!valid || isClosing || !nativeEditMode || ![nativeDocumentType isEqualToString:@"spreadsheet"]) {
+        [self replyCalcTextFormat:payload success:NO changed:0 message:@"请在编辑模式选择连续的文字单元格"];
+        return;
+    }
+    if (!calcTextFormatRequests) calcTextFormatRequests = [NSMutableSet set];
+    if ([calcTextFormatRequests containsObject:requestId]) return;
+    [calcTextFormatRequests addObject:requestId];
+    if (calcTextFormatRequests.count > 128) {
+        [calcTextFormatRequests removeAllObjects];
+        [calcTextFormatRequests addObject:requestId];
+    }
+    lok::Document *expectedDocument = [self loKitDocumentOrNull];
+    if (!expectedDocument) {
+        [self replyCalcTextFormat:payload success:NO changed:0 message:@"文档尚未准备好"];
+        return;
+    }
+    // The browser session changes whenever the document WebView is replaced.
+    // Verify it before entering the model; then the helper verifies the actual
+    // live view and selected range again under SolarMutex.
+    __weak DocumentViewController *weakSelf = self;
+    [self.webView evaluateJavaScript:@"window.NativeBridge ? window.NativeBridge.getDocumentSessionId() : null"
+        completionHandler:^(id currentSession, NSError *error) {
+        DocumentViewController *owner = weakSelf;
+        if (!owner || owner->isClosing) return;
+        if (error || ![currentSession isKindOfClass:NSString.class] || ![session isEqualToString:currentSession]
+            || !owner->nativeEditMode || expectedDocument != [owner loKitDocumentOrNull]) {
+            [owner replyCalcTextFormat:payload success:NO changed:0 message:@"文档或选区已变化，请重试"];
+            return;
+        }
+        IOSCalcTextRange expected = {
+            [range[@"sheet"] intValue], [range[@"col1"] intValue], [range[@"row1"] intValue],
+            [range[@"col2"] intValue], [range[@"row2"] intValue]
+        };
+        IOSCalcTextFormatResult result = applyIOSCalcTextFormat(expectedDocument, [rawViewId intValue], expected,
+            operation.UTF8String, value, ![operation isEqualToString:@"highlight"] && [payload[@"toggle"] isEqual:@YES]);
+        if (result.changed > 0)
+            [owner->topToolbarController recordUndoableNativeEdit:@"calc_text_format"];
+        [owner replyCalcTextFormat:payload success:result.success changed:result.changed
+            message:[NSString stringWithUTF8String:result.message]];
+    }];
+}
+
+- (void)replyCalcFormatState:(NSDictionary *)payload success:(BOOL)success
+                       states:(NSDictionary *)states error:(NSString *)errorMessage
+{
+    if (isClosing || !self.webView) return;
+    NSString *requestId = [payload[@"requestId"] isKindOfClass:NSString.class] ? payload[@"requestId"] : nil;
+    NSString *session = [payload[@"documentSessionId"] isKindOfClass:NSString.class]
+        ? payload[@"documentSessionId"] : nil;
+    NSDictionary *range = [payload[@"range"] isKindOfClass:NSDictionary.class] ? payload[@"range"] : nil;
+    id viewId = payload[@"viewId"];
+    id part = payload[@"part"];
+    if (!requestId.length || !session.length || !range
+        || ![viewId isKindOfClass:NSNumber.class] || ![part isKindOfClass:NSNumber.class]) return;
+    NSDictionary *result = @{
+        @"requestId": requestId, @"documentSessionId": session,
+        @"success": @(success), @"states": states ?: @{}, @"error": errorMessage ?: @"",
+        @"viewId": viewId, @"part": part, @"range": range
+    };
+    NSData *resultData = [NSJSONSerialization dataWithJSONObject:result options:0 error:nil];
+    NSString *json = resultData ? [[NSString alloc] initWithData:resultData encoding:NSUTF8StringEncoding] : nil;
+    if (json) [self.webView evaluateJavaScript:[NSString stringWithFormat:
+        @"if(window.CalcFormatStateBridge){window.CalcFormatStateBridge.onResult(%@);}", json]
+        completionHandler:nil];
+}
+
+- (void)readCalcFormatStateMessage:(NSString *)message
+{
+    NSData *data = [[message substringFromIndex:[@"CALC_FORMAT_STATE " length]] dataUsingEncoding:NSUTF8StringEncoding];
+    id decoded = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if (![decoded isKindOfClass:NSDictionary.class]) return;
+    NSDictionary *payload = decoded;
+    NSString *requestId = [payload[@"requestId"] isKindOfClass:NSString.class] ? payload[@"requestId"] : nil;
+    NSString *session = [payload[@"documentSessionId"] isKindOfClass:NSString.class] ? payload[@"documentSessionId"] : nil;
+    NSDictionary *range = [payload[@"range"] isKindOfClass:NSDictionary.class] ? payload[@"range"] : nil;
+    NSArray<NSString *> *rangeKeys = @[@"sheet", @"col1", @"row1", @"col2", @"row2"];
+    BOOL valid = requestId.length > 0 && requestId.length <= 160 && session.length > 0;
+    for (NSString *key in rangeKeys) {
+        id number = range[key];
+        valid = valid && [number isKindOfClass:NSNumber.class]
+            && [number doubleValue] >= 0 && [number doubleValue] <= INT_MAX
+            && [number doubleValue] == (double)[number intValue];
+    }
+    id rawViewId = payload[@"viewId"];
+    id rawPart = payload[@"part"];
+    valid = valid && [rawViewId isKindOfClass:NSNumber.class] && [rawViewId doubleValue] >= 0
+        && [rawViewId doubleValue] <= INT_MAX && [rawViewId doubleValue] == (double)[rawViewId intValue]
+        && [rawPart isKindOfClass:NSNumber.class] && [rawPart doubleValue] == (double)[rawPart intValue]
+        && [rawPart intValue] == [range[@"sheet"] intValue]
+        && [range[@"col2"] intValue] >= [range[@"col1"] intValue]
+        && [range[@"row2"] intValue] >= [range[@"row1"] intValue];
+    if (!valid || isClosing || !nativeEditMode || ![nativeDocumentType isEqualToString:@"spreadsheet"]) {
+        [self replyCalcFormatState:payload success:NO states:@{} error:@"invalid-request-or-editor-state"];
+        return;
+    }
+    lok::Document *expectedDocument = [self loKitDocumentOrNull];
+    if (!expectedDocument) {
+        [self replyCalcFormatState:payload success:NO states:@{} error:@"document-unavailable"];
+        return;
+    }
+    __weak DocumentViewController *weakSelf = self;
+    [self.webView evaluateJavaScript:@"window.NativeBridge ? window.NativeBridge.getDocumentSessionId() : null"
+        completionHandler:^(id currentSession, NSError *error) {
+        DocumentViewController *owner = weakSelf;
+        if (!owner || owner->isClosing) return;
+        if (error || ![currentSession isKindOfClass:NSString.class] || ![session isEqualToString:currentSession]
+            || !owner->nativeEditMode || expectedDocument != [owner loKitDocumentOrNull]) {
+            [owner replyCalcFormatState:payload success:NO states:@{} error:@"document-session-changed"];
+            return;
+        }
+        IOSCalcTextRange expected = {
+            [range[@"sheet"] intValue], [range[@"col1"] intValue], [range[@"row1"] intValue],
+            [range[@"col2"] intValue], [range[@"row2"] intValue]
+        };
+        IOSCalcFormatStates states = getIOSCalcFormatStates(expectedDocument, [rawViewId intValue], expected);
+        NSMutableDictionary *values = [NSMutableDictionary dictionary];
+        if (states.hasNumberFormat) values[@".uno:NumberFormat"] = [NSString stringWithUTF8String:states.numberFormat.c_str()];
+        if (states.hasRotation) values[@".uno:AlignmentRotation"] = @(states.rotation);
+        if (states.hasStacked) values[@".uno:AlignmentStacked"] = @(states.stacked);
+        [owner replyCalcFormatState:payload success:states.success states:values
+            error:states.success ? @"" : @"selection-or-state-query-failed"];
+    }];
+}
+
 - (void)presentSheetTabPopupFromMessage:(NSString *)message
 {
     static NSString *const showPrefix = @"SHEET_TAB_POPUP show ";
@@ -3196,6 +3502,26 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
         return;
     }
 
+    if (![payload[@"longPress"] boolValue]) {
+        if (isClosing || self.presentedViewController) return;
+        __weak DocumentViewController *weakSelf = self;
+        CalcSheetTabMenuController *menu = [[CalcSheetTabMenuController alloc]
+            initWithTabIndex:tabIndex sheetName:sheetName isProtected:isProtected canDelete:canDelete
+            anchorRect:CGRectMake(anchorX, anchorY, 1, MAX(1, [payload[@"anchorBottom"] doubleValue] - anchorY))
+            onRename:^(NSInteger index, NSString *name) {
+                [weakSelf promptRenameSheet:index currentName:name];
+            } onCopy:^(NSInteger index) {
+                DocumentViewController *owner = weakSelf;
+                if (!owner || owner->isClosing) return;
+                NSString *body = [NSString stringWithFormat:
+                    @"if(window.app&&app.socket){app.socket.sendMessage('uno .uno:Move?Copy:bool=true&UseCurrentDocument:bool=true&FromContextMenu:bool=true&ContextMenuIndex=%ld&Index=%ld');}",
+                    (long)index, (long)(index + 2)];
+                [owner runSheetActionAfterEdit:body];
+            } onDelete:nil];
+        [menu presentFromViewController:self sourceView:self.webView animated:YES];
+        return;
+    }
+
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:sheetName
                                                                    message:nil
                                                             preferredStyle:UIAlertControllerStyleActionSheet];
@@ -3203,7 +3529,9 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
         [sheet addAction:[UIAlertAction actionWithTitle:@"重命名"
                                                    style:UIAlertActionStyleDefault
                                                  handler:^(UIAlertAction *action) {
-            [self promptRenameSheet:tabIndex currentName:sheetName];
+            [self dismissViewControllerAnimated:YES completion:^{
+                [self promptRenameSheet:tabIndex currentName:sheetName];
+            }];
         }]];
     }
     [sheet addAction:[UIAlertAction actionWithTitle:@"复制"
@@ -3246,37 +3574,35 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
 
 - (void)promptRenameSheet:(NSInteger)tabIndex currentName:(NSString *)currentName
 {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"重命名工作表"
-                                                                   message:nil
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-        [KeyboardAccessory installOnInput:textField];
-        textField.text = currentName;
-        textField.clearButtonMode = UITextFieldViewModeWhileEditing;
-    }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"确定"
-                                               style:UIAlertActionStyleDefault
-                                             handler:^(UIAlertAction *action) {
-        NSString *newName = [alert.textFields.firstObject.text stringByTrimmingCharactersInSet:
-                             [NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if (newName.length == 0) {
-            [self presentSheetNotice:@"请输入工作表名称"];
+    if (isClosing || self.presentedViewController || ![nativeDocumentType isEqualToString:@"spreadsheet"]) return;
+    CODocument *expectedDocument = self.document;
+    int generation = documentOpenGeneration;
+    __weak DocumentViewController *weakSelf = self;
+    [self.webView evaluateJavaScript:@"(function(){var map=window.app&&window.app.map;return map&&map._docLayer&&map._docLayer._partNames;})()"
+        completionHandler:^(id result, NSError *error) {
+        DocumentViewController *owner = weakSelf;
+        if (!owner || owner->isClosing || owner.document != expectedDocument || owner->documentOpenGeneration != generation || owner.presentedViewController) return;
+        if (error || ![result isKindOfClass:NSArray.class] || tabIndex < 0 || tabIndex >= [(NSArray *)result count]
+            || ![result[(NSUInteger)tabIndex] isEqual:currentName]) {
+            [owner presentSheetNotice:@"工作表已变化，请重新选择"];
             return;
         }
-        NSData *nameData = [NSJSONSerialization dataWithJSONObject:@[newName] options:0 error:nil];
-        NSString *arrayJson = nameData
-            ? [[NSString alloc] initWithData:nameData encoding:NSUTF8StringEncoding]
-            : @"[\"\"]";
-        NSString *nameJson = (arrayJson.length >= 2)
-            ? [arrayJson substringWithRange:NSMakeRange(1, arrayJson.length - 2)]
-            : @"\"\"";
-        NSString *body = [NSString stringWithFormat:
-            @"if(typeof map.renamePage==='function'){map.renamePage(%@,%ld);}",
-            nameJson, (long)tabIndex];
-        [self runSheetActionAfterEdit:body];
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
+        NSArray<NSString *> *names = result;
+        CalcSheetRenameController *rename = [[CalcSheetRenameController alloc]
+            initWithCurrentName:currentName existingNames:names onConfirm:^(NSString *newName) {
+            DocumentViewController *controller = weakSelf;
+            if (!controller || controller->isClosing || controller.document != expectedDocument || controller->documentOpenGeneration != generation) return;
+            NSData *data = [NSJSONSerialization dataWithJSONObject:@[currentName, newName] options:0 error:nil];
+            NSString *json = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+            if (!json) return;
+            NSString *body = [NSString stringWithFormat:
+                @"var names=%@,parts=map._docLayer&&map._docLayer._partNames;"
+                 "if(parts&&parts[%ld]===names[0]&&typeof map.renamePage==='function'){map.renamePage(names[1],%ld);}",
+                json, (long)tabIndex, (long)tabIndex];
+            [controller runSheetActionAfterEdit:body];
+        }];
+        [owner presentViewController:rename animated:YES completion:nil];
+    }];
 }
 
 - (void)confirmDeleteSheet:(NSInteger)tabIndex name:(NSString *)name

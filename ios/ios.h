@@ -11,11 +11,36 @@
 
 #define LIBO_INTERNAL_ONLY
 #include <LibreOfficeKit/LibreOfficeKit.hxx>
+#include <string>
 
 extern const char *user_name;
 void refreshIOSUserName();
 // Update only a validated live document view; historical comments are untouched.
 bool setIOSViewAuthor(lok::Document *document, int viewId, const char *name);
+
+// Narrow Calc text-format API. Coordinates are zero-based and must match the
+// current selection; this never converts numeric/formula cells into text.
+struct IOSCalcTextRange {
+    int sheet, col1, row1, col2, row2;
+};
+struct IOSCalcTextFormatResult {
+    bool success = false;
+    int changed = 0;
+    const char *message = "未能修改文字格式";
+};
+IOSCalcTextFormatResult applyIOSCalcTextFormat(lok::Document *document, int viewId,
+    const IOSCalcTextRange &range, const char *operation, int value, bool toggle);
+struct IOSCalcFormatStates {
+    bool success = false;
+    std::string numberFormat;
+    int rotation = 0;
+    bool stacked = false;
+    bool hasNumberFormat = false;
+    bool hasRotation = false;
+    bool hasStacked = false;
+};
+IOSCalcFormatStates getIOSCalcFormatStates(lok::Document *document, int viewId,
+    const IOSCalcTextRange &range);
 #ifdef __OBJC__
 @class NSString;
 // Settings nickname (USER_PROFILE_NAME). Never a LOK LocalUser#N placeholder.

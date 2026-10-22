@@ -3,6 +3,11 @@
 set -eu
 browser_dir="$(CDPATH= cd -- "$(dirname -- "$0")/../../browser" && pwd)"
 export PATH="/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}"
+# Local toolchain installs are also used on Macs without Homebrew. Automake
+# is needed when the Browser source list in Makefile.am has changed.
+if [ -d "$HOME/tools/autotools/bin" ]; then
+    export PATH="$HOME/tools/autotools/bin:$PATH"
+fi
 node_binary="${NODE_BINARY:-}"
 if [ -z "$node_binary" ] && [ -f "$browser_dir/Makefile" ]; then
     node_binary=$(sed -n 's/^NODE = //p' "$browser_dir/Makefile" | head -n 1)

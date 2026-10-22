@@ -170,6 +170,11 @@ static NSString *ImpressTrimmed(NSString *text) {
     dismissTap.delegate = self;
     [self.view addGestureRecognizer:dismissTap];
 
+    // A newly presented Calc sheet always starts in blank-sheet mode.
+    if (self.docKind == CreateFileDocKindCalc) {
+        self.aiSwitchOn = NO;
+    }
+
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(keyboardWillChangeFrame:)
                                                  name:UIKeyboardWillChangeFrameNotification
@@ -369,12 +374,13 @@ static NSString *ImpressTrimmed(NSString *text) {
 
 - (void)toggleAiSwitch {
     self.aiSwitchOn = !self.aiSwitchOn;
-    self.aiPromptField.hidden = !self.aiSwitchOn;
-    self.aiPromptHeight.constant = self.aiSwitchOn ? 44 : 0;
     if (self.aiSwitchOn && self.docKind == CreateFileDocKindCalc) {
         self.aiPromptField.placeholder = @"描述你想生成的表格内容，例如：2024年各季度销售数据表";
     } else if (self.aiSwitchOn) {
         self.aiPromptField.placeholder = @"描述你想生成的文档内容...";
+    }
+    if (!self.aiSwitchOn && self.docKind == CreateFileDocKindCalc) {
+        [self.aiPromptField resignFirstResponder];
     }
     [self updateAiSwitchUi];
 }
@@ -382,6 +388,13 @@ static NSString *ImpressTrimmed(NSString *text) {
 - (void)updateAiSwitchUi {
     self.aiSwitchThumbLeading.active = !self.aiSwitchOn;
     self.aiSwitchThumbTrailing.active = self.aiSwitchOn;
+    self.aiPromptField.hidden = !self.aiSwitchOn;
+    self.aiPromptHeight.constant = self.aiSwitchOn ? 44 : 0;
+    if (self.docKind == CreateFileDocKindCalc) {
+        self.aiSwitchTrack.backgroundColor = self.aiSwitchOn
+            ? CreateFileButtonColorForKind(CreateFileDocKindCalc)
+            : [UIColor colorWithRed:0xCB / 255.0 green:0xD1 / 255.0 blue:0xD7 / 255.0 alpha:1];
+    }
     [self.view layoutIfNeeded];
 }
 

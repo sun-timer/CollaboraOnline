@@ -64,7 +64,7 @@
       <EnvironmentVariables>
          <EnvironmentVariable
             key = "COOL_LOGLEVEL"
-            value = "info"
+            value = "information"
             isEnabled = "YES">
          </EnvironmentVariable>
       </EnvironmentVariables>

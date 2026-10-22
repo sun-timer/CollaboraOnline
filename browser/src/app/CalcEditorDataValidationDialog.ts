@@ -1,5 +1,5 @@
 /*
- * Calc data validation inline subpage (Android CalcDataValidationController parity).
+ * iOS Calc data validation subpage backed by one Core dialog transaction.
  */
 
 type CalcValidationTab = 'criteria' | 'inputHelp' | 'errorAlert';
@@ -10,8 +10,16 @@ class CalcEditorDataValidationDialog {
 	private readonly host: WriterEditorInlineSubpageHost | null | undefined;
 	private readonly state: CalcEditorValidationState;
 	private activeTab: CalcValidationTab = 'criteria';
-	private loadRequested = false;
-	private optionPicker: WriterEditorChooseDialog | null = null;
+	private readonly root: HTMLDivElement;
+	private readonly confirmButton: HTMLButtonElement;
+	private readonly status: HTMLDivElement;
+	private context: CalcEditorDialogContext | null = null;
+	private observer: MutationObserver | null = null;
+	private cancelLoad: (() => void) | null = null;
+	private cancelMacroLoad: (() => void) | null = null;
+	private generation = 0;
+	private ready = false;
+	private optionPicker: CalcEditorValidationOptionPicker | null = null;
 
 	private segmentButtons: HTMLButtonElement[] = [];
 	private criteriaBody!: HTMLDivElement;
@@ -53,8 +61,14 @@ class CalcEditorDataValidationDialog {
 		this.state = calcEditorValidationDefaultState();
 
 		const root = document.createElement('div');
+		this.root = root;
 		root.className = 'writer-function-calc-validation';
+		root.dataset.iosCalcDialog = 'validation';
 
+		this.status = document.createElement('div');
+		this.status.className = 'writer-function-calc-validation__status';
+		this.status.setAttribute('role', 'status');
+		root.appendChild(this.status);
 		root.appendChild(this.buildSegmentControl());
 
 		const bodies = document.createElement('div');
@@ -68,6 +82,7 @@ class CalcEditorDataValidationDialog {
 		root.appendChild(bodies);
 
 		const confirm = document.createElement('button');
+		this.confirmButton = confirm;
 		confirm.type = 'button';
 		confirm.className = 'writer-function-calc-validation__confirm';
 		confirm.textContent = '确定';
@@ -82,36 +97,83 @@ class CalcEditorDataValidationDialog {
 	}
 
 	open(): void {
+		this.context = calcEditorDialogContext();
+		if (!this.context || this.root.isConnected) return;
+		const generation = ++this.generation;
+		this.ready = false;
+		this.setBusy(true);
+		this.status.textContent = '正在读取数据有效性…';
+		this.status.hidden = false;
 		this.subpage.open();
-		if (!this.loadRequested) {
-			this.loadRequested = true;
-			window.setTimeout(() => this.requestLoadCurrentState(), 120);
-		}
-	}
-
-	close(): void {
-		if (this.optionPicker) {
-			this.optionPicker.close();
-			this.optionPicker = null;
-		}
-		if (this.macroPicker) {
-			this.macroPicker.close();
-			this.macroPicker = null;
-		}
-		this.subpage.close();
-	}
-
-	private requestLoadCurrentState(): void {
-		CalcEditorValidationBridge.loadCurrent(this.state, this.sendUno, () => {
+		this.observer = new MutationObserver(() => {
+			if (!calcEditorSameDialogContext(this.context)) {
+				this.cleanup();
+				return;
+			}
+			if (this.root.isConnected) {
+				if (this.optionPicker && !this.optionPicker.isOpen()) this.optionPicker = null;
+				if (this.macroPicker && !this.macroPicker.isOpen()) {
+					this.cancelMacroLoad?.();
+					this.cancelMacroLoad = null;
+					this.macroPicker = null;
+				}
+			}
+			if (!this.root.isConnected && !this.optionPicker?.isOpen() && !this.macroPicker?.isOpen()) {
+				this.cleanup();
+			}
+		});
+		this.observer.observe(document.body, { childList: true, subtree: true });
+		this.cancelLoad = CalcEditorValidationBridge.loadCurrent(this.state, this.sendUno, (loaded) => {
+			if (generation !== this.generation || !calcEditorSameDialogContext(this.context)) return;
+			this.ready = loaded;
+			this.setBusy(!loaded);
+			this.status.textContent = loaded ? '' : '读取失败，请返回后重试';
+			this.status.hidden = loaded;
+			if (!loaded) return;
 			this.applyStateToInputs();
 			this.refreshDynamicFields();
 			this.refreshValueLabels();
 		});
 	}
 
+	close(): void {
+		this.optionPicker?.close();
+		this.optionPicker = null;
+		this.macroPicker?.close();
+		this.macroPicker = null;
+		if (this.root.isConnected) this.subpage.close();
+		this.cleanup();
+	}
+
+	private cleanup(): void {
+		++this.generation;
+		this.ready = false;
+		this.observer?.disconnect();
+		this.observer = null;
+		this.cancelLoad?.();
+		this.cancelLoad = null;
+		this.cancelMacroLoad?.();
+		this.cancelMacroLoad = null;
+		this.context = null;
+	}
+
+	private setBusy(busy: boolean): void {
+		this.root.setAttribute('aria-busy', String(busy));
+		this.root.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLTextAreaElement>(
+			'button, input, textarea',
+		).forEach((control) => { control.disabled = busy; });
+		this.confirmButton.disabled = busy;
+	}
+
 	private onConfirm(): void {
+		if (!this.ready || !calcEditorSameDialogContext(this.context)) return;
 		this.syncStateFromInputs();
-		CalcEditorValidationBridge.apply(this.state, this.sendUno);
+		if (!CalcEditorValidationBridge.apply(this.state, this.sendUno)) {
+			this.status.hidden = false;
+			this.status.textContent = '原数据窗口已关闭，请返回后重试';
+			return;
+		}
+		this.cancelLoad = null;
 		this.close();
 	}
 
@@ -174,9 +236,9 @@ class CalcEditorDataValidationDialog {
 				tabs[i] === tab,
 			);
 		});
-		this.criteriaBody.hidden = tab !== 'criteria';
-		this.inputHelpBody.hidden = tab !== 'inputHelp';
-		this.errorAlertBody.hidden = tab !== 'errorAlert';
+		[this.criteriaBody, this.inputHelpBody, this.errorAlertBody].forEach((body, index) => {
+			this.setVisible(body, tabs[index] === tab);
+		});
 	}
 
 	private buildCriteriaBody(): HTMLDivElement {
@@ -238,6 +300,12 @@ class CalcEditorDataValidationDialog {
 			this.checkboxRow('提供下拉列表', () => this.state.showDropdownList, (v) => {
 				this.state.showDropdownList = v;
 			}),
+		);
+		this.rangeExtraSection.appendChild(
+			this.checkboxRow('升序排序', () => this.state.sortAscending, (v) => { this.state.sortAscending = v; }),
+		);
+		this.rangeExtraSection.appendChild(
+			this.checkboxRow('区分大小写', () => this.state.caseSensitive, (v) => { this.state.caseSensitive = v; }),
 		);
 		scroll.appendChild(this.rangeExtraSection);
 
@@ -331,6 +399,7 @@ class CalcEditorDataValidationDialog {
 	}
 
 	private openOptionPicker(kind: 'allow' | 'data' | 'errorAction'): void {
+		if (!this.ready || !calcEditorSameDialogContext(this.context)) return;
 		let title = '';
 		let options: WriterChooseOption[] = [];
 		let selected = '';
@@ -360,10 +429,11 @@ class CalcEditorDataValidationDialog {
 				this.state.errorActionIndex,
 			).label;
 		}
-		this.optionPicker = new WriterEditorChooseDialog(
+		this.optionPicker = new CalcEditorValidationOptionPicker(
 			title,
 			options,
 			(option) => {
+				if (!this.ready || !calcEditorSameDialogContext(this.context)) return;
 				const index = Number.parseInt(option.value, 10);
 				if (kind === 'allow') {
 					this.state.allowIndex = index;
@@ -402,10 +472,13 @@ class CalcEditorDataValidationDialog {
 		const isRange = CalcEditorValidationCatalog.isRangeAllow(allow);
 		const isCustom = CalcEditorValidationCatalog.isCustomAllow(allow);
 
-		const showDataValue = !isList && !isRange && !isCustom;
-		this.allowBlankRow.hidden = !(isAny || showDataValue || isCustom);
+		const showDataValue = CalcEditorValidationCatalog.needsDataOperator(allow);
+		this.allowBlankRow.hidden = isAny;
 		this.dataSection.hidden = !showDataValue;
-		this.valueSection.hidden = !showDataValue;
+		this.valueSection.hidden = !(showDataValue || isRange);
+		const valueLabel = this.valueSection.querySelector('.writer-function-calc-validation__field-label');
+		if (valueLabel) valueLabel.textContent = isRange ? '来源' :
+			CalcEditorValidationCatalog.valueLabel(this.state.dataIndex);
 		this.maxSection.hidden =
 			!showDataValue ||
 			!CalcEditorValidationCatalog.needsBetweenValues(this.state.dataIndex);
@@ -421,7 +494,17 @@ class CalcEditorDataValidationDialog {
 		this.macroBrowseButton.hidden = !macroAction || !showError;
 		this.macroHint.hidden = !macroAction || !showError || !this.state.macroUrl;
 		this.macroHint.textContent = this.macroHint.hidden ? '' : this.macroLabel();
-		this.errorContentSection.hidden = !showError || silentReject;
+		this.errorContentSection.hidden = !showError || silentReject || macroAction;
+		[this.allowBlankRow, this.dataSection, this.valueSection, this.maxSection,
+			this.listSection, this.listExtraSection, this.rangeExtraSection, this.customExtraSection,
+			this.actionSection, this.macroBrowseButton, this.macroHint, this.errorContentSection,
+		].forEach((element) => this.setVisible(element, !element.hidden));
+		this.checkboxSyncs.forEach((sync) => sync());
+	}
+
+	private setVisible(element: HTMLElement, visible: boolean): void {
+		element.hidden = !visible;
+		element.style.display = visible ? '' : 'none';
 	}
 
 	private macroLabel(): string {
@@ -434,6 +517,9 @@ class CalcEditorDataValidationDialog {
 	}
 
 	private openMacroPicker(): void {
+		if (!this.ready || !calcEditorSameDialogContext(this.context)) return;
+		this.cancelMacroLoad?.();
+		this.cancelMacroLoad = null;
 		if (this.optionPicker) {
 			this.optionPicker.close();
 			this.optionPicker = null;
@@ -445,6 +531,9 @@ class CalcEditorDataValidationDialog {
 			this.host,
 			this.state.macroUrl,
 			(item) => {
+				if (!this.ready || !calcEditorSameDialogContext(this.context)) return;
+				this.cancelMacroLoad?.();
+				this.cancelMacroLoad = null;
 				this.state.macroUrl = item.uri;
 				this.macroDisplayName = item.module
 					? item.module + '.' + item.name
@@ -454,9 +543,12 @@ class CalcEditorDataValidationDialog {
 			},
 		);
 		this.macroPicker.open();
-		CalcEditorValidationBridge.loadMacroCatalog(this.sendUno, (items) => {
-			if (this.macroPicker) {
-				this.macroPicker.setCatalog(items);
+		const picker = this.macroPicker;
+		const generation = this.generation;
+		this.cancelMacroLoad = CalcEditorValidationBridge.loadMacroCatalog(this.sendUno, (items) => {
+			if (this.macroPicker === picker && picker.isOpen() && generation === this.generation &&
+				calcEditorSameDialogContext(this.context)) {
+				picker.setCatalog(items);
 			}
 		});
 	}
@@ -467,10 +559,11 @@ class CalcEditorDataValidationDialog {
 		onClick: () => void,
 	): HTMLDivElement {
 		const wrap = document.createElement('div');
-		wrap.className = 'writer-function-calc-validation__field-block';
+		wrap.className = 'writer-function-calc-validation__field-block writer-function-calc-validation__picker-field';
 		wrap.appendChild(this.sectionLabel(label));
 		const row = document.createElement('button');
 		row.type = 'button';
+		row.setAttribute('aria-label', label);
 		row.className = 'writer-function-calc-validation__picker';
 		valueEl.className = 'writer-function-calc-validation__picker-value';
 		const chevron = document.createElement('span');
@@ -516,6 +609,7 @@ class CalcEditorDataValidationDialog {
 		const lab = document.createElement('div');
 		lab.className = 'writer-function-calc-validation__field-label';
 		lab.textContent = label;
+		control.setAttribute('aria-label', label);
 		wrap.appendChild(lab);
 		wrap.appendChild(control);
 		return wrap;
@@ -549,7 +643,7 @@ class CalcEditorDataValidationDialog {
 		};
 		row.onclick = () => {
 			setValue(!getValue());
-			paint();
+			this.checkboxSyncs.forEach((sync) => sync());
 		};
 		paint();
 		this.checkboxSyncs.push(paint);
@@ -557,6 +651,45 @@ class CalcEditorDataValidationDialog {
 		row.appendChild(mark);
 		return row;
 	}
+}
+
+/** Owns its body so header-back cancellation is visible to the parent lifetime. */
+class CalcEditorValidationOptionPicker {
+	private readonly root: HTMLDivElement;
+	private readonly subpage: { open(): void; close(): void };
+
+	constructor(title: string, options: WriterChooseOption[], onSelect: (option: WriterChooseOption) => void,
+		selected: string, host?: WriterEditorInlineSubpageHost | null) {
+		this.root = document.createElement('div');
+		this.root.className = 'writer-editor-option-list writer-function-calc-validation__options';
+		this.root.dataset.iosCalcDialog = 'validation';
+		options.forEach((option) => {
+			const row = document.createElement('button');
+			row.type = 'button';
+			row.className = 'writer-editor-option-row';
+			row.setAttribute('aria-pressed', String(option.label === selected || option.value === selected));
+			if (option.label === selected || option.value === selected) row.classList.add('writer-editor-option-row--selected');
+			const label = document.createElement('span');
+			label.className = 'writer-editor-option-row__label';
+			label.textContent = option.label;
+			const mark = document.createElement('span');
+			mark.className = 'writer-editor-option-row__check';
+			mark.textContent = '✓';
+			mark.setAttribute('aria-hidden', 'true');
+			row.append(label, mark);
+			row.onclick = () => window.setTimeout(() => {
+				if (!this.isOpen()) return;
+				this.close();
+				onSelect(option);
+			}, 0);
+			this.root.appendChild(row);
+		});
+		this.subpage = writerEditorMountSubpageDialog(title, this.root, host);
+	}
+
+	isOpen(): boolean { return this.root.isConnected; }
+	open(): void { this.subpage.open(); }
+	close(): void { if (this.isOpen()) this.subpage.close(); }
 }
 
 /** 宏选择器 subpage (Android CalcValidationMacroPickerController). */
@@ -586,6 +719,7 @@ class CalcEditorMacroPicker {
 
 		this.root = document.createElement('div');
 		this.root.className = 'writer-function-calc-macro';
+		this.root.dataset.iosCalcDialog = 'validation';
 
 		this.root.appendChild(this.sectionLabel('程序库'));
 		this.scopeBox = document.createElement('div');
@@ -619,6 +753,10 @@ class CalcEditorMacroPicker {
 		this.subpage = writerEditorMountSubpageDialog('宏选择器', this.root, host);
 		this.rebuildScope();
 		this.rebuildTree();
+	}
+
+	isOpen(): boolean {
+		return this.root.isConnected;
 	}
 
 	open(): void {

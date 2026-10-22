@@ -413,7 +413,7 @@ window.L.Control.Tabs = window.L.Control.extend({
 			: (tabEl && tabEl.textContent ? tabEl.textContent : '');
 		var isProtected = tabEl && window.L.DomUtil.hasClass(tabEl, 'spreadsheet-tab-protected');
 		var canDelete = app.calc.getVisiblePartCount() !== 1;
-		window.postMobileMessage('SHEET_TAB_POPUP show ' + JSON.stringify({
+		var payload = {
 			tabIndex: tabIndex,
 			sheetName: sheetName,
 			isProtected: !!isProtected,
@@ -421,7 +421,12 @@ window.L.Control.Tabs = window.L.Control.extend({
 			anchorX: rect ? rect.left + rect.width * 0.5 : 0,
 			anchorY: rect ? rect.top : 0,
 			anchorBottom: rect ? rect.bottom : 0
-		}));
+		};
+		// The Figma tap card has Rename/Copy. Keep the existing full context
+		// actions (including Delete) reachable by a deliberate long press.
+		if (window.ThisIsTheiOSApp)
+			payload.longPress = !!(ev && (ev.type === 'press' || ev.type === 'contextmenu'));
+		window.postMobileMessage('SHEET_TAB_POPUP show ' + JSON.stringify(payload));
 	},
 
 	//selected sheet is moved to new index

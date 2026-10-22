@@ -12,6 +12,7 @@
 		3F3A77D22C59B04000947249 /* global.js in Resources */ = {isa = PBXBuildFile; fileRef = 3F3A77D12C59B04000947249 /* global.js */; };
 		3F3B54DD2A3928D100063C01 /* HttpRequest.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3F3B54DB2A39288500063C01 /* HttpRequest.cpp */; };
 		3F3B54E02A392CCB00063C01 /* NetUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3F3B54DE2A392C9C00063C01 /* NetUtil.cpp */; };
+		A11CE0012026102000000001 /* KeyboardAccessory.mm in Sources */ = {isa = PBXBuildFile; fileRef = A11CE0022026102000000001 /* KeyboardAccessory.mm */; };
 		A1C0NV012026091400000001 /* AiConversationStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = A1C0NV002026091400000001 /* AiConversationStore.mm */; };
 		A5C2FA5A2AC1BB3900265946 /* Simd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5C2FA592AC1BB3800265946 /* Simd.cpp */; };
 		A5C2FA5D2AC1BEC500265946 /* DeltaSimd.c in Sources */ = {isa = PBXBuildFile; fileRef = A5C2FA5B2AC1BEC500265946 /* DeltaSimd.c */; };
@@ -94,7 +95,6 @@
 		C0FFEE262026082400000001 /* RecentDocumentsStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE272026082400000001 /* RecentDocumentsStore.mm */; };
 		C0FFEE292026082400000001 /* AIModelConfigStore.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2A2026082400000001 /* AIModelConfigStore.mm */; };
 		C0FFEE2C2026082400000001 /* AISettingsDrawerController.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2D2026082400000001 /* AISettingsDrawerController.mm */; };
-		A11CE0012026102000000001 /* KeyboardAccessory.mm in Sources */ = {isa = PBXBuildFile; fileRef = A11CE0022026102000000001 /* KeyboardAccessory.mm */; };
 		C0FFEE2E2026082400000002 /* AISettingsDrawerIcons.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE2F2026082400000002 /* AISettingsDrawerIcons.mm */; };
 		C0FFEE2F2026082400000001 /* PhotosUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0FFEE302026082400000001 /* PhotosUI.framework */; };
 		C0FFEE302026091200000001 /* TypesetService.mm in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE312026091200000001 /* TypesetService.mm */; };
@@ -107,6 +107,8 @@
 		C0FFEE462026091500000001 /* impress-templates in Resources */ = {isa = PBXBuildFile; fileRef = C0FFEE472026091500000001 /* impress-templates */; };
 		C78C8ED62E90027E0011B574 /* data in Resources */ = {isa = PBXBuildFile; fileRef = C78C8ED32E9001F00011B574 /* data */; };
 		C79282312DF89BB2001EA43B /* MobileSocket.mm in Sources */ = {isa = PBXBuildFile; fileRef = C79282302DF89BB2001EA43B /* MobileSocket.mm */; };
+		CA1C20261022000000000003 /* CalcSheetTabMenuController.mm in Sources */ = {isa = PBXBuildFile; fileRef = CA1C20261022000000000002 /* CalcSheetTabMenuController.mm */; };
+		CA1C20261022000000000006 /* CalcSheetRenameController.mm in Sources */ = {isa = PBXBuildFile; fileRef = CA1C20261022000000000005 /* CalcSheetRenameController.mm */; };
 		D0A020260814000000000001 /* TopToolbarController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000012 /* TopToolbarController.mm */; };
 		D0A020260814000000000002 /* BottomToolbarController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000014 /* BottomToolbarController.mm */; };
 		D0A020260814000000000003 /* PreviewFunctionSheetController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D0A020260814000000000016 /* PreviewFunctionSheetController.mm */; };
@@ -185,6 +187,8 @@
 		3F3B54DF2A392C9C00063C01 /* NetUtil.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = NetUtil.hpp; sourceTree = "<group>"; };
 		3F3B54DF2A392C9C00063C02 /* Uri.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = Uri.hpp; sourceTree = "<group>"; };
 		92414564BE942221FB823CF9 /* AsyncDNS.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = AsyncDNS.hpp; sourceTree = "<group>"; };
+		A11CE0022026102000000001 /* KeyboardAccessory.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = KeyboardAccessory.mm; sourceTree = "<group>"; };
+		A11CE0032026102000000001 /* KeyboardAccessory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyboardAccessory.h; sourceTree = "<group>"; };
 		A1C0NV002026091400000001 /* AiConversationStore.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AiConversationStore.mm; sourceTree = "<group>"; };
 		A1C0NV022026091400000001 /* AiConversationStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AiConversationStore.h; sourceTree = "<group>"; };
 		A5C2FA582AC1BB3800265946 /* Simd.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = Simd.hpp; sourceTree = "<group>"; };
@@ -971,8 +975,6 @@
 		BE8D772E2136762500AC58EA /* DocumentBrowserViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DocumentBrowserViewController.mm; sourceTree = "<group>"; };
 		BE8D77302136762500AC58EA /* DocumentViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DocumentViewController.h; sourceTree = "<group>"; };
 		BE8D77312136762500AC58EA /* DocumentViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DocumentViewController.mm; sourceTree = "<group>"; };
-		A11CE0022026102000000001 /* KeyboardAccessory.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = KeyboardAccessory.mm; sourceTree = "<group>"; };
-		A11CE0032026102000000001 /* KeyboardAccessory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyboardAccessory.h; sourceTree = "<group>"; };
 		BE8D77332136762500AC58EA /* CODocument.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CODocument.h; sourceTree = "<group>"; };
 		BE8D77342136762500AC58EA /* CODocument.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objcpp; path = CODocument.mm; sourceTree = "<group>"; };
 		BE8D77372136762500AC58EA /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
@@ -1614,6 +1616,10 @@
 		C78C8ED32E9001F00011B574 /* data */ = {isa = PBXFileReference; lastKnownFileType = folder; name = data; path = ../test/data; sourceTree = "<group>"; };
 		C792822F2DF89BB2001EA43B /* MobileSocket.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MobileSocket.h; sourceTree = "<group>"; };
 		C79282302DF89BB2001EA43B /* MobileSocket.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = MobileSocket.mm; sourceTree = "<group>"; };
+		CA1C20261022000000000001 /* CalcSheetTabMenuController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CalcSheetTabMenuController.h; sourceTree = "<group>"; };
+		CA1C20261022000000000002 /* CalcSheetTabMenuController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CalcSheetTabMenuController.mm; sourceTree = "<group>"; };
+		CA1C20261022000000000004 /* CalcSheetRenameController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CalcSheetRenameController.h; sourceTree = "<group>"; };
+		CA1C20261022000000000005 /* CalcSheetRenameController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = CalcSheetRenameController.mm; sourceTree = "<group>"; };
 		D0A020260814000000000011 /* TopToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TopToolbarController.h; sourceTree = "<group>"; };
 		D0A020260814000000000012 /* TopToolbarController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = TopToolbarController.mm; sourceTree = "<group>"; };
 		D0A020260814000000000013 /* BottomToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BottomToolbarController.h; sourceTree = "<group>"; };
@@ -3908,6 +3914,10 @@
 				D0A020260907010000000018 /* CommentListSheetController.mm */,
 				D0A020260908120000000017 /* DocumentTabsSheetController.h */,
 				D0A020260908120000000018 /* DocumentTabsSheetController.mm */,
+				CA1C20261022000000000004 /* CalcSheetRenameController.h */,
+				CA1C20261022000000000005 /* CalcSheetRenameController.mm */,
+				CA1C20261022000000000001 /* CalcSheetTabMenuController.h */,
+				CA1C20261022000000000002 /* CalcSheetTabMenuController.mm */,
 			);
 			path = Toolbar;
 			sourceTree = "<group>";
@@ -4285,6 +4295,8 @@
 				D0A020260814000000000003 /* PreviewFunctionSheetController.mm in Sources */,
 				D0A020260907010000000004 /* CommentListSheetController.mm in Sources */,
 				D0A020260908120000000004 /* DocumentTabsSheetController.mm in Sources */,
+				CA1C20261022000000000006 /* CalcSheetRenameController.mm in Sources */,
+				CA1C20261022000000000003 /* CalcSheetTabMenuController.mm in Sources */,
 				BE8D772C2136762500AC58EA /* AppDelegate.mm in Sources */,
 				AB1201002F000000000000D1 /* Mobile/AI/WriterAIComponents.mm in Sources */,
 				E2B010051026090900000001 /* AboutViewController.mm in Sources */,

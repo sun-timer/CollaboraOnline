@@ -27,7 +27,7 @@ class CalcEditorBorder {
 		}
 		const hex =
 			'#' +
-			(colorRgb & 0xffffff).toString(16).toUpperCase().padStart(6, '0');
+			('000000' + (colorRgb & 0xffffff).toString(16).toUpperCase()).slice(-6);
 		const setBorderStyle = (window as any).setBorderStyle;
 		if (typeof setBorderStyle === 'function') {
 			setBorderStyle(preset, hex);
@@ -90,6 +90,12 @@ class CalcEditorBorder {
 	}
 
 	static buildBorderColorUnoCommand(rgb: number): string {
+		if (CalcEditorFormat.isActive()) {
+			// Recolor existing/default frame lines without replacing border geometry.
+			return '.uno:FrameLineColor ' + JSON.stringify({
+				'FrameLineColor.Color': { type: 'long', value: rgb & 0xffffff },
+			});
+		}
 		const line = (outerWidth: number) => ({
 			type: 'com.sun.star.table.BorderLine2',
 			value: {

@@ -9,6 +9,7 @@ interface WriterQuickActionSpec {
 	label: string;
 	iconHtml: string;
 	command?: string;
+	colorCommand?: string;
 	onTap: () => void;
 }
 
@@ -17,6 +18,7 @@ class WriterQuickActionBar {
 	private readonly scroll: HTMLDivElement;
 	private readonly row: HTMLDivElement;
 	private readonly toggleButtons: { [command: string]: HTMLButtonElement } = {};
+	private readonly colorIcons: { [command: string]: HTMLElement } = {};
 	private onStateBound: ((event: any) => void) | null = null;
 
 	constructor() {
@@ -48,6 +50,7 @@ class WriterQuickActionBar {
 		Object.keys(this.toggleButtons).forEach(
 			(key) => delete this.toggleButtons[key],
 		);
+		Object.keys(this.colorIcons).forEach((key) => delete this.colorIcons[key]);
 		items.forEach((item) => {
 			const button = document.createElement('button');
 			button.type = 'button';
@@ -57,6 +60,7 @@ class WriterQuickActionBar {
 			icon.className = 'writer-quick-action-bar__icon';
 			icon.innerHTML = item.iconHtml;
 			button.appendChild(icon);
+			if (item.colorCommand) this.colorIcons[item.colorCommand] = icon;
 			button.onmousedown = (event) => event.preventDefault();
 			button.onclick = () => {
 				const map = (window as any).app?.map;
@@ -95,8 +99,31 @@ class WriterQuickActionBar {
 			return;
 		}
 		Object.keys(this.toggleButtons).forEach((command) => {
-			const active = handler.getItemValue(command) === 'true';
+			const state = handler.getItemValue(command);
+			const active = state === 'true' || (CalcEditorFormat.isActive() && state === true);
 			this.setToggleActive(command, active);
+			if (CalcEditorFormat.isActive()) {
+				this.toggleButtons[command].disabled = state === 'disabled';
+				if (state !== true && state !== false && state !== 'true' && state !== 'false') {
+					this.toggleButtons[command].setAttribute('aria-pressed', 'mixed');
+				}
+			}
+		});
+		this.refreshCalcColors();
+	}
+
+	private refreshCalcColors(): void {
+		if (!CalcEditorFormat.isActive()) return;
+		Object.keys(this.colorIcons).forEach((command) => {
+			let color = CalcEditorFormat.color(command);
+			if (command === '.uno:CharBackColor') {
+				color = CalcEditorFormat.highlightColor();
+			}
+			const icon = this.colorIcons[command];
+			const marker = command === '.uno:Color' ? icon.querySelector('rect') : icon.querySelector('path[fill]');
+			marker?.setAttribute('fill', command === '.uno:Color'
+				? CalcEditorFormat.fontColorCss(color) : CalcEditorFormat.colorCss(color));
+			icon.classList.toggle('calc-format-state-unknown', color === null);
 		});
 	}
 
@@ -106,6 +133,7 @@ class WriterQuickActionBar {
 			return;
 		}
 		button.classList.toggle('writer-quick-action-bar__button--active', active);
+		if (CalcEditorFormat.isActive()) button.setAttribute('aria-pressed', String(active));
 	}
 
 	private static closeSiblingChrome(): void {
@@ -125,6 +153,9 @@ class WriterQuickActionBar {
 		if (editorPanel && typeof editorPanel.close === 'function') {
 			editorPanel.close();
 		}
+		if (CalcEditorFormat.isActive()) {
+			(window as any).__coolCalcEditorPanel?.close();
+		}
 	}
 
 	private subscribeState(): void {
@@ -136,15 +167,24 @@ class WriterQuickActionBar {
 			return;
 		}
 		const onState = (event: any) => {
+			if (CalcEditorFormat.isActive()) this.refreshCalcColors();
 			if (!event || typeof event.commandName !== 'string') {
 				return;
 			}
 			if (event.commandName in this.toggleButtons) {
-				this.setToggleActive(event.commandName, event.state === 'true');
+				this.setToggleActive(event.commandName, event.state === 'true' ||
+					(CalcEditorFormat.isActive() && event.state === true));
+				if (CalcEditorFormat.isActive()) {
+					this.toggleButtons[event.commandName].disabled = event.state === 'disabled';
+					if (event.state !== true && event.state !== false && event.state !== 'true' && event.state !== 'false') {
+						this.toggleButtons[event.commandName].setAttribute('aria-pressed', 'mixed');
+					}
+				}
 			}
 		};
 		this.onStateBound = onState;
 		map.on('commandstatechanged', onState);
+		if (CalcEditorFormat.isActive()) map.on('calctextformatresult', onState);
 	}
 
 	private unsubscribeState(): void {
@@ -154,6 +194,7 @@ class WriterQuickActionBar {
 		const map = (window as any).app && (window as any).app.map;
 		if (map && typeof map.off === 'function') {
 			map.off('commandstatechanged', this.onStateBound);
+			map.off('calctextformatresult', this.onStateBound);
 		}
 		this.onStateBound = null;
 	}

@@ -151,6 +151,12 @@
 			mouse down + multi touch start + multi touch move + multi touch end
 */
 
+interface IOSCalcShapeGestureHandler extends CanvasSectionObject {
+	beginIOSCalcGesture(): void;
+	finishIOSCalcGesture(cancelled: boolean): void;
+	moveIOSCalcHandleWithoutSVG(section: CanvasSectionObject, point: cool.SimplePoint, e: MouseEvent): boolean;
+}
+
 class CanvasSectionContainer {
 	/*
 		All events will be cached by this class and propagated to sections.
@@ -182,6 +188,7 @@ class CanvasSectionContainer {
 	private documentBackgroundColor = '#ffffff'; // This is the background color of the document
 	private useCSSForBackgroundColor = true;
 	private touchEventInProgress: boolean = false; // This prevents multiple calling of mouse down and up events.
+	private iosCalcGraphicHandler: IOSCalcShapeGestureHandler | null = null;
 	public testing: boolean = false; // If this set to true, container will create a div element for every section. So, cypress tests can find where to click etc.
 	public lowestPropagatedBoundSection: string = null; // Event propagating to bound sections. The first section which stops propagating and the sections those are on top of that section, get the event.
 	public targetSection: string = null;
@@ -626,6 +633,35 @@ class CanvasSectionContainer {
 			return null;
 		}
 		return tap.mouseSection.getNativeCalcCellTapPosition(tap.point);
+	}
+
+	private isIOSCalc(): boolean {
+		return !!(window as any).ThisIsTheiOSApp &&
+			app.map?._docLayer?._docType === 'spreadsheet';
+	}
+
+	// The full-grid overlay has no pointer handlers; real events fall through
+	// its bound list to MouseControl, so iOS tap tracking must treat it as such.
+	private iosCalcEventSection(section: CanvasSectionObject | null): CanvasSectionObject | null {
+		if (section?.name !== app.CSections.Overlays.name) return section;
+		return section.boundsList.find(
+			(bound: CanvasSectionObject) => bound.name === app.CSections.MouseControl.name) || section;
+	}
+
+	/** CSS client coordinates, using the same section hit test as real touches. */
+	public getIOSCalcSectionAtClient(
+		clientX: number, clientY: number, target?: EventTarget | null,
+	): CanvasSectionObject | null {
+		if (!this.isIOSCalc() || (target && target !== this.canvas)) return null;
+		const point = this.convertPointToCanvasLocale([clientX, clientY]);
+		if (point[0] < 0 || point[1] < 0 || point[0] > this.width || point[1] > this.height) return null;
+		const section = this.iosCalcEventSection(this.findSectionContainingPoint(point));
+		const graphic = this.getSectionWithName(app.CSections.ShapeHandlesSection.name);
+		// Text editing makes the graphic section non-interactable. Its own
+		// rectangle still belongs to shape text, not the cell tap state machine.
+		if (section?.name === app.CSections.MouseControl.name && graphic?.showSection &&
+			graphic.isVisible && this.doesSectionIncludePoint(graphic, point)) return graphic;
+		return section;
 	}
 
 	private calcTapSectionPointAtClient(
@@ -1077,8 +1113,15 @@ class CanvasSectionContainer {
 
 		if (propagate) {
 			for (var i: number = section.boundsList.length - 1; i > -1; i--) {
-				if (section.boundsList[i].interactable)
-					section.boundsList[i].onMouseMove((position ? cool.SimplePoint.fromCorePixels([position[0], position[1]]): null), dragDistance, e);
+				if (section.boundsList[i].interactable) {
+					const boundSection = section.boundsList[i];
+					const point = position ? cool.SimplePoint.fromCorePixels([position[0], position[1]]) : null;
+					const parent = boundSection.sectionProperties.parentHandlerSection as IOSCalcShapeGestureHandler;
+					// iOS intentionally has no rendered selection SVG. Keep handle
+					// geometry/UNO updates without the SVG-only preview dereference.
+					if (!(this.isIOSCalc() && parent && parent.moveIOSCalcHandleWithoutSVG(boundSection, point, e)))
+						boundSection.onMouseMove(point, dragDistance, e);
+				}
 
 				if (section.boundsList[i].name === this.lowestPropagatedBoundSection)
 					break; // Stop propagation.
@@ -1603,6 +1646,11 @@ class CanvasSectionContainer {
 	}
 
 	public onTouchStart (e: TouchEvent) { // Should be ignored unless this.draggingSomething = true.
+		if (this.isIOSCalc()) {
+			this.iosCalcGraphicHandler?.finishIOSCalcGesture(true);
+			this.iosCalcGraphicHandler = null;
+			(window as any).AndroidCalcTap?.beginIOSTouch(e);
+		}
 		if (this.multiTouch) {
 			if (e.touches.length === 2 && this.multiTouchEndSent) {
 				// A second finger can rejoin while the first pinch finger is still
@@ -1626,6 +1674,17 @@ class CanvasSectionContainer {
 
 			var section: CanvasSectionObject = this.findSectionContainingPoint(this.positionOnMouseDown);
 			if (section) {
+				if (this.isIOSCalc()) {
+					const graphic = this.getSectionWithName(app.CSections.ShapeHandlesSection.name) as IOSCalcShapeGestureHandler;
+					if (graphic && (section === graphic || section.sectionProperties.parentHandlerSection === graphic)) {
+						this.iosCalcGraphicHandler = graphic;
+						graphic.beginIOSCalcGesture();
+						// Do not start the document's text-selection long-press timer
+						// while a graphic or one of its handles owns this touch.
+						this.stopLongPress();
+						e.stopPropagation();
+					}
+				}
 				this.sectionOnMouseDown = section.name;
 				this.propagateOnMouseDown(section, this.convertPositionToSectionLocale(section, this.positionOnMouseDown), (<MouseEvent><any>e));
 			}
@@ -1664,6 +1723,7 @@ class CanvasSectionContainer {
 	}
 
 	public onTouchMove (e: TouchEvent) {
+		if (this.isIOSCalc()) (window as any).AndroidCalcTap?.moveIOSTouch(e);
 		// Sometimes onTouchStart is fired for another element. In this case, we return.
 		if (this.positionOnMouseDown === null)
 			return;
@@ -1673,6 +1733,13 @@ class CanvasSectionContainer {
 			this.mousePosition = this.convertPositionToCanvasLocale(e);
 
 			this.dragDistance = [this.mousePosition[0] - this.positionOnMouseDown[0], this.mousePosition[1] - this.positionOnMouseDown[1]];
+
+			if (this.isIOSCalc() && !this.draggingSomething &&
+				(this.iosCalcGraphicHandler || this.iosCalcEventSection(
+					this.getSectionWithName(this.sectionOnMouseDown))?.name === app.CSections.MouseControl.name)) {
+				const slop = ((window as any).AndroidCalcTap?.iosTapSlopCss || 5) * app.dpiScale;
+				if (this.dragDistance[0] ** 2 + this.dragDistance[1] ** 2 <= slop ** 2) return;
+			}
 
 			if (this.dragDistance[0] ** 2 + this.dragDistance[1] ** 2 > 0.1)
 				this.draggingSomething = true;
@@ -1730,10 +1797,23 @@ class CanvasSectionContainer {
 				this.clearMousePositions();
 			}
 		}
+		// MouseControl's touch-up only ends scroll/drag; its compatibility
+		// click is suppressed after this single grid dispatch. Object sections
+		// retain their original touch-up and click handlers.
+		if (this.isIOSCalc()) {
+			this.iosCalcGraphicHandler?.finishIOSCalcGesture(false);
+			this.iosCalcGraphicHandler = null;
+			(window as any).AndroidCalcTap?.endIOSTouch(e);
+		}
 		this.touchEventInProgress = true;
 	}
 
 	public onTouchCancel (e: TouchEvent) {
+		if (this.isIOSCalc()) {
+			this.iosCalcGraphicHandler?.finishIOSCalcGesture(true);
+			this.iosCalcGraphicHandler = null;
+			(window as any).AndroidCalcTap?.resetIOSState();
+		}
 		if (this.multiTouch) {
 			if (!this.multiTouchEndSent) {
 				var section: CanvasSectionObject = this.getSectionWithName(this.sectionOnMouseDown);

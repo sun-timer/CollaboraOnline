@@ -9,6 +9,7 @@ type PendingMobileTextInputRequest = {
 	targetPoint: { x: number; y: number } | null;
 	startCaret: { x: number; y: number } | null;
 	calcCell: { part: number; address: string; bounds: number[] } | null;
+	calcCellPart: number | null;
 	allowCurrentCaretFallback: boolean;
 	tapResolved: boolean;
 	caretConfirmed: boolean;
@@ -221,6 +222,12 @@ class AndroidSelectionMenu {
 			return;
 		}
 		AndroidSelectionMenu.cancelTextInputRequest('replace');
+		const isIOSCalc = AndroidSelectionMenu.isIOS() &&
+			app.map.getDocType() === 'spreadsheet';
+		const currentCalcCursorMatchesTarget = !isIOSCalc || !!(
+			targetPoint && app.calc?.cellCursorVisible && app.calc.cellCursorRectangle &&
+			app.calc.cellCursorRectangle.containsPoint([targetPoint.x, targetPoint.y])
+		);
 		const request = {
 			docLayer: app.map._docLayer,
 			generation: ++AndroidSelectionMenu.textInputGeneration,
@@ -231,11 +238,15 @@ class AndroidSelectionMenu {
 			allowCurrentCaretFallback,
 			calcCell: app.map.getDocType() === 'spreadsheet' && app.calc?.cellCursorVisible &&
 				app.calc.cellCursorRectangle && app.calc.cellAddress
+				&& (!isIOSCalc || currentCalcCursorMatchesTarget)
 				? {
 					part: app.map._docLayer._selectedPart,
 					address: app.calc.cellAddress.toArray().join(':'),
 					bounds: app.calc.cellCursorRectangle.toArray(),
 				}
+				: null,
+			calcCellPart: app.map.getDocType() === 'spreadsheet'
+				? app.map._docLayer._selectedPart
 				: null,
 			tapResolved: false,
 			caretConfirmed: false,
@@ -265,6 +276,32 @@ class AndroidSelectionMenu {
 			request.caretConfirmed = true;
 		}
 		AndroidSelectionMenu.maybeShowKeyboardForTextInput(request);
+	}
+
+	/** Capture the cell selected by a fast Calc tap when its cursor reply arrives. */
+	static onIOSCalcCellCursorUpdate(): void {
+		const request = AndroidSelectionMenu.pendingTextInputRequest;
+		if (
+			!request || request.calcCell || !AndroidSelectionMenu.isIOS() ||
+			!request.targetPoint || !app.map || app.map._docLayer !== request.docLayer ||
+			app.map.getDocType() !== 'spreadsheet' ||
+			typeof request.calcCellPart !== 'number' ||
+			request.calcCellPart !== app.map._docLayer._selectedPart ||
+			!app.calc?.cellCursorVisible ||
+			!app.calc.cellCursorRectangle || !app.calc.cellAddress
+		) {
+			return;
+		}
+		const bounds = app.calc.cellCursorRectangle;
+		if (!bounds.containsPoint([request.targetPoint.x, request.targetPoint.y])) return;
+		const targetPart = request.calcCellPart;
+		if (typeof targetPart !== 'number' || !Number.isFinite(targetPart)) return;
+		request.calcCell = {
+			part: targetPart,
+			address: app.calc.cellAddress.toArray().join(':'),
+			bounds: bounds.toArray(),
+		};
+		if (app.file?.textCursor?.visible) AndroidSelectionMenu.onTextCaretUpdate(true);
 	}
 
 	private static getRequestCalcCell(
