@@ -347,18 +347,38 @@ static UIColor *WriterAIColorAccent(void) {
     _textView.text = text;
     _statusLabel.text = @"生成中…";
     _retryButton.hidden = YES;
+    _stopButton.hidden = NO;
+    _copyButton.hidden = YES;
+    _insertButton.hidden = YES;
+}
+
+- (void)setInsertingText:(NSString *)text {
+    _textView.text = text;
+    _statusLabel.text = @"正在插入文档…";
+    _stopButton.hidden = YES;
+    _retryButton.hidden = YES;
+    _copyButton.hidden = YES;
+    _insertButton.hidden = YES;
 }
 
 - (void)setReadyWithFullText:(NSString *)text {
     _textView.text = text;
     _statusLabel.text = @"已生成";
+    _statusLabel.textColor = WriterAIColorTextSecondary();
+    _stopButton.hidden = YES;
     _retryButton.hidden = NO;
+    _copyButton.hidden = NO;
+    _insertButton.hidden = NO;
 }
 
 - (void)setErrorWithMessage:(NSString *)message {
     _statusLabel.text = @"生成失败";
     _statusLabel.textColor = WriterAIColorAccent();
     _textView.text = message;
+    _stopButton.hidden = YES;
+    _retryButton.hidden = NO;
+    _copyButton.hidden = YES;
+    _insertButton.hidden = YES;
 }
 
 - (void)stopTapped { if (_onStop) { _onStop(); } }

@@ -45,7 +45,10 @@ class ShapeHandleScalingSubSection extends CanvasSectionObject {
 	}
 
 	onTextCursorVisibility(event: any): void {
-		if (event.detail.visible) {
+		const iosWriter = window.ThisIsTheiOSApp && app.map.getDocType() === 'text';
+		const editingSelectedShape = event.detail.visible && (!iosWriter ||
+			this.sectionProperties.parentHandlerSection.ownsVisibleTextCursor());
+		if (editingSelectedShape) {
 			this.setShowSection(false);
 			this.interactable = false;
 		}

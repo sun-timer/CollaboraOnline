@@ -66,6 +66,7 @@ class WriterEditorPanel {
 
 	private constructor() {
 		this.controller = WriterEditorController.getInstance();
+		window.addEventListener('fabric:image:edit', () => this.openImageEditDialog());
 		this.sheet = new WriterEditorSheet(
 			'',
 			() => this.unsubscribeReviewState(),
@@ -1012,6 +1013,24 @@ class WriterEditorPanel {
 		this.presentSub(
 			new WriterEditorImageDialog(this.controller, this.subHost()),
 		);
+	}
+
+	private openImageEditDialog(): void {
+		if (!GraphicSelection.hasActiveSelection() || app.map.getDocType() !== 'text') return;
+		const extraInfo = GraphicSelection.extraInfo || {};
+		const handles = GraphicSelection.handlesSection;
+		const rectangleHandles = extraInfo.handles?.kinds?.rectangle;
+		const point = (kind: string) => rectangleHandles?.[kind]?.[0]?.point;
+		const points = ['2', '4', '5', '7'].map(point);
+		if (points.some((value) => !value || !Number.isFinite(Number(value.x)) || !Number.isFinite(Number(value.y)))) return;
+		const width = Math.hypot(Number(point('5').x) - Number(point('4').x), Number(point('5').y) - Number(point('4').y));
+		const height = Math.hypot(Number(point('7').x) - Number(point('2').x), Number(point('7').y) - Number(point('2').y));
+		if (!app.map.isEditMode() || !handles || !extraInfo.isWriterGraphic || !extraInfo.id ||
+			extraInfo.isResizable === false || width <= 0 || height <= 0) return;
+		// The selection menu is available while the function sheet is closed.
+		// Use an independent sheet so it is visible and can close before crop handles appear.
+		const dialog = new WriterEditorImageEditDialog(this.controller);
+		dialog.open();
 	}
 
 	private openCommentDialog(): void {

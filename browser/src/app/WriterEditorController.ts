@@ -527,6 +527,60 @@ class WriterEditorController {
 		return { dispatched: 'message', message: 'WRITER_OPEN_IMAGE_PICKER' };
 	}
 
+	/** Asks native iOS to open the camera for image insert. */
+	requestNativeCamera(): WriterEditorRunResult {
+		this.adapter.postMobileMessage('WRITER_OPEN_IMAGE_CAMERA');
+		return { dispatched: 'message', message: 'WRITER_OPEN_IMAGE_CAMERA' };
+	}
+
+	/** Opens the core size dialog or dispatches an image operation. */
+	editImage(
+		action: 'size' | 'rotateLeft' | 'rotateRight' | 'crop',
+		widthTwips?: number,
+		heightTwips?: number,
+		expectedSelectionId?: string,
+		expectedViewId?: number,
+		expectedDocument?: string,
+	): WriterEditorRunResult {
+		const selection = GraphicSelection.extraInfo;
+		const handles = GraphicSelection.handlesSection;
+		if (!window.ThisIsTheiOSApp || app.map.getDocType() !== 'text' || !app.map.isEditMode() ||
+			!GraphicSelection.hasActiveSelection() || !selection?.isWriterGraphic || !handles || !GraphicSelection.rectangle ||
+			!selection.handles?.kinds?.rectangle || String(selection.id) !== expectedSelectionId ||
+			app.map._docLayer._viewId !== expectedViewId || app.map.options.doc !== expectedDocument) {
+			return { dispatched: 'none', reason: 'image_selection_changed' };
+		}
+		if (action === 'size' && (selection.isResizable === false || typeof widthTwips !== 'number' ||
+			typeof heightTwips !== 'number' || !Number.isInteger(widthTwips) ||
+			!Number.isInteger(heightTwips) || widthTwips <= 0 || heightTwips <= 0 ||
+			widthTwips > 0xffffffff || heightTwips > 0xffffffff)) {
+			return { dispatched: 'none', reason: 'invalid_image_size' };
+		}
+		if ((action === 'rotateLeft' || action === 'rotateRight') && selection.isRotatable === false) {
+			return { dispatched: 'none', reason: 'image_not_rotatable' };
+		}
+		if (action === 'crop' && selection.isResizable === false) {
+			return { dispatched: 'none', reason: 'image_not_croppable' };
+		}
+		let command = '.uno:Crop';
+		if (action === 'size') {
+			command = '.uno:TransformDialog ' + JSON.stringify({
+				TransformWidth: { type: 'unsigned long', value: widthTwips },
+				TransformHeight: { type: 'unsigned long', value: heightTwips },
+			});
+		} else if (action === 'rotateLeft' || action === 'rotateRight') {
+			const center = GraphicSelection.rectangle.center;
+			const delta = action === 'rotateLeft' ? -9000 : 9000;
+			command = '.uno:TransformDialog ' + JSON.stringify({
+				TransformRotationDeltaAngle: { type: 'long', value: delta },
+				TransformRotationX: { type: 'long', value: center[0] },
+				TransformRotationY: { type: 'long', value: center[1] },
+			});
+		}
+		this.adapter.sendUnoCommand(command);
+		return { dispatched: 'unocmd', command };
+	}
+
 	/** Inserts a Writer comment via InsertAnnotation Author/Text args. */
 	insertComment(text: string, author?: string): WriterEditorRunResult {
 		const content = (text || '').trim();

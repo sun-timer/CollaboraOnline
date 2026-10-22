@@ -206,6 +206,11 @@ class ShapeHandlesSection extends CanvasSectionObject {
 			return Math.abs(middleLeft.pDistanceTo(middleRight.pToArray()));
 	}
 
+	/** A caret can own editable shape text, but Writer graphics have no text area. */
+	public ownsVisibleTextCursor(): boolean {
+		return app.file.textCursor.visible && this.sectionProperties.info?.isWriterGraphic !== true;
+	}
+
 	getShapeHeight(twips = true) {
 		let topMiddle = this.sectionProperties.info.handles.kinds.rectangle['2'][0];
 		topMiddle = new cool.SimplePoint(parseInt(topMiddle.point.x), parseInt(topMiddle.point.y));
@@ -261,7 +266,7 @@ class ShapeHandlesSection extends CanvasSectionObject {
 	}
 
 	private getScalingHandles(halfWidth: number, halfHeight: number) {
-		if (this.sectionProperties.info?.handles?.kinds?.rectangle) {
+		if (this.sectionProperties.info?.isResizable !== false && this.sectionProperties.info?.handles?.kinds?.rectangle) {
 			const topLeft = this.sectionProperties.info.handles.kinds.rectangle['1'][0];
 			const topMiddle = this.sectionProperties.info.handles.kinds.rectangle['2'][0];
 			const topRight = this.sectionProperties.info.handles.kinds.rectangle['3'][0];
@@ -330,7 +335,7 @@ class ShapeHandlesSection extends CanvasSectionObject {
 	}
 
 	private getRotationHandle() {
-		if (this.sectionProperties.info?.handles?.kinds?.rectangle && !this.sectionProperties.hasVideo) {
+		if (this.sectionProperties.info?.isRotatable !== false && this.sectionProperties.info?.handles?.kinds?.rectangle && !this.sectionProperties.hasVideo) {
 			const rotationInfo = this.getRotationInfo(); // Rotation section will read the information from this (parent) class.
 			const rotationHandlePosition: cool.SimplePoint = this.getRotationHandlePosition(rotationInfo);
 			rotationInfo.initialPosition = rotationHandlePosition.clone();
@@ -624,8 +629,9 @@ class ShapeHandlesSection extends CanvasSectionObject {
 		else {
 			newSubSection.sectionProperties.ownInfo = handle.info;
 			newSubSection.setPosition(handle.point.pX, handle.point.pY);
-			if (GraphicSelection.extraInfo.isCropMode && !newSubSection.sectionProperties.cropModeEnabled) {
+			if (newSubSection.sectionProperties.cropModeEnabled !== GraphicSelection.extraInfo.isCropMode) {
 				newSubSection.sectionProperties.cropModeEnabled = GraphicSelection.extraInfo.isCropMode;
+				app.sectionContainer.requestReDraw();
 			}
 			return null;
 		}

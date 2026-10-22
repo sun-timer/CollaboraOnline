@@ -11,9 +11,8 @@ static const void *KeyboardAccessoryAssociationKey = &KeyboardAccessoryAssociati
 
 @interface KeyboardAccessory ()
 @property (weak, nonatomic) UIView<UITextInput> *owner;
-@property (weak, nonatomic) UIToolbar *toolbar;
-@property (strong, nonatomic) UIBarButtonItem *previousItem;
-@property (strong, nonatomic) UIBarButtonItem *nextItem;
+@property (strong, nonatomic) UIButton *previousButton;
+@property (strong, nonatomic) UIButton *nextButton;
 @end
 
 @implementation KeyboardAccessory
@@ -27,22 +26,78 @@ static const void *KeyboardAccessoryAssociationKey = &KeyboardAccessoryAssociati
 }
 
 - (void)configure:(UIView<UITextInput> *)input {
-    UIToolbar *bar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, UIScreen.mainScreen.bounds.size.width, 44)];
-    self.toolbar = bar;
+    // 用户于 2026-10-22 确认：此键盘栏必须保持为单个全宽白色胶囊，左侧灰色
+    // 上下箭头、右侧黑色勾号；前后箭头切换输入框，勾号收起键盘。除修复明确
+    // bug 外，禁止改成系统 Toolbar、分组按钮、玻璃效果或蓝色按钮；避免 iOS 26
+    // 自动重排 UIBarButtonItem。按钮使用 UIButtonTypeCustom，不使用系统按钮外观。
+    UIView *bar = [[UIView alloc] initWithFrame:CGRectMake(0, 0, UIScreen.mainScreen.bounds.size.width, 64)];
+    bar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    bar.backgroundColor = UIColor.clearColor;
+    bar.opaque = NO;
     self.owner = input;
-    self.previousItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"chevron.up"] style:UIBarButtonItemStylePlain target:self action:@selector(movePrevious)];
-    self.nextItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"chevron.down"] style:UIBarButtonItemStylePlain target:self action:@selector(moveNext)];
-    self.previousItem.accessibilityIdentifier = @"keyboard.previousInput";
-    self.nextItem.accessibilityIdentifier = @"keyboard.nextInput";
-    self.previousItem.accessibilityLabel = @"上一个输入框";
-    self.nextItem.accessibilityLabel = @"下一个输入框";
-    UIBarButtonItem *space = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
-    UIBarButtonItem *done = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"checkmark"] style:UIBarButtonItemStyleDone target:self action:@selector(dismiss)];
+
+    UIView *capsule = [[UIView alloc] initWithFrame:CGRectZero];
+    capsule.translatesAutoresizingMaskIntoConstraints = NO;
+    capsule.backgroundColor = UIColor.whiteColor;
+    capsule.layer.cornerRadius = 24.0;
+    capsule.layer.borderWidth = 1.0;
+    capsule.layer.borderColor = [UIColor colorWithWhite:0.0 alpha:0.08].CGColor;
+    capsule.layer.shadowColor = UIColor.blackColor.CGColor;
+    capsule.layer.shadowOpacity = 0.08;
+    capsule.layer.shadowRadius = 8.0;
+    capsule.layer.shadowOffset = CGSizeMake(0, 2);
+    [bar addSubview:capsule];
+
+    UIImageSymbolConfiguration *chevronConfiguration = [UIImageSymbolConfiguration configurationWithPointSize:20.0 weight:UIImageSymbolWeightRegular];
+    self.previousButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.previousButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.previousButton setImage:[[UIImage systemImageNamed:@"chevron.up"] imageWithConfiguration:chevronConfiguration] forState:UIControlStateNormal];
+    self.previousButton.tintColor = [UIColor colorWithWhite:0.42 alpha:1.0];
+    [self.previousButton addTarget:self action:@selector(movePrevious) forControlEvents:UIControlEventTouchUpInside];
+    self.previousButton.accessibilityIdentifier = @"keyboard.previousInput";
+    self.previousButton.accessibilityLabel = @"上一个输入框";
+
+    self.nextButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.nextButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.nextButton setImage:[[UIImage systemImageNamed:@"chevron.down"] imageWithConfiguration:chevronConfiguration] forState:UIControlStateNormal];
+    self.nextButton.tintColor = [UIColor colorWithWhite:0.42 alpha:1.0];
+    [self.nextButton addTarget:self action:@selector(moveNext) forControlEvents:UIControlEventTouchUpInside];
+    self.nextButton.accessibilityIdentifier = @"keyboard.nextInput";
+    self.nextButton.accessibilityLabel = @"下一个输入框";
+
+    UIButton *done = [UIButton buttonWithType:UIButtonTypeCustom];
+    done.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *checkConfiguration = [UIImageSymbolConfiguration configurationWithPointSize:22.0 weight:UIImageSymbolWeightRegular];
+    [done setImage:[[UIImage systemImageNamed:@"checkmark"] imageWithConfiguration:checkConfiguration] forState:UIControlStateNormal];
+    done.tintColor = UIColor.blackColor;
+    [done addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
     done.accessibilityIdentifier = @"keyboard.dismiss";
     done.accessibilityLabel = @"收起键盘";
-    [bar setItems:@[self.previousItem, self.nextItem, space, done] animated:NO];
+
+    [capsule addSubview:self.previousButton];
+    [capsule addSubview:self.nextButton];
+    [capsule addSubview:done];
+    [NSLayoutConstraint activateConstraints:@[
+        [capsule.topAnchor constraintEqualToAnchor:bar.topAnchor constant:8.0],
+        [capsule.bottomAnchor constraintEqualToAnchor:bar.bottomAnchor constant:-8.0],
+        [capsule.leadingAnchor constraintEqualToAnchor:bar.safeAreaLayoutGuide.leadingAnchor constant:16.0],
+        [capsule.trailingAnchor constraintEqualToAnchor:bar.safeAreaLayoutGuide.trailingAnchor constant:-16.0],
+        [self.previousButton.leadingAnchor constraintEqualToAnchor:capsule.leadingAnchor constant:12.0],
+        [self.previousButton.centerYAnchor constraintEqualToAnchor:capsule.centerYAnchor],
+        [self.previousButton.widthAnchor constraintEqualToConstant:44.0],
+        [self.previousButton.heightAnchor constraintEqualToConstant:44.0],
+        [self.nextButton.leadingAnchor constraintEqualToAnchor:self.previousButton.trailingAnchor constant:12.0],
+        [self.nextButton.centerYAnchor constraintEqualToAnchor:capsule.centerYAnchor],
+        [self.nextButton.widthAnchor constraintEqualToConstant:44.0],
+        [self.nextButton.heightAnchor constraintEqualToConstant:44.0],
+        [done.trailingAnchor constraintEqualToAnchor:capsule.trailingAnchor constant:-8.0],
+        [done.centerYAnchor constraintEqualToAnchor:capsule.centerYAnchor],
+        [done.widthAnchor constraintEqualToConstant:44.0],
+        [done.heightAnchor constraintEqualToConstant:44.0],
+    ]];
     if ([input isKindOfClass:UITextField.class]) ((UITextField *)input).inputAccessoryView = bar;
     else ((UITextView *)input).inputAccessoryView = bar;
+    [self updateItems];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(editingChanged:) name:UITextFieldTextDidBeginEditingNotification object:input];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(editingChanged:) name:UITextViewTextDidBeginEditingNotification object:input];
 }
@@ -85,8 +140,10 @@ static const void *KeyboardAccessoryAssociationKey = &KeyboardAccessoryAssociati
 - (void)updateItems {
     NSArray *inputs = [self visibleInputs];
     NSUInteger index = [inputs indexOfObjectIdenticalTo:self.owner];
-    self.previousItem.enabled = index != NSNotFound && index > 0;
-    self.nextItem.enabled = index != NSNotFound && index + 1 < inputs.count;
+    self.previousButton.enabled = index != NSNotFound && index > 0;
+    self.nextButton.enabled = index != NSNotFound && index + 1 < inputs.count;
+    self.previousButton.alpha = self.previousButton.enabled ? 1.0 : 0.35;
+    self.nextButton.alpha = self.nextButton.enabled ? 1.0 : 0.35;
 }
 - (void)movePrevious { [self move:-1]; }
 - (void)moveNext { [self move:1]; }
