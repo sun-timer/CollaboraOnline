@@ -20,7 +20,6 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.appcompat.widget.SwitchCompat;
 
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -451,15 +450,12 @@ public class FindReplaceSheetController {
 
     private void showSettings() {
         View panel = LayoutInflater.from(host.getContext()).inflate(R.layout.lolib_sheet_find_settings, null);
-        SwitchCompat caseSensitiveSwitch = panel.findViewById(R.id.find_opt_case_sensitive);
-        SwitchCompat wholeWordSwitch = panel.findViewById(R.id.find_opt_whole_word);
+        LolibSettingsSwitch caseSensitiveSwitch = panel.findViewById(R.id.find_opt_case_sensitive);
+        LolibSettingsSwitch wholeWordSwitch = panel.findViewById(R.id.find_opt_whole_word);
         ImageButton back = panel.findViewById(R.id.find_settings_back);
 
-        SwitchUiHelper.applySettingsSwitch(caseSensitiveSwitch);
-        SwitchUiHelper.applySettingsSwitch(wholeWordSwitch);
-
-        caseSensitiveSwitch.setChecked(caseSensitive);
-        wholeWordSwitch.setChecked(wholeWord);
+        caseSensitiveSwitch.setCheckedSilent(caseSensitive);
+        wholeWordSwitch.setCheckedSilent(wholeWord);
 
         caseSensitiveSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             caseSensitive = isChecked;

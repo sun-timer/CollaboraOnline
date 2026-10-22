@@ -22,6 +22,8 @@ import androidx.core.widget.NestedScrollView;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.BottomSheetAnchorHelper;
+import androidx.annotation.StyleRes;
+
 import org.libreoffice.androidlib.R;
 import org.libreoffice.androidlib.ai.AiDialogHelper;
 
@@ -53,18 +55,24 @@ public class ImpressShapePickerController {
     }
 
     private final Host host;
+    private final @StyleRes int themeResId;
     private BottomSheetDialog dialog;
     private Context shapeThemedContext;
 
     public ImpressShapePickerController(Host host) {
+        this(host, R.style.LolibShapePickerThemeWriter);
+    }
+
+    public ImpressShapePickerController(Host host, @StyleRes int themeResId) {
         this.host = host;
+        this.themeResId = themeResId;
     }
 
     public void show() {
         if (dialog != null && dialog.isShowing()) {
             return;
         }
-        shapeThemedContext = new ContextThemeWrapper(host.getContext(), R.style.LolibShapePickerTheme);
+        shapeThemedContext = new ContextThemeWrapper(host.getContext(), themeResId);
         View panel = LayoutInflater.from(shapeThemedContext)
                 .inflate(R.layout.lolib_sheet_impress_shape_picker, null, false);
 

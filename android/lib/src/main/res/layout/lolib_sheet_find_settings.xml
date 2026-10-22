@@ -56,15 +56,10 @@
                 android:layout_height="wrap_content"
                 android:text="区分大小写"
                 android:layout_weight="1" />
-            <androidx.appcompat.widget.SwitchCompat
+            <org.libreoffice.androidlib.LolibSettingsSwitch
                 android:id="@+id/find_opt_case_sensitive"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:minHeight="@dimen/lolib_settings_switch_track_height"
-                android:thumb="@drawable/lolib_bg_find_toggle_thumb"
-                android:track="@drawable/lolib_bg_find_toggle_track"
-                app:thumbTint="@null"
-                app:trackTint="@null" />
+                android:layout_height="wrap_content" />
         </LinearLayout>
         <View
             android:background="#d8d8d8"
@@ -84,15 +79,10 @@
                 android:layout_height="wrap_content"
                 android:text="全字匹配"
                 android:layout_weight="1" />
-            <androidx.appcompat.widget.SwitchCompat
+            <org.libreoffice.androidlib.LolibSettingsSwitch
                 android:id="@+id/find_opt_whole_word"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:minHeight="@dimen/lolib_settings_switch_track_height"
-                android:thumb="@drawable/lolib_bg_find_toggle_thumb"
-                android:track="@drawable/lolib_bg_find_toggle_track"
-                app:thumbTint="@null"
-                app:trackTint="@null" />
+                android:layout_height="wrap_content" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>

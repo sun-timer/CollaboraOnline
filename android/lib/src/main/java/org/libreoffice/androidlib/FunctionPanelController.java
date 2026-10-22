@@ -18,7 +18,6 @@ import android.widget.LinearLayout;
 import android.widget.CompoundButton;
 import android.widget.PopupWindow;
 import android.widget.TextView;
-import androidx.appcompat.widget.SwitchCompat;
 
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
@@ -218,7 +217,7 @@ public class FunctionPanelController {
     private String watermarkFont = "";
     private int watermarkAngle = 45;
     private int watermarkTransparency = 50;
-    private SwitchCompat watermarkToggleView;
+    private LolibSettingsSwitch watermarkToggleView;
 
     public FunctionPanelController(Host host) {
         this.host = host;
@@ -834,14 +833,13 @@ public class FunctionPanelController {
         labelLp.setMarginStart(host.dpToPx(item.iconResId != 0 ? 16 : 0));
         row.addView(label, labelLp);
 
-        SwitchCompat toggle = new SwitchCompat(host.getContext());
+        LolibSettingsSwitch toggle = SwitchUiHelper.createSettingsSwitch(host.getContext());
         boolean initial = toggleStates.getOrDefault(item.id, item.defaultToggleOn);
-        toggle.setChecked(initial);
+        toggle.setCheckedSilent(initial);
         toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
             toggleStates.put(item.id, isChecked);
             dispatchToggle(item, isChecked, buttonView);
         });
-        SwitchUiHelper.applySettingsSwitch(toggle);
         row.addView(toggle, SwitchUiHelper.createSettingsSwitchLayoutParams(host.getContext()));
         return row;
     }
@@ -869,14 +867,13 @@ public class FunctionPanelController {
         labelLp.setMarginStart(host.dpToPx(item.iconResId != 0 ? 16 : 0));
         row.addView(label, labelLp);
 
-        SwitchCompat toggle = new SwitchCompat(host.getContext());
+        LolibSettingsSwitch toggle = SwitchUiHelper.createSettingsSwitch(host.getContext());
         boolean initial = toggleStates.getOrDefault(item.id, item.defaultToggleOn);
-        toggle.setChecked(initial);
+        toggle.setCheckedSilent(initial);
         toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
             toggleStates.put(item.id, isChecked);
             dispatchToggle(item, isChecked, buttonView);
         });
-        SwitchUiHelper.applySettingsSwitch(toggle);
         row.addView(toggle, SwitchUiHelper.createSettingsSwitchLayoutParams(host.getContext()));
         return row;
     }
@@ -1038,15 +1035,14 @@ public class FunctionPanelController {
         labelLp.setMarginStart(host.dpToPx(item.iconResId != 0 ? 16 : 0));
         row.addView(label, labelLp);
 
-        SwitchCompat toggle = new SwitchCompat(host.getContext());
+        LolibSettingsSwitch toggle = SwitchUiHelper.createSettingsSwitch(host.getContext());
         boolean initial = toggleStates.getOrDefault(item.id, item.defaultToggleOn);
-        toggle.setChecked(initial);
+        toggle.setCheckedSilent(initial);
         toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
             toggleStates.put(item.id, isChecked);
             dispatchWatermarkToggle(isChecked, buttonView);
         });
         watermarkToggleView = toggle;
-        SwitchUiHelper.applySettingsSwitch(toggle);
         row.addView(toggle, SwitchUiHelper.createSettingsSwitchLayoutParams(host.getContext()));
 
         ImageView chevron = new ImageView(host.getContext());
@@ -1480,33 +1476,34 @@ public class FunctionPanelController {
     private void showShapePickerDialog() {
         dismiss();
         if (shapePicker == null) {
-            shapePicker = new ImpressShapePickerController(new ImpressShapePickerController.Host() {
-                @Override
-                public android.content.Context getContext() {
-                    return host.getContext();
-                }
+            shapePicker = new ImpressShapePickerController(
+                    new ImpressShapePickerController.Host() {
+                        @Override
+                        public android.content.Context getContext() {
+                            return host.getContext();
+                        }
 
-                @Override
-                public int dpToPx(int dp) {
-                    return host.dpToPx(dp);
-                }
+                        @Override
+                        public int dpToPx(int dp) {
+                            return host.dpToPx(dp);
+                        }
 
-                @Override
-                public int getBottomChromeHeightPx() {
-                    return host.getBottomChromeHeightPx();
-                }
+                        @Override
+                        public int getBottomChromeHeightPx() {
+                            return host.getBottomChromeHeightPx();
+                        }
 
-                @Override
-                public void executeUnoCommand(String command) {
-                    host.executeUnoCommand(command);
-                }
+                        @Override
+                        public void executeUnoCommand(String command) {
+                            host.executeUnoCommand(command);
+                        }
 
-                @Override
-                public void runAfterDismiss(Runnable action) {
-                    // After function panel dismisses, show the shape picker
-                    action.run();
-                }
-            });
+                        @Override
+                        public void runAfterDismiss(Runnable action) {
+                            action.run();
+                        }
+                    },
+                    R.style.LolibShapePickerThemeWriter);
         }
         shapePicker.show();
     }
