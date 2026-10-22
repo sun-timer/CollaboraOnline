@@ -86,6 +86,13 @@ class TextSelections {
 		return this.endRectangle ? this.endRectangle.clone() : null;
 	}
 
+	/** Return the current logical endpoint rectangle for a live handle instance. */
+	public static getRectangleForHandle(handle: TextSelectionHandle): cool.SimpleRectangle | null {
+		if (this.start === handle) return this.startRectangle?.clone() ?? null;
+		if (this.end === handle) return this.endRectangle?.clone() ?? null;
+		return null;
+	}
+
 	public static setStartRectangle(rectangle: cool.SimpleRectangle) {
 		this.startRectangle = rectangle;
 		this.updateMarkers();

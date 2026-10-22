@@ -889,7 +889,11 @@ window.L.Clipboard = window.L.Class.extend({
 			return false;
 		}
 
-		if (this._selectionType !== 'text' && this._selectionType !== 'slide') {
+		// iOS Writer can preserve complex selections through its native rich-MIME
+		// bridge. Keep the existing selection restrictions in every other client.
+		const iosWriterComplex = window.ThisIsTheiOSApp && this._map.getDocType() === 'text' &&
+			this._selectionType === 'complex';
+		if (this._selectionType !== 'text' && this._selectionType !== 'slide' && !iosWriterComplex) {
 			return false;
 		}
 
@@ -914,7 +918,12 @@ window.L.Clipboard = window.L.Class.extend({
 			if (await check_ === null)
 				return; // Either wrong command or a pending event.
 
-			await window.webkit.messageHandlers.clipboard.postMessage(`write`);
+			try {
+				await window.webkit.messageHandlers.clipboard.postMessage(`write`);
+			} catch (error) {
+				window.app.console.error('Native clipboard write failed: ' + error.message);
+				this._warnCopyPaste();
+			}
 		} else {
 			const url = this.getMetaURL() + '&MimeType=text/html,text/plain;charset=utf-8';
 

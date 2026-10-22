@@ -30,6 +30,7 @@ NS_ASSUME_NONNULL_BEGIN
                         onCopy:(void (^)(void))onCopy;
 - (void)showIn:(UIView *)parent;
 - (void)setStreamingText:(NSString *)text;
+- (void)setInsertingText:(NSString *)text;
 - (void)setReadyWithFullText:(NSString *)text;
 - (void)setErrorWithMessage:(NSString *)message;
 - (void)dismiss;

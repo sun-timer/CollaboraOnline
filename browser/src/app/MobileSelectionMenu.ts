@@ -20,6 +20,7 @@ interface MobileSelectionShowDetail {
 	anchorY: number;
 	anchorBottomY?: number;
 	text: string;
+	hasSelection?: boolean;
 	mode?: 'text' | 'calc' | 'graphic';
 }
 
@@ -36,6 +37,7 @@ class MobileSelectionMenu {
 	private container: HTMLDivElement | null = null;
 	private anchorBottomY = 0;
 	private menuMode: 'text' | 'calc' | 'graphic' = 'text';
+	private hasTextSelection = true;
 	private textEditMode = false;
 	/** Ignore taps until this time. iOS emits extra clicks when the long-press finger lifts. */
 	private static ignoreActionsUntil = 0;
@@ -308,6 +310,7 @@ class MobileSelectionMenu {
 		const docType = map?.getDocType?.() || 'text';
 
 		this.menuMode = detail.mode || 'text';
+		this.hasTextSelection = detail.hasSelection !== false;
 		if (this.menuMode === 'text') {
 			if (docType === 'spreadsheet') {
 				this.menuMode = 'calc';
@@ -686,11 +689,51 @@ class MobileSelectionMenu {
 		}
 		menu?.hide();
 		if (item.catalogTaskType) {
+			const entry = MobileAiUiCatalog.getEntry(item.catalogTaskType);
+			if (
+				entry?.selectionRequired &&
+				menu &&
+				!MobileSelectionMenu.hasLiveWriterSelection(menu)
+			) {
+				MobileSelectionMenu.showSelectionRequiredToast(menu.lastAnchorY);
+				return;
+			}
 			const panel = (window as any).__coolWriterAiPanel;
 			if (panel && typeof panel.openTask === 'function') {
 				panel.openTask(item.catalogTaskType);
 			}
 		}
+	}
+
+	private static hasLiveWriterSelection(menu: MobileSelectionMenu): boolean {
+		if (
+			!menu.hasTextSelection ||
+			window.ThisIsTheiOSApp && (window as any).app?.map?.getDocType?.() === 'text'
+		) {
+			const selectionMenu = (window as any).AndroidSelectionMenu;
+			if (
+				selectionMenu &&
+				typeof selectionMenu.hasVisibleTextSelection === 'function'
+			) {
+				return selectionMenu.hasVisibleTextSelection();
+			}
+			return false;
+		}
+		return true;
+	}
+
+	private static showSelectionRequiredToast(anchorY: number): void {
+		const toast = document.createElement('div');
+		toast.textContent = '需要选中文本';
+		const viewport = window.visualViewport;
+		const viewportTop = viewport ? viewport.offsetTop : 0;
+		const viewportBottom = viewportTop + (viewport ? viewport.height : window.innerHeight);
+		const preferredTop = anchorY > viewportTop + 64 ? anchorY - 52 : anchorY + 36;
+		const top = Math.max(viewportTop + 8, Math.min(preferredTop, viewportBottom - 48));
+		toast.style.cssText =
+			'position:fixed;left:50%;top:' + top + 'px;transform:translateX(-50%);z-index:1000001;padding:10px 16px;border-radius:8px;background:rgba(32,32,32,.92);color:#fff;font-size:14px;white-space:nowrap;pointer-events:none;';
+		document.body.appendChild(toast);
+		window.setTimeout(() => toast.remove(), 1500);
 	}
 
 	private static runAction(item: MobileSelectionMenuItemSpec): void {
@@ -702,6 +745,14 @@ class MobileSelectionMenu {
 			if (map.socket && typeof map.socket.sendMessage === 'function') {
 				map.socket.sendMessage('save dontTerminateEdit=1 dontSaveIfUnmodified=0');
 			}
+			return;
+		}
+		if (
+			item.id === 'image_edit' &&
+			(window as any).ThisIsTheiOSApp &&
+			map.getDocType?.() === 'text'
+		) {
+			window.dispatchEvent(new CustomEvent('fabric:image:edit'));
 			return;
 		}
 		if (!item.unoCommand) {

@@ -29,6 +29,7 @@ class MouseControl extends CanvasSectionObject {
 	positionOnMouseDown: cool.SimplePoint | null = null;
 	localPositionOnMouseDown: cool.SimplePoint | null = null;
 	mouseDownSent: boolean = false;
+	private writerSelectionHandleTouchActive: boolean = false;
 
 	inSwipeAction: boolean = false;
 	swipeVelocity: number[] = [0, 0];
@@ -287,6 +288,16 @@ class MouseControl extends CanvasSectionObject {
 		this.setCursorType();
 
 		this.refreshPosition(point);
+		if (
+			this.writerSelectionHandleTouchActive &&
+			(window as any).ThisIsTheiOSApp &&
+			app.map?.getDocType() === 'text'
+		) {
+			// TextSelectionHandleSection owns this touch. The canvas can also emit
+			// a delayed touchstart-shaped long-press move, so ignore every move
+			// event type until the handle releases ownership.
+			return;
+		}
 
 		if (this.clickTimer) return;
 
@@ -369,6 +380,15 @@ class MouseControl extends CanvasSectionObject {
 
 	onMouseUp(point: cool.SimplePoint, e: MouseEvent): void {
 		this.refreshPosition(point);
+		if (
+			this.writerSelectionHandleTouchActive &&
+			(window as any).ThisIsTheiOSApp &&
+			app.map?.getDocType() === 'text'
+		) {
+			this.endWriterSelectionHandleTouch();
+			app.map.fire('scrollvelocity', { vx: 0, vy: 0 });
+			return;
+		}
 
 		if (this.mouseDownSent) {
 			this.postCoreMouseEvent(
@@ -399,6 +419,34 @@ class MouseControl extends CanvasSectionObject {
 		this.mouseDownSent = false;
 
 		if (this.containerObject.isDraggingSomething()) app.map.focus();
+	}
+
+	beginWriterSelectionHandleTouch(): void {
+		if ((window as any).ThisIsTheiOSApp && app.map?.getDocType() === 'text') {
+			this.writerSelectionHandleTouchActive = true;
+			clearTimeout(this.mouseMoveTimer);
+			this.mouseMoveTimer = null;
+		}
+	}
+
+	endWriterSelectionHandleTouch(): void {
+		if (!this.writerSelectionHandleTouchActive) {
+			return;
+		}
+		this.writerSelectionHandleTouchActive = false;
+		this.positionOnMouseDown = null;
+		this.localPositionOnMouseDown = null;
+		this.mouseDownSent = false;
+		clearTimeout(this.mouseMoveTimer);
+		this.mouseMoveTimer = null;
+	}
+
+	cancelWriterSelectionHandleTouch(): void {
+		if (!this.writerSelectionHandleTouchActive) {
+			return;
+		}
+		this.endWriterSelectionHandleTouch();
+		app.map?.fire('scrollvelocity', { vx: 0, vy: 0 });
 	}
 
 	onMouseEnter(point: cool.SimplePoint, e: MouseEvent): void {
@@ -595,6 +643,7 @@ class MouseControl extends CanvasSectionObject {
 	}
 
 	cancelSingleTouchForMultiTouch(): void {
+		this.writerSelectionHandleTouchActive = false;
 		if (this.clickTimer) {
 			app.timerRegistry.clearTimeout(this.clickTimer);
 			this.clickTimer = null;

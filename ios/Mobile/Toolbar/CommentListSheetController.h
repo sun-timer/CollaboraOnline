@@ -31,6 +31,25 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
+typedef void (^CommentInfoOverlayAction)(NSString *commentId, NSString *commentText);
+
+/// Nonmodal Writer comment card. Its full-size container only intercepts touches
+/// inside the card, allowing document taps on the uncovered canvas to pass through.
+@interface CommentInfoOverlay : UIView
+
++ (void)showInHostViewController:(UIViewController *)host
+                         comment:(NSDictionary<NSString *, id> *)comment
+                  ownAuthorName:(NSString *)ownAuthorName
+                         avatar:(nullable UIImage *)avatar
+                         canEdit:(BOOL)canEdit
+                          onClose:(dispatch_block_t)onClose
+                           onEdit:(CommentInfoOverlayAction)onEdit
+                         onDelete:(CommentInfoOverlayAction)onDelete;
++ (void)hideFromHostViewController:(UIViewController *)host;
++ (BOOL)isVisibleInHostViewController:(UIViewController *)host;
+
+@end
+
 NS_ASSUME_NONNULL_END
 
 // vim:set shiftwidth=4 softtabstop=4 expandtab:
