@@ -48,6 +48,10 @@ public class SelectionMenuController {
 
         void executeUnoCommand(String command);
 
+        boolean isWriterDocument();
+
+        void openWriterImageEdit();
+
         void copySelectionToSystemClipboard();
 
         void cutSelectionToSystemClipboard();
@@ -78,6 +82,7 @@ public class SelectionMenuController {
     private boolean graphicMode = false;
     private boolean calcMode = false;
     private boolean textEditMode = false;
+    private boolean hasTextSelection = true;
     private float pendingAnchorX;
     private float pendingAnchorY;
     private float pendingAnchorBottomY;
@@ -182,6 +187,12 @@ public class SelectionMenuController {
 
     /** @param anchorBottomY selection bottom Y for flip-below positioning. */
     public void showAtWindow(float windowX, float windowY, float anchorBottomY) {
+        showAtWindow(windowX, windowY, anchorBottomY, true);
+    }
+
+    /** Show the Writer caret menu when the tap confirmed a bare text cursor. */
+    public void showAtWindow(float windowX, float windowY, float anchorBottomY,
+            boolean hasSelection) {
         if (overlayView == null || menuView == null) {
             Log.w(TAG, "show_aborted overlay=" + (overlayView != null)
                     + " menu=" + (menuView != null)
@@ -192,6 +203,7 @@ public class SelectionMenuController {
         pendingAnchorX = windowX;
         pendingAnchorY = windowY;
         pendingAnchorBottomY = anchorBottomY;
+        hasTextSelection = hasSelection;
         positionRetry = 0;
         updateEditActionVisibility();
         if (textEditMode) {
@@ -367,6 +379,7 @@ public class SelectionMenuController {
     }
 
     private void onCopy() {
+        if (!requireTextSelection()) return;
         host.copySelectionToSystemClipboard();
         hide();
     }
@@ -383,6 +396,7 @@ public class SelectionMenuController {
     }
 
     private void onCut() {
+        if (!requireTextSelection()) return;
         if (!host.isDocEditable()) {
             toastReadOnlyDocument();
             return;
@@ -395,6 +409,7 @@ public class SelectionMenuController {
     }
 
     private void onDelete() {
+        if (!requireTextSelection()) return;
         hide();
         if (!host.isDocEditable()) {
             toastReadOnlyDocument();
@@ -413,6 +428,10 @@ public class SelectionMenuController {
             toastReadOnlyDocument();
             return;
         }
+        if (host.isWriterDocument()) {
+            host.ensureEditModeThen(host::openWriterImageEdit);
+            return;
+        }
         host.ensureEditModeThen(() -> host.executeUnoCommand(".uno:Crop"));
     }
 
@@ -422,10 +441,17 @@ public class SelectionMenuController {
     }
 
     private void onAiOperation(String taskType) {
+        if (!requireTextSelection()) return;
         hide();
         if (host.onAiOperation(taskType)) {
             Log.i(TAG, "ai_operation started: " + taskType);
         }
+    }
+
+    private boolean requireTextSelection() {
+        if (hasTextSelection) return true;
+        Toast.makeText(host.getContext(), "需要选中文本", Toast.LENGTH_SHORT).show();
+        return false;
     }
 
     private void toastReadOnlyDocument() {
@@ -441,8 +467,10 @@ public class SelectionMenuController {
         if (calcMode) {
             setViewVisibility(R.id.selection_op_select_all, View.GONE);
             setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
+            setViewEnabled(R.id.selection_op_copy, true);
             setViewVisibility(R.id.selection_op_paste, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_cut, docEditable && editMode ? View.VISIBLE : View.GONE);
+            setViewEnabled(R.id.selection_op_cut, docEditable && editMode);
             setViewVisibility(R.id.selection_op_delete, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_image_edit, View.GONE);
             setViewVisibility(R.id.selection_op_save, View.GONE);
@@ -454,7 +482,9 @@ public class SelectionMenuController {
         } else if (graphicMode) {
             // Impress 图形选中：单行紧凑浮层（复制/剪切/粘贴/删除/图片编辑/保存）
             setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
+            setViewEnabled(R.id.selection_op_copy, true);
             setViewVisibility(R.id.selection_op_cut, docEditable && editMode ? View.VISIBLE : View.GONE);
+            setViewEnabled(R.id.selection_op_cut, docEditable && editMode);
             setViewVisibility(R.id.selection_op_paste, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_delete, docEditable ? View.VISIBLE : View.GONE);
             updateActionLabel(R.id.selection_op_delete, "删除");
@@ -472,9 +502,11 @@ public class SelectionMenuController {
             setViewVisibility(R.id.selection_op_save, View.GONE);
             setViewVisibility(R.id.selection_op_select_all, View.VISIBLE);
             setViewVisibility(R.id.selection_op_copy, View.VISIBLE);
+            setViewEnabled(R.id.selection_op_copy, hasTextSelection);
             // Paste/cut: only when the document is writable and already in edit mode.
             setViewVisibility(R.id.selection_op_paste, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_cut, docEditable && editMode ? View.VISIBLE : View.GONE);
+            setViewEnabled(R.id.selection_op_cut, hasTextSelection);
             setViewVisibility(R.id.selection_op_translate, editMode ? View.VISIBLE : View.GONE);
             setAiActionsVisibility(editMode ? View.VISIBLE : View.GONE);
             if (textEditMode) {
@@ -495,6 +527,14 @@ public class SelectionMenuController {
     private void setAiActionsVisibility(int visibility) {
         for (int actionId : SELECTION_AI_ACTION_IDS) {
             setViewVisibility(actionId, visibility);
+        }
+    }
+
+    private void setViewEnabled(int viewId, boolean enabled) {
+        View view = menuView != null ? menuView.findViewById(viewId) : null;
+        if (view != null) {
+            view.setEnabled(enabled);
+            view.setAlpha(enabled ? 1f : 0.45f);
         }
     }
 

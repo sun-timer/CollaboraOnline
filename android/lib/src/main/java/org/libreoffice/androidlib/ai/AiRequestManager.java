@@ -47,6 +47,10 @@ public class AiRequestManager {
             AiModelConfigStore.SamplingParams sampling, AiRequestSession session, Callback callback) {
         HttpURLConnection connection = null;
         StringBuilder fullText = new StringBuilder();
+        StringBuilder nonSseResponse = new StringBuilder();
+        boolean sawSsePayload = false;
+        boolean sawCompleteMessage = false;
+        java.util.concurrent.atomic.AtomicBoolean terminal = new java.util.concurrent.atomic.AtomicBoolean(false);
         try {
             URL url = new URL(endpoint);
             connection = (HttpURLConnection) url.openConnection();
@@ -75,7 +79,8 @@ public class AiRequestManager {
             int statusCode = connection.getResponseCode();
             if (statusCode < 200 || statusCode >= 300) {
                 String errorText = readStreamAsText(connection.getErrorStream());
-                callback.onError(requestId, "http_" + statusCode, errorText.isEmpty() ? "AI request failed" : errorText);
+                finishError(session, terminal, callback, requestId, "http_" + statusCode,
+                        errorText.isEmpty() ? "AI request failed" : limitErrorText(errorText));
                 return;
             }
 
@@ -89,6 +94,10 @@ public class AiRequestManager {
 
                 line = line.trim();
                 if (!line.startsWith("data:")) {
+                    if (!sawSsePayload && !line.startsWith(":")) {
+                        if (nonSseResponse.length() > 0) nonSseResponse.append('\n');
+                        nonSseResponse.append(line);
+                    }
                     continue;
                 }
 
@@ -96,14 +105,21 @@ public class AiRequestManager {
                 if (data.isEmpty()) {
                     continue;
                 }
+                sawSsePayload = true;
 
                 if ("[DONE]".equals(data)) {
-                    callback.onDone(requestId, callback.sanitizePayload(requestId, fullText.toString(), "done_payload"));
+                    finishDone(session, terminal, callback, requestId, fullText.toString());
                     return;
                 }
 
                 try {
                     JSONObject chunk = new JSONObject(data);
+                    JSONObject providerError = chunk.optJSONObject("error");
+                    if (providerError != null) {
+                        finishError(session, terminal, callback, requestId, "provider_error",
+                                providerError.optString("message", "AI provider returned an error"));
+                        return;
+                    }
                     JSONArray choices = chunk.optJSONArray("choices");
                     if (choices == null || choices.length() == 0) {
                         continue;
@@ -114,34 +130,70 @@ public class AiRequestManager {
                         continue;
                     }
 
+                    Object finishReasonValue = choice.opt("finish_reason");
+                    String finishReason = finishReasonValue instanceof String
+                            ? (String) finishReasonValue : "";
+
                     Object deltaRaw = null;
                     JSONObject deltaObj = choice.optJSONObject("delta");
                     if (deltaObj != null && deltaObj.has("content")) {
                         deltaRaw = deltaObj.opt("content");
                     }
+                    if (deltaRaw == null) {
+                        JSONObject messageObj = choice.optJSONObject("message");
+                        if (messageObj != null && messageObj.has("content")) {
+                            Object messageRaw = messageObj.opt("content");
+                            String messageText = callback.sanitizePayload(requestId, messageRaw, "stream_message");
+                            if (!messageText.isEmpty()) {
+                                if (fullText.length() == 0) {
+                                    deltaRaw = messageRaw;
+                                } else {
+                                    fullText.setLength(0);
+                                    fullText.append(messageText);
+                                    sawCompleteMessage = true;
+                                }
+                            }
+                        }
+                    }
                     if (deltaRaw == null && choice.has("text")) {
                         deltaRaw = choice.opt("text");
                     }
                     String delta = callback.sanitizePayload(requestId, deltaRaw, "stream_delta");
-                    if (delta.isEmpty()) {
-                        continue;
+                    if (!delta.isEmpty() && !sawCompleteMessage) {
+                        if (session.shouldEmitStreamingState()) {
+                            callback.onStreamingState(requestId);
+                        }
+                        fullText.append(delta);
+                        callback.onStreamDelta(requestId, delta);
                     }
-
-                    if (session.shouldEmitStreamingState()) {
-                        callback.onStreamingState(requestId);
+                    if (!finishReason.isEmpty()) {
+                        if ("length".equals(finishReason)) {
+                            Log.w(TAG, "response_truncated requestId=" + requestId + " chars=" + fullText.length());
+                        }
+                        finishDone(session, terminal, callback, requestId, fullText.toString());
+                        return;
                     }
-
-                    fullText.append(delta);
-                    callback.onStreamDelta(requestId, delta);
                 } catch (JSONException parseError) {
-                    Log.w(TAG, "Skipping unparsable SSE chunk: " + data, parseError);
+                    Log.w(TAG, "Skipping unparsable SSE chunk requestId=" + requestId, parseError);
                 }
             }
 
-            callback.onDone(requestId, callback.sanitizePayload(requestId, fullText.toString(), "done_payload"));
+            if (!session.isCancelled() && !terminal.get()) {
+                if (!sawSsePayload && nonSseResponse.length() > 0) {
+                    parseNonStreamingResponse(requestId, nonSseResponse.toString(), callback, terminal, fullText, session);
+                }
+                if (!terminal.get()) {
+                    if (fullText.length() == 0) {
+                        finishError(session, terminal, callback, requestId, "empty_response", "AI 未返回可用内容，请重试");
+                    } else {
+                        finishDone(session, terminal, callback, requestId, fullText.toString());
+                    }
+                }
+            }
         } catch (Exception e) {
             if (!session.isCancelled()) {
-                callback.onError(requestId, "request_failed", e.getMessage() == null ? "AI request failed" : e.getMessage());
+                finishError(session, terminal, callback, requestId, "request_failed",
+                        e.getMessage() == null ? "AI request failed" : e.getMessage());
                 Log.e(TAG, "execute failed requestId=" + requestId, e);
             }
         } finally {
@@ -149,6 +201,64 @@ public class AiRequestManager {
                 connection.disconnect();
             }
         }
+    }
+
+    private void parseNonStreamingResponse(String requestId, String body, Callback callback,
+            java.util.concurrent.atomic.AtomicBoolean terminal, StringBuilder fullText,
+            AiRequestSession session) throws JSONException {
+        if (session.isCancelled()) {
+            return;
+        }
+        JSONObject response;
+        try {
+            response = new JSONObject(body);
+        } catch (JSONException e) {
+            finishError(session, terminal, callback, requestId, "invalid_response", "AI 返回内容无法解析，请重试");
+            return;
+        }
+        JSONObject providerError = response.optJSONObject("error");
+        if (providerError != null) {
+            finishError(session, terminal, callback, requestId, "provider_error",
+                    providerError.optString("message", "AI provider returned an error"));
+            return;
+        }
+        JSONArray choices = response.optJSONArray("choices");
+        JSONObject choice = choices != null && choices.length() > 0 ? choices.optJSONObject(0) : null;
+        JSONObject message = choice == null ? null : choice.optJSONObject("message");
+        Object raw = message != null ? message.opt("content") : choice == null ? null : choice.opt("text");
+        String content = callback.sanitizePayload(requestId, raw, "done_payload");
+        if (content.isEmpty()) {
+            finishError(session, terminal, callback, requestId, "empty_response", "AI 未返回可用内容，请重试");
+            return;
+        }
+        fullText.setLength(0);
+        fullText.append(content);
+        finishDone(session, terminal, callback, requestId, fullText.toString());
+    }
+
+    private void finishDone(AiRequestSession session, java.util.concurrent.atomic.AtomicBoolean terminal, Callback callback,
+            String requestId, String text) throws JSONException {
+        if (session.isCancelled()) {
+            return;
+        }
+        String sanitized = callback.sanitizePayload(requestId, text, "done_payload");
+        if (sanitized.isEmpty()) {
+            finishError(session, terminal, callback, requestId, "empty_response", "AI 未返回可用内容，请重试");
+        } else if (!session.isCancelled() && terminal.compareAndSet(false, true) && !session.isCancelled()) {
+            callback.onDone(requestId, sanitized);
+        }
+    }
+
+    private void finishError(AiRequestSession session, java.util.concurrent.atomic.AtomicBoolean terminal, Callback callback,
+            String requestId, String code, String message) {
+        if (!session.isCancelled() && terminal.compareAndSet(false, true) && !session.isCancelled()) {
+            callback.onError(requestId, code, message == null || message.isEmpty() ? "AI request failed" : message);
+        }
+    }
+
+    private String limitErrorText(String value) {
+        String text = value == null ? "" : value.trim();
+        return text.length() > 1000 ? text.substring(0, 1000) : text;
     }
 
     private String readStreamAsText(InputStream inputStream) {

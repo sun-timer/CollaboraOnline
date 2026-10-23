@@ -66,7 +66,7 @@ class WriterAiCatalog {
 
 	/** iOS Writer outline styles; Android keeps the broader shared list above. */
 	static readonly IOS_WORD_OUTLINE_TYPES = [
-		{ key: 'general', label: '生成大纲' },
+		{ key: 'general', label: '大纲生成' },
 		{ key: 'meeting', label: '会议纪要' },
 		{ key: 'summary', label: '工作总结' },
 	];

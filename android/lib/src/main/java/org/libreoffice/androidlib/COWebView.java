@@ -6,6 +6,7 @@
  */
 package org.libreoffice.androidlib;
 import android.content.Context;
+import android.graphics.RectF;
 import android.os.Build;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -24,6 +25,8 @@ public class COWebView extends WebView {
     private static final String TAG = "COWebView";
 
     public interface OnDocumentLongPressListener {
+        boolean isWriterDocument();
+
         void onDocumentLongPress(float viewX, float viewY);
 
         void onDocumentSelectionDrag(float viewX, float viewY);
@@ -49,6 +52,15 @@ public class COWebView extends WebView {
     private boolean magnifierShown = false;
     private volatile boolean slideSorterGestureActive = false;
     private boolean nativeSelectionDragActive = false;
+    private boolean writerSelectionHandleTouchActive = false;
+    private boolean suppressDocumentTapUntilGestureEnd = false;
+    private final RectF[] writerSelectionHandleRects = {new RectF(), new RectF()};
+    private float writerSelectionViewportWidth;
+    private float writerSelectionViewportHeight;
+    private float writerSelectionViewportOffsetLeft;
+    private float writerSelectionViewportOffsetTop;
+    private String writerSelectionSession = "";
+    private long writerSelectionHandleEpoch = -1L;
     private long lastNativeSelectionDragAt = 0L;
     /** When false, WebView is not treated as a text editor and IME won't auto-popup on tap.
      *  LOActivity toggles this only transiently so Calc canvas taps still select cells. */
@@ -109,6 +121,11 @@ public class COWebView extends WebView {
                 if (consumeWebViewLongClick && documentLongPressListener != null) {
                     nativeSelectionDragActive = true;
                     lastNativeSelectionDragAt = 0L;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                            && documentLongPressListener.isWriterDocument()) {
+                        getDocumentMagnifier().show(e.getX(), e.getY());
+                        magnifierShown = true;
+                    }
                     Log.i(TAG, "native_selection_drag start consumed=true");
                     documentLongPressListener.onDocumentLongPress(e.getX(), e.getY());
                 }
@@ -122,6 +139,43 @@ public class COWebView extends WebView {
 
     public void setOnDocumentTapListener(OnDocumentTapListener listener) {
         documentTapListener = listener;
+    }
+
+    /** Reset cached handles and touch ownership before each WebView document session. */
+    public synchronized void setWriterSelectionSession(String session) {
+        if (session == null || session.isEmpty() || session.equals(writerSelectionSession)) return;
+        writerSelectionSession = session;
+        writerSelectionHandleEpoch = -1L;
+        writerSelectionViewportWidth = 0f;
+        writerSelectionViewportHeight = 0f;
+        writerSelectionViewportOffsetLeft = 0f;
+        writerSelectionViewportOffsetTop = 0f;
+        for (RectF rect : writerSelectionHandleRects) rect.setEmpty();
+        writerSelectionHandleTouchActive = false;
+        suppressDocumentTapUntilGestureEnd = false;
+        nativeSelectionDragActive = false;
+        hideDocumentMagnifier();
+    }
+
+    /** Cache DOM handle bounds in CSS viewport coordinates for synchronous ACTION_DOWN hit testing. */
+    public synchronized void setWriterSelectionHandleRects(String session, float[] rects,
+            float viewportWidth, float viewportHeight, float viewportOffsetLeft,
+            float viewportOffsetTop, long epoch) {
+        if (rects == null || rects.length != 8 || viewportWidth <= 0f || viewportHeight <= 0f
+                || session == null || !session.equals(writerSelectionSession)
+                || epoch < writerSelectionHandleEpoch) {
+            return;
+        }
+        writerSelectionHandleEpoch = epoch;
+        writerSelectionViewportWidth = viewportWidth;
+        writerSelectionViewportHeight = viewportHeight;
+        writerSelectionViewportOffsetLeft = viewportOffsetLeft;
+        writerSelectionViewportOffsetTop = viewportOffsetTop;
+        for (int i = 0; i < writerSelectionHandleRects.length; i++) {
+            int offset = i * 4;
+            RectF rect = writerSelectionHandleRects[i];
+            rect.set(rects[offset], rects[offset + 1], rects[offset + 2], rects[offset + 3]);
+        }
     }
 
     /**
@@ -226,11 +280,53 @@ public class COWebView extends WebView {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        final int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            suppressDocumentTapUntilGestureEnd = false;
+        }
+        if (action == MotionEvent.ACTION_DOWN && hitWriterSelectionHandle(event.getX(), event.getY())) {
+            writerSelectionHandleTouchActive = true;
+            suppressDocumentTapUntilGestureEnd = true;
+            nativeSelectionDragActive = false;
+            hideDocumentMagnifier();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                getDocumentMagnifier().show(event.getX(), selectionHandleMagnifierY(event.getY()));
+                magnifierShown = true;
+            }
+            Log.i(TAG, "writer_selection_handle_touch start consumed=true");
+        }
+        if (writerSelectionHandleTouchActive) {
+            if (action == MotionEvent.ACTION_POINTER_DOWN) {
+                // The second finger changes this into a pinch. Drop handle
+                // ownership and magnification, then let WebView receive the
+                // pointer event and all subsequent motion for its normal zoom path.
+                writerSelectionHandleTouchActive = false;
+                hideDocumentMagnifier();
+                MotionEvent cancel = MotionEvent.obtain(event);
+                cancel.setAction(MotionEvent.ACTION_CANCEL);
+                documentGestureDetector.onTouchEvent(cancel);
+                cancel.recycle();
+                Log.i(TAG, "writer_selection_handle_touch handoff=pinch");
+            } else {
+                // Let WebView deliver the entire stream to the DOM handle. Bypass the
+                // document long-press/tap state machines, which otherwise race it.
+                if (action == MotionEvent.ACTION_MOVE && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    getDocumentMagnifier().show(event.getX(), selectionHandleMagnifierY(event.getY()));
+                }
+                super.onTouchEvent(event);
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    writerSelectionHandleTouchActive = false;
+                    suppressDocumentTapUntilGestureEnd = false;
+                    hideDocumentMagnifier();
+                    Log.i(TAG, "writer_selection_handle_touch end consumed=true");
+                }
+                return true;
+            }
+        }
         documentGestureDetector.onTouchEvent(event);
         updateDocumentMagnifier(event);
         boolean handledNativeSelection = updateNativeSelectionDrag(event);
 
-        final int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
             documentTouchGeneration++;
             documentTapDownX = event.getX();
@@ -264,7 +360,8 @@ public class COWebView extends WebView {
 
         boolean handled = super.onTouchEvent(event);
 
-        if (action == MotionEvent.ACTION_UP && documentTapListener != null && !nativeSelectionDragActive) {
+        if (action == MotionEvent.ACTION_UP && documentTapListener != null && !nativeSelectionDragActive
+                && !suppressDocumentTapUntilGestureEnd) {
             long duration = event.getEventTime() - documentTapDownAt;
             float dx = event.getX() - documentTapDownX;
             float dy = event.getY() - documentTapDownY;
@@ -274,6 +371,9 @@ public class COWebView extends WebView {
                 final float tapY = event.getY();
                 post(() -> documentTapListener.onDocumentTap(tapX, tapY));
             }
+        }
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            suppressDocumentTapUntilGestureEnd = false;
         }
 
         if (!documentGestureGuardEnabled) {
@@ -354,6 +454,13 @@ public class COWebView extends WebView {
             return;
         }
 
+        boolean writerDocument = documentLongPressListener != null
+                && documentLongPressListener.isWriterDocument();
+        if (writerDocument && !nativeSelectionDragActive) {
+            hideDocumentMagnifier();
+            return;
+        }
+
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 touchDownAt = event.getEventTime();
@@ -374,6 +481,30 @@ public class COWebView extends WebView {
             default:
                 break;
         }
+    }
+
+    private synchronized boolean hitWriterSelectionHandle(float viewX, float viewY) {
+        if (writerSelectionViewportWidth <= 0f || writerSelectionViewportHeight <= 0f
+                || getWidth() <= 0 || getHeight() <= 0) {
+            return false;
+        }
+        float cssX = viewX * writerSelectionViewportWidth / getWidth()
+                + writerSelectionViewportOffsetLeft;
+        float cssY = viewY * writerSelectionViewportHeight / getHeight()
+                + writerSelectionViewportOffsetTop;
+        for (RectF rect : writerSelectionHandleRects) {
+            if (!rect.isEmpty() && rect.contains(cssX, cssY)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private float selectionHandleMagnifierY(float viewY) {
+        if (writerSelectionViewportHeight <= 0f || getHeight() <= 0) {
+            return viewY;
+        }
+        return viewY - 22f * getHeight() / writerSelectionViewportHeight;
     }
 
     private boolean shouldShowMagnifier(MotionEvent event) {

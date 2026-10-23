@@ -23,14 +23,42 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.UUID;
 
 public class LokClipboardData implements Serializable {
     public ArrayList<LokClipboardEntry> clipboardEntries = new ArrayList<LokClipboardEntry>();
+    /** Identifies the exact Android system clip which owns this serialized rich payload. */
+    public String clipToken;
+
+    public void removeEmptyEntries() {
+        if (clipboardEntries == null) {
+            clipboardEntries = new ArrayList<>();
+            return;
+        }
+        Iterator<LokClipboardEntry> iterator = clipboardEntries.iterator();
+        while (iterator.hasNext()) {
+            LokClipboardEntry entry = iterator.next();
+            if (entry == null || entry.mime == null || entry.mime.trim().isEmpty()
+                    || entry.data == null || entry.data.length == 0) {
+                iterator.remove();
+            }
+        }
+    }
+
+    public String ensureClipToken() {
+        if (clipToken == null || clipToken.trim().isEmpty()) {
+            clipToken = UUID.randomUUID().toString();
+        }
+        return clipToken;
+    }
 
     public String getText() {
+        if (clipboardEntries == null) return null;
         for (LokClipboardEntry aEntry : clipboardEntries) {
-            if (aEntry.mime.startsWith("text/plain")) { // text/plain;charset=utf-8
+            if (aEntry != null && aEntry.mime != null && aEntry.data != null
+                    && aEntry.data.length > 0 && aEntry.mime.startsWith("text/plain")) {
                 return new String(aEntry.data, StandardCharsets.UTF_8);
             }
         }
@@ -38,8 +66,10 @@ public class LokClipboardData implements Serializable {
     }
 
     public String getHtml() {
+        if (clipboardEntries == null) return null;
         for (LokClipboardEntry aEntry : clipboardEntries) {
-            if (aEntry.mime.startsWith("text/html")){
+            if (aEntry != null && aEntry.mime != null && aEntry.data != null
+                    && aEntry.data.length > 0 && aEntry.mime.startsWith("text/html")) {
                 return new String(aEntry.data, StandardCharsets.UTF_8);
             }
         }
@@ -78,8 +108,13 @@ public class LokClipboardData implements Serializable {
     }
 
     public LokClipboardEntry getBest() {
-        if (!clipboardEntries.isEmpty()) {
-            return clipboardEntries.get(0);
+        if (clipboardEntries != null) {
+            for (LokClipboardEntry entry : clipboardEntries) {
+                if (entry != null && entry.mime != null && !entry.mime.trim().isEmpty()
+                        && entry.data != null && entry.data.length > 0) {
+                    return entry;
+                }
+            }
         }
         return null;
     }

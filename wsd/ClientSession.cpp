@@ -1006,12 +1006,22 @@ bool ClientSession::_handleInput(const char *buffer, int length)
     }
     else if (tokens.equals(0, "save"))
     {
+        std::string requestId;
+        for (std::size_t i = 1; i < tokens.size(); ++i)
+        {
+            const StringVector attr = StringVector::tokenize(tokens[i], '=');
+            if (attr.size() == 2 && attr[0] == "requestId")
+                requestId = attr[1];
+        }
+
         // If we can't write to Storage, there is no point in saving.
         if (!isWritable())
         {
             LOG_WRN("Session [" << getId() << "] on document [" << docBroker->getDocKey()
                                 << "] has no write permissions in Storage and cannot save.");
             sendTextFrameAndLogError("error: cmd=save kind=savefailed");
+            docBroker->sendSaveRequestResult(client_from_this(), requestId, false,
+                                             "savefailed", "No write permission");
         }
         else
         {
@@ -1020,11 +1030,9 @@ bool ClientSession::_handleInput(const char *buffer, int length)
             int dontTerminateEdit = 1;
             std::string extendedData;
 
-            // We expect at most 3 arguments.
-            for (int i = 0; i < 3; ++i)
+            for (std::size_t i = 1; i < tokens.size(); ++i)
             {
-                // +1 to skip the command token.
-                const StringVector attr = StringVector::tokenize(tokens[i + 1], '=');
+                const StringVector attr = StringVector::tokenize(tokens[i], '=');
                 if (attr.size() == 2)
                 {
                     if (attr[0] == "dontTerminateEdit")
@@ -1039,7 +1047,7 @@ bool ClientSession::_handleInput(const char *buffer, int length)
             }
 
             docBroker->manualSave(client_from_this(), dontTerminateEdit != 0,
-                                  dontSaveIfUnmodified != 0, extendedData);
+                                  dontSaveIfUnmodified != 0, extendedData, requestId);
         }
     }
     else if (tokens.equals(0, "savetostorage"))

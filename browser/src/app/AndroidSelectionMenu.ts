@@ -23,7 +23,7 @@ class AndroidSelectionMenu {
 	private static selectionGestureComplete = false;
 	private static nativeSelectionDragActive = false;
 	/** Selection handles own their touch from handle mousedown through touchend. */
-	private static iosWriterHandleTouchActive = false;
+	private static writerSelectionHandleTouchActive = false;
 	private static clearIosLongPressForHandle: (() => void) | null = null;
 	/** A long-press range was canceled because a second finger joined it. */
 	private static iosPinchCancelledLongPress = false;
@@ -61,6 +61,20 @@ class AndroidSelectionMenu {
 		commentKind: 'comment' | 'revision';
 		action: 'show' | 'dismiss';
 	} | null = null;
+	private static androidWriterCommentTapCandidate: {
+		x: number;
+		y: number;
+		docLayer: any;
+		commentId: string;
+		commentKind: 'comment' | 'revision';
+	} | null = null;
+	private static androidWriterCaretTapCandidate: {
+		x: number;
+		y: number;
+		docLayer: any;
+		caret: { x1: number; y1: number; x2: number; y2: number };
+	} | null = null;
+	private static androidWriterCaretMenuTimer = 0;
 	private static suppressWriterCommentClick: {
 		x: number;
 		y: number;
@@ -682,8 +696,13 @@ class AndroidSelectionMenu {
 		document.addEventListener('touchend', () => endGesture(), { capture: true, passive: true });
 		document.addEventListener('pointercancel', () => endGesture(true), true);
 		document.addEventListener('touchcancel', () => endGesture(true), { capture: true, passive: true });
+		if (AndroidSelectionMenu.isAndroid()) {
+			document.addEventListener('touchcancel', AndroidSelectionMenu.cancelAndroidWriterHandleTouch,
+				{ capture: true, passive: true });
+		}
 		document.addEventListener('visibilitychange', () => {
 			if (document.hidden) {
+				AndroidSelectionMenu.cancelAndroidWriterHandleTouch();
 				AndroidSelectionMenu.cancelTextInputRequest('page_hidden');
 				AndroidSelectionMenu.clearKeyboardPreservation();
 			}
@@ -749,11 +768,11 @@ class AndroidSelectionMenu {
 	}
 
 	private static isAndroid(): boolean {
-		return !!((window as any).ThisIsTheAndroidApp);
+		return typeof window !== 'undefined' && !!(window as any).ThisIsTheAndroidApp;
 	}
 
 	private static isIOS(): boolean {
-		return !!((window as any).ThisIsTheiOSApp);
+		return typeof window !== 'undefined' && !!(window as any).ThisIsTheiOSApp;
 	}
 
 	private static isMobileApp(): boolean {
@@ -1198,6 +1217,7 @@ class AndroidSelectionMenu {
 		AndroidSelectionMenu.lastDragSelectionUpdateAt = 0;
 		AndroidSelectionMenu.suppressClickUntil = Date.now() + 700;
 		AndroidSelectionMenu.startTextSelectionAt(viewX, viewY);
+		AndroidSelectionMenu.updateAndroidSelectionMagnifierAt(viewX, viewY, true);
 	}
 
 	/**
@@ -1561,7 +1581,7 @@ class AndroidSelectionMenu {
 	private static scheduleTryShowFromCoreSelection(): void {
 		if (
 			AndroidSelectionMenu.isProgrammaticSelectionSuppressed() ||
-			AndroidSelectionMenu.iosWriterHandleTouchActive
+			AndroidSelectionMenu.writerSelectionHandleTouchActive
 		) {
 			return;
 		}
@@ -1589,7 +1609,7 @@ class AndroidSelectionMenu {
 		if (!AndroidSelectionMenu.isIOS() || !AndroidSelectionMenu.isWriterDoc()) {
 			return;
 		}
-		AndroidSelectionMenu.iosWriterHandleTouchActive = true;
+		AndroidSelectionMenu.writerSelectionHandleTouchActive = true;
 		AndroidSelectionMenu.clearTryShowRetry();
 		AndroidSelectionMenu.clearIosLongPressForHandle?.();
 		AndroidSelectionMenu.hide();
@@ -1597,11 +1617,59 @@ class AndroidSelectionMenu {
 
 	/** Release only the handle-ownership guard; callers keep the existing range. */
 	static endIOSWriterHandleTouch(): void {
-		if (!AndroidSelectionMenu.iosWriterHandleTouchActive) {
+		if (!AndroidSelectionMenu.writerSelectionHandleTouchActive) {
 			return;
 		}
-		AndroidSelectionMenu.iosWriterHandleTouchActive = false;
+		AndroidSelectionMenu.writerSelectionHandleTouchActive = false;
 		AndroidSelectionMenu.scheduleTryShowFromCoreSelection();
+	}
+
+	/** Android native hit-testing takes ownership before this DOM touch handler runs. */
+	static beginAndroidWriterHandleTouch(): void {
+		if (!AndroidSelectionMenu.isAndroid() || !AndroidSelectionMenu.isWriterDoc()) {
+			return;
+		}
+		AndroidSelectionMenu.writerSelectionHandleTouchActive = true;
+		AndroidSelectionMenu.clearTryShowRetry();
+		AndroidSelectionMenu.hide();
+	}
+
+	static endAndroidWriterHandleTouch(): void {
+		if (!AndroidSelectionMenu.writerSelectionHandleTouchActive) {
+			return;
+		}
+		AndroidSelectionMenu.writerSelectionHandleTouchActive = false;
+		AndroidSelectionMenu.scheduleTryShowFromCoreSelection();
+	}
+
+	static cancelAndroidWriterHandleTouch(): void {
+		if (!AndroidSelectionMenu.writerSelectionHandleTouchActive) {
+			return;
+		}
+		MobileSelectionMagnifier.hide();
+		AndroidSelectionMenu.endAndroidWriterHandleTouch();
+		const mouseControl = app.sectionContainer?.getSectionWithName(
+			app.CSections.MouseControl.name,
+		) as MouseControl | undefined;
+		mouseControl?.cancelWriterSelectionHandleTouch();
+	}
+
+	/** Native-origin long-press callbacks use WebView physical pixels. */
+	static updateAndroidSelectionMagnifierAt(viewX: number, viewY: number, start: boolean = false): void {
+		if (!AndroidSelectionMenu.isAndroid() || !AndroidSelectionMenu.isWriterDoc()) {
+			return;
+		}
+		const bridge = (window as any).COOLMessageHandler;
+		if (bridge && typeof bridge.hasNativeSelectionMagnifier === 'function' &&
+			bridge.hasNativeSelectionMagnifier()) {
+			return;
+		}
+		const scale = window.devicePixelRatio || 1;
+		if (start) {
+			MobileSelectionMagnifier.startAt(viewX / scale, viewY / scale);
+		} else {
+			MobileSelectionMagnifier.updateAt(viewX / scale, viewY / scale);
+		}
 	}
 
 	private static shouldUseGestureTryShow(): boolean {
@@ -1658,6 +1726,9 @@ class AndroidSelectionMenu {
 		}
 		AndroidSelectionMenu.hooksInstalled = true;
 		AndroidSelectionMenu.installInputGestureHooks();
+		if (AndroidSelectionMenu.isAndroid()) {
+			AndroidSelectionMenu.installAndroidWriterTapHooks();
+		}
 
 		document.addEventListener(
 			'contextmenu',
@@ -2111,13 +2182,13 @@ class AndroidSelectionMenu {
 		};
 
 		const onTouchStart = (e: TouchEvent) => {
-			if (AndroidSelectionMenu.iosWriterHandleTouchActive) {
+			if (AndroidSelectionMenu.writerSelectionHandleTouchActive) {
 				const mouseControl = app.sectionContainer?.getSectionWithName(
 					app.CSections.MouseControl.name,
 				) as MouseControl | undefined;
 				mouseControl?.cancelWriterSelectionHandleTouch();
 			}
-			AndroidSelectionMenu.iosWriterHandleTouchActive = false;
+			AndroidSelectionMenu.writerSelectionHandleTouchActive = false;
 			AndroidSelectionMenu.pendingWriterCommentTap = null;
 			AndroidSelectionMenu.suppressWriterCommentClick = null;
 			if (e.touches.length !== 1 || multiTouchActive) {
@@ -2203,7 +2274,7 @@ class AndroidSelectionMenu {
 			AndroidSelectionMenu.clearTryShowRetry();
 			longPressTimer = window.setTimeout(() => {
 				longPressTimer = 0;
-				if (AndroidSelectionMenu.iosWriterHandleTouchActive) {
+				if (AndroidSelectionMenu.writerSelectionHandleTouchActive) {
 					return;
 				}
 				caretTapCandidate = null;
@@ -2266,7 +2337,7 @@ class AndroidSelectionMenu {
 
 		const onTouchEnd = (e: TouchEvent) => {
 			MobileSelectionMagnifier.hide();
-			if (AndroidSelectionMenu.iosWriterHandleTouchActive) {
+			if (AndroidSelectionMenu.writerSelectionHandleTouchActive) {
 				clearLongPressTimer();
 				const touch = e.changedTouches[0];
 				if (touch) {
@@ -2378,7 +2449,7 @@ class AndroidSelectionMenu {
 
 		const onTouchCancel = (e: TouchEvent) => {
 			MobileSelectionMagnifier.hide();
-			if (AndroidSelectionMenu.iosWriterHandleTouchActive) {
+			if (AndroidSelectionMenu.writerSelectionHandleTouchActive) {
 				clearLongPressTimer();
 				AndroidSelectionMenu.endIOSWriterHandleTouch();
 				const mouseControl = app.sectionContainer?.getSectionWithName(
@@ -2461,7 +2532,7 @@ class AndroidSelectionMenu {
 		clientY: number,
 	): { docLayer: any; caret: any } | null {
 		if (
-			!AndroidSelectionMenu.isIOS() ||
+			!AndroidSelectionMenu.isMobileApp() ||
 			!AndroidSelectionMenu.isWriterDoc() ||
 			!AndroidSelectionMenu.isEditMode() ||
 			!app.map?._docLayer ||
@@ -2515,7 +2586,7 @@ class AndroidSelectionMenu {
 		clientY: number,
 	): { docLayer: any; comment: { id: string; kind: 'comment' | 'revision' } } | null {
 		if (
-			!AndroidSelectionMenu.isIOS() ||
+			!AndroidSelectionMenu.isMobileApp() ||
 			!AndroidSelectionMenu.isWriterDoc() ||
 			!app.map?._docLayer
 		) {
@@ -2566,6 +2637,174 @@ class AndroidSelectionMenu {
 			'text',
 			false,
 		);
+	}
+
+	/** Android keeps its native long-press recognizer; this only classifies short taps. */
+	private static installAndroidWriterTapHooks(): void {
+		let startX = 0;
+		let startY = 0;
+		let startAt = 0;
+		let multiTouch = false;
+		const clearCandidates = () => {
+			AndroidSelectionMenu.androidWriterCommentTapCandidate = null;
+			AndroidSelectionMenu.androidWriterCaretTapCandidate = null;
+			AndroidSelectionMenu.pendingWriterCommentTap = null;
+			if (AndroidSelectionMenu.androidWriterCaretMenuTimer) {
+				window.clearTimeout(AndroidSelectionMenu.androidWriterCaretMenuTimer);
+				AndroidSelectionMenu.androidWriterCaretMenuTimer = 0;
+			}
+		};
+		const isCaretTarget = (target: EventTarget | null): boolean => {
+			if (!(target instanceof HTMLElement)) return false;
+			return target.tagName === 'CANVAS' || !!target.closest('.cursor-handler');
+		};
+		const onTouchStart = (event: TouchEvent) => {
+			clearCandidates();
+			multiTouch = event.touches.length !== 1;
+			if (multiTouch || AndroidSelectionMenu.writerSelectionHandleTouchActive ||
+				AndroidSelectionMenu.nativeSelectionDragActive ||
+				AndroidSelectionMenu.hasVisibleTextSelection() ||
+				!AndroidSelectionMenu.isWriterDoc()) return;
+			const touch = event.touches[0];
+			if (!touch || !isCaretTarget(event.target)) return;
+			startX = touch.clientX;
+			startY = touch.clientY;
+			startAt = Date.now();
+			const commentHit = AndroidSelectionMenu.writerCommentHitAtClient(startX, startY);
+			if (commentHit) {
+				AndroidSelectionMenu.cancelTextInputRequest('writer_comment_info');
+				AndroidSelectionMenu.clearKeyboardPreservation();
+				AndroidSelectionMenu.androidWriterCommentTapCandidate = {
+					x: startX,
+					y: startY,
+					docLayer: commentHit.docLayer,
+					commentId: commentHit.comment.id,
+					commentKind: commentHit.comment.kind || 'comment',
+				};
+				AndroidSelectionMenu.pendingWriterCommentTap = {
+					...AndroidSelectionMenu.androidWriterCommentTapCandidate,
+					action: (window as any).MobileWriterComments?.isWriterCommentInfoActive?.(
+						commentHit.comment.id,
+						commentHit.comment.kind || 'comment',
+					) ? 'dismiss' : 'show',
+				};
+				return;
+			}
+			const caretHit = AndroidSelectionMenu.iosWriterCaretHitAtClient(startX, startY);
+			if (!caretHit) return;
+			AndroidSelectionMenu.androidWriterCaretTapCandidate = {
+				x: startX,
+				y: startY,
+				docLayer: caretHit.docLayer,
+				caret: {
+					x1: caretHit.caret.x1,
+					y1: caretHit.caret.y1,
+					x2: caretHit.caret.x2,
+					y2: caretHit.caret.y2,
+				},
+			};
+		};
+		const onTouchMove = (event: TouchEvent) => {
+			if (event.touches.length !== 1 || multiTouch) {
+				multiTouch = true;
+				clearCandidates();
+				return;
+			}
+			const touch = event.touches[0];
+			if (touch && Math.abs(touch.clientX - startX) + Math.abs(touch.clientY - startY) > 12) {
+				clearCandidates();
+			}
+		};
+		const onTouchEnd = (event: TouchEvent) => {
+			if (multiTouch) {
+				clearCandidates();
+				multiTouch = event.touches.length > 0;
+				return;
+			}
+			const touch = event.changedTouches[0];
+			if (!touch || Date.now() - startAt > 350 ||
+				Math.abs(touch.clientX - startX) + Math.abs(touch.clientY - startY) > 12) {
+				clearCandidates();
+				return;
+			}
+			const commentCandidate = AndroidSelectionMenu.androidWriterCommentTapCandidate;
+			if (commentCandidate) {
+				const hit = AndroidSelectionMenu.writerCommentHitAtClient(touch.clientX, touch.clientY);
+				if (hit && hit.docLayer === commentCandidate.docLayer &&
+					hit.comment.id === commentCandidate.commentId &&
+					hit.comment.kind === commentCandidate.commentKind) {
+					const point = AndroidSelectionMenu.viewPointToDocumentTwips(
+						touch.clientX * (app.dpiScale || 1), touch.clientY * (app.dpiScale || 1));
+					const comments = (window as any).MobileWriterComments;
+					const result = point && comments?.handleWriterCommentTap(point, undefined, {
+						x: touch.clientX, y: touch.clientY,
+					});
+					if (result === 'shown') {
+						AndroidSelectionMenu.suppressWriterCommentClick = {
+							x: touch.clientX, y: touch.clientY,
+							docLayer: commentCandidate.docLayer,
+							expiresAt: Date.now() + 800,
+						};
+						AndroidSelectionMenu.cancelPendingTouchForCommentInfo();
+						event.preventDefault();
+						event.stopImmediatePropagation();
+					} else if (result !== 'dismissed') {
+						AndroidSelectionMenu.pendingWriterCommentTap = null;
+					} else {
+						// Let this second tap reach core; a compatibility click from the
+						// previous info tap must not consume the caret placement click.
+						AndroidSelectionMenu.pendingWriterCommentTap = null;
+						AndroidSelectionMenu.suppressWriterCommentClick = null;
+					}
+				}
+				AndroidSelectionMenu.androidWriterCommentTapCandidate = null;
+				return;
+			}
+			const caretCandidate = AndroidSelectionMenu.androidWriterCaretTapCandidate;
+			AndroidSelectionMenu.androidWriterCaretTapCandidate = null;
+			if (!caretCandidate) return;
+			AndroidSelectionMenu.androidWriterCaretMenuTimer = window.setTimeout(() => {
+				AndroidSelectionMenu.androidWriterCaretMenuTimer = 0;
+				const hit = AndroidSelectionMenu.iosWriterCaretHitAtClient(
+					caretCandidate.x, caretCandidate.y);
+				const caret = app.file?.textCursor?.rectangle;
+				if (hit && hit.docLayer === caretCandidate.docLayer && caret &&
+					caret.x1 === caretCandidate.caret.x1 && caret.y1 === caretCandidate.caret.y1 &&
+					caret.x2 === caretCandidate.caret.x2 && caret.y2 === caretCandidate.caret.y2) {
+					AndroidSelectionMenu.showAndroidWriterCaretMenu();
+				}
+			}, 120);
+		};
+		const onTouchCancel = () => {
+			multiTouch = false;
+			clearCandidates();
+		};
+		document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+		document.addEventListener('touchmove', onTouchMove, { capture: true, passive: true });
+		document.addEventListener('touchend', onTouchEnd, { capture: true, passive: false });
+		document.addEventListener('touchcancel', onTouchCancel, { capture: true, passive: true });
+		app.map?.on?.('docloaded', clearCandidates);
+		app.map?.on?.('closeapp', clearCandidates);
+	}
+
+	private static showAndroidWriterCaretMenu(): void {
+		const caret = app.file?.textCursor?.rectangle;
+		const layout = app.activeDocument?.activeLayout;
+		if (!caret || !layout || !app.file?.textCursor?.visible ||
+			AndroidSelectionMenu.hasVisibleTextSelection() || !app.sectionContainer ||
+			!AndroidSelectionMenu.isEditMode() ||
+			(typeof GraphicSelection !== 'undefined' && GraphicSelection.hasActiveSelection())) return;
+		const scale = app.dpiScale || 1;
+		const canvas = app.sectionContainer.getCanvasBoundingClientRect();
+		const caretX = (caret.x1 + caret.x2) / 2;
+		const x = Math.round(layout.documentToViewX(new cool.SimplePoint(caretX, caret.y1)) + canvas.x * scale);
+		const top = Math.round(Math.min(
+			layout.documentToViewY(new cool.SimplePoint(caretX, caret.y1)),
+			layout.documentToViewY(new cool.SimplePoint(caretX, caret.y2))) + canvas.y * scale);
+		const bottom = Math.round(Math.max(
+			layout.documentToViewY(new cool.SimplePoint(caretX, caret.y1)),
+			layout.documentToViewY(new cool.SimplePoint(caretX, caret.y2))) + canvas.y * scale);
+		window.postMobileMessage('SELECTIONMENU caret ' + x + ' ' + top + ' ' + bottom);
 	}
 }
 

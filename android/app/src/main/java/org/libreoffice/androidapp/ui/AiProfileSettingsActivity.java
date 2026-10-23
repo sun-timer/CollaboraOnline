@@ -70,10 +70,8 @@ public class AiProfileSettingsActivity extends AppCompatActivity {
     }
 
     private void renderProfile() {
-        String nickname = prefs.getString(AiSettingsStore.KEY_PROFILE_NAME, "orangepi");
-        if (nickname == null || nickname.trim().isEmpty()) {
-            nickname = "orangepi";
-        }
+        String nickname = AiSettingsStore.resolveProfileName(this,
+                getString(R.string.ai_profile_name), getString(R.string.pref_user_name_guest));
         nicknameView.setText(nickname);
 
         String avatarUri = prefs.getString(AiSettingsStore.KEY_PROFILE_AVATAR_URI, "");
@@ -172,7 +170,7 @@ public class AiProfileSettingsActivity extends AppCompatActivity {
             if (value.isEmpty()) {
                 value = "orangepi";
             }
-            prefs.edit().putString(AiSettingsStore.KEY_PROFILE_NAME, value).apply();
+            AiSettingsStore.setProfileName(this, value);
             nicknameView.setText(value);
             hasChanged = true;
             dismiss.run();

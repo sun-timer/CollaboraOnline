@@ -27,6 +27,7 @@ public final class AiSettingsStore {
 
     public static final String KEY_PROFILE_NAME = "AI_PROFILE_NAME";
     public static final String KEY_PROFILE_AVATAR_URI = "AI_PROFILE_AVATAR_URI";
+    public static final String KEY_USER_NAME = "USER_NAME";
 
     public static final String FIELD_CONFIG_NAME = "config_name";
     public static final String FIELD_PROVIDER = "provider";
@@ -50,6 +51,31 @@ public final class AiSettingsStore {
 
     public static SharedPreferences runtimePrefs(Context context) {
         return PreferenceManager.getDefaultSharedPreferences(context.getApplicationContext());
+    }
+
+    /** Keep the AI profile nickname and the legacy document-author preference in sync. */
+    public static void setProfileName(Context context, String name) {
+        String value = name == null ? "" : name.trim();
+        prefs(context).edit().putString(KEY_PROFILE_NAME, value).apply();
+        runtimePrefs(context).edit().putString(KEY_USER_NAME, value).apply();
+    }
+
+    /** Prefer the profile value, migrating a pre-existing custom USER_NAME when needed. */
+    public static String resolveProfileName(Context context, String profileDefault, String legacyDefault) {
+        String profileName = prefs(context).getString(KEY_PROFILE_NAME, "");
+        if (profileName != null && !profileName.trim().isEmpty()) {
+            return profileName.trim();
+        }
+        String legacyName = runtimePrefs(context).getString(KEY_USER_NAME, "");
+        String fallback = profileDefault == null ? "" : profileDefault.trim();
+        if (legacyName != null && !legacyName.trim().isEmpty()
+                && !legacyName.trim().equals(legacyDefault == null ? "" : legacyDefault.trim())) {
+            fallback = legacyName.trim();
+        }
+        if (!fallback.isEmpty()) {
+            setProfileName(context, fallback);
+        }
+        return fallback;
     }
 
     public static String modelPrefix(int modelType) {

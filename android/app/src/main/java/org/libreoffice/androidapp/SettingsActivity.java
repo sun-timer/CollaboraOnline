@@ -16,6 +16,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
+import org.libreoffice.androidapp.ui.AiSettingsStore;
 import org.libreoffice.androidapp.ui.LibreOfficeUIActivity;
 import org.libreoffice.androidlib.LOActivity;
 import org.libreoffice.androidlib.SystemUiHelper;
@@ -125,6 +126,13 @@ public class SettingsActivity extends AppCompatActivity {
         @Override
         public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
             SettingsListenerModel.getInstance().changePreferenceState(sharedPreferences, key);
+            if (AiSettingsStore.KEY_USER_NAME.equals(key)) {
+                String nickname = sharedPreferences.getString(key, "");
+                AiSettingsStore.prefs(requireContext()).edit()
+                        .putString(AiSettingsStore.KEY_PROFILE_NAME,
+                                nickname == null ? "" : nickname.trim())
+                        .apply();
+            }
         }
     }
 }

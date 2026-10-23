@@ -2411,11 +2411,14 @@ class Socket {
 			commandresult['command'] === 'savetostorage' ||
 			commandresult['command'] === 'save'
 		) {
-			const postMessageObj = {
+			const postMessageObj: any = {
 				success: commandresult['success'],
 				result: commandresult['result'],
 				errorMsg: commandresult['errorMsg'],
 			};
+			if (typeof commandresult['requestId'] === 'string' && commandresult['requestId'].length > 0) {
+				postMessageObj.requestId = commandresult['requestId'];
+			}
 
 			this._map.fire('postMessage', {
 				msgId: 'Action_Save_Resp',

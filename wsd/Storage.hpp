@@ -136,6 +136,7 @@ public:
             _isAutosave = false;
             _isExitSave = false;
             _extendedData.clear();
+            _requestId.clear();
         }
 
         void merge(const Attributes& lhs)
@@ -149,6 +150,8 @@ public:
             // Clobber with the lhs, assuming it's newer.
             if (!lhs._extendedData.empty())
                 _extendedData = lhs._extendedData;
+            if (!lhs._requestId.empty())
+                _requestId = lhs._requestId;
         }
 
         /// Asks the storage object to force overwrite
@@ -173,6 +176,10 @@ public:
         void setExtendedData(const std::string& extendedData) { _extendedData = extendedData; }
         const std::string& getExtendedData() const { return _extendedData; }
 
+        /// Optional client request ID for a save acknowledgement.
+        void setRequestId(const std::string& requestId) { _requestId = requestId; }
+        const std::string& getRequestId() const { return _requestId; }
+
         /// Dump the internals of this instance.
         void dumpState(std::ostream& os, const std::string& indent = "\n  ") const
         {
@@ -187,6 +194,8 @@ public:
     private:
         /// The client-provided saving extended data to send to the WOPI host.
         std::string _extendedData;
+        /// Optional client request ID for a save acknowledgement.
+        std::string _requestId;
         /// Whether or not we want to force uploading.
         bool _forced;
         /// The document has been modified by the user.

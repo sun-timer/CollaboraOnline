@@ -544,7 +544,7 @@ class WriterEditorController {
 	): WriterEditorRunResult {
 		const selection = GraphicSelection.extraInfo;
 		const handles = GraphicSelection.handlesSection;
-		if (!window.ThisIsTheiOSApp || app.map.getDocType() !== 'text' || !app.map.isEditMode() ||
+		if (!(window.ThisIsTheiOSApp || window.ThisIsTheAndroidApp) || app.map.getDocType() !== 'text' || !app.map.isEditMode() ||
 			!GraphicSelection.hasActiveSelection() || !selection?.isWriterGraphic || !handles || !GraphicSelection.rectangle ||
 			!selection.handles?.kinds?.rectangle || String(selection.id) !== expectedSelectionId ||
 			app.map._docLayer._viewId !== expectedViewId || app.map.options.doc !== expectedDocument) {

@@ -2623,6 +2623,10 @@ void DocumentBroker::handleSaveResponse(const std::shared_ptr<ClientSession>& se
                                           << "] as .uno:Save has failed in LOK. Notifying clients");
         session->sendTextFrameAndLogError("error: cmd=storage kind=savefailed");
         broadcastSaveResult(false, "Could not save the document");
+        sendSaveRequestResult(session, _currentStorageAttrs.getRequestId(), false,
+                              result.empty() ? "savefailed" : result,
+                              "Could not save the document");
+        _currentStorageAttrs.setRequestId("");
     }
 
     checkAndUploadToStorage(session, /*justSaved=*/success || result == "unmodified");
@@ -2726,6 +2730,10 @@ void DocumentBroker::checkAndUploadToStorage(const std::shared_ptr<ClientSession
     }
     else if (!isAsyncUploading())
     {
+        sendSaveRequestResult(session, _currentStorageAttrs.getRequestId(), true,
+                              "saved", std::string());
+        _currentStorageAttrs.setRequestId("");
+
         // If session is disconnected, remove.
         LOG_TRC("Nothing to upload, disconnecting closed sessions");
         for (const auto& pair : _sessions)
@@ -2965,6 +2973,10 @@ void DocumentBroker::handleUploadToStorageSuccessful(const StorageBase::UploadRe
     assert(_uploadRequest && "Expected to have a valid UploadRequest instance");
     LOG_DBG("Last upload result: OK");
 
+    sendSaveRequestResult(_uploadRequest->session(), _lastStorageAttrs.getRequestId(), true,
+                          "saved", std::string());
+    _lastStorageAttrs.setRequestId("");
+
 #if !MOBILEAPP
     WopiStorage* wopiStorage = dynamic_cast<WopiStorage*>(_storage.get());
     if (wopiStorage != nullptr)
@@ -3191,6 +3203,10 @@ void DocumentBroker::handleUploadToStorageFailed(const StorageBase::UploadResult
            "Expected upload failure");
     assert(_uploadRequest && "Expected to have a valid UploadRequest instance");
 
+    sendSaveRequestResult(_uploadRequest->session(), _lastStorageAttrs.getRequestId(), false,
+                          "savefailed", uploadResult.getReason());
+    _lastStorageAttrs.setRequestId("");
+
     if (_docState.activity() == DocumentState::Activity::Rename)
     {
         // Must end the renaming, as we've failed.
@@ -3353,6 +3369,25 @@ void DocumentBroker::broadcastSaveResult(bool success, const std::string_view re
     broadcastMessage(oss.str());
 }
 
+void DocumentBroker::sendSaveRequestResult(const std::shared_ptr<ClientSession>& session,
+                                           const std::string& requestId, bool success,
+                                           const std::string& result,
+                                           const std::string& errorMsg) const
+{
+    if (!session || requestId.empty())
+        return;
+
+    Poco::JSON::Object payload;
+    payload.set("command", "save");
+    payload.set("success", success);
+    payload.set("requestId", requestId);
+    payload.set("result", result);
+    payload.set("errorMsg", errorMsg);
+    std::ostringstream json;
+    payload.stringify(json);
+    session->sendTextFrame("commandresult: " + json.str());
+}
+
 void DocumentBroker::setLoaded()
 {
     if (!isLoaded())
@@ -3503,17 +3538,27 @@ DocumentBroker::NeedToSave DocumentBroker::needToSaveToDisk() const
 
 bool DocumentBroker::manualSave(const std::shared_ptr<ClientSession>& session,
                                 bool dontTerminateEdit, bool dontSaveIfUnmodified,
-                                const std::string& extendedData)
+                                const std::string& extendedData, const std::string& requestId)
 {
     // If we aren't saving already.
     if (_docState.activity() != DocumentState::Activity::Save)
     {
         LOG_DBG("Manual save by " << session->getName() << " on docKey [" << _docKey << ']');
-        return sendUnoSave(session, dontTerminateEdit, dontSaveIfUnmodified,
-                           /*isAutosave=*/false, /*finalWrite=*/false, extendedData);
+        const bool sent = sendUnoSave(session, dontTerminateEdit, dontSaveIfUnmodified,
+                                      /*isAutosave=*/false, /*finalWrite=*/false,
+                                      extendedData, requestId);
+        if (!sent && !requestId.empty())
+        {
+            _nextStorageAttrs.setRequestId("");
+            sendSaveRequestResult(session, requestId, false, "savefailed",
+                                  "Could not start saving the document");
+        }
+        return sent;
     }
 
     LOG_DBG("Document [" << _docKey << "] is currently saving and cannot issue another save");
+    sendSaveRequestResult(session, requestId, false, "save_in_progress",
+                          "The document is already saving");
     return false;
 }
 
@@ -3781,7 +3826,8 @@ void DocumentBroker::autoSaveAndStop(const std::string& reason)
 bool DocumentBroker::sendUnoSave(const std::shared_ptr<ClientSession>& session,
                                  bool dontTerminateEdit, bool dontSaveIfUnmodified,
                                  bool isAutosave, bool finalWrite,
-                                 const std::string& extendedData)
+                                 const std::string& extendedData,
+                                 const std::string& requestId)
 {
     ASSERT_CORRECT_THREAD();
 
@@ -3832,6 +3878,7 @@ bool DocumentBroker::sendUnoSave(const std::shared_ptr<ClientSession>& session,
 
     _nextStorageAttrs.setIsAutosave(autosave);
     _nextStorageAttrs.setExtendedData(extendedData);
+    _nextStorageAttrs.setRequestId(requestId);
 
     const std::string saveArgs = oss.str();
 

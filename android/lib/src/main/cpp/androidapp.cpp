@@ -10,13 +10,19 @@
 #include <jni.h>
 #include <android/log.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
+#include <cstdint>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 #include <condition_variable>
+#include <unordered_set>
+#include <string>
 
 #include <FakeSocket.hpp>
 #include <Kit.hpp>
@@ -25,6 +31,10 @@
 #include <Protocol.hpp>
 #include <SetupKitEnvironment.hpp>
 #include <Util.hpp>
+
+#include <comphelper/solarmutex.hxx>
+#include <sfx2/lokhelper.hxx>
+#include <sfx2/viewsh.hxx>
 
 #include <osl/detail/android-bootstrap.h>
 
@@ -45,6 +55,7 @@ static std::atomic<bool> g_coolwsdThreadRunning{false};
 static std::mutex g_coolwsdStartMutex;
 static std::atomic<bool> g_coolwsdReuseAwaitingHullO{false};
 static std::atomic<int> g_coolwsdSessionGeneration{0};
+static std::atomic<int> g_androidPendingKitActionGeneration{0};
 static std::atomic<unsigned> g_mobileAppDocIdCounter{1};
 static unsigned g_currentMobileAppDocId = 0;
 static std::atomic<int> g_hulloConnectedSession{-1};
@@ -83,7 +94,8 @@ JNI_OnLoad(JavaVM* vm, void*) {
 // Exception safe JVM detach, JNIEnv is TLS for Java - so per-thread.
 class JNIThreadContext
 {
-    JNIEnv *_env;
+    JNIEnv *_env = nullptr;
+    bool _attachedHere = false;
 public:
     JNIThreadContext()
     {
@@ -92,8 +104,11 @@ public:
         if (res == JNI_EDETACHED) {
             LOG_DBG("Attach worker thread");
             res = javaVM->AttachCurrentThread(&_env, nullptr);
-            if (JNI_OK != res) {
+            if (JNI_OK == res) {
+                _attachedHere = true;
+            } else {
                 LOG_DBG("Failed to AttachCurrentThread");
+                _env = nullptr;
             }
         }
         else if (res == JNI_EVERSION) {
@@ -108,7 +123,8 @@ public:
 
     ~JNIThreadContext()
     {
-        javaVM->DetachCurrentThread();
+        if (_attachedHere && javaVM != nullptr)
+            javaVM->DetachCurrentThread();
     }
 
     JNIEnv *getEnv() const { return _env; }
@@ -645,12 +661,8 @@ extern "C"
 JNIEXPORT jboolean JNICALL
 Java_org_libreoffice_androidlib_LOActivity_getClipboardContent(JNIEnv *env, jobject, jobject lokClipboardData)
 {
-    const char** mimeTypes = nullptr;
-    size_t outCount = 0;
-    char  **outMimeTypes = nullptr;
-    size_t *outSizes = nullptr;
-    char  **outStreams = nullptr;
     bool bResult = false;
+    std::unordered_set<std::string> seenMimeTypes;
 
     jclass jclazz = env->FindClass("java/util/ArrayList");
     jmethodID methodId_ArrayList_Add = env->GetMethodID(jclazz, "add", "(Ljava/lang/Object;)Z");
@@ -663,85 +675,78 @@ Java_org_libreoffice_androidlib_LOActivity_getClipboardContent(JNIEnv *env, jobj
     jclass class_LokClipboardData = env->GetObjectClass(lokClipboardData);
     jfieldID fieldId_LokClipboardData_clipboardEntries = env->GetFieldID(class_LokClipboardData , "clipboardEntries", "Ljava/util/ArrayList;");
 
-    if (getLOKDocumentForAndroidOnly()->getClipboard(mimeTypes,
-                                                     &outCount, &outMimeTypes,
-                                                     &outSizes, &outStreams))
-    {
-        // return early
-        if (outCount == 0)
-            return bResult;
-
-        for (size_t i = 0; i < outCount; ++i)
-        {
-            // Create new LokClipboardEntry instance
-            jobject clipboardEntry = env->NewObject(class_LokClipboardEntry, methodId_LokClipboardEntry_Constructor);
-
-            jstring mimeType = tojstringAndFree(env, outMimeTypes[i]);
-            // clipboardEntry.mime= mimeType
-            env->SetObjectField(clipboardEntry, fieldId_LokClipboardEntry_Mime, mimeType);
-            env->DeleteLocalRef(mimeType);
-
-            size_t aByteArraySize = outSizes[i];
-            jbyteArray aByteArray = env->NewByteArray(aByteArraySize);
-            // Copy char* to bytearray
-            env->SetByteArrayRegion(aByteArray, 0, aByteArraySize, (jbyte*) outStreams[i]);
-            // clipboardEntry.data = aByteArray
-            env->SetObjectField(clipboardEntry, fieldId_LokClipboardEntry_Data, aByteArray);
-
-            // clipboardData.clipboardEntries
-            jobject lokClipboardData_clipboardEntries = env->GetObjectField(lokClipboardData, fieldId_LokClipboardData_clipboardEntries);
-
-            // clipboardEntries.add(clipboardEntry)
-            env->CallBooleanMethod(lokClipboardData_clipboardEntries, methodId_ArrayList_Add, clipboardEntry);
+    auto appendClipboardResult = [&](const char** requestedMimeTypes) {
+        size_t outCount = 0;
+        char** outMimeTypes = nullptr;
+        size_t* outSizes = nullptr;
+        char** outStreams = nullptr;
+        const bool fetched = getLOKDocumentForAndroidOnly()->getClipboard(
+                requestedMimeTypes, &outCount, &outMimeTypes, &outSizes, &outStreams);
+        if (!fetched) {
+            LOG_DBG("failed to fetch mime-types");
+            for (size_t i = 0; i < outCount; ++i) {
+                if (outMimeTypes && outMimeTypes[i]) free(outMimeTypes[i]);
+                if (outStreams && outStreams[i]) free(outStreams[i]);
+            }
+            free(outMimeTypes);
+            free(outSizes);
+            free(outStreams);
+            return;
         }
-        bResult = true;
-    }
-    else
-        LOG_DBG("failed to fetch mime-types");
 
+        jobject entries = env->GetObjectField(lokClipboardData,
+                                               fieldId_LokClipboardData_clipboardEntries);
+        for (size_t i = 0; i < outCount; ++i) {
+            const char* mime = outMimeTypes ? outMimeTypes[i] : nullptr;
+            const char* bytes = outStreams ? outStreams[i] : nullptr;
+            const size_t size = outSizes ? outSizes[i] : 0;
+            if (mime && *mime && bytes && size > 0 && size <= 0x7fffffff
+                    && seenMimeTypes.insert(mime).second) {
+                jstring javaMime = env->NewStringUTF(mime);
+                jbyteArray javaBytes = env->NewByteArray(static_cast<jsize>(size));
+                if (javaMime && javaBytes && !env->ExceptionCheck()) {
+                    env->SetByteArrayRegion(javaBytes, 0, static_cast<jsize>(size),
+                                            reinterpret_cast<const jbyte*>(bytes));
+                    if (!env->ExceptionCheck()) {
+                        jobject entry = env->NewObject(class_LokClipboardEntry,
+                                                       methodId_LokClipboardEntry_Constructor);
+                        if (entry) {
+                            env->SetObjectField(entry, fieldId_LokClipboardEntry_Mime, javaMime);
+                            env->SetObjectField(entry, fieldId_LokClipboardEntry_Data, javaBytes);
+                            if (!env->ExceptionCheck()) {
+                                env->CallBooleanMethod(entries, methodId_ArrayList_Add, entry);
+                                if (!env->ExceptionCheck())
+                                    bResult = true;
+                            }
+                            env->DeleteLocalRef(entry);
+                        }
+                    }
+                }
+                if (env->ExceptionCheck()) {
+                    env->ExceptionClear();
+                }
+                if (javaBytes) env->DeleteLocalRef(javaBytes);
+                if (javaMime) env->DeleteLocalRef(javaMime);
+            }
+            // LOK transfers ownership of each flavor and each result array to the caller.
+            if (outMimeTypes && outMimeTypes[i]) free(outMimeTypes[i]);
+            if (outStreams && outStreams[i]) free(outStreams[i]);
+        }
+        if (entries) env->DeleteLocalRef(entries);
+        free(outMimeTypes);
+        free(outSizes);
+        free(outStreams);
+    };
+
+    appendClipboardResult(nullptr);
     const char* mimeTypesHTML[] = { "text/plain;charset=utf-8", "text/html", nullptr };
-
-    if (getLOKDocumentForAndroidOnly()->getClipboard(mimeTypesHTML,
-                                                     &outCount, &outMimeTypes,
-                                                     &outSizes, &outStreams))
-    {
-        // return early
-        if (outCount == 0)
-            return bResult;
-
-        for (size_t i = 0; i < outCount; ++i)
-        {
-            // Create new LokClipboardEntry instance
-            jobject clipboardEntry = env->NewObject(class_LokClipboardEntry, methodId_LokClipboardEntry_Constructor);
-
-            jstring mimeType = tojstringAndFree(env, outMimeTypes[i]);
-            // clipboardEntry.mime= mimeType
-            env->SetObjectField(clipboardEntry, fieldId_LokClipboardEntry_Mime, mimeType);
-            env->DeleteLocalRef(mimeType);
-
-            size_t aByteArraySize = outSizes[i];
-            jbyteArray aByteArray = env->NewByteArray(aByteArraySize);
-            // Copy char* to bytearray
-            env->SetByteArrayRegion(aByteArray, 0, aByteArraySize, (jbyte*) outStreams[i]);
-            // clipboardEntry.data = aByteArray
-            env->SetObjectField(clipboardEntry, fieldId_LokClipboardEntry_Data, aByteArray);
-
-            // clipboardData.clipboardEntries
-            jobject lokClipboardData_clipboardEntries = env->GetObjectField(lokClipboardData, fieldId_LokClipboardData_clipboardEntries);
-
-            // clipboardEntries.add(clipboardEntry)
-            env->CallBooleanMethod(lokClipboardData_clipboardEntries, methodId_ArrayList_Add, clipboardEntry);
-        }
-        bResult = true;
-    }
-    else
-        LOG_DBG("failed to fetch mime-types");
+    appendClipboardResult(mimeTypesHTML);
 
     return bResult;
 }
 
 extern "C"
-JNIEXPORT void JNICALL
+JNIEXPORT jboolean JNICALL
 Java_org_libreoffice_androidlib_LOActivity_setClipboardContent(JNIEnv *env, jobject, jobject lokClipboardData) {
     jclass class_ArrayList= env->FindClass("java/util/ArrayList");
     jmethodID methodId_ArrayList_ToArray = env->GetMethodID(class_ArrayList, "toArray", "()[Ljava/lang/Object;");
@@ -757,33 +762,71 @@ Java_org_libreoffice_androidlib_LOActivity_setClipboardContent(JNIEnv *env, jobj
 
     jobjectArray clipboardEntryArray = (jobjectArray) env->CallObjectMethod(lokClipboardData_clipboardEntries, methodId_ArrayList_ToArray);
 
-    size_t nEntrySize= env->GetArrayLength(clipboardEntryArray);
+    const size_t nEntrySize = env->GetArrayLength(clipboardEntryArray);
+    if (nEntrySize == 0 || env->ExceptionCheck())
+        return JNI_FALSE;
 
-    if (nEntrySize == 0)
-        return;
-
-    std::vector<size_t> pSizes(nEntrySize);
-    std::vector<const char*> pMimeTypes(nEntrySize);
-    std::vector<const char*> pStreams(nEntrySize);
+    std::vector<size_t> pSizes;
+    std::vector<std::string> mimeStorage;
+    std::vector<std::vector<char>> streamStorage;
+    std::unordered_set<std::string> seenMimeTypes;
 
     for (size_t nEntryIndex = 0; nEntryIndex < nEntrySize; ++nEntryIndex)
     {
         jobject clipboardEntry = env->GetObjectArrayElement(clipboardEntryArray, nEntryIndex);
+        if (!clipboardEntry) continue;
 
         jstring mimetype = (jstring) env->GetObjectField(clipboardEntry, fieldId_LokClipboardEntry_Mime);
         jbyteArray data = (jbyteArray) env->GetObjectField(clipboardEntry, fieldId_LokClipboardEntry_Data);
+        if (!mimetype || !data || env->ExceptionCheck()) {
+            if (mimetype) env->DeleteLocalRef(mimetype);
+            if (data) env->DeleteLocalRef(data);
+            env->DeleteLocalRef(clipboardEntry);
+            if (env->ExceptionCheck()) env->ExceptionClear();
+            continue;
+        }
 
-        pMimeTypes[nEntryIndex] = copyJavaString(env, mimetype);
-
-        size_t dataArrayLength = env->GetArrayLength(data);
-        char* dataArray = new char[dataArrayLength];
-        env->GetByteArrayRegion(data, 0, dataArrayLength, reinterpret_cast<jbyte*>(dataArray));
-
-        pSizes[nEntryIndex] = dataArrayLength;
-        pStreams[nEntryIndex] = dataArray;
+        const char* mimeChars = env->GetStringUTFChars(mimetype, nullptr);
+        const jsize dataArrayLength = env->GetArrayLength(data);
+        if (!mimeChars || dataArrayLength <= 0) {
+            if (mimeChars) env->ReleaseStringUTFChars(mimetype, mimeChars);
+            env->DeleteLocalRef(mimetype);
+            env->DeleteLocalRef(data);
+            env->DeleteLocalRef(clipboardEntry);
+            if (env->ExceptionCheck()) env->ExceptionClear();
+            continue;
+        }
+        std::string mime(mimeChars);
+        env->ReleaseStringUTFChars(mimetype, mimeChars);
+        if (!mime.empty() && seenMimeTypes.insert(mime).second) {
+            std::vector<char> stream(static_cast<size_t>(dataArrayLength));
+            env->GetByteArrayRegion(data, 0, dataArrayLength,
+                                    reinterpret_cast<jbyte*>(stream.data()));
+            if (!env->ExceptionCheck()) {
+                mimeStorage.push_back(mime);
+                pSizes.push_back(static_cast<size_t>(dataArrayLength));
+                streamStorage.push_back(std::move(stream));
+            } else {
+                env->ExceptionClear();
+            }
+        }
+        env->DeleteLocalRef(mimetype);
+        env->DeleteLocalRef(data);
+        env->DeleteLocalRef(clipboardEntry);
     }
 
-    getLOKDocumentForAndroidOnly()->setClipboard(nEntrySize, pMimeTypes.data(), pSizes.data(), pStreams.data());
+    if (mimeStorage.empty()) return JNI_FALSE;
+    std::vector<const char*> pMimeTypes;
+    std::vector<const char*> pStreams;
+    pMimeTypes.reserve(mimeStorage.size());
+    pStreams.reserve(streamStorage.size());
+    for (size_t i = 0; i < mimeStorage.size(); ++i) {
+        pMimeTypes.push_back(mimeStorage[i].c_str());
+        pStreams.push_back(streamStorage[i].data());
+    }
+    const bool success = getLOKDocumentForAndroidOnly()->setClipboard(
+            mimeStorage.size(), pMimeTypes.data(), pSizes.data(), pStreams.data());
+    return success ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C"
@@ -796,6 +839,343 @@ Java_org_libreoffice_androidlib_LOActivity_paste(JNIEnv *env, jobject, jstring i
     env->GetByteArrayRegion(inData, 0, dataArrayLength, reinterpret_cast<jbyte*>(dataArray));
     getLOKDocumentForAndroidOnly()->paste(mimeType, dataArray, dataArrayLength);
     env->ReleaseStringUTFChars(inMimeType, mimeType);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_libreoffice_androidlib_LOActivity_pasteOnKitThread(JNIEnv* env, jobject instance,
+                                                            jstring inMimeType, jbyteArray inData,
+                                                            jstring inRequestId) {
+    if (inMimeType == nullptr || inData == nullptr || inRequestId == nullptr)
+        return;
+
+    const char* mimeChars = env->GetStringUTFChars(inMimeType, nullptr);
+    const char* requestChars = env->GetStringUTFChars(inRequestId, nullptr);
+    if (mimeChars == nullptr || requestChars == nullptr) {
+        if (mimeChars != nullptr)
+            env->ReleaseStringUTFChars(inMimeType, mimeChars);
+        if (requestChars != nullptr)
+            env->ReleaseStringUTFChars(inRequestId, requestChars);
+        return;
+    }
+    const std::string mimeType(mimeChars);
+    const std::string requestId(requestChars);
+    env->ReleaseStringUTFChars(inMimeType, mimeChars);
+    env->ReleaseStringUTFChars(inRequestId, requestChars);
+
+    const jsize dataLength = env->GetArrayLength(inData);
+    std::vector<char> data(static_cast<size_t>(dataLength));
+    if (dataLength > 0)
+        env->GetByteArrayRegion(inData, 0, dataLength, reinterpret_cast<jbyte*>(data.data()));
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return;
+    }
+
+    std::shared_ptr<lok::Document> document = getLOKDocumentForAndroidOnly();
+    const int session = g_coolwsdSessionGeneration.load();
+    const int actionGeneration = g_androidPendingKitActionGeneration.load();
+    jobject activity = env->NewGlobalRef(instance);
+    jclass activityClass = static_cast<jclass>(env->NewGlobalRef(env->GetObjectClass(instance)));
+    if (activity == nullptr || activityClass == nullptr) {
+        if (activity != nullptr)
+            env->DeleteGlobalRef(activity);
+        if (activityClass != nullptr)
+            env->DeleteGlobalRef(activityClass);
+        return;
+    }
+
+    auto finish = [activity, activityClass, requestId](bool success) {
+        JNIThreadContext context;
+        JNIEnv* callbackEnv = context.getEnv();
+        if (callbackEnv == nullptr)
+        {
+            LOG_ERR("Unable to obtain JNIEnv for native paste result callback");
+            return;
+        }
+        jmethodID callback = callbackEnv->GetMethodID(activityClass, "onNativePasteResult",
+                                                       "(Ljava/lang/String;Z)V");
+        if (callback != nullptr) {
+            jstring request = callbackEnv->NewStringUTF(requestId.c_str());
+            callbackEnv->CallVoidMethod(activity, callback, request,
+                                        success ? JNI_TRUE : JNI_FALSE);
+            callbackEnv->DeleteLocalRef(request);
+        }
+        if (callbackEnv->ExceptionCheck())
+            callbackEnv->ExceptionClear();
+        callbackEnv->DeleteGlobalRef(activityClass);
+        callbackEnv->DeleteGlobalRef(activity);
+    };
+
+    if (!document) {
+        finish(false);
+        return;
+    }
+    auto paste = [document, session, actionGeneration, mimeType,
+                  data = std::move(data), finish]() mutable {
+        const bool currentSession = session == g_coolwsdSessionGeneration.load();
+        const bool currentActionGeneration =
+                actionGeneration == g_androidPendingKitActionGeneration.load();
+        const bool currentDocument = document == getLOKDocumentForAndroidOnly();
+        const bool success = currentSession && currentActionGeneration && currentDocument
+                && !mimeType.empty()
+                && document->paste(mimeType.c_str(), data.data(), data.size());
+        finish(success);
+    };
+
+    auto* poll = KitSocketPoll::getMainPoll();
+    if (!poll) {
+        finish(false);
+    } else if (poll->getThreadOwner() == std::this_thread::get_id()) {
+        paste();
+    } else {
+        poll->addCallback(std::move(paste));
+    }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_libreoffice_androidlib_LOActivity_invalidatePendingKitActions(JNIEnv*, jobject) {
+    g_androidPendingKitActionGeneration++;
+}
+
+namespace {
+std::string javaStringToUtf8(JNIEnv* env, jstring value, bool& valid)
+{
+    valid = false;
+    if (value == nullptr)
+        return {};
+    const jsize length = env->GetStringLength(value);
+    const jchar* chars = env->GetStringChars(value, nullptr);
+    if (chars == nullptr)
+        return {};
+
+    std::string result;
+    result.reserve(static_cast<size_t>(length) * 3);
+    for (jsize i = 0; i < length; ++i)
+    {
+        uint32_t codePoint = chars[i];
+        if (codePoint >= 0xD800 && codePoint <= 0xDBFF)
+        {
+            if (i + 1 >= length || chars[i + 1] < 0xDC00 || chars[i + 1] > 0xDFFF)
+            {
+                env->ReleaseStringChars(value, chars);
+                return {};
+            }
+            codePoint = 0x10000 + ((codePoint - 0xD800) << 10) + (chars[++i] - 0xDC00);
+        }
+        else if (codePoint >= 0xDC00 && codePoint <= 0xDFFF)
+        {
+            env->ReleaseStringChars(value, chars);
+            return {};
+        }
+
+        if (codePoint <= 0x7F)
+            result.push_back(static_cast<char>(codePoint));
+        else if (codePoint <= 0x7FF)
+        {
+            result.push_back(static_cast<char>(0xC0 | (codePoint >> 6)));
+            result.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+        }
+        else if (codePoint <= 0xFFFF)
+        {
+            result.push_back(static_cast<char>(0xE0 | (codePoint >> 12)));
+            result.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+            result.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+        }
+        else
+        {
+            result.push_back(static_cast<char>(0xF0 | (codePoint >> 18)));
+            result.push_back(static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F)));
+            result.push_back(static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F)));
+            result.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+        }
+    }
+    env->ReleaseStringChars(value, chars);
+    valid = true;
+    return result;
+}
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_libreoffice_androidlib_LOActivity_appendContinueWriteOnKitThread(
+        JNIEnv* env, jobject instance, jstring expectedSelection_, jbyteArray html_,
+        jstring requestId_, jint viewId)
+{
+    bool validSelection = false;
+    const std::string expectedSelection = javaStringToUtf8(env, expectedSelection_, validSelection);
+    if (html_ == nullptr || requestId_ == nullptr)
+        return;
+
+    const char* requestChars = env->GetStringUTFChars(requestId_, nullptr);
+    if (requestChars == nullptr)
+        return;
+    const std::string requestId(requestChars);
+    env->ReleaseStringUTFChars(requestId_, requestChars);
+
+    const jsize htmlLength = env->GetArrayLength(html_);
+    std::vector<char> html(static_cast<size_t>(htmlLength));
+    if (htmlLength > 0)
+        env->GetByteArrayRegion(html_, 0, htmlLength, reinterpret_cast<jbyte*>(html.data()));
+    if (env->ExceptionCheck())
+    {
+        env->ExceptionClear();
+        return;
+    }
+
+    std::shared_ptr<lok::Document> document = getLOKDocumentForAndroidOnly();
+    const int session = g_coolwsdSessionGeneration.load();
+    const int actionGeneration = g_androidPendingKitActionGeneration.load();
+    auto* poll = KitSocketPoll::getMainPoll();
+    jobject activity = env->NewGlobalRef(instance);
+    jclass activityClass = static_cast<jclass>(env->NewGlobalRef(env->GetObjectClass(instance)));
+    if (activity == nullptr || activityClass == nullptr)
+    {
+        if (activity != nullptr)
+            env->DeleteGlobalRef(activity);
+        if (activityClass != nullptr)
+            env->DeleteGlobalRef(activityClass);
+        return;
+    }
+
+    auto finish = [activity, activityClass, requestId](bool success) {
+        JNIThreadContext context;
+        JNIEnv* callbackEnv = context.getEnv();
+        if (callbackEnv == nullptr)
+        {
+            LOG_ERR("Unable to obtain JNIEnv for native paste result callback");
+            return;
+        }
+        jmethodID callback = callbackEnv->GetMethodID(activityClass, "onNativePasteResult",
+                                                       "(Ljava/lang/String;Z)V");
+        if (callback != nullptr)
+        {
+            jstring request = callbackEnv->NewStringUTF(requestId.c_str());
+            callbackEnv->CallVoidMethod(activity, callback, request,
+                                        success ? JNI_TRUE : JNI_FALSE);
+            callbackEnv->DeleteLocalRef(request);
+        }
+        if (callbackEnv->ExceptionCheck())
+            callbackEnv->ExceptionClear();
+        callbackEnv->DeleteGlobalRef(activityClass);
+        callbackEnv->DeleteGlobalRef(activity);
+    };
+
+    if (!document || !poll || !validSelection || expectedSelection.empty() || html.empty() || viewId < 0)
+    {
+        finish(false);
+        return;
+    }
+
+    auto append = [document, session, actionGeneration, viewId, expectedSelection,
+                   html = std::move(html), finish]() mutable {
+        bool success = false;
+        const bool sameDocument = session == g_coolwsdSessionGeneration.load()
+                && actionGeneration == g_androidPendingKitActionGeneration.load()
+                && getLOKDocumentForAndroidOnly() == document;
+        bool originalViewCurrent = false;
+        if (sameDocument)
+        {
+            std::vector<int> viewIds(std::max(1, document->getViewsCount()));
+            originalViewCurrent = document->getViewIds(viewIds.data(), viewIds.size())
+                    && std::find(viewIds.begin(), viewIds.end(), viewId) != viewIds.end()
+                    && document->getView() == viewId;
+        }
+        if (sameDocument && originalViewCurrent)
+        {
+            char* selected = document->getTextSelection("text/plain;charset=utf-8", nullptr);
+            const std::string actualSelection = selected == nullptr ? "" : selected;
+            free(selected);
+            if (actualSelection == expectedSelection
+                    && actionGeneration == g_androidPendingKitActionGeneration.load())
+            {
+                document->postUnoCommand(".uno:Right", "{}", false);
+                char* remaining = document->getTextSelection("text/plain;charset=utf-8", nullptr);
+                const bool collapsed = remaining == nullptr || remaining[0] == '\0';
+                free(remaining);
+                if (collapsed && session == g_coolwsdSessionGeneration.load()
+                        && actionGeneration == g_androidPendingKitActionGeneration.load()
+                        && getLOKDocumentForAndroidOnly() == document)
+                {
+                    success = document->paste("text/html", html.data(), html.size());
+                }
+            }
+        }
+        finish(success);
+    };
+
+    if (poll->getThreadOwner() == std::this_thread::get_id())
+        append();
+    else
+        poll->addCallback(std::move(append));
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_libreoffice_androidlib_LOActivity_setLOKViewAuthor(JNIEnv* env, jobject,
+                                                            jint viewId, jstring name) {
+    if (viewId < 0 || name == nullptr)
+        return JNI_FALSE;
+
+    bool validAuthor = false;
+    const std::string authorName = javaStringToUtf8(env, name, validAuthor);
+    if (!validAuthor || authorName.empty())
+        return JNI_FALSE;
+
+    std::shared_ptr<lok::Document> document = getLOKDocumentForAndroidOnly();
+    auto* poll = KitSocketPoll::getMainPoll();
+    const int session = g_coolwsdSessionGeneration.load();
+    if (!document || !poll)
+        return JNI_FALSE;
+
+    struct AuthorResult {
+        std::mutex mutex;
+        std::condition_variable condition;
+        bool complete = false;
+        bool updated = false;
+    };
+    auto result = std::make_shared<AuthorResult>();
+    auto update = [document, session, viewId, authorName, result]() {
+        bool updated = false;
+        auto* solarMutex = comphelper::SolarMutex::get();
+        if (session == g_coolwsdSessionGeneration.load() && solarMutex) {
+            osl::Guard<comphelper::SolarMutex> guard(solarMutex);
+            std::vector<int> viewIds(std::max(1, document->getViewsCount()));
+            if (document->getViewIds(viewIds.data(), viewIds.size())
+                    && std::find(viewIds.begin(), viewIds.end(), viewId) != viewIds.end()) {
+                SfxViewShell* view = SfxLokHelper::getViewOfId(viewId);
+                if (view) {
+                    view->SetLOKAuthor(OUString::fromUtf8(authorName.c_str()));
+                    updated = true;
+                }
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(result->mutex);
+            result->updated = updated;
+            result->complete = true;
+        }
+        result->condition.notify_one();
+    };
+
+    if (poll->getThreadOwner() == std::this_thread::get_id()) {
+        update();
+    } else {
+        poll->addCallback(update);
+        std::unique_lock<std::mutex> lock(result->mutex);
+        result->condition.wait_for(lock, std::chrono::seconds(5), [&result] {
+            return result->complete;
+        });
+    }
+    bool updated = false;
+    {
+        std::lock_guard<std::mutex> lock(result->mutex);
+        updated = result->complete && result->updated;
+    }
+    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "set_lok_view_author viewId=%d success=%d", viewId, updated ? 1 : 0);
+    return updated ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C"

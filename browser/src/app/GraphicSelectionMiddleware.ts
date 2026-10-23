@@ -334,9 +334,10 @@ class GraphicSelection {
 				app.map._cacheSVG[extraInfo.id] = undefined;
 			else this.handlesSection.setSVG(textMsg);
 
-			const iosWriter = window.ThisIsTheiOSApp && app.map.getDocType() === 'text';
-			const iosWriterOwnsCursor = iosWriter && this.handlesSection.ownsVisibleTextCursor();
-			if (!app.file.textCursor.visible || (iosWriter && !iosWriterOwnsCursor))
+			const mobileWriter = (window.ThisIsTheiOSApp || window.ThisIsTheAndroidApp) &&
+				app.map.getDocType() === 'text';
+			const mobileWriterOwnsCursor = mobileWriter && this.handlesSection.ownsVisibleTextCursor();
+			if (!app.file.textCursor.visible || (mobileWriter && !mobileWriterOwnsCursor))
 				this.handlesSection.interactable = true;
 		}
 	}
@@ -548,8 +549,10 @@ class GraphicSelection {
 	*/
 	public static onTextCursorVisibility(event: any) {
 		if (this.hasActiveSelection() && this.handlesSection) {
-			const iosWriter = window.ThisIsTheiOSApp && app.map.getDocType() === 'text';
-			const editingSelectedShape = event.detail.visible && (!iosWriter || this.handlesSection.ownsVisibleTextCursor());
+			const mobileWriter = (window.ThisIsTheiOSApp || window.ThisIsTheAndroidApp) &&
+				app.map.getDocType() === 'text';
+			const editingSelectedShape = event.detail.visible &&
+				(!mobileWriter || this.handlesSection.ownsVisibleTextCursor());
 			this.handlesSection.interactable = !editingSelectedShape;
 		}
 	}

@@ -818,10 +818,8 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         TextView visionValue = headerView.findViewById(R.id.modelVisionValue);
 
         SharedPreferences p = AiSettingsStore.prefs(this);
-        String nickname = p.getString(AiSettingsStore.KEY_PROFILE_NAME, getString(R.string.ai_profile_name));
-        if (nickname == null || nickname.trim().isEmpty()) {
-            nickname = getString(R.string.ai_profile_name);
-        }
+        String nickname = AiSettingsStore.resolveProfileName(this,
+                getString(R.string.ai_profile_name), getString(R.string.pref_user_name_guest));
         if (profileName != null) {
             profileName.setText(nickname);
         }
@@ -1642,6 +1640,9 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         final int[] pptChoices = {0, 1, 0, 4};
         if (isImpress) bindPresentationCreationOptions(dialog, aiPromptInput, pptChoices);
         final int aiSwitchThumbMarginPx = (int) (3f * getResources().getDisplayMetrics().density);
+        final String extension = getExtensionForRequestCode(requestCode);
+        final String baseName = trimFileExtension(defaultFileName);
+        final CreateSheetStyle style = getCreateSheetStyle(requestCode);
 
         Runnable updateAiSwitchUi = () -> {
             GradientDrawable track = new GradientDrawable();
@@ -1655,6 +1656,17 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                         aiSwitchChecked[0] ? new int[]{0xFF438BFF, 0xFF8C50FF, 0xFFE600EB}
                                 : new int[]{0xFFEC5D1F, 0xFFEC5D1F}));
                 ((GradientDrawable) createButton.getBackground()).setCornerRadius(8 * getResources().getDisplayMetrics().density);
+            } else if (requestCode == CREATE_DOCUMENT_REQUEST_CODE) {
+                if (aiSwitchChecked[0]) {
+                    createButton.setText("生成和创建");
+                    GradientDrawable gradient = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                            new int[]{0xFF438BFF, 0xFF8C50FF, 0xFFE600EB});
+                    gradient.setCornerRadius(8 * getResources().getDisplayMetrics().density);
+                    createButton.setBackground(gradient);
+                } else {
+                    createButton.setText(style.buttonTextResId);
+                    applyCreateButtonColor(createButton, style.buttonColorHex);
+                }
             }
             FrameLayout.LayoutParams thumbParams = (FrameLayout.LayoutParams) aiSwitchThumb.getLayoutParams();
             if (aiSwitchChecked[0]) {
@@ -1681,10 +1693,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 aiPromptInput.setHint("描述你想生成的文档内容...");
             }
         });
-
-        final String extension = getExtensionForRequestCode(requestCode);
-        final String baseName = trimFileExtension(defaultFileName);
-        final CreateSheetStyle style = getCreateSheetStyle(requestCode);
 
         createTitle.setText(isImpress ? "创建演示" : getString(style.titleResId));
         createButton.setText(style.buttonTextResId);

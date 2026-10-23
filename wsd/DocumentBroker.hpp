@@ -519,7 +519,14 @@ public:
 
     /// User wants to issue a save on the document.
     bool manualSave(const std::shared_ptr<ClientSession>& session, bool dontTerminateEdit,
-                    bool dontSaveIfUnmodified, const std::string& extendedData);
+                    bool dontSaveIfUnmodified, const std::string& extendedData,
+                    const std::string& requestId = std::string());
+
+    /// Send a correlated save completion to the requesting session only.
+    void sendSaveRequestResult(const std::shared_ptr<ClientSession>& session,
+                               const std::string& requestId, bool success,
+                               const std::string& result = std::string(),
+                               const std::string& errorMsg = std::string()) const;
 
     /// Sends a message to all sessions.
     /// Returns the number of sessions sent the message to.
@@ -819,7 +826,8 @@ private:
     /// Sends the .uno:Save command to LoKit.
     bool sendUnoSave(const std::shared_ptr<ClientSession>& session, bool dontTerminateEdit = true,
                      bool dontSaveIfUnmodified = true, bool isAutosave = false, bool finalWrite = false,
-                     const std::string& extendedData = std::string());
+                     const std::string& extendedData = std::string(),
+                     const std::string& requestId = std::string());
 
     /**
      * Report back the save result to PostMessage users (Action_Save_Resp)

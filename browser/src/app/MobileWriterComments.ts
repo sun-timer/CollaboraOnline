@@ -83,6 +83,11 @@ class MobileWriterComments {
 		return typeof window !== 'undefined' && !!(window as any).ThisIsTheiOSApp;
 	}
 
+	static isMobileApp(): boolean {
+		return typeof window !== 'undefined' &&
+			(!!(window as any).ThisIsTheiOSApp || !!(window as any).ThisIsTheAndroidApp);
+	}
+
 	static collectWriterComments(): WriterCommentSummary[] {
 		// First document open fires showannotations from WriterTileLayer.beforeAdd,
 		// before CanvasTileLayer.onAdd creates the section container. Reading it
@@ -140,7 +145,7 @@ class MobileWriterComments {
 		point: { x: number; y: number },
 	): WriterCommentSummary[] {
 		if (
-			!MobileWriterComments.isIOs() ||
+			!MobileWriterComments.isMobileApp() ||
 			!app.map ||
 			app.map.getDocType() !== 'text' ||
 			!app.sectionContainer ||
@@ -216,6 +221,7 @@ class MobileWriterComments {
 	static handleWriterCommentTap(
 		point: { x: number; y: number },
 		postMessage?: (message: string) => void,
+		anchor?: { x: number; y: number },
 	): 'shown' | 'dismissed' | 'none' {
 		const matches = MobileWriterComments.findWriterInfoAtDocumentPoint(point);
 		const active = matches.find((item) =>
@@ -240,6 +246,10 @@ class MobileWriterComments {
 			return 'dismissed';
 		}
 		const payload: any = { ...comment };
+		if (anchor) {
+			payload.anchorX = anchor.x;
+			payload.anchorY = anchor.y;
+		}
 		const group = matches.filter((item) => item.kind === comment.kind);
 		if (group.length > 1) {
 			payload.comments = group;
@@ -338,7 +348,7 @@ class MobileWriterComments {
 
 	private static getRealWriterComment(id: string): any {
 		if (
-			!MobileWriterComments.isIOs() ||
+			!MobileWriterComments.isMobileApp() ||
 			!app.map ||
 			app.map.getDocType() !== 'text' ||
 			!app.sectionContainer ||
@@ -405,7 +415,7 @@ class MobileWriterComments {
 	}
 
 	static install(): void {
-		if (!MobileWriterComments.isIOs() || !app.map) {
+		if (!MobileWriterComments.isMobileApp() || !app.map) {
 			return;
 		}
 		const map = app.map as any;
@@ -413,35 +423,37 @@ class MobileWriterComments {
 			return;
 		}
 		map.__mobileWriterCommentsInstalled = true;
-		const sync = () => {
-			try {
-				MobileWriterComments.syncCommentCountToNative();
-			} catch (error) {
-				window.app.console.error('MobileWriterComments sync failed', error);
-			}
-		};
 		map.on('docloaded', () => {
 			MobileWriterComments.clearActiveWriterCommentInfo(true);
-			sync();
 		});
 		map.on('insertannotation', () => {
 			MobileWriterComments.closeInfoIfActiveItemWasRemoved();
-			sync();
 		});
 		map.on('deleteannotation', () => {
 			MobileWriterComments.closeInfoIfActiveItemWasRemoved();
-			sync();
 		});
-		map.on('commandstatechanged', (event: any) => {
-			if (
-				event &&
-				(event.commandName === 'showannotations' ||
-					event.commandName === 'ShowResolvedAnnotations')
-			) {
-				sync();
-			}
-		});
-		window.setTimeout(sync, 300);
+		if (MobileWriterComments.isIOs()) {
+			const sync = () => {
+				try {
+					MobileWriterComments.syncCommentCountToNative();
+				} catch (error) {
+					window.app.console.error('MobileWriterComments sync failed', error);
+				}
+			};
+			map.on('docloaded', sync);
+			map.on('insertannotation', sync);
+			map.on('deleteannotation', sync);
+			map.on('commandstatechanged', (event: any) => {
+				if (
+					event &&
+					(event.commandName === 'showannotations' ||
+						event.commandName === 'ShowResolvedAnnotations')
+				) {
+					sync();
+				}
+			});
+			window.setTimeout(sync, 300);
+		}
 	}
 }
 
@@ -475,7 +487,10 @@ if (typeof window !== 'undefined') {
 	};
 }
 
-if (typeof window !== 'undefined' && (window as any).ThisIsTheiOSApp) {
+if (
+	typeof window !== 'undefined' &&
+	((window as any).ThisIsTheiOSApp || (window as any).ThisIsTheAndroidApp)
+) {
 	const installWhenReady = () => {
 		if (app.map) {
 			MobileWriterComments.install();

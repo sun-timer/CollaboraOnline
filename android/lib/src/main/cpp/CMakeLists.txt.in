@@ -54,6 +54,12 @@ target_compile_definitions(androidapp PRIVATE
                            NUM_PRESPAWN_CHILDREN="@NUM_PRESPAWN_CHILDREN@"
 )
 
+# androidapp.cpp includes LibreOffice internal headers for per-view author sync.
+# Keep LIBO_INTERNAL_ONLY scoped to that translation unit; the remaining
+# CollaboraOnline sources are not LibreOffice internal code.
+set_source_files_properties(androidapp.cpp PROPERTIES
+                            COMPILE_DEFINITIONS LIBO_INTERNAL_ONLY)
+
 # According to the ABI, we need to use different source trees
 if(${ANDROID_ABI} STREQUAL "armeabi-v7a")
     set(LOBUILDDIR_ABI @LOBUILDDIR@)
@@ -96,7 +102,12 @@ target_include_directories(androidapp PRIVATE
                            ${POCOINCLUDE_ABI}         # POCO
                            ${ZSTDINCLUDE_ABI}         # ZSTD
                            ${LOBUILDDIR_ABI}/workdir/UnpackedTarball/libpng # libpng
+                           ${LOBUILDDIR_ABI}/workdir/UnpackedTarball/boost # Boost headers
                            ${LOBUILDDIR_ABI}/include                        # LibreOfficeKit
+                           ${LOBUILDDIR_ABI}/config_host                     # ABI-specific config_global.h
+                           @abs_top_srcdir@/../lo-core/include              # Internal LO headers used for LOK author sync
+                           ${LOBUILDDIR_ABI}/workdir/UnoApiHeadersTarget/udkapi/comprehensive
+                           ${LOBUILDDIR_ABI}/workdir/UnoApiHeadersTarget/offapi/comprehensive
 )
 
 add_custom_command(OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/lib/${ANDROID_ABI}/liblo-native-code.so"

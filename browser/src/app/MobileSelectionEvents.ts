@@ -107,13 +107,20 @@ class MobileSelectionMagnifier {
 	private static sourceDocLayer: any = null;
 
 	static isEnabled(): boolean {
+		if (typeof window === 'undefined') return false;
+		const android = !!(window as any).ThisIsTheAndroidApp;
+		const bridge = (window as any).COOLMessageHandler;
+		const nativeMagnifier = bridge?.hasNativeSelectionMagnifier;
+		const webMagnifier = bridge?.supportsWebSelectionMagnifier;
+		const androidCanvasFallback = android && typeof nativeMagnifier === 'function' &&
+			typeof webMagnifier === 'function' && webMagnifier.call(bridge) &&
+			!nativeMagnifier.call(bridge);
 		return !!(
-			typeof window !== 'undefined' &&
 			typeof app !== 'undefined' &&
 			app.map &&
 			app.map.getDocType &&
 			app.map.getDocType() === 'text' &&
-			(window as any).ThisIsTheiOSApp &&
+			((window as any).ThisIsTheiOSApp || androidCanvasFallback) &&
 			app.map._docLayer
 		);
 	}

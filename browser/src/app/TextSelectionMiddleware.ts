@@ -16,8 +16,18 @@ class TextSelections {
 	private static endRectangle: cool.SimpleRectangle | null = null; // This is the rectangle sent from the core side.
 
 	private static active: boolean = false; // Is there a text selection or not.
+	private static nativeHandleEpoch: number = 0;
+	private static nativeHandleSession: string = '';
+	private static nativeHandleLifecycleBound: boolean = false;
 
 	public static initiate() {
+		try {
+			this.nativeHandleSession = new URL(window.location.href).searchParams.get(
+				'androidselection_session',
+			) || '';
+		} catch (_e) {
+			this.nativeHandleSession = '';
+		}
 		this.start = new TextSelectionHandle(
 			'selection_start_handle',
 			30,
@@ -37,6 +47,22 @@ class TextSelections {
 
 		app.sectionContainer.addSection(this.start);
 		app.sectionContainer.addSection(this.end);
+		if (!this.nativeHandleLifecycleBound && app.map && typeof app.map.on === 'function') {
+			this.nativeHandleLifecycleBound = true;
+			const resetNativeHandleRects = () => {
+				this.nativeHandleEpoch++;
+				this.publishAndroidHandleRects(false);
+			};
+			app.map.on('docloaded', resetNativeHandleRects);
+			app.map.on('closeapp', resetNativeHandleRects);
+			const refreshNativeHandleRects = () =>
+				this.publishAndroidHandleRects(this.isActive());
+			window.addEventListener('scroll', refreshNativeHandleRects, { capture: true, passive: true });
+			window.addEventListener('resize', refreshNativeHandleRects, { passive: true });
+			window.visualViewport?.addEventListener('scroll', refreshNativeHandleRects, { passive: true });
+			window.visualViewport?.addEventListener('resize', refreshNativeHandleRects, { passive: true });
+		}
+		this.publishAndroidHandleRects(false);
 	}
 
 	public static deactivate() {
@@ -45,6 +71,7 @@ class TextSelections {
 		this.active = false;
 		this.start.setShowSection(false);
 		this.end.setShowSection(false);
+		this.publishAndroidHandleRects(false);
 
 		// Schedule a redraw if there's not any.
 		app.sectionContainer.requestReDraw();
@@ -70,12 +97,14 @@ class TextSelections {
 		if (this.start.isSectionShown()) this.start.setOpacity(1);
 
 		if (this.end.isSectionShown()) this.end.setOpacity(1);
+		this.publishAndroidHandleRects(this.isActive());
 	}
 
 	public static hideHandles() {
 		if (this.start.isSectionShown()) this.start.setOpacity(0);
 
 		if (this.end.isSectionShown()) this.end.setOpacity(0);
+		this.publishAndroidHandleRects(false);
 	}
 
 	public static getStartRectangle(): cool.SimpleRectangle | null {
@@ -104,9 +133,15 @@ class TextSelections {
 	}
 
 	private static updateMarkers() {
-		if (!this.isActive()) return;
+		if (!this.isActive()) {
+			this.publishAndroidHandleRects(false);
+			return;
+		}
 
-		if (this.startRectangle === null || this.endRectangle === null) return;
+		if (this.startRectangle === null || this.endRectangle === null) {
+			this.publishAndroidHandleRects(false);
+			return;
+		}
 
 		var startPos = { x: this.startRectangle.pX1, y: this.startRectangle.pY2 };
 		var endPos = { x: this.endRectangle.pX1, y: this.endRectangle.pY2 };
@@ -154,6 +189,53 @@ class TextSelections {
 
 		// Schedule a redraw if there's not any.
 		app.sectionContainer.requestReDraw();
+		this.publishAndroidHandleRects(true);
+	}
+
+	private static publishAndroidHandleRects(visible: boolean) {
+		if (typeof window === 'undefined' || !(window as any).ThisIsTheAndroidApp) return;
+		visible = visible && app.map?.getDocType() === 'text';
+		const bridge = (window as any).COOLMessageHandler;
+		if (!this.nativeHandleSession || !bridge || typeof bridge.updateWriterSelectionHandleRects !== 'function') return;
+		const viewport = window.visualViewport;
+		const cssRects = visible
+			? [this.start, this.end].map(handle => {
+				const element = handle.getHTMLObject();
+				// setPosition updates the section model; onDraw normally moves the DOM
+				// element later. Native DOWN hit-testing needs the just-updated bounds now.
+				handle.adjustHTMLObjectPosition();
+				const rect = element.getBoundingClientRect();
+				const style = window.getComputedStyle(element);
+				if (style.display === 'none' || style.visibility === 'hidden' ||
+					Number(style.opacity) === 0 || rect.width <= 0 || rect.height <= 0) {
+					return { left: 0, top: 0, right: 0, bottom: 0 };
+				}
+				return {
+					left: rect.left,
+					top: rect.top,
+					right: rect.right,
+					bottom: rect.bottom,
+				};
+			})
+			: [
+				{ left: 0, top: 0, right: 0, bottom: 0 },
+				{ left: 0, top: 0, right: 0, bottom: 0 },
+			];
+		try {
+			bridge.updateWriterSelectionHandleRects(JSON.stringify({
+				session: this.nativeHandleSession,
+				epoch: this.nativeHandleEpoch,
+				viewport: {
+					width: viewport?.width || window.innerWidth,
+					height: viewport?.height || window.innerHeight,
+					offsetLeft: viewport?.offsetLeft || 0,
+					offsetTop: viewport?.offsetTop || 0,
+				},
+				rects: cssRects,
+			}));
+		} catch (_e) {
+			// The native bridge is best-effort; the DOM remains the source of truth.
+		}
 	}
 
 	public static switchStartEndHandles() {
@@ -163,6 +245,7 @@ class TextSelections {
 	}
 
 	public static dispose() {
+		this.publishAndroidHandleRects(false);
 		app.sectionContainer.removeSection(this.start.name);
 		app.sectionContainer.removeSection(this.end.name);
 	}

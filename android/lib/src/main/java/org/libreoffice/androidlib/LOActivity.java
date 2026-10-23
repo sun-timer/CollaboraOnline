@@ -219,6 +219,9 @@ public class LOActivity extends AppCompatActivity {
     public static final String EXTRA_START_IN_EDIT_MODE = "org.libreoffice.androidlib.extra.START_IN_EDIT_MODE";
     private static final String CLIPBOARD_FILE_PATH = "LibreofficeClipboardFile.data";
     private static final String CLIPBOARD_COOL_SIGNATURE = "cool-clip-magic-4a22437e49a8-";
+    private static final String CLIPBOARD_APP_LABEL_PREFIX = "cool-clipboard:";
+    private String activeClipboardToken = "";
+    private long activeClipboardDocumentGeneration = -1L;
     private static final String AI_PREF_ENDPOINT = "AI_OPENAI_ENDPOINT";
     private static final String AI_PREF_API_KEY = "AI_OPENAI_API_KEY";
     private static final String AI_PREF_MODEL = "AI_OPENAI_MODEL";
@@ -257,6 +260,7 @@ public class LOActivity extends AppCompatActivity {
 
     private String urlToLoad;
     private COWebView mWebView = null;
+    private String writerSelectionSession = "";
     private MobileSocket mMobileSocket = null;
     private SharedPreferences sPrefs;
     private Handler mMainHandler = null;
@@ -431,11 +435,14 @@ public class LOActivity extends AppCompatActivity {
     private View outlineResultBar;
     private View outlineRegenerateBtn;
     private View outlineInsertBtn;
-    private String outlineContextText;  // 入口A=选区文字，入口B=null→生成时提取全文
+    private String outlineContextText;  // extracted document text for every Writer outline entry
     private String pendingOutlineType = AiChatCoordinator.OUTLINE_TYPE_GENERAL;
     private String pendingOutlineDesc;
     private String pendingOutlineResult;
     private String outlineActiveRequestId = "";  // 当前大纲请求 id（流式注册/清理用）
+    private long outlineGeneration = 0L;
+    private long outlineActiveDocumentGeneration = -1L;
+    private final Object aiDocumentExportLock = new Object();
     // 文案生成相关
     private static final int ARTICLE_STAGE_SELECT = 1;
     private static final int ARTICLE_STAGE_FORM = 2;
@@ -596,6 +603,12 @@ public class LOActivity extends AppCompatActivity {
     private View continueRegenBtn;
     private View continueInsertBtn;
     private String continueSelection = "";        // 打开弹窗时缓存的选区上下文，供重写生成复用
+    private String continueNeighboringContext = "";
+    private long continueContextGeneration = 0L;
+    private long continueActiveDocumentGeneration = -1L;
+    private String continueInsertRequestId = "";
+    private long continueInsertDocumentGeneration = -1L;
+    private boolean continueInsertKitQueued = false;
     private String continueActiveRequestId = "";  // 当前续写请求 id（""=无在途）
     private String continueResultText = "";       // 完成/停止时捕获的全文，供插入文档使用
     // 所有续写请求 id（含已结束/被取代的），用于在 onDone/onError 抑制 operate-mode 自动粘贴：
@@ -851,6 +864,17 @@ public class LOActivity extends AppCompatActivity {
     private boolean pendingAutoIsCalcNewTable = false;
     private boolean pendingAutoIsImpressGenerate = false;
     private String autoGenerateAcceptRequestId = "";
+    private long autoGenerateAcceptDocumentGeneration = -1L;
+    private Uri autoGenerateAcceptDocumentUri;
+    private long documentLifecycleGeneration = 0L;
+    private long writerAuthorSyncGeneration = 0L;
+    private long autoGenerateLifecycleGeneration = -1L;
+    private Uri autoGenerateSourceUri;
+    private File autoGenerateSourceTempFile;
+    private String autoGenerateInsertRequestId = "";
+    private String autoGenerateInsertedRequestId = "";
+    private String autoGeneratePendingSaveToken = "";
+    private int autoGenerateSaveAttempt = 0;
     private boolean imagePickerInFlight = false;
     private DrawerLayout docDrawerLayout;
     private View docDrawerHeaderView;
@@ -871,6 +895,13 @@ public class LOActivity extends AppCompatActivity {
     private FindReplaceSheetController findReplaceSheetController;
     private DocumentTabsSheetController documentTabsSheetController;
     private SelectionMenuController selectionMenuController;
+    private WriterCommentInfoOverlay writerCommentInfoOverlay;
+    private long writerCommentInfoGeneration = 0L;
+    private long writerCommentInfoDocumentGeneration = -1L;
+    private String writerCommentInfoActiveId = "";
+    private String writerCommentInfoActiveKind = "";
+    private final java.util.Set<String> writerCommentInfoDisplayedIds = new java.util.HashSet<>();
+    private boolean writerCommentInfoActionInFlight = false;
     private CalcHyperlinkCellPopupController calcHyperlinkCellPopupController;
     private CalcSheetTabPopupController calcSheetTabPopupController;
     private ImpressSlideThumbnailPopupController impressSlideThumbnailPopupController;
@@ -1227,6 +1258,11 @@ public class LOActivity extends AppCompatActivity {
             setupTypesetPreviewOverlay();
             mWebView.setOnDocumentLongPressListener(new COWebView.OnDocumentLongPressListener() {
                 @Override
+                public boolean isWriterDocument() {
+                    return !mIsCalcDocument && !mIsImpressDocument;
+                }
+
+                @Override
                 public void onDocumentLongPress(float viewX, float viewY) {
                     LOActivity.this.onDocumentLongPress(viewX, viewY);
                 }
@@ -1359,6 +1395,7 @@ public class LOActivity extends AppCompatActivity {
         }
 
         final Intent finalIntent = intent;
+        invalidatePendingKitActions();
         documentSwitchInProgress = true;
         mProgressDialog.indeterminate(R.string.exiting);
         getMainHandler().post(new Runnable() {
@@ -1636,11 +1673,7 @@ public class LOActivity extends AppCompatActivity {
         TextView imageValue = asTextView(findViewByName(drawerRoot, "modelImageValue"));
         TextView visionValue = asTextView(findViewByName(drawerRoot, "modelVisionValue"));
 
-        String defaultNickname = getStringByName("ai_profile_name", "Nickname");
-        String nickname = prefs.getString(KEY_PROFILE_NAME, defaultNickname);
-        if (nickname == null || nickname.trim().isEmpty()) {
-            nickname = defaultNickname;
-        }
+        String nickname = resolveAndSyncProfileNickname();
         if (profileName != null) {
             profileName.setText(nickname);
         }
@@ -1723,6 +1756,115 @@ public class LOActivity extends AppCompatActivity {
             return fallback;
         }
         return getString(resId);
+    }
+
+    private String resolveAndSyncProfileNickname() {
+        SharedPreferences profilePrefs = getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE);
+        String profileName = profilePrefs.getString(KEY_PROFILE_NAME, "");
+        String legacyName = getPrefs().getString(USER_NAME_KEY, "");
+        String legacyDefault = getStringByName("pref_user_name_guest", "Guest User");
+        String nickname = profileName == null ? "" : profileName.trim();
+        if (nickname.isEmpty()) {
+            if (legacyName != null && !legacyName.trim().isEmpty()
+                    && !legacyName.trim().equals(legacyDefault.trim())) {
+                nickname = legacyName.trim();
+            } else {
+                nickname = getStringByName("ai_profile_name", "orangepi").trim();
+            }
+        }
+        if (!nickname.isEmpty()) {
+            if (!nickname.equals(profileName)) {
+                profilePrefs.edit().putString(KEY_PROFILE_NAME, nickname).apply();
+            }
+            if (!nickname.equals(legacyName)) {
+                getPrefs().edit().putString(USER_NAME_KEY, nickname).apply();
+            }
+            return nickname;
+        }
+        return legacyDefault;
+    }
+
+    private void syncCurrentWriterAuthorNameToWeb() {
+        if (!documentLoaded || mWebView == null) {
+            return;
+        }
+        final long syncGeneration = ++writerAuthorSyncGeneration;
+        syncCurrentWriterAuthorNameToWeb(resolveAndSyncProfileNickname(), 0,
+                documentLifecycleGeneration, syncGeneration, mWebView);
+    }
+
+    private void syncCurrentWriterAuthorNameToWeb(String nickname, int retryCount,
+            long docGeneration, long syncGeneration, COWebView targetWebView) {
+        if (!documentLoaded || documentSwitchInProgress || isFinishing()
+                || docGeneration != documentLifecycleGeneration
+                || syncGeneration != writerAuthorSyncGeneration
+                || targetWebView == null || targetWebView != mWebView) {
+            return;
+        }
+        final String quotedNickname = JSONObject.quote(nickname);
+        final String script = "(function(){try{"
+                + "var map=window.app&&app.map;if(!map||!map._docLayer){return 'no_map';}"
+                + "var viewId=map._docLayer._viewId;var view=map._viewInfo&&map._viewInfo[viewId];"
+                + "if(!view){return 'no_view';}var oldName=view.username||'';var newName=" + quotedNickname + ";"
+                + "if(typeof window.__coolRegisterOwnCommentAuthorAlias==='function'){"
+                + "window.__coolRegisterOwnCommentAuthorAlias(newName);}"
+                + "if(map._viewInfoByUserName&&oldName){delete map._viewInfoByUserName[oldName];}"
+                + "view.username=newName;if(map._viewInfoByUserName){map._viewInfoByUserName[newName]=view;}"
+                + "return viewId;}catch(e){return -1;}})();";
+        targetWebView.evaluateJavascript(script, value -> {
+            if (!documentLoaded || documentSwitchInProgress || isFinishing()
+                    || docGeneration != documentLifecycleGeneration
+                    || syncGeneration != writerAuthorSyncGeneration
+                    || targetWebView != mWebView) {
+                return;
+            }
+            int viewId = -1;
+            try {
+                viewId = Integer.parseInt(value == null ? "" : value.trim());
+            } catch (NumberFormatException ignored) {
+            }
+            if (viewId >= 0) {
+                final int targetViewId = viewId;
+                new Thread(() -> {
+                    boolean updated = false;
+                    if (documentLoaded && !documentSwitchInProgress && !isFinishing()
+                            && docGeneration == documentLifecycleGeneration
+                            && syncGeneration == writerAuthorSyncGeneration
+                            && targetWebView == mWebView) {
+                        // The JNI helper waits for the Kit thread; keep that wait off UI.
+                        updated = setLOKViewAuthor(targetViewId, nickname);
+                    }
+                    final boolean result = updated;
+                    runOnUiThread(() -> {
+                        if (!documentLoaded || documentSwitchInProgress || isFinishing()
+                                || docGeneration != documentLifecycleGeneration
+                                || syncGeneration != writerAuthorSyncGeneration
+                                || targetWebView != mWebView) {
+                            return;
+                        }
+                        if (result) {
+                            Log.i(TAG, "writer_author_name_sync result=updated viewId=" + targetViewId);
+                            return;
+                        }
+                        retryWriterAuthorSync(nickname, retryCount, docGeneration,
+                                syncGeneration, targetWebView, value);
+                    });
+                }, "WriterAuthorSync").start();
+                return;
+            }
+            retryWriterAuthorSync(nickname, retryCount, docGeneration,
+                    syncGeneration, targetWebView, value);
+        });
+    }
+
+    private void retryWriterAuthorSync(String nickname, int retryCount, long docGeneration,
+            long syncGeneration, COWebView targetWebView, String result) {
+        Log.i(TAG, "writer_author_name_sync result=" + result + " retry=" + retryCount);
+        if (retryCount < 20) {
+            getMainHandler().postDelayed(() ->
+                    syncCurrentWriterAuthorNameToWeb(nickname, retryCount + 1,
+                            docGeneration, syncGeneration, targetWebView), 100L);
+        }
     }
 
     private TextView asTextView(View view) {
@@ -1864,70 +2006,91 @@ public class LOActivity extends AppCompatActivity {
      * Check that we have created a temp file, and if yes, copy it back to the
      * content: URI.
      */
-    private void copyTempBackToIntent() {
-        Log.i(TAG, "copy_temp_back_to_intent_enter isDocEditable=" + isDocEditable
-                + " tempFile=" + mTempFile
-                + " data=" + (getIntent().getData() != null ? getIntent().getData() : "null"));
-        if (!isDocEditable || mTempFile == null || getIntent().getData() == null
-                || !getIntent().getData().getScheme().equals(ContentResolver.SCHEME_CONTENT)) {
-            Log.i(TAG, "copy_temp_back_to_intent_skip reason="
-                    + (!isDocEditable ? "not_editable"
-                            : (mTempFile == null ? "no_temp"
-                                    : (getIntent().getData() == null ? "no_data" : "not_content"))));
-            return;
-        }
+    private boolean copyTempBackToIntent() {
+        Uri uri = getIntent() == null ? null : getIntent().getData();
+        return copyTempBackToIntent(uri, mTempFile);
+    }
 
-        final ContentResolver contentResolver = getContentResolver();
-        try {
-            Thread copyThread = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    InputStream inputStream = null;
-                    OutputStream outputStream = null;
-                    try {
+    private boolean copyTempBackToIntent(Uri targetUri, File sourceFile) {
+        class CopyThread extends Thread {
+            private boolean result;
+
+            @Override
+            public void run() {
+                InputStream inputStream = null;
+                OutputStream outputStream = null;
+                try {
+                    inputStream = new FileInputStream(sourceFile);
+                    if (ContentResolver.SCHEME_CONTENT.equals(targetUri.getScheme())) {
                         try {
-                            inputStream = new FileInputStream(mTempFile);
-
-                            int len = inputStream.available();
-                            if (len <= 0)
-                                // empty for some reason & do not write it back
-                                return;
-
-                            Uri uri = getIntent().getData();
-                            try {
-                                outputStream = contentResolver.openOutputStream(uri, "wt");
-                            } catch (FileNotFoundException e) {
-                                Log.i(TAG, "failed with the 'wt' mode, trying without: " + e.getMessage());
-                                outputStream = contentResolver.openOutputStream(uri);
-                            }
-
-                            byte[] buffer = new byte[1024];
-                            int length;
-                            long bytes = 0;
-                            while ((length = inputStream.read(buffer)) != -1) {
-                                outputStream.write(buffer, 0, length);
-                                bytes += length;
-                            }
-
-                            Log.i(TAG, "Success copying " + bytes + " bytes from " + mTempFile + " to " + uri);
-                        } finally {
-                            if (inputStream != null)
-                                inputStream.close();
-                            if (outputStream != null)
-                                outputStream.close();
+                            outputStream = getContentResolver().openOutputStream(targetUri, "wt");
+                        } catch (FileNotFoundException e) {
+                            Log.i(TAG, "failed with the 'wt' mode, trying without: " + e.getMessage());
+                            outputStream = getContentResolver().openOutputStream(targetUri);
                         }
-                    } catch (FileNotFoundException e) {
-                        Log.e(TAG, "file not found: " + e.getMessage());
-                    } catch (Exception e) {
-                        Log.e(TAG, "exception: " + e.getMessage());
+                    } else if (ContentResolver.SCHEME_FILE.equals(targetUri.getScheme())) {
+                        File destination = new File(targetUri.getPath());
+                        if (sourceFile.getCanonicalFile().equals(destination.getCanonicalFile())) {
+                            result = sourceFile.isFile() && sourceFile.length() > 0;
+                            return;
+                        }
+                        outputStream = new FileOutputStream(destination);
+                    } else {
+                        return;
+                    }
+                    if (outputStream == null) {
+                        return;
+                    }
+                    byte[] buffer = new byte[8192];
+                    int length;
+                    long bytes = 0;
+                    while ((length = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, length);
+                        bytes += length;
+                    }
+                    outputStream.flush();
+                    outputStream.close();
+                    outputStream = null;
+                    inputStream.close();
+                    inputStream = null;
+                    result = bytes > 0;
+                    Log.i(TAG, "copy_temp_back_to_intent_result success=" + result
+                            + " bytes=" + bytes + " uri=" + targetUri);
+                } catch (Exception e) {
+                    Log.e(TAG, "copy_temp_back_to_intent_failed", e);
+                } finally {
+                    try {
+                        if (inputStream != null) inputStream.close();
+                    } catch (Exception ignored) {
+                    }
+                    try {
+                        if (outputStream != null) outputStream.close();
+                    } catch (Exception ignored) {
                     }
                 }
-            });
-            copyThread.start();
-            copyThread.join();
-        } catch (Exception e) {
-            Log.i(TAG, "copyTempBackToIntent: " + e.getMessage());
+            }
         }
+
+        Log.i(TAG, "copy_temp_back_to_intent_enter isDocEditable=" + isDocEditable
+                + " tempFile=" + sourceFile + " data=" + targetUri);
+        if (!isDocEditable || sourceFile == null || !sourceFile.isFile()
+                || targetUri == null || targetUri.getScheme() == null
+                || (!ContentResolver.SCHEME_CONTENT.equals(targetUri.getScheme())
+                        && !ContentResolver.SCHEME_FILE.equals(targetUri.getScheme()))) {
+            Log.i(TAG, "copy_temp_back_to_intent_skip reason="
+                    + (!isDocEditable ? "not_editable" : (sourceFile == null
+                            ? "no_temp" : "unsupported_source_uri")));
+            return false;
+        }
+        CopyThread copyThread = new CopyThread();
+        copyThread.start();
+        try {
+            copyThread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            Log.w(TAG, "copy_temp_back_to_intent_interrupted", e);
+        }
+        return copyThread.result;
     }
 
     /**
@@ -1966,6 +2129,7 @@ public class LOActivity extends AppCompatActivity {
         super.onResume();
         refreshDocumentSettingsDrawer();
         if (documentLoaded) {
+            syncCurrentWriterAuthorNameToWeb();
             recoverVisibleTilesAfterEditMode("activity_resume");
         }
         Log.i(TAG, "onResume..");
@@ -2217,6 +2381,7 @@ public class LOActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        invalidatePendingKitActions();
         documentBridgeEnabled = false;
         if (mMainHandler != null) {
             mMainHandler.removeCallbacksAndMessages(null);
@@ -2603,6 +2768,10 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void loadDocument() {
+        invalidatePendingKitActions();
+        documentLifecycleGeneration++;
+        clearAutoGenerateTransaction("document_load");
+        hideWriterCommentInfo(false);
         mProgressDialog.determinate(R.string.loading);
         exitingToHome = false;
         aiBridgeInjected = false;
@@ -2626,13 +2795,18 @@ public class LOActivity extends AppCompatActivity {
         String apkFile = getApplication().getPackageResourcePath();
         AssetManager assetManager = getResources().getAssets();
         String uiMode = (isLargeScreen() && !isChromeOS()) ? "notebookbar" : "classic";
-        String userName = getPrefs().getString(USER_NAME_KEY, "Guest User");
+        String userName = resolveAndSyncProfileNickname();
         // expect_coolwsd_run 由 createCOOLWSD 在「上一轮 run 已 idle」后再置 true；此处提前置 true 会在 reuse 时与旧 session teardown 竞态杀进程。
         createCOOLWSD(dataDir, cacheDir, apkFile, assetManager, urlToLoad, uiMode, userName);
 
         // trigger the load of the document
         String finalUrlToLoad = "file:///android_asset/dist/cool.html?file_path=" +
                 urlToLoad + "&closebutton=1";
+        writerSelectionSession = java.util.UUID.randomUUID().toString();
+        if (mWebView != null) {
+            mWebView.setWriterSelectionSession(writerSelectionSession);
+        }
+        finalUrlToLoad += "&androidselection_session=" + Uri.encode(writerSelectionSession);
 
         // set the language
         String language = getResources().getConfiguration().locale.toLanguageTag();
@@ -2667,6 +2841,7 @@ public class LOActivity extends AppCompatActivity {
 
         documentLoaded = true;
         documentSwitchInProgress = false;
+        syncCurrentWriterAuthorNameToWeb();
         if (startInEditMode) {
             updateEditModeState(true, "intent_start_edit");
             manualEditModeSwitchPending = true;
@@ -2795,6 +2970,62 @@ public class LOActivity extends AppCompatActivity {
     public void postMobileError(String message) {
         // TODO handle this
         Log.d(TAG, "postMobileError: " + message);
+    }
+
+    /**
+     * DOM selection handles publish viewport-relative CSS bounds. COWebView
+     * converts these to its local MotionEvent coordinate space synchronously
+     * on ACTION_DOWN so its long-press detector cannot race the DOM touch.
+     */
+    @JavascriptInterface
+    public void updateWriterSelectionHandleRects(String payload) {
+        if (payload == null || mWebView == null || isFinishing()) {
+            return;
+        }
+        try {
+            JSONObject update = new JSONObject(payload);
+            String session = update.optString("session", "");
+            if (documentSwitchInProgress || session.isEmpty() || !session.equals(writerSelectionSession)) {
+                return;
+            }
+            JSONObject viewport = update.optJSONObject("viewport");
+            JSONArray rects = update.optJSONArray("rects");
+            if (viewport == null || rects == null || rects.length() != 2) {
+                return;
+            }
+            float width = (float) viewport.optDouble("width", 0d);
+            float height = (float) viewport.optDouble("height", 0d);
+            float offsetLeft = (float) viewport.optDouble("offsetLeft", 0d);
+            float offsetTop = (float) viewport.optDouble("offsetTop", 0d);
+            long epoch = update.optLong("epoch", -1L);
+            float[] bounds = new float[8];
+            for (int i = 0; i < 2; i++) {
+                JSONObject rect = rects.optJSONObject(i);
+                if (rect == null) {
+                    return;
+                }
+                int offset = i * 4;
+                bounds[offset] = (float) rect.optDouble("left", 0d);
+                bounds[offset + 1] = (float) rect.optDouble("top", 0d);
+                bounds[offset + 2] = (float) rect.optDouble("right", 0d);
+                bounds[offset + 3] = (float) rect.optDouble("bottom", 0d);
+            }
+            mWebView.setWriterSelectionHandleRects(session, bounds, width, height,
+                    offsetLeft, offsetTop, epoch);
+        } catch (JSONException e) {
+            Log.w(TAG, "writer_selection_handle_rects_invalid", e);
+        }
+    }
+
+    /** Android 9+ uses the native WebView Magnifier; API 26-27 use the canvas mirror. */
+    @JavascriptInterface
+    public boolean hasNativeSelectionMagnifier() {
+        return android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P;
+    }
+
+    @JavascriptInterface
+    public boolean supportsWebSelectionMagnifier() {
+        return android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O;
     }
 
     /**
@@ -2981,6 +3212,20 @@ public class LOActivity extends AppCompatActivity {
      */
     private boolean beforeMessageFromWebView(String[] messageAndParam) {
         switch (messageAndParam[0]) {
+            case "SHOWCOMMENTINFO":
+                handleWriterCommentInfoShow(messageAndParam.length > 1
+                        ? messageAndParam[1] : "{}");
+                return false;
+            case "HIDECOMMENTINFO":
+                getMainHandler().post(() -> {
+                    if (!writerCommentInfoActionInFlight) {
+                        hideWriterCommentInfo(false);
+                    }
+                });
+                return false;
+            case "AI_AUTOGEN_SAVE_ACK":
+                handleAutoGenerateSaveAck(messageAndParam.length > 1 ? messageAndParam[1] : "{}");
+                return false;
             case "BYE":
                 if (documentSwitchInProgress) {
                     ExitDiagHelper.logByeProbe("beforeMessageFromWebView", messageAndParam[0],
@@ -3052,7 +3297,7 @@ public class LOActivity extends AppCompatActivity {
                 }
                 switch (messageAndParam[1]) {
                     case ".uno:Paste":
-                        return performPaste();
+                        return performPaste() == ClipboardPasteResult.CORE_CLIPBOARD;
                     default:
                         break;
                 }
@@ -3352,6 +3597,24 @@ public class LOActivity extends AppCompatActivity {
                             }
                         } catch (NumberFormatException e) {
                             Log.w(TAG, "selection_menu_bad_anchor", e);
+                        }
+                    } else if (messageAndParam[1].startsWith("caret ")) {
+                        // A second tap on a bare Writer caret opens the same native menu,
+                        // with selection-only actions guarded until text is selected.
+                        try {
+                            String[] parts = messageAndParam[1].split(" ");
+                            if (parts.length >= 4) {
+                                final float anchorX = Float.parseFloat(parts[1]);
+                                final float anchorY = Float.parseFloat(parts[2]);
+                                final float anchorBottomY = Float.parseFloat(parts[3]);
+                                getMainHandler().post(() -> {
+                                    SelectionMenuController menu = ensureSelectionMenuController();
+                                    menu.setGraphicMode(false);
+                                    menu.showAtWindow(anchorX, anchorY, anchorBottomY, false);
+                                });
+                            }
+                        } catch (NumberFormatException e) {
+                            Log.w(TAG, "selection_menu_bad_caret_anchor", e);
                         }
                     } else if ("show".equals(messageAndParam[1])) {
                         // show without coordinates - fixed center position
@@ -3881,6 +4144,20 @@ public class LOActivity extends AppCompatActivity {
         String apiKey = context != null ? context.optString("apiKey", "") : "";
         String model = context != null ? context.optString("model", "") : "";
         String modelMode = request.optString("modelMode", "cloud");
+        if (AiChatCoordinator.MODE_EXPAND.equals(taskType)
+                || AiChatCoordinator.MODE_CONDENSE.equals(taskType)
+                || AiChatCoordinator.MODE_REWRITE.equals(taskType)
+                || AiChatCoordinator.MODE_POLISH.equals(taskType)) {
+            String operationSelection = request.optString("selection", "");
+            if (!AiChatCoordinator.isTextOperationSelectionValid(operationSelection)) {
+                String message = AiChatCoordinator.countCodePoints(operationSelection)
+                        > AiChatCoordinator.TEXT_OPERATION_MAX_CODEPOINTS
+                        ? "选中内容不可超过5000个字符" : "请先选择文本";
+                dispatchAiState(requestId, AI_STATE_ERROR, message);
+                dispatchAiError(requestId, "invalid_selection", message);
+                return;
+            }
+        }
         endpoint = endpoint == null ? "" : endpoint.trim();
         apiKey = apiKey == null ? "" : apiKey.trim();
         model = model == null ? "" : model.trim();
@@ -4069,7 +4346,13 @@ public class LOActivity extends AppCompatActivity {
                 }
             } else if (AiChatCoordinator.isOperateMode(taskType)) {
                 String selection = request.optString("selection", "");
-                messages = AiChatCoordinator.buildOperateMessages(taskType, selection);
+                if (AiChatCoordinator.MODE_CONTINUE.equals(taskType)) {
+                    String neighboringContext = context != null
+                            ? context.optString("neighboringContext", "") : "";
+                    messages = AiChatCoordinator.buildContinueMessages(selection, neighboringContext);
+                } else {
+                    messages = AiChatCoordinator.buildOperateMessages(taskType, selection);
+                }
                 Log.i(TAG, "ai_operate_mode requestId=" + requestId + " mode=" + taskType
                         + " selectionChars=" + selection.length());
             } else if (AiChatCoordinator.MODE_TYPESET.equals(taskType)) {
@@ -4089,7 +4372,8 @@ public class LOActivity extends AppCompatActivity {
                             + " docChars=" + fullText.length());
                 }
             } else if (AiChatCoordinator.MODE_OUTLINE.equals(taskType)) {
-                String outlineType = request.optString("outlineType", AiChatCoordinator.OUTLINE_TYPE_GENERAL);
+                String outlineType = AiChatCoordinator.normalizeOutlineType(
+                        request.optString("outlineType", AiChatCoordinator.OUTLINE_TYPE_GENERAL));
                 JSONObject ctxObj = request.optJSONObject("context");
                 String ctxText = request.optString("selection", "");
                 String desc = ctxObj != null ? ctxObj.optString("description", "") : "";
@@ -5209,6 +5493,7 @@ public class LOActivity extends AppCompatActivity {
         mWebView.evaluateJavascript(
                 "(function(){try{if(window.AndroidSelectionMenu){"
                         + "window.AndroidSelectionMenu.updateTextSelectionEndAt(" + viewX + "," + viewY + ");"
+                        + "window.AndroidSelectionMenu.updateAndroidSelectionMagnifierAt(" + viewX + "," + viewY + ");"
                         + "}}catch(e){if(window.console&&console.warn){"
                         + "console.warn('selection_menu_drag_failed',e);}}"
                         + "return true;})();",
@@ -5222,6 +5507,7 @@ public class LOActivity extends AppCompatActivity {
         mWebView.evaluateJavascript(
                 "(function(){try{if(window.AndroidSelectionMenu){"
                         + "window.AndroidSelectionMenu.finishTextSelectionDrag(" + viewX + "," + viewY + ");"
+                        + "window.MobileSelectionMagnifier&&window.MobileSelectionMagnifier.hide();"
                         + "}}catch(e){if(window.console&&console.warn){"
                         + "console.warn('selection_menu_drag_end_failed',e);}}"
                         + "return true;})();",
@@ -5272,6 +5558,19 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void executeUnoCommand(String command) {
                     LOActivity.this.executeUnoCommand(command);
+                }
+
+                @Override
+                public boolean isWriterDocument() {
+                    return !mIsCalcDocument && !mIsImpressDocument;
+                }
+
+                @Override
+                public void openWriterImageEdit() {
+                    if (mWebView == null || !documentLoaded) return;
+                    mWebView.evaluateJavascript(
+                            "window.dispatchEvent(new CustomEvent('fabric:image:edit')); true;",
+                            null);
                 }
 
                 @Override
@@ -5783,40 +6082,95 @@ public class LOActivity extends AppCompatActivity {
             }
             return;
         }
-        try {
-            JSONObject context = new JSONObject();
-            context.put("prompt", "");
-            context.put("question", "");
-            context.put("source", "android-continue-write-dialog");
-            context.put("selection", selection);
-
-            JSONObject request = new JSONObject();
-            String requestId = "cw-" + UUID.randomUUID().toString();
-            request.put("requestId", requestId);
-            request.put("taskType", AiChatCoordinator.MODE_CONTINUE);
-            request.put("selection", selection);
-            request.put("context", context);
-            request.put("modelMode", "base");
-            request.put("history", new JSONArray());
-
-            aiActiveRequestId = requestId;
-            aiStreamingRequestId = requestId;
-            aiRequestModeById.put(requestId, AiChatCoordinator.MODE_CONTINUE);
-            aiTextByRequestId.put(requestId, new StringBuilder());
-            if (continueContentView != null) {
-                aiStreamingViewByRequestId.put(requestId, continueContentView);
+        final long contextGeneration = ++continueContextGeneration;
+        final long documentGeneration = documentLifecycleGeneration;
+        captureContinueNeighboringContext(selection, neighboringContext -> {
+            if (contextGeneration != continueContextGeneration
+                    || documentGeneration != documentLifecycleGeneration
+                    || !selection.equals(continueSelection)
+                    || continueDialogPanel == null
+                    || continueDialogPanel.getVisibility() != View.VISIBLE) {
+                Log.i(TAG, "continue_context_stale generation=" + contextGeneration);
+                return;
             }
-            continueActiveRequestId = requestId;
-            continueWriteRequestIds.add(requestId);
+            continueNeighboringContext = neighboringContext == null ? "" : neighboringContext;
+            try {
+                JSONObject context = new JSONObject();
+                context.put("prompt", "");
+                context.put("question", "");
+                context.put("source", "android-continue-write-dialog");
+                context.put("selection", selection);
+                context.put("neighboringContext", continueNeighboringContext);
 
-            Log.i(TAG, "continue_write_request requestId=" + requestId
-                    + " selectionChars=" + selection.length());
-            startAiRequestSession(request, -1);
-        } catch (JSONException e) {
-            dispatchAiError("", "invalid_payload", "Failed to build continue-write request");
-            Log.e(TAG, "Failed to build continue-write request", e);
-            dismissContinueWriteDialog();
-        }
+                JSONObject request = new JSONObject();
+                String requestId = "cw-" + UUID.randomUUID().toString();
+                request.put("requestId", requestId);
+                request.put("taskType", AiChatCoordinator.MODE_CONTINUE);
+                request.put("selection", selection);
+                request.put("context", context);
+                request.put("modelMode", "base");
+                request.put("history", new JSONArray());
+
+                aiActiveRequestId = requestId;
+                aiStreamingRequestId = requestId;
+                aiRequestModeById.put(requestId, AiChatCoordinator.MODE_CONTINUE);
+                aiTextByRequestId.put(requestId, new StringBuilder());
+                if (continueContentView != null) {
+                    aiStreamingViewByRequestId.put(requestId, continueContentView);
+                }
+                continueActiveRequestId = requestId;
+                continueActiveDocumentGeneration = documentLifecycleGeneration;
+                continueWriteRequestIds.add(requestId);
+
+                Log.i(TAG, "continue_write_request requestId=" + requestId
+                        + " selectionChars=" + selection.length()
+                        + " neighboringContextChars=" + continueNeighboringContext.length());
+                startAiRequestSession(request, -1);
+            } catch (JSONException e) {
+                dispatchAiError("", "invalid_payload", "Failed to build continue-write request");
+                Log.e(TAG, "Failed to build continue-write request", e);
+                dismissContinueWriteDialog();
+            }
+        });
+    }
+
+    /** Read context from a temporary ODT copy; only use an unambiguous selection match. */
+    private void captureContinueNeighboringContext(String selectedText, Consumer<String> callback) {
+        final long documentGeneration = documentLifecycleGeneration;
+        new Thread(() -> {
+            String context = "";
+            FullTextExtractionResult extracted = extractOutlineDocumentText("continue-context");
+            String fullText = extracted.success ? extracted.text : "";
+            if (!fullText.isEmpty() && selectedText != null && !selectedText.isEmpty()) {
+                int index = fullText.indexOf(selectedText);
+                int selectedEnd = index < 0 ? -1 : index + selectedText.length();
+                if (index >= 0 && fullText.indexOf(selectedText, selectedEnd) < 0
+                        && isCodePointBoundary(fullText, index)
+                        && isCodePointBoundary(fullText, selectedEnd)) {
+                    int beforeCodePoints = fullText.codePointCount(0, index);
+                    int afterCodePoints = fullText.codePointCount(selectedEnd, fullText.length());
+                    int start = fullText.offsetByCodePoints(index, -Math.min(600, beforeCodePoints));
+                    int end = fullText.offsetByCodePoints(selectedEnd, Math.min(600, afterCodePoints));
+                    String before = fullText.substring(start, index).trim();
+                    String after = fullText.substring(selectedEnd, end).trim();
+                    context = "选区前文：" + before + "\n选区后文：" + after;
+                }
+            }
+            String finalContext = context;
+            runOnUiThread(() -> {
+                if (documentGeneration != documentLifecycleGeneration) {
+                    callback.accept("");
+                } else {
+                    callback.accept(finalContext);
+                }
+            });
+        }, "cool-ai-continue-context").start();
+    }
+
+    private boolean isCodePointBoundary(String text, int index) {
+        return index <= 0 || index >= text.length()
+                || !Character.isHighSurrogate(text.charAt(index - 1))
+                || !Character.isLowSurrogate(text.charAt(index));
     }
 
     /**
@@ -5862,8 +6216,18 @@ public class LOActivity extends AppCompatActivity {
      * 内容已由 handleAiNativeEvent 的 ai.done 分支重渲进 continueContentView，这里只切到完成态。
      */
     private void onContinueWriteDone(String requestId, String fullText) {
+        if (!requestId.equals(continueActiveRequestId)
+                || continueActiveDocumentGeneration != documentLifecycleGeneration) {
+            Log.i(TAG, "continue_write_old_document_drop requestId=" + requestId);
+            return;
+        }
         final String text = fullText == null ? "" : fullText;
         runOnUiThread(() -> {
+            if (!requestId.equals(continueActiveRequestId)
+                    || continueActiveDocumentGeneration != documentLifecycleGeneration) {
+                Log.i(TAG, "continue_write_stale_done_drop requestId=" + requestId);
+                return;
+            }
             continueResultText = text;
             setContinueDialogState(false);
             if (continueDialogPanel != null) {
@@ -5877,8 +6241,10 @@ public class LOActivity extends AppCompatActivity {
      * 点红色停止按钮：取消在途请求，保留已流式部分，切到完成态。
      */
     private void onContinueWriteStop() {
+        continueContextGeneration++;
         String rid = continueActiveRequestId;
         if (!rid.isEmpty()) {
+            invalidateContinueWriteRequest(rid);
             cancelAiRequest(rid);
         }
         StringBuilder partial = aiTextByRequestId.get(rid);
@@ -5898,9 +6264,10 @@ public class LOActivity extends AppCompatActivity {
      * 点「重写生成」：取消在途请求，清空内容，用同一选区上下文重新发一轮。
      */
     private void onContinueWriteRegenerate() {
-        if (!continueActiveRequestId.isEmpty()) {
-            cancelAiRequest(continueActiveRequestId);
-            aiStreamingViewByRequestId.remove(continueActiveRequestId);
+        String oldRequestId = continueActiveRequestId;
+        if (!oldRequestId.isEmpty()) {
+            invalidateContinueWriteRequest(oldRequestId);
+            cancelAiRequest(oldRequestId);
         }
         setContinueDialogState(true);
         Log.i(TAG, "continue_write_regenerate");
@@ -5911,6 +6278,10 @@ public class LOActivity extends AppCompatActivity {
      * 点「插入文档」：把续写结果写入文档（ensureEditModeThen 包裹，兼容预览模式触发）。
      */
     private void onContinueWriteInsert() {
+        if (continueActiveDocumentGeneration != documentLifecycleGeneration) {
+            Toast.makeText(this, "文档已切换，请重新选择文本后续写", Toast.LENGTH_SHORT).show();
+            return;
+        }
         final String text;
         if (continueResultText != null && !continueResultText.isEmpty()) {
             text = continueResultText;
@@ -5923,9 +6294,88 @@ public class LOActivity extends AppCompatActivity {
             Toast.makeText(this, "没有可插入的内容", Toast.LENGTH_SHORT).show();
             return;
         }
-        Log.i(TAG, "continue_write_insert chars=" + text.length() + " format=html");
-        dismissContinueWriteDialog();
-        ensureEditModeThen(() -> pasteAiTextAsHtml(text));
+        if (!continueInsertRequestId.isEmpty()) {
+            return;
+        }
+        final long documentGeneration = documentLifecycleGeneration;
+        final String requestId = "continue:" + UUID.randomUUID();
+        continueInsertRequestId = requestId;
+        continueInsertDocumentGeneration = documentGeneration;
+        continueInsertKitQueued = false;
+        if (continueInsertBtn != null) {
+            continueInsertBtn.setEnabled(false);
+        }
+        ensureEditModeThen(() -> {
+            if (!requestId.equals(continueInsertRequestId)) {
+                return;
+            }
+            if (documentGeneration != documentLifecycleGeneration || mWebView == null) {
+                finishContinueWriteInsert(requestId, false);
+                Toast.makeText(this, "文档已切换，请重新选择文本后续写", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            String html = AiMarkdownRenderer.markdownToHtml(text);
+            if (html == null || html.isEmpty()) {
+                finishContinueWriteInsert(requestId, false);
+                Toast.makeText(this, "续写内容转换失败，请重试", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            COWebView targetWebView = mWebView;
+            String viewIdScript = "(function(){try{return window.app&&app.map&&app.map._docLayer"
+                    + "?app.map._docLayer._viewId:-1;}catch(e){return -1;}})()";
+            targetWebView.evaluateJavascript(viewIdScript, value -> {
+                if (!requestId.equals(continueInsertRequestId)) {
+                    return;
+                }
+                if (documentGeneration != documentLifecycleGeneration || targetWebView != mWebView) {
+                    finishContinueWriteInsert(requestId, false);
+                    Toast.makeText(this, "文档已切换，请重新选择文本后续写", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                int viewId;
+                try {
+                    viewId = Integer.parseInt(value == null ? "" : value.trim());
+                } catch (NumberFormatException e) {
+                    viewId = -1;
+                }
+                if (viewId < 0) {
+                    finishContinueWriteInsert(requestId, false);
+                    Toast.makeText(this, "无法确认原文档视图，请重新选择文本后重试", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                continueInsertKitQueued = true;
+                Log.i(TAG, "continue_write_insert_queued chars=" + text.length()
+                        + " anchor=selection_end viewId=" + viewId);
+                appendContinueWriteOnKitThread(continueSelection,
+                        html.getBytes(StandardCharsets.UTF_8), requestId, viewId);
+            });
+        });
+        // ensureEditModeThen can fail without running its action; clear only that preparation state.
+        getMainHandler().postDelayed(() -> {
+            if (requestId.equals(continueInsertRequestId) && !continueInsertKitQueued) {
+                finishContinueWriteInsert(requestId, false);
+                Toast.makeText(this, "无法进入编辑模式，请重试插入", Toast.LENGTH_SHORT).show();
+            }
+        }, 3000L);
+    }
+
+    private void finishContinueWriteInsert(String requestId, boolean success) {
+        if (requestId == null || !requestId.equals(continueInsertRequestId)) {
+            return;
+        }
+        continueInsertRequestId = "";
+        continueInsertDocumentGeneration = -1L;
+        continueInsertKitQueued = false;
+        if (continueInsertBtn != null) {
+            continueInsertBtn.setEnabled(true);
+        }
+        if (success) {
+            Log.i(TAG, "continue_write_insert_ack requestId=" + requestId);
+            dismissContinueWriteDialog();
+        } else {
+            Log.w(TAG, "continue_write_insert_failed requestId=" + requestId);
+            Toast.makeText(this, "未能插入；续写结果已保留，请重新选择原文后重试", Toast.LENGTH_LONG).show();
+        }
     }
 
     /**
@@ -5950,10 +6400,11 @@ public class LOActivity extends AppCompatActivity {
      * 关闭续写浮层：取消在途请求、清理流式注册、隐藏 overlay+panel。
      */
     private void dismissContinueWriteDialog() {
+        continueContextGeneration++;
         if (!continueActiveRequestId.isEmpty()) {
-            cancelAiRequest(continueActiveRequestId);
-            aiStreamingViewByRequestId.remove(continueActiveRequestId);
-            continueActiveRequestId = "";
+            String requestId = continueActiveRequestId;
+            invalidateContinueWriteRequest(requestId);
+            cancelAiRequest(requestId);
         }
         if (continueDialogOverlay != null) {
             continueDialogOverlay.setVisibility(View.GONE);
@@ -5961,7 +6412,37 @@ public class LOActivity extends AppCompatActivity {
         if (continueDialogPanel != null) {
             continueDialogPanel.setVisibility(View.GONE);
         }
+        if (!continueInsertRequestId.isEmpty() && !continueInsertKitQueued) {
+            continueInsertRequestId = "";
+            continueInsertDocumentGeneration = -1L;
+            if (continueInsertBtn != null) {
+                continueInsertBtn.setEnabled(true);
+            }
+        }
         Log.i(TAG, "continue_write_dialog_dismiss");
+    }
+
+    /** Invalidate a continuation before cancellation so racing terminal callbacks cannot revive it. */
+    private void invalidateContinueWriteRequest(String requestId) {
+        if (requestId == null || requestId.isEmpty()) {
+            return;
+        }
+        // Completed requests have no late terminal callback to suppress; avoid retaining
+        // a suppression entry when the user inserts/closes an already completed result.
+        if (aiRequestSessions.containsKey(requestId)) {
+            aiSuppressedRequestIds.add(requestId);
+        }
+        aiStreamingViewByRequestId.remove(requestId);
+        if (requestId.equals(continueActiveRequestId)) {
+            continueActiveRequestId = "";
+        }
+        if (requestId.equals(aiActiveRequestId)) {
+            aiActiveRequestId = "";
+        }
+        if (requestId.equals(aiStreamingRequestId)) {
+            aiStreamingRequestId = "";
+        }
+        Log.i(TAG, "continue_write_invalidated requestId=" + requestId);
     }
 
     // ==================== AI续写浮层结束 ====================
@@ -10539,6 +11020,140 @@ public class LOActivity extends AppCompatActivity {
         return true;
     }
 
+    private void handleWriterCommentInfoShow(String payloadJson) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            runOnUiThread(() -> handleWriterCommentInfoShow(payloadJson));
+            return;
+        }
+        if (!documentLoaded || isFinishing() || documentSwitchInProgress
+                || mIsCalcDocument || mIsImpressDocument || payloadJson == null) {
+            return;
+        }
+        final JSONObject payload;
+        try {
+            payload = new JSONObject(payloadJson);
+        } catch (JSONException e) {
+            Log.w(TAG, "writer_comment_info_payload_invalid", e);
+            return;
+        }
+        final String kind = payload.optString("kind", "comment");
+        final String commentId = payload.optString("id", "");
+        if ((!"comment".equals(kind) && !"revision".equals(kind))
+                || commentId.isEmpty() || "new".equals(commentId)) {
+            return;
+        }
+        final long docGeneration = documentLifecycleGeneration;
+        runOnUiThread(() -> {
+            if (!documentLoaded || isFinishing() || documentSwitchInProgress
+                    || docGeneration != documentLifecycleGeneration
+                    || mIsCalcDocument || mIsImpressDocument) {
+                return;
+            }
+            writerCommentInfoGeneration++;
+            writerCommentInfoDocumentGeneration = docGeneration;
+            writerCommentInfoActiveId = commentId;
+            writerCommentInfoActiveKind = kind;
+            writerCommentInfoDisplayedIds.clear();
+            JSONArray comments = payload.optJSONArray("comments");
+            if (comments != null && comments.length() > 0) {
+                for (int i = 0; i < comments.length(); i++) {
+                    JSONObject item = comments.optJSONObject(i);
+                    String displayedId = item == null ? "" : item.optString("id", "");
+                    if (!displayedId.isEmpty() && !"new".equals(displayedId)) {
+                        writerCommentInfoDisplayedIds.add(displayedId);
+                    }
+                }
+            } else {
+                writerCommentInfoDisplayedIds.add(commentId);
+            }
+            writerCommentInfoActionInFlight = false;
+            if (writerCommentInfoOverlay == null) {
+                writerCommentInfoOverlay = new WriterCommentInfoOverlay(this);
+            }
+            writerCommentInfoOverlay.show(payload, new WriterCommentInfoOverlay.Listener() {
+                @Override
+                public void onClose() {
+                    hideWriterCommentInfo(true);
+                }
+
+                @Override
+                public void onEdit(String id, String text) {
+                    runWriterCommentInfoAction("__coolEditWriterCommentInfo", id, text);
+                }
+
+                @Override
+                public void onDelete(String id, String text) {
+                    runWriterCommentInfoAction("__coolDeleteWriterCommentInfo", id, text);
+                }
+            });
+            hideKeyboard();
+        });
+    }
+
+    private void hideWriterCommentInfo(boolean clearBrowserState) {
+        writerCommentInfoGeneration++;
+        writerCommentInfoDocumentGeneration = -1L;
+        writerCommentInfoActiveId = "";
+        writerCommentInfoActiveKind = "";
+        writerCommentInfoDisplayedIds.clear();
+        writerCommentInfoActionInFlight = false;
+        if (writerCommentInfoOverlay != null) {
+            writerCommentInfoOverlay.hide();
+        }
+        if (clearBrowserState && mWebView != null) {
+            mWebView.evaluateJavascript(
+                    "if(typeof window.__coolClearWriterCommentInfo==='function'){"
+                            + "window.__coolClearWriterCommentInfo();}", null);
+        }
+    }
+
+    private void runWriterCommentInfoAction(String functionName, String commentId, String text) {
+        if (commentId == null || commentId.isEmpty() || mWebView == null
+                || !documentLoaded || documentSwitchInProgress || isFinishing()
+                || !isDocEditable || !mIsEditModeActive
+                || writerCommentInfoActionInFlight
+                || writerCommentInfoDocumentGeneration != documentLifecycleGeneration
+                || !writerCommentInfoDisplayedIds.contains(commentId)
+                || (!"__coolEditWriterCommentInfo".equals(functionName)
+                        && !"__coolDeleteWriterCommentInfo".equals(functionName))) {
+            Toast.makeText(this, "当前批注不可编辑", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final COWebView actionWebView = mWebView;
+        final long docGeneration = documentLifecycleGeneration;
+        final long infoGeneration = writerCommentInfoGeneration;
+        final String activeId = writerCommentInfoActiveId;
+        JSONArray arguments = new JSONArray();
+        arguments.put(commentId);
+        if ("__coolEditWriterCommentInfo".equals(functionName)) {
+            arguments.put(text == null ? "" : text);
+        }
+        final String script = "(function(a){try{var fn=window["
+                + JSONObject.quote(functionName) + "];return typeof fn==='function'?!!fn.apply(window,a):false;"
+                + "}catch(e){return false;}})(JSON.parse(" + JSONObject.quote(arguments.toString()) + "));";
+        writerCommentInfoActionInFlight = true;
+        if (writerCommentInfoOverlay != null) writerCommentInfoOverlay.setBusy(true);
+        actionWebView.evaluateJavascript(script, result -> {
+            if (actionWebView != mWebView || !documentLoaded || documentSwitchInProgress
+                    || isFinishing() || docGeneration != documentLifecycleGeneration
+                    || infoGeneration != writerCommentInfoGeneration
+                    || writerCommentInfoDocumentGeneration != docGeneration
+                    || !activeId.equals(writerCommentInfoActiveId)) {
+                return;
+            }
+            writerCommentInfoActionInFlight = false;
+            boolean succeeded = "true".equals(result);
+            if (succeeded) {
+                // The JS action callback is the ACK; its early HIDE message is ignored
+                // while this request is in flight, so failure leaves the card visible.
+                hideWriterCommentInfo(false);
+            } else {
+                if (writerCommentInfoOverlay != null) writerCommentInfoOverlay.setBusy(false);
+                Toast.makeText(this, "批注操作失败，请重试", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
     private SelectionMenuController ensureSelectionMenuController() {
         if (selectionMenuController == null) {
             setupSelectionMenu();
@@ -10600,8 +11215,8 @@ public class LOActivity extends AppCompatActivity {
 
     /**
      * Paste from Android system clipboard into the document.
-     * In-app copy: LOK internal clipboard → .uno:Paste.
-     * External clipboard: native paste() loads content; Writer/Impress also need .uno:Paste to insert.
+     * In-app copy: restore the rich LOK clipboard then dispatch .uno:Paste once.
+     * External content: LOK paste(mime, bytes) performs the insertion itself.
      * @param onComplete optional callback on UI thread after paste (e.g. hide selection menu).
      */
     private void pasteFromSystemClipboard(Runnable onComplete) {
@@ -10611,16 +11226,14 @@ public class LOActivity extends AppCompatActivity {
         postUnoCommand(".uno:EditDoc?Editable:bool=true", "{}", false);
         long editDelayMs = mIsEditModeActive ? 80L : 280L;
         getMainHandler().postDelayed(() -> {
-            boolean lokInternal = performPaste();
-            if (lokInternal) {
+            ClipboardPasteResult pasteResult = performPaste();
+            if (pasteResult == ClipboardPasteResult.CORE_CLIPBOARD) {
                 Log.i(TAG, "paste_from_clipboard lok_internal");
                 dispatchClipboardUnoCommand(".uno:Paste");
+            } else if (pasteResult == ClipboardPasteResult.NATIVE_PENDING) {
+                Log.i(TAG, "paste_from_clipboard native_pending");
             } else {
-                Log.i(TAG, "paste_from_clipboard native_injected");
-                if (!mIsCalcDocument) {
-                    postUnoCommand(".uno:Paste", "{}", false);
-                    Log.i(TAG, "paste_from_clipboard writer_paste_uno");
-                }
+                Log.i(TAG, "paste_from_clipboard no_usable_representation");
             }
             forceVisibleTileRedrawFromAndroid("paste");
             nudgeSocketIfStalled("paste");
@@ -11546,7 +12159,7 @@ public class LOActivity extends AppCompatActivity {
 
                 @Override
                 public String getCommentAuthorName() {
-                    return LOActivity.this.getPrefs().getString(USER_NAME_KEY, "Guest User");
+                    return LOActivity.this.resolveAndSyncProfileNickname();
                 }
 
                 @Override
@@ -11733,7 +12346,7 @@ public class LOActivity extends AppCompatActivity {
 
                 @Override
                 public String getCommentAuthorName() {
-                    return LOActivity.this.getPrefs().getString(USER_NAME_KEY, "Guest User");
+                    return LOActivity.this.resolveAndSyncProfileNickname();
                 }
 
                 @Override
@@ -11906,7 +12519,7 @@ public class LOActivity extends AppCompatActivity {
 
                 @Override
                 public String getCommentAuthorName() {
-                    return LOActivity.this.getPrefs().getString(USER_NAME_KEY, "Guest User");
+                    return LOActivity.this.resolveAndSyncProfileNickname();
                 }
 
                 @Override
@@ -12378,7 +12991,7 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         final String content = text.trim();
-        final String author = getPrefs().getString(USER_NAME_KEY, "Guest User");
+        final String author = resolveAndSyncProfileNickname();
         final String escapedAuthor = escapeForJsString(author);
         final String escapedContent = escapeForJsString(content);
         Log.i(TAG, "function_insert_comment_js author=" + author + " chars=" + content.length());
@@ -12490,7 +13103,7 @@ public class LOActivity extends AppCompatActivity {
         final String commentId = id.trim();
         final String content = text.trim();
         final String commentAuthor = author != null && !author.trim().isEmpty()
-                ? author.trim() : getPrefs().getString(USER_NAME_KEY, "Guest User");
+                ? author.trim() : resolveAndSyncProfileNickname();
         Log.i(TAG, "function_edit_comment id=" + commentId + " chars=" + content.length());
         Runnable apply = () -> {
             requestWebViewFocusForPanelAction("edit_comment");
@@ -13221,7 +13834,9 @@ public class LOActivity extends AppCompatActivity {
                         + "&&window.AndroidSelectionMenu.isTextInputGenerationCurrent(" + browserGeneration + ")"
                         + "&&window.app&&app.map"
                         + "&&typeof app.map.isEditMode==='function'&&app.map.isEditMode()"
-                        + "&&app.file&&app.file.textCursor&&app.file.textCursor.visible);"
+                        + "&&app.file&&app.file.textCursor&&app.file.textCursor.visible"
+                        + "&&!(typeof window.__coolShouldSuppressDocumentKeyboard==='function'"
+                        + "&&window.__coolShouldSuppressDocumentKeyboard());"
                         + "}catch(e){return false;}})();",
                 result -> {
                     if (mWebView != requestWebView || !mIsEditModeActive || isFinishing()
@@ -14462,6 +15077,112 @@ public class LOActivity extends AppCompatActivity {
      * 直到非空且长度稳定（core 异步应用 SelectAll）。须在后台线程调用（LOK JNI 子线程安全）。
      * 返回全文纯文本，失败返回 null/空。
      */
+    private static final class FullTextExtractionResult {
+        final boolean success;
+        final String text;
+
+        FullTextExtractionResult(boolean success, String text) {
+            this.success = success;
+            this.text = text == null ? "" : text;
+        }
+    }
+
+    /** Export Writer to ODT so a successful empty document is distinguishable from extraction failure. */
+    private FullTextExtractionResult extractOutlineDocumentText(String tag) {
+        synchronized (aiDocumentExportLock) {
+            return extractOutlineDocumentTextLocked(tag);
+        }
+    }
+
+    private FullTextExtractionResult extractOutlineDocumentTextLocked(String tag) {
+        File temp = null;
+        try {
+            temp = File.createTempFile("ai-outline-extract-", ".odt", getCacheDir());
+            if (temp.exists() && !temp.delete()) {
+                return new FullTextExtractionResult(false, "");
+            }
+            saveAs(temp.toURI().toString(), "odt", null);
+            if (!temp.exists() || temp.length() == 0) {
+                Log.w(TAG, "ai_outline_export_missing tag=" + tag);
+                return new FullTextExtractionResult(false, "");
+            }
+            try (java.util.zip.ZipFile odt = new java.util.zip.ZipFile(temp)) {
+                if (odt.getEntry("content.xml") == null) {
+                    Log.w(TAG, "ai_outline_export_content_missing tag=" + tag);
+                    return new FullTextExtractionResult(false, "");
+                }
+            }
+            String text = extractOutlineOdfPlainText(temp);
+            Log.i(TAG, "ai_outline_export_extracted tag=" + tag + " chars=" + text.length());
+            return new FullTextExtractionResult(true, text);
+        } catch (Exception e) {
+            Log.w(TAG, "ai_outline_export_failed tag=" + tag, e);
+            return new FullTextExtractionResult(false, "");
+        } finally {
+            if (temp != null && temp.exists() && !temp.delete()) {
+                Log.w(TAG, "ai_outline_export_cleanup_failed tag=" + tag);
+            }
+        }
+    }
+
+    /** Read every Writer text:p/text:h block in document order without truncating the document. */
+    private String extractOutlineOdfPlainText(File file) throws Exception {
+        final String textNs = "urn:oasis:names:tc:opendocument:xmlns:text:1.0";
+        final String officeNs = "urn:oasis:names:tc:opendocument:xmlns:office:1.0";
+        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(
+                new java.io.FileInputStream(file))) {
+            java.util.zip.ZipEntry entry;
+            byte[] buffer = new byte[8192];
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            DocumentBuilder builder = factory.newDocumentBuilder();
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.isDirectory() || !"content.xml".equals(entry.getName())) {
+                    continue;
+                }
+                ByteArrayOutputStream content = new ByteArrayOutputStream();
+                int count;
+                while ((count = zis.read(buffer)) > 0) {
+                    content.write(buffer, 0, count);
+                }
+                Document xml = builder.parse(new ByteArrayInputStream(content.toByteArray()));
+                NodeList bodyTexts = xml.getElementsByTagNameNS(officeNs, "text");
+                if (bodyTexts.getLength() == 0) {
+                    throw new IOException("ODT content has no office:text body");
+                }
+                StringBuilder text = new StringBuilder();
+                appendOutlineOdfTextBlocks(bodyTexts.item(0), textNs, text);
+                return text.toString().trim();
+            }
+            throw new IOException("ODT content.xml is missing");
+        }
+    }
+
+    /** Collect block text once; a matched paragraph/heading owns all nested inline text. */
+    private void appendOutlineOdfTextBlocks(Node container, String textNs, StringBuilder output) {
+        NodeList children = container.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node child = children.item(i);
+            if (child.getNodeType() != Node.ELEMENT_NODE) {
+                continue;
+            }
+            Element element = (Element) child;
+            String localName = element.getLocalName();
+            if (textNs.equals(element.getNamespaceURI())
+                    && ("p".equals(localName) || "h".equals(localName))) {
+                String block = extractOdfParagraphText(element, textNs);
+                if (!block.trim().isEmpty()) {
+                    if (output.length() > 0) {
+                        output.append('\n');
+                    }
+                    output.append(block);
+                }
+                continue;
+            }
+            appendOutlineOdfTextBlocks(element, textNs, output);
+        }
+    }
+
     private String extractFullTextNative(String tag) {
         try {
             postUnoCommand(".uno:SelectAll", "{}", false);
@@ -15827,6 +16548,7 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
 
+        invalidatePendingKitActions();
         documentSwitchInProgress = true;
         mProgressDialog.indeterminate(R.string.exiting);
         cancelAllAiRequests();
@@ -15923,25 +16645,23 @@ public class LOActivity extends AppCompatActivity {
     // ==================== 生成大纲相关方法 ====================
 
     private static final String[] OUTLINE_TYPE_KEYS = {
-            AiChatCoordinator.OUTLINE_TYPE_PAPER,
-            AiChatCoordinator.OUTLINE_TYPE_REPORT,
-            AiChatCoordinator.OUTLINE_TYPE_SPEECH,
-            AiChatCoordinator.OUTLINE_TYPE_EVENT,
-            AiChatCoordinator.OUTLINE_TYPE_GENERAL
+            AiChatCoordinator.OUTLINE_TYPE_GENERAL,
+            AiChatCoordinator.OUTLINE_TYPE_MEETING,
+            AiChatCoordinator.OUTLINE_TYPE_SUMMARY
     };
     private static final String[] OUTLINE_TYPE_LABELS = {
-            "论文", "工作报告", "演讲稿", "活动策划", "通用文档"
+            "大纲生成", "会议纪要", "工作总结"
     };
 
     /**
      * 弹出生成大纲对话框。
-     * @param selectionText 入口 A 传选区文字；入口 B 传 null（生成时提取全文）
+     * @param selectionText ignored; every Writer outline uses the full document
      */
     private void showOutlineDialog(String selectionText) {
         if (outlineDialog != null && outlineDialog.isShowing()) {
             outlineDialog.dismiss();
         }
-        outlineContextText = selectionText;
+        outlineContextText = null;
         pendingOutlineType = AiChatCoordinator.OUTLINE_TYPE_GENERAL;
         pendingOutlineResult = null;
 
@@ -15981,6 +16701,7 @@ public class LOActivity extends AppCompatActivity {
 
         dialog.setOnDismissListener(d -> {
             Log.i(TAG, "outline_dialog_dismissed");
+            outlineGeneration++;
             cancelAndSuppressAiRequest(outlineActiveRequestId);
             aiStreamingViewByRequestId.remove(outlineActiveRequestId);
             outlineActiveRequestId = "";
@@ -15993,6 +16714,7 @@ public class LOActivity extends AppCompatActivity {
         hideKeyboardForBottomSheet();
         dialog.show();
         outlineDialog = dialog;
+        outlineGeneration++;
         switchOutlineDialogState(false);
         root.post(this::applyOutlineDialogSize);
     }
@@ -16061,7 +16783,22 @@ public class LOActivity extends AppCompatActivity {
         WaiDropdownPopup.show(this, anchor, OUTLINE_TYPE_LABELS, selected, 0,
                 WaiDropdownPopup.Style.CHECK, null,
                 (index, label) -> {
-                    pendingOutlineType = OUTLINE_TYPE_KEYS[index];
+                    String nextType = OUTLINE_TYPE_KEYS[index];
+                    if (!nextType.equals(pendingOutlineType)) {
+                        outlineGeneration++;
+                        if (outlineActiveRequestId != null && !outlineActiveRequestId.isEmpty()) {
+                            cancelAndSuppressAiRequest(outlineActiveRequestId);
+                            aiStreamingViewByRequestId.remove(outlineActiveRequestId);
+                            outlineActiveRequestId = "";
+                        }
+                        pendingOutlineResult = null;
+                        outlineContextText = null;
+                        if (outlineResultText != null) {
+                            outlineResultText.setText("");
+                        }
+                        switchOutlineDialogState(false);
+                    }
+                    pendingOutlineType = nextType;
                     syncOutlineTypeUi();
                     Log.i(TAG, "outline_type_selected type=" + pendingOutlineType);
                 },
@@ -16073,33 +16810,53 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void startOutlineGeneration() {
+        final long generation = ++outlineGeneration;
+        final long documentGeneration = documentLifecycleGeneration;
+        final AlertDialog requestDialog = outlineDialog;
+        if (outlineActiveRequestId != null && !outlineActiveRequestId.isEmpty()) {
+            cancelAndSuppressAiRequest(outlineActiveRequestId);
+            aiStreamingViewByRequestId.remove(outlineActiveRequestId);
+            outlineActiveRequestId = "";
+        }
+        outlineActiveDocumentGeneration = documentGeneration;
+        pendingOutlineType = AiChatCoordinator.normalizeOutlineType(pendingOutlineType);
         pendingOutlineDesc = outlineDescEdit.getText().toString().trim();
         Log.i(TAG, "ai_outline_start type=" + pendingOutlineType
-                + " hasContext=" + (outlineContextText != null && !outlineContextText.isEmpty())
+                + " source=full_document"
                 + " descChars=" + pendingOutlineDesc.length());
 
-        // 入口 B（无选区文字）→ 先提取全文
-        if (outlineContextText == null || outlineContextText.isEmpty()) {
-            toastTodo("正在提取文档全文...");
-            new Thread(() -> {
-                String full = extractFullTextNative("outline");
-                if (full == null || full.isEmpty()) {
-                    runOnUiThread(() -> {
-                        toastTodo("文档全文提取失败，请稍后重试");
-                        Log.w(TAG, "ai_outline_doc_extract_failed");
-                    });
+        toastTodo("正在提取文档全文...");
+        new Thread(() -> {
+            FullTextExtractionResult result = extractOutlineDocumentText("outline");
+            runOnUiThread(() -> {
+                if (generation != outlineGeneration || documentGeneration != documentLifecycleGeneration
+                        || requestDialog == null || requestDialog != outlineDialog || !requestDialog.isShowing()) {
+                    Log.i(TAG, "ai_outline_extract_stale generation=" + generation
+                            + " current=" + outlineGeneration);
                     return;
                 }
-                Log.i(TAG, "ai_outline_doc_extracted chars=" + full.length());
-                outlineContextText = full;
-                runOnUiThread(this::sendOutlineRequest);
-            }, "cool-ai-outline-extract").start();
-        } else {
-            sendOutlineRequest();
-        }
+                if (result == null || !result.success) {
+                    toastTodo("文档全文提取失败，请稍后重试");
+                    switchOutlineDialogState(false);
+                    Log.w(TAG, "ai_outline_doc_extract_failed");
+                    return;
+                }
+                if (result.text.trim().isEmpty()) {
+                    String template = AiChatCoordinator.outlineTemplateForType(pendingOutlineType);
+                    showOutlineResult("", template);
+                    toastTodo("文档为空，已生成大纲模板");
+                    Log.i(TAG, "ai_outline_empty_document_template type=" + pendingOutlineType);
+                    return;
+                }
+                outlineContextText = result.text;
+                Log.i(TAG, "ai_outline_doc_extracted chars=" + outlineContextText.length());
+                sendOutlineRequest();
+            });
+        }, "cool-ai-outline-extract").start();
     }
 
     private void sendOutlineRequest() {
+        outlineActiveDocumentGeneration = documentLifecycleGeneration;
         if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_OUTLINE, "base")) {
             return;
         }
@@ -16145,6 +16902,10 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void showOutlineResult(String requestId, String text) {
+        if (outlineActiveDocumentGeneration != documentLifecycleGeneration) {
+            Log.i(TAG, "outline_result_old_document_drop requestId=" + requestId);
+            return;
+        }
         if (requestId != null && !requestId.isEmpty() && !requestId.equals(outlineActiveRequestId)) {
             Log.i(TAG, "outline_result_stale_drop requestId=" + requestId
                     + " active=" + outlineActiveRequestId);
@@ -16905,24 +17666,40 @@ public class LOActivity extends AppCompatActivity {
      * 例：chat/completions 配址错配到 images 模型时，自动改成 images/generations。
      */
     private String normalizeEndpoint(String rawUrl, String targetSuffix) {
-        if (rawUrl == null) return "";
-        String url = rawUrl.trim();
-        if (url.isEmpty()) return "";
-        if (url.contains(targetSuffix)) return url;
-        while (url.endsWith("/")) {
-            url = url.substring(0, url.length() - 1);
+        if (rawUrl == null || targetSuffix == null || targetSuffix.trim().isEmpty()) return "";
+        String raw = rawUrl.trim();
+        if (raw.isEmpty()) return "";
+        try {
+            URI uri = new URI(raw);
+            if (uri.getScheme() == null || uri.getRawAuthority() == null
+                    || !("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))) {
+                return "";
+            }
+            String path = uri.getRawPath() == null ? "" : uri.getRawPath();
+            while (path.endsWith("/") && !path.isEmpty()) {
+                path = path.substring(0, path.length() - 1);
+            }
+            String suffix = targetSuffix.startsWith("/") ? targetSuffix : "/" + targetSuffix;
+            if (!path.endsWith(suffix)) {
+                java.util.regex.Matcher version = java.util.regex.Pattern
+                        .compile("(/v\\d+)(?:/.*)?$").matcher(path);
+                if (version.find()) {
+                    path = path.substring(0, version.start(1) + version.group(1).length());
+                } else {
+                    if (path.isEmpty()) path = "";
+                    path += "/v1";
+                }
+                path += suffix;
+            }
+            StringBuilder result = new StringBuilder(uri.getScheme()).append("://")
+                    .append(uri.getRawAuthority()).append(path);
+            if (uri.getRawQuery() != null) result.append('?').append(uri.getRawQuery());
+            if (uri.getRawFragment() != null) result.append('#').append(uri.getRawFragment());
+            return result.toString();
+        } catch (URISyntaxException e) {
+            Log.w(TAG, "ai_endpoint_invalid");
+            return "";
         }
-        // 形如 .../v1 结尾
-        if (java.util.regex.Pattern.matches(".*?/v\\d+$", url)) {
-            return url + targetSuffix;
-        }
-        // 中间含 /vN/，截到版本段
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("/v\\d+/").matcher(url);
-        if (m.find()) {
-            return url.substring(0, m.end() - 1) + targetSuffix;
-        }
-        // 无版本段，拼 /v1
-        return url + "/v1" + targetSuffix;
     }
 
     /** 生成"生成中"灰底占位图（无 Glide，用 Canvas 绘制文字）。 */
@@ -18058,8 +18835,15 @@ public class LOActivity extends AppCompatActivity {
             toastTodo("请先选择文本");
             return;
         }
-        if (AiChatCoordinator.MODE_POLISH.equals(textOperateMode) && textOperateSelection.length() > 5000) {
-            Toast.makeText(this, "选中内容不可超过5000字符", Toast.LENGTH_SHORT).show();
+        if ((AiChatCoordinator.MODE_EXPAND.equals(textOperateMode)
+                || AiChatCoordinator.MODE_CONDENSE.equals(textOperateMode)
+                || AiChatCoordinator.MODE_REWRITE.equals(textOperateMode)
+                || AiChatCoordinator.MODE_POLISH.equals(textOperateMode))
+                && !AiChatCoordinator.isTextOperationSelectionValid(textOperateSelection)) {
+            String message = AiChatCoordinator.countCodePoints(textOperateSelection)
+                    > AiChatCoordinator.TEXT_OPERATION_MAX_CODEPOINTS
+                    ? "选中内容不可超过5000个字符" : "请先选择文本";
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
             return;
         }
         if (AiChatCoordinator.MODE_POLISH.equals(textOperateMode)) {
@@ -18194,6 +18978,9 @@ public class LOActivity extends AppCompatActivity {
             clipboardManager.setPrimaryClip(ClipData.newPlainText("text_op", pendingTextOperateResult));
             toastTodo("已复制到剪贴板");
             Log.i(TAG, "ai_text_op_copied chars=" + pendingTextOperateResult.length());
+            if (textOperateDialog != null) {
+                textOperateDialog.dismiss();
+            }
         }
     }
 
@@ -18684,6 +19471,252 @@ public class LOActivity extends AppCompatActivity {
         runOnUiThread(this::startAutoGenerateForNewDocument);
     }
 
+    private void beginAutoGenerateInsert(String requestId, String text,
+            long expectedDocumentGeneration, Uri expectedDocumentUri) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            runOnUiThread(() -> beginAutoGenerateInsert(requestId, text,
+                    expectedDocumentGeneration, expectedDocumentUri));
+            return;
+        }
+        Uri currentUri = getIntent() == null ? null : getIntent().getData();
+        if (!documentLoaded || documentSwitchInProgress || isFinishing()
+                || expectedDocumentGeneration != documentLifecycleGeneration
+                || !java.util.Objects.equals(expectedDocumentUri, currentUri)
+                || requestId == null || requestId.isEmpty()
+                || autoGenerateInsertRequestId.equals(requestId)
+                || autoGenerateInsertedRequestId.equals(requestId)) {
+            return;
+        }
+        autoGenerateLifecycleGeneration = expectedDocumentGeneration;
+        autoGenerateSourceUri = expectedDocumentUri;
+        autoGenerateSourceTempFile = mTempFile;
+        autoGenerateInsertRequestId = requestId;
+        autoGenerateInsertedRequestId = "";
+        autoGeneratePendingSaveToken = "";
+        autoGenerateSaveAttempt = 0;
+        runOnUiThread(() -> {
+            if (aiStatusText != null) {
+                aiStatusText.setText("正在插入生成内容…");
+            }
+        });
+        Log.i(TAG, "ai_auto_generate_insert_start requestId=" + requestId
+                + " docGeneration=" + autoGenerateLifecycleGeneration
+                + " chars=" + text.length());
+        pasteOnKitThread("text/plain;charset=utf-8", text.getBytes(StandardCharsets.UTF_8), requestId);
+
+        final long expectedGeneration = autoGenerateLifecycleGeneration;
+        getMainHandler().postDelayed(() -> {
+            if (autoGenerateInsertRequestId.equals(requestId)
+                    && autoGenerateLifecycleGeneration == expectedGeneration
+                    && isAutoGenerateLifecycleCurrent()) {
+                Log.w(TAG, "ai_auto_generate_insert_ack_timeout requestId=" + requestId);
+                runOnUiThread(() -> toastTodo("正在等待文档确认插入；请检查正文，系统不会重复插入。"));
+            }
+        }, 15000L);
+    }
+
+    public void onNativePasteResult(String requestId, boolean success) {
+        if (requestId == null || requestId.isEmpty()) {
+            return;
+        }
+        runOnUiThread(() -> {
+            if (requestId.startsWith("continue:")) {
+                if (!requestId.equals(continueInsertRequestId)) {
+                    Log.i(TAG, "continue_write_insert_ack_ignored requestId=" + requestId);
+                    return;
+                }
+                if (continueInsertDocumentGeneration != documentLifecycleGeneration
+                        || !documentLoaded || documentSwitchInProgress || isFinishing()) {
+                    continueInsertRequestId = "";
+                    continueInsertDocumentGeneration = -1L;
+                    continueInsertKitQueued = false;
+                    if (continueInsertBtn != null) {
+                        continueInsertBtn.setEnabled(true);
+                    }
+                    Log.i(TAG, "continue_write_insert_ack_stale_doc requestId=" + requestId);
+                    return;
+                }
+                finishContinueWriteInsert(requestId, success);
+                return;
+            }
+            if (requestId.startsWith("clipboard:")) {
+                onClipboardPasteResult(requestId, success);
+                return;
+            }
+            if (!requestId.equals(autoGenerateInsertRequestId)
+                    || !isAutoGenerateLifecycleCurrent() || !documentLoaded
+                    || documentSwitchInProgress || isFinishing()) {
+                Log.i(TAG, "ai_auto_generate_insert_ack_ignored requestId=" + requestId
+                        + " docGeneration=" + documentLifecycleGeneration);
+                return;
+            }
+            if (!success) {
+                autoGenerateInsertRequestId = "";
+                Log.w(TAG, "ai_auto_generate_insert_failed requestId=" + requestId);
+                toastTodo("正文插入未成功，请重试插入");
+                return;
+            }
+            autoGenerateInsertRequestId = "";
+            autoGenerateInsertedRequestId = requestId;
+            Log.i(TAG, "ai_auto_generate_insert_ack requestId=" + requestId
+                    + " docGeneration=" + documentLifecycleGeneration);
+            requestAutoGenerateSave(requestId);
+        });
+    }
+
+    private void requestAutoGenerateSave(String requestId) {
+        if (requestId == null || requestId.isEmpty()
+                || !requestId.equals(autoGenerateInsertedRequestId)
+                || !isAutoGenerateLifecycleCurrent()
+                || !documentLoaded || isFinishing() || documentSwitchInProgress) {
+            return;
+        }
+        final String token = requestId + "-save-" + (++autoGenerateSaveAttempt)
+                + "-" + java.util.UUID.randomUUID().toString();
+        autoGeneratePendingSaveToken = token;
+        final String quotedToken = JSONObject.quote(token);
+        final String armScript = "(function(){try{"
+                + "window.__androidAutoGenerateSaveAckToken=" + quotedToken + ";"
+                + "return 'armed';"
+                + "}catch(e){return 'error';}})();";
+        Log.i(TAG, "ai_auto_generate_save_start requestId=" + requestId
+                + " attempt=" + autoGenerateSaveAttempt);
+        runOnUiThread(() -> {
+            if (mWebView == null || !token.equals(autoGeneratePendingSaveToken)) {
+                return;
+            }
+            mWebView.evaluateJavascript(armScript, result -> {
+                if (!token.equals(autoGeneratePendingSaveToken)
+                        || !isAutoGenerateLifecycleCurrent()) {
+                    return;
+                }
+                if (!"\"armed\"".equals(result)) {
+                    autoGeneratePendingSaveToken = "";
+                    showAutoGenerateSaveFailure(requestId, "无法启动文档保存");
+                    return;
+                }
+                // This is a request only. Completion is confirmed by Action_Save_Resp
+                // through the injected WebView bridge, never by this JNI call returning.
+                postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=0 requestId="
+                        + token);
+                getMainHandler().postDelayed(() -> {
+                    if (token.equals(autoGeneratePendingSaveToken)
+                            && isAutoGenerateLifecycleCurrent()) {
+                        autoGeneratePendingSaveToken = "";
+                        clearAutoGenerateSaveAckToken();
+                        showAutoGenerateSaveFailure(requestId, "保存响应超时，生成内容已保留");
+                    }
+                }, 30000L);
+            });
+        });
+    }
+
+    private void clearAutoGenerateSaveAckToken() {
+        if (mWebView != null) {
+            mWebView.evaluateJavascript(
+                    "window.__androidAutoGenerateSaveAckToken=null; 'cleared';", null);
+        }
+    }
+
+    private void handleAutoGenerateSaveAck(String payload) {
+        runOnUiThread(() -> handleAutoGenerateSaveAckOnUi(payload));
+    }
+
+    private void handleAutoGenerateSaveAckOnUi(String payload) {
+        try {
+            JSONObject ack = new JSONObject(payload == null ? "{}" : payload);
+            String token = ack.optString("token", "");
+            if (token.isEmpty() || !token.equals(autoGeneratePendingSaveToken)
+                    || !isAutoGenerateLifecycleCurrent()
+                    || !documentLoaded || documentSwitchInProgress) {
+                Log.i(TAG, "ai_auto_generate_save_ack_ignored tokenMatch="
+                        + token.equals(autoGeneratePendingSaveToken)
+                        + " docGeneration=" + documentLifecycleGeneration);
+                return;
+            }
+            autoGeneratePendingSaveToken = "";
+            clearAutoGenerateSaveAckToken();
+            boolean saved = Boolean.TRUE.equals(ack.opt("success"));
+            String requestId = autoGenerateInsertedRequestId;
+            Uri sourceUri = autoGenerateSourceUri;
+            File sourceTemp = autoGenerateSourceTempFile;
+            long docGeneration = documentLifecycleGeneration;
+            if (saved) {
+                new Thread(() -> {
+                    boolean copiedBack = copyTempBackToIntent(sourceUri, sourceTemp);
+                    runOnUiThread(() -> {
+                        if (!requestId.equals(autoGenerateInsertedRequestId)
+                                || docGeneration != documentLifecycleGeneration
+                                || !isAutoGenerateLifecycleCurrent()
+                                || documentSwitchInProgress || isFinishing()) {
+                            return;
+                        }
+                        if (!copiedBack) {
+                            showAutoGenerateSaveFailure(requestId, "原始文件写回失败");
+                            return;
+                        }
+                        documentModified = false;
+                        Log.i(TAG, "ai_auto_generate_save_complete requestId=" + requestId
+                                + " sourceUri=" + sourceUri);
+                        clearAutoGenerateTransaction("saved");
+                        if (aiPanelDialog != null && aiPanelDialog.isShowing()) {
+                            aiPanelDialog.dismiss();
+                        }
+                        toastTodo("生成内容已保存");
+                    });
+                }, "AutoGenerateWriteBack").start();
+                return;
+            }
+            showAutoGenerateSaveFailure(requestId, ack.optString("errorMsg", "文档保存失败"));
+        } catch (JSONException e) {
+            Log.w(TAG, "ai_auto_generate_save_ack_invalid", e);
+        }
+    }
+
+    private void showAutoGenerateSaveFailure(String requestId, String reason) {
+        if (!requestId.equals(autoGenerateInsertedRequestId)
+                || !isAutoGenerateLifecycleCurrent()) {
+            return;
+        }
+        documentModified = true;
+        runOnUiThread(() -> {
+            if (isFinishing() || documentSwitchInProgress) {
+                return;
+            }
+            new AlertDialog.Builder(this)
+                    .setTitle("文档保存失败")
+                    .setMessage((reason == null || reason.trim().isEmpty()
+                            ? "保存未完成" : reason) + "。生成内容已保留，可重试保存。")
+                    .setPositiveButton("重试保存", (dialog, which) ->
+                            requestAutoGenerateSave(requestId))
+                    .setNegativeButton("稍后", null)
+                    .show();
+        });
+    }
+
+    private void clearAutoGenerateTransaction(String reason) {
+        if (!autoGeneratePendingSaveToken.isEmpty()) {
+            clearAutoGenerateSaveAckToken();
+        }
+        Log.d(TAG, "ai_auto_generate_transaction_clear reason=" + reason);
+        autoGenerateLifecycleGeneration = -1L;
+        autoGenerateSourceUri = null;
+        autoGenerateSourceTempFile = null;
+        autoGenerateInsertRequestId = "";
+        autoGenerateInsertedRequestId = "";
+        autoGeneratePendingSaveToken = "";
+        autoGenerateSaveAttempt = 0;
+        autoGenerateAcceptRequestId = "";
+        autoGenerateAcceptDocumentGeneration = -1L;
+        autoGenerateAcceptDocumentUri = null;
+    }
+
+    private boolean isAutoGenerateLifecycleCurrent() {
+        Uri currentUri = getIntent() == null ? null : getIntent().getData();
+        return autoGenerateLifecycleGeneration == documentLifecycleGeneration
+                && java.util.Objects.equals(autoGenerateSourceUri, currentUri);
+    }
+
     private void startAutoGenerateForNewDocument() {
         if (pendingAutoIsCalcNewTable) {
             String userDescription = pendingAutoUserDescription == null ? "" : pendingAutoUserDescription.trim();
@@ -19065,6 +20098,8 @@ public class LOActivity extends AppCompatActivity {
             aiDocQaFirstTurnByRequestId.put(requestId, firstDocQaTurn);
             if (autoAcceptWhenDone) {
                 autoGenerateAcceptRequestId = requestId;
+                autoGenerateAcceptDocumentGeneration = documentLifecycleGeneration;
+                autoGenerateAcceptDocumentUri = getIntent() == null ? null : getIntent().getData();
             }
             aiTextByRequestId.put(requestId, new StringBuilder());
             if (aiOutputText != null) {
@@ -19426,6 +20461,16 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void acceptAiFromNativePanel() {
+        if (!autoGenerateInsertRequestId.isEmpty()) {
+            toastTodo("正在确认生成内容插入，请勿重复插入");
+            return;
+        }
+        if (!autoGenerateInsertedRequestId.isEmpty()) {
+            if (autoGeneratePendingSaveToken.isEmpty()) {
+                requestAutoGenerateSave(autoGenerateInsertedRequestId);
+            }
+            return;
+        }
         if (aiActiveRequestId == null || aiActiveRequestId.isEmpty()) {
             return;
         }
@@ -19592,6 +20637,8 @@ public class LOActivity extends AppCompatActivity {
         aiStreamingRequestId = "";
         aiStreamingMessageView = null;
         autoGenerateAcceptRequestId = "";
+        autoGenerateAcceptDocumentGeneration = -1L;
+        autoGenerateAcceptDocumentUri = null;
         if (clearHistoryFiles) {
             clearAiHistoryFilesForCurrentDocument();
         }
@@ -19870,15 +20917,18 @@ public class LOActivity extends AppCompatActivity {
                 ensureAiChatCoordinator().markDocQaContextInjected();
                 Log.i(TAG, "doc_qa_first_turn_context_marked_injected requestId=" + requestId);
             }
-            if (requestId.equals(autoGenerateAcceptRequestId) && !fullText.isEmpty()) {
-                try {
-                    JSONObject autoAcceptPayload = new JSONObject();
-                    autoAcceptPayload.put("requestId", requestId);
-                    autoAcceptPayload.put("text", fullText);
-                    handleAiAcceptFromWeb(autoAcceptPayload.toString());
-                } catch (JSONException ignored) {
-                }
+            if (requestId.equals(autoGenerateAcceptRequestId)) {
+                long requestDocumentGeneration = autoGenerateAcceptDocumentGeneration;
+                Uri requestDocumentUri = autoGenerateAcceptDocumentUri;
                 autoGenerateAcceptRequestId = "";
+                autoGenerateAcceptDocumentGeneration = -1L;
+                autoGenerateAcceptDocumentUri = null;
+                if (!fullText.trim().isEmpty()) {
+                    beginAutoGenerateInsert(requestId, fullText,
+                            requestDocumentGeneration, requestDocumentUri);
+                } else {
+                    toastTodo("AI 未返回可插入的正文");
+                }
             }
             final TextView outputSnapshot = aiOutputText;
             final TextView streamViewSnapshot = aiStreamingViewByRequestId.get(requestId);
@@ -19922,6 +20972,8 @@ public class LOActivity extends AppCompatActivity {
             final String errorMessage = event.optString("message", "AI request failed");
             if (!requestId.isEmpty() && requestId.equals(autoGenerateAcceptRequestId)) {
                 autoGenerateAcceptRequestId = "";
+                autoGenerateAcceptDocumentGeneration = -1L;
+                autoGenerateAcceptDocumentUri = null;
                 runOnUiThread(() -> Toast.makeText(
                         LOActivity.this,
                         errorMessage,
@@ -20026,6 +21078,11 @@ public class LOActivity extends AppCompatActivity {
                 + "app.map.on('postMessage',function(e){try{"
                 + "if(e&&e.msgId==='Doc_ModifiedStatus'){var modified=!!(e.args&&e.args.Modified);"
                 + "window.postMobileMessage('DOC_MODIFIED_STATUS '+(modified?'true':'false'));}"
+                + "if(e&&e.msgId==='Action_Save_Resp'&&window.__androidAutoGenerateSaveAckToken"
+                + "&&e.args&&e.args.requestId===window.__androidAutoGenerateSaveAckToken){"
+                + "var token=window.__androidAutoGenerateSaveAckToken;window.__androidAutoGenerateSaveAckToken=null;"
+                + "window.postMobileMessage('AI_AUTOGEN_SAVE_ACK '+JSON.stringify({token:token,"
+                + "success:e.args.success===true,errorMsg:e.args.errorMsg||''}));}"
                 + "}catch(ignore){}});"
                 + "}catch(e){setTimeout(hook,250);}}"
                 + "hook();"
@@ -20336,9 +21393,19 @@ public class LOActivity extends AppCompatActivity {
 
     public native boolean getClipboardContent(LokClipboardData aData);
 
-    public native void setClipboardContent(LokClipboardData aData);
+    public native boolean setClipboardContent(LokClipboardData aData);
 
     public native void paste(String mimeType, byte[] data);
+
+    public native void pasteOnKitThread(String mimeType, byte[] data, String requestId);
+
+    /** Invalidates Kit-thread document edits queued for the previous document. */
+    private native void invalidatePendingKitActions();
+
+    public native void appendContinueWriteOnKitThread(
+            String expectedSelection, byte[] html, String requestId, int viewId);
+
+    public native boolean setLOKViewAuthor(int viewId, String name);
 
     public native void postUnoCommand(String command, String arguments, boolean bNotifyWhenFinished);
 
@@ -20375,19 +21442,46 @@ public class LOActivity extends AppCompatActivity {
     /** After .uno:Copy / Cut: export LOK clipboard to Android; return true if non-empty. */
     public final boolean populateClipboard() {
         File clipboardFile = new File(getApplicationContext().getCacheDir(), CLIPBOARD_FILE_PATH);
-        if (clipboardFile.exists()) {
-            clipboardFile.delete();
-        }
-
         LokClipboardData clipboardData = new LokClipboardData();
         if (!LOActivity.this.getClipboardContent(clipboardData)) {
             Log.w(TAG, "populate_clipboard_no_lok_content attempt=" + clipboardPopulateAttempt);
             return false;
         }
-        clipboardData.writeToFile(clipboardFile);
+        clipboardData.removeEmptyEntries();
+        if (clipboardData.clipboardEntries.isEmpty()) {
+            Log.w(TAG, "populate_clipboard_only_empty_entries");
+            return false;
+        }
+        final String token = clipboardData.ensureClipToken();
+        if (!clipboardData.writeToFile(clipboardFile)) {
+            Log.w(TAG, "populate_clipboard_cache_write_failed");
+            return false;
+        }
 
         String text = clipboardData.getText();
         String html = clipboardData.getHtml();
+        Uri imageUri = null;
+        String imageMime = null;
+        for (LokClipboardEntry entry : clipboardData.clipboardEntries) {
+            if (entry.mime.toLowerCase(java.util.Locale.ROOT).startsWith("image/")) {
+                imageMime = entry.mime;
+                String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(imageMime);
+                if (extension == null || extension.trim().isEmpty()) {
+                    extension = "img";
+                }
+                File imageFile = new File(getCacheDir(), "cool-clipboard-" + token + "." + extension);
+                try (FileOutputStream output = new FileOutputStream(imageFile)) {
+                    output.write(entry.data);
+                    output.flush();
+                    imageUri = FileProvider.getUriForFile(this,
+                            getPackageName() + ".fileprovider", imageFile);
+                } catch (IOException | IllegalArgumentException e) {
+                    Log.w(TAG, "populate_clipboard_image_uri_failed mime=" + imageMime, e);
+                    imageUri = null;
+                }
+                if (imageUri != null) break;
+            }
+        }
 
         if (html != null) {
             int idx = html.indexOf("<meta name=\"generator\" content=\"");
@@ -20398,20 +21492,30 @@ public class LOActivity extends AppCompatActivity {
 
             if (idx >= 0) {
                 StringBuffer newHtml = new StringBuffer(html);
-                newHtml.insert(idx, "<meta name=\"origin\" content=\"" + getClipboardMagic() + "\"/>\n");
+                newHtml.insert(idx, "<meta name=\"origin\" content=\"" + CLIPBOARD_COOL_SIGNATURE
+                        + token + "\"/><meta name=\"origin-token\" content=\"" + token + "\"/>\n");
                 html = newHtml.toString();
             }
-
-            clipData = ClipData.newHtmlText(ClipDescription.MIMETYPE_TEXT_HTML, text, html);
-            clipboardManager.setPrimaryClip(clipData);
-            Log.i(TAG, "populate_clipboard_html chars="
-                    + (text == null ? 0 : text.length()));
-            return true;
         }
-        if (text != null && !text.isEmpty()) {
-            clipData = ClipData.newPlainText(ClipDescription.MIMETYPE_TEXT_PLAIN, text);
+
+        ArrayList<String> exportedMimeTypes = new ArrayList<>();
+        if (text != null && !text.isEmpty()) exportedMimeTypes.add(ClipDescription.MIMETYPE_TEXT_PLAIN);
+        if (html != null && !html.isEmpty()) exportedMimeTypes.add(ClipDescription.MIMETYPE_TEXT_HTML);
+        if (imageUri != null && imageMime != null) exportedMimeTypes.add(imageMime);
+        if (exportedMimeTypes.isEmpty()) {
+            Log.w(TAG, "populate_clipboard_no_exportable_representation");
+            return false;
+        }
+        String[] mimeTypes = exportedMimeTypes.toArray(new String[0]);
+        ClipData.Item exportedItem = new ClipData.Item(text, html, null, imageUri);
+        clipData = new ClipData(new ClipDescription(CLIPBOARD_APP_LABEL_PREFIX + token, mimeTypes),
+                exportedItem);
+        if (clipData != null) {
+            activeClipboardToken = token;
+            activeClipboardDocumentGeneration = documentLifecycleGeneration;
             clipboardManager.setPrimaryClip(clipData);
-            Log.i(TAG, "populate_clipboard_plain chars=" + text.length());
+            Log.i(TAG, "populate_clipboard_rich items=" + clipData.getItemCount()
+                    + " image=" + (imageUri != null) + " chars=" + (text == null ? 0 : text.length()));
             return true;
         }
         return false;
@@ -20447,94 +21551,112 @@ public class LOActivity extends AppCompatActivity {
         }, "clipboard-fallback").start();
     }
 
-    /// Do the paste, and return true if we should short-circuit the paste locally
-    /// (ie. let the core handle that)
-    private final boolean performPaste() {
+    private enum ClipboardPasteResult { NONE, CORE_CLIPBOARD, NATIVE_PENDING }
+
+    /// Formats are prioritized first; item indices are always enumerated independently.
+    private final ClipboardPasteResult performPaste() {
         clipData = clipboardManager.getPrimaryClip();
-        if (clipData == null)
-            return false;
+        if (clipData == null) return ClipboardPasteResult.NONE;
 
         ClipDescription clipDesc = clipData.getDescription();
-        if (clipDesc == null)
-            return false;
+        if (clipDesc == null || clipData.getItemCount() == 0) return ClipboardPasteResult.NONE;
 
-        for (int i = 0; i < clipDesc.getMimeTypeCount(); ++i) {
-            Log.d(TAG, "Pasting mime " + i + ": " + clipDesc.getMimeType(i));
-
-            if (clipDesc.getMimeType(i).equals(ClipDescription.MIMETYPE_TEXT_HTML)) {
-                final String html = clipData.getItemAt(i).getHtmlText();
-                if (html == null || html.isEmpty()) {
-                    continue;
+        String label = clipDesc.getLabel() == null ? "" : clipDesc.getLabel().toString();
+        String token = label.startsWith(CLIPBOARD_APP_LABEL_PREFIX)
+                ? label.substring(CLIPBOARD_APP_LABEL_PREFIX.length()) : "";
+        if (!token.isEmpty()) {
+            if (token.equals(activeClipboardToken)
+                    && activeClipboardDocumentGeneration == documentLifecycleGeneration) {
+                Log.i(TAG, "clipboard_own_clip_same_document token=" + token);
+                return ClipboardPasteResult.CORE_CLIPBOARD;
+            }
+            File clipboardFile = new File(getApplicationContext().getCacheDir(), CLIPBOARD_FILE_PATH);
+            LokClipboardData cached = clipboardFile.exists()
+                    ? LokClipboardData.createFromFile(clipboardFile) : null;
+            if (cached != null) cached.removeEmptyEntries();
+            if (cached != null && token.equals(cached.clipToken) && !cached.clipboardEntries.isEmpty()) {
+                if (LOActivity.this.setClipboardContent(cached)) {
+                    Log.i(TAG, "clipboard_own_clip_cached_rich token=" + token);
+                    return ClipboardPasteResult.CORE_CLIPBOARD;
                 }
-                // Check if the clipboard content was made with the app
-                if (html.contains(CLIPBOARD_COOL_SIGNATURE)) {
-                    // Check if the clipboard content is from the same app instance
-                    if (html.contains(getClipboardMagic())) {
-                        Log.i(TAG, "clipboard comes from us - same instance: short circuit it " + html);
-                        return true;
-                    } else {
-                        Log.i(TAG, "clipboard comes from us - other instance: paste from clipboard file");
+                Log.w(TAG, "clipboard_cached_restore_failed token=" + token);
+            }
+            Log.w(TAG, "clipboard_cached_payload_stale token=" + token);
+        }
 
-                        File clipboardFile = new File(getApplicationContext().getCacheDir(), CLIPBOARD_FILE_PATH);
-                        LokClipboardData clipboardData = null;
-                        if (clipboardFile.exists())
-                            clipboardData = LokClipboardData.createFromFile(clipboardFile);
-
-                        if (clipboardData != null) {
-                            LOActivity.this.setClipboardContent(clipboardData);
-                            return true;
-                        } else {
-                            // Couldn't get data from the clipboard file, but we can still paste html
-                            byte[] htmlByteArray = html.getBytes(Charset.forName("UTF-8"));
-                            LOActivity.this.paste("text/html", htmlByteArray);
-                        }
-                        return false;
-                    }
-                } else {
-                    Log.i(TAG, "foreign html '" + html + "'");
-                    byte[] htmlByteArray = html.getBytes(Charset.forName("UTF-8"));
-                    LOActivity.this.paste("text/html", htmlByteArray);
-                    return false;
-                }
-            } else if (clipDesc.getMimeType(i).startsWith("image/")) {
-                ClipData.Item item = clipData.getItemAt(i);
-                Uri uri = item.getUri();
-                try {
-                    InputStream imageStream = getContentResolver().openInputStream(uri);
-                    ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-
-                    int nRead;
-                    byte[] data = new byte[16384];
-                    while ((nRead = imageStream.read(data, 0, data.length)) != -1) {
-                        buffer.write(data, 0, nRead);
-                    }
-
-                    LOActivity.this.paste(clipDesc.getMimeType(i), buffer.toByteArray());
-                    return false;
-                } catch (Exception e) {
-                    Log.d(TAG, "Failed to paste image: " + e.getMessage());
-                }
+        for (int itemIndex = 0; itemIndex < clipData.getItemCount(); itemIndex++) {
+            ClipData.Item item = clipData.getItemAt(itemIndex);
+            String html = item.getHtmlText();
+            if (html != null && !html.isEmpty()) {
+                Log.i(TAG, "paste_external_html item=" + itemIndex + " chars=" + html.length());
+                pasteClipboardOnKitThread("text/html", html.getBytes(StandardCharsets.UTF_8));
+                return ClipboardPasteResult.NATIVE_PENDING;
             }
         }
 
-        // try the plaintext as the last resort
-        for (int i = 0; i < clipDesc.getMimeTypeCount(); ++i) {
-            Log.d(TAG, "Plain text paste attempt " + i + ": " + clipDesc.getMimeType(i));
-
-            if (clipDesc.getMimeType(i).equals(ClipDescription.MIMETYPE_TEXT_PLAIN)) {
-                final ClipData.Item clipItem = clipData.getItemAt(i);
-                CharSequence textSeq = clipItem.getText();
-                if (textSeq == null || textSeq.length() == 0) {
-                    continue;
+        for (int itemIndex = 0; itemIndex < clipData.getItemCount(); itemIndex++) {
+            ClipData.Item item = clipData.getItemAt(itemIndex);
+            Uri uri = item.getUri();
+            if (uri == null) continue;
+            String mime = getContentResolver().getType(uri);
+            if (mime == null) {
+                for (int mimeIndex = 0; mimeIndex < clipDesc.getMimeTypeCount(); mimeIndex++) {
+                    String advertisedMime = clipDesc.getMimeType(mimeIndex);
+                    if (advertisedMime != null && advertisedMime.toLowerCase(java.util.Locale.ROOT)
+                            .startsWith("image/")) {
+                        mime = advertisedMime;
+                        break;
+                    }
                 }
-                String text = textSeq.toString();
-                byte[] textByteArray = text.getBytes(Charset.forName("UTF-8"));
-                LOActivity.this.paste("text/plain;charset=utf-8", textByteArray);
-                Log.i(TAG, "paste_plain chars=" + text.length());
+            }
+            if (mime == null || !mime.toLowerCase(java.util.Locale.ROOT).startsWith("image/")) continue;
+            try (InputStream imageStream = getContentResolver().openInputStream(uri);
+                    ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+                if (imageStream == null) continue;
+                byte[] chunk = new byte[16384];
+                int count;
+                while ((count = imageStream.read(chunk)) != -1) buffer.write(chunk, 0, count);
+                byte[] imageBytes = buffer.toByteArray();
+                if (imageBytes.length == 0) continue;
+                Log.i(TAG, "paste_external_image item=" + itemIndex + " mime=" + mime
+                        + " bytes=" + imageBytes.length);
+                pasteClipboardOnKitThread(mime, imageBytes);
+                return ClipboardPasteResult.NATIVE_PENDING;
+            } catch (Exception e) {
+                Log.w(TAG, "paste_external_image_failed item=" + itemIndex, e);
             }
         }
 
-        return false;
+        for (int itemIndex = 0; itemIndex < clipData.getItemCount(); itemIndex++) {
+            ClipData.Item item = clipData.getItemAt(itemIndex);
+            CharSequence textSeq = item.getText();
+            if (textSeq == null || textSeq.length() == 0) continue;
+            String text = textSeq.toString();
+            Log.i(TAG, "paste_external_plain item=" + itemIndex + " chars=" + text.length());
+            pasteClipboardOnKitThread("text/plain;charset=utf-8", text.getBytes(StandardCharsets.UTF_8));
+            return ClipboardPasteResult.NATIVE_PENDING;
+        }
+        return ClipboardPasteResult.NONE;
+    }
+
+    private void pasteClipboardOnKitThread(String mime, byte[] bytes) {
+        if (mime == null || mime.trim().isEmpty() || bytes == null || bytes.length == 0) {
+            Log.w(TAG, "clipboard_paste_invalid_payload");
+            return;
+        }
+        String requestId = "clipboard:" + java.util.UUID.randomUUID().toString();
+        pasteOnKitThread(mime, bytes, requestId);
+    }
+
+    /** Result route used by the Kit-thread clipboard-paste JNI callback. */
+    @JavascriptInterface
+    public void onClipboardPasteResult(String requestId, boolean success) {
+        if (requestId == null || !requestId.startsWith("clipboard:")) return;
+        Log.i(TAG, "clipboard_paste_complete requestId=" + requestId + " success=" + success);
+        if (!success) {
+            runOnUiThread(() -> Toast.makeText(LOActivity.this, "剪贴板内容粘贴失败",
+                    Toast.LENGTH_SHORT).show());
+        }
     }
 }
 

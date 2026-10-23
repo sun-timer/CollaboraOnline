@@ -58,12 +58,27 @@ public class AiChatCoordinator {
     public static final String TRANSLATE_LANG_ES = "es";
     public static final String TRANSLATE_LANG_RU = "ru";
 
-    // 大纲类型（生成大纲功能）
-    public static final String OUTLINE_TYPE_PAPER = "paper";     // 论文
-    public static final String OUTLINE_TYPE_REPORT = "report";   // 工作报告
-    public static final String OUTLINE_TYPE_SPEECH = "speech";   // 演讲稿
-    public static final String OUTLINE_TYPE_EVENT = "event";     // 活动策划
-    public static final String OUTLINE_TYPE_GENERAL = "general"; // 通用文档
+    // Writer outline types. Legacy keys normalize to general.
+    public static final String OUTLINE_TYPE_GENERAL = "general";
+    public static final String OUTLINE_TYPE_MEETING = "meeting";
+    public static final String OUTLINE_TYPE_SUMMARY = "summary";
+    public static final int TEXT_OPERATION_MAX_CODEPOINTS = 5000;
+
+    public static String normalizeOutlineType(String outlineType) {
+        if (OUTLINE_TYPE_MEETING.equals(outlineType) || OUTLINE_TYPE_SUMMARY.equals(outlineType)) {
+            return outlineType;
+        }
+        return OUTLINE_TYPE_GENERAL;
+    }
+
+    public static int countCodePoints(String text) {
+        return text == null ? 0 : text.codePointCount(0, text.length());
+    }
+
+    public static boolean isTextOperationSelectionValid(String text) {
+        return text != null && !text.trim().isEmpty()
+                && countCodePoints(text) <= TEXT_OPERATION_MAX_CODEPOINTS;
+    }
 
     private final AiConversationStore conversationStore;
     private JSONArray docQaHistory = new JSONArray();
@@ -608,44 +623,14 @@ public class AiChatCoordinator {
         }
     }
 
-    /**
-     * 构建生成大纲消息
-     * @param outlineType 大纲类型：paper(论文) | report(工作报告) | speech(演讲稿) | event(活动策划) | general(通用文档)
-     * @param contextText 参考内容（选区文字或文档全文，可为空）
-     * @param userDesc 用户补充说明，可为空
-     */
+    /** Build a Writer outline prompt. Legacy and unknown type keys fall back to general. */
     public static JSONArray buildOutlineMessages(String outlineType, String contextText, String userDesc) throws JSONException {
-        String typeLabel;
-        if (outlineType == null) {
-            outlineType = OUTLINE_TYPE_GENERAL;
-        }
-        switch (outlineType) {
-            case OUTLINE_TYPE_PAPER:
-                typeLabel = "学术论文";
-                break;
-            case OUTLINE_TYPE_REPORT:
-                typeLabel = "工作报告";
-                break;
-            case OUTLINE_TYPE_SPEECH:
-                typeLabel = "演讲稿";
-                break;
-            case OUTLINE_TYPE_EVENT:
-                typeLabel = "活动策划";
-                break;
-            case OUTLINE_TYPE_GENERAL:
-            default:
-                typeLabel = "通用文档";
-                break;
-        }
-
-        String systemPrompt = "你是专业的大纲生成助手。请根据用户提供的文档类型、参考内容和补充说明，"
-                + "生成一份结构清晰、层次分明的大纲。\n\n"
-                + "要求：\n"
-                + "1. 使用中文编号：一级用「一、二、三…」，二级用「1. 2. 3.」，三级用「(1) (2) (3)」\n"
-                + "2. 每个一级标题下给出必要的二级要点，三级按需展开\n"
-                + "3. 标题简洁明确，要点可附一句简要说明\n"
-                + "4. 覆盖该类型文档的完整结构（如论文含摘要/引言/方法/结果/结论）\n"
-                + "5. 只输出大纲本身，不要输出前言、解释或额外说明";
+        outlineType = normalizeOutlineType(outlineType);
+        String typeLabel = OUTLINE_TYPE_MEETING.equals(outlineType) ? "会议纪要"
+                : OUTLINE_TYPE_SUMMARY.equals(outlineType) ? "工作总结" : "大纲生成";
+        String systemPrompt = "你是办公文档大纲助手。请按下列模板生成可直接使用的大纲，结合用户提供的信息完善相关条目。"
+                + "只输出大纲；不得推测或编造全文及补充说明中没有的事实；缺少的信息请标注为「待补充」。"
+                + "保留模板的完整结构和中文编号。\n\n" + outlineTemplateForType(outlineType);
 
         StringBuilder userPrompt = new StringBuilder();
         userPrompt.append("请生成一份【").append(typeLabel).append("】大纲。\n");
@@ -657,7 +642,7 @@ public class AiChatCoordinator {
         if (!desc.isEmpty()) {
             userPrompt.append("\n补充说明：").append(desc).append("\n");
         }
-        userPrompt.append("\n请直接输出大纲。");
+        userPrompt.append("\n请直接输出大纲；不得加入输入中没有的事实，缺少的信息标注为「待补充」。");
 
         JSONArray messages = new JSONArray();
         JSONObject sysMsg = new JSONObject();
@@ -671,6 +656,32 @@ public class AiChatCoordinator {
         messages.put(userMsg);
 
         return messages;
+    }
+
+    public static String outlineTemplateForType(String outlineType) {
+        switch (normalizeOutlineType(outlineType)) {
+            case OUTLINE_TYPE_MEETING:
+                return "一、会议信息\n1. 会议主题：待补充\n2. 时间与地点：待补充\n3. 参会人员：待补充\n\n二、议题\n1. 议题一：待补充\n2. 议题二：待补充\n\n三、讨论内容\n1. 主要观点：待补充\n2. 讨论要点：待补充\n\n四、会议决定\n1. 决议事项：待补充\n\n五、待办事项\n1. 事项、负责人及完成时间：待补充";
+            case OUTLINE_TYPE_SUMMARY:
+                return "一、工作概述\n1. 工作目标与范围：待补充\n\n二、工作完成情况\n1. 重点工作：待补充\n2. 进度与完成情况：待补充\n\n三、主要成果\n1. 成果与成效：待补充\n\n四、问题与改进\n1. 存在问题：待补充\n2. 改进措施：待补充\n\n五、下一步计划\n1. 后续重点与安排：待补充";
+            case OUTLINE_TYPE_GENERAL:
+            default:
+                return "一、主题\n1. 核心主题：待补充\n\n二、背景\n1. 背景与目的：待补充\n\n三、主要内容\n1. 主要内容一：待补充\n2. 主要内容二：待补充\n\n四、结论\n1. 结论与后续安排：待补充";
+        }
+    }
+
+    public static JSONArray buildContinueMessages(String selection, String neighboringContext) throws JSONException {
+        String text = selection == null ? "" : selection.trim();
+        String context = neighboringContext == null ? "" : neighboringContext.trim();
+        String systemPrompt = "你是中文写作续写助手。只续写用户选中文本末尾之后的内容，不要复述、改写或总结已有内容。"
+                + "保持原文的人称、语气、文体、事实和术语；参考相邻上下文保持衔接，不把上下文复述进输出。"
+                + "只输出新增正文，不加标题、说明或引号。";
+        StringBuilder userPrompt = new StringBuilder("请紧接选中文本的最后一个字符继续写作，只返回新增内容。\n\n");
+        if (!context.isEmpty()) {
+            userPrompt.append("【选区附近上下文，仅用于理解衔接】\n").append(context).append("\n\n");
+        }
+        userPrompt.append("【选中文本；续写起点在其末尾】\n").append(text);
+        return buildSimpleMessages(systemPrompt, userPrompt.toString());
     }
 
     /**

@@ -121,7 +121,7 @@ describe('Writer AI Catalog v1', function () {
 		assert.deepEqual(
 			WriterAiCatalog.IOS_WORD_OUTLINE_TYPES,
 			[
-				{ key: 'general', label: '生成大纲' },
+				{ key: 'general', label: '大纲生成' },
 				{ key: 'meeting', label: '会议纪要' },
 				{ key: 'summary', label: '工作总结' },
 			],

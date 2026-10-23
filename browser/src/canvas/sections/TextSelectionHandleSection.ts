@@ -18,7 +18,14 @@ class TextSelectionHandle extends HTMLObjectSection {
 	private dragGrabOffsetTwips: { x: number; y: number } | null = null;
 	private useClientDragCoordinates = false;
 
-	private eventClientPoint(e: MouseEvent): { x: number; y: number } | null {
+	private isMobileWriter(): boolean {
+		return !!(
+			(window as any).ThisIsTheAndroidApp || window.ThisIsTheiOSApp
+		) && app.map.getDocType() === 'text';
+	}
+
+	private eventClientPoint(e?: MouseEvent): { x: number; y: number } | null {
+		if (!e) return null;
 		// CanvasSectionContainer forwards a TouchEvent through this MouseEvent slot;
 		// use its touch coordinates before falling back to mouse/pointer fields.
 		const touchEvent = e as any;
@@ -95,13 +102,13 @@ class TextSelectionHandle extends HTMLObjectSection {
 		const y = this.position[1] + point.pY;
 		const type = this.dragSelectionType ||
 			(this.name === 'selection_start_handle' ? 'start' : 'end');
-		if (this.useClientDragCoordinates && e && this.dragGrabOffsetTwips) {
+		if (this.useClientDragCoordinates) {
 			const clientPoint = this.eventClientPoint(e);
 			const mapped = clientPoint && app.sectionContainer.clientViewPointToDocumentTwips(
 				clientPoint.x * app.dpiScale,
 				clientPoint.y * app.dpiScale,
 			);
-			if (!mapped) return;
+			if (!mapped || !this.dragGrabOffsetTwips) return;
 			const documentTwips = TextSelectionHandle.adjustForGrabOffset(
 				mapped,
 				this.dragGrabOffsetTwips,
@@ -115,12 +122,9 @@ class TextSelectionHandle extends HTMLObjectSection {
 		}
 
 		if (type === 'start') {
-			// updateMarkers places the start marker 30*dpiScale core pixels left
-			// of the text boundary. Preserve the Android legacy calculation; on
-			// iOS use the client-point path above whenever possible.
-			x += window.ThisIsTheiOSApp && app.map.getDocType() === 'text'
-				? 30 * app.dpiScale
-				: 30 / app.dpiScale;
+			// Legacy desktop/Calc route. Mobile Writer uses the logical endpoint
+			// and saved finger-to-handle offset above.
+			x += 30 / app.dpiScale;
 		}
 
 		if (!app.map._docLayer.isCalcRTL()) {
@@ -146,7 +150,7 @@ class TextSelectionHandle extends HTMLObjectSection {
 			this.onDrag(point, e);
 			const magnifier = (window as any).MobileSelectionMagnifier;
 			const clientPoint = this.eventClientPoint(e);
-			if (magnifier && clientPoint && window.ThisIsTheiOSApp && app.map.getDocType() === 'text') {
+			if (magnifier && clientPoint && this.isMobileWriter()) {
 				magnifier.updateAt(clientPoint.x, clientPoint.y - 22);
 			}
 		}
@@ -173,10 +177,14 @@ class TextSelectionHandle extends HTMLObjectSection {
 		this.useClientDragCoordinates = false;
 		const magnifier = (window as any).MobileSelectionMagnifier;
 		const clientPoint = this.eventClientPoint(e);
-		const isIOSWriterTouch = e.type === 'touchstart' &&
-			window.ThisIsTheiOSApp && app.map.getDocType() === 'text';
-		if (isIOSWriterTouch) {
-			AndroidSelectionMenu.beginIOSWriterHandleTouch();
+		const isMobileWriterTouch = e.type === 'touchstart' && this.isMobileWriter();
+		if (isMobileWriterTouch) {
+			this.useClientDragCoordinates = true;
+			if (window.ThisIsTheiOSApp) {
+				AndroidSelectionMenu.beginIOSWriterHandleTouch();
+			} else {
+				AndroidSelectionMenu.beginAndroidWriterHandleTouch();
+			}
 			const mouseControl = app.sectionContainer.getSectionWithName(
 				app.CSections.MouseControl.name,
 			) as MouseControl;
@@ -199,11 +207,10 @@ class TextSelectionHandle extends HTMLObjectSection {
 						x: mapped.x - anchor.x,
 						y: mapped.y - anchor.y,
 					};
-					this.useClientDragCoordinates = true;
 				}
 			}
 		}
-		if (magnifier && clientPoint && window.ThisIsTheiOSApp && app.map.getDocType() === 'text') {
+		if (magnifier && clientPoint && this.isMobileWriter()) {
 			// The grab handle extends below its text boundary; center the lens on the text row.
 			magnifier.startAt(clientPoint.x, clientPoint.y - 22);
 		}
@@ -212,15 +219,19 @@ class TextSelectionHandle extends HTMLObjectSection {
 	onMouseUp(point: cool.SimplePoint, e: MouseEvent): void {
 		e.stopPropagation();
 		const magnifier = (window as any).MobileSelectionMagnifier;
-		if (magnifier && window.ThisIsTheiOSApp && app.map.getDocType() === 'text') {
+		if (magnifier && this.isMobileWriter()) {
 			magnifier.hide();
 		}
 		if (this.containerObject.isDraggingSomething()) {
 			this.stopPropagating();
 			this.onDragEnd(point, e);
 		}
-		if (window.ThisIsTheiOSApp && app.map.getDocType() === 'text') {
-			AndroidSelectionMenu.endIOSWriterHandleTouch();
+		if (this.isMobileWriter()) {
+			if (window.ThisIsTheiOSApp) {
+				AndroidSelectionMenu.endIOSWriterHandleTouch();
+			} else {
+				AndroidSelectionMenu.endAndroidWriterHandleTouch();
+			}
 			const mouseControl = app.sectionContainer.getSectionWithName(
 				app.CSections.MouseControl.name,
 			) as MouseControl;

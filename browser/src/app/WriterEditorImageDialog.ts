@@ -206,3 +206,25 @@ class WriterEditorImageEditDialog {
 	open(): void { this.subpage.open(); }
 	close(): void { this.subpage.close(); }
 }
+
+// Android's native selection popup asks the browser to open the same image
+// editor used by the iOS Writer panel. Keep this listener independent of the
+// iOS-only WriterEditorPanel mount path.
+if (typeof window !== 'undefined' && (window as any).ThisIsTheAndroidApp) {
+	window.addEventListener('fabric:image:edit', () => {
+		const info = GraphicSelection.extraInfo || {};
+		const rectHandles = info.handles?.kinds?.rectangle;
+		const point = (kind: string) => rectHandles?.[kind]?.[0]?.point;
+		const points = ['2', '4', '5', '7'].map(point);
+		if (typeof app === 'undefined' || app.map.getDocType() !== 'text' || !app.map.isEditMode() ||
+			!GraphicSelection.hasActiveSelection() || !info.isWriterGraphic || !info.id ||
+			!rectHandles || !GraphicSelection.handlesSection ||
+			points.some(value => !value || !Number.isFinite(Number(value.x)) || !Number.isFinite(Number(value.y)))) {
+			return;
+		}
+		const width = Math.hypot(Number(point('5').x) - Number(point('4').x), Number(point('5').y) - Number(point('4').y));
+		const height = Math.hypot(Number(point('7').x) - Number(point('2').x), Number(point('7').y) - Number(point('2').y));
+		if (info.isResizable === false || width <= 0 || height <= 0) return;
+		new WriterEditorImageEditDialog(WriterEditorController.getInstance()).open();
+	});
+}
