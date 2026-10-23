@@ -169,7 +169,11 @@ public class BottomToolbarController {
         });
         bindToolbarClick(R.id.toolbar_item_mobile_preview, v -> {
             hideQuickActionPanel();
-            host.toggleMobilePhonePreview();
+            if (isImpressDocument) {
+                host.startSlideShow();
+            } else {
+                host.toggleMobilePhonePreview();
+            }
         });
         bindToolbarClick(R.id.toolbar_item_ai_assistant, v -> {
             hideQuickActionPanel();
@@ -369,21 +373,30 @@ public class BottomToolbarController {
         setBottomToolbarItemsVisible(EDIT_MODE_WRITER_ONLY_TOOLBAR_ITEM_IDS, isEditMode && !isCalcDocument);
         setBottomToolbarItemsVisible(EDIT_MODE_CALC_ONLY_TOOLBAR_ITEM_IDS, isEditMode && isCalcDocument);
         setBottomToolbarItemsVisible(EDIT_MODE_IMPRESS_ONLY_TOOLBAR_ITEM_IDS, isEditMode && isImpressDocument);
-        applyBottomToolbarItemsAlignment(isEditMode);
         updateMobilePreviewToolbarItem(isEditMode);
+        applyBottomToolbarItemsAlignment(isEditMode);
         if (!isEditMode) {
             hideQuickActionPanel();
         }
     }
 
     private void updateMobilePreviewToolbarItem(boolean isEditMode) {
+        // Reuse the first, evenly distributed reading slot for Impress slideshow.
+        // Edit mode already has its own slideshow item at the end of the toolbar.
+        View item = host.findViewById(R.id.toolbar_item_mobile_preview);
+        if (item != null) {
+            item.setVisibility(isImpressDocument && isEditMode ? View.GONE : View.VISIBLE);
+            item.setContentDescription(isImpressDocument ? "幻灯片放映" : "手机预览");
+        }
         View iconView = host.findViewById(R.id.toolbar_item_mobile_preview_icon);
         View labelView = host.findViewById(R.id.toolbar_item_mobile_preview_label);
         if (iconView instanceof ImageView) {
-            ((ImageView) iconView).setImageResource(R.drawable.lolib_ic_toolbar_mobile_preview);
+            ((ImageView) iconView).setImageResource(isImpressDocument
+                    ? R.drawable.lolib_ic_toolbar_slideshow : R.drawable.lolib_ic_toolbar_mobile_preview);
+            iconView.setContentDescription(isImpressDocument ? "幻灯片放映" : "手机预览");
         }
         if (labelView instanceof TextView) {
-            ((TextView) labelView).setText("手机预览");
+            ((TextView) labelView).setText(isImpressDocument ? "幻灯片放映" : "手机预览");
             ((TextView) labelView).setTextColor(0xFF202124);
         }
     }

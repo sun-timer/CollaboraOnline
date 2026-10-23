@@ -270,7 +270,7 @@ static NSString *ImpressTrimmed(NSString *text) {
     [self.createButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     self.createButton.titleLabel.font = [UIFont boldSystemFontOfSize:18];
     [self.createButton addTarget:self action:@selector(createTapped) forControlEvents:UIControlEventTouchUpInside];
-    if (self.docKind == CreateFileDocKindWriter) {
+    if (self.docKind == CreateFileDocKindWriter || self.docKind == CreateFileDocKindCalc) {
         self.createGradient = [CAGradientLayer layer];
         ImpressStyleGradient(self.createGradient);
         [self.createButton.layer insertSublayer:self.createGradient atIndex:0];
@@ -418,6 +418,8 @@ static NSString *ImpressTrimmed(NSString *text) {
         self.aiSwitchTrack.backgroundColor = self.aiSwitchOn
             ? ImpressSwitchOnColor()
             : [UIColor colorWithRed:0xCB / 255.0 green:0xD1 / 255.0 blue:0xD7 / 255.0 alpha:1];
+    }
+    if (self.docKind == CreateFileDocKindWriter || self.docKind == CreateFileDocKindCalc) {
         self.createGradient.hidden = !self.aiSwitchOn;
         self.createButton.backgroundColor = self.aiSwitchOn ? UIColor.clearColor : CreateFileButtonColorForKind(self.docKind);
         [self.createButton setTitle:self.aiSwitchOn ? @"生成和创建" : [self createButtonTitle] forState:UIControlStateNormal];

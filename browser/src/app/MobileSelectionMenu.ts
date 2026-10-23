@@ -107,8 +107,9 @@ class MobileSelectionMenu {
 		}
 	}
 
-	/** Fixed Writer edit layout (Android lolib_selection_popup.xml). */
-	static editMenuItems(): MobileSelectionMenuItemSpec[] {
+	/** Document-specific edit actions (Android lolib_selection_popup.xml). */
+	static editMenuItems(documentType: MobileAiDocumentType = 'text'): MobileSelectionMenuItemSpec[] {
+		if (documentType === 'presentation') return MobileSelectionMenu.impressMenuItems();
 		return [
 			{ id: 'copy', label: '复制', iconKey: 'copy', kind: 'clipboard' },
 			{ id: 'cut', label: '剪切', iconKey: 'cut', kind: 'clipboard' },
@@ -202,6 +203,28 @@ class MobileSelectionMenu {
 		];
 	}
 
+	/** Match the existing PPT AI sheet, including its PPT generation route. */
+	static impressMenuItems(): MobileSelectionMenuItemSpec[] {
+		const clipboard = MobileSelectionMenu.editMenuItems().filter((item) => item.kind === 'clipboard');
+		const tasks = [
+			'impress_generate', 'continue', 'article_generate', 'expand', 'polish',
+			'condense', 'rewrite', 'text_extract', 'image_generate', 'format_batch',
+		];
+		const aiItems = tasks.map((taskType): MobileSelectionMenuItemSpec => {
+			const entry = MobileAiUiCatalog.getEntry(taskType)!;
+			return {
+				id: taskType,
+				label: taskType === 'continue' ? '续写' : taskType === 'text_extract' ? '文案提取'
+					: entry.label.replace(/ /g, ''),
+				iconKey: 'impress_' + taskType,
+				kind: 'ai',
+				androidTaskType: entry.androidTaskType,
+				catalogTaskType: taskType,
+			};
+		});
+		return clipboard.concat(aiItems);
+	}
+
 	/** Impress graphic selection compact row. */
 	static graphicMenuItems(): MobileSelectionMenuItemSpec[] {
 		return [
@@ -247,6 +270,10 @@ class MobileSelectionMenu {
 		documentType: MobileAiDocumentType,
 		isReadOnly: boolean,
 	): string[] {
+		if (documentType === 'presentation') {
+			return isReadOnly ? [] : MobileSelectionMenu.impressMenuItems()
+				.filter((item) => item.kind === 'ai').map((item) => item.catalogTaskType as string);
+		}
 		return MobileAiUiCatalog.getSelectionEntries(documentType, !isReadOnly).map(
 			(entry) => entry.taskType,
 		);
@@ -408,7 +435,8 @@ class MobileSelectionMenu {
 			];
 		}
 
-		const items = MobileSelectionMenu.editMenuItems();
+		const documentType = (window as any).app?.map?.getDocType?.() || 'text';
+		const items = MobileSelectionMenu.editMenuItems(documentType);
 		if (editMode) {
 			return [
 				MobileSelectionMenu.buildTextEditStrip(items, { editMode, editable, mode }),
@@ -634,7 +662,7 @@ class MobileSelectionMenu {
 			return ctx.editMode;
 		}
 		if (item.kind === 'ai') {
-			return ctx.editMode;
+			return ctx.editMode && ctx.editable;
 		}
 		return true;
 	}
@@ -650,7 +678,8 @@ class MobileSelectionMenu {
 
 		const icon = document.createElement('span');
 		icon.className = 'fabric-selection-menu__icon';
-		icon.innerHTML = item.catalogTaskType?.startsWith('calc_')
+		icon.innerHTML = item.catalogTaskType &&
+			(item.catalogTaskType.startsWith('calc_') || item.iconKey.startsWith('impress_'))
 			? MobileAiOperationIcons.svgFor(item.catalogTaskType)
 			: MobileSelectionMenuIcons.get(item.iconKey);
 		button.appendChild(icon);
@@ -697,6 +726,8 @@ class MobileSelectionMenu {
 		}
 		menu?.hide();
 		if (item.catalogTaskType) {
+			const docType = (window as any).app?.map?.getDocType?.() || 'text';
+			if (!MobileAiUiCatalog.canRun(item.catalogTaskType, docType)) return;
 			const entry = MobileAiUiCatalog.getEntry(item.catalogTaskType);
 			if (
 				entry?.selectionRequired &&

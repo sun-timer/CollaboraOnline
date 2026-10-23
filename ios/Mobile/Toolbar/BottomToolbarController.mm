@@ -156,10 +156,9 @@ static UIControl *toolbarItem(NSString *iconName, NSString *title, NSInteger tag
 {
     if ([self.documentType isEqualToString:@"presentation"]) {
         return @[
-            @[@"mobile-preview", @"手机预览", @"1"],
+            @[@"slideshow-play", @"幻灯片放映", @"11"],
             @[@"function", @"功能", @"2"],
             @[@"ai-assistant", @"AI助手", @"3"],
-            @[@"slideshow-play", @"幻灯片放映", @"11"],
         ];
     }
     return @[

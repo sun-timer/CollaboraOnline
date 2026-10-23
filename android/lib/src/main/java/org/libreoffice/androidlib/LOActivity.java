@@ -5566,6 +5566,11 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public boolean isImpressDocument() {
+                    return mIsImpressDocument;
+                }
+
+                @Override
                 public void openWriterImageEdit() {
                     if (mWebView == null || !documentLoaded) return;
                     mWebView.evaluateJavascript(
@@ -10976,6 +10981,21 @@ public class LOActivity extends AppCompatActivity {
     }
 
     /*package*/ boolean startAiOperationFromSelection(String taskType) {
+        // Use the same Impress dialogs as its AI function sheet.
+        if (mIsImpressDocument) {
+            if ("impress_generate".equals(taskType)) { openImpressOutlineDialog(); return true; }
+            if ("text_extract".equals(taskType)) { showTextExtractDialog(); return true; }
+            if ("image_generate".equals(taskType)) { showAiImageDialog(); return true; }
+            if ("format_batch".equals(taskType)) {
+                String selection = aiOpPendingSelection == null ? "" : aiOpPendingSelection;
+                if (selection.trim().isEmpty()) {
+                    Toast.makeText(this, "请先选择文本", Toast.LENGTH_SHORT).show();
+                } else {
+                    showFormatBatchDialog(selection);
+                }
+                return true;
+            }
+        }
         // Use the same Calc dialogs as the AI operation sheet, including empty cells.
         if (mIsCalcDocument) {
             if ("calc_formula".equals(taskType)) { openCalcFormulaDialog(); return true; }

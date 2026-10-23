@@ -102,14 +102,18 @@ describe('Mobile Selection Menu', function () {
 		});
 	});
 
-	it('shows the six tasks only for editable Impress and never for preview', function () {
+	it('shows PPT AI tasks only for editable Impress and never for preview', function () {
 		assert.deepEqual(MobileSelectionMenu.menuTaskTypesForDocument('presentation', false), [
+			'impress_generate',
 			'continue',
-			'polish',
+			'article_generate',
 			'expand',
+			'polish',
 			'condense',
 			'rewrite',
-			'translate',
+			'text_extract',
+			'image_generate',
+			'format_batch',
 		]);
 		assert.deepEqual(MobileSelectionMenu.menuTaskTypesForDocument('presentation', true), []);
 	});

@@ -6,6 +6,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -43,6 +44,12 @@ public class SelectionMenuController {
             R.id.selection_op_calc_chart,
     };
 
+    private static final int[] IMPRESS_AI_ACTION_IDS = new int[] {
+            R.id.selection_op_impress_text_extract,
+            R.id.selection_op_impress_image_generate,
+            R.id.selection_op_impress_format_batch,
+    };
+
     public interface Host {
         Context getContext();
 
@@ -57,6 +64,8 @@ public class SelectionMenuController {
         void executeUnoCommand(String command);
 
         boolean isWriterDocument();
+
+        boolean isImpressDocument();
 
         void openWriterImageEdit();
 
@@ -156,13 +165,17 @@ public class SelectionMenuController {
         bindOp(R.id.selection_op_save, "save", this::onSave);
 
         bindOp(R.id.selection_op_translate, "translate", () -> onAiOperation("translate"));
-        bindOp(R.id.selection_op_outline, "outline", () -> onAiOperation("outline"));
+        bindOp(R.id.selection_op_outline, "outline", () -> onAiOperation(
+                host.isImpressDocument() ? "impress_generate" : "outline"));
         bindOp(R.id.selection_op_continue_write, "continue_write", () -> onAiOperation("continue_write"));
         bindOp(R.id.selection_op_article_generate, "article_generate", () -> onAiOperation("article_generate"));
         bindOp(R.id.selection_op_expand, "expand", () -> onAiOperation("expand"));
         bindOp(R.id.selection_op_polish, "polish", () -> onAiOperation("polish"));
         bindOp(R.id.selection_op_condense, "condense", () -> onAiOperation("condense"));
         bindOp(R.id.selection_op_rewrite, "rewrite", () -> onAiOperation("rewrite"));
+        bindOp(R.id.selection_op_impress_text_extract, "text_extract", () -> onAiOperation("text_extract"));
+        bindOp(R.id.selection_op_impress_image_generate, "image_generate", () -> onAiOperation("image_generate"));
+        bindOp(R.id.selection_op_impress_format_batch, "format_batch", () -> onAiOperation("format_batch"));
 
         bindOp(R.id.selection_op_calc_formula, "calc_formula", () -> onAiOperation("calc_formula"));
         bindOp(R.id.selection_op_calc_cond_format, "calc_cond_format", () -> onAiOperation("calc_cond_format"));
@@ -456,9 +469,10 @@ public class SelectionMenuController {
     }
 
     private void onAiOperation(String taskType) {
-        if (calcMode) {
+        if (calcMode || host.isImpressDocument()) {
             if (!host.isDocEditable() || !host.isEditModeActive()) return;
-        } else if (!requireTextSelection()) return;
+        }
+        if (!calcMode && !requireTextSelection()) return;
         hide();
         if (host.onAiOperation(taskType)) {
             Log.i(TAG, "ai_operation started: " + taskType);
@@ -483,6 +497,15 @@ public class SelectionMenuController {
         for (int id : CALC_AI_ACTION_IDS) {
             setViewVisibility(id, calcMode && docEditable && editMode ? View.VISIBLE : View.GONE);
         }
+        boolean isImpress = host.isImpressDocument();
+        for (int id : IMPRESS_AI_ACTION_IDS) {
+            setViewVisibility(id, isImpress && !calcMode && !graphicMode && docEditable && editMode
+                    ? View.VISIBLE : View.GONE);
+        }
+        updateActionLabel(R.id.selection_op_outline, isImpress ? "生成PPT" : "总结大纲");
+        updateActionIcon(R.id.selection_op_outline, isImpress
+                ? R.drawable.lolib_ic_ai_impress_generate_ppt : R.drawable.lolib_ic_ai_outline);
+        updateActionLabel(R.id.selection_op_continue_write, isImpress ? "续写" : "文案续写");
 
         if (calcMode) {
             setViewVisibility(R.id.selection_op_select_all, View.GONE);
@@ -527,8 +550,8 @@ public class SelectionMenuController {
             setViewVisibility(R.id.selection_op_paste, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_cut, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewEnabled(R.id.selection_op_cut, hasTextSelection);
-            setViewVisibility(R.id.selection_op_translate, editMode ? View.VISIBLE : View.GONE);
-            setAiActionsVisibility(editMode ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_translate, editMode && !isImpress ? View.VISIBLE : View.GONE);
+            setAiActionsVisibility(editMode && docEditable ? View.VISIBLE : View.GONE);
             if (textEditMode) {
                 updatePopupWidth(true);
                 applyTextEditStripLayout();
@@ -643,6 +666,9 @@ public class SelectionMenuController {
                 R.id.selection_op_polish,
                 R.id.selection_op_condense,
                 R.id.selection_op_rewrite,
+                R.id.selection_op_impress_text_extract,
+                R.id.selection_op_impress_image_generate,
+                R.id.selection_op_impress_format_batch,
                 R.id.selection_op_calc_formula,
                 R.id.selection_op_calc_cond_format,
                 R.id.selection_op_calc_data_analysis,
@@ -697,6 +723,9 @@ public class SelectionMenuController {
                 R.id.selection_op_polish,
                 R.id.selection_op_condense,
                 R.id.selection_op_rewrite,
+                R.id.selection_op_impress_text_extract,
+                R.id.selection_op_impress_image_generate,
+                R.id.selection_op_impress_format_batch,
                 R.id.selection_op_calc_formula,
                 R.id.selection_op_calc_cond_format,
                 R.id.selection_op_calc_data_analysis,
@@ -737,6 +766,19 @@ public class SelectionMenuController {
         View v = host.findViewById(viewId);
         if (v != null) {
             v.setVisibility(visibility);
+        }
+    }
+
+    private void updateActionIcon(int viewId, int iconResId) {
+        View action = host.findViewById(viewId);
+        if (!(action instanceof ViewGroup)) return;
+        ViewGroup group = (ViewGroup) action;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child instanceof ImageView) {
+                ((ImageView) child).setImageResource(iconResId);
+                return;
+            }
         }
     }
 
