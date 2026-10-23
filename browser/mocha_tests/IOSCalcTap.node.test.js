@@ -324,7 +324,7 @@ function installRealSelectionMenu(h) {
 	h.context.window = win;
 	win.requestAnimationFrame = (callback) => win.setTimeout(callback, 0);
 	win.visualViewport = null;
-	for (const file of sourcePaths.slice(-3)) {
+	for (const file of [path.resolve(__dirname, '../src/app/MobileAiOperationIcons.ts'), path.resolve(__dirname, '../src/app/MobileAiUiCatalog.ts'), ...sourcePaths.slice(-3)]) {
 		const source = fs.readFileSync(file, 'utf8');
 		const js = ts.transpileModule(source, {
 			compilerOptions: { target: ts.ScriptTarget.ES5, module: ts.ModuleKind.None },
@@ -334,6 +334,7 @@ function installRealSelectionMenu(h) {
 	h.window = win;
 	h.dom = dom;
 	h.context.MobileSelectionMenu.install();
+	win.AndroidCalcTap.installIOS();
 	return win;
 }
 
@@ -805,4 +806,66 @@ test('real shape-handle touch cancels the 550ms text long-press and commits one 
 		NewPosY: { type: 'long', value: 5678 },
 	});
 	assert.equal(graphic.iosCalcGesturePositions, null, 'touch-up should release the gesture snapshot');
+});
+
+
+test('iOS Calc real menu touch preserves buttons and dispatches clipboard, clear and all five AI actions', () => {
+    const h = createRealHarness();
+    const win = installRealSelectionMenu(h);
+    const actions = [];
+    h.app.map._clip = { _selectionType: 'text', _execCopyCutPaste: (...args) => actions.push(args) };
+    h.app.map.sendUnoCommand = (command) => actions.push(command);
+    win.__coolWriterAiPanel = { openTask: (task) => actions.push(task) };
+    const menu = win.__coolMobileSelectionMenu;
+    for (const item of h.context.MobileSelectionMenu.calcMenuItems()) {
+        menu.show({ detail: { anchorX: 120, anchorY: 160, mode: 'calc', text: '', hasSelection: true } });
+        const panel = win.document.querySelector('.fabric-selection-menu--calc');
+        const button = panel.querySelector('button[aria-label="' + item.label + '"]');
+        assert.ok(button, item.id);
+        const icon = button.querySelector('.fabric-selection-menu__icon');
+        const event = new win.Event('touchstart', { bubbles: true });
+        Object.defineProperties(event, {
+            touches: { value: [{ clientX: 120, clientY: 160, identifier: 1 }] },
+            changedTouches: { value: [{ clientX: 120, clientY: 160, identifier: 1 }] },
+        });
+        icon.dispatchEvent(event);
+        assert.equal(button.isConnected, true, 'touchstart must not dismiss ' + item.id);
+        const before = actions.length;
+        button.click();
+        assert.equal(actions.length, before + 1, item.id + ' must execute even immediately after menu opens');
+        assert.equal(win.document.querySelector('.fabric-selection-menu'), null);
+    }
+    assert.deepEqual(actions.map((entry) => Array.isArray(entry) ? entry[0] : entry), [
+        'copy', 'paste', 'cut', '.uno:ClearContents',
+        'calc_formula', 'calc_cond_format', 'calc_data_analysis', 'calc_data_process', 'calc_chart',
+    ]);
+    assert.equal(h.context.MobileSelectionMenu.calcMenuItems().some((item) => item.id === 'translate'), false);
+});
+
+
+test('iOS Calc swiping the menu never executes an action and preview exposes only copy', () => {
+    const h = createRealHarness();
+    const win = installRealSelectionMenu(h);
+    const actions = [];
+    h.app.map._clip = { _selectionType: 'text', _execCopyCutPaste: () => actions.push('copy') };
+    const menu = win.__coolMobileSelectionMenu;
+    const show = () => menu.show({ detail: { anchorX: 100, anchorY: 120, mode: 'calc', hasSelection: true } });
+    show();
+    const row = win.document.querySelector('.fabric-selection-menu__row');
+    const button = row.querySelector('button');
+    for (const [type, x] of [['touchstart', 100], ['touchmove', 140], ['touchend', 140]]) {
+        const event = new win.Event(type, { bubbles: true });
+        const touch = { clientX: x, clientY: 100, identifier: 1 };
+        Object.defineProperties(event, { touches: { value: type === 'touchend' ? [] : [touch] }, changedTouches: { value: [touch] } });
+        button.dispatchEvent(event);
+    }
+    button.click();
+    assert.deepEqual(actions, [], 'the click after a horizontal swipe must be suppressed');
+    assert.equal(row.isConnected, true, 'swiping must keep the menu open');
+    h.app.map.isEditMode = () => false;
+    h.app.isReadOnly = () => true;
+    show();
+    const buttons = win.document.querySelectorAll('.fabric-selection-menu button');
+    assert.equal(buttons.length, 1);
+    assert.equal(buttons[0].getAttribute('aria-label'), '复制');
 });

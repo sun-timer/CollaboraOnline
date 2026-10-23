@@ -697,6 +697,9 @@ public class BottomToolbarController {
                 : PARAGRAPH_QUICK_ACTION_ITEMS;
         quickActionActionsRow.removeAllViews();
         for (QuickActionItem item : items) {
+            if (isCalcDocument && item.type == QuickActionType.HIGHLIGHT_COLOR) {
+                continue;
+            }
             quickActionActionsRow.addView(createQuickActionButton(item));
         }
 

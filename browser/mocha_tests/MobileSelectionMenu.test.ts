@@ -40,9 +40,9 @@ describe('Mobile Selection Menu', function () {
 		]);
 	});
 
-	it('Calc menu exposes Android clipboard row without AI tasks', function () {
+	it('Calc menu exposes clipboard actions and the five Calc AI tasks', function () {
 		const ids = MobileSelectionMenu.calcMenuItems().map((item) => item.id);
-		assert.deepEqual(ids, ['copy', 'paste', 'cut', 'clear', 'translate']);
+		assert.deepEqual(ids, ['copy', 'paste', 'cut', 'clear', 'calc_formula', 'calc_cond_format', 'calc_data_analysis', 'calc_data_process', 'calc_chart']);
 		const aiRows = MobileSelectionMenu.calcMenuItems().filter((item) =>
 			['outline', 'continue_write', 'article_generate', 'expand', 'polish', 'condense', 'rewrite'].includes(item.id),
 		);
@@ -96,7 +96,9 @@ describe('Mobile Selection Menu', function () {
 				return;
 			}
 			seen.add(item.iconKey);
-			assert.ok(MobileSelectionMenuIcons.has(item.iconKey), item.iconKey);
+			assert.ok(item.catalogTaskType?.startsWith('calc_')
+				? MobileAiOperationIcons.svgFor(item.catalogTaskType).includes('<svg')
+				: MobileSelectionMenuIcons.has(item.iconKey), item.iconKey);
 		});
 	});
 

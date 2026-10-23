@@ -2745,6 +2745,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             address: app.calc && app.calc.cellAddress && app.calc.cellAddress.toArray(),
             cursor: !!(app.calc && app.calc.cellCursorVisible),
             caret: !!(app.file && app.file.textCursor && app.file.textCursor.visible),
+            insertMode: !!app.map._docLayer.insertMode,
             down: down && {x: down.x, y: down.y, age: Date.now() - down.at, section: down.section.name},
             last: last && {cell: last.cell, age: Date.now() - last.at},
             dragging: app.sectionContainer && app.sectionContainer.isDraggingSomething(),
@@ -2779,6 +2780,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     ['beginIOSTouch', 'endIOSTouch', 'dispatchIOSTapAt', 'resetIOSState', 'onIOSCellCursor'].forEach(function (name) { wrap(tap, name); });
     ['showForIOSTap', 'tryShow'].forEach(function (name) { wrap(menu, name); });
     ['beginTextInputRequest', 'resolveTextInputTap', 'onTextCaretUpdate', 'maybeShowKeyboardForTextInput'].forEach(function (name) { wrap(input, name); });
+    ['apply', 'onResult'].forEach(function (name) { wrap(window.CalcTextFormatBridge, name); });
     ['touchstart', 'touchend', 'touchcancel'].forEach(function (name) {
         document.addEventListener(name, function (event) {
             try {
@@ -3860,6 +3862,9 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
 - (void)replyCalcTextFormat:(NSDictionary *)payload success:(BOOL)success
                    changed:(NSInteger)changed message:(NSString *)message
 {
+    NSLog(@"calc_text_format result request=%@ operation=%@ format=%@ success=%d changed=%ld message=%@",
+          payload[@"requestId"], payload[@"operation"], self.document.fileURL.pathExtension.lowercaseString,
+          success, (long)changed, message ?: @"");
     if (isClosing || !self.webView) return;
     NSDictionary *result = @{
         @"requestId": [payload[@"requestId"] isKindOfClass:NSString.class] ? payload[@"requestId"] : @"",
@@ -3906,6 +3911,11 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
         && [range[@"row2"] intValue] >= [range[@"row1"] intValue];
     int value = [rawValue isKindOfClass:NSNumber.class] ? [rawValue intValue] : 0;
     valid = valid && ([operation isEqualToString:@"highlight"] ? value >= -1 && value <= 0xffffff : value == 0 || value == 1);
+    NSLog(@"calc_text_format request=%@ operation=%@ format=%@ valid=%d edit=%d closing=%d ios=%@ appVersion=%@ build=%@",
+          requestId, operation, self.document.fileURL.pathExtension.lowercaseString, valid, nativeEditMode, isClosing,
+          UIDevice.currentDevice.systemVersion,
+          [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"],
+          [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleVersion"]);
     if (!valid || isClosing || !nativeEditMode || ![nativeDocumentType isEqualToString:@"spreadsheet"]) {
         [self replyCalcTextFormat:payload success:NO changed:0 message:@"请在编辑模式选择连续的文字单元格"];
         return;

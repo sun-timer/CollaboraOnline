@@ -2628,6 +2628,12 @@
 
 .fabric-selection-menu--calc .fabric-selection-menu__row {
 	min-height: 0;
+	max-width: min(280px, calc(100vw - 40px));
+	overflow-x: auto;
+	overflow-y: hidden;
+	touch-action: pan-x;
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
 }
 
 .fabric-selection-menu--calc .fabric-selection-menu__button {
@@ -3918,4 +3924,8 @@
 /* Preserve the insertion selection while an iOS Calc form owns input. */
 [data-mobile-doc-theme='calc'] .writer-function-sheet--edit:has([data-ios-calc-dialog]) {
 	pointer-events: auto;
+}
+
+.fabric-selection-menu--calc .fabric-selection-menu__row::-webkit-scrollbar {
+	display: none;
 }

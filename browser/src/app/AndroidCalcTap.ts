@@ -435,6 +435,9 @@ class AndroidCalcTap {
 					if (AndroidCalcTap.iosLastCellTap || AndroidCalcTap.iosDown) AndroidCalcTap.resetIOSState();
 					return;
 				}
+				// A menu action owns this touch. Resetting the grid here dismisses
+				// the button before touchend/click can dispatch its operation.
+				if ((event.target as HTMLElement | null)?.closest?.('.fabric-selection-menu')) return;
 				AndroidCalcTap.ensureIOSMapListeners();
 				const touch = event.touches[0];
 				if (event.touches.length !== 1 || !app.sectionContainer?.getIOSCalcSectionAtClient(

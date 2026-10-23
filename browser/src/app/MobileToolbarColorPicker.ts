@@ -27,6 +27,7 @@ class MobileToolbarColorPicker {
 
 	open(kind: MobileToolbarColorKind): void {
 		this.close();
+		if (kind === 'highlight' && CalcEditorFormat.isActive()) return;
 		let initialColor: number | null = null;
 		if (CalcEditorFormat.isActive()) {
 			CalcTextFormatBridge.observeSelection();

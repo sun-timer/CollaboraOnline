@@ -817,6 +817,9 @@ public class CalcFunctionPanelController {
                 icon.setImageTintList(android.content.res.ColorStateList.valueOf(0xFFFFFFFF));
             }
             btn.setOnClickListener(v -> host.executeUnoCommand(command));
+            if (".uno:ResetAttributes".equals(command)) {
+                btn.setContentDescription("清除格式");
+            }
             row.addView(btn);
         }
         return row;
@@ -2489,7 +2492,7 @@ public class CalcFunctionPanelController {
             R.drawable.lolib_ic_calc_underline,
             R.drawable.lolib_ic_calc_strikethrough,
             R.drawable.lolib_ic_calc_shadow,
-            R.drawable.lolib_ic_calc_highlight,
+            R.drawable.lolib_ic_calc_clear_format,
     };
     private static final String[] CHAR_TOOL_COMMANDS_ROW1 = {
             ".uno:Bold",
@@ -2497,7 +2500,7 @@ public class CalcFunctionPanelController {
             ".uno:Underline",
             ".uno:Strikeout",
             ".uno:Shadowed",
-            ".uno:CharBackColor",
+            ".uno:ResetAttributes",
     };
     private static final int[] CHAR_TOOL_ICONS_ROW2 = {
             R.drawable.lolib_ic_calc_superscript,

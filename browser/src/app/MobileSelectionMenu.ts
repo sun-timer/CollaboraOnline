@@ -194,14 +194,11 @@ class MobileSelectionMenu {
 				kind: 'action',
 				unoCommand: '.uno:ClearContents',
 			},
-			{
-				id: 'translate',
-				label: '翻译',
-				iconKey: 'translate',
-				kind: 'ai',
-				androidTaskType: 'translate',
-				catalogTaskType: 'translate',
-			},
+			{ id: 'calc_formula', label: 'AI公式', iconKey: 'calc_formula', kind: 'ai', catalogTaskType: 'calc_formula' },
+			{ id: 'calc_cond_format', label: '条件格式', iconKey: 'calc_cond_format', kind: 'ai', catalogTaskType: 'calc_cond_format' },
+			{ id: 'calc_data_analysis', label: '数据分析', iconKey: 'calc_data_analysis', kind: 'ai', catalogTaskType: 'calc_data_analysis' },
+			{ id: 'calc_data_process', label: '数据处理', iconKey: 'calc_data_process', kind: 'ai', catalogTaskType: 'calc_data_process' },
+			{ id: 'calc_chart', label: '生成图表', iconKey: 'calc_chart', kind: 'ai', catalogTaskType: 'calc_chart' },
 		];
 	}
 
@@ -343,6 +340,10 @@ class MobileSelectionMenu {
 		}
 		this.textEditMode = this.menuMode === 'text' && editMode;
 		panel.onclick = (e) => e.stopPropagation();
+		// A fresh finger-down is intentional; the opening compatibility click has none.
+		if (this.menuMode === 'calc') {
+			panel.addEventListener('touchstart', () => { MobileSelectionMenu.ignoreActionsUntil = 0; }, { passive: true });
+		}
 
 		const rows = MobileSelectionMenu.buildRows(this.menuMode, editMode, editable);
 		rows.forEach((row) => panel.appendChild(row));
@@ -588,6 +589,7 @@ class MobileSelectionMenu {
 	): HTMLElement {
 		const row = document.createElement('div');
 		row.className = 'fabric-selection-menu__row';
+		if (ctx.mode === 'calc') MobileSelectionMenu.installStripGestureGuard(row, row);
 		if (ctx.mode === 'graphic') {
 			row.classList.add('fabric-selection-menu__row--scroll');
 		}
@@ -611,8 +613,8 @@ class MobileSelectionMenu {
 			if (item.id === 'cut' || item.id === 'clear') {
 				return ctx.editable && ctx.editMode;
 			}
-			if (item.id === 'translate') {
-				return ctx.editMode;
+			if (item.kind === 'ai') {
+				return ctx.editMode && ctx.editable;
 			}
 			return true;
 		}
@@ -648,7 +650,9 @@ class MobileSelectionMenu {
 
 		const icon = document.createElement('span');
 		icon.className = 'fabric-selection-menu__icon';
-		icon.innerHTML = MobileSelectionMenuIcons.get(item.iconKey);
+		icon.innerHTML = item.catalogTaskType?.startsWith('calc_')
+			? MobileAiOperationIcons.svgFor(item.catalogTaskType)
+			: MobileSelectionMenuIcons.get(item.iconKey);
 		button.appendChild(icon);
 
 		const label = document.createElement('span');
@@ -656,6 +660,10 @@ class MobileSelectionMenu {
 		label.textContent = item.label;
 		button.appendChild(label);
 
+		// Keep clipboard selection/focus intact until the action is dispatched.
+		button.addEventListener('mousedown', (event) => {
+			if ((window as any).__coolMobileSelectionMenu?.menuMode === 'calc') event.preventDefault();
+		});
 		button.onclick = (event) => {
 			if (MobileSelectionMenu.consumeOpeningClick(event)) {
 				return;

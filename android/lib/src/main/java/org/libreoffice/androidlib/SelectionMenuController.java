@@ -35,6 +35,14 @@ public class SelectionMenuController {
             R.id.selection_op_rewrite
     };
 
+    private static final int[] CALC_AI_ACTION_IDS = new int[] {
+            R.id.selection_op_calc_formula,
+            R.id.selection_op_calc_cond_format,
+            R.id.selection_op_calc_data_analysis,
+            R.id.selection_op_calc_data_process,
+            R.id.selection_op_calc_chart,
+    };
+
     public interface Host {
         Context getContext();
 
@@ -156,6 +164,12 @@ public class SelectionMenuController {
         bindOp(R.id.selection_op_condense, "condense", () -> onAiOperation("condense"));
         bindOp(R.id.selection_op_rewrite, "rewrite", () -> onAiOperation("rewrite"));
 
+        bindOp(R.id.selection_op_calc_formula, "calc_formula", () -> onAiOperation("calc_formula"));
+        bindOp(R.id.selection_op_calc_cond_format, "calc_cond_format", () -> onAiOperation("calc_cond_format"));
+        bindOp(R.id.selection_op_calc_data_analysis, "calc_data_analysis", () -> onAiOperation("calc_data_analysis"));
+        bindOp(R.id.selection_op_calc_data_process, "calc_data_process", () -> onAiOperation("calc_data_process"));
+        bindOp(R.id.selection_op_calc_chart, "calc_chart", () -> onAiOperation("calc_chart"));
+
         updateEditActionVisibility();
         hide();
     }
@@ -206,7 +220,7 @@ public class SelectionMenuController {
         hasTextSelection = hasSelection;
         positionRetry = 0;
         updateEditActionVisibility();
-        if (textEditMode) {
+        if (textEditMode || calcMode) {
             HorizontalScrollView scrollView = menuView.findViewById(R.id.selection_basic_scroll);
             if (scrollView != null) {
                 scrollView.scrollTo(0, 0);
@@ -410,12 +424,13 @@ public class SelectionMenuController {
 
     private void onDelete() {
         if (!requireTextSelection()) return;
+        final boolean clearCells = calcMode;
         hide();
         if (!host.isDocEditable()) {
             toastReadOnlyDocument();
             return;
         }
-        if (calcMode) {
+        if (clearCells) {
             host.ensureEditModeThen(() -> host.executeUnoCommand(".uno:ClearContents"));
             return;
         }
@@ -441,7 +456,9 @@ public class SelectionMenuController {
     }
 
     private void onAiOperation(String taskType) {
-        if (!requireTextSelection()) return;
+        if (calcMode) {
+            if (!host.isDocEditable() || !host.isEditModeActive()) return;
+        } else if (!requireTextSelection()) return;
         hide();
         if (host.onAiOperation(taskType)) {
             Log.i(TAG, "ai_operation started: " + taskType);
@@ -463,6 +480,9 @@ public class SelectionMenuController {
         boolean editMode = host.isEditModeActive();
         textEditMode = !calcMode && !graphicMode && editMode;
         applyPopupMaxWidthConstraint();
+        for (int id : CALC_AI_ACTION_IDS) {
+            setViewVisibility(id, calcMode && docEditable && editMode ? View.VISIBLE : View.GONE);
+        }
 
         if (calcMode) {
             setViewVisibility(R.id.selection_op_select_all, View.GONE);
@@ -474,7 +494,7 @@ public class SelectionMenuController {
             setViewVisibility(R.id.selection_op_delete, docEditable && editMode ? View.VISIBLE : View.GONE);
             setViewVisibility(R.id.selection_op_image_edit, View.GONE);
             setViewVisibility(R.id.selection_op_save, View.GONE);
-            setViewVisibility(R.id.selection_op_translate, editMode ? View.VISIBLE : View.GONE);
+            setViewVisibility(R.id.selection_op_translate, View.GONE);
             setAiActionsVisibility(View.GONE);
             updateActionLabel(R.id.selection_op_delete, "清除");
             updatePopupWidth(false);
@@ -623,6 +643,11 @@ public class SelectionMenuController {
                 R.id.selection_op_polish,
                 R.id.selection_op_condense,
                 R.id.selection_op_rewrite,
+                R.id.selection_op_calc_formula,
+                R.id.selection_op_calc_cond_format,
+                R.id.selection_op_calc_data_analysis,
+                R.id.selection_op_calc_data_process,
+                R.id.selection_op_calc_chart,
         };
         for (int actionId : actionIds) {
             View action = menuView.findViewById(actionId);
@@ -672,6 +697,11 @@ public class SelectionMenuController {
                 R.id.selection_op_polish,
                 R.id.selection_op_condense,
                 R.id.selection_op_rewrite,
+                R.id.selection_op_calc_formula,
+                R.id.selection_op_calc_cond_format,
+                R.id.selection_op_calc_data_analysis,
+                R.id.selection_op_calc_data_process,
+                R.id.selection_op_calc_chart,
         };
         for (int actionId : actionIds) {
             View action = host.findViewById(actionId);
@@ -753,7 +783,11 @@ public class SelectionMenuController {
             int available = computeAvailablePopupWidth();
             int content = computeVisibleChipRowWidthPx(62f);
             // One visible chip (Calc preview: copy only) stays one cell wide.
-            targetWidth = Math.min(content, available);
+            targetWidth = calcMode && host.isEditModeActive()
+                    // Preserve the former five-action Calc width as the viewport.
+                    ? Math.min(Math.round(dpToPx(5 * 62f))
+                            + menuView.getPaddingLeft() + menuView.getPaddingRight(), available)
+                    : Math.min(content, available);
         } else {
             targetWidth = Math.min(
                     computeVisibleChipRowWidthPx(56f, 8f),

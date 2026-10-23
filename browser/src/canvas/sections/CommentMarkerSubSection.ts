@@ -109,9 +109,13 @@ class CommentMarkerSubSection extends HTMLObjectSection {
 
 	onMouseUp(point: cool.SimplePoint, e: MouseEvent): void {
 		e.stopPropagation();
+		this.stopPropagating();
 		if (this.containerObject.isDraggingSomething()) {
-			this.stopPropagating();
 			this.onDragEnd();
+		} else if (((<any>window).mode.isMobile() || (<any>window).mode.isTablet()) && this.sectionProperties.parentSection) {
+			// Touch taps are dispatched as mouse-up by the canvas. The marker's
+			// compatibility click only selects a comment and cannot open it.
+			this.sectionProperties.parentSection.onMouseUp(point, e);
 		}
 	}
 }
