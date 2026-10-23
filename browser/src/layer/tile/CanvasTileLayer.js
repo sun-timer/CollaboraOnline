@@ -877,6 +877,12 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		else if (textMsg.startsWith('graphicselection:')) {
 			this._map.fire('resettopbottompagespacing');
 			GraphicSelection.onMessage(textMsg);
+			if (window.ThisIsTheiOSApp && this._docType === 'spreadsheet') {
+				if (GraphicSelection.hasActiveSelection() && window.AndroidCalcTap)
+					window.AndroidCalcTap.resetIOSState();
+				if (window.AndroidCalcCellMenu)
+					window.AndroidCalcCellMenu.onIOSSelectionChanged();
+			}
 		}
 		else if (textMsg.startsWith('graphicinnertextarea:')) {
 			return; // Not used.
@@ -1682,7 +1688,10 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		if (textMsg.match('EMPTY')) {
 			app.calc.cellCursorVisible = false;
 			if ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) && window.AndroidCalcCellMenu) {
-				window.AndroidCalcCellMenu.hide();
+				if (window.ThisIsTheiOSApp && this._docType === 'spreadsheet')
+					window.AndroidCalcCellMenu.onIOSCellCursorCleared();
+				else
+					window.AndroidCalcCellMenu.hide();
 			}
 			if (cellfillMarkerSection)
 				cellfillMarkerSection.calculatePositionViaCellCursor(null);
@@ -1719,7 +1728,12 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			} catch(e) { /* diagnostic */ }
 		}
 		if ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) && window.AndroidCalcCellMenu) {
-			window.AndroidCalcCellMenu.tryShow();
+			if (window.ThisIsTheiOSApp && this._docType === 'spreadsheet') {
+				if (window.AndroidCalcTap) window.AndroidCalcTap.onIOSCellCursor();
+				window.AndroidCalcCellMenu.onIOSSelectionChanged();
+			} else {
+				window.AndroidCalcCellMenu.tryShow();
+			}
 		} else if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {
 			window.postMobileMessage('CALC_CELL_DISPATCH skip=no_bridge');
 		}
@@ -2598,7 +2612,10 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 
 			CellSelectionMarkers.update();
 			if ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) && window.AndroidCalcCellMenu) {
-				window.AndroidCalcCellMenu.tryShow();
+				if (window.ThisIsTheiOSApp && this._docType === 'spreadsheet')
+					window.AndroidCalcCellMenu.onIOSSelectionChanged();
+				else
+					window.AndroidCalcCellMenu.tryShow();
 			}
 		} else {
 			this._cellSelectionArea = null;
@@ -2611,7 +2628,10 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 				this._refreshRowColumnHeaders();
 			if ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) && window.AndroidCalcCellMenu) {
 				if (app.calc.cellCursorVisible) {
-					window.AndroidCalcCellMenu.tryShow();
+					if (window.ThisIsTheiOSApp && this._docType === 'spreadsheet')
+						window.AndroidCalcCellMenu.onIOSSelectionChanged();
+					else
+						window.AndroidCalcCellMenu.tryShow();
 				} else {
 					window.AndroidCalcCellMenu.hide();
 				}

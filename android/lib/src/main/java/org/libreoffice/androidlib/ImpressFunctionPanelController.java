@@ -1850,32 +1850,34 @@ public class ImpressFunctionPanelController {
     private void showShapePickerDialog() {
         dismiss();
         if (shapePickerController == null) {
-            shapePickerController = new ImpressShapePickerController(new ImpressShapePickerController.Host() {
-                @Override
-                public android.content.Context getContext() {
-                    return host.getContext();
-                }
+            shapePickerController = new ImpressShapePickerController(
+                    new ImpressShapePickerController.Host() {
+                        @Override
+                        public android.content.Context getContext() {
+                            return host.getContext();
+                        }
 
-                @Override
-                public int dpToPx(int dp) {
-                    return host.dpToPx(dp);
-                }
+                        @Override
+                        public int dpToPx(int dp) {
+                            return host.dpToPx(dp);
+                        }
 
-                @Override
-                public int getBottomChromeHeightPx() {
-                    return host.getBottomChromeHeightPx();
-                }
+                        @Override
+                        public int getBottomChromeHeightPx() {
+                            return host.getBottomChromeHeightPx();
+                        }
 
-                @Override
-                public void executeUnoCommand(String command) {
-                    host.executeUnoCommand(command);
-                }
+                        @Override
+                        public void executeUnoCommand(String command) {
+                            host.executeUnoCommand(command);
+                        }
 
-                @Override
-                public void runAfterDismiss(Runnable action) {
-                    host.runAfterFunctionPanelDismiss(action);
-                }
-            });
+                        @Override
+                        public void runAfterDismiss(Runnable action) {
+                            host.runAfterFunctionPanelDismiss(action);
+                        }
+                    },
+                    R.style.LolibShapePickerThemeImpress);
         }
         host.runAfterFunctionPanelDismiss(() -> shapePickerController.show());
     }

@@ -15,7 +15,7 @@ import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.SwitchCompat;
+import org.libreoffice.androidlib.LolibSettingsSwitch;
 
 import org.libreoffice.androidapp.R;
 import org.libreoffice.androidlib.ai.LocalDeviceCapability;
@@ -27,7 +27,7 @@ public class LocalModelActivity extends AppCompatActivity {
     private ProgressBar progressBar;
     private TextView progressText;
     private TextView downloadButton;
-    private SwitchCompat enableSwitch;
+    private LolibSettingsSwitch enableSwitch;
     private TextView deleteButton;
     private TextView cancelButton;
     private TextView chooseButton;
@@ -48,7 +48,6 @@ public class LocalModelActivity extends AppCompatActivity {
         progressText = findViewById(R.id.localModelProgressText);
         downloadButton = findViewById(R.id.localModelDownloadButton);
         enableSwitch = findViewById(R.id.localModelEnableSwitch);
-        org.libreoffice.androidlib.SwitchUiHelper.applySettingsSwitch(enableSwitch);
         deleteButton = findViewById(R.id.localModelDeleteButton);
         cancelButton = findViewById(R.id.localModelCancelButton);
         chooseButton = findViewById(R.id.localModelChooseButton);

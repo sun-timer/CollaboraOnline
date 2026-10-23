@@ -76,6 +76,7 @@ class ShapeHandlesSection extends CanvasSectionObject {
 	zIndex: number = app.CSections.ShapeHandlesSection.zIndex;
 	documentObject: boolean = true;
 	showSection: boolean = false;
+	private iosCalcGesturePositions: { section: CanvasSectionObject; position: number[] }[] | null = null;
 
 	constructor (info: any) {
 		super(app.CSections.ShapeHandlesSection.name);
@@ -1067,6 +1068,40 @@ class ShapeHandlesSection extends CanvasSectionObject {
 				}
 			}
 		}
+	}
+
+	public beginIOSCalcGesture(): void {
+		if (!(window as any).ThisIsTheiOSApp || app.map.getDocType() !== 'spreadsheet') return;
+		this.iosCalcGesturePositions = [this, ...this.sectionProperties.subSections].map(
+			(section: CanvasSectionObject) => ({ section, position: section.position.slice() }),
+		);
+	}
+
+	public finishIOSCalcGesture(cancelled: boolean): void {
+		if (!(window as any).ThisIsTheiOSApp || app.map.getDocType() !== 'spreadsheet') return;
+		if (cancelled && this.iosCalcGesturePositions) {
+			for (const saved of this.iosCalcGesturePositions)
+				saved.section.setPosition(saved.position[0], saved.position[1]);
+			if (this.sectionProperties.svg) this.sectionProperties.svg.style.opacity = 1;
+			this.hideSVG();
+			this.sectionProperties.closestX = this.sectionProperties.closestY = null;
+			app.map.fire('scrollvelocity', { vx: 0, vy: 0 });
+			this.containerObject.requestReDraw();
+		}
+		this.iosCalcGesturePositions = null;
+	}
+
+	/** Scaling still commits MoveShapeHandle on touch-up when iOS has no SVG. */
+	public moveIOSCalcHandleWithoutSVG(section: CanvasSectionObject, point: cool.SimplePoint, e: MouseEvent): boolean {
+		if (!(window as any).ThisIsTheiOSApp || app.map.getDocType() !== 'spreadsheet' ||
+			this.sectionProperties.svg || !this.containerObject.isDraggingSomething() ||
+			typeof (section as any).moveHandlesOnDrag !== 'function') return false;
+		section.stopPropagating();
+		e.stopPropagation();
+		(section as any).moveHandlesOnDrag(point, e);
+		this.checkHelperLinesAndSnapPoints([0, 0], section.position, [0, 0]);
+		this.containerObject.requestReDraw();
+		return true;
 	}
 
 	onMouseMove(position: cool.SimplePoint, dragDistance: number[]) {

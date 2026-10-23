@@ -36,6 +36,17 @@ class JSDialogMessageRouter {
 			ImpressTransitionBridge.handlePayload(msgData)
 		)
 			return;
+		// CSV import is auto-confirmed only during the initial iOS Calc CSV load.
+		if (
+			window.ThisIsTheiOSApp &&
+			(window as any).IOSCalcCsvImport &&
+			(window as any).IOSCalcCsvImport.handleMessage(msgData, callbackFn)
+		)
+			return;
+		// iOS Calc owns these dialog transactions, including incremental updates.
+		if (window.ThisIsTheiOSApp &&
+			typeof CalcEditorValidationBridge !== 'undefined' &&
+			CalcEditorValidationBridge.handleDialogMessage(msgData)) return;
 		// update existing component
 		if (msgData.action) {
 			if (

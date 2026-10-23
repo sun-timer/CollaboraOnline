@@ -30,7 +30,9 @@ class WriterCharPanel {
 	}
 
 	open(): void {
+		if (CalcEditorFormat.isActive()) CalcTextFormatBridge.observeSelection();
 		this.closeSiblingPanels();
+		this.bar.setActions(this.buildItems());
 		this.bar.open();
 	}
 
@@ -77,12 +79,14 @@ class WriterCharPanel {
 			},
 			{
 				label: '字色',
-				iconHtml: WriterCharPanelIcons.fontColor,
+				iconHtml: CalcEditorFormat.isActive() ? WriterCharPanelIcons.calcFontColor : WriterCharPanelIcons.fontColor,
+				colorCommand: '.uno:Color',
 				onTap: () => this.openColor('字体颜色', 'fontColor'),
 			},
 			{
 				label: '高亮',
 				iconHtml: WriterCharPanelIcons.highlight,
+				colorCommand: '.uno:CharBackColor',
 				onTap: () => this.openColor('荧光颜色', 'highlight'),
 			},
 		];
@@ -112,7 +116,10 @@ class WriterCharPanel {
 		if (this.colorPicker) {
 			this.colorPicker.close();
 		}
-		const picker = new WriterColorPickerDialog(title, null, (rgb) => {
+		const initialColor = CalcEditorFormat.isActive()
+			? kind === 'fontColor' ? CalcEditorFormat.color('.uno:Color') : CalcEditorFormat.highlightColor()
+			: null;
+		const picker = new WriterColorPickerDialog(title, initialColor, (rgb) => {
 			if (kind === 'fontColor') {
 				this.controller.applyFontColor(rgb);
 			} else {
@@ -140,6 +147,10 @@ class WriterCharPanelIcons {
 
 	static readonly highlight =
 		'<svg viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg"><path d="M11.4784 23.6969L32.1759 3L38.0896 8.91286L17.392 29.6105L10 31.0889L11.4784 23.6969Z" fill="#FFD54F" stroke="#101010" stroke-width="1.5" stroke-linejoin="round"/><path d="M28.48 6.69531L34.3936 12.6089" stroke="#101010" stroke-width="3" stroke-linecap="round"/><path d="M8 40H40" stroke="#101010" stroke-width="3" stroke-linecap="round"/></svg>';
+
+	/** Figma icon/24/工具栏/P/字符颜色: one A over an outlined color bar. */
+	static readonly calcFontColor =
+		'<svg viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M11 34L24 5L37 34M16 23H32" fill="none" stroke="#333333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="6" y="35" width="36" height="7" fill="#FE3A3A" stroke="#333333" stroke-width="2"/></svg>';
 
 	static readonly fontColor =
 		'<svg viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg"><path d="M17 14 L11 34 M17 14 L24 34 M17 14 L20 24 H28" fill="none" stroke="#101010" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M32 18 L37 34 M32 18 L39 27 M37 34 L41 34 M33 28 H40" fill="none" stroke="#101010" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="14" y="36" width="20" height="5" rx="2" fill="#1278D9"/></svg>';

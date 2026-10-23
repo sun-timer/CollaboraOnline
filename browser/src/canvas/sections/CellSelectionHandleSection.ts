@@ -33,6 +33,7 @@ class CellSelectionHandle extends CanvasSectionObject {
 		this.sharedOnDragAndEnd(point);
 		CellSelectionMarkers.update();
 		app.map.scrollingIsHandled = false;
+		(window as any).AndroidCalcCellMenu?.showAfterIOSRangeSelection();
 	}
 
 	private sharedOnDragAndEnd(point: cool.SimplePoint) {

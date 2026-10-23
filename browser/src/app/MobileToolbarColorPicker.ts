@@ -27,10 +27,20 @@ class MobileToolbarColorPicker {
 
 	open(kind: MobileToolbarColorKind): void {
 		this.close();
+		let initialColor: number | null = null;
+		if (CalcEditorFormat.isActive()) {
+			CalcTextFormatBridge.observeSelection();
+			const command = { font: '.uno:Color', highlight: '.uno:CharBackColor',
+				background: '.uno:BackgroundColor', border: '.uno:FrameLineColor' }[kind];
+			initialColor = CalcEditorFormat.color(command);
+			if (kind === 'highlight') {
+				initialColor = CalcEditorFormat.highlightColor();
+			}
+		}
 		const title = MobileToolbarColorPicker.titleFor(kind);
 		const dialog = new WriterColorPickerDialog(
 			title,
-			null,
+			initialColor,
 			(rgb) => MobileToolbarColorPicker.apply(kind, rgb),
 			null,
 		);

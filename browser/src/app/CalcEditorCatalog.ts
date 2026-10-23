@@ -235,12 +235,12 @@ class CalcEditorCatalog {
 		},
 		{
 			label: '冻结列',
-			unocmd: '.uno:FreezePanesColumn',
+			unocmd: '.uno:FreezePanesColumn {"Index":{"type":"int32","value":1}}',
 			icon: 'calc-sheet-freeze-col',
 		},
 		{
 			label: '冻结行',
-			unocmd: '.uno:FreezePanesRow',
+			unocmd: '.uno:FreezePanesRow {"Index":{"type":"int32","value":1}}',
 			icon: 'calc-sheet-freeze-row',
 		},
 	];

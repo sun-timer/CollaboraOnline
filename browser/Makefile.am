@@ -312,6 +312,10 @@ COOL_JS_LST =\
 	src/app/ImpressTransitionBridge.ts \
 	src/app/ImpressEditorPanel.ts \
 	src/app/CalcEditorCatalog.ts \
+	src/app/CalcEditorFormat.ts \
+	src/app/CalcTextFormatBridge.ts \
+	src/app/CalcFormatStateBridge.ts \
+	src/app/IOSCalcCsvImport.js \
 	src/app/CalcEditorBorder.ts \
 	src/app/CalcEditorValidationCatalog.ts \
 	src/app/CalcEditorValidationBridge.ts \

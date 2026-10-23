@@ -5933,14 +5933,28 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private TextView buildExternalLinkDialogButton(String label, boolean primary) {
-        return buildThemedDialogButton(label, primary, false);
+        return buildThemedDialogButton(label, primary);
     }
 
     private TextView buildImpressDialogButton(String label, boolean primary) {
-        return buildThemedDialogButton(label, primary, true);
+        return buildThemedDialogButton(label, primary, R.drawable.lolib_bg_impress_primary_button);
     }
 
-    private TextView buildThemedDialogButton(String label, boolean primary, boolean impressTheme) {
+    private int resolveDocPrimaryButtonBg() {
+        if (mIsImpressDocument) {
+            return R.drawable.lolib_bg_impress_primary_button;
+        }
+        if (mIsCalcDocument) {
+            return R.drawable.lolib_bg_calc_primary_button;
+        }
+        return R.drawable.lolib_bg_writer_primary_button;
+    }
+
+    private TextView buildThemedDialogButton(String label, boolean primary) {
+        return buildThemedDialogButton(label, primary, resolveDocPrimaryButtonBg());
+    }
+
+    private TextView buildThemedDialogButton(String label, boolean primary, int primaryBgResId) {
         TextView button = new TextView(this);
         button.setText(label);
         button.setGravity(android.view.Gravity.CENTER);
@@ -5948,9 +5962,7 @@ public class LOActivity extends AppCompatActivity {
         button.setTypeface(null, primary ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         button.setTextColor(primary ? android.graphics.Color.WHITE : android.graphics.Color.parseColor("#333333"));
         if (primary) {
-            button.setBackgroundResource(impressTheme
-                    ? R.drawable.lolib_bg_impress_primary_button
-                    : R.drawable.lolib_bg_calc_primary_button);
+            button.setBackgroundResource(primaryBgResId);
         } else {
             button.setBackgroundResource(R.drawable.lolib_bg_hyperlink_segment_track);
         }
@@ -5958,6 +5970,16 @@ public class LOActivity extends AppCompatActivity {
         button.setFocusable(true);
         int hPad = dpToPx(12);
         button.setPadding(hPad, dpToPx(14), hPad, dpToPx(14));
+        return button;
+    }
+
+    /** 335dp 居中 Hug 弹窗双钮（35dp 高）：无额外竖向 padding，避免字被裁切。 */
+    private TextView buildHugDialogButton(String label, boolean primary) {
+        TextView button = buildThemedDialogButton(label, primary);
+        button.setIncludeFontPadding(false);
+        int hPad = dpToPx(12);
+        button.setPadding(hPad, 0, hPad, 0);
+        button.setMinHeight(dpToPx(35));
         return button;
     }
 
@@ -18576,12 +18598,13 @@ public class LOActivity extends AppCompatActivity {
         apiKey = apiKey == null ? "" : apiKey.trim();
         model = model == null ? "" : model.trim();
         endpoint = normalizeEndpoint(endpoint, "/images/generations");
-        if (endpoint.isEmpty()) {
-            toastTodo("请先在设置中配置图片生成模型的接口地址");
-            return;
-        }
-        if (apiKey.isEmpty()) {
-            toastTodo("请先在设置中配置图片生成模型的 API Key");
+        if (endpoint.isEmpty() || apiKey.isEmpty()) {
+            String err = AiModelConfigStore.validateConfigured(this,
+                    AiModelConfigStore.MODEL_IMAGE);
+            if (err.isEmpty() && apiKey.isEmpty()) {
+                err = "请先在设置中配置图片生成模型的 API Key。";
+            }
+            showModelConfigRequiredDialog(AiModelConfigStore.MODEL_IMAGE, err);
             return;
         }
 
@@ -20193,11 +20216,12 @@ public class LOActivity extends AppCompatActivity {
         LinearLayout buttonRow = root.findViewById(R.id.ai_model_required_button_row);
         if (buttonRow != null) {
             buttonRow.removeAllViews();
-            TextView cancelBtn = buildExternalLinkDialogButton("取消", false);
-            TextView confirmBtn = buildExternalLinkDialogButton("确定", true);
-            LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(0, dpToPx(52), 1f);
+            TextView cancelBtn = buildHugDialogButton("取消", false);
+            TextView confirmBtn = buildHugDialogButton("确定", true);
+            int btnH = dpToPx(35);
+            LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(0, btnH, 1f);
             cancelBtn.setLayoutParams(cancelLp);
-            LinearLayout.LayoutParams confirmLp = new LinearLayout.LayoutParams(0, dpToPx(52), 1f);
+            LinearLayout.LayoutParams confirmLp = new LinearLayout.LayoutParams(0, btnH, 1f);
             confirmLp.setMarginStart(dpToPx(12));
             confirmBtn.setLayoutParams(confirmLp);
             cancelBtn.setOnClickListener(v -> {
@@ -20216,11 +20240,7 @@ public class LOActivity extends AppCompatActivity {
         }
         AiDialogHelper.applyCloseOnlyDismiss(aiModelRequiredDialog);
         aiModelRequiredDialog.show();
-        if (aiModelRequiredDialog.getWindow() != null) {
-            int widthPx = AiDialogHelper.computeWriterDialogWidthPx(getResources());
-            AiDialogHelper.applyFlexibleWidth(root, aiModelRequiredDialog, widthPx,
-                    AiDialogHelper.computeMaxHeightHugPx(getResources()));
-        }
+        AiDialogHelper.applyCenteredHugDialogSize(this, aiModelRequiredDialog, root);
         Log.i(TAG, "ai_model_required_dialog shown modelType=" + modelType + " message=" + message);
     }
 

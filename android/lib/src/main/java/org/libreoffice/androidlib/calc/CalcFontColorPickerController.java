@@ -94,16 +94,16 @@ public final class CalcFontColorPickerController {
         checkViews[blockIndex] = new View[entries.length];
         int swatchSize = host.dpToPx(SWATCH_SIZE_DP);
         int rowGap = host.dpToPx(ROW_GAP_DP);
-        int innerWidth = host.getContext().getResources().getDisplayMetrics().widthPixels
-                - host.dpToPx(CONTENT_SIDE_PAD_DP * 2 + GRID_PAD_DP * 2);
-        int gap = Math.max(0, (innerWidth - GRID_COLS * swatchSize) / (GRID_COLS - 1));
+        card.setClipChildren(true);
+        card.setClipToPadding(true);
         LinearLayout row = null;
 
         for (int i = 0; i < entries.length; i++) {
             if (i % GRID_COLS == 0) {
                 row = new LinearLayout(host.getContext());
                 row.setOrientation(LinearLayout.HORIZONTAL);
-                row.setGravity(Gravity.START);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setClipChildren(true);
                 LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, swatchSize);
                 if (i > 0) {
@@ -115,14 +115,19 @@ public final class CalcFontColorPickerController {
             CalcFontColorCatalog.Entry entry = entries[i];
             FrameLayout cell = createColorCell(entry);
             checkViews[blockIndex][i] = cell.findViewWithTag("check");
-            LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(swatchSize, swatchSize);
-            if (i % GRID_COLS > 0) {
-                cellLp.setMarginStart(gap);
-            }
+            LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(0, swatchSize, 1f);
+            cellLp.gravity = Gravity.CENTER_HORIZONTAL;
             cell.setLayoutParams(cellLp);
             cell.setOnClickListener(v -> onColorClicked(entry));
             if (row != null) {
                 row.addView(cell);
+            }
+        }
+        int remainder = entries.length % GRID_COLS;
+        if (remainder != 0 && row != null) {
+            for (int p = remainder; p < GRID_COLS; p++) {
+                View placeholder = new View(host.getContext());
+                row.addView(placeholder, new LinearLayout.LayoutParams(0, swatchSize, 1f));
             }
         }
         return card;

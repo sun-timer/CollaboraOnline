@@ -91,7 +91,12 @@ class WriterEditorController {
 				'.uno:DefaultBullet',
 				'.uno:DefaultNumbering',
 			].includes(feature.unocmd || '');
-		if (!this.isWriterDocument() && !presentationQuickAction) {
+		const calcQuickAction =
+			!!(window as any).ThisIsTheiOSApp &&
+			this.adapter.getDocType() === 'spreadsheet' &&
+			feature.id === 'char-quick' && feature.kind === 'command' &&
+			['.uno:Bold', '.uno:Italic', '.uno:Underline', '.uno:Strikeout'].includes(feature.unocmd || '');
+		if (!this.isWriterDocument() && !presentationQuickAction && !calcQuickAction) {
 			return { dispatched: 'none', reason: 'not_writer_document' };
 		}
 		switch (feature.kind) {
@@ -491,6 +496,11 @@ class WriterEditorController {
 	 * Matches Android buildColorUnoCommand (BottomToolbarController L845-847).
 	 */
 	applyFontColor(rgb: number): WriterEditorRunResult {
+		if ((window as any).ThisIsTheiOSApp && this.adapter.getDocType() === 'spreadsheet') {
+			const command = '.uno:Color {"Color.Color":{"type":"long","value":' + rgb + '}}';
+			this.adapter.sendUnoCommand(command);
+			return { dispatched: 'unocmd', command };
+		}
 		const command =
 			'.uno:FontColor {"FontColor.Color":{"type":"long","value":' + rgb + '}}';
 		this.adapter.sendUnoCommand(command);
@@ -502,6 +512,11 @@ class WriterEditorController {
 	 * CharBackColor.Color long arg (Android highlight color picker L750-752).
 	 */
 	applyHighlightColor(rgb: number): WriterEditorRunResult {
+		if ((window as any).ThisIsTheiOSApp && this.adapter.getDocType() === 'spreadsheet') {
+			return CalcTextFormatBridge.apply('highlight', rgb)
+				? { dispatched: 'message', message: 'CALC_TEXT_FORMAT' }
+				: { dispatched: 'none', reason: 'calc_text_format_not_applied' };
+		}
 		const command =
 			'.uno:CharBackColor {"CharBackColor.Color":{"type":"long","value":' +
 			rgb +

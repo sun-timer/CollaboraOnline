@@ -50,8 +50,10 @@ public final class ImpressSubpageHeader {
         titleView.setText(title);
         titleView.setTextColor(Color.parseColor("#333333"));
         titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        titleView.setMaxLines(1);
+        titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         titleLp.setMarginStart(dp.dp(8));
         header.addView(titleView, titleLp);
 

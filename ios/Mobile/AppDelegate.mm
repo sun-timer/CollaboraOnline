@@ -34,6 +34,8 @@
 #import "COOLWSD.hpp"
 #import "SetupKitEnvironment.hpp"
 #import "Util.hpp"
+#include <Poco/Exception.h>
+#include <Poco/Logger.h>
 
 #import <common/LangUtil.hpp>
 
@@ -43,20 +45,29 @@ NSString *app_text_direction;
 @implementation AppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    const char *trace = std::getenv("COOL_LOGLEVEL");
-    if (!trace)
-        trace = "warning";
-    else if (std::strcmp(trace, "info") == 0) {
-        setenv("COOL_LOGLEVEL", "information", 1);
-        trace = "information";
+    const char *configuredLevel = std::getenv("COOL_LOGLEVEL");
+    NSString *level = configuredLevel ? [NSString stringWithUTF8String:configuredLevel] : nil;
+    level = [[level stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] lowercaseString];
+    if ([level isEqualToString:@"info"])
+        level = @"information";
+    else if ([level isEqualToString:@"warn"])
+        level = @"warning";
+    std::string logLevel = level.length ? level.UTF8String : "warning";
+    try {
+        Poco::Logger::parseLevel(logLevel);
+    } catch (const Poco::Exception &) {
+        NSLog(@"Invalid COOL_LOGLEVEL; using warning");
+        logLevel = "warning";
     }
+    // The document server also reads this environment variable later.
+    setenv("COOL_LOGLEVEL", logLevel.c_str(), 1);
 
     if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad)
         setupKitEnvironment("notebookbar");
     else
         setupKitEnvironment("");
 
-    Log::initialize("Mobile", trace, false, false, {}, false, {});
+    Log::initialize("Mobile", logLevel, false, false, {}, false, {});
     Util::setThreadName("main");
 
     [LocalInferenceLifecycle install];

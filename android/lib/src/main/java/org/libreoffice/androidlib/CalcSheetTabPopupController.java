@@ -427,8 +427,8 @@ public final class CalcSheetTabPopupController {
         if (renameSession != null && renameSession.isShowing()) {
             renameSession.dismiss();
         }
-        renameSession = AiDialogHelper.showCompactPanel(
-                host.getContext(), renamePanelView, TAG + ":rename");
+        renameSession = AiDialogHelper.showCenteredFloatingPanel(
+                host.getContext(), renamePanelView);
         renameSession.setOnDismissListener(() -> {
             renameSession = null;
             renameTabIndex = -1;

@@ -1,5 +1,5 @@
 /*
- * Intercept ValidationDialog on iOS Calc panel; read/write via dialogevent (Android parity).
+ * iOS Calc validation transactions over the existing Core JSDialog protocol.
  * Macro catalog harvest intercepts MacroSelectorDialog only while a browse is pending.
  */
 
@@ -25,12 +25,49 @@ interface CalcMacroHarvestNode {
 
 type CalcMacroHarvestStage = 'idle' | 'scope' | 'library' | 'select';
 
+interface CalcEditorDialogContext {
+	map: any;
+	docLayer: any;
+	socket: any;
+	documentSessionId: string | null;
+}
+
+function calcEditorDialogContext(): CalcEditorDialogContext | null {
+	const app = (window as any).app;
+	const map = app?.map;
+	return (window as any).ThisIsTheiOSApp && map?.getDocType?.() === 'spreadsheet' &&
+		map._docLayer && app.socket?.sendMessage
+		? { map, docLayer: map._docLayer, socket: app.socket,
+			documentSessionId: typeof NativeBridge !== 'undefined' ? NativeBridge.getInstance().getDocumentSessionId() : null }
+		: null;
+}
+
+function calcEditorSameDialogContext(context: CalcEditorDialogContext | null): boolean {
+	const current = calcEditorDialogContext();
+	return !!(context && current && context.map === current.map &&
+		context.docLayer === current.docLayer && context.socket === current.socket &&
+		context.documentSessionId === current.documentSessionId);
+}
+
+interface CalcValidationRequest {
+	id: number;
+	context: CalcEditorDialogContext;
+	windowId: number | null;
+	phase: 'waiting' | 'help' | 'error' | 'ready' | 'closing' | 'abandoned';
+	controls: Map<string, NativeDialogControl>;
+	target: CalcEditorValidationState;
+	callback: ((loaded: boolean) => void) | null;
+	timer: number;
+}
+
 class CalcEditorValidationBridge {
-	private static pendingRead: CalcEditorValidationState | null = null;
-	private static pendingReadCallback: (() => void) | null = null;
-	private static pendingWrite: CalcEditorValidationState | null = null;
+	private static request: CalcValidationRequest | null = null;
+	private static nextRequestId = 0;
+	private static retiredWindows = new Map<number, CalcEditorDialogContext>();
 
 	private static harvestActive = false;
+	private static harvestContext: CalcEditorDialogContext | null = null;
+	private static harvestCancelled = false;
 	private static harvestWindowId = -1;
 	private static harvestStartedAt = 0;
 	private static harvestTimer = 0;
@@ -48,25 +85,82 @@ class CalcEditorValidationBridge {
 	private static harvestCategoryEntries: any[] = [];
 
 	static isPending(): boolean {
-		return (
-			CalcEditorValidationBridge.pendingRead !== null ||
-			CalcEditorValidationBridge.pendingWrite !== null
-		);
+		return !!CalcEditorValidationBridge.request && !!calcEditorDialogContext();
+	}
+
+	/** Call before AndroidNativeDialogRouter: that router drops validation updates. */
+	static handleDialogMessage(message: any): boolean {
+		if (!calcEditorDialogContext() || !message || message.id === undefined) {
+			return false;
+		}
+		if (typeof CalcEditorHyperlinkDialog !== 'undefined' &&
+			CalcEditorHyperlinkDialog.handleDocumentTargetMessage(message)) {
+			return true;
+		}
+		const controls: NativeDialogControl[] = [];
+		const flatten = (node: any) => {
+			if (!node) return;
+			if (node.id && node.type) {
+				controls.push({ ...node, text: node.text ?? node.label });
+			}
+			if (Array.isArray(node.children)) node.children.forEach(flatten);
+		};
+		if (message.control) flatten(message.control);
+		if (Array.isArray(message.children)) message.children.forEach(flatten);
+		const windowId = Number(message.id);
+		if (!Number.isInteger(windowId) || windowId < 0) return false;
+		const action = message.action === 'close' ? 'dismiss' :
+			message.action === 'update' ? 'update' : 'show';
+		const payload: NativeDialogPayload = {
+			action, windowId, dialogId: message.dialogid, controls,
+		};
+		const retired = CalcEditorValidationBridge.retiredWindows.get(windowId);
+		if (retired && !calcEditorSameDialogContext(retired)) {
+			CalcEditorValidationBridge.retiredWindows.delete(windowId);
+		} else if (retired) {
+			if (action === 'dismiss') CalcEditorValidationBridge.retiredWindows.delete(windowId);
+			else if (action === 'show') CalcEditorValidationBridge.dismissWindow(windowId);
+			return true;
+		}
+		const request = CalcEditorValidationBridge.request;
+		const validation = message.dialogid === 'ValidationDialog' ||
+			controls.some((control) => control.id === 'allow');
+		if (request && (request.windowId === windowId || validation)) {
+			if (message.action && action === 'show') return true;
+			CalcEditorValidationBridge.handlePayload(payload);
+			return true;
+		}
+		if (CalcEditorValidationBridge.harvestActive &&
+			(message.dialogid === 'MacroSelectorDialog' ||
+				CalcEditorValidationBridge.harvestWindowId === windowId)) {
+			if (message.action && action === 'show') return true;
+			CalcEditorValidationBridge.handleMacroPayload(payload);
+			return true;
+		}
+		return false;
 	}
 
 	static isHarvestPending(): boolean {
-		return CalcEditorValidationBridge.harvestActive;
+		return !!calcEditorDialogContext() && CalcEditorValidationBridge.harvestActive;
 	}
 
-	/** Enumerate real macros via .uno:RunMacro without showing the Collabora wizard. */
+	/** Enumerate the real macro selector without showing the Core dialog. */
 	static loadMacroCatalog(
 		sendUno: (command: string) => void,
 		onLoaded: (items: CalcEditorMacroItem[]) => void,
-	): void {
-		CalcEditorValidationBridge.harvestCallbacks.push(onLoaded);
-		if (CalcEditorValidationBridge.harvestActive) {
-			return;
+	): () => void {
+		const context = calcEditorDialogContext();
+		if (CalcEditorValidationBridge.harvestActive &&
+			!calcEditorSameDialogContext(CalcEditorValidationBridge.harvestContext)) {
+			CalcEditorValidationBridge.finishHarvest(false);
 		}
+		if (!context || CalcEditorValidationBridge.harvestActive) {
+			onLoaded([]);
+			return () => undefined;
+		}
+		CalcEditorValidationBridge.harvestContext = context;
+		CalcEditorValidationBridge.harvestCancelled = false;
+		CalcEditorValidationBridge.harvestCallbacks = [onLoaded];
 		CalcEditorValidationBridge.harvestActive = true;
 		CalcEditorValidationBridge.harvestWindowId = -1;
 		CalcEditorValidationBridge.harvestStartedAt = Date.now();
@@ -82,22 +176,49 @@ class CalcEditorValidationBridge {
 		CalcEditorValidationBridge.harvestSelectingModule = false;
 		CalcEditorValidationBridge.harvestCategoryEntries = [];
 		CalcEditorValidationBridge.armHarvestTimer();
-		sendUno('.uno:RunMacro');
+		const validation = CalcEditorValidationBridge.request;
+		if (validation?.phase === 'ready' && validation.windowId !== null &&
+			calcEditorSameDialogContext(validation.context)) {
+			// Validation remains open for this transaction. Open its nested script
+			// selector; a top-level RunMacro command would be blocked by the modal.
+			const id = validation.windowId;
+			CalcEditorValidationBridge.selectValidationTab(id, 2);
+			CalcEditorValidationBridge.sendDialogEvent(id, 'tsbshow', 'change', 'true', 'checkbox');
+			CalcEditorValidationBridge.sendDialogEvent(id, 'actionCB', 'selected', '3;宏', 'combobox');
+			CalcEditorValidationBridge.sendDialogEvent(id, 'browseBtn', 'click', '', 'pushbutton');
+		} else {
+			sendUno('.uno:RunMacro');
+		}
+		return () => {
+			if (CalcEditorValidationBridge.harvestContext !== context) return;
+			CalcEditorValidationBridge.harvestCallbacks = [];
+			CalcEditorValidationBridge.harvestCancelled = true;
+			if (CalcEditorValidationBridge.harvestTimer) window.clearTimeout(CalcEditorValidationBridge.harvestTimer);
+			CalcEditorValidationBridge.harvestTimer = 0;
+			if (CalcEditorValidationBridge.harvestWindowId >= 0) {
+				CalcEditorValidationBridge.finishHarvest(true);
+			}
+		};
 	}
 
 	static handleMacroPayload(payload: NativeDialogPayload): void {
-		if (!CalcEditorValidationBridge.harvestActive) {
-			return;
-		}
-		if (payload.action === 'dismiss') {
+		if (!CalcEditorValidationBridge.harvestActive) return;
+		if (!calcEditorSameDialogContext(CalcEditorValidationBridge.harvestContext)) {
 			CalcEditorValidationBridge.finishHarvest(false);
 			return;
 		}
-		if (payload.action === 'show') {
-			CalcEditorValidationBridge.onMacroShow(payload);
-			return;
+		if (CalcEditorValidationBridge.harvestWindowId < 0) {
+			if (payload.action !== 'show') return;
+			CalcEditorValidationBridge.harvestWindowId = payload.windowId;
 		}
-		if (payload.action === 'update') {
+		if (payload.windowId !== CalcEditorValidationBridge.harvestWindowId) return;
+		if (payload.action === 'dismiss') {
+			CalcEditorValidationBridge.finishHarvest(false);
+		} else if (CalcEditorValidationBridge.harvestCancelled) {
+			CalcEditorValidationBridge.finishHarvest(true);
+		} else if (payload.action === 'show' && CalcEditorValidationBridge.harvestStage === 'idle') {
+			CalcEditorValidationBridge.onMacroShow(payload);
+		} else if (payload.action === 'update') {
 			CalcEditorValidationBridge.onMacroUpdate(payload);
 		}
 	}
@@ -105,23 +226,53 @@ class CalcEditorValidationBridge {
 	static loadCurrent(
 		target: CalcEditorValidationState,
 		sendUno: (command: string) => void,
-		onLoaded: () => void,
-	): void {
-		CalcEditorValidationBridge.pendingRead = target;
-		CalcEditorValidationBridge.pendingReadCallback = onLoaded;
+		onLoaded: (loaded: boolean) => void,
+	): () => void {
+		const context = calcEditorDialogContext();
+		const previous = CalcEditorValidationBridge.request;
+		if (previous && !calcEditorSameDialogContext(previous.context)) {
+			CalcEditorValidationBridge.clearRequest(previous);
+		} else if (previous && previous.phase === 'ready') {
+			CalcEditorValidationBridge.cancelRequest(previous);
+		}
+		// No request token exists in JSDialog. Never send a second request while
+		// a cancelled/timed-out request is still waiting for its first window ID.
+		if (!context || CalcEditorValidationBridge.request) {
+			onLoaded(false);
+			return () => undefined;
+		}
+		const request: CalcValidationRequest = {
+			id: ++CalcEditorValidationBridge.nextRequestId, context, windowId: null,
+			phase: 'waiting', controls: new Map(), target, callback: onLoaded, timer: 0,
+		};
+		CalcEditorValidationBridge.request = request;
+		request.timer = window.setTimeout(() => {
+			if (CalcEditorValidationBridge.request === request) {
+				CalcEditorValidationBridge.cancelRequest(request);
+			}
+		}, 10000);
 		sendUno('.uno:Validation');
+		return () => {
+			if (CalcEditorValidationBridge.request === request && request.phase !== 'closing') {
+				CalcEditorValidationBridge.cancelRequest(request);
+			}
+		};
 	}
 
-	static apply(
-		state: CalcEditorValidationState,
-		sendUno: (command: string) => void,
-	): void {
-		CalcEditorValidationBridge.pendingWrite = { ...state };
-		sendUno('.uno:Validation');
+	static apply(state: CalcEditorValidationState, _sendUno: (command: string) => void): boolean {
+		const request = CalcEditorValidationBridge.request;
+		if (!request || request.phase !== 'ready' || request.windowId === null ||
+			!calcEditorSameDialogContext(request.context)) return false;
+		request.phase = 'closing';
+		CalcEditorValidationBridge.applyValidationState(request.windowId, { ...state });
+		// Keep a window tombstone so queued updates cannot seed the next rule.
+		CalcEditorValidationBridge.retireRequest(request);
+		return true;
 	}
 
 	static dismissWindow(windowId: number): void {
-		CalcEditorValidationBridge.sendResponse(windowId, 'cancel', 2);
+		if (!calcEditorDialogContext()) return;
+		CalcEditorValidationBridge.sendResponse(windowId, 'cancel', 0);
 		CalcEditorValidationBridge.releaseDialogWindow(windowId);
 	}
 
@@ -132,29 +283,89 @@ class CalcEditorValidationBridge {
 		}
 	}
 
-	static handlePayload(payload: NativeDialogPayload): void {
-		const windowId = payload.windowId;
-		if (windowId < 0) {
-			return;
+	private static clearRequest(request: CalcValidationRequest): void {
+		if (request.timer) window.clearTimeout(request.timer);
+		request.timer = 0;
+		request.callback = null;
+		if (CalcEditorValidationBridge.request === request) {
+			CalcEditorValidationBridge.request = null;
 		}
-		if (CalcEditorValidationBridge.pendingWrite) {
-			const write = CalcEditorValidationBridge.pendingWrite;
-			CalcEditorValidationBridge.pendingWrite = null;
-			CalcEditorValidationBridge.applyValidationState(windowId, write);
-			return;
+	}
+
+	private static retireRequest(request: CalcValidationRequest): void {
+		if (request.windowId !== null) {
+			CalcEditorValidationBridge.retiredWindows.set(request.windowId, request.context);
 		}
-		if (CalcEditorValidationBridge.pendingRead) {
-			const target = CalcEditorValidationBridge.pendingRead;
-			const callback = CalcEditorValidationBridge.pendingReadCallback;
-			CalcEditorValidationBridge.pendingRead = null;
-			CalcEditorValidationBridge.pendingReadCallback = null;
-			CalcEditorValidationBridge.parseValidationPayload(payload, target);
-			CalcEditorValidationBridge.sendResponse(windowId, 'cancel', 2);
-			CalcEditorValidationBridge.releaseDialogWindow(windowId);
-			if (callback) {
-				callback();
+		CalcEditorValidationBridge.clearRequest(request);
+	}
+
+	private static cancelRequest(request: CalcValidationRequest): void {
+		const callback = request.callback;
+		request.callback = null;
+		if (request.timer) window.clearTimeout(request.timer);
+		request.timer = 0;
+		request.phase = 'abandoned';
+		if (request.windowId !== null || !calcEditorSameDialogContext(request.context)) {
+			CalcEditorValidationBridge.retireRequest(request);
+			if (request.windowId !== null && calcEditorSameDialogContext(request.context)) {
+				CalcEditorValidationBridge.dismissWindow(request.windowId);
 			}
 		}
+		callback?.(false);
+	}
+
+	static handlePayload(payload: NativeDialogPayload): void {
+		const request = CalcEditorValidationBridge.request;
+		if (!request || payload.windowId < 0) return;
+		if (!calcEditorSameDialogContext(request.context)) {
+			CalcEditorValidationBridge.clearRequest(request);
+			return;
+		}
+		if (request.windowId === null) {
+			if (payload.action !== 'show') return;
+			request.windowId = payload.windowId;
+		}
+		if (request.windowId !== payload.windowId) return;
+		if (payload.action === 'dismiss') {
+			const callback = request.callback;
+			CalcEditorValidationBridge.clearRequest(request);
+			callback?.(false);
+			return;
+		}
+		if (request.phase === 'abandoned') {
+			CalcEditorValidationBridge.cancelRequest(request);
+			return;
+		}
+		if (request.phase === 'ready' || request.phase === 'closing') return;
+		(payload.controls || []).forEach((control) => request.controls.set(control.id, control));
+		if (!request.controls.has('allow')) return;
+		if (!['inputhelp_text', 'tsbhelp', 'title'].every((id) => request.controls.has(id))) {
+			if (request.phase !== 'help') {
+				request.phase = 'help';
+				CalcEditorValidationBridge.selectValidationTab(request.windowId, 1);
+			}
+			return;
+		}
+		if (!['actionCB', 'errorMsg', 'erroralert_title', 'tsbshow'].every((id) => request.controls.has(id))) {
+			if (request.phase !== 'error') {
+				request.phase = 'error';
+				CalcEditorValidationBridge.selectValidationTab(request.windowId, 2);
+			}
+			return;
+		}
+		CalcEditorValidationBridge.parseValidationPayload(
+			{ ...payload, controls: Array.from(request.controls.values()) }, request.target,
+		);
+		request.phase = 'ready';
+		if (request.timer) window.clearTimeout(request.timer);
+		request.timer = 0;
+		const callback = request.callback;
+		request.callback = null;
+		callback?.(true);
+	}
+
+	private static selectValidationTab(windowId: number, index: number): void {
+		CalcEditorValidationBridge.sendDialogEvent(windowId, 'tabcontrol', 'selecttab', String(index), 'tabcontrol');
 	}
 
 	private static applyValidationState(
@@ -199,6 +410,7 @@ class CalcEditorValidationBridge {
 			);
 		};
 
+		selectTab(0);
 		selectList('allow', state.allowIndex);
 		if (CalcEditorValidationCatalog.needsDataOperator(state.allowIndex)) {
 			selectList('data', state.dataIndex);
@@ -206,16 +418,21 @@ class CalcEditorValidationBridge {
 		if (CalcEditorValidationCatalog.isListAllow(state.allowIndex)) {
 			modifyEntry('minlist', state.listEntries);
 			check('allowempty', state.allowEmpty);
-			check('showlist', state.showDropdownList);
+			check('showlist', true);
 			check('sortascend', state.sortAscending);
 			check('casesens', state.caseSensitive);
+			check('showlist', state.showDropdownList);
 		} else if (CalcEditorValidationCatalog.isRangeAllow(state.allowIndex)) {
 			modifyEntry('min', state.minValue);
 			check('allowempty', state.allowEmpty);
+			check('showlist', true);
+			check('sortascend', state.sortAscending);
+			check('casesens', state.caseSensitive);
 			check('showlist', state.showDropdownList);
 		} else if (CalcEditorValidationCatalog.isCustomAllow(state.allowIndex)) {
 			modifyEntry('min', state.minValue);
 			check('allowempty', state.allowEmpty);
+			check('casesens', state.caseSensitive);
 		} else if (state.allowIndex !== 0) {
 			modifyEntry('min', state.minValue);
 			if (CalcEditorValidationCatalog.needsBetweenValues(state.dataIndex)) {
@@ -230,17 +447,17 @@ class CalcEditorValidationBridge {
 		modifyEntry('inputhelp_text', state.inputHelpText);
 
 		selectTab(2);
-		check('tsbshow', state.showErrorAlert);
+		// Core ignores edits to insensitive controls. Populate retained values
+		// while enabled, then restore the user's final warning/action switches.
+		check('tsbshow', true);
+		selectList('actionCB', 0);
+		modifyEntry('erroralert_title', state.errorTitle);
+		modifyEntry('errorMsg', state.errorMessage);
 		selectList('actionCB', state.errorActionIndex);
-		if (state.errorActionIndex === 3) {
-			modifyEntry('erroralert_title', state.macroUrl);
-		} else if (state.errorActionIndex !== 4) {
-			modifyEntry('erroralert_title', state.errorTitle);
-			modifyEntry('errorMsg', state.errorMessage);
-		}
+		if (state.errorActionIndex === 3) modifyEntry('erroralert_title', state.macroUrl);
+		check('tsbshow', state.showErrorAlert);
 
 		CalcEditorValidationBridge.sendResponse(windowId, 'ok', 1);
-		CalcEditorValidationBridge.releaseDialogWindow(windowId);
 	}
 
 	private static parseValidationPayload(
@@ -269,6 +486,9 @@ class CalcEditorValidationBridge {
 		);
 		if (target.errorActionIndex === 3) {
 			target.macroUrl = target.errorTitle;
+			target.errorTitle = '';
+		} else {
+			target.macroUrl = '';
 		}
 		target.errorMessage = CalcEditorValidationBridge.optEntryText(controls, 'errorMsg');
 		target.allowEmpty = CalcEditorValidationBridge.optCheck(controls, 'allowempty', true);
@@ -302,26 +522,12 @@ class CalcEditorValidationBridge {
 				return n;
 			}
 		}
-		if (control.text) {
-			const allow = CalcEditorValidationCatalog.ALLOW_OPTIONS.find(
-				(o) => o.label === control.text,
-			);
-			if (allow) {
-				return allow.index;
-			}
-			const data = CalcEditorValidationCatalog.DATA_OPTIONS.find(
-				(o) => o.label === control.text,
-			);
-			if (data) {
-				return data.index;
-			}
-			const err = CalcEditorValidationCatalog.ERROR_ACTION_OPTIONS.find(
-				(o) => o.label === control.text,
-			);
-			if (err) {
-				return err.index;
-			}
+		if (control.text && Array.isArray(control.entries)) {
+			const index = control.entries.findIndex((entry: any) =>
+				(typeof entry === 'string' ? entry : entry?.text) === control.text);
+			if (index >= 0) return index;
 		}
+
 		return fallback;
 	}
 
@@ -345,7 +551,7 @@ class CalcEditorValidationBridge {
 		if (!control || control.checked === undefined) {
 			return fallback;
 		}
-		return !!control.checked;
+		return control.checked === true || String(control.checked) === 'true';
 	}
 
 	private static sendDialogEvent(
@@ -355,7 +561,8 @@ class CalcEditorValidationBridge {
 		data: string,
 		type: string,
 	): void {
-		const socket = (window as any).app && (window as any).app.socket;
+		const context = calcEditorDialogContext();
+		const socket = context?.socket;
 		if (!socket || typeof socket.sendMessage !== 'function' || windowId < 0) {
 			return;
 		}
@@ -394,7 +601,9 @@ class CalcEditorValidationBridge {
 				CalcEditorValidationBridge.armHarvestTimer();
 				return;
 			}
-			CalcEditorValidationBridge.finishHarvest(false);
+			CalcEditorValidationBridge.harvestCancelled = true;
+			const callbacks = CalcEditorValidationBridge.harvestCallbacks.splice(0);
+			callbacks.forEach((callback) => callback([]));
 		}, 8000);
 	}
 
@@ -427,16 +636,12 @@ class CalcEditorValidationBridge {
 	}
 
 	private static onMacroUpdate(payload: NativeDialogPayload): void {
-		const control = (payload.controls || [])[0];
-		if (!control) {
-			return;
-		}
-		if (control.id === 'categories') {
-			CalcEditorValidationBridge.handleCategoriesUpdate(control);
-			return;
-		}
-		if (control.id === 'commands') {
-			CalcEditorValidationBridge.handleCommandsUpdate(control);
+		for (const control of payload.controls || []) {
+			if (control.id === 'categories') {
+				CalcEditorValidationBridge.handleCategoriesUpdate(control);
+			} else if (control.id === 'commands') {
+				CalcEditorValidationBridge.handleCommandsUpdate(control);
+			}
 		}
 	}
 
@@ -672,12 +877,18 @@ class CalcEditorValidationBridge {
 			CalcEditorValidationBridge.harvestTimer = 0;
 		}
 		const windowId = CalcEditorValidationBridge.harvestWindowId;
-		if (sendCancel && windowId >= 0) {
+		const context = CalcEditorValidationBridge.harvestContext;
+		if (windowId >= 0 && context) CalcEditorValidationBridge.retiredWindows.set(windowId, context);
+		if (sendCancel && windowId >= 0 && calcEditorSameDialogContext(context)) {
 			CalcEditorValidationBridge.sendResponse(windowId, 'cancel', 0);
 		}
 		const items = CalcEditorValidationBridge.harvestItems.slice();
 		const callbacks = CalcEditorValidationBridge.harvestCallbacks.splice(0);
-		callbacks.forEach((callback) => callback(items));
+		CalcEditorValidationBridge.harvestContext = null;
+		CalcEditorValidationBridge.harvestWindowId = -1;
+		if (calcEditorSameDialogContext(context) && !CalcEditorValidationBridge.harvestCancelled) {
+			callbacks.forEach((callback) => callback(items));
+		}
 	}
 
 	private static collectScopes(entries: any[]): CalcMacroHarvestScope[] {
@@ -821,7 +1032,8 @@ class CalcEditorValidationBridge {
 		cmd: string,
 		row: number,
 	): void {
-		const socket = (window as any).app && (window as any).app.socket;
+		const context = calcEditorDialogContext();
+		const socket = context?.socket;
 		if (!socket || typeof socket.sendMessage !== 'function' || windowId < 0) {
 			return;
 		}

@@ -1,5 +1,5 @@
 /*
- * Calc data validation options (aligned with Android CalcValidationCatalog / LO validate.cxx).
+ * iOS Calc data validation options and Core validation control indices.
  */
 
 interface CalcValidationOption {
@@ -63,7 +63,7 @@ class CalcEditorValidationCatalog {
 	}
 
 	static needsDataOperator(allowIndex: number): boolean {
-		return allowIndex !== 0;
+		return [1, 2, 3, 4, 7].includes(allowIndex);
 	}
 
 	static isListAllow(allowIndex: number): boolean {
@@ -80,6 +80,12 @@ class CalcEditorValidationCatalog {
 
 	static needsBetweenValues(dataIndex: number): boolean {
 		return dataIndex === 6 || dataIndex === 7;
+	}
+
+	static valueLabel(dataIndex: number): string {
+		if (dataIndex === 1 || dataIndex === 3) return '最大值';
+		if (dataIndex === 2 || dataIndex === 4 || CalcEditorValidationCatalog.needsBetweenValues(dataIndex)) return '最小值';
+		return '数值';
 	}
 
 	static comboTextFor(controlId: string, index: number): string {

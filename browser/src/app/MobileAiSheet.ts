@@ -8,6 +8,8 @@ interface MobileAiSheetOptions {
 	title: string;
 	/** Android WAI 居中圆角卡；默认 bottom 为 AI 助手/功能列表底 sheet */
 	presentation?: MobileAiSheetPresentation;
+	/** Adapt this sheet to the iOS Calc assistant keyboard viewport. */
+	keyboardAvoidance?: boolean | (() => boolean);
 	/** writer 头图（MobileAiOperationIcons），与 Android 40dp 任务图标一致 */
 	taskType?: string;
 	onClose?: () => void;
@@ -37,15 +39,58 @@ class MobileAiSheet {
 	private readonly title: HTMLElement;
 	readonly closeButton: HTMLButtonElement;
 	private readonly onClose?: () => void;
+	private keyboardAvoidance = false;
+	private readonly shouldAvoidKeyboard: () => boolean;
+	private visualViewport?: VisualViewport;
+	private nativeKeyboardFrame?: { visibleHeight: number; webViewHeight: number };
+	private readonly onViewportChange = (): void => this.updateKeyboardViewport();
+	private readonly onOrientationChange = (): void => {
+		this.nativeKeyboardFrame = undefined;
+		this.updateKeyboardViewport();
+	};
+	private readonly onNativeKeyboardFrame = (event: Event): void => {
+		const detail = (event as CustomEvent<{
+			visibleHeight?: number;
+			keyboardOverlap?: number;
+			webViewHeight?: number;
+		}>).detail;
+		if (
+			!detail ||
+			typeof detail.visibleHeight !== 'number' ||
+			!Number.isFinite(detail.visibleHeight) ||
+			typeof detail.webViewHeight !== 'number' ||
+			!Number.isFinite(detail.webViewHeight) ||
+			detail.webViewHeight <= 0
+		) {
+			return;
+		}
+		if (
+			(detail.keyboardOverlap !== undefined && detail.keyboardOverlap <= 0) ||
+			detail.visibleHeight >= detail.webViewHeight - 1
+		) {
+			this.nativeKeyboardFrame = undefined;
+		} else {
+			this.nativeKeyboardFrame = {
+				visibleHeight: Math.max(0, detail.visibleHeight),
+				webViewHeight: detail.webViewHeight,
+			};
+		}
+		this.updateKeyboardViewport();
+	};
 
 	constructor(options: MobileAiSheetOptions) {
 		this.onClose = options.onClose;
+		this.shouldAvoidKeyboard =
+			typeof options.keyboardAvoidance === 'function'
+				? options.keyboardAvoidance
+				: () => !!options.keyboardAvoidance;
 		const writer = options.presentation === 'writer';
 		this.root = document.createElement('div');
 		this.root.setAttribute('role', 'presentation');
 		this.root.setAttribute('data-cool-mobile-ai-ui', '1');
 		this.root.className =
-			'mobile-ai-sheet-root' + (writer ? ' mobile-ai-sheet-root--writer' : '');
+			'mobile-ai-sheet-root' +
+			(writer ? ' mobile-ai-sheet-root--writer' : '');
 		this.root.onclick = (event) => {
 			if (event.target === this.root) {
 				this.close();
@@ -140,9 +185,18 @@ class MobileAiSheet {
 	}
 
 	open(focusElement?: HTMLElement | null): void {
+		this.unbindKeyboardViewport();
+		this.keyboardAvoidance = this.shouldAvoidKeyboard();
+		this.root.classList.toggle('mobile-ai-sheet-root--ios-keyboard', this.keyboardAvoidance);
+		this.body.style.display = this.keyboardAvoidance ? 'flex' : '';
+		this.body.style.flexDirection = this.keyboardAvoidance ? 'column' : '';
+		this.body.style.flex = this.keyboardAvoidance ? '1 1 auto' : '';
+		this.body.style.minHeight = this.keyboardAvoidance ? '0' : '';
+		this.body.style.overflow = this.keyboardAvoidance ? 'hidden' : '';
 		if (!this.root.parentElement) {
 			document.body.appendChild(this.root);
 		}
+		this.bindKeyboardViewport();
 		if (!focusElement) {
 			return;
 		}
@@ -159,9 +213,71 @@ class MobileAiSheet {
 		if (active && this.root.contains(active) && typeof active.blur === 'function') {
 			active.blur();
 		}
+		this.unbindKeyboardViewport();
 		this.root.remove();
 		if (this.onClose) {
 			this.onClose();
 		}
+	}
+
+	private bindKeyboardViewport(): void {
+		if (!this.keyboardAvoidance) {
+			return;
+		}
+		this.visualViewport = window.visualViewport || undefined;
+		if (this.visualViewport) {
+			this.visualViewport.addEventListener('resize', this.onViewportChange);
+			this.visualViewport.addEventListener('scroll', this.onViewportChange);
+		}
+		window.addEventListener('cool-ios-keyboard-frame', this.onNativeKeyboardFrame);
+		window.addEventListener('resize', this.onViewportChange);
+		window.addEventListener('orientationchange', this.onOrientationChange);
+		this.root.addEventListener('focusin', this.onViewportChange);
+		this.root.addEventListener('focusout', this.onViewportChange);
+		this.updateKeyboardViewport();
+	}
+
+	private unbindKeyboardViewport(): void {
+		if (this.visualViewport) {
+			this.visualViewport.removeEventListener('resize', this.onViewportChange);
+			this.visualViewport.removeEventListener('scroll', this.onViewportChange);
+			this.visualViewport = undefined;
+		}
+		window.removeEventListener('cool-ios-keyboard-frame', this.onNativeKeyboardFrame);
+		window.removeEventListener('resize', this.onViewportChange);
+		window.removeEventListener('orientationchange', this.onOrientationChange);
+		this.root.removeEventListener('focusin', this.onViewportChange);
+		this.root.removeEventListener('focusout', this.onViewportChange);
+		this.nativeKeyboardFrame = undefined;
+		this.root.classList.remove('mobile-ai-sheet-root--compact-keyboard');
+		this.root.style.removeProperty('top');
+		this.root.style.removeProperty('height');
+		this.root.style.removeProperty('box-sizing');
+		this.panel.style.removeProperty('max-height');
+	}
+
+	private updateKeyboardViewport(): void {
+		if (!this.keyboardAvoidance || !this.root.parentElement) {
+			return;
+		}
+		const top = this.visualViewport?.offsetTop ?? 0;
+		let visibleBottom = this.visualViewport
+			? this.visualViewport.offsetTop + this.visualViewport.height
+			: window.innerHeight;
+		if (this.nativeKeyboardFrame) {
+			const cssScale = window.innerHeight / this.nativeKeyboardFrame.webViewHeight;
+			const nativeVisibleBottom = this.nativeKeyboardFrame.visibleHeight * cssScale;
+			// Use the tighter boundary; native and visual values are never subtracted cumulatively.
+			visibleBottom = Math.min(visibleBottom, nativeVisibleBottom);
+		}
+		this.setKeyboardViewport(top, Math.max(0, visibleBottom - top));
+	}
+
+	private setKeyboardViewport(top: number, height: number): void {
+		this.root.classList.toggle('mobile-ai-sheet-root--compact-keyboard', height < 300);
+		this.root.style.top = `${Math.max(0, top)}px`;
+		this.root.style.height = `${Math.max(0, height)}px`;
+		this.root.style.boxSizing = 'border-box';
+		this.panel.style.maxHeight = '100%';
 	}
 }

@@ -14,12 +14,15 @@ const MOBILE_AI_STOP_SVG =
 class MobileAiAssistantPanel {
 	private readonly controller: MobileAiConversationController;
 	private readonly sheet: MobileAiSheet;
+	private readonly content: HTMLDivElement;
+	private readonly contextArea: HTMLDivElement;
 	private readonly tabDocQa: HTMLButtonElement;
 	private readonly tabChat: HTMLButtonElement;
 	private readonly tabDocQaCell: HTMLDivElement;
 	private readonly tabChatCell: HTMLDivElement;
 	private readonly messages: HTMLDivElement;
 	private readonly input: HTMLTextAreaElement;
+	private readonly inputRow: HTMLDivElement;
 	private readonly sendButton: HTMLButtonElement;
 	private readonly status: HTMLDivElement;
 	private readonly clearLink: HTMLButtonElement;
@@ -29,10 +32,18 @@ class MobileAiAssistantPanel {
 		this.controller = MobileAiConversationController.shared();
 		this.sheet = new MobileAiSheet({
 			title: 'AI助手',
-			onClose: () => this.controller.cancel(),
+			keyboardAvoidance: () =>
+				!!(window as any).ThisIsTheiOSApp &&
+				(window as any).app?.map?.getDocType?.() === 'spreadsheet',
+			onClose: () => {
+				this.setIosCalcKeyboardLayout(false);
+				this.controller.cancel();
+			},
 		});
-		const content = document.createElement('div');
-		content.style.cssText = 'display:flex;flex-direction:column;gap:12px;min-height:300px;';
+		this.content = document.createElement('div');
+		this.content.style.cssText = 'display:flex;flex-direction:column;gap:12px;min-height:300px;';
+		this.contextArea = document.createElement('div');
+
 
 		const tabs = document.createElement('div');
 		tabs.style.cssText =
@@ -48,21 +59,21 @@ class MobileAiAssistantPanel {
 		this.tabChatCell.appendChild(this.tabChat);
 		tabs.appendChild(this.tabDocQaCell);
 		tabs.appendChild(this.tabChatCell);
-		content.appendChild(tabs);
+		this.content.appendChild(tabs);
 
 		this.messages = document.createElement('div');
 		this.messages.setAttribute('aria-live', 'polite');
 		this.messages.style.cssText =
 			'display:flex;flex-direction:column;gap:8px;min-height:160px;';
-		content.appendChild(this.messages);
+		this.content.appendChild(this.messages);
 
 		this.status = document.createElement('div');
 		this.status.setAttribute('role', 'status');
 		this.status.style.cssText = 'min-height:20px;color:#5f6368;font-size:13px;';
-		content.appendChild(this.status);
+		this.content.appendChild(this.status);
 
-		const inputRow = document.createElement('div');
-		inputRow.style.cssText =
+		this.inputRow = document.createElement('div');
+		this.inputRow.style.cssText =
 			'display:flex;align-items:center;gap:8px;min-height:48px;padding:6px 6px 6px 16px;' +
 			'border-radius:24px;background:#f0f4f9;';
 		this.input = document.createElement('textarea');
@@ -79,7 +90,7 @@ class MobileAiAssistantPanel {
 			'background:transparent;font:inherit;font-size:16px;color:#202124;outline:none;' +
 			'-webkit-user-select:text;user-select:text;';
 		this.input.addEventListener('blur', () => this.restoreFocusIfStolen());
-		inputRow.appendChild(this.input);
+		this.inputRow.appendChild(this.input);
 		this.sendButton = document.createElement('button');
 		this.sendButton.type = 'button';
 		this.sendButton.setAttribute('aria-label', '发送');
@@ -89,19 +100,20 @@ class MobileAiAssistantPanel {
 			'background:linear-gradient(135deg,#1DA8FF 0%,#DD00CE 100%);';
 		this.sendButton.innerHTML = MOBILE_AI_SEND_PLANE_SVG;
 		this.sendButton.onclick = () => this.onSendOrStop();
-		inputRow.appendChild(this.sendButton);
-		content.appendChild(inputRow);
+		this.inputRow.appendChild(this.sendButton);
+		this.content.appendChild(this.inputRow);
 
 		this.clearLink = document.createElement('button');
 		this.clearLink.type = 'button';
 		this.clearLink.textContent = '清空对话';
+		this.clearLink.className = 'mobile-ai-assistant-clear';
 		this.clearLink.style.cssText =
 			'align-self:flex-end;padding:0;border:none;background:none;font:inherit;' +
 			'font-size:13px;color:#5f6368;cursor:pointer;';
 		this.clearLink.onclick = () => this.controller.clear();
-		content.appendChild(this.clearLink);
+		this.content.appendChild(this.clearLink);
 
-		this.sheet.setBody(content);
+		this.sheet.setBody(this.content);
 		this.unsubscribe = this.controller.subscribe(() => this.render());
 		this.render();
 	}
@@ -109,6 +121,7 @@ class MobileAiAssistantPanel {
 	open(): void {
 		this.controller.onDocumentOpened();
 		this.refreshDocQaLabel();
+		this.setIosCalcKeyboardLayout(this.isIosCalc());
 		this.sheet.open(this.input);
 		this.render();
 	}
@@ -116,6 +129,41 @@ class MobileAiAssistantPanel {
 	close(): void {
 		this.input.blur();
 		this.sheet.close();
+		this.setIosCalcKeyboardLayout(false);
+	}
+
+	private isIosCalc(): boolean {
+		return (
+			!!(window as any).ThisIsTheiOSApp &&
+			(window as any).app?.map?.getDocType?.() === 'spreadsheet'
+		);
+	}
+
+	private setIosCalcKeyboardLayout(enabled: boolean): void {
+		if (enabled) {
+			const tabs = this.tabDocQaCell.parentElement;
+			this.content.insertBefore(this.contextArea, this.content.firstChild);
+			if (tabs) this.contextArea.appendChild(tabs);
+			this.contextArea.append(this.messages, this.status);
+			this.contextArea.style.cssText =
+				'display:flex;flex-direction:column;gap:12px;flex:1 1 auto;min-height:0;overflow:auto;';
+		} else if (this.contextArea.parentElement) {
+			while (this.contextArea.firstChild) {
+				this.content.insertBefore(this.contextArea.firstChild, this.contextArea);
+			}
+			this.contextArea.remove();
+		}
+		this.content.style.flex = enabled ? '1 1 auto' : '';
+		this.content.style.minHeight = enabled ? '0' : '300px';
+		this.messages.style.flex = enabled ? '1 1 auto' : '';
+		this.messages.style.minHeight = enabled ? '0' : '160px';
+		this.messages.style.overflow = enabled ? 'auto' : '';
+		this.messages.style.setProperty(
+			'-webkit-overflow-scrolling',
+			enabled ? 'touch' : '',
+		);
+		this.inputRow.style.flex = enabled ? '0 0 auto' : '';
+		this.clearLink.style.flex = enabled ? '0 0 auto' : '';
 	}
 
 	private restoreFocusIfStolen(): void {
