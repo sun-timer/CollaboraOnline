@@ -1181,6 +1181,7 @@ class ImpressEditorPanel {
 	}
 
 	private sendUno(command: string): void {
+		if (WriterEditorController.applyImpressShapeCharacter(command)) return;
 		const map = (window as any).app?.map;
 		if (map && typeof map.sendUnoCommand === 'function') {
 			map.sendUnoCommand(command);

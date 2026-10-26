@@ -1656,7 +1656,8 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                         aiSwitchChecked[0] ? new int[]{0xFF438BFF, 0xFF8C50FF, 0xFFE600EB}
                                 : new int[]{0xFFEC5D1F, 0xFFEC5D1F}));
                 ((GradientDrawable) createButton.getBackground()).setCornerRadius(8 * getResources().getDisplayMetrics().density);
-            } else if (requestCode == CREATE_DOCUMENT_REQUEST_CODE) {
+            } else if (requestCode == CREATE_DOCUMENT_REQUEST_CODE
+                    || requestCode == CREATE_SPREADSHEET_REQUEST_CODE) {
                 if (aiSwitchChecked[0]) {
                     createButton.setText("生成和创建");
                     GradientDrawable gradient = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,

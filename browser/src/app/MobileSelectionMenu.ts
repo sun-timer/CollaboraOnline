@@ -107,8 +107,9 @@ class MobileSelectionMenu {
 		}
 	}
 
-	/** Fixed Writer edit layout (Android lolib_selection_popup.xml). */
-	static editMenuItems(): MobileSelectionMenuItemSpec[] {
+	/** Document-specific edit actions (Android lolib_selection_popup.xml). */
+	static editMenuItems(documentType: MobileAiDocumentType = 'text'): MobileSelectionMenuItemSpec[] {
+		if (documentType === 'presentation') return MobileSelectionMenu.impressMenuItems();
 		return [
 			{ id: 'copy', label: '复制', iconKey: 'copy', kind: 'clipboard' },
 			{ id: 'cut', label: '剪切', iconKey: 'cut', kind: 'clipboard' },
@@ -194,15 +195,34 @@ class MobileSelectionMenu {
 				kind: 'action',
 				unoCommand: '.uno:ClearContents',
 			},
-			{
-				id: 'translate',
-				label: '翻译',
-				iconKey: 'translate',
-				kind: 'ai',
-				androidTaskType: 'translate',
-				catalogTaskType: 'translate',
-			},
+			{ id: 'calc_formula', label: 'AI公式', iconKey: 'calc_formula', kind: 'ai', catalogTaskType: 'calc_formula' },
+			{ id: 'calc_cond_format', label: '条件格式', iconKey: 'calc_cond_format', kind: 'ai', catalogTaskType: 'calc_cond_format' },
+			{ id: 'calc_data_analysis', label: '数据分析', iconKey: 'calc_data_analysis', kind: 'ai', catalogTaskType: 'calc_data_analysis' },
+			{ id: 'calc_data_process', label: '数据处理', iconKey: 'calc_data_process', kind: 'ai', catalogTaskType: 'calc_data_process' },
+			{ id: 'calc_chart', label: '生成图表', iconKey: 'calc_chart', kind: 'ai', catalogTaskType: 'calc_chart' },
 		];
+	}
+
+	/** Match the existing PPT AI sheet, including its PPT generation route. */
+	static impressMenuItems(): MobileSelectionMenuItemSpec[] {
+		const clipboard = MobileSelectionMenu.editMenuItems().filter((item) => item.kind === 'clipboard');
+		const tasks = [
+			'impress_generate', 'continue', 'article_generate', 'expand', 'polish',
+			'condense', 'rewrite', 'text_extract', 'image_generate', 'format_batch',
+		];
+		const aiItems = tasks.map((taskType): MobileSelectionMenuItemSpec => {
+			const entry = MobileAiUiCatalog.getEntry(taskType)!;
+			return {
+				id: taskType,
+				label: taskType === 'continue' ? '续写' : taskType === 'text_extract' ? '文案提取'
+					: entry.label.replace(/ /g, ''),
+				iconKey: 'impress_' + taskType,
+				kind: 'ai',
+				androidTaskType: entry.androidTaskType,
+				catalogTaskType: taskType,
+			};
+		});
+		return clipboard.concat(aiItems);
 	}
 
 	/** Impress graphic selection compact row. */
@@ -250,6 +270,10 @@ class MobileSelectionMenu {
 		documentType: MobileAiDocumentType,
 		isReadOnly: boolean,
 	): string[] {
+		if (documentType === 'presentation') {
+			return isReadOnly ? [] : MobileSelectionMenu.impressMenuItems()
+				.filter((item) => item.kind === 'ai').map((item) => item.catalogTaskType as string);
+		}
 		return MobileAiUiCatalog.getSelectionEntries(documentType, !isReadOnly).map(
 			(entry) => entry.taskType,
 		);
@@ -343,6 +367,10 @@ class MobileSelectionMenu {
 		}
 		this.textEditMode = this.menuMode === 'text' && editMode;
 		panel.onclick = (e) => e.stopPropagation();
+		// A fresh finger-down is intentional; the opening compatibility click has none.
+		if (this.menuMode === 'calc') {
+			panel.addEventListener('touchstart', () => { MobileSelectionMenu.ignoreActionsUntil = 0; }, { passive: true });
+		}
 
 		const rows = MobileSelectionMenu.buildRows(this.menuMode, editMode, editable);
 		rows.forEach((row) => panel.appendChild(row));
@@ -407,7 +435,8 @@ class MobileSelectionMenu {
 			];
 		}
 
-		const items = MobileSelectionMenu.editMenuItems();
+		const documentType = (window as any).app?.map?.getDocType?.() || 'text';
+		const items = MobileSelectionMenu.editMenuItems(documentType);
 		if (editMode) {
 			return [
 				MobileSelectionMenu.buildTextEditStrip(items, { editMode, editable, mode }),
@@ -588,6 +617,7 @@ class MobileSelectionMenu {
 	): HTMLElement {
 		const row = document.createElement('div');
 		row.className = 'fabric-selection-menu__row';
+		if (ctx.mode === 'calc') MobileSelectionMenu.installStripGestureGuard(row, row);
 		if (ctx.mode === 'graphic') {
 			row.classList.add('fabric-selection-menu__row--scroll');
 		}
@@ -611,8 +641,8 @@ class MobileSelectionMenu {
 			if (item.id === 'cut' || item.id === 'clear') {
 				return ctx.editable && ctx.editMode;
 			}
-			if (item.id === 'translate') {
-				return ctx.editMode;
+			if (item.kind === 'ai') {
+				return ctx.editMode && ctx.editable;
 			}
 			return true;
 		}
@@ -632,7 +662,7 @@ class MobileSelectionMenu {
 			return ctx.editMode;
 		}
 		if (item.kind === 'ai') {
-			return ctx.editMode;
+			return ctx.editMode && ctx.editable;
 		}
 		return true;
 	}
@@ -648,7 +678,10 @@ class MobileSelectionMenu {
 
 		const icon = document.createElement('span');
 		icon.className = 'fabric-selection-menu__icon';
-		icon.innerHTML = MobileSelectionMenuIcons.get(item.iconKey);
+		icon.innerHTML = item.catalogTaskType &&
+			(item.catalogTaskType.startsWith('calc_') || item.iconKey.startsWith('impress_'))
+			? MobileAiOperationIcons.svgFor(item.catalogTaskType)
+			: MobileSelectionMenuIcons.get(item.iconKey);
 		button.appendChild(icon);
 
 		const label = document.createElement('span');
@@ -656,6 +689,10 @@ class MobileSelectionMenu {
 		label.textContent = item.label;
 		button.appendChild(label);
 
+		// Keep clipboard selection/focus intact until the action is dispatched.
+		button.addEventListener('mousedown', (event) => {
+			if ((window as any).__coolMobileSelectionMenu?.menuMode === 'calc') event.preventDefault();
+		});
 		button.onclick = (event) => {
 			if (MobileSelectionMenu.consumeOpeningClick(event)) {
 				return;
@@ -689,6 +726,8 @@ class MobileSelectionMenu {
 		}
 		menu?.hide();
 		if (item.catalogTaskType) {
+			const docType = (window as any).app?.map?.getDocType?.() || 'text';
+			if (!MobileAiUiCatalog.canRun(item.catalogTaskType, docType)) return;
 			const entry = MobileAiUiCatalog.getEntry(item.catalogTaskType);
 			if (
 				entry?.selectionRequired &&

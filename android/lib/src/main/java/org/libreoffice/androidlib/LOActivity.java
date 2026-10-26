@@ -5566,6 +5566,11 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public boolean isImpressDocument() {
+                    return mIsImpressDocument;
+                }
+
+                @Override
                 public void openWriterImageEdit() {
                     if (mWebView == null || !documentLoaded) return;
                     mWebView.evaluateJavascript(
@@ -7477,8 +7482,8 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void openDataProcessDialog() {
-        if (dpTitle != null) dpTitle.setText("AI数据处理");
-        if (dpInput != null) dpInput.setHint("重复数据全部清除");
+        if (dpTitle != null) dpTitle.setText(dpIsAnalysisMode ? "AI数据分析" : "AI数据处理");
+        if (dpInput != null) dpInput.setHint(dpIsAnalysisMode ? "分析这批数据的趋势..." : "重复数据全部清除");
         if (mWebView != null) {
             openDataProcessDialogWithRangeNow();
         } else if (calcSelectedRange != null && !calcSelectedRange.isEmpty()) {
@@ -10976,6 +10981,29 @@ public class LOActivity extends AppCompatActivity {
     }
 
     /*package*/ boolean startAiOperationFromSelection(String taskType) {
+        // Use the same Impress dialogs as its AI function sheet.
+        if (mIsImpressDocument) {
+            if ("impress_generate".equals(taskType)) { openImpressOutlineDialog(); return true; }
+            if ("text_extract".equals(taskType)) { showTextExtractDialog(); return true; }
+            if ("image_generate".equals(taskType)) { showAiImageDialog(); return true; }
+            if ("format_batch".equals(taskType)) {
+                String selection = aiOpPendingSelection == null ? "" : aiOpPendingSelection;
+                if (selection.trim().isEmpty()) {
+                    Toast.makeText(this, "请先选择文本", Toast.LENGTH_SHORT).show();
+                } else {
+                    showFormatBatchDialog(selection);
+                }
+                return true;
+            }
+        }
+        // Use the same Calc dialogs as the AI operation sheet, including empty cells.
+        if (mIsCalcDocument) {
+            if ("calc_formula".equals(taskType)) { openCalcFormulaDialog(); return true; }
+            if ("calc_cond_format".equals(taskType)) { openCondFormatDialog(); return true; }
+            if ("calc_data_analysis".equals(taskType)) { openDataAnalysisDialog(); return true; }
+            if ("calc_data_process".equals(taskType)) { dpIsAnalysisMode = false; openDataProcessDialog(); return true; }
+            if ("calc_chart".equals(taskType)) { openChartDialog(); return true; }
+        }
         // 生成大纲：弹出生成大纲对话框（入口 A，使用选区文字）
         if (AiChatCoordinator.MODE_OUTLINE.equals(taskType)) {
             // Impress 大纲 = 生成 PPT 大纲弹窗（openImpressOutlineDialog）；

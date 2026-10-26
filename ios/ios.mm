@@ -27,6 +27,7 @@
 #include <com/sun/star/util/URL.hpp>
 #include <com/sun/star/sheet/CellFlags.hpp>
 #include <com/sun/star/sheet/XCellRangeAddressable.hpp>
+#include <com/sun/star/sheet/XCellAddressable.hpp>
 #include <com/sun/star/sheet/XCellRangesQuery.hpp>
 #include <com/sun/star/sheet/XSheetCellRanges.hpp>
 #include <com/sun/star/sheet/XSheetCellRange.hpp>
@@ -36,7 +37,13 @@
 #include <com/sun/star/table/XCell.hpp>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/text/XTextCursor.hpp>
+#include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
+#include <svx/svdview.hxx>
+#include <svx/svdmodel.hxx>
+#include <editeng/eeitem.hxx>
+#include <editeng/wghtitem.hxx>
+#include <editeng/postitem.hxx>
 #include <cstring>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/processfactory.hxx>
@@ -117,6 +124,68 @@ bool setIOSViewAuthor(lok::Document *document, int viewId, const char *name)
     return true;
 }
 
+IOSImpressShapeFormatResult toggleIOSImpressShapeFormat(lok::Document *document,
+    int viewId, int part, bool bold)
+{
+    IOSImpressShapeFormatResult result;
+    auto *mutex = comphelper::SolarMutex::get();
+    if (!document || !mutex || viewId < 0 || part < 0) return result;
+    osl::Guard<comphelper::SolarMutex> guard(mutex);
+    if (document->getDocumentType() != LOK_DOCTYPE_PRESENTATION) return result;
+    std::vector<int> ids(std::max(1, document->getViewsCount()));
+    if (!document->getViewIds(ids.data(), ids.size())
+        || std::find(ids.begin(), ids.end(), viewId) == ids.end()) return result;
+    SfxViewShell *view = SfxLokHelper::getViewOfId(viewId);
+    if (!view || !view->GetObjectShell() || view->GetObjectShell()->IsReadOnly()) return result;
+    struct RestoreView {
+        lok::Document *doc;
+        int previous;
+        ~RestoreView() { doc->setView(previous); }
+    } restore{document, document->getView()};
+    document->setView(viewId);
+    if (document->getPart() != part) return result;
+    SdrView *draw = view->GetDrawView();
+    if (!draw || draw->IsTextEdit() || draw->GetMarkedObjectList().GetMarkCount() == 0
+        || !draw->GetModel().IsUndoEnabled()) {
+        result.message = "请选择文本框后重试";
+        return result;
+    }
+    // Use the exact drawing-view path used by Impress, but include all three
+    // script attributes. SetAttributes owns undo, text-run attribute cleanup,
+    // object-change broadcasts and tile invalidation.
+    SfxItemSet current(draw->GetModel().GetItemPool());
+    draw->GetAttributes(current);
+    bool allEnabled;
+    if (bold) {
+        allEnabled = current.Get(EE_CHAR_WEIGHT).GetWeight() >= WEIGHT_BOLD
+            && current.Get(EE_CHAR_WEIGHT_CJK).GetWeight() >= WEIGHT_BOLD
+            && current.Get(EE_CHAR_WEIGHT_CTL).GetWeight() >= WEIGHT_BOLD;
+    } else {
+        allEnabled = current.Get(EE_CHAR_ITALIC).GetPosture() != ITALIC_NONE
+            && current.Get(EE_CHAR_ITALIC_CJK).GetPosture() != ITALIC_NONE
+            && current.Get(EE_CHAR_ITALIC_CTL).GetPosture() != ITALIC_NONE;
+    }
+    result.enabled = !allEnabled;
+    SfxItemSet attributes(draw->GetModel().GetItemPool());
+    if (bold) {
+        const FontWeight value = result.enabled ? WEIGHT_BOLD : WEIGHT_NORMAL;
+        attributes.Put(SvxWeightItem(value, EE_CHAR_WEIGHT));
+        attributes.Put(SvxWeightItem(value, EE_CHAR_WEIGHT_CJK));
+        attributes.Put(SvxWeightItem(value, EE_CHAR_WEIGHT_CTL));
+    } else {
+        const FontItalic value = result.enabled ? ITALIC_NORMAL : ITALIC_NONE;
+        attributes.Put(SvxPostureItem(value, EE_CHAR_ITALIC));
+        attributes.Put(SvxPostureItem(value, EE_CHAR_ITALIC_CJK));
+        attributes.Put(SvxPostureItem(value, EE_CHAR_ITALIC_CTL));
+    }
+    result.success = draw->SetAttributes(attributes, false);
+    if (result.success) {
+        result.changed = 1;
+        result.message = "";
+    }
+    return result;
+}
+
 IOSCalcTextFormatResult applyIOSCalcTextFormat(lok::Document *document, int viewId,
     const IOSCalcTextRange &expected, const char *operation, int value, bool toggle)
 {
@@ -158,6 +227,7 @@ IOSCalcTextFormatResult applyIOSCalcTextFormat(lok::Document *document, int view
     const OUString undoTitle = (highlight ? u"文字高亮"_ustr : superscript ? u"上标"_ustr : u"下标"_ustr)
         + u" #"_ustr + OUString::number(++operationSerial);
     bool allHaveRequestedScript = true;
+    bool highlightReadbackFailed = false;
     try {
         uno::Reference<com::sun::star::view::XSelectionSupplier> supplier(view->GetController(), uno::UNO_QUERY_THROW);
         uno::Any selection = supplier->getSelection();
@@ -180,6 +250,7 @@ IOSCalcTextFormatResult applyIOSCalcTextFormat(lok::Document *document, int view
         auto textRanges = query->queryContentCells(sheet::CellFlags::STRING);
         auto cells = textRanges->getCells()->createEnumeration();
         std::vector<uno::Reference<beans::XMultiPropertySet>> targets;
+        std::vector<table::CellAddress> targetAddresses;
         while (cells->hasMoreElements()) {
             auto entry = cells->nextElement();
             uno::Reference<table::XCell> cell(entry, uno::UNO_QUERY_THROW);
@@ -216,13 +287,16 @@ IOSCalcTextFormatResult applyIOSCalcTextFormat(lok::Document *document, int view
                     allHaveRequestedScript = false;
             }
             targets.emplace_back(cursor, uno::UNO_QUERY_THROW);
+            uno::Reference<sheet::XCellAddressable> cellAddress(cell, uno::UNO_QUERY_THROW);
+            targetAddresses.push_back(cellAddress->getCellAddress());
             if (targets.size() > 10000) {
                 result.message = "请选择不超过一万个文字单元格后操作";
                 return result;
             }
         }
         if (targets.empty()) {
-            result.message = "请选择含文字的单元格；公式和数值不会转换为文字";
+            result.message = highlight ? "请选择非空的文字单元格；数字和公式暂不支持字符高亮"
+                : "请选择含文字的单元格；公式和数值不会转换为文字";
             return result;
         }
         model = view->GetObjectShell()->GetModel();
@@ -257,6 +331,34 @@ IOSCalcTextFormatResult applyIOSCalcTextFormat(lok::Document *document, int view
             target->setPropertyValues(names, values);
             ++result.changed;
         }
+        if (highlight) {
+            // Read through new cell/text objects: the cursor used for writing
+            // retains its EditEngine cache even if PutData simplified the model
+            // to a plain string and discarded the character background.
+            auto sheet = selectedRange->getSpreadsheet();
+            for (const auto &address : targetAddresses) {
+                uno::Reference<text::XText> savedText(
+                    sheet->getCellByPosition(address.Column, address.Row), uno::UNO_QUERY_THROW);
+                auto savedCursor = savedText->createTextCursor();
+                savedCursor->gotoStart(false);
+                savedCursor->gotoEnd(true);
+                uno::Reference<beans::XPropertySet> savedProperties(savedCursor, uno::UNO_QUERY_THROW);
+                sal_Int32 savedColor = -1;
+                bool savedTransparent = true;
+                const bool readable = (savedProperties->getPropertyValue(u"CharBackColor"_ustr) >>= savedColor)
+                    && (savedProperties->getPropertyValue(u"CharBackTransparent"_ustr) >>= savedTransparent);
+                const bool matches = readable && (value < 0 ? savedTransparent
+                    : !savedTransparent && savedColor == value);
+                if (!matches) {
+                    NSLog(@"calc_text_format readback sheet=%d col=%d row=%d expectedColor=%d color=%d transparent=%d matches=0",
+                        int(address.Sheet), int(address.Column), int(address.Row), value, int(savedColor), savedTransparent);
+                    highlightReadbackFailed = true;
+                    throw uno::RuntimeException(u"Calc character background was not retained in the model"_ustr);
+                }
+            }
+            NSLog(@"calc_text_format readback verified=%lu expectedColor=%d",
+                static_cast<unsigned long>(targetAddresses.size()), value);
+        }
         model->unlockControllers();
         controllersLocked = false;
         undo->leaveUndoContext();
@@ -281,7 +383,9 @@ IOSCalcTextFormatResult applyIOSCalcTextFormat(lok::Document *document, int view
                 result.changed = 0;
             }
         } catch (const uno::Exception &) {}
-        result.message = result.changed > 0
+        result.message = highlightReadbackFailed && result.changed == 0
+            ? "文字高亮未能写入，已撤销本次操作"
+            : result.changed > 0
             ? "部分文字格式已变化，请撤销后重新选择单元格"
             : "未能应用文字格式，请确认工作表和单元格未受保护";
     }

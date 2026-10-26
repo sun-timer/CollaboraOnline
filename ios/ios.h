@@ -30,6 +30,14 @@ struct IOSCalcTextFormatResult {
 };
 IOSCalcTextFormatResult applyIOSCalcTextFormat(lok::Document *document, int viewId,
     const IOSCalcTextRange &range, const char *operation, int value, bool toggle);
+struct IOSImpressShapeFormatResult {
+    bool success = false;
+    bool enabled = false;
+    int changed = 0;
+    const char *message = "未能修改文本框格式";
+};
+IOSImpressShapeFormatResult toggleIOSImpressShapeFormat(lok::Document *document,
+    int viewId, int part, bool bold);
 struct IOSCalcFormatStates {
     bool success = false;
     std::string numberFormat;

@@ -52,7 +52,7 @@ class WriterCharPanel {
 	}
 
 	private buildItems(): WriterQuickActionSpec[] {
-		return [
+		const items: WriterQuickActionSpec[] = [
 			{
 				label: '粗体',
 				iconHtml: WriterCharPanelIcons.bold,
@@ -90,6 +90,8 @@ class WriterCharPanel {
 				onTap: () => this.openColor('荧光颜色', 'highlight'),
 			},
 		];
+		return CalcEditorFormat.isActive()
+			? items.filter((item) => item.colorCommand !== '.uno:CharBackColor') : items;
 	}
 
 	private run(command: string): void {

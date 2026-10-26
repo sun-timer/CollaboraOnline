@@ -50,8 +50,28 @@ class CalcAiMutateApply {
 		if (!dataRange) {
 			return { ok: false, error: '图表计划缺少 dataRange' };
 		}
-		// Insert chart using existing InsertObjectChart; type hints are best-effort.
-		const ok = CalcAiMutateApply.sendUno('.uno:InsertObjectChart');
+		const chartType = typeof chart.chartType === 'string'
+			? chart.chartType.trim().toLowerCase() : '';
+		const template = WriterEditorCatalog.chartTemplateService(chartType);
+		if (!template) {
+			return { ok: false, error: '图表类型缺失或不支持，请重新生成图表计划' };
+		}
+		// Use the same templates as manual chart insertion. Without typed args,
+		// Core ignores the AI plan and inserts a default column chart.
+		const args: { [key: string]: any } = {
+			RangeList: { type: 'string', value: dataRange },
+			InNewTable: { type: 'boolean', value: false },
+		};
+		if (WriterEditorCatalog.needsChartTemplate(chartType)) {
+			args.ChartTemplate = { type: 'string', value: template };
+			const curveStyle = WriterEditorCatalog.chartCurveStyle(chartType);
+			if (curveStyle >= 0) {
+				args.ChartCurveStyle = { type: 'int32', value: curveStyle };
+			}
+		}
+		const ok = CalcAiMutateApply.sendUno(
+			'.uno:InsertObjectChart ' + JSON.stringify(args),
+		);
 		if (!ok) {
 			return { ok: false, error: '无法发送插入图表命令' };
 		}

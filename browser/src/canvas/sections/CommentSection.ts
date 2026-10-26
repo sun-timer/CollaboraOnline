@@ -1558,9 +1558,16 @@ export class Comment extends CanvasSectionObject {
 		// CanvasSectionContainer fires the onClick event. But since Hammer.js is used for map, it disables the onClick for SectionContainer.
 		// We will use this event as click event on touch devices, until we remove Hammer.js (then this code will be removed from here).
 		// Control.ColumnHeader.js file is not affected by this situation, because map element (so Hammer.js) doesn't cover headers.
-		if (!this.containerObject.isDraggingSomething() && (<any>window).mode.isMobile() || (<any>window).mode.isTablet()) {
-			if (app.map._docLayer._docType === 'presentation' || app.map._docLayer._docType === 'drawing')
+		if (!this.containerObject.isDraggingSomething() && ((<any>window).mode.isMobile() || (<any>window).mode.isTablet())) {
+			const docType = app.map._docLayer._docType;
+			if (docType === 'spreadsheet' || docType === 'presentation' || docType === 'drawing') {
+				// A comment marker owns this tap. Open its mobile content instead
+				// of forwarding a cell click that focuses the document keyboard.
+				this.stopPropagating(e);
+				this.sectionProperties.commentListSection.selectById(this.sectionProperties.data.id);
 				app.map._docLayer._openCommentWizard(this);
+				return;
+			}
 			this.onMouseEnter();
 			this.onClick(point, e);
 		}

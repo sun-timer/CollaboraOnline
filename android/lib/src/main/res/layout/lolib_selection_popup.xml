@@ -92,6 +92,38 @@
                     <ImageView android:src="@drawable/lolib_ic_ai_rewrite" style="@style/SelectionPopupButtonIcon" />
                     <TextView android:text="文案重写" style="@style/SelectionPopupButtonText" />
                 </LinearLayout>
+                <LinearLayout android:id="@+id/selection_op_impress_text_extract" android:visibility="gone" style="@style/SelectionPopupButtonWeighted">
+                    <ImageView android:src="@drawable/lolib_ic_ai_impress_text_extract" style="@style/SelectionPopupButtonIcon" />
+                    <TextView android:text="文案提取" style="@style/SelectionPopupButtonText" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/selection_op_impress_image_generate" android:visibility="gone" style="@style/SelectionPopupButtonWeighted">
+                    <ImageView android:src="@drawable/lolib_ic_ai_impress_image" style="@style/SelectionPopupButtonIcon" />
+                    <TextView android:text="AI图片" style="@style/SelectionPopupButtonText" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/selection_op_impress_format_batch" android:visibility="gone" style="@style/SelectionPopupButtonWeighted">
+                    <ImageView android:src="@drawable/lolib_ic_ai_impress_format_batch" style="@style/SelectionPopupButtonIcon" />
+                    <TextView android:text="格式批量处理" style="@style/SelectionPopupButtonText" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/selection_op_calc_formula" android:visibility="gone" style="@style/SelectionPopupButton">
+                    <ImageView android:src="@drawable/lolib_ic_ai_calc_formula" style="@style/SelectionPopupButtonIcon" />
+                    <TextView android:text="AI公式" style="@style/SelectionPopupButtonText" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/selection_op_calc_cond_format" android:visibility="gone" style="@style/SelectionPopupButton">
+                    <ImageView android:src="@drawable/lolib_ic_ai_calc_cond_format" style="@style/SelectionPopupButtonIcon" />
+                    <TextView android:text="条件格式" style="@style/SelectionPopupButtonText" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/selection_op_calc_data_analysis" android:visibility="gone" style="@style/SelectionPopupButton">
+                    <ImageView android:src="@drawable/lolib_ic_ai_calc_data_analysis" style="@style/SelectionPopupButtonIcon" />
+                    <TextView android:text="数据分析" style="@style/SelectionPopupButtonText" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/selection_op_calc_data_process" android:visibility="gone" style="@style/SelectionPopupButton">
+                    <ImageView android:src="@drawable/lolib_ic_ai_calc_data_process" style="@style/SelectionPopupButtonIcon" />
+                    <TextView android:text="数据处理" style="@style/SelectionPopupButtonText" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/selection_op_calc_chart" android:visibility="gone" style="@style/SelectionPopupButton">
+                    <ImageView android:src="@drawable/lolib_ic_ai_calc_chart_generate" style="@style/SelectionPopupButtonIcon" />
+                    <TextView android:text="生成图表" style="@style/SelectionPopupButtonText" />
+                </LinearLayout>
             </LinearLayout>
         </HorizontalScrollView>
 

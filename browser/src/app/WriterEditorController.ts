@@ -704,12 +704,29 @@ class WriterEditorController {
 		return { dispatched: 'export', kind };
 	}
 
+	/** The Impress draw shell formats only Latin attributes on selected shapes. */
+	static applyImpressShapeCharacter(command: string): boolean {
+		const map = (window as any).app?.map;
+		if (!(window as any).ThisIsTheiOSApp || map?.getDocType?.() !== 'presentation' ||
+			(command !== '.uno:Bold' && command !== '.uno:Italic') ||
+			typeof GraphicSelection === 'undefined' || !GraphicSelection.hasActiveSelection() ||
+			(typeof TextSelections !== 'undefined' && TextSelections.isActive()) ||
+			(window as any).app?.file?.textCursor?.visible ||
+			typeof NativeBridge === 'undefined' || typeof (window as any).postMobileMessage !== 'function' ||
+			!Number.isInteger(map._docLayer?._viewId)) return false;
+		(window as any).postMobileMessage('IMPRESS_SHAPE_FORMAT ' + JSON.stringify({
+			command, viewId: map._docLayer._viewId, part: map._docLayer._selectedPart,
+			documentSessionId: NativeBridge.getInstance().getDocumentSessionId(),
+		}));
+		return true;
+	}
+
 	private static defaultAdapter(): WriterEditorAdapterLike {
 		return {
 			sendUnoCommand(command: string): void {
 				const map = (window as any).app?.map;
 				if (map && typeof map.sendUnoCommand === 'function') {
-					map.sendUnoCommand(command);
+					if (!WriterEditorController.applyImpressShapeCharacter(command)) map.sendUnoCommand(command);
 				}
 			},
 			getToolbarCommandValues(

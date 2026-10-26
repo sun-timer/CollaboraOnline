@@ -36,11 +36,12 @@ class CalcEditorPanel {
 	private readonly onDocumentState = (event: any) => {
 		if (!CalcEditorFormat.isActive()) return;
 		if (event?.commandName && ![
-			'.uno:Color', '.uno:BackgroundColor', '.uno:FrameLineColor', '.uno:CharBackColor',
+			'.uno:Color', '.uno:BackgroundColor', '.uno:FrameLineColor',
 			'.uno:NumberFormat', '.uno:NumberFormatIncDecimals', '.uno:NumberFormatDecDecimals',
 			'.uno:AlignmentRotation', '.uno:AlignmentStacked', '.uno:WrapText', '.uno:ToggleSheetGrid',
 			'.uno:Bold', '.uno:Italic', '.uno:Underline', '.uno:Strikeout', '.uno:Shadowed',
 			'.uno:SuperScript', '.uno:SubScript', '.uno:InsertMode',
+			'.uno:ResetAttributes',
 			'.uno:FreezePanes', '.uno:FreezePanesRow', '.uno:FreezePanesColumn',
 		].includes(event.commandName)) return;
 		if (event?.commandName === '.uno:NumberFormat' && this.numberFormatPending) {
@@ -603,9 +604,7 @@ class CalcEditorPanel {
 				button.dataset.calcCharacter = tool.unocmd;
 				button.onmousedown = (event) => event.preventDefault();
 				button.onclick = () => {
-					if (tool.id === 'highlight') {
-						this.openHighlightColorDialog();
-					} else if (tool.id === 'super' || tool.id === 'sub') {
+					if (tool.id === 'super' || tool.id === 'sub') {
 						const operation = tool.id === 'super' ? 'superscript' : 'subscript';
 						CalcTextFormatBridge.apply(operation, true);
 					} else {
@@ -1302,14 +1301,6 @@ class CalcEditorPanel {
 		);
 	}
 
-	private openHighlightColorDialog(): void {
-		const initialColor = CalcEditorFormat.highlightColor();
-		this.presentSub(new WriterColorPickerDialog(
-			'荧光颜色', initialColor,
-			(rgb) => { CalcTextFormatBridge.apply('highlight', rgb); }, this.subHost(),
-		));
-	}
-
 	private openBackgroundColorDialog(): void {
 		this.presentSub(
 			new WriterColorPickerDialog(
@@ -1721,12 +1712,11 @@ class CalcEditorPanel {
 			const operation = command === '.uno:SuperScript' ? 'superscript' : command === '.uno:SubScript' ? 'subscript' : null;
 			const checked = operation && (window as any).app.map._docLayer?.insertMode !== true
 				? undefined : CalcEditorFormat.checked(command);
-			if (command !== '.uno:CharBackColor') {
-				button.setAttribute('aria-pressed', checked === undefined ? 'mixed' : String(checked));
-				button.classList.toggle('calc-character-tool--active', checked === true);
-			}
+			if (command === '.uno:ResetAttributes') button.removeAttribute('aria-pressed');
+			else button.setAttribute('aria-pressed', checked === undefined ? 'mixed' : String(checked));
+			button.classList.toggle('calc-character-tool--active', checked === true);
 			// Native formats text in a cell selection even when edit-shell slots are disabled.
-			button.disabled = !operation && command !== '.uno:CharBackColor' && CalcEditorFormat.state(command) === 'disabled';
+			button.disabled = !operation && CalcEditorFormat.state(command) === 'disabled';
 		});
 		this.content.querySelectorAll<HTMLButtonElement>('[data-calc-freeze]').forEach((button) => {
 			const command = button.dataset.calcFreeze || '';

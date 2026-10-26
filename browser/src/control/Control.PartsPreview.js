@@ -258,6 +258,10 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 				var partId = parseInt(part) - 1; // The first part is just a drop-site for reordering.
 			if (!window.mode.isDesktop() && partId === this._map._docLayer._selectedPart && !app.file.fileBasedView) {
 				if (this._map._permission === 'edit') {
+					if (window.ThisIsTheiOSApp && this._map.getDocType() === 'presentation') {
+						this._showIOSSlidePopup(img);
+						return;
+					}
 					if (window.ThisIsTheAndroidApp) {
 						this._showAndroidSlidePopup(img);
 						return;
@@ -839,6 +843,137 @@ window.L.Control.PartsPreview = window.L.Control.extend({
 			anchorY: rect ? rect.top : 0,
 			anchorBottom: rect ? rect.bottom : 0
 		}));
+	},
+
+	_hideIOSSlidePopup: function () {
+		if (this._iosSlidePopupCleanup) this._iosSlidePopupCleanup();
+	},
+
+	_createIOSSlideOverlay: function () {
+		this._hideIOSSlidePopup();
+		var overlay = document.createElement('div');
+		overlay.className = 'ios-impress-slide-overlay';
+		overlay.setAttribute('data-cool-mobile-ai-ui', '1');
+		document.body.appendChild(overlay);
+		var close = function () {
+			overlay.remove();
+			window.removeEventListener('resize', close);
+			document.removeEventListener('keydown', onKey, true);
+			this._partsPreviewCont.removeEventListener('scroll', close);
+			this._map.off('updateparts updatepermission closeapp', close);
+			this._iosSlidePopupCleanup = null;
+		}.bind(this);
+		var onKey = function (event) {
+			if (event.key === 'Escape') {
+				event.stopPropagation();
+				if (!overlay.classList.contains('ios-impress-slide-overlay--confirm')) close();
+			}
+		};
+		overlay.addEventListener('mousedown', function (event) { event.preventDefault(); });
+		overlay.addEventListener('click', function (event) {
+			event.stopPropagation();
+			if (event.target === overlay && !overlay.classList.contains('ios-impress-slide-overlay--confirm')) close();
+		});
+		window.addEventListener('resize', close);
+		document.addEventListener('keydown', onKey, true);
+		this._partsPreviewCont.addEventListener('scroll', close);
+		this._map.on('updateparts updatepermission closeapp', close);
+		this._iosSlidePopupCleanup = close;
+		return overlay;
+	},
+
+	_showIOSSlidePopup: function (img) {
+		if (!window.ThisIsTheiOSApp || app.isReadOnly() || this._map.getDocType() !== 'presentation'
+			|| this._map.stateChangeHandler.getItemValue('.uno:SlideMasterPage') === 'true') return;
+		var partIndex = Number(this._findClickedPart(img.parentNode)) - 1;
+		if (partIndex < 0) return;
+		var layer = this._map._docLayer;
+		var overview = app.impress.hasOverviewPage && partIndex === 0;
+		var overlay = this._createIOSSlideOverlay();
+		var card = document.createElement('div');
+		card.className = 'ios-impress-slide-menu';
+		card.setAttribute('role', 'menu');
+		card.setAttribute('aria-label', '幻灯片操作');
+		overlay.appendChild(card);
+		// Exact paths from Android lolib_ic_calc_sheet_copy/delete.
+		var icons = [
+			'<svg viewBox="0 0 48 48" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M42.08,5.8H11.01C10.05,5.8 9.28,6.57 9.28,7.52V35.14C9.28,36.1 10.05,36.87 11.01,36.87H42.08C43.04,36.87 43.81,36.1 43.81,35.14V7.52C43.81,6.57 43.04,5.8 42.08,5.8Z" fill="none" stroke="#101010" stroke-width="2" stroke-linejoin="round"/><path d="M9.28,16.15H43.81" fill="none" stroke="#101010" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><path d="M20.93,16.15V36.87" fill="none" stroke="#101010" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><path d="M32.16,16.15V36.87" fill="none" stroke="#101010" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><path d="M9.28,26.51H43.81" fill="none" stroke="#101010" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><path d="M36.75,42.2H5.67C4.72,42.2 3.95,41.43 3.95,40.48V12.86" fill="none" stroke="#3b8040" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>',
+			'<svg viewBox="0 0 48 48" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M10,16 H38 V40 C38,41.1 37.1,42 36,42 H12 C10.9,42 10,41.1 10,40 V16 Z" fill="none" stroke="#333333" stroke-width="2" stroke-linejoin="round"/><path d="M18,16 V12 C18,10.9 18.9,10 20,10 H28 C29.1,10 30,10.9 30,12 V16" fill="none" stroke="#333333" stroke-width="2" stroke-linejoin="round"/><path d="M8,16 H40" fill="none" stroke="#fe3a3a" stroke-width="2" stroke-linecap="round"/><path d="M20,22 V36" fill="none" stroke="#333333" stroke-width="2" stroke-linecap="round"/><path d="M28,22 V36" fill="none" stroke="#333333" stroke-width="2" stroke-linecap="round"/></svg>'
+		];
+		['复制', '删除'].forEach(function (label, index) {
+			var button = document.createElement('button');
+			button.type = 'button';
+			button.className = 'ios-impress-slide-menu__item';
+			button.setAttribute('role', 'menuitem');
+			button.setAttribute('aria-label', label);
+			button.innerHTML = icons[index] + '<span>' + label + '</span>';
+			button.disabled = overview || (index === 1 && layer._parts <= 1);
+			button.onclick = function () {
+				this._hideIOSSlidePopup();
+				if (index === 0) this._runIOSSlideAction(partIndex, false, layer);
+				else this._showIOSSlideDeleteConfirm(partIndex, layer);
+			}.bind(this);
+			card.appendChild(button);
+		}, this);
+		var rect = img.getBoundingClientRect();
+		var width = card.offsetWidth || 206;
+		var height = card.offsetHeight || 113;
+		card.style.left = Math.max(12, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 12)) + 'px';
+		var top = rect.bottom + 8;
+		if (top + height > window.innerHeight - 8) top = rect.bottom - height - 8;
+		card.style.top = Math.max(12, Math.min(top, window.innerHeight - height - 12)) + 'px';
+	},
+
+	_showIOSSlideDeleteConfirm: function (partIndex, layer) {
+		var overlay = this._createIOSSlideOverlay();
+		overlay.classList.add('ios-impress-slide-overlay--confirm');
+		var card = document.createElement('div');
+		card.className = 'ios-impress-slide-confirm';
+		card.setAttribute('role', 'alertdialog');
+		card.setAttribute('aria-label', '删除幻灯片');
+		var header = document.createElement('div');
+		header.className = 'ios-impress-slide-confirm__header';
+		var title = document.createElement('h2');
+		title.textContent = '删除幻灯片';
+		header.appendChild(title);
+		var close = document.createElement('button');
+		close.type = 'button';
+		close.className = 'ios-impress-slide-confirm__close';
+		close.setAttribute('aria-label', '关闭');
+		close.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5L19 19M19 5L5 19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+		close.onclick = this._hideIOSSlidePopup.bind(this);
+		header.appendChild(close);
+		card.appendChild(header);
+		var message = document.createElement('p');
+		message.textContent = '确定要删除第 ' + (partIndex + 1) + ' 张幻灯片吗？';
+		card.appendChild(message);
+		var actions = document.createElement('div');
+		actions.className = 'ios-impress-slide-confirm__actions';
+		['取消', '确定'].forEach(function (label, index) {
+			var button = document.createElement('button');
+			button.type = 'button';
+			button.className = 'ios-impress-slide-confirm__button';
+			button.textContent = label;
+			button.onclick = function () {
+				this._hideIOSSlidePopup();
+				if (index === 1) this._runIOSSlideAction(partIndex, true, layer);
+			}.bind(this);
+			actions.appendChild(button);
+		}, this);
+		card.appendChild(actions);
+		overlay.appendChild(card);
+	},
+
+	_runIOSSlideAction: function (partIndex, deleting, expectedLayer) {
+		var layer = this._map._docLayer;
+		if (layer !== expectedLayer || !this._map.isEditMode() || app.isReadOnly()
+			|| partIndex < 0 || partIndex >= layer._parts
+			|| this._map.stateChangeHandler.getItemValue('.uno:SlideMasterPage') === 'true'
+			|| (app.impress.hasOverviewPage && partIndex === 0) || (deleting && layer._parts <= 1)) return;
+		this._map.setPart(partIndex);
+		this._map.selectPart(partIndex, 1, false);
+		if (deleting) this._map.deletePage();
+		else this._map.duplicatePage();
 	},
 
 	_bindAndroidLongPressDnD: function (img) {

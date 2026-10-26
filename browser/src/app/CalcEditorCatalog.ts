@@ -267,10 +267,10 @@ class CalcEditorCatalog {
 		},
 		{ id: 'shadow', label: '阴影', unocmd: '.uno:Shadowed', icon: 'calc-shadow' },
 		{
-			id: 'highlight',
-			label: '高亮',
-			unocmd: '.uno:CharBackColor',
-			icon: 'calc-highlight',
+			id: 'clear-format',
+			label: '清除格式',
+			unocmd: '.uno:ResetAttributes',
+			icon: 'calc-clear-format',
 		},
 	];
 

@@ -2513,6 +2513,9 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         } else if ([message.body hasPrefix:@"CALC_TEXT_FORMAT "]) {
             [self applyCalcTextFormatMessage:message.body];
             return;
+        } else if ([message.body hasPrefix:@"IMPRESS_SHAPE_FORMAT "]) {
+            [self applyImpressShapeFormatMessage:message.body];
+            return;
         } else if ([message.body hasPrefix:@"CALC_FORMAT_STATE "]) {
             [self readCalcFormatStateMessage:message.body];
             return;
@@ -2773,6 +2776,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             address: app.calc && app.calc.cellAddress && app.calc.cellAddress.toArray(),
             cursor: !!(app.calc && app.calc.cellCursorVisible),
             caret: !!(app.file && app.file.textCursor && app.file.textCursor.visible),
+            insertMode: !!app.map._docLayer.insertMode,
             down: down && {x: down.x, y: down.y, age: Date.now() - down.at, section: down.section.name},
             last: last && {cell: last.cell, age: Date.now() - last.at},
             dragging: app.sectionContainer && app.sectionContainer.isDraggingSomething(),
@@ -2807,6 +2811,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     ['beginIOSTouch', 'endIOSTouch', 'dispatchIOSTapAt', 'resetIOSState', 'onIOSCellCursor'].forEach(function (name) { wrap(tap, name); });
     ['showForIOSTap', 'tryShow'].forEach(function (name) { wrap(menu, name); });
     ['beginTextInputRequest', 'resolveTextInputTap', 'onTextCaretUpdate', 'maybeShowKeyboardForTextInput'].forEach(function (name) { wrap(input, name); });
+    ['apply', 'onResult'].forEach(function (name) { wrap(window.CalcTextFormatBridge, name); });
     ['touchstart', 'touchend', 'touchcancel'].forEach(function (name) {
         document.addEventListener(name, function (event) {
             try {
@@ -4022,6 +4027,9 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
 - (void)replyCalcTextFormat:(NSDictionary *)payload success:(BOOL)success
                    changed:(NSInteger)changed message:(NSString *)message
 {
+    NSLog(@"calc_text_format result request=%@ operation=%@ format=%@ success=%d changed=%ld message=%@",
+          payload[@"requestId"], payload[@"operation"], self.document.fileURL.pathExtension.lowercaseString,
+          success, (long)changed, message ?: @"");
     if (isClosing || !self.webView) return;
     NSDictionary *result = @{
         @"requestId": [payload[@"requestId"] isKindOfClass:NSString.class] ? payload[@"requestId"] : @"",
@@ -4033,6 +4041,49 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
     if (json) [self.webView evaluateJavaScript:[NSString stringWithFormat:
         @"if(window.CalcTextFormatBridge){window.CalcTextFormatBridge.onResult(%@);}", json]
         completionHandler:nil];
+}
+
+- (void)applyImpressShapeFormatMessage:(NSString *)message
+{
+    if (isClosing || !nativeEditMode || ![nativeDocumentType isEqualToString:@"presentation"]) return;
+    NSData *data = [[message substringFromIndex:[@"IMPRESS_SHAPE_FORMAT " length]] dataUsingEncoding:NSUTF8StringEncoding];
+    id decoded = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if (![decoded isKindOfClass:NSDictionary.class]) return;
+    NSDictionary *payload = decoded;
+    NSString *command = [payload[@"command"] isKindOfClass:NSString.class] ? payload[@"command"] : nil;
+    NSString *session = [payload[@"documentSessionId"] isKindOfClass:NSString.class] ? payload[@"documentSessionId"] : nil;
+    if (![@[@".uno:Bold", @".uno:Italic"] containsObject:command ?: @""] || session.length == 0) return;
+    for (NSString *key in @[@"viewId", @"part"]) {
+        id value = payload[key];
+        if (![value isKindOfClass:NSNumber.class] || [value doubleValue] < 0 || [value doubleValue] > INT_MAX
+            || [value doubleValue] != (double)[value intValue]) return;
+    }
+    lok::Document *expectedDocument = [self loKitDocumentOrNull];
+    int generation = documentOpenGeneration;
+    if (!expectedDocument) return;
+    __weak DocumentViewController *weakSelf = self;
+    [self.webView evaluateJavaScript:@"window.NativeBridge ? window.NativeBridge.getDocumentSessionId() : null"
+        completionHandler:^(id currentSession, NSError *error) {
+        DocumentViewController *owner = weakSelf;
+        if (!owner || owner->isClosing || !owner->nativeEditMode || owner->documentOpenGeneration != generation
+            || expectedDocument != [owner loKitDocumentOrNull] || error || ![session isEqual:currentSession]) return;
+        IOSImpressShapeFormatResult result = toggleIOSImpressShapeFormat(expectedDocument,
+            [payload[@"viewId"] intValue], [payload[@"part"] intValue], [command isEqualToString:@".uno:Bold"]);
+        NSLog(@"[ImpressShapeFormat] command=%@ success=%d enabled=%d changed=%d message=%s",
+            command, result.success, result.enabled, result.changed, result.message);
+        if (result.changed > 0) [owner->topToolbarController recordUndoableNativeEdit:@"impress_shape_format"];
+        NSDictionary *reply = @{@"command":command, @"success":@(result.success), @"enabled":@(result.enabled),
+            @"viewId":payload[@"viewId"], @"part":payload[@"part"], @"documentSessionId":session,
+            @"message":[NSString stringWithUTF8String:result.message]};
+        NSData *replyData = [NSJSONSerialization dataWithJSONObject:reply options:0 error:nil];
+        NSString *json = replyData ? [[NSString alloc] initWithData:replyData encoding:NSUTF8StringEncoding] : nil;
+        if (json) [owner sendToolbarJavaScript:[NSString stringWithFormat:
+            @"(function(r){var m=window.app&&app.map;"
+             "if(!m||!window.NativeBridge||NativeBridge.getDocumentSessionId()!==r.documentSessionId||"
+             "m._docLayer._viewId!==r.viewId||m._docLayer._selectedPart!==r.part)return;"
+             "if(r.success)m.fire('commandstatechanged',{commandName:r.command,state:String(r.enabled)});"
+             "else if(r.message)m.uiManager.showSnackbar(r.message);})(%@);", json]];
+    }];
 }
 
 - (void)applyCalcTextFormatMessage:(NSString *)message
@@ -4068,6 +4119,11 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
         && [range[@"row2"] intValue] >= [range[@"row1"] intValue];
     int value = [rawValue isKindOfClass:NSNumber.class] ? [rawValue intValue] : 0;
     valid = valid && ([operation isEqualToString:@"highlight"] ? value >= -1 && value <= 0xffffff : value == 0 || value == 1);
+    NSLog(@"calc_text_format request=%@ operation=%@ format=%@ valid=%d edit=%d closing=%d ios=%@ appVersion=%@ build=%@",
+          requestId, operation, self.document.fileURL.pathExtension.lowercaseString, valid, nativeEditMode, isClosing,
+          UIDevice.currentDevice.systemVersion,
+          [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"],
+          [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleVersion"]);
     if (!valid || isClosing || !nativeEditMode || ![nativeDocumentType isEqualToString:@"spreadsheet"]) {
         [self replyCalcTextFormat:payload success:NO changed:0 message:@"请在编辑模式选择连续的文字单元格"];
         return;
