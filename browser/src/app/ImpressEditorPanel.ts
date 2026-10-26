@@ -25,6 +25,8 @@ class ImpressEditorPanel {
 	private slideBackgroundColorRgb = 0xffffff;
 	private slideMasterSolidColorRgb = 0xffffff;
 	private stateHandler: ((event: any) => void) | null = null;
+	private panelIsOpen = false;
+	private slideBackgroundRequest = 0;
 	private readonly controller = WriterEditorController.getInstance();
 
 	private constructor() {
@@ -102,6 +104,7 @@ class ImpressEditorPanel {
 	}
 
 	open(): void {
+		this.panelIsOpen = true;
 		MobileDocTheme.applyFromMap();
 		this.refreshCommandState();
 		const map = (window as any).app?.map;
@@ -147,6 +150,8 @@ class ImpressEditorPanel {
 	}
 
 	close(): void {
+		++this.slideBackgroundRequest;
+		this.panelIsOpen = false;
 		const map = (window as any).app?.map;
 		if (this.stateHandler && map?.off)
 			map.off('commandstatechanged', this.stateHandler);
@@ -1047,25 +1052,42 @@ class ImpressEditorPanel {
 					if (!entry) {
 						return;
 					}
-					this.pickerLabels['slide-background'] = entry.label;
-					this.renderGrid();
-					if (entry.unocmd) {
-						this.sendUno(entry.unocmd);
-					}
+					const request = ++this.slideBackgroundRequest;
 					if (entry.afterSelect === 'colorPicker') {
 						this.presentSub(
 							new ImpressSolidColorPickerDialog(
 								'颜色',
 								this.slideBackgroundColorRgb,
 								(rgb) => {
-									this.slideBackgroundColorRgb = rgb;
-									this.applyImpressSlideBackgroundColor(rgb);
-									this.pickerLabels['slide-background'] = '颜色';
-									this.renderGrid();
+									return this.applyImpressSlideBackgroundColor(rgb).then((applied) => {
+										if (applied === true && request === this.slideBackgroundRequest && this.panelIsOpen) {
+											this.slideBackgroundColorRgb = rgb;
+											this.pickerLabels['slide-background'] = '颜色';
+											this.renderGrid();
+										}
+										return applied;
+									});
 								},
 								this.subHost(),
+								true,
 							),
 						);
+					} else if (entry.kind === 'none' || entry.kind === 'master') {
+						ImpressBackgroundBridge.apply(entry.kind, undefined, (applied) => {
+							if (request !== this.slideBackgroundRequest || !this.panelIsOpen) return;
+							if (applied) {
+								this.pickerLabels['slide-background'] = entry.label;
+								this.renderGrid();
+							} else {
+								(window as any).app?.map?.uiManager?.showSnackbar?.('背景未应用，请重试');
+							}
+						});
+					} else if (ImpressBackgroundBridge.apply(entry.kind)) {
+						if (!this.panelIsOpen) return;
+						this.pickerLabels['slide-background'] = entry.label;
+						this.renderGrid();
+					} else if (this.panelIsOpen) {
+						(window as any).app?.map?.uiManager?.showSnackbar?.('背景命令未发送，请重试');
 					}
 				},
 				this.pickerLabels['slide-background'],
@@ -1117,9 +1139,8 @@ class ImpressEditorPanel {
 		);
 	}
 
-	private applyImpressSlideBackgroundColor(rgb: number): void {
-		this.sendUno(ImpressEditorCatalog.buildFillPageStyleCommand(1));
-		this.sendUno(ImpressEditorCatalog.buildBackgroundColorCommand(rgb));
+	private applyImpressSlideBackgroundColor(rgb: number): Promise<boolean> {
+		return new Promise((resolve) => ImpressBackgroundBridge.applyColor(rgb, resolve));
 	}
 
 	private applySlideSize(

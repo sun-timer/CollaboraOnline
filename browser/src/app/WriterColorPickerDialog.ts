@@ -14,13 +14,15 @@ class WriterColorPickerDialog {
 	private readonly subpage: { open(): void; close(): void };
 	private selectedIndex: number | null;
 	private readonly checkNodes: HTMLSpanElement[] = [];
+	private pickSequence = 0;
 
 	constructor(
 		title: string,
 		initialRgb: number | null,
-		onPick: (rgb: number) => void,
+		onPick: (rgb: number) => void | boolean | Promise<boolean | null>,
 		host?: WriterEditorInlineSubpageHost | null,
 		blocks?: WriterColorPickerEntry[][],
+		confirmPick = false,
 	) {
 		const catalog =
 			blocks ||
@@ -30,9 +32,30 @@ class WriterColorPickerDialog {
 			initialRgb,
 		);
 		const body = this.buildBody(catalog, (entry) => {
-			this.selectedIndex = entry.index;
-			this.refreshChecks(catalog);
-			onPick(entry.rgb);
+			const previousIndex = this.selectedIndex;
+			const sequence = ++this.pickSequence;
+			if (!confirmPick) {
+				this.selectedIndex = entry.index;
+				this.refreshChecks(catalog);
+			}
+			let result: void | boolean | Promise<boolean | null>;
+			try {
+				result = onPick(entry.rgb);
+			} catch (_) {
+				if (!confirmPick) throw _;
+				result = false;
+			}
+			if (confirmPick) {
+				Promise.resolve<void | boolean | null>(result).then((applied) => {
+					if (sequence !== this.pickSequence) return;
+					this.selectedIndex = applied === true ? entry.index : previousIndex;
+					this.refreshChecks(catalog);
+				}).catch(() => {
+					if (sequence !== this.pickSequence) return;
+					this.selectedIndex = previousIndex;
+					this.refreshChecks(catalog);
+				});
+			}
 		});
 		this.subpage = writerEditorMountSubpageDialog(title, body, host);
 	}
@@ -175,9 +198,10 @@ class ImpressSolidColorPickerDialog extends WriterColorPickerDialog {
 	constructor(
 		title: string,
 		initialRgb: number | null,
-		onPick: (rgb: number) => void,
+		onPick: (rgb: number) => void | boolean | Promise<boolean | null>,
 		host?: WriterEditorInlineSubpageHost | null,
+		confirmPick = false,
 	) {
-		super(title, initialRgb, onPick, host, ImpressSolidColorCatalog.BLOCKS);
+		super(title, initialRgb, onPick, host, ImpressSolidColorCatalog.BLOCKS, confirmPick);
 	}
 }

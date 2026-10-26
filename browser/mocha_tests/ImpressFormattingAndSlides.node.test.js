@@ -25,7 +25,7 @@ function formattingHarness() {
 	} };
 	const context = vm.createContext({ window, document: window.document,
 		WriterCharPanelIcons: { bold: '<svg/>', italic: '<svg/>' }, console,
-		GraphicSelection: { hasActiveSelection: () => selection.graphic },
+		GraphicSelection: { hasActiveSelection: () => selection.graphic, extraInfo: { id: '12345' } },
 		TextSelections: { isActive: () => selection.text },
 		NativeBridge: { getInstance: () => ({ getDocumentSessionId: () => 'ppt-session' }) } });
 	for (const name of ['WriterEditorController', 'ImpressEditorPanel']) {
@@ -37,7 +37,7 @@ function formattingHarness() {
 	const panel = Object.create(window.Panel.prototype);
 	panel.grid = window.document.createElement('div');
 	window.document.body.appendChild(panel.grid);
-	const features = ['Bold', 'Italic'].map(name => ({
+	const features = ['Bold', 'Italic', 'Underline', 'Strikeout'].map(name => ({
 		id: 'char-' + name.toLowerCase(), label: name, kind: 'charTool',
 		tab: 'default', group: 'char-tools-1', unocmd: '.uno:' + name,
 	}));
@@ -45,17 +45,21 @@ function formattingHarness() {
 	return { window, panel, commands, states, messages, selection, close: () => dom.window.close() };
 }
 
-test('both PPT entry points route a selected text box through the iOS script-aware formatter', () => {
+test('both PPT entry points route a selected text box through the native formatter', () => {
  const h = formattingHarness();
  try {
   const controller = new h.window.Controller();
-  for (const name of ['Bold', 'Italic']) {
+  for (const name of ['Bold', 'Italic', 'Underline', 'Strikeout']) {
    controller.run({ id: 'char-quick', kind: 'command', unocmd: '.uno:' + name });
-   h.panel.grid.querySelector('[aria-label="' + name + '"]').click();
+   const button = h.panel.grid.querySelector('[aria-label="' + name + '"]');
+   if (button) button.click();
    for (const message of h.messages.splice(0)) {
     assert.ok(message.startsWith('IMPRESS_SHAPE_FORMAT '));
-    assert.deepEqual(JSON.parse(message.substring('IMPRESS_SHAPE_FORMAT '.length)), {
-     command: '.uno:' + name, viewId: 0, part: 0, documentSessionId: 'ppt-session',
+    const body = JSON.parse(message.substring('IMPRESS_SHAPE_FORMAT '.length));
+    assert.equal(body.action, undefined);
+    assert.deepEqual(body, {
+     command: '.uno:' + name, selectionId: '12345',
+     viewId: 0, part: 0, documentSessionId: 'ppt-session',
     });
    }
   }
@@ -63,15 +67,17 @@ test('both PPT entry points route a selected text box through the iOS script-awa
  } finally { h.close(); }
 });
 
-test('real text selection and a text caret keep the existing UNO path', () => {
+test('a text caret still uses the native formatter, without a shape id', () => {
  const h = formattingHarness();
  try {
   for (const textSelected of [false, true]) {
    h.selection.text = textSelected;
    h.window.app.file.textCursor.visible = !textSelected;
    h.panel.grid.querySelector('[aria-label="Bold"]').click();
-   assert.equal(h.commands.pop(), '.uno:Bold');
-   assert.equal(h.messages.length, 0);
+   const message = h.messages.pop();
+   assert.equal(h.commands.length, 0);
+   assert.ok(message.startsWith('IMPRESS_SHAPE_FORMAT '));
+   assert.equal(JSON.parse(message.substring('IMPRESS_SHAPE_FORMAT '.length)).selectionId, '');
   }
  } finally { h.close(); }
 });
@@ -92,7 +98,7 @@ test('Writer, Calc, Android, and unrelated commands retain their dispatch', () =
  try {
   for (const [ios, docType, command] of [
    [false, 'presentation', '.uno:Bold'], [true, 'text', '.uno:Bold'],
-   [true, 'spreadsheet', '.uno:Italic'], [true, 'presentation', '.uno:Underline'],
+   [true, 'spreadsheet', '.uno:Italic'], [true, 'presentation', '.uno:LeftPara'],
   ]) {
    h.window.ThisIsTheiOSApp = ios;
    h.window.app.map.getDocType = () => docType;

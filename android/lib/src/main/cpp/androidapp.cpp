@@ -35,6 +35,7 @@
 #include <comphelper/solarmutex.hxx>
 #include <sfx2/lokhelper.hxx>
 #include <sfx2/viewsh.hxx>
+#include <MobileImpressBackground.hpp>
 
 #include <osl/detail/android-bootstrap.h>
 
@@ -1109,6 +1110,70 @@ Java_org_libreoffice_androidlib_LOActivity_appendContinueWriteOnKitThread(
         append();
     else
         poll->addCallback(std::move(append));
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_libreoffice_androidlib_LOActivity_setImpressMasterBackgroundOnKitThread(
+    JNIEnv* env, jobject instance, jstring inRequestId, jstring inDocumentSessionId,
+    jint viewId, jint part, jboolean visible)
+{
+    if (!inRequestId || !inDocumentSessionId) return;
+    const char* requestChars = env->GetStringUTFChars(inRequestId, nullptr);
+    const char* sessionChars = env->GetStringUTFChars(inDocumentSessionId, nullptr);
+    if (!requestChars || !sessionChars) {
+        if (requestChars) env->ReleaseStringUTFChars(inRequestId, requestChars);
+        if (sessionChars) env->ReleaseStringUTFChars(inDocumentSessionId, sessionChars);
+        return;
+    }
+    const std::string requestId(requestChars);
+    const std::string documentSession(sessionChars);
+    env->ReleaseStringUTFChars(inRequestId, requestChars);
+    env->ReleaseStringUTFChars(inDocumentSessionId, sessionChars);
+
+    auto document = getLOKDocumentForAndroidOnly();
+    auto* poll = KitSocketPoll::getMainPoll();
+    const int session = g_coolwsdSessionGeneration.load();
+    const int actionGeneration = g_androidPendingKitActionGeneration.load();
+    jobject activity = env->NewGlobalRef(instance);
+    jclass activityClass = static_cast<jclass>(env->NewGlobalRef(env->GetObjectClass(instance)));
+    if (!activity || !activityClass) {
+        if (activity) env->DeleteGlobalRef(activity);
+        if (activityClass) env->DeleteGlobalRef(activityClass);
+        return;
+    }
+    auto finish = [activity, activityClass, requestId](bool success, bool changed) {
+        JNIThreadContext context;
+        JNIEnv* callbackEnv = context.getEnv();
+        if (callbackEnv) {
+            jmethodID callback = callbackEnv->GetMethodID(activityClass,
+                    "onNativeImpressBackgroundResult", "(Ljava/lang/String;ZZ)V");
+            if (callback) {
+                jstring request = callbackEnv->NewStringUTF(requestId.c_str());
+                callbackEnv->CallVoidMethod(activity, callback, request,
+                        success ? JNI_TRUE : JNI_FALSE, changed ? JNI_TRUE : JNI_FALSE);
+                callbackEnv->DeleteLocalRef(request);
+            }
+            if (callbackEnv->ExceptionCheck()) callbackEnv->ExceptionClear();
+            callbackEnv->DeleteGlobalRef(activityClass);
+            callbackEnv->DeleteGlobalRef(activity);
+        }
+    };
+    if (!document || !poll) {
+        finish(false, false);
+        return;
+    }
+    auto apply = [document, session, actionGeneration, documentSession, viewId, part, visible, finish] {
+        bool changed = false;
+        const bool current = session == g_coolwsdSessionGeneration.load()
+                && actionGeneration == g_androidPendingKitActionGeneration.load()
+                && document == getLOKDocumentForAndroidOnly();
+        const bool success = current && !documentSession.empty()
+                && setMobileImpressMasterBackground(document.get(), viewId, part, visible, &changed);
+        finish(success, success && changed);
+    };
+    if (poll->getThreadOwner() == std::this_thread::get_id()) apply();
+    else poll->addCallback(std::move(apply));
 }
 
 extern "C"

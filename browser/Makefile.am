@@ -310,6 +310,7 @@ COOL_JS_LST =\
 	src/app/ImpressSolidColorCatalog.ts \
 	src/app/ImpressEditorHyperlinkDialog.ts \
 	src/app/ImpressTransitionBridge.ts \
+	src/app/ImpressBackgroundBridge.ts \
 	src/app/ImpressEditorPanel.ts \
 	src/app/CalcEditorCatalog.ts \
 	src/app/CalcEditorFormat.ts \

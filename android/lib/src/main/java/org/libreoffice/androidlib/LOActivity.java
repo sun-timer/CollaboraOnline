@@ -891,6 +891,26 @@ public class LOActivity extends AppCompatActivity {
     private FunctionPanelController functionPanelController;
     private CalcFunctionPanelController calcFunctionPanelController;
     private ImpressFunctionPanelController impressFunctionPanelController;
+    private long impressBackgroundRequestSerial = 0L;
+    private final Map<String, PendingImpressBackground> pendingImpressBackgrounds = new HashMap<>();
+
+    private static final class PendingImpressBackground {
+        final long documentGeneration;
+        final String documentSession;
+        final int viewId;
+        final int part;
+        final ImpressFunctionPanelController.Host.BackgroundCallback callback;
+        Runnable timeout;
+
+        PendingImpressBackground(long generation, String session, int view, int selectedPart,
+                ImpressFunctionPanelController.Host.BackgroundCallback completion) {
+            documentGeneration = generation;
+            documentSession = session;
+            viewId = view;
+            part = selectedPart;
+            callback = completion;
+        }
+    }
     private TopToolbarController topToolbarController;
     private FindReplaceSheetController findReplaceSheetController;
     private DocumentTabsSheetController documentTabsSheetController;
@@ -12453,6 +12473,86 @@ public class LOActivity extends AppCompatActivity {
         return functionPanelController;
     }
 
+    private void applySlideBackgroundFromPanel(String kind, int rgb,
+            ImpressFunctionPanelController.Host.BackgroundCallback callback) {
+        if (!("none".equals(kind) || "master".equals(kind)) || mWebView == null
+                || !mIsEditModeActive || !isDocEditable) {
+            callback.onComplete(false);
+            return;
+        }
+        final long generation = documentLifecycleGeneration;
+        final String requestId = "android-impress-background-" + (++impressBackgroundRequestSerial);
+        final String query = "(function(){var m=window.app&&app.map,l=m&&m._docLayer;"
+                + "return JSON.stringify({docType:m&&m.getDocType&&m.getDocType(),"
+                + "edit:m&&m.isEditMode&&m.isEditMode(),"
+                + "session:window.NativeBridge&&NativeBridge.getDocumentSessionId&&NativeBridge.getDocumentSessionId(),"
+                + "viewId:l&&l._viewId,part:l&&l._selectedPart});})()";
+        mWebView.evaluateJavascript(query, value -> {
+            if (generation != documentLifecycleGeneration || !mIsEditModeActive || !isDocEditable
+                    || value == null || "null".equals(value)) {
+                callback.onComplete(false);
+                return;
+            }
+            try {
+                Object decoded = new org.json.JSONTokener(value).nextValue();
+                if (!(decoded instanceof String)) throw new org.json.JSONException("Invalid context result");
+                org.json.JSONObject context = new org.json.JSONObject((String) decoded);
+                if (!"presentation".equals(context.optString("docType"))
+                        || !context.optBoolean("edit") || context.optString("session").isEmpty()
+                        || !context.has("viewId") || !context.has("part")) {
+                    callback.onComplete(false);
+                    return;
+                }
+                PendingImpressBackground pending = new PendingImpressBackground(generation,
+                        context.getString("session"), context.getInt("viewId"), context.getInt("part"), callback);
+                pending.timeout = () -> onNativeImpressBackgroundResult(requestId, false, false);
+                pendingImpressBackgrounds.put(requestId, pending);
+                getMainHandler().postDelayed(pending.timeout, 10000);
+                setImpressMasterBackgroundOnKitThread(requestId, context.getString("session"),
+                        context.getInt("viewId"), context.getInt("part"), "master".equals(kind));
+            } catch (org.json.JSONException e) {
+                Log.w(TAG, "Invalid slide background context", e);
+                callback.onComplete(false);
+            }
+        });
+    }
+
+    public void onNativeImpressBackgroundResult(String requestId, boolean success, boolean changed) {
+        runOnUiThread(() -> {
+            PendingImpressBackground pending = pendingImpressBackgrounds.remove(requestId);
+            if (pending == null) return;
+            if (pending.timeout != null) getMainHandler().removeCallbacks(pending.timeout);
+            if (pending.documentGeneration != documentLifecycleGeneration || !mIsEditModeActive
+                    || !isDocEditable || mWebView == null) {
+                pending.callback.onComplete(false);
+                return;
+            }
+            String query = "(function(){var m=window.app&&app.map,l=m&&m._docLayer;"
+                    + "return JSON.stringify({session:window.NativeBridge&&NativeBridge.getDocumentSessionId&&NativeBridge.getDocumentSessionId(),"
+                    + "viewId:l&&l._viewId,part:l&&l._selectedPart});})()";
+            mWebView.evaluateJavascript(query, value -> {
+                boolean contextMatches = false;
+                try {
+                    Object decoded = value == null ? null : new org.json.JSONTokener(value).nextValue();
+                    if (decoded instanceof String) {
+                        org.json.JSONObject current = new org.json.JSONObject((String) decoded);
+                        contextMatches = pending.documentGeneration == documentLifecycleGeneration
+                                && pending.documentSession.equals(current.optString("session"))
+                                && pending.viewId == current.optInt("viewId", -1)
+                                && pending.part == current.optInt("part", -1)
+                                && mIsEditModeActive && isDocEditable;
+                    }
+                } catch (org.json.JSONException e) {
+                    Log.w(TAG, "Invalid slide background result context", e);
+                }
+                boolean applied = success && contextMatches;
+                if (applied && changed)
+                    ensureTopToolbarController().recordUndoableNativeEdit("impress_background");
+                pending.callback.onComplete(applied);
+            });
+        });
+    }
+
     private ImpressFunctionPanelController ensureImpressFunctionPanelController() {
         if (impressFunctionPanelController == null) {
             impressFunctionPanelController = new ImpressFunctionPanelController(
@@ -12470,6 +12570,12 @@ public class LOActivity extends AppCompatActivity {
                 @Override
                 public void executeUnoCommand(String command) {
                     LOActivity.this.executeUnoCommand(command);
+                }
+
+                @Override
+                public void applySlideBackground(String kind, int rgb,
+                        ImpressFunctionPanelController.Host.BackgroundCallback callback) {
+                    LOActivity.this.applySlideBackgroundFromPanel(kind, rgb, callback);
                 }
 
                 @Override
@@ -21454,6 +21560,9 @@ public class LOActivity extends AppCompatActivity {
             String expectedSelection, byte[] html, String requestId, int viewId);
 
     public native boolean setLOKViewAuthor(int viewId, String name);
+
+    private native void setImpressMasterBackgroundOnKitThread(
+            String requestId, String documentSessionId, int viewId, int part, boolean visible);
 
     public native void postUnoCommand(String command, String arguments, boolean bNotifyWhenFinished);
 

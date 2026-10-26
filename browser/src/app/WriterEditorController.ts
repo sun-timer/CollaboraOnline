@@ -704,18 +704,36 @@ class WriterEditorController {
 		return { dispatched: 'export', kind };
 	}
 
-	/** The Impress draw shell formats only Latin attributes on selected shapes. */
+	/** Core decides whether to format a shape, text range or insertion caret. */
 	static applyImpressShapeCharacter(command: string): boolean {
 		const map = (window as any).app?.map;
-		if (!(window as any).ThisIsTheiOSApp || map?.getDocType?.() !== 'presentation' ||
-			(command !== '.uno:Bold' && command !== '.uno:Italic') ||
-			typeof GraphicSelection === 'undefined' || !GraphicSelection.hasActiveSelection() ||
-			(typeof TextSelections !== 'undefined' && TextSelections.isActive()) ||
-			(window as any).app?.file?.textCursor?.visible ||
+		if (!(window as any).ThisIsTheiOSApp || map?.getDocType?.() !== 'presentation') return false;
+		if (['.uno:Bold', '.uno:Italic', '.uno:Underline', '.uno:Strikeout'].indexOf(command) >= 0 &&
+			typeof (window as any).postMobileDebug === 'function') {
+			try {
+				(window as any).postMobileDebug('impress_format_diag ' + JSON.stringify({
+					command, viewId: map._docLayer?._viewId, part: map._docLayer?._selectedPart,
+					graphic: typeof GraphicSelection !== 'undefined' && GraphicSelection.hasActiveSelection(),
+					selectionId: typeof GraphicSelection !== 'undefined' ? GraphicSelection.extraInfo?.id : null,
+					text: typeof TextSelections !== 'undefined' && TextSelections.isActive(),
+					cursor: !!(window as any).app?.file?.textCursor?.visible,
+					partsFocused: !!map._docLayer?._preview?.partsFocused,
+					selectionType: map._clip?._selectionType,
+				}));
+			} catch (_) { /* Diagnostics must not change formatting behavior. */ }
+		}
+		if (['.uno:Bold', '.uno:Italic', '.uno:Underline', '.uno:Strikeout'].indexOf(command) < 0 ||
 			typeof NativeBridge === 'undefined' || typeof (window as any).postMobileMessage !== 'function' ||
 			!Number.isInteger(map._docLayer?._viewId)) return false;
+		// A toolbar can outlive Core's marked-object list. Preserve the identity
+		// of the visible box, never infer a target from its screen coordinates.
+		const wholeShape = typeof GraphicSelection !== 'undefined' && GraphicSelection.hasActiveSelection() &&
+			!(typeof TextSelections !== 'undefined' && TextSelections.isActive()) &&
+			!(window as any).app?.file?.textCursor?.visible;
+		const selectionId = wholeShape ? String(GraphicSelection.extraInfo?.id || '') : '';
 		(window as any).postMobileMessage('IMPRESS_SHAPE_FORMAT ' + JSON.stringify({
 			command, viewId: map._docLayer._viewId, part: map._docLayer._selectedPart,
+			selectionId,
 			documentSessionId: NativeBridge.getInstance().getDocumentSessionId(),
 		}));
 		return true;
