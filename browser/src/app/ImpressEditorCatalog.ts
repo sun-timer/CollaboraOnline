@@ -777,10 +777,9 @@ class ImpressEditorCatalog {
 				tab: 'insert',
 				icon: 'impress-insert-textbox',
 				kind: 'command',
-				// Android insert_textbox: dismiss the sheet, then bare .uno:DrawText.
-				// CreateDirectly is not used. map.focus(true) is not used either —
-				// it raises the keyboard and focuses the slide sorter.
-				unocmd: '.uno:DrawText',
+				// iOS: create the text box directly after dismissing the panel.
+				// The iOS document bridge raises the keyboard after Core reports a text caret.
+				unocmd: '.uno:Text?CreateDirectly:bool=true',
 				dismissBeforeCommand: true,
 				group: 'insert',
 			},

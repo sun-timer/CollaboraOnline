@@ -414,16 +414,16 @@ public class FindReplaceSheetController {
         installKeyboardLift(findQuery, replaceQuery, replaceWith);
 
         findPrev.setOnClickListener(v -> runFindAction(
-                "AndroidFindReplaceBridge.findPrevious()"));
+                buildPreviousFindJs(replaceTabActive ? replaceQuery : findQuery)));
         findNext.setOnClickListener(v -> runFindAction(
                 buildFindJs(replaceTabActive ? replaceQuery : findQuery)));
         findNext.setOnLongClickListener(v -> {
-            runFindAction("AndroidFindReplaceBridge.findNext()");
+            runFindAction(buildFindJs(replaceTabActive ? replaceQuery : findQuery));
             return true;
         });
 
         replacePrev.setOnClickListener(v -> runReplaceNavigation(
-                "AndroidFindReplaceBridge.findPrevious()"));
+                buildPreviousFindJs(replaceQuery)));
         replaceNext.setOnClickListener(v -> runReplaceNavigation(
                 buildFindJs(replaceQuery)));
         replaceAll.setOnClickListener(v -> runReplaceAction(
@@ -442,7 +442,7 @@ public class FindReplaceSheetController {
 		if (!query.equals(activeQuery)) return;
 		TextView target = replaceTabActive ? replaceSearchStatusView : searchStatusView;
 		if (target == null) return;
-		String message = "notFound".equals(status) ? "未查到到关键词" : "timeout".equals(status) ? "查找超时，请重新打开文档" : "error".equals(status) ? "查找失败" : "";
+		String message = "notFound".equals(status) ? "未查到关键词" : "timeout".equals(status) ? "查找超时，请重新打开文档" : "error".equals(status) ? "查找失败" : "";
 		target.setText(message);
 		target.setVisibility(message.isEmpty() ? View.GONE : View.VISIBLE);
 		if (mainPanel != null) relayoutFloating(mainPanel);
@@ -543,12 +543,17 @@ public class FindReplaceSheetController {
     }
 
     private String buildFindJs(EditText queryField) {
-        String query = escapeJs(queryField.getText() == null ? "" : queryField.getText().toString());
+        String query = escapeJs(queryField.getText() == null ? "" : queryField.getText().toString().trim());
         return "AndroidFindReplaceBridge.find('" + query + "')";
     }
 
+    private String buildPreviousFindJs(EditText queryField) {
+        String query = escapeJs(queryField.getText() == null ? "" : queryField.getText().toString().trim());
+        return "AndroidFindReplaceBridge.findPrevious('" + query + "')";
+    }
+
     private String buildReplaceJs(EditText queryField, EditText withField, boolean replaceAll) {
-        String query = escapeJs(queryField.getText() == null ? "" : queryField.getText().toString());
+        String query = escapeJs(queryField.getText() == null ? "" : queryField.getText().toString().trim());
         String with = escapeJs(withField.getText() == null ? "" : withField.getText().toString());
         return "AndroidFindReplaceBridge.replaceForQuery('"
                 + query + "','" + with + "'," + replaceAll + ")";

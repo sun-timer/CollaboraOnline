@@ -984,12 +984,15 @@ class Socket {
 		app.idleHandler._activate();
 	}
 
-	private _onSocketClose(event: CloseEvent): void {
-		window.app.console.debug('_onSocketClose: code=' + event.code + ' reason=' + event.reason + ' wasClean=' + event.wasClean);
+	private _onSocketClose(event?: CloseEvent): void {
+		// ProxySocket may report a synthetic close without a CloseEvent when its
+		// mobile bridge times out. Keep browser CloseEvent fields when available.
+		const closeEvent = event || { code: 1006, reason: '', wasClean: false };
+		window.app.console.debug('_onSocketClose: code=' + closeEvent.code + ' reason=' + closeEvent.reason + ' wasClean=' + closeEvent.wasClean);
 		if (!this._map._docLoadedOnce && this.ReconnectCount === 0) {
 			let errorType: string = '';
 			let errorMsg: string;
-			const reason = event.reason;
+			const reason = closeEvent.reason;
 			if (reason && reason.startsWith('error:')) {
 				var command = this.parseServerCmd(reason);
 				if (

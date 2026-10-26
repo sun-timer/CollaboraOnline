@@ -568,7 +568,7 @@ describe('Impress editor interaction regressions', function () {
 			);
 		panel.onFeature(ImpressEditorCatalog.getFeature('insert-textbox'));
 		await new Promise((resolve) => dom.window.setTimeout(resolve, 5));
-		assert.deepEqual(commands, ['panel-closed:.uno:DrawText']);
+		assert.deepEqual(commands, ['panel-closed:.uno:Text?CreateDirectly:bool=true']);
 		assert.deepEqual(focusCalls, []);
 	});
 

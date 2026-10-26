@@ -610,9 +610,10 @@ class WriterEditorCatalog {
 		);
 	}
 
-	/** Insert tab grid (Android app: 3×2 text cells, chart not in grid). */
+	/** iOS Writer insert tab grid, ordered to match its function panel. */
 	static readonly INSERT_PANEL_GRID_IDS: string[] = [
 		'insert-image',
+		'insert-chart',
 		'insert-table',
 		'insert-shape',
 		'insert-comment',

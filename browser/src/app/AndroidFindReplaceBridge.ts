@@ -16,9 +16,12 @@ class AndroidFindReplaceBridge {
 	private static pendingResults: Array<{ query: string; generation: number; command: number; backward: boolean; replace: string; timedOut?: boolean }> = [];
 	private static inFlight = false;
 	private static inFlightRequest: { query: string; generation: number; command: number; backward: boolean; replace: string; timedOut?: boolean } | null = null;
+	private static inFlightSearchResult: any = null;
+	private static inFlightCommandResult: any = null;
 	private static inFlightMap: any = null;
 	private static listenedMap: any = null;
 	private static commandResultListener: ((event: any) => void) | null = null;
+	private static searchResultListener: ((event: any) => void) | null = null;
 	private static resultTimeout = 0;
 	private static scopeMap: any = null;
 	private static generation = 0;
@@ -53,7 +56,7 @@ class AndroidFindReplaceBridge {
 	}
 
 	static find(query: string): void {
-		const normalizedQuery = query || '';
+		const normalizedQuery = (query || '').trim();
 		if (normalizedQuery !== AndroidFindReplaceBridge.lastQuery) { AndroidFindReplaceBridge.generation++; AndroidFindReplaceBridge.searchStarted = false; AndroidFindReplaceBridge.pendingResults = []; }
 		AndroidFindReplaceBridge.lastQuery = normalizedQuery;
 		AndroidFindReplaceBridge.executeSearch(
@@ -79,7 +82,7 @@ class AndroidFindReplaceBridge {
 	}
 
 	static findPrevious(query?: string): void {
-		if (query) {
+		if (query !== undefined) {
 			const normalizedQuery = query.trim();
 			if (normalizedQuery !== AndroidFindReplaceBridge.lastQuery) { AndroidFindReplaceBridge.generation++; AndroidFindReplaceBridge.searchStarted = false; AndroidFindReplaceBridge.pendingResults = []; }
 			AndroidFindReplaceBridge.lastQuery = normalizedQuery;
@@ -115,7 +118,7 @@ class AndroidFindReplaceBridge {
 		replaceWith: string,
 		replaceAll: boolean,
 	): void {
-		AndroidFindReplaceBridge.lastQuery = query || '';
+		AndroidFindReplaceBridge.lastQuery = (query || '').trim();
 		AndroidFindReplaceBridge.lastReplace = replaceWith || '';
 		AndroidFindReplaceBridge.generation++;
 		AndroidFindReplaceBridge.searchStarted = false;
@@ -138,30 +141,75 @@ class AndroidFindReplaceBridge {
 	static onCommandResult(event: any, sourceMap?: any): void {
 		if (!event || event.commandName !== '.uno:ExecuteSearch' || !AndroidFindReplaceBridge.inFlight) return;
 		if (sourceMap && sourceMap !== AndroidFindReplaceBridge.inFlightMap) return;
+		AndroidFindReplaceBridge.inFlightCommandResult = event;
 		const pending = AndroidFindReplaceBridge.inFlightRequest;
+		if (!pending) return;
+		if (pending.command !== AndroidFindReplaceBridge.CMD_FIND) {
+			AndroidFindReplaceBridge.finishRequest();
+			return;
+		}
+		if (!AndroidFindReplaceBridge.isImpressMap(AndroidFindReplaceBridge.inFlightMap)) {
+			let found: boolean | undefined;
+			if (typeof event.result === 'boolean') found = event.result;
+			else if (event.result && event.result.type === 'boolean' && typeof event.result.value === 'boolean') found = event.result.value;
+			// Older Core's unoAnyToJson omits boolean values, so successful boolean means found.
+			else if (event.success === true && event.result && event.result.type === 'boolean') found = true;
+			else if (event.success === false && event.result && event.result.type === 'void') found = false;
+			const status = found === undefined ? (event.success === false ? 'error' : undefined) : (found ? 'found' : 'notFound');
+			AndroidFindReplaceBridge.finishRequest(status);
+			return;
+		}
+
+		// ExecuteSearch's commandresult is not a reliable match/no-match signal for
+		// Impress. Wait for CanvasTileLayer's map.search callback, which contains
+		// the original phrase and the actual match count. A non-void failure is a
+		// command error; failure + void can be the normal no-match path.
+		if (event.success === false && !(event.result && event.result.type === 'void')) {
+			AndroidFindReplaceBridge.finishRequest('error');
+			return;
+		}
+		AndroidFindReplaceBridge.completeRequestIfReady();
+	}
+
+	static onSearchResult(event: any, sourceMap?: any): void {
+		if (!AndroidFindReplaceBridge.inFlight || !event || sourceMap !== AndroidFindReplaceBridge.inFlightMap) return;
+		if (!AndroidFindReplaceBridge.isImpressMap(sourceMap)) return;
+		const pending = AndroidFindReplaceBridge.inFlightRequest;
+		if (!pending || pending.command !== AndroidFindReplaceBridge.CMD_FIND || event.originalPhrase !== pending.query) return;
+		if (AndroidFindReplaceBridge.inFlightSearchResult) return;
+		const count = typeof event.count === 'number' ? event.count : Array.isArray(event.results) ? event.results.length : undefined;
+		if (typeof count !== 'number' || !Number.isFinite(count)) return;
+		AndroidFindReplaceBridge.inFlightSearchResult = { count };
+		AndroidFindReplaceBridge.completeRequestIfReady();
+	}
+
+	private static completeRequestIfReady(): void {
+		if (!AndroidFindReplaceBridge.inFlightSearchResult || !AndroidFindReplaceBridge.inFlightCommandResult) return;
+		AndroidFindReplaceBridge.finishRequest(AndroidFindReplaceBridge.inFlightSearchResult.count > 0 ? 'found' : 'notFound');
+	}
+
+	private static finishRequest(status?: string): void {
+		const pending = AndroidFindReplaceBridge.inFlightRequest;
+		const sourceMap = AndroidFindReplaceBridge.inFlightMap;
+		const current = !!pending && !pending.timedOut && pending.generation === AndroidFindReplaceBridge.generation && pending.query === AndroidFindReplaceBridge.lastQuery && sourceMap === app.map;
 		AndroidFindReplaceBridge.inFlight = false;
 		if (AndroidFindReplaceBridge.resultTimeout) window.clearTimeout(AndroidFindReplaceBridge.resultTimeout);
 		AndroidFindReplaceBridge.resultTimeout = 0;
 		AndroidFindReplaceBridge.inFlightRequest = null;
-		if (!pending) { AndroidFindReplaceBridge.dispatchNext(); return; }
-		const current = !pending.timedOut && pending.generation === AndroidFindReplaceBridge.generation && pending.query === AndroidFindReplaceBridge.lastQuery && (!sourceMap || sourceMap === app.map);
+		AndroidFindReplaceBridge.inFlightSearchResult = null;
+		AndroidFindReplaceBridge.inFlightCommandResult = null;
 		AndroidFindReplaceBridge.inFlightMap = null;
-		let found: boolean | undefined;
-		if (typeof event.result === 'boolean') found = event.result;
-		else if (event.result && event.result.type === 'boolean' && typeof event.result.value === 'boolean') found = event.result.value;
-		// Older Core's unoAnyToJson omits boolean values, so successful boolean means found.
-		else if (event.success === true && event.result && event.result.type === 'boolean') found = true;
-		// In the FIND path, SearchAndWrap(false) returns the normal no-match as FAILURE + void.
-		else if (event.success === false && event.result && event.result.type === 'void') found = false;
-		if (current && pending.command === AndroidFindReplaceBridge.CMD_FIND) {
-			const status = found === undefined ? (event.success === false ? 'error' : 'unknown') : (found ? 'found' : 'notFound');
-			if (status !== 'unknown') {
-				if (app.map) app.map.fire('writersearchresult', { query: pending.query, status });
-				const nativeHandler = (window as any).COOLMessageHandler;
-				if (nativeHandler && typeof nativeHandler.onFindSearchResult === 'function') nativeHandler.onFindSearchResult(pending.query, status);
-			}
+		if (current && pending && status && pending.command === AndroidFindReplaceBridge.CMD_FIND) {
+			if (app.map) app.map.fire('writersearchresult', { query: pending.query, status });
+			const nativeHandler = (window as any).COOLMessageHandler;
+			if (nativeHandler && typeof nativeHandler.onFindSearchResult === 'function') nativeHandler.onFindSearchResult(pending.query, status);
 		}
 		AndroidFindReplaceBridge.dispatchNext();
+	}
+
+	private static isImpressMap(map: any): boolean {
+		const docType = map && map._docLayer && map._docLayer._docType;
+		return docType === 'presentation' || docType === 'drawing';
 	}
 
 	static cancelPending(): void {
@@ -241,6 +289,8 @@ class AndroidFindReplaceBridge {
 		if (!AndroidFindReplaceBridge.inFlight || !stuck || !stuck.timedOut) return;
 		AndroidFindReplaceBridge.inFlight = false;
 		AndroidFindReplaceBridge.inFlightRequest = null;
+		AndroidFindReplaceBridge.inFlightSearchResult = null;
+		AndroidFindReplaceBridge.inFlightCommandResult = null;
 		AndroidFindReplaceBridge.inFlightMap = null;
 		AndroidFindReplaceBridge.generation++;
 		AndroidFindReplaceBridge.searchStarted = false;
@@ -262,6 +312,8 @@ class AndroidFindReplaceBridge {
 			if (AndroidFindReplaceBridge.listenedMap && AndroidFindReplaceBridge.commandResultListener && typeof AndroidFindReplaceBridge.listenedMap.off === 'function') AndroidFindReplaceBridge.listenedMap.off('commandresult', AndroidFindReplaceBridge.commandResultListener);
 			AndroidFindReplaceBridge.commandResultListener = (event: any) => AndroidFindReplaceBridge.onCommandResult(event, map);
 			map.on('commandresult', AndroidFindReplaceBridge.commandResultListener);
+			AndroidFindReplaceBridge.searchResultListener = (event: any) => AndroidFindReplaceBridge.onSearchResult(event, map);
+			map.on('search', AndroidFindReplaceBridge.searchResultListener);
 			AndroidFindReplaceBridge.listenedMap = map;
 		}
 		if (map._docLayer._searchResults && request.query !== map._docLayer._searchTerm) map._docLayer._clearSearchResults();
@@ -281,6 +333,8 @@ class AndroidFindReplaceBridge {
 		AndroidFindReplaceBridge.searchStarted = true;
 		AndroidFindReplaceBridge.inFlight = true;
 		AndroidFindReplaceBridge.inFlightRequest = request;
+		AndroidFindReplaceBridge.inFlightSearchResult = null;
+		AndroidFindReplaceBridge.inFlightCommandResult = null;
 		AndroidFindReplaceBridge.inFlightMap = map;
 		AndroidFindReplaceBridge.suppressSelectionMenuForSearch();
 		app.socket.sendMessage('uno .uno:ExecuteSearch ' + JSON.stringify(searchCmd));
@@ -308,11 +362,15 @@ class AndroidFindReplaceBridge {
 		AndroidFindReplaceBridge.pendingResults = [];
 		AndroidFindReplaceBridge.inFlight = false;
 		AndroidFindReplaceBridge.inFlightRequest = null;
+		AndroidFindReplaceBridge.inFlightSearchResult = null;
+		AndroidFindReplaceBridge.inFlightCommandResult = null;
 		AndroidFindReplaceBridge.inFlightMap = null;
 		AndroidFindReplaceBridge.searchStarted = false;
 		if (AndroidFindReplaceBridge.listenedMap && AndroidFindReplaceBridge.commandResultListener && typeof AndroidFindReplaceBridge.listenedMap.off === 'function') AndroidFindReplaceBridge.listenedMap.off('commandresult', AndroidFindReplaceBridge.commandResultListener);
+		if (AndroidFindReplaceBridge.listenedMap && AndroidFindReplaceBridge.searchResultListener && typeof AndroidFindReplaceBridge.listenedMap.off === 'function') AndroidFindReplaceBridge.listenedMap.off('search', AndroidFindReplaceBridge.searchResultListener);
 		AndroidFindReplaceBridge.listenedMap = null;
 		AndroidFindReplaceBridge.commandResultListener = null;
+		AndroidFindReplaceBridge.searchResultListener = null;
 		AndroidFindReplaceBridge.scopeMap = map;
 	}
 

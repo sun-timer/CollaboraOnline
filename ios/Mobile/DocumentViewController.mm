@@ -134,6 +134,8 @@ using rtl::OUString;
     BOOL documentOpeningCanvasMayHide;
     int documentOpeningEpoch;
     NSMutableSet<NSString *> *calcTextFormatRequests;
+    NSString *impressTextBoxDiagnosticOperationId;
+    NSDate *impressTextBoxDiagnosticExpiry;
 }
 
 - (void)updateToolbarDocumentTitle;
@@ -144,6 +146,7 @@ using rtl::OUString;
 - (void)pinDocumentWebViewToChrome;
 - (void)ensureKeyboardFrameObserver;
 - (void)installCalcTouchDiagnosticsIntoWebView;
+- (void)installImpressTextBoxDiagnosticsIntoWebView;
 - (void)openCurrentDocumentWhenKitIdleFromAttempt:(int)attempt;
 - (void)replaceDocumentInPlaceAtURL:(NSURL *)url;
 - (void)finishReplacingDocumentWithURL:(NSURL *)url;
@@ -2256,6 +2259,20 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         NSLog(@"[JS] %@", message.body);
         NSString *body = [message.body isKindOfClass:[NSString class]]
             ? message.body : [message.body description];
+#if ENABLE_DEBUG == 1
+        static NSString * const textBoxDiagPrefix = @"impress_textbox_diag ";
+        if ([body hasPrefix:textBoxDiagPrefix]) {
+            NSData *jsonData = [[body substringFromIndex:textBoxDiagPrefix.length]
+                dataUsingEncoding:NSUTF8StringEncoding];
+            id payload = jsonData ? [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil] : nil;
+            if ([payload isKindOfClass:[NSDictionary class]] &&
+                [payload[@"stage"] isEqual:@"feature"] &&
+                [payload[@"op"] isKindOfClass:[NSString class]]) {
+                impressTextBoxDiagnosticOperationId = [payload[@"op"] copy];
+                impressTextBoxDiagnosticExpiry = [NSDate dateWithTimeIntervalSinceNow:10.0];
+            }
+        }
+#endif
         std::cerr << "==> " << [body UTF8String] << std::endl;
     } else if ([message.name isEqualToString:@"lok"]) {
         if (![message.body isKindOfClass:[NSString class]]) {
@@ -2264,6 +2281,14 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             return;
         }
         NSString *body = (NSString *)message.body;
+#if ENABLE_DEBUG == 1
+        if ([body isEqualToString:@"uno .uno:Text?CreateDirectly:bool=true"] &&
+            impressTextBoxDiagnosticOperationId && impressTextBoxDiagnosticExpiry &&
+            [impressTextBoxDiagnosticExpiry timeIntervalSinceNow] > 0) {
+            NSLog(@"[impress_textbox_diag] op=%@ stage=lok_received command=CreateDirectlyText",
+                  impressTextBoxDiagnosticOperationId);
+        }
+#endif
         NSString *subBody = [body substringToIndex:std::min(100ul, body.length)];
         if (subBody.length < body.length)
             subBody = [subBody stringByAppendingString:@"..."];
@@ -2459,8 +2484,11 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         } else if ([message.body isEqualToString:@"DOCUMENT_READY"]) {
             if (!isClosing) {
                 documentReady = YES;
+                impressTextBoxDiagnosticOperationId = nil;
+                impressTextBoxDiagnosticExpiry = nil;
                 [self injectIOSUserNameIntoWebView:[self currentIOSUserNameForWeb]];
                 [self installCalcTouchDiagnosticsIntoWebView];
+                [self installImpressTextBoxDiagnosticsIntoWebView];
                 [self installCaretKeyboardHookIntoWebView];
                 [self maybeAutoGenerateAiContentAfterLoad];
             }
@@ -2806,6 +2834,140 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     log('installed', {tap: !!tap, menu: !!menu, input: !!input, ios: !!window.ThisIsTheiOSApp});
 })();
 )CALCDIAG"];
+    [self sendToolbarJavaScript:script];
+#endif
+}
+
+// Trace only the iOS Impress text-box insertion path. Messages contain no
+// document text or generic socket payloads and are sent through the existing
+// DEBUG-only mobile console bridge.
+- (void)installImpressTextBoxDiagnosticsIntoWebView
+{
+#if ENABLE_DEBUG == 1
+    NSString *script = [NSString stringWithUTF8String:R"IMPTEXTBOXDIAG(
+(function () {
+    try {
+        if (window.__coolIOSImpressTextBoxDiagInstalled || !window.app || !app.map) return;
+        var panel = window.__coolImpressEditorPanel;
+        var command = 'uno .uno:Text?CreateDirectly:bool=true';
+        if (!panel || typeof panel.onFeature !== 'function') return;
+        window.__coolIOSImpressTextBoxDiagInstalled = true;
+        var sequence = 0;
+        var active = null;
+        function presentation() {
+            return !!(app.map && app.map._docLayer && app.map._docLayer._docType === 'presentation');
+        }
+        function state() {
+            var map = app.map, socket = app.socket, transport = socket && socket.socket;
+            var blocked;
+            try { blocked = !!(map.uiManager && map.uiManager.isUIBlocked && map.uiManager.isUIBlocked()); }
+            catch (_) { blocked = null; }
+            return {
+                edit: !!(map.isEditMode && map.isEditMode()), uiBlocked: blocked,
+                idleActive: !!(app.idleHandler && app.idleHandler._active),
+                socketReadyState: transport && transport.readyState,
+                inflight: transport && transport.msgInflight,
+                docType: map._docLayer && map._docLayer._docType
+            };
+        }
+        function log(stage, details, operation) {
+            try {
+                var target = operation || active;
+                if (!target || !presentation()) return;
+                var data = {op: target.id, stage: stage, state: state()};
+                if (details) Object.keys(details).forEach(function (key) { data[key] = details[key]; });
+                window.postMobileDebug('impress_textbox_diag ' + JSON.stringify(data));
+            } catch (_) { /* Diagnostics must not affect editor behavior. */ }
+        }
+        function instrument(owner, name, kind) {
+            if (!owner || typeof owner[name] !== 'function') return;
+            var original = owner[name];
+            var wrapped = function () {
+                var operation = active;
+                var isSendStage = kind === 'sendMessage' || kind === 'queue' || kind === 'doSend';
+                var isGateStage = kind === 'sendUno_gate';
+                var matching = operation && (!isSendStage && !isGateStage ||
+                    (isSendStage && arguments[0] === command) ||
+                    (isGateStage && arguments[0] === '.uno:Text?CreateDirectly:bool=true'));
+                if (matching) log(kind + '_enter', null, operation);
+                if (matching && kind === 'doSend') operation.dispatched = true;
+                try {
+                    var result = original.apply(this, arguments);
+                    if (matching) {
+                        if (kind === 'queue') operation.queued = true;
+                        log(kind + '_return', {returnDefined: result !== undefined}, operation);
+                        if (kind === 'sendMessage') {
+                            log('sendMessage_result', {
+                                dispatchEntered: !!operation.dispatched,
+                                queued: !!operation.queued,
+                                disposition: operation.dispatched ? 'doSend_entered' :
+                                    (operation.queued ? 'queued' : 'no_dispatch_or_queue_observed')
+                            }, operation);
+                        }
+                    }
+                    return result;
+                } catch (error) {
+                    if (matching) log(kind + '_throw', {error: !!error}, operation);
+                    throw error;
+                }
+            };
+            owner[name] = wrapped;
+            active.restores.push(function () { if (owner[name] === wrapped) owner[name] = original; });
+        }
+        function finish() {
+            if (!active) return;
+            var op = active;
+            log('window_end', {queued: !!op.queued, doSendEntered: !!op.dispatched}, op);
+            active = null;
+            if (op.timer) window.clearTimeout(op.timer);
+            try { if (app.events && app.events.off) app.events.off('TextCursorVisibility', op.cursorHandler); } catch (_) {}
+            op.restores.reverse().forEach(function (restore) { try { restore(); } catch (_) {} });
+        }
+        var originalOnFeature = panel.onFeature;
+        var wrappedOnFeature = function (feature) {
+            try {
+                if (feature && feature.id === 'insert-textbox' && feature.unocmd === '.uno:Text?CreateDirectly:bool=true' && presentation()) {
+                    if (active) finish();
+                    active = {id: 'iosppt-textbox-' + Date.now() + '-' + (++sequence), restores: [], queued: false, dispatched: false};
+                    active.timer = window.setTimeout(finish, 10000);
+                    var op = active;
+                    log('feature', {featureId: feature.id}, op);
+                    if (app.events && app.events.on) {
+                        op.cursorHandler = function (event) {
+                            log('text_cursor_visibility', {visible: !!(event && event.detail && event.detail.visible)}, op);
+                        };
+                        app.events.on('TextCursorVisibility', op.cursorHandler);
+                    }
+                    var selection = app.definitions && app.definitions.graphicSelection;
+                    if (selection && typeof selection.onMessage === 'function') {
+                        var originalSelection = selection.onMessage;
+                        var wrappedSelection = function (message) {
+                            var isSelection = typeof message === 'string' && message.indexOf('graphicselection:') === 0;
+                            var result = originalSelection.apply(this, arguments);
+                            if (isSelection && active === op) {
+                                var has = false;
+                                try { has = !!selection.hasActiveSelection(); } catch (_) {}
+                                log('graphic_selection', {hasSelection: has}, op);
+                            }
+                            return result;
+                        };
+                        selection.onMessage = wrappedSelection;
+                        op.restores.push(function () { if (selection.onMessage === wrappedSelection) selection.onMessage = originalSelection; });
+                    }
+                    instrument(panel, 'close', 'panel_close');
+                    instrument(app.map, 'sendUnoCommand', 'sendUno_gate');
+                    instrument(app.socket, 'sendMessage', 'sendMessage');
+                    instrument(app.socket, '_enqueueMessageForReconnect', 'queue');
+                    instrument(app.socket, '_doSend', 'doSend');
+                }
+            } catch (_) { /* Keep the feature handler independent of diagnostics. */ }
+            return originalOnFeature.apply(this, arguments);
+        };
+        panel.onFeature = wrappedOnFeature;
+        log('installed', {panelHooked: true});
+    } catch (_) { /* Never let DEBUG instrumentation break document startup. */ }
+})();
+)IMPTEXTBOXDIAG"];
     [self sendToolbarJavaScript:script];
 #endif
 }

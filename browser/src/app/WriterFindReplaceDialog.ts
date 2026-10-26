@@ -486,7 +486,7 @@ class WriterFindReplaceDialog {
 		this.searchStatusHandler = (event: any) => {
 			const field = this.mode === 'replace' ? this.replaceQueryInput : this.findQueryInput;
 			const query = field.value.trim();
-			if (event && event.query === query) this.setSearchStatus(event.status === 'notFound' ? '未查到到关键词' : event.status === 'timeout' ? '查找超时，请重新打开文档' : event.status === 'error' ? '查找失败' : '');
+			if (event && event.query === query) this.setSearchStatus(event.status === 'notFound' ? '未查到关键词' : event.status === 'timeout' ? '查找超时，请重新打开文档' : event.status === 'error' ? '查找失败' : '');
 		};
 		map.on('writersearchresult', this.searchStatusHandler);
 	}

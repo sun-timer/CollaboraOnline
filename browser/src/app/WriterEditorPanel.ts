@@ -277,7 +277,6 @@ class WriterEditorPanel {
 			grid,
 			features,
 			(feature) => this.onFeature(feature),
-			{ textOnly: true },
 		);
 		this.content.appendChild(grid);
 	}
@@ -601,9 +600,21 @@ class WriterEditorPanel {
 				if (!textOnly) {
 					const iconWrap = document.createElement('span');
 					iconWrap.className = 'writer-function-chip__icon';
-					const icon = WriterEditorIcons.get(feature.icon);
-					if (icon) {
-						iconWrap.innerHTML = icon;
+					if (
+						grid.classList.contains('writer-function-chip-grid--insert') &&
+						feature.id === 'insert-chart'
+					) {
+						const icon = document.createElement('img');
+						icon.className = 'writer-function-chip__figma-icon';
+						icon.src = 'images/lc_writer_insert_chart.svg';
+						icon.alt = '';
+						icon.setAttribute('aria-hidden', 'true');
+						iconWrap.appendChild(icon);
+					} else {
+						const icon = WriterEditorIcons.get(feature.icon);
+						if (icon) {
+							iconWrap.innerHTML = icon;
+						}
 					}
 					chip.appendChild(iconWrap);
 				}
