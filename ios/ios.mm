@@ -39,6 +39,11 @@
 #include <com/sun/star/text/XTextCursor.hpp>
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
+#include <svx/svdview.hxx>
+#include <svx/svdmodel.hxx>
+#include <editeng/eeitem.hxx>
+#include <editeng/wghtitem.hxx>
+#include <editeng/postitem.hxx>
 #include <cstring>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/processfactory.hxx>
@@ -117,6 +122,68 @@ bool setIOSViewAuthor(lok::Document *document, int viewId, const char *name)
     // Impress persists the view's author, ignoring InsertAnnotation.Author.
     view->SetLOKAuthor(OUString::fromUtf8(name));
     return true;
+}
+
+IOSImpressShapeFormatResult toggleIOSImpressShapeFormat(lok::Document *document,
+    int viewId, int part, bool bold)
+{
+    IOSImpressShapeFormatResult result;
+    auto *mutex = comphelper::SolarMutex::get();
+    if (!document || !mutex || viewId < 0 || part < 0) return result;
+    osl::Guard<comphelper::SolarMutex> guard(mutex);
+    if (document->getDocumentType() != LOK_DOCTYPE_PRESENTATION) return result;
+    std::vector<int> ids(std::max(1, document->getViewsCount()));
+    if (!document->getViewIds(ids.data(), ids.size())
+        || std::find(ids.begin(), ids.end(), viewId) == ids.end()) return result;
+    SfxViewShell *view = SfxLokHelper::getViewOfId(viewId);
+    if (!view || !view->GetObjectShell() || view->GetObjectShell()->IsReadOnly()) return result;
+    struct RestoreView {
+        lok::Document *doc;
+        int previous;
+        ~RestoreView() { doc->setView(previous); }
+    } restore{document, document->getView()};
+    document->setView(viewId);
+    if (document->getPart() != part) return result;
+    SdrView *draw = view->GetDrawView();
+    if (!draw || draw->IsTextEdit() || draw->GetMarkedObjectList().GetMarkCount() == 0
+        || !draw->GetModel().IsUndoEnabled()) {
+        result.message = "请选择文本框后重试";
+        return result;
+    }
+    // Use the exact drawing-view path used by Impress, but include all three
+    // script attributes. SetAttributes owns undo, text-run attribute cleanup,
+    // object-change broadcasts and tile invalidation.
+    SfxItemSet current(draw->GetModel().GetItemPool());
+    draw->GetAttributes(current);
+    bool allEnabled;
+    if (bold) {
+        allEnabled = current.Get(EE_CHAR_WEIGHT).GetWeight() >= WEIGHT_BOLD
+            && current.Get(EE_CHAR_WEIGHT_CJK).GetWeight() >= WEIGHT_BOLD
+            && current.Get(EE_CHAR_WEIGHT_CTL).GetWeight() >= WEIGHT_BOLD;
+    } else {
+        allEnabled = current.Get(EE_CHAR_ITALIC).GetPosture() != ITALIC_NONE
+            && current.Get(EE_CHAR_ITALIC_CJK).GetPosture() != ITALIC_NONE
+            && current.Get(EE_CHAR_ITALIC_CTL).GetPosture() != ITALIC_NONE;
+    }
+    result.enabled = !allEnabled;
+    SfxItemSet attributes(draw->GetModel().GetItemPool());
+    if (bold) {
+        const FontWeight value = result.enabled ? WEIGHT_BOLD : WEIGHT_NORMAL;
+        attributes.Put(SvxWeightItem(value, EE_CHAR_WEIGHT));
+        attributes.Put(SvxWeightItem(value, EE_CHAR_WEIGHT_CJK));
+        attributes.Put(SvxWeightItem(value, EE_CHAR_WEIGHT_CTL));
+    } else {
+        const FontItalic value = result.enabled ? ITALIC_NORMAL : ITALIC_NONE;
+        attributes.Put(SvxPostureItem(value, EE_CHAR_ITALIC));
+        attributes.Put(SvxPostureItem(value, EE_CHAR_ITALIC_CJK));
+        attributes.Put(SvxPostureItem(value, EE_CHAR_ITALIC_CTL));
+    }
+    result.success = draw->SetAttributes(attributes, false);
+    if (result.success) {
+        result.changed = 1;
+        result.message = "";
+    }
+    return result;
 }
 
 IOSCalcTextFormatResult applyIOSCalcTextFormat(lok::Document *document, int viewId,

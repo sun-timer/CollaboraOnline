@@ -2485,6 +2485,9 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         } else if ([message.body hasPrefix:@"CALC_TEXT_FORMAT "]) {
             [self applyCalcTextFormatMessage:message.body];
             return;
+        } else if ([message.body hasPrefix:@"IMPRESS_SHAPE_FORMAT "]) {
+            [self applyImpressShapeFormatMessage:message.body];
+            return;
         } else if ([message.body hasPrefix:@"CALC_FORMAT_STATE "]) {
             [self readCalcFormatStateMessage:message.body];
             return;
@@ -3876,6 +3879,49 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
     if (json) [self.webView evaluateJavaScript:[NSString stringWithFormat:
         @"if(window.CalcTextFormatBridge){window.CalcTextFormatBridge.onResult(%@);}", json]
         completionHandler:nil];
+}
+
+- (void)applyImpressShapeFormatMessage:(NSString *)message
+{
+    if (isClosing || !nativeEditMode || ![nativeDocumentType isEqualToString:@"presentation"]) return;
+    NSData *data = [[message substringFromIndex:[@"IMPRESS_SHAPE_FORMAT " length]] dataUsingEncoding:NSUTF8StringEncoding];
+    id decoded = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if (![decoded isKindOfClass:NSDictionary.class]) return;
+    NSDictionary *payload = decoded;
+    NSString *command = [payload[@"command"] isKindOfClass:NSString.class] ? payload[@"command"] : nil;
+    NSString *session = [payload[@"documentSessionId"] isKindOfClass:NSString.class] ? payload[@"documentSessionId"] : nil;
+    if (![@[@".uno:Bold", @".uno:Italic"] containsObject:command ?: @""] || session.length == 0) return;
+    for (NSString *key in @[@"viewId", @"part"]) {
+        id value = payload[key];
+        if (![value isKindOfClass:NSNumber.class] || [value doubleValue] < 0 || [value doubleValue] > INT_MAX
+            || [value doubleValue] != (double)[value intValue]) return;
+    }
+    lok::Document *expectedDocument = [self loKitDocumentOrNull];
+    int generation = documentOpenGeneration;
+    if (!expectedDocument) return;
+    __weak DocumentViewController *weakSelf = self;
+    [self.webView evaluateJavaScript:@"window.NativeBridge ? window.NativeBridge.getDocumentSessionId() : null"
+        completionHandler:^(id currentSession, NSError *error) {
+        DocumentViewController *owner = weakSelf;
+        if (!owner || owner->isClosing || !owner->nativeEditMode || owner->documentOpenGeneration != generation
+            || expectedDocument != [owner loKitDocumentOrNull] || error || ![session isEqual:currentSession]) return;
+        IOSImpressShapeFormatResult result = toggleIOSImpressShapeFormat(expectedDocument,
+            [payload[@"viewId"] intValue], [payload[@"part"] intValue], [command isEqualToString:@".uno:Bold"]);
+        NSLog(@"[ImpressShapeFormat] command=%@ success=%d enabled=%d changed=%d message=%s",
+            command, result.success, result.enabled, result.changed, result.message);
+        if (result.changed > 0) [owner->topToolbarController recordUndoableNativeEdit:@"impress_shape_format"];
+        NSDictionary *reply = @{@"command":command, @"success":@(result.success), @"enabled":@(result.enabled),
+            @"viewId":payload[@"viewId"], @"part":payload[@"part"], @"documentSessionId":session,
+            @"message":[NSString stringWithUTF8String:result.message]};
+        NSData *replyData = [NSJSONSerialization dataWithJSONObject:reply options:0 error:nil];
+        NSString *json = replyData ? [[NSString alloc] initWithData:replyData encoding:NSUTF8StringEncoding] : nil;
+        if (json) [owner sendToolbarJavaScript:[NSString stringWithFormat:
+            @"(function(r){var m=window.app&&app.map;"
+             "if(!m||!window.NativeBridge||NativeBridge.getDocumentSessionId()!==r.documentSessionId||"
+             "m._docLayer._viewId!==r.viewId||m._docLayer._selectedPart!==r.part)return;"
+             "if(r.success)m.fire('commandstatechanged',{commandName:r.command,state:String(r.enabled)});"
+             "else if(r.message)m.uiManager.showSnackbar(r.message);})(%@);", json]];
+    }];
 }
 
 - (void)applyCalcTextFormatMessage:(NSString *)message
