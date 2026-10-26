@@ -1872,7 +1872,7 @@ bool ChildSession::insertFile(const StringVector& tokens)
         }
         else
         {
-            assert(type == "graphic" || type == "multimedia");
+            assert(type == "graphic" || type == "multimedia" || type == "selectbackground");
             std::string binaryData;
             macaron::Base64::Decode(data, binaryData);
             const std::string tempFile = FileUtil::createRandomTmpDir() + '/' + name;

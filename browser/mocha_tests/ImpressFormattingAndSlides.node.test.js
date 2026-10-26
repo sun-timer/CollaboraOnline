@@ -15,7 +15,7 @@ function formattingHarness() {
 	const states = {};
 	const commands = [];
 	const messages = [];
-	const selection = { graphic: true, text: false };
+	const selection = { graphic: true, text: false, id: '6062158976' };
 	window.postMobileMessage = message => messages.push(message);
 	window.app = { file: { textCursor: { visible: false } }, map: {
 		getDocType: () => 'presentation',
@@ -25,7 +25,7 @@ function formattingHarness() {
 	} };
 	const context = vm.createContext({ window, document: window.document,
 		WriterCharPanelIcons: { bold: '<svg/>', italic: '<svg/>' }, console,
-		GraphicSelection: { hasActiveSelection: () => selection.graphic },
+		GraphicSelection: { hasActiveSelection: () => selection.graphic, get extraInfo() { return { id: selection.id }; } },
 		TextSelections: { isActive: () => selection.text },
 		NativeBridge: { getInstance: () => ({ getDocumentSessionId: () => 'ppt-session' }) } });
 	for (const name of ['WriterEditorController', 'ImpressEditorPanel']) {
@@ -37,7 +37,7 @@ function formattingHarness() {
 	const panel = Object.create(window.Panel.prototype);
 	panel.grid = window.document.createElement('div');
 	window.document.body.appendChild(panel.grid);
-	const features = ['Bold', 'Italic'].map(name => ({
+	const features = ['Bold', 'Italic', 'Underline', 'Strikeout'].map(name => ({
 		id: 'char-' + name.toLowerCase(), label: name, kind: 'charTool',
 		tab: 'default', group: 'char-tools-1', unocmd: '.uno:' + name,
 	}));
@@ -49,13 +49,14 @@ test('both PPT entry points route a selected text box through the iOS script-awa
  const h = formattingHarness();
  try {
   const controller = new h.window.Controller();
-  for (const name of ['Bold', 'Italic']) {
+  for (const name of ['Bold', 'Italic', 'Underline', 'Strikeout']) {
    controller.run({ id: 'char-quick', kind: 'command', unocmd: '.uno:' + name });
    h.panel.grid.querySelector('[aria-label="' + name + '"]').click();
+   assert.equal(h.messages.length, 2);
    for (const message of h.messages.splice(0)) {
     assert.ok(message.startsWith('IMPRESS_SHAPE_FORMAT '));
     assert.deepEqual(JSON.parse(message.substring('IMPRESS_SHAPE_FORMAT '.length)), {
-     command: '.uno:' + name, viewId: 0, part: 0, documentSessionId: 'ppt-session',
+     command: '.uno:' + name, viewId: 0, part: 0, selectionId: '6062158976', documentSessionId: 'ppt-session',
     });
    }
   }
@@ -63,15 +64,17 @@ test('both PPT entry points route a selected text box through the iOS script-awa
  } finally { h.close(); }
 });
 
-test('real text selection and a text caret keep the existing UNO path', () => {
+test('text ranges and a caret use the same native formatter despite stale graphic state', () => {
  const h = formattingHarness();
  try {
   for (const textSelected of [false, true]) {
    h.selection.text = textSelected;
    h.window.app.file.textCursor.visible = !textSelected;
    h.panel.grid.querySelector('[aria-label="Bold"]').click();
-   assert.equal(h.commands.pop(), '.uno:Bold');
-   assert.equal(h.messages.length, 0);
+   const message = h.messages.pop();
+   assert.ok(message.startsWith('IMPRESS_SHAPE_FORMAT '));
+   assert.equal(JSON.parse(message.substring('IMPRESS_SHAPE_FORMAT '.length)).selectionId, '');
+   assert.equal(h.commands.length, 0);
   }
  } finally { h.close(); }
 });
@@ -87,12 +90,24 @@ test('common-panel character buttons retain their original appearance', () => {
  } finally { h.close(); }
 });
 
+test('a cleared graphic selection never forwards its old object ID for recovery', () => {
+ const h = formattingHarness();
+ try {
+  h.selection.graphic = false;
+  for (const name of ['Bold', 'Italic', 'Underline', 'Strikeout']) {
+   h.panel.grid.querySelector('[aria-label="' + name + '"]').click();
+   const request = JSON.parse(h.messages.pop().substring('IMPRESS_SHAPE_FORMAT '.length));
+   assert.equal(request.selectionId, '');
+  }
+ } finally { h.close(); }
+});
+
 test('Writer, Calc, Android, and unrelated commands retain their dispatch', () => {
  const h = formattingHarness();
  try {
   for (const [ios, docType, command] of [
    [false, 'presentation', '.uno:Bold'], [true, 'text', '.uno:Bold'],
-   [true, 'spreadsheet', '.uno:Italic'], [true, 'presentation', '.uno:Underline'],
+   [true, 'spreadsheet', '.uno:Italic'], [true, 'presentation', '.uno:Shadowed'],
   ]) {
    h.window.ThisIsTheiOSApp = ios;
    h.window.app.map.getDocType = () => docType;

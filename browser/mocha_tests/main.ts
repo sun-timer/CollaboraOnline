@@ -72,6 +72,7 @@
 /// <reference path="../src/app/WriterEditorIcons.ts" />
 /// <reference path="../src/app/WriterEditorPanel.ts" />
 /// <reference path="../src/app/ImpressEditorCatalog.ts" />
+/// <reference path="../src/app/ImpressBackgroundBridge.ts" />
 /// <reference path="../src/app/ImpressEditorHyperlinkDialog.ts" />
 /// <reference path="../src/app/ImpressTransitionBridge.ts" />
 /// <reference path="../src/app/ImpressEditorPanel.ts" />

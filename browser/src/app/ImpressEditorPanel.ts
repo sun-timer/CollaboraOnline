@@ -1029,7 +1029,7 @@ class ImpressEditorPanel {
 		);
 	}
 
-	/** Android BACKGROUND_LABELS / BACKGROUND_COMMANDS; never opens PageSetup. */
+	/** Page fills share their implementation with the Android panel. */
 	private openSlideBackgroundDialog(): void {
 		const options: WriterChooseOption[] =
 			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS.map((entry) => ({
@@ -1049,8 +1049,8 @@ class ImpressEditorPanel {
 					}
 					this.pickerLabels['slide-background'] = entry.label;
 					this.renderGrid();
-					if (entry.unocmd) {
-						this.sendUno(entry.unocmd);
+					if (entry.afterSelect !== 'colorPicker') {
+						ImpressBackgroundBridge.apply(entry.kind);
 					}
 					if (entry.afterSelect === 'colorPicker') {
 						this.presentSub(
@@ -1118,8 +1118,7 @@ class ImpressEditorPanel {
 	}
 
 	private applyImpressSlideBackgroundColor(rgb: number): void {
-		this.sendUno(ImpressEditorCatalog.buildFillPageStyleCommand(1));
-		this.sendUno(ImpressEditorCatalog.buildBackgroundColorCommand(rgb));
+		ImpressBackgroundBridge.apply('color', rgb);
 	}
 
 	private applySlideSize(

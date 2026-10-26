@@ -80,6 +80,7 @@ interface ImpressLayoutEntry {
 type ImpressFillPageStyle = 0 | 1 | 2 | 3 | 4;
 
 interface ImpressSlideBackgroundOption {
+	kind: ImpressBackgroundKind;
 	label: string;
 	unocmd: string | null;
 	fillPageStyle?: ImpressFillPageStyle;
@@ -224,43 +225,15 @@ class ImpressEditorCatalog {
 		},
 	];
 
-	/** Android BACKGROUND_LABELS / BACKGROUND_COMMANDS + createBackgroundActions. */
+	/** Both mobile panels use these labels and the shared background bridge. */
 	static readonly SLIDE_BACKGROUND_OPTIONS: ImpressSlideBackgroundOption[] = [
-		{
-			label: '无',
-			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(0),
-			fillPageStyle: 0,
-		},
-		{
-			label: '颜色',
-			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(1),
-			fillPageStyle: 1,
-			afterSelect: 'colorPicker',
-		},
-		{
-			label: '渐变',
-			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(2),
-			fillPageStyle: 2,
-		},
-		{
-			label: '阴影线',
-			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(3),
-			fillPageStyle: 3,
-		},
-		{
-			label: '位图',
-			unocmd: '.uno:SelectBackground',
-			afterSelect: 'imagePicker',
-		},
-		{
-			label: '图案',
-			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(4),
-			fillPageStyle: 4,
-		},
-		{
-			label: '使用幻灯片背景',
-			unocmd: '.uno:DisplayMasterBackground?DisplayMasterBackground:bool=true',
-		},
+		{ label: '无', kind: 'none', unocmd: null, fillPageStyle: 0 },
+		{ label: '颜色', kind: 'color', unocmd: null, fillPageStyle: 1, afterSelect: 'colorPicker' },
+		{ label: '渐变', kind: 'gradient', unocmd: null, fillPageStyle: 2 },
+		{ label: '阴影线', kind: 'hatch', unocmd: null, fillPageStyle: 3 },
+		{ label: '位图', kind: 'bitmap', unocmd: null, afterSelect: 'imagePicker' },
+		{ label: '图案', kind: 'pattern', unocmd: null, fillPageStyle: 4 },
+		{ label: '使用幻灯片背景', kind: 'master', unocmd: null },
 	];
 
 	/** Android MASTER_SLIDE_LABELS; 默认 uses FillPageStyle 0 on iOS (Android clears local state only). */
@@ -293,7 +266,7 @@ class ImpressEditorCatalog {
 
 	static buildBackgroundColorCommand(rgb: number): string {
 		return (
-			'.uno:FillPageColor {"FillPageColor.Color":{"type":"long","value":' +
+			'.uno:FillPageColor {"FillColor.Color":{"type":"long","value":' +
 			rgb +
 			'}}'
 		);

@@ -150,6 +150,8 @@ public class ImpressFunctionPanelController {
 
         void executeUnoCommand(String command);
 
+        void applySlideBackground(String kind, int rgb);
+
         void toastTodo(String text);
 
         void applyFont(String fontName);
@@ -717,7 +719,7 @@ public class ImpressFunctionPanelController {
             return;
         }
         if ("slide_background".equals(item.id)) {
-            showSlideOptionPickerPage("背景", BACKGROUND_LABELS, BACKGROUND_COMMANDS, item.id, valueView,
+            showSlideOptionPickerPage("背景", BACKGROUND_LABELS, null, item.id, valueView,
                     createBackgroundActions());
             return;
         }
@@ -841,20 +843,11 @@ public class ImpressFunctionPanelController {
 
     private void applyMasterSolidColor(int rgb) {
         selectedMasterSolidRgb = rgb;
-        host.executeUnoCommand(buildBackgroundColorUnoCommand(rgb));
+        host.applySlideBackground("color", rgb);
     }
 
     private void applySlideBackgroundColor(int rgb) {
-        host.executeUnoCommand(buildFillPageStyleUnoCommand(FILL_STYLE_SOLID));
-        host.executeUnoCommand(buildBackgroundColorUnoCommand(rgb));
-    }
-
-    private String buildFillPageStyleUnoCommand(int fillStyle) {
-        return ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":" + fillStyle + "}}";
-    }
-
-    private String buildBackgroundColorUnoCommand(int rgb) {
-        return ".uno:BackgroundColor {\"BackgroundColor.Color\":{\"type\":\"long\",\"value\":" + rgb + "}}";
+        host.applySlideBackground("color", rgb);
     }
 
     private void showLabelPicker(String title, String[] labels, String[] commands,
@@ -2563,11 +2556,6 @@ public class ImpressFunctionPanelController {
             ".uno:DefaultNumbering",
     };
 
-    private static final int FILL_STYLE_NONE = 0;
-    private static final int FILL_STYLE_SOLID = 1;
-    private static final int FILL_STYLE_GRADIENT = 2;
-    private static final int FILL_STYLE_HATCH = 3;
-    private static final int FILL_STYLE_BITMAP = 4;
 
     private static final String[] FORMAT_LABELS = {
             "A4", "A3", "A5", "A6", "A2", "A1", "A0",
@@ -2607,25 +2595,15 @@ public class ImpressFunctionPanelController {
     private static final String[] BACKGROUND_LABELS = {
             "无", "颜色", "渐变", "阴影线", "位图", "图案", "使用幻灯片背景"
     };
-    private static final String[] BACKGROUND_COMMANDS = {
-            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":0}}",
-            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":1}}",
-            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":2}}",
-            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":3}}",
-            ".uno:SelectBackground",
-            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":4}}",
-            ".uno:DisplayMasterBackground?DisplayMasterBackground:bool=true",
-    };
-
     private Runnable[] createBackgroundActions() {
         return new Runnable[] {
-                null,
+                () -> host.applySlideBackground("none", 0),
                 this::showSlideBackgroundColorPicker,
-                null,
-                null,
-                () -> host.runAfterFunctionPanelDismiss(() -> host.openLocalImagePickerFromWeb()),
-                null,
-                null,
+                () -> host.applySlideBackground("gradient", 0),
+                () -> host.applySlideBackground("hatch", 0),
+                () -> host.runAfterFunctionPanelDismiss(() -> host.applySlideBackground("bitmap", 0)),
+                () -> host.applySlideBackground("pattern", 0),
+                () -> host.applySlideBackground("master", 0),
         };
     }
 

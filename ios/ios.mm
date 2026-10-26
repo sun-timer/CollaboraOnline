@@ -5,6 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 #include "ios.h"
+#include "../common/MobileImpressBackground.hpp"
 #include <algorithm>
 #include <vector>
 #include <comphelper/solarmutex.hxx>
@@ -41,9 +42,17 @@
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <svx/svdview.hxx>
 #include <svx/svdmodel.hxx>
+#include <svx/svdpagv.hxx>
+#include <svx/svdpage.hxx>
+#include <svx/svditer.hxx>
+#include <svx/svdotext.hxx>
+#include <svx/unoapi.hxx>
+#include <svl/itemiter.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/wghtitem.hxx>
 #include <editeng/postitem.hxx>
+#include <editeng/udlnitem.hxx>
+#include <editeng/crossedoutitem.hxx>
 #include <cstring>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/processfactory.hxx>
@@ -125,9 +134,14 @@ bool setIOSViewAuthor(lok::Document *document, int viewId, const char *name)
 }
 
 IOSImpressShapeFormatResult toggleIOSImpressShapeFormat(lok::Document *document,
-    int viewId, int part, bool bold)
+    int viewId, int part, const char *command, const char *selectionId)
 {
     IOSImpressShapeFormatResult result;
+    const bool bold = command && std::strcmp(command, ".uno:Bold") == 0;
+    const bool italic = command && std::strcmp(command, ".uno:Italic") == 0;
+    const bool underline = command && std::strcmp(command, ".uno:Underline") == 0;
+    const bool strikeout = command && std::strcmp(command, ".uno:Strikeout") == 0;
+    if (!bold && !italic && !underline && !strikeout) return result;
     auto *mutex = comphelper::SolarMutex::get();
     if (!document || !mutex || viewId < 0 || part < 0) return result;
     osl::Guard<comphelper::SolarMutex> guard(mutex);
@@ -145,26 +159,78 @@ IOSImpressShapeFormatResult toggleIOSImpressShapeFormat(lok::Document *document,
     document->setView(viewId);
     if (document->getPart() != part) return result;
     SdrView *draw = view->GetDrawView();
-    if (!draw || draw->IsTextEdit() || draw->GetMarkedObjectList().GetMarkCount() == 0
-        || !draw->GetModel().IsUndoEnabled()) {
-        result.message = "请选择文本框后重试";
-        return result;
+    NSLog(@"[ImpressShapeFormat] stage=selection view=%d part=%d draw=%d textEdit=%d marks=%lu undo=%d",
+        viewId, part, draw != nullptr, draw && draw->IsTextEdit(),
+        draw ? static_cast<unsigned long>(draw->GetMarkedObjectList().GetMarkCount()) : 0UL,
+        draw && draw->GetModel().IsUndoEnabled());
+    if (!draw || !draw->GetModel().IsUndoEnabled()) return result;
+    if (selectionId && *selectionId) {
+        const auto matches = [&](const SdrObject* object) {
+            if (!object) return false;
+            const OString objectId = OString::number(reinterpret_cast<sal_IntPtr>(object));
+            return objectId == OString(selectionId);
+        };
+        // Find the ID only among live objects on this view's current slide.
+        // The token is never cast back to a pointer or used on a different page.
+        auto* pageView = draw->GetSdrPageView();
+        if (!pageView) return result;
+        try {
+            namespace css = com::sun::star;
+            css::uno::Reference<css::drawing::XDrawView> controller(view->GetController(), css::uno::UNO_QUERY_THROW);
+            if (GetSdrPageFromXDrawPage(controller->getCurrentPage()) != pageView->GetPage()) {
+                NSLog(@"[ImpressShapeFormat] stage=resolve reason=page_mismatch");
+                return result;
+            }
+        } catch (const com::sun::star::uno::Exception&) { return result; }
+        SdrObject* target = nullptr;
+        SdrObjListIter objects(pageView->GetPage(), SdrIterMode::DeepWithGroups);
+        while (objects.IsMore()) {
+            auto* candidate = objects.Next();
+            if (matches(candidate)) { target = candidate; break; }
+        }
+        NSLog(@"[ImpressShapeFormat] stage=resolve found=%d textObject=%d markable=%d",
+            target != nullptr, target && dynamic_cast<SdrTextObj*>(target) != nullptr,
+            target && draw->IsObjMarkable(target, pageView));
+        if (!target || !dynamic_cast<SdrTextObj*>(target) || !draw->IsObjMarkable(target, pageView)) return result;
+        const auto& marks = draw->GetMarkedObjectList();
+        if (marks.GetMarkCount() && !draw->IsObjMarked(target)) return result;
+        if (draw->IsTextEdit()) {
+            if (draw->GetTextEditObject() != target) return result;
+            // An explicit frame selection formats existing text, not just the
+            // next characters at a hidden insertion caret.
+            draw->SdrEndTextEdit(true);
+        }
+        if (!draw->IsObjMarked(target)) draw->MarkObj(target, pageView);
+        NSLog(@"[ImpressShapeFormat] stage=restore marks=%lu matched=%d",
+            static_cast<unsigned long>(draw->GetMarkedObjectList().GetMarkCount()), draw->IsObjMarked(target));
     }
+    if (!draw->IsTextEdit() && draw->GetMarkedObjectList().GetMarkCount() == 0) return result;
     // Use the exact drawing-view path used by Impress, but include all three
     // script attributes. SetAttributes owns undo, text-run attribute cleanup,
     // object-change broadcasts and tile invalidation.
     SfxItemSet current(draw->GetModel().GetItemPool());
     draw->GetAttributes(current);
-    bool allEnabled;
-    if (bold) {
-        allEnabled = current.Get(EE_CHAR_WEIGHT).GetWeight() >= WEIGHT_BOLD
-            && current.Get(EE_CHAR_WEIGHT_CJK).GetWeight() >= WEIGHT_BOLD
-            && current.Get(EE_CHAR_WEIGHT_CTL).GetWeight() >= WEIGHT_BOLD;
-    } else {
-        allEnabled = current.Get(EE_CHAR_ITALIC).GetPosture() != ITALIC_NONE
-            && current.Get(EE_CHAR_ITALIC_CJK).GetPosture() != ITALIC_NONE
-            && current.Get(EE_CHAR_ITALIC_CTL).GetPosture() != ITALIC_NONE;
-    }
+    // Ignore unused scripts when deciding the toggle. A Chinese-only text box
+    // can already be bold while its unused Latin/CTL defaults are still normal.
+    // Mixed (INVALID) attributes mean "apply", never read a default as a value.
+    const auto scripts = draw->GetScriptType();
+    const auto weightEnabled = [&](auto which) {
+        return current.GetItemState(which) != SfxItemState::INVALID
+            && current.Get(which).GetWeight() >= WEIGHT_BOLD;
+    };
+    const auto postureEnabled = [&](auto which) {
+        return current.GetItemState(which) != SfxItemState::INVALID
+            && current.Get(which).GetPosture() != ITALIC_NONE;
+    };
+    const bool allEnabled = underline
+        ? current.GetItemState(EE_CHAR_UNDERLINE) != SfxItemState::INVALID
+            && current.Get(EE_CHAR_UNDERLINE).GetLineStyle() != LINESTYLE_NONE
+        : strikeout
+        ? current.GetItemState(EE_CHAR_STRIKEOUT) != SfxItemState::INVALID
+            && current.Get(EE_CHAR_STRIKEOUT).GetStrikeout() != STRIKEOUT_NONE
+        : (!(scripts & SvtScriptType::LATIN) || (bold ? weightEnabled(EE_CHAR_WEIGHT) : postureEnabled(EE_CHAR_ITALIC)))
+            && (!(scripts & SvtScriptType::ASIAN) || (bold ? weightEnabled(EE_CHAR_WEIGHT_CJK) : postureEnabled(EE_CHAR_ITALIC_CJK)))
+            && (!(scripts & SvtScriptType::COMPLEX) || (bold ? weightEnabled(EE_CHAR_WEIGHT_CTL) : postureEnabled(EE_CHAR_ITALIC_CTL)));
     result.enabled = !allEnabled;
     SfxItemSet attributes(draw->GetModel().GetItemPool());
     if (bold) {
@@ -172,18 +238,38 @@ IOSImpressShapeFormatResult toggleIOSImpressShapeFormat(lok::Document *document,
         attributes.Put(SvxWeightItem(value, EE_CHAR_WEIGHT));
         attributes.Put(SvxWeightItem(value, EE_CHAR_WEIGHT_CJK));
         attributes.Put(SvxWeightItem(value, EE_CHAR_WEIGHT_CTL));
-    } else {
+    } else if (italic) {
         const FontItalic value = result.enabled ? ITALIC_NORMAL : ITALIC_NONE;
         attributes.Put(SvxPostureItem(value, EE_CHAR_ITALIC));
         attributes.Put(SvxPostureItem(value, EE_CHAR_ITALIC_CJK));
         attributes.Put(SvxPostureItem(value, EE_CHAR_ITALIC_CTL));
+    } else if (underline) {
+        attributes.Put(SvxUnderlineItem(result.enabled ? LINESTYLE_SINGLE : LINESTYLE_NONE, EE_CHAR_UNDERLINE));
+    } else {
+        attributes.Put(SvxCrossedOutItem(result.enabled ? STRIKEOUT_SINGLE : STRIKEOUT_NONE, EE_CHAR_STRIKEOUT));
     }
     result.success = draw->SetAttributes(attributes, false);
+    result.changed = result.success ? 1 : 0;
+    SfxItemSet readback(draw->GetModel().GetItemPool());
+    draw->GetAttributes(readback);
+    SfxItemIter written(attributes);
+    for (const SfxPoolItem* item = written.GetCurItem(); item; item = written.NextItem()) {
+        const SfxPoolItem* saved = nullptr;
+        readback.GetItemState(item->Which(), true, &saved);
+        if (!saved || !(*saved == *item)) result.success = false;
+    }
+    NSLog(@"[ImpressShapeFormat] stage=readback verified=%d marks=%lu textEdit=%d", result.success,
+        static_cast<unsigned long>(draw->GetMarkedObjectList().GetMarkCount()), draw->IsTextEdit());
     if (result.success) {
         result.changed = 1;
         result.message = "";
     }
     return result;
+}
+
+bool setIOSImpressMasterBackground(lok::Document *document, int viewId, int part, bool visible)
+{
+    return setMobileImpressMasterBackground(document, viewId, part, visible);
 }
 
 IOSCalcTextFormatResult applyIOSCalcTextFormat(lok::Document *document, int viewId,

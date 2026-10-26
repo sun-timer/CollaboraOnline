@@ -307,6 +307,7 @@ COOL_JS_LST =\
 	src/app/WriterEditorInlineSubpage.ts \
 	src/app/WriterEditorPanel.ts \
 	src/app/ImpressEditorCatalog.ts \
+	src/app/ImpressBackgroundBridge.ts \
 	src/app/ImpressSolidColorCatalog.ts \
 	src/app/ImpressEditorHyperlinkDialog.ts \
 	src/app/ImpressTransitionBridge.ts \

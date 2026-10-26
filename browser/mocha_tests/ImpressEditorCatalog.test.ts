@@ -333,16 +333,16 @@ describe('ImpressEditorCatalog', function () {
 		});
 		assert.deepEqual(fillStyles, [0, 1, 2, 3, 4]);
 		assert.equal(
-			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[0].unocmd,
-			ImpressEditorCatalog.buildFillPageStyleCommand(0),
+			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[0].kind,
+			'none',
 		);
 		assert.equal(
-			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[4].unocmd,
-			'.uno:SelectBackground',
+			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[4].kind,
+			'bitmap',
 		);
 		assert.equal(
-			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[6].unocmd,
-			'.uno:DisplayMasterBackground?DisplayMasterBackground:bool=true',
+			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[6].kind,
+			'master',
 		);
 		assert.equal(
 			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[1].afterSelect,
@@ -395,6 +395,7 @@ describe('Impress editor interaction regressions', function () {
 			socket: { sendMessage: (message: string) => commands.push(message) },
 			map: {
 				getDocType: () => 'presentation',
+				isEditMode: () => true,
 				sendUnoCommand: (command: string) => commands.push(command),
 				_docLayer: { _partWidthTwips: 15874, _partHeightTwips: 8929 },
 				stateChangeHandler: {
@@ -547,9 +548,8 @@ describe('Impress editor interaction regressions', function () {
 		panel.openSlideBackgroundDialog();
 		dom.window.document.querySelector('button[aria-label="渐变"]').click();
 		await new Promise((resolve) => dom.window.setTimeout(resolve, 5));
-		assert.deepEqual(commands, [
-			ImpressEditorCatalog.buildFillPageStyleCommand(2),
-		]);
+		assert.equal(commands.length, 1);
+		assert.ok(commands[0].startsWith('.uno:FillPageGradient '));
 		assert.equal(panel.pickerLabels['slide-background'], '渐变');
 		panel.close();
 	});

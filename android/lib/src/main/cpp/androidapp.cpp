@@ -35,6 +35,7 @@
 #include <comphelper/solarmutex.hxx>
 #include <sfx2/lokhelper.hxx>
 #include <sfx2/viewsh.hxx>
+#include <MobileImpressBackground.hpp>
 
 #include <osl/detail/android-bootstrap.h>
 
@@ -1109,6 +1110,23 @@ Java_org_libreoffice_androidlib_LOActivity_appendContinueWriteOnKitThread(
         append();
     else
         poll->addCallback(std::move(append));
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_libreoffice_androidlib_LOActivity_setImpressMasterBackgroundOnKitThread(
+    JNIEnv*, jobject, jint viewId, jint part, jboolean visible)
+{
+    auto document = getLOKDocumentForAndroidOnly();
+    auto* poll = KitSocketPoll::getMainPoll();
+    const int session = g_coolwsdSessionGeneration.load();
+    const int actionGeneration = g_androidPendingKitActionGeneration.load();
+    if (!document || !poll) return;
+    poll->addCallback([document, session, actionGeneration, viewId, part, visible] {
+        if (session != g_coolwsdSessionGeneration.load()
+            || actionGeneration != g_androidPendingKitActionGeneration.load()) return;
+        setMobileImpressMasterBackground(document.get(), viewId, part, visible);
+    });
 }
 
 extern "C"

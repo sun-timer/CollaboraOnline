@@ -819,6 +819,8 @@ public class LOActivity extends AppCompatActivity {
     private static final int IMPRESS_OUTLINE_STATE_ERROR = 3;
     private static final int REQUEST_CODE_IMPRESS_PICK_DOC = 9002;
     private static final int REQUEST_CODE_INSERT_LOCAL_IMAGE = 9003;
+    private static final int REQUEST_CODE_SLIDE_BACKGROUND_IMAGE = 9005;
+    private String slideBackgroundPickerToken;
     private static final int REQUEST_CODE_INSERT_CAMERA_IMAGE = 9004;
     private static final int PERMISSION_INSERT_CAMERA = 9010;
     private static final int PERMISSION_READ_GALLERY = 9011;
@@ -2480,6 +2482,22 @@ public class LOActivity extends AppCompatActivity {
         Log.i(TAG, "onActivityResult requestCode=" + requestCode + " resultCode=" + resultCode
                 + " aiSheetShowing=" + (aiOperationSheet != null && aiOperationSheet.isShowing()));
         super.onActivityResult(requestCode, resultCode, intent);
+        if (requestCode == REQUEST_CODE_SLIDE_BACKGROUND_IMAGE) {
+            final String token = slideBackgroundPickerToken;
+            slideBackgroundPickerToken = null;
+            if (resultCode == RESULT_OK && intent != null && intent.getData() != null && token != null) {
+                final Uri uri = intent.getData();
+                new Thread(() -> {
+                    final String base64 = readImageUriAsBase64(uri);
+                    runOnUiThread(() -> {
+                        if (mWebView == null || base64 == null) return;
+                        mWebView.evaluateJavascript("if(window.ImpressBackgroundBridge){ImpressBackgroundBridge.completeImagePicker("
+                                + org.json.JSONObject.quote(token) + "," + org.json.JSONObject.quote(base64) + ");}", null);
+                    });
+                }, "slide-background-image").start();
+            }
+            return;
+        }
         if (requestCode == REQUEST_AI_MODEL_CONFIG) {
             refreshDocumentSettingsDrawer();
             if (resultCode == RESULT_BACK_TO_DRAWER && docDrawerLayout != null) {
@@ -3384,6 +3402,48 @@ public class LOActivity extends AppCompatActivity {
                         ensureCalcSheetTabPopupController().showFromJson(json);
                     });
                     return false;
+                }
+                return false;
+            }
+            case "IMPRESS_MASTER_BACKGROUND": {
+                if (messageAndParam.length > 1) {
+                    final String json = messageAndParam[1];
+                    getMainHandler().post(() -> {
+                        try {
+                            org.json.JSONObject payload = new org.json.JSONObject(json);
+                            String session = payload.getString("documentSessionId");
+                            if (mWebView == null || !mIsEditModeActive || !isDocEditable) return;
+                            mWebView.evaluateJavascript("window.NativeBridge?NativeBridge.getDocumentSessionId():null", current -> {
+                                if (!org.json.JSONObject.quote(session).equals(current) || !mIsEditModeActive) return;
+                                try {
+                                    setImpressMasterBackgroundOnKitThread(payload.getInt("viewId"), payload.getInt("part"),
+                                            payload.getBoolean("visible"));
+                                } catch (org.json.JSONException e) {
+                                    Log.w(TAG, "Invalid slide background request", e);
+                                }
+                            });
+                        } catch (org.json.JSONException e) {
+                            Log.w(TAG, "Invalid slide background request", e);
+                        }
+                    });
+                }
+                return false;
+            }
+            case "IMPRESS_BACKGROUND_PICK_IMAGE": {
+                if (messageAndParam.length > 1) {
+                    final String token = messageAndParam[1];
+                    getMainHandler().post(() -> {
+                        slideBackgroundPickerToken = token;
+                        Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                        picker.setType("image/*");
+                        picker.addCategory(Intent.CATEGORY_OPENABLE);
+                        try {
+                            startActivityForResult(picker, REQUEST_CODE_SLIDE_BACKGROUND_IMAGE);
+                        } catch (android.content.ActivityNotFoundException e) {
+                            slideBackgroundPickerToken = null;
+                            Toast.makeText(this, "无法打开图片选择器", Toast.LENGTH_SHORT).show();
+                        }
+                    });
                 }
                 return false;
             }
@@ -12473,6 +12533,13 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public void applySlideBackground(String kind, int rgb) {
+                    if (mWebView == null || !mIsEditModeActive || !isDocEditable) return;
+                    mWebView.evaluateJavascript("if(window.ImpressBackgroundBridge){ImpressBackgroundBridge.apply("
+                            + org.json.JSONObject.quote(kind) + "," + rgb + ");}", null);
+                }
+
+                @Override
                 public void toastTodo(String text) {
                     LOActivity.this.toastTodo(text);
                 }
@@ -21454,6 +21521,8 @@ public class LOActivity extends AppCompatActivity {
             String expectedSelection, byte[] html, String requestId, int viewId);
 
     public native boolean setLOKViewAuthor(int viewId, String name);
+
+    private native void setImpressMasterBackgroundOnKitThread(int viewId, int part, boolean visible);
 
     public native void postUnoCommand(String command, String arguments, boolean bNotifyWhenFinished);
 
