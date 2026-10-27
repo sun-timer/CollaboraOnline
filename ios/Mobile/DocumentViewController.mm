@@ -2548,6 +2548,9 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         } else if ([message.body hasPrefix:@"IMPRESS_SHAPE_FORMAT "]) {
             [self applyImpressShapeFormatMessage:message.body];
             return;
+        } else if ([message.body hasPrefix:@"IMPRESS_SHAPE_FORMAT_STATE "]) {
+            [self readImpressShapeFormatStatesMessage:message.body];
+            return;
         } else if ([message.body hasPrefix:@"IMPRESS_MASTER_BACKGROUND "]) {
             [self applyImpressMasterBackgroundMessage:message.body];
             return;
@@ -4131,6 +4134,51 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
     }];
 }
 
+- (void)readImpressShapeFormatStatesMessage:(NSString *)message
+{
+    if (isClosing || ![nativeDocumentType isEqualToString:@"presentation"]) return;
+    NSData *data = [[message substringFromIndex:[@"IMPRESS_SHAPE_FORMAT_STATE " length]] dataUsingEncoding:NSUTF8StringEncoding];
+    id decoded = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if (![decoded isKindOfClass:NSDictionary.class]) return;
+    NSDictionary *payload = decoded;
+    NSString *requestId = [payload[@"requestId"] isKindOfClass:NSString.class] ? payload[@"requestId"] : nil;
+    NSString *session = [payload[@"documentSessionId"] isKindOfClass:NSString.class] ? payload[@"documentSessionId"] : nil;
+    NSString *selectionId = [payload[@"selectionId"] isKindOfClass:NSString.class] ? payload[@"selectionId"] : nil;
+    if (requestId.length == 0 || requestId.length > 160 || session.length == 0 || selectionId.length == 0
+        || selectionId.length > 20 || [selectionId rangeOfCharacterFromSet:
+            [[NSCharacterSet characterSetWithCharactersInString:@"0123456789"] invertedSet]].location != NSNotFound) return;
+    for (NSString *key in @[@"viewId", @"part"]) {
+        id number = payload[key];
+        if (![number isKindOfClass:NSNumber.class] || [number doubleValue] < 0 || [number doubleValue] > INT_MAX
+            || [number doubleValue] != (double)[number intValue]) return;
+    }
+    lok::Document *expectedDocument = [self loKitDocumentOrNull];
+    const int generation = documentOpenGeneration;
+    if (!expectedDocument) return;
+    __weak DocumentViewController *weakSelf = self;
+    [self.webView evaluateJavaScript:@"window.NativeBridge ? NativeBridge.getDocumentSessionId() : null"
+        completionHandler:^(id currentSession, NSError *error) {
+        DocumentViewController *owner = weakSelf;
+        if (!owner || owner->isClosing || owner->documentOpenGeneration != generation || error
+            || expectedDocument != [owner loKitDocumentOrNull] || ![session isEqual:currentSession]) return;
+        const auto state = getIOSImpressShapeFormatStates(expectedDocument, [payload[@"viewId"] intValue],
+            [payload[@"part"] intValue], selectionId.UTF8String);
+#if ENABLE_DEBUG == 1
+        NSLog(@"[ImpressShapeFormatState] success=%d bold=%d italic=%d underline=%d strikeout=%d",
+            state.success, state.bold, state.italic, state.underline, state.strikeout);
+#endif
+        const auto value = [](int flag) -> NSString * { return flag < 0 ? @"mixed" : flag ? @"true" : @"false"; };
+        NSDictionary *reply = @{@"requestId":requestId, @"documentSessionId":session, @"selectionId":selectionId,
+            @"viewId":payload[@"viewId"], @"part":payload[@"part"], @"success":@(state.success),
+            @"states":@{@".uno:Bold":value(state.bold), @".uno:Italic":value(state.italic),
+                @".uno:Underline":value(state.underline), @".uno:Strikeout":value(state.strikeout)}};
+        NSData *replyData = [NSJSONSerialization dataWithJSONObject:reply options:0 error:nil];
+        NSString *json = replyData ? [[NSString alloc] initWithData:replyData encoding:NSUTF8StringEncoding] : nil;
+        if (json) [owner sendToolbarJavaScript:[NSString stringWithFormat:
+            @"if(window.ImpressCharacterStateBridge){ImpressCharacterStateBridge.onResult(%@);}", json]];
+    }];
+}
+
 - (void)applyImpressShapeFormatMessage:(NSString *)message
 {
     if (isClosing || !nativeEditMode || ![nativeDocumentType isEqualToString:@"presentation"]) return;
@@ -4166,6 +4214,7 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
             command, result.success, result.enabled, result.changed, result.message);
         if (result.changed > 0) [owner->topToolbarController recordUndoableNativeEdit:@"impress_shape_format"];
         NSDictionary *reply = @{@"command":command, @"success":@(result.success), @"enabled":@(result.enabled),
+            @"selectionId":selectionId,
             @"viewId":payload[@"viewId"], @"part":payload[@"part"], @"documentSessionId":session,
             @"message":[NSString stringWithUTF8String:result.message]};
         NSData *replyData = [NSJSONSerialization dataWithJSONObject:reply options:0 error:nil];
@@ -4174,6 +4223,8 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
             @"(function(r){var m=window.app&&app.map;"
              "if(!m||!window.NativeBridge||NativeBridge.getDocumentSessionId()!==r.documentSessionId||"
              "m._docLayer._viewId!==r.viewId||m._docLayer._selectedPart!==r.part)return;"
+             "if(window.ImpressCharacterStateBridge){var accepted=ImpressCharacterStateBridge.onFormatResult(r);"
+             "if(r.selectionId&&accepted===false)return;}"
              "if(r.success)m.fire('commandstatechanged',{commandName:r.command,state:String(r.enabled)});"
              "else if(r.message)m.uiManager.showSnackbar(r.message);})(%@);", json]];
     }];

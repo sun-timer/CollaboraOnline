@@ -82,14 +82,18 @@ test('a text caret still uses the native formatter, without a shape id', () => {
  } finally { h.close(); }
 });
 
-test('common-panel character buttons retain their original appearance', () => {
+test('common-panel character buttons reflect the current formatting state', () => {
  const h = formattingHarness();
  try {
   h.states['.uno:Bold'] = 'true';
   const button = h.panel.grid.querySelector('[aria-label="Bold"]');
-  button.click();
-  assert.equal(button.className, 'writer-function-char-tools__btn');
-  assert.equal(button.getAttribute('aria-pressed'), null);
+  h.panel.refreshCharacterToolStates();
+  assert.ok(button.classList.contains('writer-function-char-tools__btn--active'));
+  assert.equal(button.getAttribute('aria-pressed'), 'true');
+  h.states['.uno:Bold'] = 'false';
+  h.panel.refreshCharacterToolStates();
+  assert.equal(button.classList.contains('writer-function-char-tools__btn--active'), false);
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
  } finally { h.close(); }
 });
 

@@ -4,6 +4,9 @@
  */
 
 class ImpressEditorPanel {
+	private static readonly characterCommands = [
+		'.uno:Bold', '.uno:Italic', '.uno:Underline', '.uno:Strikeout',
+	];
 	private readonly sheet: WriterEditorSheet;
 	private readonly tabBar: HTMLDivElement;
 	private readonly tabScroll: HTMLDivElement;
@@ -25,6 +28,8 @@ class ImpressEditorPanel {
 	private slideBackgroundColorRgb = 0xffffff;
 	private slideMasterSolidColorRgb = 0xffffff;
 	private stateHandler: ((event: any) => void) | null = null;
+	private characterStateHandler: (() => void) | null = null;
+	private characterSelectionHandler: (() => void) | null = null;
 	private panelIsOpen = false;
 	private slideBackgroundRequest = 0;
 	private readonly controller = WriterEditorController.getInstance();
@@ -110,6 +115,11 @@ class ImpressEditorPanel {
 		const map = (window as any).app?.map;
 		if (!this.stateHandler && map?.on) {
 			this.stateHandler = (event: any) => {
+				if (ImpressEditorPanel.characterCommands.includes(event?.commandName)) {
+					this.refreshCharacterToolStates();
+					WriterEditorController.requestImpressShapeStates();
+					return;
+				}
 				if (
 					[
 						'.uno:FontHeight',
@@ -127,10 +137,20 @@ class ImpressEditorPanel {
 				if (this.activeTab === 'default') this.renderGrid();
 			};
 			map.on('commandstatechanged', this.stateHandler);
+			this.characterStateHandler = () => this.refreshCharacterToolStates();
+			this.characterSelectionHandler = () => {
+				this.refreshCharacterToolStates();
+				WriterEditorController.requestImpressShapeStates();
+			};
+			map.on('impresscharacterstatechanged', this.characterStateHandler);
+			map.on('impresscharacterselectionchanged', this.characterSelectionHandler);
+			map.on('updatepermission', this.characterSelectionHandler);
+			map.on('updateparts', this.characterSelectionHandler);
 		}
 		this.renderTabs();
 		this.renderGrid();
 		this.sheet.open();
+		WriterEditorController.requestImpressShapeStates();
 	}
 
 	private openAiFeatures(): void {
@@ -155,7 +175,16 @@ class ImpressEditorPanel {
 		const map = (window as any).app?.map;
 		if (this.stateHandler && map?.off)
 			map.off('commandstatechanged', this.stateHandler);
+		if (this.characterStateHandler && map?.off)
+			map.off('impresscharacterstatechanged', this.characterStateHandler);
+		if (this.characterSelectionHandler && map?.off) {
+			map.off('impresscharacterselectionchanged', this.characterSelectionHandler);
+			map.off('updatepermission', this.characterSelectionHandler);
+			map.off('updateparts', this.characterSelectionHandler);
+		}
 		this.stateHandler = null;
+		this.characterStateHandler = null;
+		this.characterSelectionHandler = null;
 		const children = this.subDialogs.splice(0);
 		children.forEach((dialog) => dialog.close());
 		this.inlineSubpage.clearSubpages();
@@ -553,6 +582,10 @@ class ImpressEditorPanel {
 			button.type = 'button';
 			button.className = 'writer-function-char-tools__btn';
 			button.setAttribute('aria-label', feature.label);
+			if (feature.unocmd && ImpressEditorPanel.characterCommands.includes(feature.unocmd)) {
+				button.dataset.impressCharacterCommand = feature.unocmd;
+				this.refreshCharacterToolState(button, feature.unocmd);
+			}
 			const iconWrap = document.createElement('span');
 			iconWrap.className = 'writer-function-char-tools__icon';
 			iconWrap.innerHTML = ImpressCharToolIcons.iconFor(feature.id);
@@ -569,6 +602,21 @@ class ImpressEditorPanel {
 			container.appendChild(row2);
 		}
 		return container;
+	}
+
+	private refreshCharacterToolStates(): void {
+		this.grid.querySelectorAll<HTMLButtonElement>('[data-impress-character-command]').forEach((button) => {
+			const command = button.dataset.impressCharacterCommand;
+			if (command) this.refreshCharacterToolState(button, command);
+		});
+	}
+
+	private refreshCharacterToolState(button: HTMLButtonElement, command: string): void {
+		const state = WriterEditorController.impressShapeState(command) ??
+			(window as any).app?.map?.stateChangeHandler?.getItemValue(command);
+		const active = state === true || state === 'true';
+		button.classList.toggle('writer-function-char-tools__btn--active', active);
+		button.setAttribute('aria-pressed', state === 'mixed' ? 'mixed' : String(active));
 	}
 
 	private static rgbCss(rgb: number): string {

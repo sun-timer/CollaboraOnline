@@ -20,6 +20,8 @@ class WriterQuickActionBar {
 	private readonly toggleButtons: { [command: string]: HTMLButtonElement } = {};
 	private readonly colorIcons: { [command: string]: HTMLElement } = {};
 	private onStateBound: ((event: any) => void) | null = null;
+	private onImpressSelectionBound: (() => void) | null = null;
+	private onImpressStateBound: (() => void) | null = null;
 
 	constructor() {
 		this.root = document.createElement('div');
@@ -81,6 +83,7 @@ class WriterQuickActionBar {
 		}
 		this.refreshToggles();
 		this.subscribeState();
+		WriterEditorController.requestImpressShapeStates();
 	}
 
 	close(): void {
@@ -99,7 +102,7 @@ class WriterQuickActionBar {
 			return;
 		}
 		Object.keys(this.toggleButtons).forEach((command) => {
-			const state = handler.getItemValue(command);
+			const state = WriterEditorController.impressShapeState(command) ?? handler.getItemValue(command);
 			const active = state === 'true' || (CalcEditorFormat.isActive() && state === true);
 			this.setToggleActive(command, active);
 			if (CalcEditorFormat.isActive()) {
@@ -172,6 +175,12 @@ class WriterQuickActionBar {
 				return;
 			}
 			if (event.commandName in this.toggleButtons) {
+				if ((window as any).ThisIsTheiOSApp && map.getDocType?.() === 'presentation' &&
+					['.uno:Bold', '.uno:Italic', '.uno:Underline', '.uno:Strikeout'].includes(event.commandName)) {
+					this.refreshToggles();
+					WriterEditorController.requestImpressShapeStates();
+					return;
+				}
 				this.setToggleActive(event.commandName, event.state === 'true' ||
 					(CalcEditorFormat.isActive() && event.state === true));
 				if (CalcEditorFormat.isActive()) {
@@ -184,6 +193,17 @@ class WriterQuickActionBar {
 		};
 		this.onStateBound = onState;
 		map.on('commandstatechanged', onState);
+		if ((window as any).ThisIsTheiOSApp && map.getDocType?.() === 'presentation') {
+			this.onImpressStateBound = () => this.refreshToggles();
+			this.onImpressSelectionBound = () => {
+				this.refreshToggles();
+				WriterEditorController.requestImpressShapeStates();
+			};
+			map.on('impresscharacterstatechanged', this.onImpressStateBound);
+			map.on('impresscharacterselectionchanged', this.onImpressSelectionBound);
+			map.on('updatepermission', this.onImpressSelectionBound);
+			map.on('updateparts', this.onImpressSelectionBound);
+		}
 		if (CalcEditorFormat.isActive()) map.on('calctextformatresult', onState);
 	}
 
@@ -195,7 +215,15 @@ class WriterQuickActionBar {
 		if (map && typeof map.off === 'function') {
 			map.off('commandstatechanged', this.onStateBound);
 			map.off('calctextformatresult', this.onStateBound);
+			if (this.onImpressStateBound) map.off('impresscharacterstatechanged', this.onImpressStateBound);
+			if (this.onImpressSelectionBound) {
+				map.off('impresscharacterselectionchanged', this.onImpressSelectionBound);
+				map.off('updatepermission', this.onImpressSelectionBound);
+				map.off('updateparts', this.onImpressSelectionBound);
+			}
 		}
 		this.onStateBound = null;
+		this.onImpressStateBound = null;
+		this.onImpressSelectionBound = null;
 	}
 }

@@ -14,6 +14,9 @@
 #include <sfx2/objsh.hxx>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/beans/XPropertyState.hpp>
+#include <com/sun/star/awt/FontWeight.hpp>
+#include <com/sun/star/awt/FontSlant.hpp>
 #include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/document/XUndoManagerSupplier.hpp>
@@ -53,6 +56,8 @@
 #include <editeng/postitem.hxx>
 #include <editeng/udlnitem.hxx>
 #include <editeng/crossedoutitem.hxx>
+#include <editeng/outlobj.hxx>
+#include <editeng/editobj.hxx>
 #include <cstring>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/processfactory.hxx>
@@ -264,6 +269,90 @@ IOSImpressShapeFormatResult toggleIOSImpressShapeFormat(lok::Document *document,
         result.changed = 1;
         result.message = "";
     }
+    return result;
+}
+
+IOSImpressShapeFormatStates getIOSImpressShapeFormatStates(lok::Document *document,
+    int viewId, int part, const char *selectionId)
+{
+    using namespace com::sun::star;
+    IOSImpressShapeFormatStates result;
+    auto *mutex = comphelper::SolarMutex::get();
+    if (!document || !mutex || viewId < 0 || part < 0 || !selectionId || !*selectionId) return result;
+    osl::Guard<comphelper::SolarMutex> guard(mutex);
+    if (document->getDocumentType() != LOK_DOCTYPE_PRESENTATION) return result;
+    std::vector<int> ids(std::max(1, document->getViewsCount()));
+    if (!document->getViewIds(ids.data(), ids.size())
+        || std::find(ids.begin(), ids.end(), viewId) == ids.end()) return result;
+    SfxViewShell *view = SfxLokHelper::getViewOfId(viewId);
+    if (!view) return result;
+    struct RestoreView {
+        lok::Document *doc;
+        int previous;
+        ~RestoreView() { doc->setView(previous); }
+    } restore{document, document->getView()};
+    document->setView(viewId);
+    if (document->getPart() != part) return result;
+    try {
+        uno::Reference<drawing::XDrawView> controller(view->GetController(), uno::UNO_QUERY_THROW);
+        auto *page = GetSdrPageFromXDrawPage(controller->getCurrentPage());
+        if (!page) return result;
+        SdrTextObj *target = nullptr;
+        SdrObjListIter objects(page, SdrIterMode::DeepWithGroups);
+        while (objects.IsMore()) {
+            auto *object = objects.Next();
+            const OString id = OString::number(reinterpret_cast<sal_IntPtr>(object));
+            if (id == OString(selectionId)) { target = dynamic_cast<SdrTextObj*>(object); break; }
+        }
+        if (!target) return result;
+        // Query the entire persisted text, including inherited and run-level
+        // attributes. Draw-shell command state can describe an empty selection
+        // or an unused Latin script after reopening a Chinese presentation.
+        uno::Reference<text::XText> text(target->getUnoShape(), uno::UNO_QUERY_THROW);
+        auto cursor = text->createTextCursor();
+        cursor->gotoStart(false);
+        cursor->gotoEnd(true);
+        uno::Reference<beans::XPropertySet> properties(cursor, uno::UNO_QUERY_THROW);
+        uno::Reference<beans::XPropertyState> states(cursor, uno::UNO_QUERY_THROW);
+        const auto read = [&](const OUString &name, auto enabled) -> int {
+            if (states->getPropertyState(name) == beans::PropertyState_AMBIGUOUS_VALUE) return -1;
+            return enabled(properties->getPropertyValue(name));
+        };
+        const auto weight = [](const uno::Any &value) -> int {
+            float number = 0;
+            return (value >>= number) ? int(number >= awt::FontWeight::BOLD) : -1;
+        };
+        const auto posture = [](const uno::Any &value) -> int {
+            awt::FontSlant slant;
+            return (value >>= slant) ? int(slant != awt::FontSlant_NONE) : -1;
+        };
+        const auto line = [](const uno::Any &value) -> int {
+            sal_Int16 style = 0;
+            return (value >>= style) ? int(style != 0) : -1;
+        };
+        auto scripts = SvtScriptType::LATIN;
+        if (const auto *paragraph = target->GetOutlinerParaObject()) {
+            scripts = paragraph->GetTextObject().GetScriptType();
+            if (scripts == SvtScriptType::NONE) scripts = SvtScriptType::LATIN;
+        }
+        const auto scriptState = [&](bool bold) {
+            int merged = -2;
+            const auto include = [&](SvtScriptType script, const OUString &name) {
+                if (!(scripts & script)) return;
+                const int value = bold ? read(name, weight) : read(name, posture);
+                merged = merged == -2 ? value : merged == value ? merged : -1;
+            };
+            include(SvtScriptType::LATIN, bold ? u"CharWeight"_ustr : u"CharPosture"_ustr);
+            include(SvtScriptType::ASIAN, bold ? u"CharWeightAsian"_ustr : u"CharPostureAsian"_ustr);
+            include(SvtScriptType::COMPLEX, bold ? u"CharWeightComplex"_ustr : u"CharPostureComplex"_ustr);
+            return merged == -2 ? -1 : merged;
+        };
+        result.bold = scriptState(true);
+        result.italic = scriptState(false);
+        result.underline = read(u"CharUnderline"_ustr, line);
+        result.strikeout = read(u"CharStrikeout"_ustr, line);
+        result.success = true;
+    } catch (const uno::Exception&) {}
     return result;
 }
 

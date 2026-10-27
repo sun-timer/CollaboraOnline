@@ -722,6 +722,11 @@
 	height: 24px;
 }
 
+[data-mobile-doc-theme='impress'] .writer-function-char-tools__btn--active {
+	background: #eaf2ff;
+	outline: 1px solid #1278d9;
+}
+
 /* Android thumbnail/confirmation layout: dp values map to CSS viewport pixels. */
 .ios-impress-slide-overlay {
 	position: fixed;
