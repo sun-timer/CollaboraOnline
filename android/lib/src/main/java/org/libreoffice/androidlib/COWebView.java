@@ -27,6 +27,8 @@ public class COWebView extends WebView {
     public interface OnDocumentLongPressListener {
         boolean isWriterDocument();
 
+        boolean isCalcDocument();
+
         void onDocumentLongPress(float viewX, float viewY);
 
         void onDocumentSelectionDrag(float viewX, float viewY);
@@ -67,6 +69,24 @@ public class COWebView extends WebView {
     private boolean imeAllowedByUser = false;
     private boolean imeAllowedBeforeDocumentTouch = false;
     private long documentTouchGeneration = 0L;
+    private boolean calcLongPressPending = false;
+    private boolean calcLongPressConsumed = false;
+    private boolean documentTouchActive = false;
+    private long documentTouchWallTime = 0L;
+
+    public long getDocumentTouchWallTime() { return documentTouchWallTime; }
+    public boolean isCurrentDocumentTouch(long generation) {
+        return documentTouchActive && documentTouchGeneration == generation;
+    }
+    public void resolveCalcLongPress(long generation, boolean consumed) {
+        if (!isCurrentDocumentTouch(generation)) return;
+        calcLongPressPending = false;
+        calcLongPressConsumed = consumed;
+        if (consumed) {
+            nativeSelectionDragActive = false;
+            suppressDocumentTapUntilGestureEnd = true;
+        }
+    }
     private Runnable touchEndImeRestoreCallback = null;
     private OnDocumentTapListener documentTapListener;
     private float documentTapDownX = 0f;
@@ -120,6 +140,7 @@ public class COWebView extends WebView {
                 }
                 if (consumeWebViewLongClick && documentLongPressListener != null) {
                     nativeSelectionDragActive = true;
+                    calcLongPressPending = documentLongPressListener.isCalcDocument();
                     lastNativeSelectionDragAt = 0L;
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
                             && documentLongPressListener.isWriterDocument()) {
@@ -282,6 +303,10 @@ public class COWebView extends WebView {
     public boolean onTouchEvent(MotionEvent event) {
         final int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
+            documentTouchActive = true;
+            documentTouchWallTime = System.currentTimeMillis();
+            calcLongPressPending = false;
+            calcLongPressConsumed = false;
             suppressDocumentTapUntilGestureEnd = false;
         }
         if (action == MotionEvent.ACTION_DOWN && hitWriterSelectionHandle(event.getX(), event.getY())) {
@@ -349,7 +374,24 @@ public class COWebView extends WebView {
             }
         }
 
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            documentTouchActive = false;
+        }
         if (consumeWebViewLongClick && handledNativeSelection) {
+            // Complete the DOM touch stream even though the native long-press
+            // owns this gesture. A pending decision must cancel, not click; a
+            // consumed grid press can deliver its real end to clear Canvas state.
+            if ((calcLongPressPending || calcLongPressConsumed) &&
+                    (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)) {
+                if (calcLongPressPending && action == MotionEvent.ACTION_UP) {
+                    MotionEvent cancel = MotionEvent.obtain(event);
+                    cancel.setAction(MotionEvent.ACTION_CANCEL);
+                    super.onTouchEvent(cancel);
+                    cancel.recycle();
+                } else {
+                    super.onTouchEvent(event);
+                }
+            }
             if (documentGestureGuardEnabled &&
                     (event.getActionMasked() == MotionEvent.ACTION_MOVE ||
                             event.getActionMasked() == MotionEvent.ACTION_CANCEL)) {
@@ -400,6 +442,14 @@ public class COWebView extends WebView {
             return false;
         }
 
+        if ((calcLongPressPending || calcLongPressConsumed) &&
+                event.getActionMasked() != MotionEvent.ACTION_DOWN) {
+            if (event.getActionMasked() == MotionEvent.ACTION_UP ||
+                    event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                nativeSelectionDragActive = false;
+            }
+            return true;
+        }
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 if (nativeSelectionDragActive) {

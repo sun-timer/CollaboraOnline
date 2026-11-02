@@ -332,6 +332,11 @@ class AndroidSelectionMenu {
 		}, 1000);
 	}
 
+	private static beginTextInputTap(target: { x: number; y: number }): void {
+		AndroidSelectionMenu.resetForNewGesture();
+		AndroidSelectionMenu.beginTextInputRequest(target);
+	}
+
 	static resolveTextInputTap(): void {
 		const request = AndroidSelectionMenu.pendingTextInputRequest;
 		if (!request) {
@@ -439,7 +444,7 @@ class AndroidSelectionMenu {
 				// iOS Writer can keep an empty paragraph's caret at line start while
 				// the tap lands in the blank body of that same empty line, within one
 				// line height of it, not only within 3 pixels of the caret.
-				(AndroidSelectionMenu.isIOS() && AndroidSelectionMenu.isWriterDoc() &&
+				((AndroidSelectionMenu.isIOS() || AndroidSelectionMenu.isAndroid()) && AndroidSelectionMenu.isWriterDoc() &&
 					AndroidSelectionMenu.isCaretOnTapLine(caret, targetPoint))
 			)
 		);
@@ -460,6 +465,8 @@ class AndroidSelectionMenu {
 	}
 
 	static cancelTextInputRequest(_reason: string = 'cancel'): void {
+		AndroidSelectionMenu.presentationCaretMenuGesture = null;
+		AndroidSelectionMenu.presentationInputContext = null;
 		const request = AndroidSelectionMenu.pendingTextInputRequest;
 		if (request) {
 			window.clearTimeout(request.timer);
@@ -521,7 +528,150 @@ class AndroidSelectionMenu {
 		AndroidSelectionMenu.onTextCaretUpdate(event?.detail?.visible === true);
 	}
 
+	private static presentationCaretMenuGesture: {
+		layer: any; part: number; x: number; y: number;
+		caret: { x1: number; y1: number; x2: number; y2: number };
+	} | null = null;
+
+	private static finishPresentationCaretMenu(): void {
+		const press = AndroidSelectionMenu.presentationCaretMenuGesture;
+		if (!press) return;
+		AndroidSelectionMenu.presentationCaretMenuGesture = null;
+		AndroidSelectionMenu.suppressClickUntil = Date.now() + 700;
+		const caret = app.file?.textCursor?.rectangle;
+		if (!AndroidSelectionMenu.isPresentation() || !AndroidSelectionMenu.isEditMode() ||
+			!app.file?.textCursor?.visible || AndroidSelectionMenu.hasVisibleTextSelection() ||
+			press.layer !== app.map?._docLayer || press.part !== app.map._docLayer._selectedPart ||
+			!caret || caret.x1 !== press.caret.x1 || caret.y1 !== press.caret.y1 ||
+			caret.x2 !== press.caret.x2 || caret.y2 !== press.caret.y2) return;
+		if (AndroidSelectionMenu.isIOS()) AndroidSelectionMenu.showIOSWriterCaretMenu();
+		else AndroidSelectionMenu.showAndroidWriterCaretMenu();
+	}
+
+	private static presentationInputContext: { layer: any; part: number; expires: number; collapseRequested?: boolean } | null = null;
+
+	private static isPresentationInputPending(): boolean {
+		const input = AndroidSelectionMenu.presentationInputContext;
+		return !!input && input.layer === app.map?._docLayer &&
+			input.part === app.map._docLayer._selectedPart && Date.now() <= input.expires;
+	}
+
+	private static consumePresentationInputSelection(payload: string): boolean {
+		if (!AndroidSelectionMenu.isPresentation() || !AndroidSelectionMenu.isPresentationInputPending()) return false;
+		if (payload && payload !== 'EMPTY') {
+			// Core can select a word while entering shape text. Collapse only
+			// this explicit input transaction; the next long press cancels it.
+			AndroidSelectionMenu.clearLocalTextSelection();
+			const input = AndroidSelectionMenu.presentationInputContext!;
+			if (!input.collapseRequested) {
+				input.collapseRequested = true;
+				AndroidSelectionMenu.sendSelectionUno('.uno:GoLeft');
+			}
+		} else if (app.file?.textCursor?.visible) AndroidSelectionMenu.onTextCaretUpdate(true);
+		return true;
+	}
+
+	/** Selected shapes have their own click handler, outside MouseControl. */
+	static handlePresentationShapeTap(point: cool.SimplePoint, e: MouseEvent, doubleClick: boolean = false): boolean {
+		if (!AndroidSelectionMenu.isMobileApp() || !AndroidSelectionMenu.isPresentation() ||
+			!AndroidSelectionMenu.isEditMode()) return false;
+		const mouse = app.activeDocument?.mouseControl as any;
+		if (!mouse) return false;
+		const now = Date.now();
+		// A browser dblclick can follow two clicks already handled below.
+		if (doubleClick && now - (mouse.__presentationInputEnteredAt || 0) < 350) return true;
+		const target = { x: point.x, y: point.y };
+		if (doubleClick) mouse.__presentationInputTap = {
+			at: now, target, layer: app.map._docLayer, part: app.map._docLayer._selectedPart,
+		};
+		AndroidSelectionMenu.dispatchPresentationTap(mouse, {
+			sendingPosition: point.clone(), buttons: app.LOButtons.left, modifier: MouseControl.readModifier(e),
+			dispatch: (count: number) => {
+				// Shape points already are document twips. Do not run them through
+				// MouseControl's canvas-to-document transform a second time.
+				const layer = app.map._docLayer;
+				layer._postMouseEvent('buttondown', target.x, target.y, count, 1, MouseControl.readModifier(e));
+				layer._postMouseEvent('buttonup', target.x, target.y, count, 1, MouseControl.readModifier(e));
+			},
+		}, target, AndroidSelectionMenu.isTouchTapEligible());
+		return true;
+	}
+
+	/** Slides: double tap enters input; only a subsequent long press selects text. */
+	private static dispatchPresentationTap(mouse: any, info: any, target: { x: number; y: number } | null, touch: boolean): void {
+		const sendClick = (count: number) => typeof info.dispatch === 'function' ? info.dispatch(count) : mouse.sendClick(info, count);
+		const now = Date.now();
+		const previous = mouse.__presentationInputTap;
+		const sameTarget = !!previous && !!target && previous.layer === app.map._docLayer &&
+			previous.part === app.map._docLayer._selectedPart && now - previous.at <= 250 &&
+			Math.abs(previous.target.x - target.x) <= Math.round(72 * app.pixelsToTwips) &&
+			Math.abs(previous.target.y - target.y) <= Math.round(72 * app.pixelsToTwips);
+		const selected = AndroidSelectionMenu.hasNonDegenerateSelection();
+		const hadCaret = !!app.file?.textCursor?.visible;
+		if (selected) {
+			// Impress resetselection calls SdrEndTextEdit. Clear local range UI
+			// only; the following caret click collapses Core's text selection
+			// while retaining text-edit mode.
+			AndroidSelectionMenu.resetForNewGesture();
+		}
+		if (sameTarget && touch && target && AndroidSelectionMenu.isEditMode()) {
+			mouse.__presentationInputTap = null;
+			mouse.__presentationInputEnteredAt = now;
+			AndroidSelectionMenu.cancelGesture();
+			AndroidSelectionMenu.beginTextInputRequest(target);
+			AndroidSelectionMenu.presentationInputContext = {
+				layer: app.map._docLayer, part: app.map._docLayer._selectedPart, expires: now + 1000,
+			};
+			// Core double-click enters shape text from object mode. Once text
+			// already has a caret, a single click positions it without selecting a word.
+			sendClick(hadCaret ? 1 : 2);
+			AndroidSelectionMenu.resolveTextInputTap();
+			return;
+		}
+		mouse.__presentationInputTap = touch && target ? {
+			at: now, target, layer: app.map._docLayer, part: app.map._docLayer._selectedPart,
+		} : null;
+		// Tapping other text leaves the old range and starts caret input.
+		const continueInput = (selected || hadCaret) && touch && !!target && AndroidSelectionMenu.isEditMode();
+		if (continueInput && target) {
+			AndroidSelectionMenu.cancelGesture();
+			AndroidSelectionMenu.beginTextInputRequest(target);
+			AndroidSelectionMenu.presentationInputContext = {
+				layer: app.map._docLayer, part: app.map._docLayer._selectedPart, expires: now + 1000,
+			};
+		}
+		else AndroidSelectionMenu.cancelTextInputRequest('presentation_single_tap');
+		sendClick(1);
+		if (continueInput) AndroidSelectionMenu.resolveTextInputTap();
+	}
+
+	private static writerEditRequest: any = null;
+	static beginWriterEditKeyboard(token: number): void {
+		AndroidSelectionMenu.cancelWriterEditKeyboard();
+		if (!AndroidSelectionMenu.isAndroid() || !AndroidSelectionMenu.isEditMode() ||
+			!AndroidSelectionMenu.isWriterDoc() || !app.map?._docLayer) return;
+		const request = { map: app.map, layer: app.map._docLayer, token, timer: 0 };
+		AndroidSelectionMenu.writerEditRequest = request;
+		request.timer = window.setTimeout(() => AndroidSelectionMenu.cancelWriterEditKeyboard(), 5000);
+		if (app.file?.textCursor?.visible) AndroidSelectionMenu.finishWriterEditKeyboard();
+		else app.map.sendUnoCommand('.uno:GoToEndOfDoc');
+	}
+	private static cancelWriterEditKeyboard(): void {
+		const request = AndroidSelectionMenu.writerEditRequest;
+		if (request) window.clearTimeout(request.timer);
+		AndroidSelectionMenu.writerEditRequest = null;
+	}
+	private static finishWriterEditKeyboard(): void {
+		const request = AndroidSelectionMenu.writerEditRequest;
+		if (!request || request.map !== app.map || request.layer !== app.map?._docLayer ||
+			!AndroidSelectionMenu.isEditMode() || !AndroidSelectionMenu.isWriterDoc() ||
+			!app.file?.textCursor?.visible) return;
+		AndroidSelectionMenu.cancelWriterEditKeyboard();
+		window.postMobileMessage('SHOWWRITEREDITIME ' + request.token);
+	}
+
 	private static onTextCaretUpdate(cursorVisible: boolean): void {
+		if (cursorVisible) AndroidSelectionMenu.finishWriterEditKeyboard();
 		const request = AndroidSelectionMenu.pendingTextInputRequest;
 		if (!request) {
 			return;
@@ -550,6 +700,9 @@ class AndroidSelectionMenu {
 				) {
 					return;
 				}
+			} else if (AndroidSelectionMenu.isPresentation() && AndroidSelectionMenu.isPresentationInputPending()) {
+				// A caret published by Core after this explicit double tap is the
+				// input target; its position can be clamped to the shape's text.
 			} else if (
 				request.targetPoint &&
 				(!caretChanged && !AndroidSelectionMenu.isCaretAtTarget(caret, request.targetPoint))
@@ -562,7 +715,7 @@ class AndroidSelectionMenu {
 					Math.abs(caret.y1 - request.targetPoint.y) > tolerance
 				) {
 					if (
-						!AndroidSelectionMenu.isIOS() ||
+						!(AndroidSelectionMenu.isIOS() || AndroidSelectionMenu.isAndroid()) ||
 						!AndroidSelectionMenu.isWriterDoc() ||
 						!AndroidSelectionMenu.isCaretOnTapLine(caret, request.targetPoint)
 					) {
@@ -626,7 +779,12 @@ class AndroidSelectionMenu {
 		AndroidSelectionMenu.inputGestureHooksInstalled = true;
 
 		const startGesture = (event: Event) => {
+			AndroidSelectionMenu.presentationCaretMenuGesture = null;
+			AndroidSelectionMenu.cancelWriterEditKeyboard();
 			AndroidSelectionMenu.cancelTextInputRequest('new_touch');
+			// A new finger-down is distinct from the compatibility click of the
+			// previous long press, so it may start a new input gesture.
+			AndroidSelectionMenu.suppressClickUntil = 0;
 			AndroidSelectionMenu.clearKeyboardPreservation();
 			if (
 				event.type === 'pointerdown' &&
@@ -693,6 +851,7 @@ class AndroidSelectionMenu {
 			) {
 				gesture.moved = true;
 				AndroidSelectionMenu.lastTouchWasTap = false;
+				AndroidSelectionMenu.presentationCaretMenuGesture = null;
 				AndroidSelectionMenu.cancelTextInputRequest('scroll_or_zoom_gesture');
 				if (
 					!AndroidSelectionMenu.nativeSelectionDragActive &&
@@ -704,6 +863,8 @@ class AndroidSelectionMenu {
 		};
 
 		const endGesture = (cancelled: boolean = false) => {
+			if (cancelled) AndroidSelectionMenu.presentationCaretMenuGesture = null;
+			else AndroidSelectionMenu.finishPresentationCaretMenu();
 			const gesture = AndroidSelectionMenu.touchGesture;
 			if (!gesture) {
 				return;
@@ -752,6 +913,7 @@ class AndroidSelectionMenu {
 			);
 			app.events.on('updatepermission', () => {
 				if (!AndroidSelectionMenu.isEditMode()) {
+					AndroidSelectionMenu.cancelWriterEditKeyboard();
 					AndroidSelectionMenu.cancelTextInputRequest('permission_changed');
 					AndroidSelectionMenu.clearKeyboardPreservation();
 				}
@@ -770,6 +932,7 @@ class AndroidSelectionMenu {
 		}
 		AndroidSelectionMenu.inputLifecycleHooksInstalled = true;
 		const cancelForDocumentChange = () => {
+			AndroidSelectionMenu.cancelWriterEditKeyboard();
 			AndroidSelectionMenu.cancelTextInputRequest('document_changed');
 			AndroidSelectionMenu.clearKeyboardPreservation();
 			AndroidSelectionMenu.touchGesture = null;
@@ -904,6 +1067,7 @@ class AndroidSelectionMenu {
 
 	/** Reset bridge flags and hide menu (no selecttext end). */
 	static cancelGesture(): void {
+		AndroidSelectionMenu.presentationCaretMenuGesture = null;
 		MobileSelectionMagnifier.hide();
 		AndroidSelectionMenu.pendingLongPressSelection = false;
 		AndroidSelectionMenu.selectionGestureComplete = false;
@@ -1054,6 +1218,7 @@ class AndroidSelectionMenu {
 	 * Uses the same selecttext reset+start path as long-press.
 	 */
 	static onDoubleTapAtSectionPoint(point: cool.SimplePoint): void {
+		if (AndroidSelectionMenu.isPresentation()) return;
 		if (!AndroidSelectionMenu.isMobileApp() || !AndroidSelectionMenu.isSelectionDoc()) {
 			return;
 		}
@@ -1109,6 +1274,12 @@ class AndroidSelectionMenu {
 		viewY: number,
 		force: boolean = false,
 	): void {
+		const caretPress = AndroidSelectionMenu.presentationCaretMenuGesture;
+		if (caretPress) {
+			if (Math.abs(viewX - caretPress.x) + Math.abs(viewY - caretPress.y) > 12 * (app.dpiScale || 1))
+				AndroidSelectionMenu.presentationCaretMenuGesture = null;
+			return;
+		}
 		if (!AndroidSelectionMenu.nativeSelectionDragActive) {
 			return;
 		}
@@ -1163,6 +1334,12 @@ class AndroidSelectionMenu {
 
 	/** Finger up: finalize selecttext end; menu only after gesture complete + textselection:. */
 	static finishTextSelectionDrag(viewX?: number, viewY?: number): void {
+		if (AndroidSelectionMenu.presentationCaretMenuGesture) {
+			if (typeof viewX === 'number' && typeof viewY === 'number')
+				AndroidSelectionMenu.updateTextSelectionEndAt(viewX, viewY);
+			AndroidSelectionMenu.finishPresentationCaretMenu();
+			return;
+		}
 		if (!AndroidSelectionMenu.nativeSelectionDragActive) {
 			return;
 		}
@@ -1223,8 +1400,25 @@ class AndroidSelectionMenu {
 	 * 先关掉内核菜单，再选中按下位置的文字；菜单等松手后再出。
 	 */
 	static onLongPressAt(viewX: number, viewY: number): void {
+		if (AndroidSelectionMenu.isPresentation() &&
+			(!AndroidSelectionMenu.isEditMode() || !app.file?.textCursor?.visible)) return;
 		if (!AndroidSelectionMenu.isMobileApp() || !AndroidSelectionMenu.isSelectionDoc()) {
 			return;
+		}
+		if (AndroidSelectionMenu.isPresentation()) {
+			const scale = app.dpiScale || 1;
+			const hit = AndroidSelectionMenu.iosWriterCaretHitAtClient(viewX / scale, viewY / scale, true);
+			if (hit) {
+				AndroidSelectionMenu.cancelTextInputRequest('presentation_caret_menu');
+				AndroidSelectionMenu.cancelGesture();
+				AndroidSelectionMenu.presentationCaretMenuGesture = {
+					layer: hit.docLayer, part: hit.docLayer._selectedPart, x: viewX, y: viewY,
+					caret: { x1: hit.caret.x1, y1: hit.caret.y1, x2: hit.caret.x2, y2: hit.caret.y2 },
+				};
+				AndroidSelectionMenu.suppressClickUntil = Date.now() + 700;
+				AndroidSelectionMenu.preserveKeyboardDuringTouch = AndroidSelectionMenu.isKeyboardOpen();
+				return;
+			}
 		}
 		AndroidSelectionMenu.cancelTextInputRequest('long_press');
 		if (AndroidSelectionMenu.isKeyboardOpen() && AndroidSelectionMenu.isEditMode()) {
@@ -1872,149 +2066,38 @@ class AndroidSelectionMenu {
 					buttons: buttons,
 					modifier: modifier,
 				};
-				const mouseControl = this as any;
 				const isPresentation = app.map.getDocType() === 'presentation';
 				const isTouchTap = AndroidSelectionMenu.isTouchTapEligible();
-				const textTarget = AndroidSelectionMenu.sectionPointToDocumentTwips(
-					clickInfo.sendingPosition,
-				);
-				let useCorePresentationDoubleTap = false;
-				let presentationDoubleTapAttempt: {
-					docLayer: any;
-					part: number;
-					requestGeneration: number;
-					targetPoint: { x: number; y: number };
-					hadTextCaretOrSelection: boolean;
-				} | null = null;
-
+				const textTarget = AndroidSelectionMenu.sectionPointToDocumentTwips(clickInfo.sendingPosition);
+				if (isPresentation) {
+					this.clickCount = 0;
+					AndroidSelectionMenu.dispatchPresentationTap(this, clickInfo, textTarget, isTouchTap);
+					return;
+				}
 				if (this.clickTimer) {
 					app.timerRegistry.clearTimeout(this.clickTimer);
-					// A first tap can select the shape. If it began outside text edit,
-					// let Core receive the second click to enter the shape's text.
-					const firstTap = mouseControl.__mobilePresentationTapSequence;
-					const samePresentationTap =
-						isPresentation &&
-						AndroidSelectionMenu.isEditMode() &&
-						isTouchTap &&
-						firstTap &&
-						firstTap.docLayer === app.map._docLayer &&
-						firstTap.part === app.map._docLayer._selectedPart &&
-						firstTap.targetPoint &&
-						textTarget &&
-						Math.abs(firstTap.targetPoint.x - textTarget.x) <=
-							Math.round(72 * app.pixelsToTwips) &&
-						Math.abs(firstTap.targetPoint.y - textTarget.y) <=
-							Math.round(72 * app.pixelsToTwips);
-					useCorePresentationDoubleTap = !!(
-						samePresentationTap && !firstTap.hadTextCaretOrSelection
-					);
-					if (useCorePresentationDoubleTap && textTarget) {
-						inputRequestForTap = true;
-						presentationDoubleTapAttempt = {
-							docLayer: app.map._docLayer,
-							part: app.map._docLayer._selectedPart,
-							requestGeneration: AndroidSelectionMenu.textInputGeneration,
-							targetPoint: textTarget,
-							hadTextCaretOrSelection: firstTap.hadTextCaretOrSelection,
-						};
-						mouseControl.__mobilePresentationTapSequence =
-							presentationDoubleTapAttempt;
-					} else {
-						mouseControl.__mobilePresentationTapSequence = null;
-						AndroidSelectionMenu.cancelTextInputRequest('double_tap');
-					}
+					AndroidSelectionMenu.cancelTextInputRequest('double_tap');
 				} else {
-					inputRequestForTap =
-						AndroidSelectionMenu.isEditMode() &&
-						app.map.getDocType() !== 'spreadsheet' &&
-						isTouchTap &&
-						!!textTarget;
-					if (isPresentation && inputRequestForTap) {
-						mouseControl.__mobilePresentationTapSequence = {
-							docLayer: app.map._docLayer,
-							part: app.map._docLayer._selectedPart,
-							targetPoint: textTarget,
-							hadTextCaretOrSelection:
-								!!app.file?.textCursor?.visible ||
-								AndroidSelectionMenu.hasVisibleTextSelection(),
-						};
-					} else {
-						mouseControl.__mobilePresentationTapSequence = null;
-					}
-					if (inputRequestForTap) {
-						AndroidSelectionMenu.beginTextInputRequest(textTarget);
+					inputRequestForTap = AndroidSelectionMenu.isEditMode() && !isCalcEdit && isTouchTap && !!textTarget;
+					if (inputRequestForTap && textTarget) {
+						// End the previous selection gesture before a new caret request.
+						// Otherwise pendingLongPressSelection blocks its keyboard reply.
+						AndroidSelectionMenu.beginTextInputTap(textTarget);
 					}
 					(<any>this).sendClick(clickInfo, 1);
-					if (!AndroidSelectionMenu.isEditMode()) {
-						app.map.focus(false);
-					}
+					if (!AndroidSelectionMenu.isEditMode()) app.map.focus(false);
 				}
-
-				this.clickTimer = app.timerRegistry.setTimeout(
-					'clicktimer',
-					() => {
-						if (this.clickCount === 2) {
-							if (useCorePresentationDoubleTap && inputRequestForTap) {
-								const attempt = presentationDoubleTapAttempt;
-								const canDispatchCoreDoubleTap = !!(
-									attempt &&
-									mouseControl.__mobilePresentationTapSequence === attempt &&
-									AndroidSelectionMenu.textInputGeneration ===
-										attempt.requestGeneration &&
-									app.map &&
-									app.map._docLayer === attempt.docLayer &&
-									app.map._docLayer._selectedPart === attempt.part &&
-									AndroidSelectionMenu.isEditMode() &&
-									AndroidSelectionMenu.isTouchTapEligible()
-								);
-								mouseControl.__mobilePresentationTapSequence = null;
-								if (canDispatchCoreDoubleTap && attempt) {
-									const caretConfirmedByFirstTap =
-										!attempt.hadTextCaretOrSelection &&
-										!!app.file?.textCursor?.visible &&
-										AndroidSelectionMenu.isCaretAtTarget(
-											app.file.textCursor.rectangle,
-											attempt.targetPoint,
-										);
-									AndroidSelectionMenu.beginTextInputRequest(
-										attempt.targetPoint,
-										caretConfirmedByFirstTap,
-									);
-									const request = AndroidSelectionMenu.pendingTextInputRequest;
-									if (
-										request &&
-										AndroidSelectionMenu.pendingTextInputRequest === request &&
-										request.docLayer === attempt.docLayer &&
-										request.generation ===
-											AndroidSelectionMenu.textInputGeneration
-									) {
-										(<any>this).sendClick(clickInfo, 2);
-										AndroidSelectionMenu.resolveTextInputTap();
-									}
-								}
-							} else {
-								AndroidSelectionMenu.cancelTextInputRequest('double_tap');
-								AndroidSelectionMenu.onDoubleTapAtSectionPoint(
-									clickInfo.sendingPosition,
-								);
-							}
-						} else if (this.clickCount > 1) {
-							mouseControl.__mobilePresentationTapSequence = null;
-							AndroidSelectionMenu.cancelTextInputRequest('multi_tap');
-							(<any>this).sendClick(
-								clickInfo,
-								this.clickCount,
-							);
-						} else if (inputRequestForTap) {
-							AndroidSelectionMenu.resolveTextInputTap();
-						}
-
-						mouseControl.__mobilePresentationTapSequence = null;
-						this.clickTimer = null;
-						this.clickCount = 0;
-					},
-					250,
-				);
+				this.clickTimer = app.timerRegistry.setTimeout('clicktimer', () => {
+					if (this.clickCount === 2) {
+						AndroidSelectionMenu.cancelTextInputRequest('double_tap');
+						AndroidSelectionMenu.onDoubleTapAtSectionPoint(clickInfo.sendingPosition);
+					} else if (this.clickCount > 1) {
+						AndroidSelectionMenu.cancelTextInputRequest('multi_tap');
+						(<any>this).sendClick(clickInfo, this.clickCount);
+					} else if (inputRequestForTap) AndroidSelectionMenu.resolveTextInputTap();
+					this.clickTimer = null;
+					this.clickCount = 0;
+				}, 250);
 			};
 		};
 		installMouseControlHook();
@@ -2035,6 +2118,7 @@ class AndroidSelectionMenu {
 			layer._onTextSelectionMsg = function (textMsg: string) {
 				original(textMsg);
 				const payload = textMsg.replace('textselection:', '').trim();
+				if (AndroidSelectionMenu.consumePresentationInputSelection(payload)) return;
 				if (AndroidSelectionMenu.consumeIosPinchCancelledTextSelection(payload)) {
 					return;
 				}
@@ -2317,9 +2401,10 @@ class AndroidSelectionMenu {
 				caretTapCandidate = null;
 				annotationTapCandidate = null;
 				AndroidSelectionMenu.pendingWriterCommentTap = null;
-				// The purple cursor handle owns its drag and long-press behavior. Only
-				// canvas long-presses enter the established word-selection path.
-				if (target?.tagName === 'CANVAS') {
+				// PPT also accepts its cursor handle for the caret paste menu.
+				// Other documents retain their handle's existing gesture behavior.
+				if (target?.tagName === 'CANVAS' ||
+					(AndroidSelectionMenu.isPresentation() && !!target?.closest('.cursor-handler'))) {
 					AndroidSelectionMenu.onLongPressAt(
 						startX * scale(),
 						startY * scale(),
@@ -2567,15 +2652,17 @@ class AndroidSelectionMenu {
 	private static iosWriterCaretHitAtClient(
 		clientX: number,
 		clientY: number,
+		allowPresentation: boolean = false,
 	): { docLayer: any; caret: any } | null {
 		if (
 			!AndroidSelectionMenu.isMobileApp() ||
-			!AndroidSelectionMenu.isWriterDoc() ||
+			(!AndroidSelectionMenu.isWriterDoc() && !(allowPresentation && AndroidSelectionMenu.isPresentation())) ||
 			!AndroidSelectionMenu.isEditMode() ||
 			!app.map?._docLayer ||
 			!app.file?.textCursor?.visible ||
 			AndroidSelectionMenu.hasVisibleTextSelection() ||
-			(typeof GraphicSelection !== 'undefined' && GraphicSelection.hasActiveSelection())
+			(typeof GraphicSelection !== 'undefined' && GraphicSelection.hasActiveSelection() &&
+				!(allowPresentation && AndroidSelectionMenu.isPresentation()))
 		) {
 			return null;
 		}
@@ -2830,7 +2917,8 @@ class AndroidSelectionMenu {
 		if (!caret || !layout || !app.file?.textCursor?.visible ||
 			AndroidSelectionMenu.hasVisibleTextSelection() || !app.sectionContainer ||
 			!AndroidSelectionMenu.isEditMode() ||
-			(typeof GraphicSelection !== 'undefined' && GraphicSelection.hasActiveSelection())) return;
+			(typeof GraphicSelection !== 'undefined' && GraphicSelection.hasActiveSelection() &&
+				!AndroidSelectionMenu.isPresentation())) return;
 		const scale = app.dpiScale || 1;
 		const canvas = app.sectionContainer.getCanvasBoundingClientRect();
 		const caretX = (caret.x1 + caret.x2) / 2;

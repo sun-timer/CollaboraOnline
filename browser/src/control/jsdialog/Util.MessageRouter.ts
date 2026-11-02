@@ -36,9 +36,9 @@ class JSDialogMessageRouter {
 			ImpressTransitionBridge.handlePayload(msgData)
 		)
 			return;
-		// CSV import is auto-confirmed only during the initial iOS Calc CSV load.
+		// Auto-confirm CSV import only during the initial mobile Calc CSV load.
 		if (
-			window.ThisIsTheiOSApp &&
+			(window.ThisIsTheiOSApp || window.ThisIsTheAndroidApp) &&
 			(window as any).IOSCalcCsvImport &&
 			(window as any).IOSCalcCsvImport.handleMessage(msgData, callbackFn)
 		)

@@ -5,11 +5,12 @@ let now;
 let timers;
 let current;
 
-function setup({ ios = true, loaded = false, url = 'file:///tmp/import.csv', docType = 'spreadsheet', noLayer = false } = {}) {
+function setup({ ios = true, android = false, loaded = false, url = 'file:///tmp/import.csv', docType = 'spreadsheet', noLayer = false } = {}) {
 	IOSCalcCsvImport.resetForTests();
 	timers = new Map();
 	let nextTimer = 1;
 	global.ThisIsTheiOSApp = ios;
+	global.ThisIsTheAndroidApp = android;
 	global.mode = { isMobile: () => true };
 	const map = {
 		_docLoaded: loaded,
@@ -197,7 +198,7 @@ test('the dialog may arrive before the Calc layer, and updates survive layer cre
 	assert.equal(log.calls.filter((call) => call[0] === 'responsebutton').length, 1);
 });
 
-test('Android, non-CSV, loaded documents, and Text to Columns pass through', () => {
+test('desktop, non-CSV, loaded documents, and Text to Columns pass through', () => {
 	for (const options of [
 		{ ios: false },
 		{ url: 'file:///tmp/book.ods' },
@@ -207,6 +208,9 @@ test('Android, non-CSV, loaded documents, and Text to Columns pass through', () 
 		setup(options);
 		assert.equal(IOSCalcCsvImport.handleMessage(dialog(), callbackLog().callback), false);
 	}
+	setup({ ios: false, android: true });
+	assert.equal(IOSCalcCsvImport.handleMessage(dialog(28), callbackLog().callback), true);
+	IOSCalcCsvImport.resetForTests();
 	setup();
 	assert.equal(IOSCalcCsvImport.handleMessage(dialog(22), callbackLog().callback), true);
 	assert.equal(IOSCalcCsvImport.handleMessage({ id: 22, dialogid: 'TextImportCsvDialog', action: 'close' }, callbackLog().callback), true);

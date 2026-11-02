@@ -16,6 +16,8 @@ class AndroidCalcCellMenu {
 	private static listenersInstalled = false;
 	/** Set when a long-press asks to show before the cell cursor message arrives. */
 	private static pendingLongPress = false;
+	private static androidTapRequest: { docLayer: any; part: number; cell: string; at: number } | null = null;
+	private static androidRequestGeneration = 0;
 	private static iosTapRequest: { docLayer: any; part: number; cell: string; at: number } | null = null;
 	private static iosRequestGeneration = 0;
 	private static iosDismissGeneration = 0;
@@ -37,6 +39,24 @@ class AndroidCalcCellMenu {
 	/** A cursor update can satisfy an explicit request, but cannot create one. */
 	static onIOSSelectionChanged(): void {
 		if (AndroidCalcCellMenu.isIOSCalc()) AndroidCalcCellMenu.tryShow();
+	}
+
+	static showForAndroidTap(docLayer: any, part: number, cell: string): void {
+		if (!AndroidCalcCellMenu.isAndroid()) return;
+		AndroidCalcCellMenu.androidRequestGeneration++;
+		AndroidCalcCellMenu.pendingLongPress = false;
+		AndroidCalcCellMenu.androidTapRequest = { docLayer, part, cell, at: Date.now() };
+		AndroidCalcCellMenu.tryShow();
+	}
+
+	static onAndroidCellCursorCleared(): void {
+		const request = AndroidCalcCellMenu.androidTapRequest;
+		AndroidCalcCellMenu.hide();
+		if (request && request.docLayer === app.map?._docLayer &&
+			request.part === app.map._docLayer._selectedPart &&
+			Date.now() - request.at <= AndroidCalcCellMenu.iosTapRequestLifetimeMs) {
+			AndroidCalcCellMenu.androidTapRequest = request;
+		}
 	}
 
 	static showForIOSTap(docLayer: any, part: number, cell: string): void {
@@ -83,15 +103,17 @@ class AndroidCalcCellMenu {
 	private static retryShow(retry: number, delay: number): void {
 		const iosCalc = AndroidCalcCellMenu.isIOSCalc();
 		const generation = AndroidCalcCellMenu.iosRequestGeneration;
+		const androidGeneration = AndroidCalcCellMenu.androidRequestGeneration;
 		window.setTimeout(() => {
+			if (AndroidCalcCellMenu.isAndroid() && androidGeneration !== AndroidCalcCellMenu.androidRequestGeneration) return;
 			if (iosCalc && (!AndroidCalcCellMenu.isIOSCalc() || generation !== AndroidCalcCellMenu.iosRequestGeneration)) return;
 			AndroidCalcCellMenu.tryShow(retry);
 		}, delay);
 	}
 
 	/**
-	 * Android follows the cell cursor. iOS Calc requires an explicit slow
-	 * second tap or long-press; cursor updates only resolve that request.
+	 * Single-cell menus require an explicit slow second tap or long-press.
+	 * Cursor updates only resolve that request; Android range menus stay available.
 	 */
 	private static allowOnThisPlatform(): boolean {
 		if (AndroidCalcCellMenu.isAndroid()) {
@@ -105,6 +127,7 @@ class AndroidCalcCellMenu {
 
 	/** After a calc long-press placed the cell cursor (no text range to anchor). */
 	static showAfterSelection(): void {
+		if (AndroidCalcCellMenu.isAndroid()) (window as any).AndroidCalcTap?.resetAndroidState();
 		if (AndroidCalcCellMenu.isIOSCalc()) (window as any).AndroidCalcTap?.resetIOSState();
 		// Finger-up already happened. A stale pointerdown flag would defer the
 		// menu until a pointerup that will not come again.
@@ -116,6 +139,7 @@ class AndroidCalcCellMenu {
 
 	/** Long-press in edit mode: compact bar only when the press hits the selection. */
 	static showFromLongPress(point: any): void {
+		if (AndroidCalcCellMenu.isAndroid()) (window as any).AndroidCalcTap?.resetAndroidState();
 		if (AndroidCalcCellMenu.isIOSCalc()) (window as any).AndroidCalcTap?.resetIOSState();
 		if (!AndroidCalcCellMenu.pointInsideSelection(point)) {
 			AndroidCalcCellMenu.pendingLongPress = false;
@@ -165,6 +189,9 @@ class AndroidCalcCellMenu {
 			return;
 		}
 		AndroidCalcCellMenu.listenersInstalled = true;
+		let downPoint: { x: number; y: number } | null = null;
+		const isAndroidCalc = () => AndroidCalcCellMenu.isAndroid() &&
+			app.map?._docLayer?._docType === 'spreadsheet';
 		const onDown = (event: Event) => {
 			const target = event.target as HTMLElement | null;
 			if (
@@ -174,10 +201,24 @@ class AndroidCalcCellMenu {
 			) {
 				return;
 			}
+			if (isAndroidCalc()) {
+				(window as any).AndroidCalcTap?.cancelAndroidCellMenu();
+				const point = (event as TouchEvent).touches?.[0] || event as PointerEvent;
+				downPoint = { x: point.clientX, y: point.clientY };
+			}
 			AndroidCalcCellMenu.pointerDown = true;
 			AndroidCalcCellMenu.deferUntilPointerUp = false;
 		};
+		const onMove = (event: Event) => {
+			if (!isAndroidCalc() || !downPoint) return;
+			const point = (event as TouchEvent).touches?.[0] || event as PointerEvent;
+			if ((point.clientX - downPoint.x) ** 2 + (point.clientY - downPoint.y) ** 2 > 25) {
+				downPoint = null;
+				(window as any).AndroidCalcTap?.resetAndroidState();
+			}
+		};
 		const onUp = () => {
+			downPoint = null;
 			if (!AndroidCalcCellMenu.pointerDown) {
 				return;
 			}
@@ -190,10 +231,12 @@ class AndroidCalcCellMenu {
 		};
 		if (typeof (window as any).PointerEvent === 'function') {
 			window.addEventListener('pointerdown', onDown, true);
+			window.addEventListener('pointermove', onMove, true);
 			window.addEventListener('pointerup', onUp, true);
 			window.addEventListener('pointercancel', onUp, true);
 		} else {
 			window.addEventListener('touchstart', onDown, true);
+			window.addEventListener('touchmove', onMove, true);
 			window.addEventListener('touchend', onUp, true);
 			window.addEventListener('touchcancel', onUp, true);
 		}
@@ -226,6 +269,10 @@ class AndroidCalcCellMenu {
 
 	static hide(): void {
 		AndroidCalcCellMenu.deferUntilPointerUp = false;
+		if (AndroidCalcCellMenu.isAndroid()) {
+			AndroidCalcCellMenu.androidTapRequest = null;
+			AndroidCalcCellMenu.androidRequestGeneration++;
+		}
 		if (AndroidCalcCellMenu.isIOSCalc()) {
 			AndroidCalcCellMenu.iosTapRequest = null;
 			AndroidCalcCellMenu.pendingLongPress = false;
@@ -244,6 +291,26 @@ class AndroidCalcCellMenu {
 	}
 
 	static tryShow(retry = 0): void {
+		if (AndroidCalcCellMenu.isAndroid()) {
+			// Install even when no menu was requested, so the next touch can
+			// cancel a delayed repeated-tap menu before native dispatch runs.
+			AndroidCalcCellMenu.installPointerListeners();
+			const request = AndroidCalcCellMenu.androidTapRequest;
+			const area = app.map?._docLayer?._cellSelectionArea;
+			const cursor = app.calc?.cellCursorRectangle;
+			const rangeSelected = area && cursor &&
+				(area.pWidth > cursor.pWidth + 2 || area.pHeight > cursor.pHeight + 2);
+			if (!request && !AndroidCalcCellMenu.pendingLongPress && !rangeSelected) return;
+			if (request) {
+				if (request.docLayer !== app.map?._docLayer || request.part !== app.map._docLayer._selectedPart ||
+					Date.now() - request.at > AndroidCalcCellMenu.iosTapRequestLifetimeMs) {
+					AndroidCalcCellMenu.dismiss();
+					return;
+				}
+				const address = app.calc.cellAddress;
+				if (!address || !app.calc.cellCursorVisible || request.cell !== address.x + ':' + address.y) return;
+			}
+		}
 		if (AndroidCalcCellMenu.isIOSCalc()) {
 			const request = AndroidCalcCellMenu.iosTapRequest;
 			if (!request && !AndroidCalcCellMenu.pendingLongPress) return;

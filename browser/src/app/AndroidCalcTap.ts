@@ -19,9 +19,11 @@ class AndroidCalcTap {
 		y: number;
 		docLayer: any;
 		part: number;
-		cellIdentity?: string;
+		cell: string | null;
 	} | null = null;
 	private static cellMenuTimer = 0;
+	private static androidMap: any = null;
+	private static readonly androidReset = () => AndroidCalcTap.resetAndroidState();
 	private static iosInstalled = false;
 	private static iosDown: {
 		x: number; y: number; at: number; identifier: number;
@@ -89,8 +91,8 @@ class AndroidCalcTap {
 		try {
 			const mobile =
 				!!window.ThisIsTheAndroidApp || !!(window as any).ThisIsTheiOSApp;
-			if (!mobile || !app.map || !app.map.isEditMode()) {
-				AndroidCalcTap.report('skipped=not_edit_mode');
+			if (!mobile || !app.map) {
+				AndroidCalcTap.report('skipped=no_map');
 				return false;
 			}
 			if (!app.map._docLayer || app.map._docLayer._docType !== 'spreadsheet') {
@@ -108,14 +110,12 @@ class AndroidCalcTap {
 			}
 			AndroidCalcTap.lastTapAt = now;
 
-			try {
-				if (app.map._textInput && typeof app.map._textInput.blur === 'function') {
-					app.map._textInput.blur();
-				}
-			} catch (_e) {
-				// Best-effort: commit in-cell edit before switching cells.
+			if (AndroidCalcTap.androidMap !== app.map) {
+				AndroidCalcTap.androidMap?.off('scrolltopart docloaded', AndroidCalcTap.androidReset);
+				AndroidCalcTap.resetAndroidState();
+				AndroidCalcTap.androidMap = app.map;
+				app.map.on('scrolltopart docloaded', AndroidCalcTap.androidReset);
 			}
-
 			// Prefer row/column header selection over single-cell tap (AndroidCalcTap regressed this).
 			if (
 				(window as any).AndroidCalcHeaderMenu &&
@@ -137,76 +137,52 @@ class AndroidCalcTap {
 			const docLayer = app.map._docLayer;
 			const part = docLayer._selectedPart;
 			const previousTap = AndroidCalcTap.lastCellTap;
-			const currentCell = app.calc && app.calc.cellCursorVisible
-				? app.calc.cellCursorRectangle
-				: null;
-			const currentCellIdentity = currentCell && app.calc?.cellAddress
-				? [part, ...currentCell.toArray(), ...app.calc.cellAddress.toArray()].join(':')
-				: '';
-			const firstPointInsideCurrentCell = !!(
-				currentCell &&
-				typeof currentCell.containsPoint === 'function' &&
-				previousTap &&
-				currentCell.containsPoint([previousTap.x, previousTap.y])
-			);
-			const secondPointInsideCurrentCell = !!(
-				currentCell &&
-				typeof currentCell.containsPoint === 'function' &&
-				currentCell.containsPoint([position.x, position.y])
-			);
-			const isSameCellDoubleTap = !!(
-				previousTap &&
-				now - previousTap.at <= AndroidCalcTap.doubleTapWindowMs &&
-				previousTap.docLayer === docLayer &&
-				previousTap.part === part &&
-				!!currentCellIdentity &&
-				firstPointInsideCurrentCell &&
-				secondPointInsideCurrentCell &&
-				(!previousTap.cellIdentity || previousTap.cellIdentity === currentCellIdentity)
-			);
+			const cell = AndroidCalcTap.iosCellAt(position);
+			const sameCell = previousTap && previousTap.docLayer === docLayer &&
+				previousTap.part === part && cell !== null && previousTap.cell === cell &&
+				now - previousTap.at <= AndroidCalcTap.iosTapIdentityLifetimeMs;
+			AndroidCalcTap.clearCellMenuTimer();
+			(window as any).AndroidCalcCellMenu?.dismiss();
+			AndroidCalcTap.androidDispatchedAt = now;
 
-			if (isSameCellDoubleTap) {
-				previousTap.cellIdentity = currentCellIdentity;
-				AndroidCalcTap.clearCellMenuTimer();
-				AndroidCalcTap.lastCellTap = null;
-				AndroidSelectionMenu.beginTextInputRequest(position);
-				const doubleTapPosition = app.sectionContainer.dispatchCalcTapAtClient(
-					viewX,
-					viewY,
-					2,
-				);
-				if (!doubleTapPosition) {
-					AndroidSelectionMenu.cancelTextInputRequest('calc_double_tap_failed');
-					AndroidCalcTap.report('failed=no_double_tap_pos');
-					return false;
-				}
-				AndroidCalcTap.androidDispatchedAt = now;
-				AndroidSelectionMenu.resolveTextInputTap();
-				AndroidCalcTap.report('double_tap_cell=' + part);
-			} else {
-				AndroidCalcTap.clearCellMenuTimer();
-				const tapPosition = app.sectionContainer.dispatchCalcTapAtClient(viewX, viewY, 1);
-				if (!tapPosition) {
-					AndroidCalcTap.report('failed=no_pos');
-					return false;
-				}
-				AndroidCalcTap.androidDispatchedAt = now;
-				AndroidCalcTap.lastCellTap = {
-					at: now,
-					x: tapPosition.x,
-					y: tapPosition.y,
-					docLayer,
-					part,
-				};
+			if (sameCell && now - previousTap.at > AndroidCalcTap.doubleTapWindowMs) {
+				// Like iOS: a slow second tap requests the menu without sending
+				// another core single-click, which can enter in-cell editing.
+				previousTap.at = now;
+				const tap = previousTap;
 				AndroidCalcTap.cellMenuTimer = window.setTimeout(() => {
 					AndroidCalcTap.cellMenuTimer = 0;
-					if (AndroidCalcTap.lastCellTap?.at === now) {
-						AndroidCalcTap.lastCellTap = null;
-						(window as any).AndroidCalcCellMenu?.tryShow();
-					}
+					if (AndroidCalcTap.lastCellTap !== tap || app.map?._docLayer !== docLayer ||
+						docLayer._selectedPart !== part) return;
+					AndroidCalcTap.lastCellTap = null;
+					(window as any).AndroidCalcCellMenu?.showForAndroidTap(docLayer, part, cell);
 				}, AndroidCalcTap.doubleTapWindowMs);
+				AndroidCalcTap.report('repeat_tap_cell=' + cell);
+			} else if (sameCell) {
+				// Preview keeps the selection, matching iOS; text input requires
+				// an editable document and must never be requested in read-only mode.
+				if (!app.map.isEditMode()) {
+					previousTap.at = now;
+					return true;
+				}
+				AndroidCalcTap.lastCellTap = null;
+				AndroidSelectionMenu.beginTextInputRequest(position);
+				if (!app.sectionContainer.dispatchCalcTapAtClient(viewX, viewY, 2)) {
+					AndroidSelectionMenu.cancelTextInputRequest('calc_double_tap_failed');
+					return false;
+				}
+				AndroidSelectionMenu.resolveTextInputTap();
+				AndroidCalcTap.report('double_tap_cell=' + cell);
+			} else {
+				// Only switching/selecting cells commits a previous in-cell edit.
+				if (app.map.isEditMode()) app.map._textInput?.blur();
+				const tapPosition = app.sectionContainer.dispatchCalcTapAtClient(viewX, viewY, 1);
+				if (!tapPosition) return false;
+				AndroidCalcTap.lastCellTap = {
+					at: now, x: tapPosition.x, y: tapPosition.y, docLayer, part, cell,
+				};
+				AndroidCalcTap.report('select_cell=' + cell);
 			}
-
 			AndroidCalcTap.report(
 				'client=' +
 					Math.round(viewX) +
@@ -223,6 +199,36 @@ class AndroidCalcTap {
 			AndroidCalcTap.report('failed=' + msg);
 			return false;
 		}
+	}
+
+	/** A new touch cancels a pending menu but may still complete a double tap. */
+	static cancelAndroidCellMenu(): void {
+		AndroidCalcTap.clearCellMenuTimer();
+		(window as any).AndroidCalcCellMenu?.dismiss();
+	}
+
+	static resetAndroidState(): void {
+		AndroidCalcTap.lastCellTap = null;
+		AndroidCalcTap.cancelAndroidCellMenu();
+	}
+
+	static onAndroidCellCursor(): void {
+		const previous = AndroidCalcTap.lastCellTap;
+		if (!previous) return;
+		if (previous.docLayer !== app.map?._docLayer || previous.part !== app.map._docLayer._selectedPart ||
+			Date.now() - previous.at > AndroidCalcTap.iosTapIdentityLifetimeMs) {
+			AndroidCalcTap.resetAndroidState();
+			return;
+		}
+		const cursor = app.calc.cellCursorVisible && app.calc.cellCursorRectangle;
+		if (!cursor) return; // Core can publish EMPTY before the new cell cursor.
+		if (!cursor.containsPoint([previous.x, previous.y])) {
+			AndroidCalcTap.resetAndroidState();
+			return;
+		}
+		// Use core's canonical address for merged cells, as on iOS.
+		const address = app.calc.cellAddress;
+		if (address) previous.cell = address.x + ':' + address.y;
 	}
 
 	private static clearCellMenuTimer(): void {

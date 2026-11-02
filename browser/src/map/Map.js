@@ -296,6 +296,9 @@ window.L.Map = window.L.Evented.extend({
 				app.idleHandler._activate();
 				if (window.ThisIsTheAndroidApp) {
 					window.postMobileMessage('hideProgressbar');
+					var androidSession = new URLSearchParams(window.location.search).get('androidselection_session');
+					if (androidSession)
+						window.postMobileMessage('ANDROID_DOCUMENT_READY ' + androidSession);
 				} else if (window.ThisIsTheiOSApp) {
 					window.postMobileMessage('DOCUMENT_READY');
 				}
