@@ -1690,6 +1690,8 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 			if ((window.ThisIsTheAndroidApp || window.ThisIsTheiOSApp) && window.AndroidCalcCellMenu) {
 				if (window.ThisIsTheiOSApp && this._docType === 'spreadsheet')
 					window.AndroidCalcCellMenu.onIOSCellCursorCleared();
+				else if (window.ThisIsTheAndroidApp)
+					window.AndroidCalcCellMenu.onAndroidCellCursorCleared();
 				else
 					window.AndroidCalcCellMenu.hide();
 			}
@@ -1732,6 +1734,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 				if (window.AndroidCalcTap) window.AndroidCalcTap.onIOSCellCursor();
 				window.AndroidCalcCellMenu.onIOSSelectionChanged();
 			} else {
+				if (window.AndroidCalcTap) window.AndroidCalcTap.onAndroidCellCursor();
 				window.AndroidCalcCellMenu.tryShow();
 			}
 		} else if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function') {

@@ -184,6 +184,36 @@ class CanvasSectionContainer {
 	private multiTouchEndSent: boolean = false;
 	private touchCenter: Array<number> = null;
 	private longPressTimer: any = null;
+	// Snapshot the selection before MouseControl receives touchstart.
+	private calcGridPress: { selected: boolean; rejected: boolean; layer: any; part: number; started: number } | null = null;
+	private calcRejectedClickUntil = 0;
+
+	public handleCalcGridLongPress(nativeDownAt?: number): string {
+		const press = this.calcGridPress;
+		if (!press || app.map?._docLayer !== press.layer || press.layer._selectedPart !== press.part ||
+			(nativeDownAt != null && Math.abs(press.started - nativeDownAt) > 200)) return 'other';
+		if (!press.selected) return this.rejectUnselectedCalcLongPress() ? 'rejected' : 'other';
+		if (!press.rejected) {
+			press.rejected = true;
+			this.stopLongPress();
+			this.calcRejectedClickUntil = Date.now() + 700;
+			(this.getSectionWithName(app.CSections.MouseControl.name) as MouseControl)?.cancelSingleTouchForMultiTouch();
+			(window as any).AndroidCalcCellMenu?.showAfterSelection();
+		}
+		return 'selected';
+	}
+
+	public rejectUnselectedCalcLongPress(): boolean {
+		const press = this.calcGridPress;
+		if (!press || press.selected || app.map?._docLayer !== press.layer || press.layer._selectedPart !== press.part) return false;
+		this.stopLongPress();
+		press.rejected = true;
+		this.calcRejectedClickUntil = Date.now() + 700;
+		const mouse = this.getSectionWithName(app.CSections.MouseControl.name) as MouseControl;
+		mouse?.cancelSingleTouchForMultiTouch();
+		return true;
+	}
+
 	private clearColor: string = '#f8f9fa';
 	private documentBackgroundColor = '#ffffff'; // This is the background color of the document
 	private useCSSForBackgroundColor = true;
@@ -1397,6 +1427,13 @@ class CanvasSectionContainer {
 	}
 
 	public onClick (e: MouseEvent) {
+		if (Date.now() < this.calcRejectedClickUntil &&
+			((e as any).pointerType === 'touch' || (e as any).pointerType === 'pen' ||
+			 (e as any).sourceCapabilities?.firesTouchEvents === true)) {
+			this.calcRejectedClickUntil = 0;
+			this.clearMousePositions();
+			return;
+		}
 		if (this.touchEventInProgress) {
 			Object.defineProperty(e, 'pointerType', {
 				value: 'touch',
@@ -1439,6 +1476,7 @@ class CanvasSectionContainer {
 	private startLongPress(e: TouchEvent) {
 		this.stopLongPress();
 		this.longPressTimer = setTimeout(function() {
+			if (this.handleCalcGridLongPress() !== 'other') return;
 			(e as any).clientX = e.touches[0].clientX;
 			(e as any).clientY = e.touches[0].clientY;
 			this.onMouseMove(e);
@@ -1673,6 +1711,24 @@ class CanvasSectionContainer {
 			this.positionOnMouseDown = this.convertPositionToCanvasLocale(e);
 
 			var section: CanvasSectionObject = this.findSectionContainingPoint(this.positionOnMouseDown);
+			this.calcGridPress = null;
+			this.calcRejectedClickUntil = 0;
+			if ((window.ThisIsTheAndroidApp || (window as any).ThisIsTheiOSApp) &&
+				app.map?._docLayer?._docType === 'spreadsheet' &&
+				this.iosCalcEventSection(section)?.name === app.CSections.MouseControl.name &&
+				!(() => {
+					const graphic = this.getSectionWithName(app.CSections.ShapeHandlesSection.name);
+					return !!(graphic?.showSection && graphic.isVisible &&
+						this.doesSectionIncludePoint(graphic, this.positionOnMouseDown));
+				})()) {
+				const touch = e.touches[0];
+				const pos = this.getCalcTapPositionAtClient(touch.clientX * app.dpiScale, touch.clientY * app.dpiScale);
+				const cursor = app.calc.cellCursorVisible && app.calc.cellCursorRectangle;
+				const area = app.map._docLayer._cellSelectionArea;
+				const inside = (rect: any) => !!(pos && rect && typeof rect.containsPoint === 'function' && rect.containsPoint([pos.x, pos.y]));
+				this.calcGridPress = { selected: inside(cursor) || inside(area), rejected: false,
+					layer: app.map._docLayer, part: app.map._docLayer._selectedPart, started: Date.now() };
+			}
 			if (section) {
 				if (this.isIOSCalc()) {
 					const graphic = this.getSectionWithName(app.CSections.ShapeHandlesSection.name) as IOSCalcShapeGestureHandler;
@@ -1690,6 +1746,7 @@ class CanvasSectionContainer {
 			}
 		}
 		else if (!this.multiTouch) {
+			this.calcGridPress = null;
 			this.stopLongPress();
 			if (e.touches.length === 2) {
 				const upgradingSingleTouch = this.positionOnMouseDown !== null;
@@ -1723,6 +1780,16 @@ class CanvasSectionContainer {
 	}
 
 	public onTouchMove (e: TouchEvent) {
+		if (this.calcGridPress?.rejected) return;
+		if (this.calcGridPress && e.touches.length === 1 && this.positionOnMouseDown) {
+			const point = this.convertPositionToCanvasLocale(e);
+			const dx = point[0] - this.positionOnMouseDown[0];
+			const dy = point[1] - this.positionOnMouseDown[1];
+			const slop = 5 * app.dpiScale;
+			if (dx * dx + dy * dy <= slop * slop) return;
+		}
+		// A real move belongs to scrolling/dragging, not the long press.
+		this.calcGridPress = null;
 		if (this.isIOSCalc()) (window as any).AndroidCalcTap?.moveIOSTouch(e);
 		// Sometimes onTouchStart is fired for another element. In this case, we return.
 		if (this.positionOnMouseDown === null)
@@ -1768,6 +1835,14 @@ class CanvasSectionContainer {
 	}
 
 	public onTouchEnd (e: TouchEvent) { // Should be ignored unless this.draggingSomething = true.
+		if (this.calcGridPress?.rejected) {
+			this.stopLongPress();
+			this.calcGridPress = null;
+			this.clearMousePositions();
+			this.touchEventInProgress = false;
+			return;
+		}
+		this.calcGridPress = null;
 		this.stopLongPress();
 		if (!this.multiTouch) {
 			this.positionOnMouseUp = this.convertPositionToCanvasLocale(e);
@@ -1809,6 +1884,8 @@ class CanvasSectionContainer {
 	}
 
 	public onTouchCancel (e: TouchEvent) {
+		this.calcGridPress = null;
+		this.calcRejectedClickUntil = 0;
 		if (this.isIOSCalc()) {
 			this.iosCalcGraphicHandler?.finishIOSCalcGesture(true);
 			this.iosCalcGraphicHandler = null;

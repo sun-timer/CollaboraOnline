@@ -1355,6 +1355,10 @@ class ShapeHandlesSection extends CanvasSectionObject {
 	onClick(point: cool.SimplePoint, e: MouseEvent): void {
 		point.pX += this.position[0];
 		point.pY += this.position[1];
+		if ((window as any).AndroidSelectionMenu?.handlePresentationShapeTap(point, e, false)) {
+			this.stopPropagating();
+			return;
+		}
 		var modifier = MouseControl.readModifier(e);
 		app.map._docLayer._postMouseEvent('buttondown', point.x, point.y, 1, 1, modifier);
 		app.map._docLayer._postMouseEvent('buttonup', point.x, point.y, 1, 1, modifier);
@@ -1384,6 +1388,10 @@ class ShapeHandlesSection extends CanvasSectionObject {
 	onDoubleClick(point: cool.SimplePoint, e: MouseEvent): void {
 		point.pX += this.position[0];
 		point.pY += this.position[1];
+		if ((window as any).AndroidSelectionMenu?.handlePresentationShapeTap(point, e, true)) {
+			this.stopPropagating();
+			return;
+		}
 		app.map._docLayer._postMouseEvent('buttondown', point.x, point.y, 2, 1, 0);
 		app.map._docLayer._postMouseEvent('buttonup', point.x, point.y, 2, 1, 0);
 	}

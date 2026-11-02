@@ -291,9 +291,15 @@ window.L.Map.include({
 				// Entering edit mode and selecting text do not open the keyboard.
 				// A text tap opens it only after the document confirms a caret.
 				this.focus(false);
-				setTimeout(function() {
-					app.map.focus(false);
-				}, 80);
+				if (window.ThisIsTheAndroidApp && this.getDocType() === 'text') {
+					// Both the browser pencil and the native Edit button enter here.
+					// EDITMODE on was sent above; request input after the final blur.
+					window.postMobileMessage('REQUESTWRITEREDITIME');
+				} else {
+					setTimeout(function() {
+						app.map.focus(false);
+					}, 80);
+				}
 			} else if (!window.ThisIsTheiOSApp)
 				this.focus();
 		}

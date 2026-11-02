@@ -273,6 +273,9 @@ public class LOActivity extends AppCompatActivity {
     private boolean documentUiInitialized = false;
     /** onNewIntent 换文档期间忽略 JS 侧 BYE，避免 finishWithProgress 闪回首页开屏。 */
     private volatile boolean documentSwitchInProgress = false;
+    private volatile Uri pendingTabSwitchUri;
+    private volatile Uri pendingTabSwitchSource;
+    private volatile long pendingTabSwitchGeneration;
     /** onDestroy 开始后拒绝 WebView / native 再回调 Java。 */
     private volatile boolean documentBridgeEnabled = true;
     /** finishWithProgress 回首页时置 true；用于忽略 JS 二次 BYE、防 finishWithProgress 重入；回首页 defer BYE。 */
@@ -319,6 +322,11 @@ public class LOActivity extends AppCompatActivity {
     private static final long STALE_EDITMODE_GUARD_MS = 3000L;
     /** Set when user explicitly taps Edit; bypasses stale EDITMODE-on guard once. */
     private boolean manualEditModeSwitchPending = false;
+    private long writerEditImeToken = 0L;
+    private long writerEditTouchGeneration = 0L;
+    private long writerEditImeDeadline = 0L;
+    private COWebView writerEditWebView;
+    private Uri writerEditUri;
     /** Brief window to establish IME; sustained allow is driven by keyboard visibility. */
     private static final long IME_ALLOW_RESET_MS = 400L;
     private static final long IME_CLEAR_DEFER_MS = 200L;
@@ -868,6 +876,7 @@ public class LOActivity extends AppCompatActivity {
     private Uri autoGenerateAcceptDocumentUri;
     private long documentLifecycleGeneration = 0L;
     private long writerAuthorSyncGeneration = 0L;
+    private String documentAuthorNickname = "";
     private long autoGenerateLifecycleGeneration = -1L;
     private Uri autoGenerateSourceUri;
     private File autoGenerateSourceTempFile;
@@ -1261,6 +1270,9 @@ public class LOActivity extends AppCompatActivity {
                 public boolean isWriterDocument() {
                     return !mIsCalcDocument && !mIsImpressDocument;
                 }
+
+                @Override
+                public boolean isCalcDocument() { return mIsCalcDocument; }
 
                 @Override
                 public void onDocumentLongPress(float viewX, float viewY) {
@@ -1784,12 +1796,17 @@ public class LOActivity extends AppCompatActivity {
         return legacyDefault;
     }
 
+    private String getCurrentDocumentAuthorName() {
+        return documentAuthorNickname.isEmpty()
+                ? resolveAndSyncProfileNickname() : documentAuthorNickname;
+    }
+
     private void syncCurrentWriterAuthorNameToWeb() {
         if (!documentLoaded || mWebView == null) {
             return;
         }
         final long syncGeneration = ++writerAuthorSyncGeneration;
-        syncCurrentWriterAuthorNameToWeb(resolveAndSyncProfileNickname(), 0,
+        syncCurrentWriterAuthorNameToWeb(getCurrentDocumentAuthorName(), 0,
                 documentLifecycleGeneration, syncGeneration, mWebView);
     }
 
@@ -1824,32 +1841,9 @@ public class LOActivity extends AppCompatActivity {
             } catch (NumberFormatException ignored) {
             }
             if (viewId >= 0) {
-                final int targetViewId = viewId;
-                new Thread(() -> {
-                    boolean updated = false;
-                    if (documentLoaded && !documentSwitchInProgress && !isFinishing()
-                            && docGeneration == documentLifecycleGeneration
-                            && syncGeneration == writerAuthorSyncGeneration
-                            && targetWebView == mWebView) {
-                        // The JNI helper waits for the Kit thread; keep that wait off UI.
-                        updated = setLOKViewAuthor(targetViewId, nickname);
-                    }
-                    final boolean result = updated;
-                    runOnUiThread(() -> {
-                        if (!documentLoaded || documentSwitchInProgress || isFinishing()
-                                || docGeneration != documentLifecycleGeneration
-                                || syncGeneration != writerAuthorSyncGeneration
-                                || targetWebView != mWebView) {
-                            return;
-                        }
-                        if (result) {
-                            Log.i(TAG, "writer_author_name_sync result=updated viewId=" + targetViewId);
-                            return;
-                        }
-                        retryWriterAuthorSync(nickname, retryCount, docGeneration,
-                                syncGeneration, targetWebView, value);
-                    });
-                }, "WriterAuthorSync").start();
+                // This core records the author when the document is opened.
+                // Update the Browser identity only; nickname changes take effect on reopen.
+                Log.i(TAG, "writer_author_name_sync result=document_open_author viewId=" + viewId);
                 return;
             }
             retryWriterAuthorSync(nickname, retryCount, docGeneration,
@@ -2413,6 +2407,8 @@ public class LOActivity extends AppCompatActivity {
         ExitDiagHelper.logPhase("after_webview_destroy_before_looper_quit");
         quitNativeMsgLooperSafely();
 
+        // Going home suspends the document view; it does not close its tab.
+        // Session tabs are removed explicitly, or naturally cleared on process exit.
         super.onDestroy();
         Log.i(TAG, "onDestroy done pid=" + android.os.Process.myPid());
         ExitDiagHelper.schedulePostDestroyWatchdog(
@@ -2796,6 +2792,7 @@ public class LOActivity extends AppCompatActivity {
         AssetManager assetManager = getResources().getAssets();
         String uiMode = (isLargeScreen() && !isChromeOS()) ? "notebookbar" : "classic";
         String userName = resolveAndSyncProfileNickname();
+        documentAuthorNickname = userName;
         // expect_coolwsd_run 由 createCOOLWSD 在「上一轮 run 已 idle」后再置 true；此处提前置 true 会在 reuse 时与旧 session teardown 竞态杀进程。
         createCOOLWSD(dataDir, cacheDir, apkFile, assetManager, urlToLoad, uiMode, userName);
 
@@ -3275,8 +3272,27 @@ public class LOActivity extends AppCompatActivity {
                 });
                 return false;
             case "SAVE":
-                documentModified = false;
-                copyTempBackToIntent();
+                boolean saveCopied = copyTempBackToIntent();
+                Uri switchUri = pendingTabSwitchUri;
+                Uri switchSource = pendingTabSwitchSource;
+                long switchGeneration = pendingTabSwitchGeneration;
+                if (switchUri != null) {
+                    runOnUiThread(() -> {
+                        if (!switchUri.equals(pendingTabSwitchUri)
+                                || switchGeneration != documentLifecycleGeneration
+                                || switchSource == null || !switchSource.equals(getIntent().getData())) return;
+                        pendingTabSwitchUri = null;
+                        pendingTabSwitchSource = null;
+                        if (saveCopied) {
+                            documentModified = false;
+                            startActivity(buildEditIntent(switchUri));
+                        } else {
+                            Toast.makeText(this, "保存失败，请重试切换", Toast.LENGTH_LONG).show();
+                        }
+                    });
+                } else {
+                    documentModified = false;
+                }
                 sendBroadcast(messageAndParam[0], messageAndParam.length > 1 ? messageAndParam[1] : "");
                 if (closeAfterSaveRequested) {
                     closeAfterSaveRequested = false;
@@ -3449,6 +3465,29 @@ public class LOActivity extends AppCompatActivity {
                 }
                 return false;
             }
+            case "REQUESTWRITEREDITIME": {
+                getMainHandler().post(this::requestWriterEditKeyboard);
+                return false;
+            }
+            case "SHOWWRITEREDITIME": {
+                final long token;
+                try { token = Long.parseLong(messageAndParam[1]); }
+                catch (RuntimeException e) { return false; }
+                getMainHandler().post(() -> {
+                    if (token != writerEditImeToken || token == 0 || mWebView == null || android.os.SystemClock.uptimeMillis() > writerEditImeDeadline || mWebView != writerEditWebView
+                            || !Objects.equals(writerEditUri, getIntent().getData())
+                            || mWebView.getDocumentTouchGeneration() != writerEditTouchGeneration
+                            || !mIsEditModeActive || !isDocEditable || isFinishing() || exitingToHome || documentSwitchInProgress) return;
+                    writerEditWebView = null;
+                    final COWebView view = mWebView;
+                    final Uri uri = getIntent().getData();
+                    final long generation = view.getDocumentTouchGeneration();
+                    view.evaluateJavascript("(function(){return !!(window.app&&app.map&&app.map.isEditMode()&&app.map.getDocType()==='text'&&app.file&&app.file.textCursor&&app.file.textCursor.visible);})();", result -> {
+                        if (token == writerEditImeToken && android.os.SystemClock.uptimeMillis() <= writerEditImeDeadline && mWebView == view && mIsEditModeActive && isDocEditable && !isFinishing() && !exitingToHome && !documentSwitchInProgress && Objects.equals(uri, getIntent().getData()) && generation == view.getDocumentTouchGeneration() && "true".equals(result)) requestDocumentFocusAndShowIme(false);
+                    });
+                });
+                return false;
+            }
             case "SHOWTEXTIME": {
                 if (messageAndParam.length > 1) {
                     try {
@@ -3472,13 +3511,8 @@ public class LOActivity extends AppCompatActivity {
             }
             case "CALC_CELL_TAP": {
                 Log.i(TAG, "calc_cell_tap " + (messageAndParam.length > 1 ? messageAndParam[1] : ""));
-                if (messageAndParam.length > 1 && mIsCalcDocument) {
-                    String detail = messageAndParam[1];
-                    if (detail.startsWith("cursorAddr") || detail.startsWith("client=")
-                            || detail.startsWith("header_handled")) {
-                        scheduleCalcCellMenuTryShow();
-                    }
-                }
+                // Diagnostic messages must not create a menu request. The tap
+                // bridge distinguishes selection, slow repeat, and double tap.
                 return false;
             }
             case "CALC_CELL_POPUP": {
@@ -3556,6 +3590,7 @@ public class LOActivity extends AppCompatActivity {
                         runPendingAfterEditMode();
                         break;
                     case "off":
+                        writerEditWebView = null;
                         clearImeAllowedByUserTransient("editmode_off");
                         updateEditModeState(false, "js_editmode_off");
                         completePreviewModeSwitchAck("editmode_off");
@@ -3692,6 +3727,20 @@ public class LOActivity extends AppCompatActivity {
                 // 诊断：paste 测试 HTML 实测 Writer HTML Import Filter 保留哪些属性（color/hr/font size/align/table/CSS）。
                 // 从 Chrome 远程调试控制台触发：window.postMobileMessage("DEBUG_HTML_PROBE")，须在编辑模式下。
                 probeHtmlFilterCapability();
+                return false;
+            }
+            case "ANDROID_DOCUMENT_READY": {
+                String session = messageAndParam.length > 1 ? messageAndParam[1] : "";
+                if (!session.isEmpty() && session.equals(writerSelectionSession)
+                        && documentLoaded && !documentSwitchInProgress) {
+                    Uri sessionUri = getIntent().getData();
+                    if (sessionUri != null) {
+                        RecentDocumentsStore.noteSessionOpened(sessionUri.toString());
+                        RecentDocumentsStore.restoreFromRecentlyClosed(
+                                getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE), sessionUri.toString());
+                        runOnUiThread(() -> ensureTopToolbarController().refreshOpenDocumentCount());
+                    }
+                }
                 return false;
             }
             case "hideProgressbar": {
@@ -5385,29 +5434,6 @@ public class LOActivity extends AppCompatActivity {
         return Math.max(min, Math.min(value, max));
     }
 
-    private void scheduleCalcCellMenuTryShow() {
-        if (mWebView == null || !mIsCalcDocument) {
-            return;
-        }
-        getMainHandler().postDelayed(() -> {
-            if (mWebView == null) {
-                return;
-            }
-            mWebView.evaluateJavascript(
-                    "(function(){try{"
-                            + "if(window.AndroidCalcCellMenu"
-                            + "&&typeof window.AndroidCalcCellMenu.tryShow==='function'){"
-                            + "window.AndroidCalcCellMenu.tryShow(1);"
-                            + "}else if(window.postMobileMessage){"
-                            + "window.postMobileMessage('CALC_CELL_DISPATCH skip=no_bridge');"
-                            + "}"
-                            + "}catch(e){if(window.postMobileMessage){"
-                            + "window.postMobileMessage('CALC_CELL_DISPATCH skip=js '+((e&&e.message)?e.message:e));"
-                            + "}}})();",
-                    null);
-        }, 120);
-    }
-
     private void tryCalcHeaderDispatch(
             float viewX,
             float viewY,
@@ -5418,7 +5444,9 @@ public class LOActivity extends AppCompatActivity {
                         + "if(window.AndroidCalcHeaderMenu"
                         + "&&typeof window.AndroidCalcHeaderMenu.dispatchAtClient==='function'"
                         + "&&window.AndroidCalcHeaderMenu.dispatchAtClient("
-                        + viewX + "," + viewY + ",'" + mode + "')){return true;}"
+                        + viewX + "," + viewY + ",'" + mode + "')){"
+                        + "if(window.AndroidCalcTap){window.AndroidCalcTap.resetAndroidState();}"
+                        + "return true;}"
                         + "return false;"
                         + "}catch(e){if(window.postMobileMessage){"
                         + "window.postMobileMessage('CALC_HEADER_POPUP failed=js '+((e&&e.message)?e.message:e));}"
@@ -5438,10 +5466,33 @@ public class LOActivity extends AppCompatActivity {
         Log.i(TAG, "document_long_press nativeCalc=" + mIsCalcDocument
                 + " edit=" + mIsEditModeActive
                 + " view=" + Math.round(viewX) + "," + Math.round(viewY));
+        final long gestureGeneration = mWebView.getDocumentTouchGeneration();
+        final long gestureDownAt = mWebView.getDocumentTouchWallTime();
         tryCalcHeaderDispatch(viewX, viewY, "longpress", handled -> {
+            if (mWebView == null || !mWebView.isCurrentDocumentTouch(gestureGeneration)) return;
             if (handled) {
+                mWebView.resolveCalcLongPress(gestureGeneration, true);
                 Log.i(TAG, "calc_header_long_press handled view="
                         + Math.round(viewX) + "," + Math.round(viewY));
+                return;
+            }
+            if (mIsCalcDocument) {
+                mWebView.evaluateJavascript(
+                        "(function(){return window.app&&app.sectionContainer&&" +
+                        "app.sectionContainer.handleCalcGridLongPress?" +
+                        "app.sectionContainer.handleCalcGridLongPress(" + gestureDownAt + "):'other';})()",
+                        result -> {
+                            if (mWebView == null || !mWebView.isCurrentDocumentTouch(gestureGeneration)) return;
+                            boolean consumed = "\"rejected\"".equals(result) || "\"selected\"".equals(result);
+                            mWebView.resolveCalcLongPress(gestureGeneration, consumed);
+                            if (!consumed) {
+                                mWebView.evaluateJavascript(
+                                        "(function(){if(window.AndroidSelectionMenu){" +
+                                        "window.AndroidSelectionMenu.markNativeLongPress();" +
+                                        "window.AndroidSelectionMenu.onLongPressAt(" + viewX + "," + viewY + ");}})()",
+                                        null);
+                            }
+                        });
                 return;
             }
             mWebView.evaluateJavascript(
@@ -5468,7 +5519,7 @@ public class LOActivity extends AppCompatActivity {
                         + Math.round(viewX) + "," + Math.round(viewY));
                 return;
             }
-            if (!mIsEditModeActive || !mIsCalcDocument) {
+            if (!mIsCalcDocument) {
                 return;
             }
             Log.i(TAG, "calc_cell_tap_native viewX=" + Math.round(viewX) + " viewY=" + Math.round(viewY));
@@ -11310,7 +11361,33 @@ public class LOActivity extends AppCompatActivity {
     }
 
     /** Seed system clipboard from cached/JNI selection before UNO Copy/Cut (selection still active). */
+    private String clipboardSelectionTextSnapshot = "";
+    private String clipboardSelectionHtmlSnapshot = "";
+    private long clipboardSelectionSnapshotGeneration = -1;
+
     private void primeSystemClipboardFromSelection(String reason) {
+        clipboardSelectionTextSnapshot = "";
+        clipboardSelectionHtmlSnapshot = "";
+        clipboardSelectionSnapshotGeneration = -1;
+        if (mIsImpressDocument) {
+            // Capture before Copy/Cut: Cut removes the source range. Some PPT
+            // clipboard exports contain an empty HTML shell or an older copy.
+            String selected = getTextSelection("text/plain;charset=utf-8");
+            if (selected == null || selected.isEmpty()) selected = aiOpPendingSelection;
+            if (selected != null && !selected.isEmpty()) {
+                clipboardSelectionTextSnapshot = selected;
+                clipboardSelectionSnapshotGeneration = documentLifecycleGeneration;
+                String html = getTextSelection("text/html");
+                if (html != null && selected.trim().equals(
+                        android.text.Html.fromHtml(html, android.text.Html.FROM_HTML_MODE_LEGACY)
+                                .toString().trim())) {
+                    clipboardSelectionHtmlSnapshot = html;
+                }
+                setSystemClipboardPlainText(selected);
+                Log.i(TAG, "selection_" + reason + "_snapshot chars=" + selected.length());
+                return;
+            }
+        }
         if (aiOpPendingSelection != null && !aiOpPendingSelection.isEmpty()) {
             setSystemClipboardPlainText(aiOpPendingSelection);
             Log.i(TAG, "selection_" + reason + "_plain chars=" + aiOpPendingSelection.length());
@@ -11565,9 +11642,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     int getOpenDocumentCount() {
-        int count = RecentDocumentsStore.getRecentUris(
-                getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE)).size();
-        return Math.max(1, count);
+        return RecentDocumentsStore.getSessionOpenUris().size();
     }
 
     private void runFindBridge(String js) {
@@ -11595,11 +11670,23 @@ public class LOActivity extends AppCompatActivity {
         if (uri == null) {
             return;
         }
-        RecentDocumentsStore.prependRecent(
-                getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE),
-                uri.toString());
+        if (uri.equals(getIntent().getData()) || documentSwitchInProgress
+                || pendingTabSwitchUri != null || isFinishing()) return;
+        if (documentModified && isDocEditable) {
+            pendingTabSwitchSource = getIntent().getData();
+            pendingTabSwitchGeneration = documentLifecycleGeneration;
+            pendingTabSwitchUri = uri;
+            postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=0");
+            getMainHandler().postDelayed(() -> {
+                if (uri.equals(pendingTabSwitchUri)) {
+                    pendingTabSwitchUri = null;
+                    pendingTabSwitchSource = null;
+                    Toast.makeText(this, "保存超时，请重试切换", Toast.LENGTH_LONG).show();
+                }
+            }, 15000);
+            return;
+        }
         startActivity(buildEditIntent(uri));
-        finish();
     }
 
     private String getDocumentDisplayTitle() {
@@ -12209,7 +12296,7 @@ public class LOActivity extends AppCompatActivity {
 
                 @Override
                 public String getCommentAuthorName() {
-                    return LOActivity.this.resolveAndSyncProfileNickname();
+                    return LOActivity.this.getCurrentDocumentAuthorName();
                 }
 
                 @Override
@@ -12396,7 +12483,7 @@ public class LOActivity extends AppCompatActivity {
 
                 @Override
                 public String getCommentAuthorName() {
-                    return LOActivity.this.resolveAndSyncProfileNickname();
+                    return LOActivity.this.getCurrentDocumentAuthorName();
                 }
 
                 @Override
@@ -12569,7 +12656,7 @@ public class LOActivity extends AppCompatActivity {
 
                 @Override
                 public String getCommentAuthorName() {
-                    return LOActivity.this.resolveAndSyncProfileNickname();
+                    return LOActivity.this.getCurrentDocumentAuthorName();
                 }
 
                 @Override
@@ -13041,7 +13128,7 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         final String content = text.trim();
-        final String author = resolveAndSyncProfileNickname();
+        final String author = getCurrentDocumentAuthorName();
         final String escapedAuthor = escapeForJsString(author);
         final String escapedContent = escapeForJsString(content);
         Log.i(TAG, "function_insert_comment_js author=" + author + " chars=" + content.length());
@@ -13153,7 +13240,7 @@ public class LOActivity extends AppCompatActivity {
         final String commentId = id.trim();
         final String content = text.trim();
         final String commentAuthor = author != null && !author.trim().isEmpty()
-                ? author.trim() : resolveAndSyncProfileNickname();
+                ? author.trim() : getCurrentDocumentAuthorName();
         Log.i(TAG, "function_edit_comment id=" + commentId + " chars=" + content.length());
         Runnable apply = () -> {
             requestWebViewFocusForPanelAction("edit_comment");
@@ -13886,7 +13973,7 @@ public class LOActivity extends AppCompatActivity {
                         + "&&typeof app.map.isEditMode==='function'&&app.map.isEditMode()"
                         + "&&app.file&&app.file.textCursor&&app.file.textCursor.visible"
                         + "&&!(typeof window.__coolShouldSuppressDocumentKeyboard==='function'"
-                        + "&&window.__coolShouldSuppressDocumentKeyboard());"
+                        + "&&window.__coolShouldSuppressDocumentKeyboard()));"
                         + "}catch(e){return false;}})();",
                 result -> {
                     if (mWebView != requestWebView || !mIsEditModeActive || isFinishing()
@@ -13894,8 +13981,11 @@ public class LOActivity extends AppCompatActivity {
                             || !Objects.equals(requestDocumentUri, getIntent().getData())
                             || requestWebView.getDocumentTouchGeneration() != requestTouchGeneration
                             || !"true".equals(result)) {
+                        Log.i(TAG, "text_ime_gate rejected result=" + result
+                                + " generation=" + browserGeneration);
                         return;
                     }
+                    Log.i(TAG, "text_ime_gate accepted generation=" + browserGeneration);
                     // This path has no deferred retry and does not hide an active selection menu.
                     requestDocumentFocusAndShowIme(false);
                     nudgeSocketIfStalled("show_ime_text_caret_tap");
@@ -13960,25 +14050,65 @@ public class LOActivity extends AppCompatActivity {
         nudgeSocketIfStalled("show_ime_focus_doc");
     }
 
-    private void requestDocumentFocusAndShowIme(boolean retry) {
-        if (mWebView == null) {
+    private void requestWriterEditKeyboard() {
+        if (mWebView == null || !mIsEditModeActive || !isDocEditable
+                || isFinishing() || exitingToHome || documentSwitchInProgress) {
+            Log.i(TAG, "writer_ime_request rejected=native_state");
             return;
         }
+        final long token = ++writerEditImeToken;
+        writerEditImeDeadline = android.os.SystemClock.uptimeMillis() + 5000L;
+        writerEditWebView = mWebView;
+        writerEditUri = getIntent().getData();
+        writerEditTouchGeneration = mWebView.getDocumentTouchGeneration();
+        Log.i(TAG, "writer_ime_request token=" + token);
+        mWebView.evaluateJavascript(
+                "(function(){if(window.AndroidSelectionMenu&&typeof window.AndroidSelectionMenu.beginWriterEditKeyboard==='function'){"
+                        + "window.AndroidSelectionMenu.beginWriterEditKeyboard(" + token + ");return true;}return false;})();",
+                result -> Log.i(TAG, "writer_ime_browser_request token=" + token + " accepted=" + result));
+    }
+
+    private void requestDocumentFocusAndShowIme(boolean retry) {
+        if (mWebView == null || !mIsEditModeActive || isFinishing()
+                || exitingToHome || documentSwitchInProgress) return;
+        final COWebView view = mWebView;
+        final Uri uri = getIntent().getData();
+        final long lifecycle = documentLifecycleGeneration;
+        final long touch = view.getDocumentTouchGeneration();
         cancelImeClearDeferredRunnable();
         cancelImeAllowResetRunnable();
         setImeAllowedByUserSustained(true);
-        mWebView.requestFocus();
-        mWebView.evaluateJavascript(
-                "(function(){if(window.app&&app.map){app.map.focus(true);}return true;})();",
-                null);
-        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (imm != null) {
-            imm.showSoftInput(mWebView, InputMethodManager.SHOW_IMPLICIT);
-        }
-        if (retry) {
-            Log.d(TAG, "focus_ime_retry webViewFocused=" + mWebView.isFocused()
-                    + " imeAllowed=" + mWebView.isImeAllowedByUser());
-        }
+        view.requestFocus();
+        // evaluateJavascript is asynchronous. Wait until the actual editable
+        // DOM node has focus before asking Android for its input connection.
+        view.evaluateJavascript(
+                "(function(){try{if(!window.app||!app.map||!app.map.isEditMode())return false;"
+                        + "app.map.focus(true);var input=app.map._textInput;"
+                        + "return !!(input&&input._textArea&&document.activeElement===input._textArea);"
+                        + "}catch(e){return false;}})();",
+                result -> view.post(() -> {
+                    if (view != mWebView || lifecycle != documentLifecycleGeneration
+                            || !Objects.equals(uri, getIntent().getData())
+                            || touch != view.getDocumentTouchGeneration() || !mIsEditModeActive
+                            || isFinishing() || exitingToHome || documentSwitchInProgress) {
+                        Log.i(TAG, "focus_ime_cancel reason=stale_request");
+                        return;
+                    }
+                    if (!"true".equals(result)) {
+                        Log.i(TAG, "focus_ime_cancel reason=dom_not_focused");
+                        return;
+                    }
+                    // IMEALLOW from DOM focus can have installed a transient
+                    // timeout. Retain editor permission for this confirmed focus.
+                    setImeAllowedByUserSustained(true);
+                    InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        if (!isImeVisibleForToolbar || !imm.isActive(view)) imm.restartInput(view);
+                        boolean shown = imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT);
+                        Log.i(TAG, "focus_ime_result accepted=" + shown + " active=" + imm.isActive(view)
+                                + " focused=" + view.isFocused() + " retry=" + retry);
+                    }
+                }));
     }
 
     /** Hide the soft keyboard and reset IME state on the WebView. */
@@ -21453,7 +21583,6 @@ public class LOActivity extends AppCompatActivity {
     public native void appendContinueWriteOnKitThread(
             String expectedSelection, byte[] html, String requestId, int viewId);
 
-    public native boolean setLOKViewAuthor(int viewId, String name);
 
     public native void postUnoCommand(String command, String arguments, boolean bNotifyWhenFinished);
 
@@ -21487,15 +21616,43 @@ public class LOActivity extends AppCompatActivity {
                 CLIPBOARD_POPULATE_RETRY_DELAYS_MS[0]);
     }
 
+    /** Keep the exact PPT text copied before UNO if the exported clipboard is stale. */
+    private boolean repairPresentationTextClipboard(LokClipboardData data) {
+        if (!mIsImpressDocument || clipboardSelectionSnapshotGeneration != documentLifecycleGeneration
+                || clipboardSelectionTextSnapshot.isEmpty()) return false;
+        String exported = data.getText();
+        if ((exported == null || exported.isEmpty()) && data.getHtml() != null) {
+            exported = android.text.Html.fromHtml(data.getHtml(), android.text.Html.FROM_HTML_MODE_LEGACY)
+                    .toString();
+        }
+        if (exported != null && exported.trim().equals(clipboardSelectionTextSnapshot.trim())) return false;
+        data.clipboardEntries.clear();
+        LokClipboardEntry plain = new LokClipboardEntry();
+        plain.mime = "text/plain;charset=utf-8";
+        plain.data = clipboardSelectionTextSnapshot.getBytes(StandardCharsets.UTF_8);
+        data.clipboardEntries.add(plain);
+        if (!clipboardSelectionHtmlSnapshot.isEmpty()) {
+            LokClipboardEntry html = new LokClipboardEntry();
+            html.mime = "text/html";
+            html.data = clipboardSelectionHtmlSnapshot.getBytes(StandardCharsets.UTF_8);
+            data.clipboardEntries.add(html);
+        }
+        Log.i(TAG, "clipboard_ppt_text_repaired chars=" + clipboardSelectionTextSnapshot.length()
+                + " rich=" + !clipboardSelectionHtmlSnapshot.isEmpty());
+        return true;
+    }
+
     /** After .uno:Copy / Cut: export LOK clipboard to Android; return true if non-empty. */
     public final boolean populateClipboard() {
         File clipboardFile = new File(getApplicationContext().getCacheDir(), CLIPBOARD_FILE_PATH);
         LokClipboardData clipboardData = new LokClipboardData();
-        if (!LOActivity.this.getClipboardContent(clipboardData)) {
+        boolean fetched = LOActivity.this.getClipboardContent(clipboardData);
+        clipboardData.removeEmptyEntries();
+        boolean repairedTextCopy = repairPresentationTextClipboard(clipboardData);
+        if (!fetched && !repairedTextCopy) {
             Log.w(TAG, "populate_clipboard_no_lok_content attempt=" + clipboardPopulateAttempt);
             return false;
         }
-        clipboardData.removeEmptyEntries();
         if (clipboardData.clipboardEntries.isEmpty()) {
             Log.w(TAG, "populate_clipboard_only_empty_entries");
             return false;
@@ -21508,6 +21665,11 @@ public class LOActivity extends AppCompatActivity {
 
         String text = clipboardData.getText();
         String html = clipboardData.getHtml();
+        // Android ClipData.Item requires a non-null plain-text representation
+        // whenever HTML is present. LOK can legitimately export HTML alone.
+        if (html != null && text == null) {
+            text = android.text.Html.fromHtml(html, android.text.Html.FROM_HTML_MODE_LEGACY).toString();
+        }
         Uri imageUri = null;
         String imageMime = null;
         for (LokClipboardEntry entry : clipboardData.clipboardEntries) {
@@ -21559,8 +21721,13 @@ public class LOActivity extends AppCompatActivity {
         clipData = new ClipData(new ClipDescription(CLIPBOARD_APP_LABEL_PREFIX + token, mimeTypes),
                 exportedItem);
         if (clipData != null) {
-            activeClipboardToken = token;
+            // A repaired snapshot is not yet Core's clipboard. Its next paste
+            // must restore the cached payload through setClipboardContent first.
+            activeClipboardToken = repairedTextCopy ? "" : token;
             activeClipboardDocumentGeneration = documentLifecycleGeneration;
+            clipboardSelectionTextSnapshot = "";
+            clipboardSelectionHtmlSnapshot = "";
+            clipboardSelectionSnapshotGeneration = -1;
             clipboardManager.setPrimaryClip(clipData);
             Log.i(TAG, "populate_clipboard_rich items=" + clipData.getItemCount()
                     + " image=" + (imageUri != null) + " chars=" + (text == null ? 0 : text.length()));

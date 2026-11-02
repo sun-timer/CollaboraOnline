@@ -161,14 +161,14 @@ public class DocumentTabsSheetController {
         container.removeAllViews();
         SharedPreferences prefs = host.getExplorerPrefs();
         List<String> uris = showingOpened
-                ? RecentDocumentsStore.getRecentUris(prefs)
+                ? RecentDocumentsStore.getSessionOpenUris()
                 : RecentDocumentsStore.getRecentlyClosedUris(prefs);
         String currentUri = host.getCurrentDocumentUri();
 
-        int openedCount = RecentDocumentsStore.getRecentUris(prefs).size();
+        int openedCount = RecentDocumentsStore.getSessionOpenUris().size();
         int closedCount = RecentDocumentsStore.getRecentlyClosedUris(prefs).size();
         if (openedTabView != null) {
-            openedTabView.setText("已打开 (" + Math.max(openedCount, 1) + ")");
+            openedTabView.setText("已打开 (" + openedCount + ")");
         }
         if (closedTabView != null) {
             closedTabView.setText("最近关闭 (" + closedCount + ")");
@@ -177,7 +177,7 @@ public class DocumentTabsSheetController {
 
         if (uris.isEmpty()) {
             TextView empty = new TextView(host.getContext());
-            empty.setText(showingOpened ? "暂无最近文档" : "暂无最近关闭文档");
+            empty.setText(showingOpened ? "暂无已打开文档" : "暂无最近关闭文档");
             empty.setTextColor(0xFF80868B);
             empty.setPadding(0, 24, 0, 24);
             container.addView(empty);
@@ -222,7 +222,6 @@ public class DocumentTabsSheetController {
             if (openedTab) {
                 host.openDocumentUri(uri);
             } else {
-                RecentDocumentsStore.restoreFromRecentlyClosed(host.getExplorerPrefs(), uriString);
                 host.openDocumentUri(uri);
             }
             dismiss();

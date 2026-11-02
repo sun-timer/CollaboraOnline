@@ -14,6 +14,20 @@ public final class RecentDocumentsStore {
     private static final int MAX_RECENT = 30;
     private static final int MAX_CLOSED = 30;
 
+    private static final LinkedHashSet<String> SESSION_OPEN = new LinkedHashSet<>();
+
+    public static synchronized List<String> getSessionOpenUris() {
+        return new ArrayList<>(SESSION_OPEN);
+    }
+
+    public static synchronized void noteSessionOpened(String uri) {
+        if (!TextUtils.isEmpty(uri)) SESSION_OPEN.add(uri);
+    }
+
+    public static synchronized void endSession() {
+        SESSION_OPEN.clear();
+    }
+
     private RecentDocumentsStore() {
     }
 
@@ -54,7 +68,7 @@ public final class RecentDocumentsStore {
         if (TextUtils.isEmpty(uri)) {
             return;
         }
-        removeRecent(prefs, uri);
+        synchronized (RecentDocumentsStore.class) { SESSION_OPEN.remove(uri); }
         LinkedHashSet<String> closed = new LinkedHashSet<>();
         closed.add(uri);
         for (String existing : getRecentlyClosedUris(prefs)) {

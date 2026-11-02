@@ -2057,6 +2057,38 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     else
         LOG_DBG("failed to fetch mime-types");
 
+    // In Impress an exported clipboard can be an empty HTML shell or an
+    // older transfer. Copy keeps its source selected, so verify against the
+    // actual range and retain that range's rich HTML when available.
+    auto *copyDoc = DocumentData::get(self.document->appDocId).loKitDocument;
+    if (copyDoc->getDocumentType() == LOK_DOCTYPE_PRESENTATION) {
+        char *rawText = copyDoc->getTextSelection("text/plain;charset=utf-8", nullptr);
+        NSString *selectedText = rawText ? [NSString stringWithUTF8String:rawText] : nil;
+        free(rawText);
+        NSData *plainData = content[@"text/plain;charset=utf-8"];
+        NSString *exportedText = plainData ? [[NSString alloc] initWithData:plainData encoding:NSUTF8StringEncoding] : nil;
+        NSCharacterSet *space = NSCharacterSet.whitespaceAndNewlineCharacterSet;
+        if (selectedText.length > 0 &&
+            ![[exportedText stringByTrimmingCharactersInSet:space]
+                isEqualToString:[selectedText stringByTrimmingCharactersInSet:space]]) {
+            char *rawHTML = copyDoc->getTextSelection("text/html", nullptr);
+            NSString *selectedHTML = rawHTML ? [NSString stringWithUTF8String:rawHTML] : nil;
+            free(rawHTML);
+            // A plain fallback is always usable; HTML from the same selected
+            // range preserves formatting and never reuses the stale transfer.
+            [content removeAllObjects];
+            content[UTTypeUTF8PlainText.identifier] = selectedText;
+            content[@"text/plain;charset=utf-8"] = [selectedText dataUsingEncoding:NSUTF8StringEncoding];
+            if (selectedHTML.length > 0) {
+                NSData *htmlData = [selectedHTML dataUsingEncoding:NSUTF8StringEncoding];
+                content[UTTypeHTML.identifier] = htmlData;
+                content[@"text/html"] = htmlData;
+            }
+            bResult = true;
+            LOG_INF("iOS clipboard PPT text repaired: chars=" << selectedText.length);
+        }
+    }
+
     LOG_INF("iOS clipboard copy: validFlavors=" << validFlavorCount
             << " pngBytes=" << pngByteCount << " emptySkipped=" << emptyFlavorCount
             << " exported=" << bResult);

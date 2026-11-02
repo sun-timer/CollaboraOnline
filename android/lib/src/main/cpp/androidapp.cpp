@@ -32,9 +32,6 @@
 #include <SetupKitEnvironment.hpp>
 #include <Util.hpp>
 
-#include <comphelper/solarmutex.hxx>
-#include <sfx2/lokhelper.hxx>
-#include <sfx2/viewsh.hxx>
 
 #include <osl/detail/android-bootstrap.h>
 
@@ -45,6 +42,18 @@ const int SHOW_JS_MAXLEN = 70;
 int coolwsd_server_socket_fd = -1;
 
 const char* user_name;
+
+namespace {
+std::string javaStringToUtf8(JNIEnv* env, jstring value, bool& valid);
+
+void rememberDocumentUserName(const std::string& name)
+{
+    // Storage copies this name when opening a document. Keep previous UTF-8
+    // buffers alive as well, so an earlier session never retains a dangling pointer.
+    static std::unordered_set<std::string> names;
+    user_name = names.insert(name).first->c_str();
+}
+}
 
 static std::string fileURL;
 static int fakeClientFd = -1;
@@ -518,6 +527,9 @@ Java_org_libreoffice_androidlib_LOActivity_createCOOLWSD(JNIEnv *env, jobject in
     g_loActivityObj = env->NewGlobalRef(instance);
     g_javaCallbacksEnabled = true;
 
+    bool validUserName = false;
+    const std::string documentUserName = javaStringToUtf8(env, userName, validUserName);
+
     // already initialized?
     if (lokInitialized)
     {
@@ -526,6 +538,7 @@ Java_org_libreoffice_androidlib_LOActivity_createCOOLWSD(JNIEnv *env, jobject in
                             "createCOOLWSD_reuse close_previous_doc pid=%d", getpid());
         closeDocument();
         waitForApp2jsIdleImpl(8000);
+        rememberDocumentUserName(validUserName ? documentUserName : std::string());
         ensureCoolwsdThreadRunning();
         g_currentMobileAppDocId = g_mobileAppDocIdCounter++;
         fakeClientFd = fakeSocketSocket();
@@ -541,8 +554,7 @@ Java_org_libreoffice_androidlib_LOActivity_createCOOLWSD(JNIEnv *env, jobject in
     }
     const std::string userInterfaceMode = std::string(env->GetStringUTFChars(uiMode, nullptr));
     setupKitEnvironment(userInterfaceMode);
-    static const std::string userNameString = std::string(env->GetStringUTFChars(userName, nullptr));
-    user_name = userNameString.c_str();
+    rememberDocumentUserName(validUserName ? documentUserName : std::string());
     lokInitialized = true;
     libreofficekit_initialize(env, dataDir, cacheDir, apkFile, assetManager);
 
@@ -1109,73 +1121,6 @@ Java_org_libreoffice_androidlib_LOActivity_appendContinueWriteOnKitThread(
         append();
     else
         poll->addCallback(std::move(append));
-}
-
-extern "C"
-JNIEXPORT jboolean JNICALL
-Java_org_libreoffice_androidlib_LOActivity_setLOKViewAuthor(JNIEnv* env, jobject,
-                                                            jint viewId, jstring name) {
-    if (viewId < 0 || name == nullptr)
-        return JNI_FALSE;
-
-    bool validAuthor = false;
-    const std::string authorName = javaStringToUtf8(env, name, validAuthor);
-    if (!validAuthor || authorName.empty())
-        return JNI_FALSE;
-
-    std::shared_ptr<lok::Document> document = getLOKDocumentForAndroidOnly();
-    auto* poll = KitSocketPoll::getMainPoll();
-    const int session = g_coolwsdSessionGeneration.load();
-    if (!document || !poll)
-        return JNI_FALSE;
-
-    struct AuthorResult {
-        std::mutex mutex;
-        std::condition_variable condition;
-        bool complete = false;
-        bool updated = false;
-    };
-    auto result = std::make_shared<AuthorResult>();
-    auto update = [document, session, viewId, authorName, result]() {
-        bool updated = false;
-        auto* solarMutex = comphelper::SolarMutex::get();
-        if (session == g_coolwsdSessionGeneration.load() && solarMutex) {
-            osl::Guard<comphelper::SolarMutex> guard(solarMutex);
-            std::vector<int> viewIds(std::max(1, document->getViewsCount()));
-            if (document->getViewIds(viewIds.data(), viewIds.size())
-                    && std::find(viewIds.begin(), viewIds.end(), viewId) != viewIds.end()) {
-                SfxViewShell* view = SfxLokHelper::getViewOfId(viewId);
-                if (view) {
-                    view->SetLOKAuthor(OUString::fromUtf8(authorName.c_str()));
-                    updated = true;
-                }
-            }
-        }
-        {
-            std::lock_guard<std::mutex> lock(result->mutex);
-            result->updated = updated;
-            result->complete = true;
-        }
-        result->condition.notify_one();
-    };
-
-    if (poll->getThreadOwner() == std::this_thread::get_id()) {
-        update();
-    } else {
-        poll->addCallback(update);
-        std::unique_lock<std::mutex> lock(result->mutex);
-        result->condition.wait_for(lock, std::chrono::seconds(5), [&result] {
-            return result->complete;
-        });
-    }
-    bool updated = false;
-    {
-        std::lock_guard<std::mutex> lock(result->mutex);
-        updated = result->complete && result->updated;
-    }
-    __android_log_print(ANDROID_LOG_INFO, "LOActivity",
-                        "set_lok_view_author viewId=%d success=%d", viewId, updated ? 1 : 0);
-    return updated ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C"

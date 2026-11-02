@@ -46,7 +46,7 @@
 		}
 
 		static _isEligible(context) {
-			return !!(root.ThisIsTheiOSApp && context &&
+			return !!((root.ThisIsTheiOSApp || root.ThisIsTheAndroidApp) && context &&
 				(!context.layer || context.layer._docType === 'spreadsheet') &&
 				context.map._docLoaded === false && context.urls.some(csvPath));
 		}
