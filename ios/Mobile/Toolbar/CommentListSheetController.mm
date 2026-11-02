@@ -408,6 +408,7 @@ static const void *CommentInfoOverlayAssociationKey = &CommentInfoOverlayAssocia
     title.translatesAutoresizingMaskIntoConstraints = NO;
     title.text = @"批注";
     title.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
+    title.textColor = [UIColor colorWithRed:0x1F / 255.0 green:0x23 / 255.0 blue:0x29 / 255.0 alpha:1];
     title.textAlignment = NSTextAlignmentCenter;
 
     WriterAICloseButton *close = [WriterAICloseButton closeButtonWithTarget:self action:@selector(closeTapped)];
@@ -419,6 +420,8 @@ static const void *CommentInfoOverlayAssociationKey = &CommentInfoOverlayAssocia
     self.tableView.separatorInset = UIEdgeInsetsMake(0, 16, 0, 16);
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = 72.0;
+    self.tableView.backgroundColor = UIColor.whiteColor;
+    self.tableView.separatorColor = [UIColor colorWithWhite:0 alpha:0.08];
 
     self.emptyLabel = [[UILabel alloc] init];
     self.emptyLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -468,8 +471,10 @@ static const void *CommentInfoOverlayAssociationKey = &CommentInfoOverlayAssocia
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellId];
     }
     WriterCommentListItem *item = self.comments[indexPath.row];
+    cell.backgroundColor = UIColor.whiteColor;
     cell.textLabel.numberOfLines = 2;
     cell.textLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+    cell.textLabel.textColor = [UIColor colorWithRed:0x1F / 255.0 green:0x23 / 255.0 blue:0x29 / 255.0 alpha:1];
     cell.textLabel.text = item.author.length > 0 ? item.author : @"批注";
     cell.detailTextLabel.numberOfLines = 3;
     cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.35 alpha:1];

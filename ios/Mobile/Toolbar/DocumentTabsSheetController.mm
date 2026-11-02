@@ -56,6 +56,7 @@
     title.translatesAutoresizingMaskIntoConstraints = NO;
     title.text = @"文档";
     title.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
+    title.textColor = [UIColor colorWithRed:0x1F / 255.0 green:0x23 / 255.0 blue:0x29 / 255.0 alpha:1];
     title.textAlignment = NSTextAlignmentCenter;
 
     WriterAICloseButton *close = [WriterAICloseButton closeButtonWithTarget:self action:@selector(closeTapped)];
@@ -85,6 +86,8 @@
     self.tableView.delegate = self;
     self.tableView.rowHeight = 64.0;
     self.tableView.separatorInset = UIEdgeInsetsMake(0, 72, 0, 16);
+    self.tableView.backgroundColor = UIColor.whiteColor;
+    self.tableView.separatorColor = [UIColor colorWithWhite:0 alpha:0.08];
 
     self.emptyLabel = [[UILabel alloc] init];
     self.emptyLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -229,7 +232,9 @@
 
     RecentDocumentItem *item = self.visibleItems[(NSUInteger)indexPath.row];
     cell.imageView.image = [self iconForItem:item];
+    cell.backgroundColor = UIColor.whiteColor;
     cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+    cell.textLabel.textColor = [UIColor colorWithRed:0x1F / 255.0 green:0x23 / 255.0 blue:0x29 / 255.0 alpha:1];
     cell.textLabel.text = item.displayTitle;
     cell.detailTextLabel.text = item.displaySubtitle;
     cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.45 alpha:1];

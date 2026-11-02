@@ -36,6 +36,16 @@ static UIColor *ImpressOrange(void) {
     return [UIColor colorWithRed:0xEC / 255.0 green:0x5D / 255.0 blue:0x1F / 255.0 alpha:1];
 }
 
+// The overlay panel is a fixed light surface (white), so every text color here
+// is pinned instead of resolving through the system appearance.
+static UIColor *ImpressInkColor(void) {
+    return [UIColor colorWithWhite:0.08 alpha:1];
+}
+
+static UIColor *ImpressSecondaryColor(void) {
+    return [UIColor colorWithWhite:0.45 alpha:1];
+}
+
 static NSString *PptxSafeType(id value) {
     return [value isKindOfClass:[NSString class]] ? value : @"section";
 }
@@ -197,6 +207,7 @@ static NSString *PptxOutlineText(id value) {
     [self.backButton addTarget:self action:@selector(onBack) forControlEvents:UIControlEventTouchUpInside];
     self.titleLabel = [[UILabel alloc] init];
     self.titleLabel.font = [UIFont boldSystemFontOfSize:18];
+    self.titleLabel.textColor = ImpressInkColor();
     self.titleLabel.text = @"生成PPT";
     self.titleLabel.textAlignment = NSTextAlignmentCenter;
     self.closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -219,6 +230,7 @@ static NSString *PptxOutlineText(id value) {
     self.modeLabel = [[UILabel alloc] init];
     self.modeLabel.text = @"快速生成";
     self.modeLabel.font = [UIFont systemFontOfSize:15];
+    self.modeLabel.textColor = ImpressInkColor();
     self.modeLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self.modeCard addSubview:self.modeLabel];
     [NSLayoutConstraint activateConstraints:@[
@@ -308,6 +320,7 @@ static NSString *PptxOutlineText(id value) {
     self.generatingQuery = [[UILabel alloc] init];
     self.generatingQuery.numberOfLines = 3;
     self.generatingQuery.font = [UIFont systemFontOfSize:15];
+    self.generatingQuery.textColor = [UIColor colorWithWhite:0.6 alpha:1];
     self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
     UILabel *status = [[UILabel alloc] init];
     status.text = @"大纲生成中";
@@ -365,6 +378,7 @@ static NSString *PptxOutlineText(id value) {
     self.errorText = [[UILabel alloc] init];
     self.errorText.numberOfLines = 0;
     self.errorText.font = [UIFont systemFontOfSize:14];
+    self.errorText.textColor = ImpressInkColor();
     self.errorRetryBtn = [self primaryButton:@"重试" action:@selector(onErrorRetry)];
     UIStackView *errStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.errorText, self.errorRetryBtn]];
     errStack.axis = UILayoutConstraintAxisVertical;
@@ -407,6 +421,7 @@ static NSString *PptxOutlineText(id value) {
     self.generatingPptGroup = [[UIView alloc] init];
     self.generatingPptText = [[UILabel alloc] init];
     self.generatingPptText.font = [UIFont systemFontOfSize:15];
+    self.generatingPptText.textColor = ImpressInkColor();
     self.generatingPptText.textAlignment = NSTextAlignmentCenter;
     self.generatingPptText.numberOfLines = 2;
     self.pptProgress = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
@@ -453,6 +468,7 @@ static NSString *PptxOutlineText(id value) {
 - (UITextView *)makeTextViewPlaceholder:(NSString *)placeholder {
     UITextView *view = [[UITextView alloc] init];
     view.font = [UIFont systemFontOfSize:15];
+    view.backgroundColor = UIColor.whiteColor;
     view.layer.cornerRadius = 8;
     view.layer.borderWidth = 1;
     view.layer.borderColor = [UIColor colorWithWhite:0.9 alpha:1].CGColor;
@@ -576,7 +592,7 @@ static NSString *PptxOutlineText(id value) {
     UITextView *field = [type isEqualToString:@"outline"] ? self.pasteInput : self.quickInput;
     field.text = input;
     field.tag = 0;
-    field.textColor = UIColor.labelColor;
+    field.textColor = ImpressInkColor();
     [self onGenerate];
 }
 
@@ -1019,15 +1035,18 @@ static NSString *PptxOutlineText(id value) {
         page.text = [NSString stringWithFormat:@"P%ld", (long)(idx + 1)];
         UILabel *type = [[UILabel alloc] init];
         type.font = [UIFont systemFontOfSize:12];
+        type.textColor = ImpressSecondaryColor();
         type.text = [self typeLabelForKey:PptxSafeType(slide[@"type"])];
         UITextField *title = [[UITextField alloc] init];
         title.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+        title.textColor = ImpressInkColor();
         [KeyboardAccessory installOnInput:title];
         title.text = slide[@"title"] ?: @"";
         title.tag = (NSInteger)idx;
         [title addTarget:self action:@selector(titleChanged:) forControlEvents:UIControlEventEditingChanged];
         UITextView *content = [[UITextView alloc] init];
         content.font = [UIFont systemFontOfSize:14];
+        content.textColor = ImpressInkColor();
         content.text = slide[@"content"] ?: @"";
         content.backgroundColor = [UIColor clearColor];
         content.tag = (NSInteger)idx + 1000;
@@ -1092,6 +1111,7 @@ static NSString *PptxOutlineText(id value) {
     UILabel *name = [[UILabel alloc] init];
     name.text = info.name;
     name.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    name.textColor = ImpressInkColor();
     name.textAlignment = NSTextAlignmentCenter;
     name.numberOfLines = 2;
     UIStackView *col = [[UIStackView alloc] initWithArrangedSubviews:@[image, name]];
@@ -1122,6 +1142,7 @@ static NSString *PptxOutlineText(id value) {
     if (templates.count == 0) {
         UILabel *empty = [[UILabel alloc] init];
         empty.text = @"未找到模板资源";
+        empty.textColor = [UIColor colorWithWhite:0.5 alpha:1];
         empty.textAlignment = NSTextAlignmentCenter;
         [self.templateStack addArrangedSubview:empty];
         [self updateTemplateGenerateEnabled];

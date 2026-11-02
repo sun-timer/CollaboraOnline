@@ -285,6 +285,7 @@ static UIColor *WriterAIColorAccent(void) {
     _textView.translatesAutoresizingMaskIntoConstraints = NO;
     _textView.editable = NO;
     _textView.font = [UIFont systemFontOfSize:15];
+    _textView.textColor = WriterAIColorTextPrimary();
     _textView.backgroundColor = [UIColor colorWithWhite:0.97 alpha:1];
     _textView.layer.cornerRadius = 8;
     [_card addSubview:_textView];

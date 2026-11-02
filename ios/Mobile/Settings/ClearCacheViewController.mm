@@ -46,6 +46,7 @@ typedef NS_ENUM(NSInteger, ClearCacheUiState) {
     title.translatesAutoresizingMaskIntoConstraints = NO;
     title.text = @"清理缓存";
     title.font = [UIFont boldSystemFontOfSize:17];
+    title.textColor = [UIColor colorWithWhite:0.2 alpha:1];
     [self.view addSubview:title];
 
     self.scrollView = [[UIScrollView alloc] init];
@@ -144,6 +145,7 @@ typedef NS_ENUM(NSInteger, ClearCacheUiState) {
     left.translatesAutoresizingMaskIntoConstraints = NO;
     left.text = title;
     left.font = [UIFont systemFontOfSize:15];
+    left.textColor = [UIColor colorWithWhite:0.2 alpha:1];
     UILabel *right = [[UILabel alloc] init];
     right.translatesAutoresizingMaskIntoConstraints = NO;
     right.text = [ClearCacheHelper formatSize:bytes];

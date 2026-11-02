@@ -14,6 +14,16 @@
 
 static NSString *const kQuickCreateSessionId = @"home-ai-quick-create";
 
+// The app is locked to light appearance (Info.plist); inputs still pin their own
+// colors so nothing resolves to a dynamic system color.
+static UIColor *QuickCreateTextColor(void) {
+    return [UIColor colorWithRed:0x1F / 255.0 green:0x23 / 255.0 blue:0x29 / 255.0 alpha:1];
+}
+
+static UIColor *QuickCreateHintColor(void) {
+    return [UIColor colorWithRed:0x9A / 255.0 green:0xA0 / 255.0 blue:0xA8 / 255.0 alpha:1];
+}
+
 @interface AIQuickCreateViewController ()
 @property (strong, nonatomic) AIService *aiService;
 @property (strong, nonatomic) UITextField *topicField;
@@ -37,6 +47,7 @@ static NSString *const kQuickCreateSessionId = @"home-ai-quick-create";
     title.translatesAutoresizingMaskIntoConstraints = NO;
     title.text = @"AI 快速创建";
     title.font = [UIFont boldSystemFontOfSize:20];
+    title.textColor = QuickCreateTextColor();
 
     self.docTypeControl = [[UISegmentedControl alloc] initWithItems:@[ @"文档", @"表格", @"演示" ]];
     self.docTypeControl.translatesAutoresizingMaskIntoConstraints = NO;
@@ -95,7 +106,13 @@ static NSString *const kQuickCreateSessionId = @"home-ai-quick-create";
 - (UITextField *)fieldWithPlaceholder:(NSString *)placeholder {
     UITextField *field = [[UITextField alloc] init];
     field.translatesAutoresizingMaskIntoConstraints = NO;
-    field.placeholder = placeholder;
+    field.textColor = QuickCreateTextColor();
+    field.attributedPlaceholder =
+        [[NSAttributedString alloc] initWithString:(placeholder ?: @"")
+                                        attributes:@{
+                                            NSForegroundColorAttributeName: QuickCreateHintColor(),
+                                            NSFontAttributeName: [UIFont systemFontOfSize:16],
+                                        }];
     field.borderStyle = UITextBorderStyleRoundedRect;
     [KeyboardAccessory installOnInput:field];
     field.font = [UIFont systemFontOfSize:16];

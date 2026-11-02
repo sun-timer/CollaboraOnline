@@ -808,6 +808,7 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     UILabel *value = [[UILabel alloc] init];
     value.translatesAutoresizingMaskIntoConstraints = NO;
     value.font = [UIFont monospacedDigitSystemFontOfSize:12 weight:UIFontWeightRegular];
+    value.textColor = AIDrawerColorTextSecondary();
     value.textAlignment = NSTextAlignmentRight;
     [row addSubview:value];
     *valueLabel = value;

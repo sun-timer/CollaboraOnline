@@ -34,6 +34,16 @@ static UIColor *ImpressHintColor(void) {
     return [UIColor colorWithRed:0x9A / 255.0 green:0xA0 / 255.0 blue:0xA8 / 255.0 alpha:1];
 }
 
+// Placeholder text must carry its own color: the app is locked to light
+// appearance, but the field text would otherwise resolve to a dynamic color.
+static NSAttributedString *CreateFilePlaceholderText(NSString *text) {
+    return [[NSAttributedString alloc] initWithString:(text ?: @"")
+                                           attributes:@{
+                                               NSForegroundColorAttributeName: ImpressHintColor(),
+                                               NSFontAttributeName: [UIFont systemFontOfSize:16],
+                                           }];
+}
+
 static UIColor *ImpressCardColor(void) {
     return [UIColor colorWithRed:0xF5 / 255.0 green:0xF6 / 255.0 blue:0xF8 / 255.0 alpha:1];
 }
@@ -213,7 +223,7 @@ static NSString *ImpressTrimmed(NSString *text) {
     title.translatesAutoresizingMaskIntoConstraints = NO;
     title.text = [self sheetTitle];
     title.font = [UIFont boldSystemFontOfSize:20];
-    title.textColor = [UIColor colorWithRed:0x1F / 255.0 green:0x23 / 255.0 blue:0x29 / 255.0 alpha:1];
+    title.textColor = ImpressTextColor();
     title.textAlignment = NSTextAlignmentCenter;
 
     UILabel *nameLabel = [[UILabel alloc] init];
@@ -378,7 +388,8 @@ static NSString *ImpressTrimmed(NSString *text) {
 - (UITextField *)borderedFieldWithPlaceholder:(NSString *)placeholder {
     UITextField *field = [[UITextField alloc] init];
     field.translatesAutoresizingMaskIntoConstraints = NO;
-    field.placeholder = placeholder;
+    field.textColor = ImpressTextColor();
+    field.attributedPlaceholder = CreateFilePlaceholderText(placeholder);
     field.font = [UIFont systemFontOfSize:16];
     field.borderStyle = UITextBorderStyleNone;
     field.layer.cornerRadius = 8;
@@ -395,9 +406,11 @@ static NSString *ImpressTrimmed(NSString *text) {
 - (void)toggleAiSwitch {
     self.aiSwitchOn = !self.aiSwitchOn;
     if (self.aiSwitchOn && self.docKind == CreateFileDocKindCalc) {
-        self.aiPromptField.placeholder = @"描述你想生成的表格内容，例如：2024年各季度销售数据表";
+        self.aiPromptField.attributedPlaceholder =
+            CreateFilePlaceholderText(@"描述你想生成的表格内容，例如：2024年各季度销售数据表");
     } else if (self.aiSwitchOn) {
-        self.aiPromptField.placeholder = @"描述你想生成的文档内容...";
+        self.aiPromptField.attributedPlaceholder =
+            CreateFilePlaceholderText(@"描述你想生成的文档内容...");
     }
     if (!self.aiSwitchOn && self.docKind == CreateFileDocKindCalc) {
         [self.aiPromptField resignFirstResponder];

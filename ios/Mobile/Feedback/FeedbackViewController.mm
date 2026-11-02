@@ -207,6 +207,19 @@ static NSString *feedbackTruncateToCodePoints(NSString *string, NSUInteger maxPo
     return [string substringWithRange:cutRange];
 }
 
+// Full-screen photo viewer: the app is locked to light appearance (Info.plist),
+// so the black backdrop needs an explicit light status bar.
+@interface FeedbackImageViewerController : UIViewController
+@end
+
+@implementation FeedbackImageViewerController
+
+- (UIStatusBarStyle)preferredStatusBarStyle {
+    return UIStatusBarStyleLightContent;
+}
+
+@end
+
 @interface FeedbackViewController () <PHPickerViewControllerDelegate, UITextViewDelegate, UITableViewDataSource, UITableViewDelegate>
 @property (strong, nonatomic) UIView *contentView;
 @property (assign, nonatomic) NSInteger selectedTypeIndex;
@@ -709,7 +722,12 @@ static NSString *feedbackTruncateToCodePoints(NSString *string, NSUInteger maxPo
     self.contactField = [[UITextField alloc] init];
     self.contactField.translatesAutoresizingMaskIntoConstraints = NO;
     self.contactField.font = [UIFont systemFontOfSize:14];
-    self.contactField.placeholder = @"您的手机号 / 邮箱（方便我们联系您）";
+    self.contactField.textColor = [FeedbackAppearance textPrimaryColor];
+    self.contactField.attributedPlaceholder =
+        [[NSAttributedString alloc] initWithString:@"您的手机号 / 邮箱（方便我们联系您）"
+                                        attributes:@{
+                                            NSForegroundColorAttributeName: [FeedbackAppearance textMutedColor],
+                                        }];
     self.contactField.backgroundColor = UIColor.whiteColor;
     self.contactField.layer.cornerRadius = 12;
     self.contactField.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 44)];
@@ -898,7 +916,7 @@ static NSString *feedbackTruncateToCodePoints(NSString *string, NSUInteger maxPo
     if (image == nil) {
         return;
     }
-    UIViewController *viewer = [[UIViewController alloc] init];
+    FeedbackImageViewerController *viewer = [[FeedbackImageViewerController alloc] init];
     viewer.view.backgroundColor = UIColor.blackColor;
     viewer.modalPresentationStyle = UIModalPresentationFullScreen;
 
@@ -1270,7 +1288,7 @@ static NSString *feedbackTruncateToCodePoints(NSString *string, NSUInteger maxPo
         if (image == nil) {
             return;
         }
-        UIViewController *viewer = [[UIViewController alloc] init];
+        FeedbackImageViewerController *viewer = [[FeedbackImageViewerController alloc] init];
         viewer.view.backgroundColor = UIColor.blackColor;
         viewer.modalPresentationStyle = UIModalPresentationFullScreen;
         UIImageView *imageView = [[UIImageView alloc] initWithImage:image];

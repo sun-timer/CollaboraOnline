@@ -47,6 +47,7 @@ static UIColor *AboutCardColor(void) {
     appName.translatesAutoresizingMaskIntoConstraints = NO;
     appName.text = @"Orange Office";
     appName.font = [UIFont boldSystemFontOfSize:20];
+    appName.textColor = [UIColor colorWithWhite:0.06 alpha:1];
     appName.textAlignment = NSTextAlignmentCenter;
     [self.view addSubview:appName];
 

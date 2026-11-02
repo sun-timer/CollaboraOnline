@@ -183,7 +183,6 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
     self.view.backgroundColor = UIColor.whiteColor;
     self.view.accessibilityIdentifier = @"homeRoot";
     self.recentStore = [[RecentDocumentsStore alloc] init];
