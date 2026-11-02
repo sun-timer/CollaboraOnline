@@ -76,13 +76,15 @@ interface ImpressLayoutEntry {
 	icon: string;
 }
 
-/** Android ImpressFunctionPanelController fill styles (FillPageStyle). */
-type ImpressFillPageStyle = 0 | 1 | 2 | 3 | 4;
+/** Core drawing::FillStyle order used by SID_ATTR_PAGE_FILLSTYLE. */
+type ImpressFillPageStyle = 0 | 1 | 2 | 3 | 4 | 5;
+
+type ImpressBackgroundKind =
+	'none' | 'color' | 'gradient' | 'hatch' | 'bitmap' | 'pattern' | 'master';
 
 interface ImpressSlideBackgroundOption {
 	label: string;
-	unocmd: string | null;
-	fillPageStyle?: ImpressFillPageStyle;
+	kind: ImpressBackgroundKind;
 	afterSelect?: 'colorPicker' | 'imagePicker';
 }
 
@@ -224,43 +226,15 @@ class ImpressEditorCatalog {
 		},
 	];
 
-	/** Android BACKGROUND_LABELS / BACKGROUND_COMMANDS + createBackgroundActions. */
+	/** Shared with the Android panel: each entry is applied by ImpressBackgroundBridge. */
 	static readonly SLIDE_BACKGROUND_OPTIONS: ImpressSlideBackgroundOption[] = [
-		{
-			label: '无',
-			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(0),
-			fillPageStyle: 0,
-		},
-		{
-			label: '颜色',
-			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(1),
-			fillPageStyle: 1,
-			afterSelect: 'colorPicker',
-		},
-		{
-			label: '渐变',
-			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(2),
-			fillPageStyle: 2,
-		},
-		{
-			label: '阴影线',
-			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(3),
-			fillPageStyle: 3,
-		},
-		{
-			label: '位图',
-			unocmd: '.uno:SelectBackground',
-			afterSelect: 'imagePicker',
-		},
-		{
-			label: '图案',
-			unocmd: ImpressEditorCatalog.buildFillPageStyleCommand(4),
-			fillPageStyle: 4,
-		},
-		{
-			label: '使用幻灯片背景',
-			unocmd: '.uno:DisplayMasterBackground?DisplayMasterBackground:bool=true',
-		},
+		{ label: '无', kind: 'none' },
+		{ label: '颜色', kind: 'color', afterSelect: 'colorPicker' },
+		{ label: '渐变', kind: 'gradient' },
+		{ label: '阴影线', kind: 'hatch' },
+		{ label: '位图', kind: 'bitmap', afterSelect: 'imagePicker' },
+		{ label: '图案', kind: 'pattern' },
+		{ label: '使用幻灯片背景', kind: 'master' },
 	];
 
 	/** Android MASTER_SLIDE_LABELS; 默认 uses FillPageStyle 0 on iOS (Android clears local state only). */
@@ -284,8 +258,11 @@ class ImpressEditorCatalog {
 	}
 
 	static buildFillPageStyleCommand(fillStyle: ImpressFillPageStyle): string {
+		// XFillStyleItem::PutValue accepts drawing::FillStyle or sal_Int32 only,
+		// and LOK's JSON argument conversion has no enum support, so the number
+		// has to travel as a long.
 		return (
-			'.uno:FillPageStyle {"FillPageStyle":{"type":"short","value":' +
+			'.uno:FillPageStyle {"FillPageStyle":{"type":"long","value":' +
 			fillStyle +
 			'}}'
 		);
@@ -293,7 +270,7 @@ class ImpressEditorCatalog {
 
 	static buildBackgroundColorCommand(rgb: number): string {
 		return (
-			'.uno:FillPageColor {"FillPageColor.Color":{"type":"long","value":' +
+			'.uno:FillPageColor {"FillColor.Color":{"type":"long","value":' +
 			rgb +
 			'}}'
 		);

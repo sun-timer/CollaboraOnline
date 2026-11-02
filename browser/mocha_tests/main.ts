@@ -74,6 +74,7 @@
 /// <reference path="../src/app/ImpressEditorCatalog.ts" />
 /// <reference path="../src/app/ImpressEditorHyperlinkDialog.ts" />
 /// <reference path="../src/app/ImpressTransitionBridge.ts" />
+/// <reference path="../src/app/ImpressBackgroundBridge.ts" />
 /// <reference path="../src/app/ImpressEditorPanel.ts" />
 /// <reference path="../src/app/CalcEditorCatalog.ts" />
 /// <reference path="../src/app/CalcEditorFormat.ts" />

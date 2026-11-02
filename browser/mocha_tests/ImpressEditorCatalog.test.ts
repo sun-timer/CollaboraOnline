@@ -324,25 +324,11 @@ describe('ImpressEditorCatalog', function () {
 			expectedLabels,
 		);
 		assert.equal(ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS.length, 7);
-		const fillStyles = ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS.filter(
-			function (entry) {
-				return entry.fillPageStyle !== undefined;
-			},
-		).map(function (entry) {
-			return entry.fillPageStyle;
-		});
-		assert.deepEqual(fillStyles, [0, 1, 2, 3, 4]);
-		assert.equal(
-			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[0].unocmd,
-			ImpressEditorCatalog.buildFillPageStyleCommand(0),
-		);
-		assert.equal(
-			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[4].unocmd,
-			'.uno:SelectBackground',
-		);
-		assert.equal(
-			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[6].unocmd,
-			'.uno:DisplayMasterBackground?DisplayMasterBackground:bool=true',
+		assert.deepEqual(
+			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS.map(function (entry) {
+				return entry.kind;
+			}),
+			['none', 'color', 'gradient', 'hatch', 'bitmap', 'pattern', 'master'],
 		);
 		assert.equal(
 			ImpressEditorCatalog.SLIDE_BACKGROUND_OPTIONS[1].afterSelect,
@@ -378,6 +364,7 @@ describe('Impress editor interaction regressions', function () {
 	let originalDocument: any;
 	let dom: any;
 	let commands: string[];
+	let unoCalls: Array<{ command: string; args?: any }>;
 	let listeners: Record<string, Array<(event: any) => void>>;
 
 	beforeEach(function () {
@@ -390,13 +377,19 @@ describe('Impress editor interaction regressions', function () {
 		(global as any).window = dom.window;
 		(global as any).document = dom.window.document;
 		commands = [];
+		unoCalls = [];
 		listeners = {};
 		(dom.window as any).app = {
 			socket: { sendMessage: (message: string) => commands.push(message) },
 			map: {
 				getDocType: () => 'presentation',
-				sendUnoCommand: (command: string) => commands.push(command),
-				_docLayer: { _partWidthTwips: 15874, _partHeightTwips: 8929 },
+				isEditMode: () => true,
+				sendUnoCommand: (command: string, args?: any) => {
+					commands.push(command);
+					unoCalls.push({ command, args });
+				},
+				_docLayer: { _partWidthTwips: 15874, _partHeightTwips: 8929, _viewId: 2, _selectedPart: 4 },
+				sidebar: { setupTargetDeck: (command: string) => commands.push('deck:' + command) },
 				stateChangeHandler: {
 					getItemValue: (command: string) =>
 						(
@@ -541,16 +534,61 @@ describe('Impress editor interaction regressions', function () {
 		assert.equal(anchor.querySelector('h2').textContent, '二级');
 	});
 
-	it('chooses slide background from Android options without opening PageSetup', async function () {
+	it('applies a gradient with the page gradient command', function () {
 		const panel = new (ImpressEditorPanel as any)();
 		panel.open();
 		panel.openSlideBackgroundDialog();
 		dom.window.document.querySelector('button[aria-label="渐变"]').click();
-		await new Promise((resolve) => dom.window.setTimeout(resolve, 5));
-		assert.deepEqual(commands, [
-			ImpressEditorCatalog.buildFillPageStyleCommand(2),
-		]);
+		assert.equal(unoCalls.length, 1);
+		assert.ok(String(unoCalls[0].command).startsWith('.uno:FillPageGradient '));
 		assert.equal(panel.pickerLabels['slide-background'], '渐变');
+		panel.close();
+	});
+
+	it('asks the photo picker for 位图 and paints 图案 as a background image', function () {
+		const messages: string[] = [];
+		(dom.window as any).postMobileMessage = (message: string) => messages.push(message);
+		assert.equal(ImpressBackgroundBridge.apply('bitmap'), true);
+		assert.ok(messages[0].startsWith('IMPRESS_BACKGROUND_PICK_IMAGE '));
+		assert.equal(ImpressBackgroundBridge.apply('pattern'), true);
+		assert.ok(messages[1].startsWith('insertfile name=slide_background.png type=selectbackground data='));
+	});
+
+	it('clears the page fill natively for 使用幻灯片背景', function () {
+		const messages: string[] = [];
+		(dom.window as any).postMobileMessage = (message: string) => messages.push(message);
+		(dom.window as any).NativeBridge = { getInstance: () => ({ getDocumentSessionId: () => 'session' }) };
+		let sent: boolean | undefined;
+		ImpressBackgroundBridge.applyMasterBackground((value) => (sent = value));
+		assert.equal(sent, true);
+		assert.equal(unoCalls.length, 0);
+		assert.ok(messages[0].startsWith('IMPRESS_MASTER_BACKGROUND '));
+		assert.equal(JSON.parse(messages[0].substring('IMPRESS_MASTER_BACKGROUND '.length)).visible, true);
+	});
+
+	it('applies a slide background color with FillColor.Color', function () {
+		let sent: boolean | undefined;
+		ImpressBackgroundBridge.applyColor(0x123456, (value) => (sent = value));
+		assert.equal(sent, true);
+		assert.deepEqual(unoCalls.map((call) => call.command), [
+			'.uno:FillPageColor {"FillColor.Color":{"type":"long","value":1193046}}',
+		]);
+	});
+
+	it('marks the picked background swatch once the color command is sent', async function () {
+		const panel = new (ImpressEditorPanel as any)();
+		panel.open();
+		panel.openSlideBackgroundDialog();
+		dom.window.document.querySelector('button[aria-label="颜色"]').click();
+		const previous = dom.window.document.querySelector('button[aria-label="颜色 #FFFFFF"] .writer-function-color-picker__check');
+		const candidate = dom.window.document.querySelector('button[aria-label="颜色 #000000"] .writer-function-color-picker__check');
+		assert.equal(previous.hidden, false);
+		assert.equal(candidate.hidden, true);
+		(dom.window.document.querySelector('button[aria-label="颜色 #000000"]') as HTMLButtonElement).click();
+		assert.equal(candidate.hidden, false);
+		await Promise.resolve();
+		await Promise.resolve();
+		assert.equal(candidate.hidden, false);
 		panel.close();
 	});
 

@@ -5,6 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 #include "ios.h"
+#include "../common/MobileImpressBackground.hpp"
 #include <algorithm>
 #include <vector>
 #include <comphelper/solarmutex.hxx>
@@ -13,6 +14,9 @@
 #include <sfx2/objsh.hxx>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/beans/XPropertyState.hpp>
+#include <com/sun/star/awt/FontWeight.hpp>
+#include <com/sun/star/awt/FontSlant.hpp>
 #include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/document/XUndoManagerSupplier.hpp>
@@ -41,9 +45,19 @@
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <svx/svdview.hxx>
 #include <svx/svdmodel.hxx>
+#include <svx/svdpagv.hxx>
+#include <svx/svdpage.hxx>
+#include <svx/svditer.hxx>
+#include <svx/svdotext.hxx>
+#include <svx/unoapi.hxx>
+#include <svl/itemiter.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/wghtitem.hxx>
 #include <editeng/postitem.hxx>
+#include <editeng/udlnitem.hxx>
+#include <editeng/crossedoutitem.hxx>
+#include <editeng/outlobj.hxx>
+#include <editeng/editobj.hxx>
 #include <cstring>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/processfactory.hxx>
@@ -125,9 +139,14 @@ bool setIOSViewAuthor(lok::Document *document, int viewId, const char *name)
 }
 
 IOSImpressShapeFormatResult toggleIOSImpressShapeFormat(lok::Document *document,
-    int viewId, int part, bool bold)
+    int viewId, int part, const char *command, const char *selectionId)
 {
     IOSImpressShapeFormatResult result;
+    const bool bold = command && std::strcmp(command, ".uno:Bold") == 0;
+    const bool italic = command && std::strcmp(command, ".uno:Italic") == 0;
+    const bool underline = command && std::strcmp(command, ".uno:Underline") == 0;
+    const bool strikeout = command && std::strcmp(command, ".uno:Strikeout") == 0;
+    if (!bold && !italic && !underline && !strikeout) return result;
     auto *mutex = comphelper::SolarMutex::get();
     if (!document || !mutex || viewId < 0 || part < 0) return result;
     osl::Guard<comphelper::SolarMutex> guard(mutex);
@@ -145,26 +164,78 @@ IOSImpressShapeFormatResult toggleIOSImpressShapeFormat(lok::Document *document,
     document->setView(viewId);
     if (document->getPart() != part) return result;
     SdrView *draw = view->GetDrawView();
-    if (!draw || draw->IsTextEdit() || draw->GetMarkedObjectList().GetMarkCount() == 0
-        || !draw->GetModel().IsUndoEnabled()) {
-        result.message = "请选择文本框后重试";
-        return result;
+    NSLog(@"[ImpressShapeFormat] stage=selection view=%d part=%d draw=%d textEdit=%d marks=%lu undo=%d",
+        viewId, part, draw != nullptr, draw && draw->IsTextEdit(),
+        draw ? static_cast<unsigned long>(draw->GetMarkedObjectList().GetMarkCount()) : 0UL,
+        draw && draw->GetModel().IsUndoEnabled());
+    if (!draw || !draw->GetModel().IsUndoEnabled()) return result;
+    if (selectionId && *selectionId) {
+        const auto matches = [&](const SdrObject* object) {
+            if (!object) return false;
+            const OString objectId = OString::number(reinterpret_cast<sal_IntPtr>(object));
+            return objectId == OString(selectionId);
+        };
+        // Find the ID only among live objects on this view's current slide.
+        // The token is never cast back to a pointer or used on a different page.
+        auto* pageView = draw->GetSdrPageView();
+        if (!pageView) return result;
+        try {
+            namespace css = com::sun::star;
+            css::uno::Reference<css::drawing::XDrawView> controller(view->GetController(), css::uno::UNO_QUERY_THROW);
+            if (GetSdrPageFromXDrawPage(controller->getCurrentPage()) != pageView->GetPage()) {
+                NSLog(@"[ImpressShapeFormat] stage=resolve reason=page_mismatch");
+                return result;
+            }
+        } catch (const com::sun::star::uno::Exception&) { return result; }
+        SdrObject* target = nullptr;
+        SdrObjListIter objects(pageView->GetPage(), SdrIterMode::DeepWithGroups);
+        while (objects.IsMore()) {
+            auto* candidate = objects.Next();
+            if (matches(candidate)) { target = candidate; break; }
+        }
+        NSLog(@"[ImpressShapeFormat] stage=resolve found=%d textObject=%d markable=%d",
+            target != nullptr, target && dynamic_cast<SdrTextObj*>(target) != nullptr,
+            target && draw->IsObjMarkable(target, pageView));
+        if (!target || !dynamic_cast<SdrTextObj*>(target) || !draw->IsObjMarkable(target, pageView)) return result;
+        const auto& marks = draw->GetMarkedObjectList();
+        if (marks.GetMarkCount() && !draw->IsObjMarked(target)) return result;
+        if (draw->IsTextEdit()) {
+            if (draw->GetTextEditObject() != target) return result;
+            // An explicit frame selection formats existing text, not just the
+            // next characters at a hidden insertion caret.
+            draw->SdrEndTextEdit(true);
+        }
+        if (!draw->IsObjMarked(target)) draw->MarkObj(target, pageView);
+        NSLog(@"[ImpressShapeFormat] stage=restore marks=%lu matched=%d",
+            static_cast<unsigned long>(draw->GetMarkedObjectList().GetMarkCount()), draw->IsObjMarked(target));
     }
+    if (!draw->IsTextEdit() && draw->GetMarkedObjectList().GetMarkCount() == 0) return result;
     // Use the exact drawing-view path used by Impress, but include all three
     // script attributes. SetAttributes owns undo, text-run attribute cleanup,
     // object-change broadcasts and tile invalidation.
     SfxItemSet current(draw->GetModel().GetItemPool());
     draw->GetAttributes(current);
-    bool allEnabled;
-    if (bold) {
-        allEnabled = current.Get(EE_CHAR_WEIGHT).GetWeight() >= WEIGHT_BOLD
-            && current.Get(EE_CHAR_WEIGHT_CJK).GetWeight() >= WEIGHT_BOLD
-            && current.Get(EE_CHAR_WEIGHT_CTL).GetWeight() >= WEIGHT_BOLD;
-    } else {
-        allEnabled = current.Get(EE_CHAR_ITALIC).GetPosture() != ITALIC_NONE
-            && current.Get(EE_CHAR_ITALIC_CJK).GetPosture() != ITALIC_NONE
-            && current.Get(EE_CHAR_ITALIC_CTL).GetPosture() != ITALIC_NONE;
-    }
+    // Ignore unused scripts when deciding the toggle. A Chinese-only text box
+    // can already be bold while its unused Latin/CTL defaults are still normal.
+    // Mixed (INVALID) attributes mean "apply", never read a default as a value.
+    const auto scripts = draw->GetScriptType();
+    const auto weightEnabled = [&](auto which) {
+        return current.GetItemState(which) != SfxItemState::INVALID
+            && current.Get(which).GetWeight() >= WEIGHT_BOLD;
+    };
+    const auto postureEnabled = [&](auto which) {
+        return current.GetItemState(which) != SfxItemState::INVALID
+            && current.Get(which).GetPosture() != ITALIC_NONE;
+    };
+    const bool allEnabled = underline
+        ? current.GetItemState(EE_CHAR_UNDERLINE) != SfxItemState::INVALID
+            && current.Get(EE_CHAR_UNDERLINE).GetLineStyle() != LINESTYLE_NONE
+        : strikeout
+        ? current.GetItemState(EE_CHAR_STRIKEOUT) != SfxItemState::INVALID
+            && current.Get(EE_CHAR_STRIKEOUT).GetStrikeout() != STRIKEOUT_NONE
+        : (!(scripts & SvtScriptType::LATIN) || (bold ? weightEnabled(EE_CHAR_WEIGHT) : postureEnabled(EE_CHAR_ITALIC)))
+            && (!(scripts & SvtScriptType::ASIAN) || (bold ? weightEnabled(EE_CHAR_WEIGHT_CJK) : postureEnabled(EE_CHAR_ITALIC_CJK)))
+            && (!(scripts & SvtScriptType::COMPLEX) || (bold ? weightEnabled(EE_CHAR_WEIGHT_CTL) : postureEnabled(EE_CHAR_ITALIC_CTL)));
     result.enabled = !allEnabled;
     SfxItemSet attributes(draw->GetModel().GetItemPool());
     if (bold) {
@@ -172,18 +243,122 @@ IOSImpressShapeFormatResult toggleIOSImpressShapeFormat(lok::Document *document,
         attributes.Put(SvxWeightItem(value, EE_CHAR_WEIGHT));
         attributes.Put(SvxWeightItem(value, EE_CHAR_WEIGHT_CJK));
         attributes.Put(SvxWeightItem(value, EE_CHAR_WEIGHT_CTL));
-    } else {
+    } else if (italic) {
         const FontItalic value = result.enabled ? ITALIC_NORMAL : ITALIC_NONE;
         attributes.Put(SvxPostureItem(value, EE_CHAR_ITALIC));
         attributes.Put(SvxPostureItem(value, EE_CHAR_ITALIC_CJK));
         attributes.Put(SvxPostureItem(value, EE_CHAR_ITALIC_CTL));
+    } else if (underline) {
+        attributes.Put(SvxUnderlineItem(result.enabled ? LINESTYLE_SINGLE : LINESTYLE_NONE, EE_CHAR_UNDERLINE));
+    } else {
+        attributes.Put(SvxCrossedOutItem(result.enabled ? STRIKEOUT_SINGLE : STRIKEOUT_NONE, EE_CHAR_STRIKEOUT));
     }
     result.success = draw->SetAttributes(attributes, false);
+    result.changed = result.success ? 1 : 0;
+    SfxItemSet readback(draw->GetModel().GetItemPool());
+    draw->GetAttributes(readback);
+    SfxItemIter written(attributes);
+    for (const SfxPoolItem* item = written.GetCurItem(); item; item = written.NextItem()) {
+        const SfxPoolItem* saved = nullptr;
+        readback.GetItemState(item->Which(), true, &saved);
+        if (!saved || !(*saved == *item)) result.success = false;
+    }
+    NSLog(@"[ImpressShapeFormat] stage=readback verified=%d marks=%lu textEdit=%d", result.success,
+        static_cast<unsigned long>(draw->GetMarkedObjectList().GetMarkCount()), draw->IsTextEdit());
     if (result.success) {
         result.changed = 1;
         result.message = "";
     }
     return result;
+}
+
+IOSImpressShapeFormatStates getIOSImpressShapeFormatStates(lok::Document *document,
+    int viewId, int part, const char *selectionId)
+{
+    using namespace com::sun::star;
+    IOSImpressShapeFormatStates result;
+    auto *mutex = comphelper::SolarMutex::get();
+    if (!document || !mutex || viewId < 0 || part < 0 || !selectionId || !*selectionId) return result;
+    osl::Guard<comphelper::SolarMutex> guard(mutex);
+    if (document->getDocumentType() != LOK_DOCTYPE_PRESENTATION) return result;
+    std::vector<int> ids(std::max(1, document->getViewsCount()));
+    if (!document->getViewIds(ids.data(), ids.size())
+        || std::find(ids.begin(), ids.end(), viewId) == ids.end()) return result;
+    SfxViewShell *view = SfxLokHelper::getViewOfId(viewId);
+    if (!view) return result;
+    struct RestoreView {
+        lok::Document *doc;
+        int previous;
+        ~RestoreView() { doc->setView(previous); }
+    } restore{document, document->getView()};
+    document->setView(viewId);
+    if (document->getPart() != part) return result;
+    try {
+        uno::Reference<drawing::XDrawView> controller(view->GetController(), uno::UNO_QUERY_THROW);
+        auto *page = GetSdrPageFromXDrawPage(controller->getCurrentPage());
+        if (!page) return result;
+        SdrTextObj *target = nullptr;
+        SdrObjListIter objects(page, SdrIterMode::DeepWithGroups);
+        while (objects.IsMore()) {
+            auto *object = objects.Next();
+            const OString id = OString::number(reinterpret_cast<sal_IntPtr>(object));
+            if (id == OString(selectionId)) { target = dynamic_cast<SdrTextObj*>(object); break; }
+        }
+        if (!target) return result;
+        // Query the entire persisted text, including inherited and run-level
+        // attributes. Draw-shell command state can describe an empty selection
+        // or an unused Latin script after reopening a Chinese presentation.
+        uno::Reference<text::XText> text(target->getUnoShape(), uno::UNO_QUERY_THROW);
+        auto cursor = text->createTextCursor();
+        cursor->gotoStart(false);
+        cursor->gotoEnd(true);
+        uno::Reference<beans::XPropertySet> properties(cursor, uno::UNO_QUERY_THROW);
+        uno::Reference<beans::XPropertyState> states(cursor, uno::UNO_QUERY_THROW);
+        const auto read = [&](const OUString &name, auto enabled) -> int {
+            if (states->getPropertyState(name) == beans::PropertyState_AMBIGUOUS_VALUE) return -1;
+            return enabled(properties->getPropertyValue(name));
+        };
+        const auto weight = [](const uno::Any &value) -> int {
+            float number = 0;
+            return (value >>= number) ? int(number >= awt::FontWeight::BOLD) : -1;
+        };
+        const auto posture = [](const uno::Any &value) -> int {
+            awt::FontSlant slant;
+            return (value >>= slant) ? int(slant != awt::FontSlant_NONE) : -1;
+        };
+        const auto line = [](const uno::Any &value) -> int {
+            sal_Int16 style = 0;
+            return (value >>= style) ? int(style != 0) : -1;
+        };
+        auto scripts = SvtScriptType::LATIN;
+        if (const auto *paragraph = target->GetOutlinerParaObject()) {
+            scripts = paragraph->GetTextObject().GetScriptType();
+            if (scripts == SvtScriptType::NONE) scripts = SvtScriptType::LATIN;
+        }
+        const auto scriptState = [&](bool bold) {
+            int merged = -2;
+            const auto include = [&](SvtScriptType script, const OUString &name) {
+                if (!(scripts & script)) return;
+                const int value = bold ? read(name, weight) : read(name, posture);
+                merged = merged == -2 ? value : merged == value ? merged : -1;
+            };
+            include(SvtScriptType::LATIN, bold ? u"CharWeight"_ustr : u"CharPosture"_ustr);
+            include(SvtScriptType::ASIAN, bold ? u"CharWeightAsian"_ustr : u"CharPostureAsian"_ustr);
+            include(SvtScriptType::COMPLEX, bold ? u"CharWeightComplex"_ustr : u"CharPostureComplex"_ustr);
+            return merged == -2 ? -1 : merged;
+        };
+        result.bold = scriptState(true);
+        result.italic = scriptState(false);
+        result.underline = read(u"CharUnderline"_ustr, line);
+        result.strikeout = read(u"CharStrikeout"_ustr, line);
+        result.success = true;
+    } catch (const uno::Exception&) {}
+    return result;
+}
+
+bool setIOSImpressMasterBackground(lok::Document *document, int viewId, int part, bool visible, bool *changed)
+{
+    return setMobileImpressMasterBackground(document, viewId, part, visible, changed);
 }
 
 IOSCalcTextFormatResult applyIOSCalcTextFormat(lok::Document *document, int viewId,

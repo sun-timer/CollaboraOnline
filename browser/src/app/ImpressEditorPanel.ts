@@ -4,6 +4,9 @@
  */
 
 class ImpressEditorPanel {
+	private static readonly characterCommands = [
+		'.uno:Bold', '.uno:Italic', '.uno:Underline', '.uno:Strikeout',
+	];
 	private readonly sheet: WriterEditorSheet;
 	private readonly tabBar: HTMLDivElement;
 	private readonly tabScroll: HTMLDivElement;
@@ -25,6 +28,10 @@ class ImpressEditorPanel {
 	private slideBackgroundColorRgb = 0xffffff;
 	private slideMasterSolidColorRgb = 0xffffff;
 	private stateHandler: ((event: any) => void) | null = null;
+	private characterStateHandler: (() => void) | null = null;
+	private characterSelectionHandler: (() => void) | null = null;
+	private panelIsOpen = false;
+	private slideBackgroundRequest = 0;
 	private readonly controller = WriterEditorController.getInstance();
 
 	private constructor() {
@@ -102,11 +109,17 @@ class ImpressEditorPanel {
 	}
 
 	open(): void {
+		this.panelIsOpen = true;
 		MobileDocTheme.applyFromMap();
 		this.refreshCommandState();
 		const map = (window as any).app?.map;
 		if (!this.stateHandler && map?.on) {
 			this.stateHandler = (event: any) => {
+				if (ImpressEditorPanel.characterCommands.includes(event?.commandName)) {
+					this.refreshCharacterToolStates();
+					WriterEditorController.requestImpressShapeStates();
+					return;
+				}
 				if (
 					[
 						'.uno:FontHeight',
@@ -124,10 +137,20 @@ class ImpressEditorPanel {
 				if (this.activeTab === 'default') this.renderGrid();
 			};
 			map.on('commandstatechanged', this.stateHandler);
+			this.characterStateHandler = () => this.refreshCharacterToolStates();
+			this.characterSelectionHandler = () => {
+				this.refreshCharacterToolStates();
+				WriterEditorController.requestImpressShapeStates();
+			};
+			map.on('impresscharacterstatechanged', this.characterStateHandler);
+			map.on('impresscharacterselectionchanged', this.characterSelectionHandler);
+			map.on('updatepermission', this.characterSelectionHandler);
+			map.on('updateparts', this.characterSelectionHandler);
 		}
 		this.renderTabs();
 		this.renderGrid();
 		this.sheet.open();
+		WriterEditorController.requestImpressShapeStates();
 	}
 
 	private openAiFeatures(): void {
@@ -147,10 +170,21 @@ class ImpressEditorPanel {
 	}
 
 	close(): void {
+		++this.slideBackgroundRequest;
+		this.panelIsOpen = false;
 		const map = (window as any).app?.map;
 		if (this.stateHandler && map?.off)
 			map.off('commandstatechanged', this.stateHandler);
+		if (this.characterStateHandler && map?.off)
+			map.off('impresscharacterstatechanged', this.characterStateHandler);
+		if (this.characterSelectionHandler && map?.off) {
+			map.off('impresscharacterselectionchanged', this.characterSelectionHandler);
+			map.off('updatepermission', this.characterSelectionHandler);
+			map.off('updateparts', this.characterSelectionHandler);
+		}
 		this.stateHandler = null;
+		this.characterStateHandler = null;
+		this.characterSelectionHandler = null;
 		const children = this.subDialogs.splice(0);
 		children.forEach((dialog) => dialog.close());
 		this.inlineSubpage.clearSubpages();
@@ -548,6 +582,10 @@ class ImpressEditorPanel {
 			button.type = 'button';
 			button.className = 'writer-function-char-tools__btn';
 			button.setAttribute('aria-label', feature.label);
+			if (feature.unocmd && ImpressEditorPanel.characterCommands.includes(feature.unocmd)) {
+				button.dataset.impressCharacterCommand = feature.unocmd;
+				this.refreshCharacterToolState(button, feature.unocmd);
+			}
 			const iconWrap = document.createElement('span');
 			iconWrap.className = 'writer-function-char-tools__icon';
 			iconWrap.innerHTML = ImpressCharToolIcons.iconFor(feature.id);
@@ -564,6 +602,21 @@ class ImpressEditorPanel {
 			container.appendChild(row2);
 		}
 		return container;
+	}
+
+	private refreshCharacterToolStates(): void {
+		this.grid.querySelectorAll<HTMLButtonElement>('[data-impress-character-command]').forEach((button) => {
+			const command = button.dataset.impressCharacterCommand;
+			if (command) this.refreshCharacterToolState(button, command);
+		});
+	}
+
+	private refreshCharacterToolState(button: HTMLButtonElement, command: string): void {
+		const state = WriterEditorController.impressShapeState(command) ??
+			(window as any).app?.map?.stateChangeHandler?.getItemValue(command);
+		const active = state === true || state === 'true';
+		button.classList.toggle('writer-function-char-tools__btn--active', active);
+		button.setAttribute('aria-pressed', state === 'mixed' ? 'mixed' : String(active));
 	}
 
 	private static rgbCss(rgb: number): string {
@@ -1047,25 +1100,42 @@ class ImpressEditorPanel {
 					if (!entry) {
 						return;
 					}
-					this.pickerLabels['slide-background'] = entry.label;
-					this.renderGrid();
-					if (entry.unocmd) {
-						this.sendUno(entry.unocmd);
-					}
+					const request = ++this.slideBackgroundRequest;
 					if (entry.afterSelect === 'colorPicker') {
 						this.presentSub(
 							new ImpressSolidColorPickerDialog(
 								'颜色',
 								this.slideBackgroundColorRgb,
 								(rgb) => {
-									this.slideBackgroundColorRgb = rgb;
-									this.applyImpressSlideBackgroundColor(rgb);
-									this.pickerLabels['slide-background'] = '颜色';
-									this.renderGrid();
+									return this.applyImpressSlideBackgroundColor(rgb).then((applied) => {
+										if (applied === true && request === this.slideBackgroundRequest && this.panelIsOpen) {
+											this.slideBackgroundColorRgb = rgb;
+											this.pickerLabels['slide-background'] = '颜色';
+											this.renderGrid();
+										}
+										return applied;
+									});
 								},
 								this.subHost(),
+								true,
 							),
 						);
+					} else if (entry.kind === 'none' || entry.kind === 'master') {
+						ImpressBackgroundBridge.apply(entry.kind, undefined, (applied) => {
+							if (request !== this.slideBackgroundRequest || !this.panelIsOpen) return;
+							if (applied) {
+								this.pickerLabels['slide-background'] = entry.label;
+								this.renderGrid();
+							} else {
+								(window as any).app?.map?.uiManager?.showSnackbar?.('背景未应用，请重试');
+							}
+						});
+					} else if (ImpressBackgroundBridge.apply(entry.kind)) {
+						if (!this.panelIsOpen) return;
+						this.pickerLabels['slide-background'] = entry.label;
+						this.renderGrid();
+					} else if (this.panelIsOpen) {
+						(window as any).app?.map?.uiManager?.showSnackbar?.('背景命令未发送，请重试');
 					}
 				},
 				this.pickerLabels['slide-background'],
@@ -1117,9 +1187,8 @@ class ImpressEditorPanel {
 		);
 	}
 
-	private applyImpressSlideBackgroundColor(rgb: number): void {
-		this.sendUno(ImpressEditorCatalog.buildFillPageStyleCommand(1));
-		this.sendUno(ImpressEditorCatalog.buildBackgroundColorCommand(rgb));
+	private applyImpressSlideBackgroundColor(rgb: number): Promise<boolean> {
+		return new Promise((resolve) => ImpressBackgroundBridge.applyColor(rgb, resolve));
 	}
 
 	private applySlideSize(

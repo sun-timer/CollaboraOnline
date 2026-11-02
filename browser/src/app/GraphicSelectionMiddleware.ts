@@ -318,6 +318,8 @@ class GraphicSelection {
 			}
 		}
 		app.map._docLayer._updateCursorAndOverlay();
+		if (window.ThisIsTheiOSApp && app.map.getDocType() === 'presentation')
+			app.map.fire('impresscharacterselectionchanged');
 	}
 
 	public static onShapeSelectionContent(textMsg: string) {

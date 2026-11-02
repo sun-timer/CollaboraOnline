@@ -150,6 +150,10 @@ public class ImpressFunctionPanelController {
 
         void executeUnoCommand(String command);
 
+        interface BackgroundCallback { void onComplete(boolean success); }
+
+        void applySlideBackground(String kind, int rgb, BackgroundCallback callback);
+
         void toastTodo(String text);
 
         void applyFont(String fontName);
@@ -332,6 +336,7 @@ public class ImpressFunctionPanelController {
     private Integer selectedMasterSolidRgb;
     private Integer selectedMasterSolidIndex;
     private boolean solidColorForSlideBackground;
+    private long slideBackgroundRequestSerial;
     private int selectedTransitionIndex = DEFAULT_SELECTED_TRANSITION_INDEX;
     private LinearLayout transitionGridRoot;
     private int selectedLayoutIndex = -1;
@@ -419,6 +424,7 @@ public class ImpressFunctionPanelController {
     }
 
     public void dismiss() {
+        slideBackgroundRequestSerial++;
         dismissSecondaryListPanel();
         dismissFontSizePopup();
         dismissFontColorPickerPage();
@@ -850,11 +856,13 @@ public class ImpressFunctionPanelController {
     }
 
     private String buildFillPageStyleUnoCommand(int fillStyle) {
-        return ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":" + fillStyle + "}}";
+        return ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"long\",\"value\":" + fillStyle + "}}";
     }
 
     private String buildBackgroundColorUnoCommand(int rgb) {
-        return ".uno:BackgroundColor {\"BackgroundColor.Color\":{\"type\":\"long\",\"value\":" + rgb + "}}";
+        // .uno:BackgroundColor (SID_BACKGROUND_COLOR) has no Impress handler; the
+        // slide fill colour is SID_ATTR_PAGE_COLOR, exposed as FillPageColor.
+        return ".uno:FillPageColor {\"FillPageColor.Color\":{\"type\":\"long\",\"value\":" + rgb + "}}";
     }
 
     private void showLabelPicker(String title, String[] labels, String[] commands,
@@ -924,8 +932,13 @@ public class ImpressFunctionPanelController {
                     ? R.drawable.lolib_ic_impress_radio_checked
                     : R.drawable.lolib_ic_impress_radio_unchecked);
             row.setOnClickListener(v -> {
-                pickerValues.put(pickerId, label);
-                valueView.setText(label);
+                if ("slide_background".equals(pickerId)) slideBackgroundRequestSerial++;
+                boolean awaitBackgroundConfirmation = "slide_background".equals(pickerId)
+                        && (index == 0 || index == 6);
+                if (!awaitBackgroundConfirmation) {
+                    pickerValues.put(pickerId, label);
+                    valueView.setText(label);
+                }
                 if (commands != null && index < commands.length
                         && commands[index] != null && !commands[index].isEmpty()) {
                     host.executeUnoCommand(commands[index]);
@@ -951,6 +964,7 @@ public class ImpressFunctionPanelController {
         if (!slideOptionPickerVisible) {
             return;
         }
+        slideBackgroundRequestSerial++;
         slideOptionPickerVisible = false;
         slideOptionValueView = null;
         setTabChromeVisible(true);
@@ -2608,25 +2622,45 @@ public class ImpressFunctionPanelController {
             "无", "颜色", "渐变", "阴影线", "位图", "图案", "使用幻灯片背景"
     };
     private static final String[] BACKGROUND_COMMANDS = {
-            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":0}}",
-            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":1}}",
-            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":2}}",
-            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":3}}",
-            ".uno:SelectBackground",
-            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"short\",\"value\":4}}",
-            ".uno:DisplayMasterBackground?DisplayMasterBackground:bool=true",
+            "",
+            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"long\",\"value\":1}}",
+            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"long\",\"value\":2}}",
+            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"long\",\"value\":3}}",
+            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"long\",\"value\":4}}",
+            // 图案 is drawing::FillStyle_PATTERN (5); it used to reuse 4 (bitmap).
+            ".uno:FillPageStyle {\"FillPageStyle\":{\"type\":\"long\",\"value\":5}}",
+            // 使用幻灯片背景: clear the local fill, then show the master background.
+            "",
     };
 
     private Runnable[] createBackgroundActions() {
         return new Runnable[] {
-                null,
+                () -> applyConfirmedSlideBackground("none", "无"),
                 this::showSlideBackgroundColorPicker,
                 null,
                 null,
-                () -> host.runAfterFunctionPanelDismiss(() -> host.openLocalImagePickerFromWeb()),
                 null,
                 null,
+                () -> applyConfirmedSlideBackground("master", "使用幻灯片背景"),
         };
+    }
+
+    private void applyConfirmedSlideBackground(String kind, String label) {
+        final long request = slideBackgroundRequestSerial;
+        host.applySlideBackground(kind, 0, success -> {
+            if (request != slideBackgroundRequestSerial) return;
+            if (!success) {
+                Toast.makeText(host.getContext(), "背景未应用，请重试", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            pickerValues.put("slide_background", label);
+            if (slideBackgroundValueView != null) slideBackgroundValueView.setText(label);
+            if (slideOptionPickerVisible && fontPickerPanel != null && slideBackgroundValueView != null) {
+                LinearLayout list = fontPickerPanel.findViewById(R.id.font_picker_list);
+                if (list != null) populateSlideOptionList(list, BACKGROUND_LABELS, BACKGROUND_COMMANDS,
+                        "slide_background", slideBackgroundValueView, createBackgroundActions());
+            }
+        });
     }
 
     private static final String[] FALLBACK_FONT_OPTIONS = {

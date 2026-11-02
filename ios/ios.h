@@ -34,10 +34,18 @@ struct IOSImpressShapeFormatResult {
     bool success = false;
     bool enabled = false;
     int changed = 0;
-    const char *message = "未能修改文本框格式";
+    const char *message = "";
 };
 IOSImpressShapeFormatResult toggleIOSImpressShapeFormat(lok::Document *document,
-    int viewId, int part, bool bold);
+    int viewId, int part, const char *command, const char *selectionId);
+struct IOSImpressShapeFormatStates {
+    bool success = false;
+    int bold = -1, italic = -1, underline = -1, strikeout = -1;
+};
+// Read-only: never selects objects, ends text editing or creates an undo entry.
+IOSImpressShapeFormatStates getIOSImpressShapeFormatStates(lok::Document *document,
+    int viewId, int part, const char *selectionId);
+bool setIOSImpressMasterBackground(lok::Document *document, int viewId, int part, bool visible, bool *changed);
 struct IOSCalcFormatStates {
     bool success = false;
     std::string numberFormat;

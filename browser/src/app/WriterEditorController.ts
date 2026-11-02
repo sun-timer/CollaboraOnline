@@ -704,18 +704,114 @@ class WriterEditorController {
 		return { dispatched: 'export', kind };
 	}
 
-	/** The Impress draw shell formats only Latin attributes on selected shapes. */
-	static applyImpressShapeCharacter(command: string): boolean {
+	private static impressStates: { key: string; layer: any; values: Record<string, string> } | null = null;
+	private static impressStateSerial = 0;
+	private static impressStatePending: { id: string; key: string; layer: any; timer: number } | null = null;
+
+	private static impressShapeStateTarget(): any {
 		const map = (window as any).app?.map;
 		if (!(window as any).ThisIsTheiOSApp || map?.getDocType?.() !== 'presentation' ||
-			(command !== '.uno:Bold' && command !== '.uno:Italic') ||
-			typeof GraphicSelection === 'undefined' || !GraphicSelection.hasActiveSelection() ||
+			typeof NativeBridge === 'undefined' || typeof GraphicSelection === 'undefined' ||
+			!GraphicSelection.hasActiveSelection() ||
 			(typeof TextSelections !== 'undefined' && TextSelections.isActive()) ||
-			(window as any).app?.file?.textCursor?.visible ||
+			(window as any).app?.file?.textCursor?.visible) return null;
+		const selectionId = String(GraphicSelection.extraInfo?.id || '');
+		const viewId = map._docLayer?._viewId, part = map._docLayer?._selectedPart;
+		if (!/^\d{1,20}$/.test(selectionId) || !Number.isInteger(viewId) || !Number.isInteger(part)) return null;
+		const documentSessionId = NativeBridge.getInstance().getDocumentSessionId();
+		return { map, layer: map._docLayer, viewId, part, selectionId, documentSessionId,
+			key: [documentSessionId, viewId, part, selectionId].join(':') };
+	}
+
+	static impressShapeState(command: string): string | undefined {
+		const target = this.impressShapeStateTarget();
+		const saved = this.impressStates;
+		return target && saved && saved.key === target.key && saved.layer === target.layer
+			? saved.values[command] : undefined;
+	}
+
+	static requestImpressShapeStates(): void {
+		const target = this.impressShapeStateTarget();
+		if (!target || typeof (window as any).postMobileMessage !== 'function') return;
+		const pending = this.impressStatePending;
+		if (pending && pending.key === target.key && pending.layer === target.layer) return;
+		if (pending) window.clearTimeout(pending.timer);
+		const id = 'impress-state-' + ++this.impressStateSerial;
+		const timer = window.setTimeout(() => {
+			if (this.impressStatePending?.id === id) this.impressStatePending = null;
+		}, 2000);
+		this.impressStatePending = { id, key: target.key, layer: target.layer, timer };
+		(window as any).postMobileMessage('IMPRESS_SHAPE_FORMAT_STATE ' + JSON.stringify({
+			requestId: id, documentSessionId: target.documentSessionId,
+			viewId: target.viewId, part: target.part, selectionId: target.selectionId,
+		}));
+	}
+
+	static onImpressShapeStates(result: any): void {
+		const pending = this.impressStatePending;
+		if (!pending || result?.requestId !== pending.id) return;
+		window.clearTimeout(pending.timer);
+		this.impressStatePending = null;
+		const target = this.impressShapeStateTarget();
+		if (!result.success || !target || target.key !== pending.key || target.layer !== pending.layer ||
+			result.documentSessionId !== target.documentSessionId || result.selectionId !== target.selectionId ||
+			result.viewId !== target.viewId || result.part !== target.part) return;
+		const values: Record<string, string> = {};
+		for (const command of ['.uno:Bold', '.uno:Italic', '.uno:Underline', '.uno:Strikeout']) {
+			const state = result.states?.[command];
+			if (state !== 'true' && state !== 'false' && state !== 'mixed') return;
+			values[command] = state;
+		}
+		this.impressStates = { key: target.key, layer: target.layer, values };
+		target.map.fire?.('impresscharacterstatechanged');
+	}
+
+	static onImpressShapeFormatResult(result: any): boolean {
+		const target = this.impressShapeStateTarget();
+		if (!result.success || !target || result.documentSessionId !== target.documentSessionId ||
+            result.selectionId !== target.selectionId || result.viewId !== target.viewId || result.part !== target.part) return false;
+		if (this.impressStatePending) window.clearTimeout(this.impressStatePending.timer);
+		this.impressStatePending = null;
+		const saved = this.impressStates;
+		const values = saved && saved.key === target.key && saved.layer === target.layer
+			? { ...saved.values } : {};
+		values[result.command] = String(result.enabled);
+		this.impressStates = { key: target.key, layer: target.layer, values };
+		target.map.fire?.('impresscharacterstatechanged');
+		this.requestImpressShapeStates();
+		return true;
+	}
+
+	/** Core decides whether to format a shape, text range or insertion caret. */
+	static applyImpressShapeCharacter(command: string): boolean {
+		const map = (window as any).app?.map;
+		if (!(window as any).ThisIsTheiOSApp || map?.getDocType?.() !== 'presentation') return false;
+		if (['.uno:Bold', '.uno:Italic', '.uno:Underline', '.uno:Strikeout'].indexOf(command) >= 0 &&
+			typeof (window as any).postMobileDebug === 'function') {
+			try {
+				(window as any).postMobileDebug('impress_format_diag ' + JSON.stringify({
+					command, viewId: map._docLayer?._viewId, part: map._docLayer?._selectedPart,
+					graphic: typeof GraphicSelection !== 'undefined' && GraphicSelection.hasActiveSelection(),
+					selectionId: typeof GraphicSelection !== 'undefined' ? GraphicSelection.extraInfo?.id : null,
+					text: typeof TextSelections !== 'undefined' && TextSelections.isActive(),
+					cursor: !!(window as any).app?.file?.textCursor?.visible,
+					partsFocused: !!map._docLayer?._preview?.partsFocused,
+					selectionType: map._clip?._selectionType,
+				}));
+			} catch (_) { /* Diagnostics must not change formatting behavior. */ }
+		}
+		if (['.uno:Bold', '.uno:Italic', '.uno:Underline', '.uno:Strikeout'].indexOf(command) < 0 ||
 			typeof NativeBridge === 'undefined' || typeof (window as any).postMobileMessage !== 'function' ||
 			!Number.isInteger(map._docLayer?._viewId)) return false;
+		// A toolbar can outlive Core's marked-object list. Preserve the identity
+		// of the visible box, never infer a target from its screen coordinates.
+		const wholeShape = typeof GraphicSelection !== 'undefined' && GraphicSelection.hasActiveSelection() &&
+			!(typeof TextSelections !== 'undefined' && TextSelections.isActive()) &&
+			!(window as any).app?.file?.textCursor?.visible;
+		const selectionId = wholeShape ? String(GraphicSelection.extraInfo?.id || '') : '';
 		(window as any).postMobileMessage('IMPRESS_SHAPE_FORMAT ' + JSON.stringify({
 			command, viewId: map._docLayer._viewId, part: map._docLayer._selectedPart,
+			selectionId,
 			documentSessionId: NativeBridge.getInstance().getDocumentSessionId(),
 		}));
 		return true;
@@ -782,4 +878,8 @@ class WriterEditorController {
 
 if (typeof window !== 'undefined') {
 	WriterEditorController.getInstance();
+	(window as any).ImpressCharacterStateBridge = {
+		onResult: (result: any) => WriterEditorController.onImpressShapeStates(result),
+		onFormatResult: (result: any) => WriterEditorController.onImpressShapeFormatResult(result),
+	};
 }
