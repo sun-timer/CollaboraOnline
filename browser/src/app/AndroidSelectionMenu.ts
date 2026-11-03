@@ -121,6 +121,24 @@ class AndroidSelectionMenu {
 		}
 	}
 
+	/**
+	 * IME diagnosis channel: reaches the native debug handler (iOS NSLog
+	 * "[JS] ...", Android logcat) instead of console.log, which is invisible
+	 * in Xcode's console for WKWebView.
+	 */
+	private static imeDiagCount = 0;
+	private static imeDiag(msg: string): void {
+		if (AndroidSelectionMenu.imeDiagCount++ > 400) return;
+		try {
+			const post = (window as any).postMobileDebug;
+			const line = 'ime_diag ' + msg;
+			if (typeof post === 'function') post(line);
+			else console.log('[ime_diag] ' + msg);
+		} catch (_e) {
+			// Best-effort only.
+		}
+	}
+
 	static hide(): void {
 		if (AndroidSelectionMenu.isIOS()) {
 			MobileSelectionEvents.broadcastHide();
@@ -290,6 +308,12 @@ class AndroidSelectionMenu {
 			!AndroidSelectionMenu.isSelectionDoc() ||
 			!app.map?._docLayer
 		) {
+			AndroidSelectionMenu.imeDiag(
+				'request_skip mobile=' + (AndroidSelectionMenu.isMobileApp() ? 1 : 0) +
+					' edit=' + (AndroidSelectionMenu.isEditMode() ? 1 : 0) +
+					' seldoc=' + (AndroidSelectionMenu.isSelectionDoc() ? 1 : 0) +
+					' layer=' + (app.map?._docLayer ? 1 : 0),
+			);
 			return;
 		}
 		AndroidSelectionMenu.cancelTextInputRequest('replace');
@@ -324,9 +348,20 @@ class AndroidSelectionMenu {
 			timer: 0,
 		};
 		AndroidSelectionMenu.pendingTextInputRequest = request;
+		AndroidSelectionMenu.imeDiag(
+			'request_new gen=' + request.generation +
+				' target=' + (targetPoint ? Math.round(targetPoint.x) + ',' + Math.round(targetPoint.y) : '-') +
+				' caret=' + (request.startCaret
+					? Math.round(request.startCaret.x) + ',' + Math.round(request.startCaret.y) : 'hidden'),
+		);
 		request.timer = window.setTimeout(() => {
 			if (AndroidSelectionMenu.pendingTextInputRequest === request) {
 				AndroidSelectionMenu.pendingTextInputRequest = null;
+				AndroidSelectionMenu.imeDiag(
+					'request_timeout gen=' + request.generation +
+						' tapResolved=' + (request.tapResolved ? 1 : 0) +
+						' caretConfirmed=' + (request.caretConfirmed ? 1 : 0),
+				);
 				AndroidSelectionMenu.releaseKeyboardPreservation(0);
 			}
 		}, 1000);
@@ -335,14 +370,41 @@ class AndroidSelectionMenu {
 	private static beginTextInputTap(target: { x: number; y: number }): void {
 		AndroidSelectionMenu.resetForNewGesture();
 		AndroidSelectionMenu.beginTextInputRequest(target);
+		AndroidSelectionMenu.requestWriterKeyboardInTapGesture();
+	}
+
+	/**
+	 * iOS：WKWebView 是否真正拉起软键盘，取决于 focus() 的调用栈是否源自用户
+	 * 输入事件（TextInput.focus 里的原注释也这么写）。原先只有两条路径会
+	 * focus：原生 hook 在 TextCursorVisibility 变为可见时触发，以及这里
+	 * 250ms 单击定时器之后的 maybeShowKeyboardForTextInput。前者要求光标由
+	 * 隐藏变可见，单击正文空白处时插入光标本就可见、内核不会再发一次；后者
+	 * 已脱离手势。因此在单击处理链内同步补一次 focus，保证空白处单击也能
+	 * 拉起键盘。
+	 */
+	private static requestWriterKeyboardInTapGesture(): void {
+		if (!AndroidSelectionMenu.isIOS()) return;
+		if (!AndroidSelectionMenu.acceptsCaretAnywhereForWriterTap()) return;
+		if (AndroidSelectionMenu.isKeyboardOpen()) return;
+		AndroidSelectionMenu.imeDiag('tap_gesture_focus writer');
+		try {
+			app.map.focus(true);
+		} catch (_e) {
+			// Best-effort only.
+		}
 	}
 
 	static resolveTextInputTap(): void {
 		const request = AndroidSelectionMenu.pendingTextInputRequest;
 		if (!request) {
+			AndroidSelectionMenu.imeDiag('tap_resolve no_request');
 			return;
 		}
 		request.tapResolved = true;
+		AndroidSelectionMenu.imeDiag(
+			'tap_resolve gen=' + request.generation +
+				' caretConfirmed=' + (request.caretConfirmed ? 1 : 0),
+		);
 		// Core may not emit visibility/invalidate when a tap lands on the caret
 		// that is already visible. Reuse it only for a very tight caret hit.
 		if (
@@ -350,6 +412,15 @@ class AndroidSelectionMenu {
 			AndroidSelectionMenu.isCurrentCaretAtTap(request)
 		) {
 			request.caretConfirmed = true;
+		}
+		// 编辑态 Word：单击空白处时内核把插入点夹回原处，插入光标本就可见，
+		// 不会再发一次 cursorvisible / invalidatecursor，这封回包永远等不到。
+		// 用户在该位置的意图明确是正文输入，因此不再要求内核回包确认。
+		if (!request.caretConfirmed && AndroidSelectionMenu.acceptsCaretAnywhereForWriterTap()) {
+			request.caretConfirmed = true;
+			AndroidSelectionMenu.imeDiag(
+				'tap_resolve writer_optimistic gen=' + request.generation,
+			);
 		}
 		AndroidSelectionMenu.maybeShowKeyboardForTextInput(request);
 	}
@@ -464,6 +535,29 @@ class AndroidSelectionMenu {
 		);
 	}
 
+	/**
+	 * 编辑态 Word 中，正文（含空白区域）的单击只要被内核回包成真实插入光标，
+	 * 就不再要求插入点落在点击位置上。
+	 *
+	 * 空文档或半页文档的正文下方空白被单击时，内核把插入点夹到最近的有效位置
+	 * （空段落 / 文末），或者本就在该位置而不移动，回包坐标与点击处相距很远。
+	 * 原先的几何校验会丢弃这次回包，导致单击空白处不呼出键盘。
+	 *
+	 * 仍然保留以下拦截：对象/图片选区（键盘交给图形选区逻辑）、长按选择、
+	 * 已有文字选区、只读模式和非 Word 文档。
+	 */
+	private static acceptsCaretAnywhereForWriterTap(): boolean {
+		return (
+			AndroidSelectionMenu.isMobileApp() &&
+			AndroidSelectionMenu.isWriterDoc() &&
+			AndroidSelectionMenu.isEditMode() &&
+			!AndroidSelectionMenu.pendingLongPressSelection &&
+			!AndroidSelectionMenu.hasVisibleTextSelection() &&
+			!(typeof GraphicSelection !== 'undefined' &&
+				GraphicSelection.hasActiveSelection())
+		);
+	}
+
 	static cancelTextInputRequest(_reason: string = 'cancel'): void {
 		AndroidSelectionMenu.presentationCaretMenuGesture = null;
 		AndroidSelectionMenu.presentationInputContext = null;
@@ -494,16 +588,27 @@ class AndroidSelectionMenu {
 			!AndroidSelectionMenu.isEditMode() ||
 			AndroidSelectionMenu.pendingLongPressSelection
 		) {
+			AndroidSelectionMenu.imeDiag(
+				'show_skip gen=' + request.generation +
+					' stale=' + (AndroidSelectionMenu.pendingTextInputRequest !== request ? 1 : 0) +
+					' resolved=' + (request.tapResolved ? 1 : 0) +
+					' caret=' + (request.caretConfirmed ? 1 : 0) +
+					' layer=' + (app.map && app.map._docLayer === request.docLayer ? 1 : 0) +
+					' edit=' + (AndroidSelectionMenu.isEditMode() ? 1 : 0) +
+					' longpress=' + (AndroidSelectionMenu.pendingLongPressSelection ? 1 : 0),
+			);
 			return;
 		}
 		window.clearTimeout(request.timer);
 		AndroidSelectionMenu.pendingTextInputRequest = null;
 		AndroidSelectionMenu.releaseKeyboardPreservation(800);
 		if (AndroidSelectionMenu.isKeyboardOpen()) {
+			AndroidSelectionMenu.imeDiag('show gen=' + request.generation + ' already_open=1');
 			app.map.focus(true);
 			return;
 		}
 		if (AndroidSelectionMenu.isIOS()) {
+			AndroidSelectionMenu.imeDiag('show gen=' + request.generation + ' ios_focus=1');
 			app.map.focus(true);
 		} else if (typeof window.postMobileMessage === 'function') {
 			AndroidSelectionMenu.validTextInputGeneration = request.generation;
@@ -520,7 +625,13 @@ class AndroidSelectionMenu {
 				}
 				AndroidSelectionMenu.validTextInputTimer = 0;
 			}, 1500);
+			AndroidSelectionMenu.imeDiag('show gen=' + request.generation + ' android_post=1');
 			window.postMobileMessage('SHOWTEXTIME ' + request.generation);
+		} else {
+			AndroidSelectionMenu.imeDiag(
+				'show gen=' + request.generation + ' no_postBridge ios=' +
+					(AndroidSelectionMenu.isIOS() ? 1 : 0),
+			);
 		}
 	}
 
@@ -674,13 +785,25 @@ class AndroidSelectionMenu {
 		if (cursorVisible) AndroidSelectionMenu.finishWriterEditKeyboard();
 		const request = AndroidSelectionMenu.pendingTextInputRequest;
 		if (!request) {
+			AndroidSelectionMenu.imeDiag(
+				'caret_update visible=' + (cursorVisible ? 1 : 0) +
+					' state=' + (app.file?.textCursor?.visible ? 1 : 0) +
+					' request=none',
+			);
 			return;
 		}
+		AndroidSelectionMenu.imeDiag(
+			'caret_update visible=' + (cursorVisible ? 1 : 0) +
+				' state=' + (app.file?.textCursor?.visible ? 1 : 0) +
+				' gen=' + request.generation +
+				' resolved=' + (request.tapResolved ? 1 : 0),
+		);
 		if (
 			!app.map ||
 			app.map._docLayer !== request.docLayer ||
 			!AndroidSelectionMenu.isEditMode()
 		) {
+			AndroidSelectionMenu.imeDiag('caret_update cancel doc_or_permission gen=' + request.generation);
 			AndroidSelectionMenu.cancelTextInputRequest('document_or_permission_changed');
 			return;
 		}
@@ -698,15 +821,33 @@ class AndroidSelectionMenu {
 					(request.targetPoint &&
 						!cell.containsPoint([request.targetPoint.x, request.targetPoint.y]))
 				) {
+					AndroidSelectionMenu.imeDiag('caret_reject calc gen=' + request.generation);
 					return;
 				}
 			} else if (AndroidSelectionMenu.isPresentation() && AndroidSelectionMenu.isPresentationInputPending()) {
 				// A caret published by Core after this explicit double tap is the
 				// input target; its position can be clamped to the shape's text.
+			} else if (AndroidSelectionMenu.acceptsCaretAnywhereForWriterTap()) {
+				// 编辑态 Word：空文档或正文下方的大片空白被单击时，内核会把插入点
+				// 夹到最近的有效位置（空段落 / 文末），甚至保持原位不动，回包位置
+				// 因此离点击处很远。这里只要内核确认了插入光标，就按正文输入意图处
+				// 理，否则用户只能在插入光标附近或末行才能呼出键盘。
+				AndroidSelectionMenu.imeDiag(
+					'caret_accept writer_blank_tap gen=' + request.generation +
+						' moved=' + (caretChanged ? 1 : 0) +
+						' caret=' + Math.round(caret.x1) + ',' + Math.round(caret.y1) +
+						' target=' + (request.targetPoint
+							? Math.round(request.targetPoint.x) + ',' + Math.round(request.targetPoint.y)
+							: '-'),
+				);
 			} else if (
 				request.targetPoint &&
 				(!caretChanged && !AndroidSelectionMenu.isCaretAtTarget(caret, request.targetPoint))
 			) {
+				AndroidSelectionMenu.imeDiag(
+					'caret_reject unchanged_far gen=' + request.generation +
+						' writer=' + (AndroidSelectionMenu.isWriterDoc() ? 1 : 0),
+				);
 				return;
 			} else if (request.targetPoint && caretChanged) {
 				const tolerance = Math.round(72 * app.pixelsToTwips);
@@ -719,6 +860,11 @@ class AndroidSelectionMenu {
 						!AndroidSelectionMenu.isWriterDoc() ||
 						!AndroidSelectionMenu.isCaretOnTapLine(caret, request.targetPoint)
 					) {
+					AndroidSelectionMenu.imeDiag(
+						'caret_reject geometry gen=' + request.generation +
+							' caret=' + Math.round(caret.x1) + ',' + Math.round(caret.y1) +
+							' target=' + Math.round(request.targetPoint.x) + ',' + Math.round(request.targetPoint.y),
+					);
 					return;
 					}
 				}
@@ -2002,6 +2148,11 @@ class AndroidSelectionMenu {
 				point: cool.SimplePoint,
 				e: MouseEvent,
 			): void {
+				AndroidSelectionMenu.imeDiag(
+					'click_entry mobile=' + (AndroidSelectionMenu.isMobileApp() ? 1 : 0) +
+						' seldoc=' + (AndroidSelectionMenu.isSelectionDoc() ? 1 : 0) +
+						' doc=' + (app.map ? app.map.getDocType() : '-'),
+				);
 				if (
 					!AndroidSelectionMenu.isMobileApp() ||
 					!app.map ||
@@ -2013,6 +2164,7 @@ class AndroidSelectionMenu {
 				// An annotation's first touch opens its info card. Do not let its
 				// compatibility click move the caret or request the keyboard.
 				if (AndroidSelectionMenu.shouldSuppressWriterCommentClick(e)) {
+					AndroidSelectionMenu.imeDiag('click_skip writer_comment');
 					return;
 				}
 
@@ -2027,10 +2179,12 @@ class AndroidSelectionMenu {
 				) {
 					// Mobile Calc touch input is dispatched once by the native/iOS touch
 					// bridge. Suppress its synthetic browser click before it reaches Core.
+					AndroidSelectionMenu.imeDiag('click_skip calc_bridge');
 					return;
 				}
 
 				if (Date.now() < AndroidSelectionMenu.suppressClickUntil) {
+					AndroidSelectionMenu.imeDiag('click_skip suppressed');
 					return;
 				}
 
@@ -2069,6 +2223,13 @@ class AndroidSelectionMenu {
 				const isPresentation = app.map.getDocType() === 'presentation';
 				const isTouchTap = AndroidSelectionMenu.isTouchTapEligible();
 				const textTarget = AndroidSelectionMenu.sectionPointToDocumentTwips(clickInfo.sendingPosition);
+				AndroidSelectionMenu.imeDiag(
+					'click doc=' + app.map.getDocType() +
+						' touchTap=' + (isTouchTap ? 1 : 0) +
+						' target=' + (textTarget
+							? Math.round(textTarget.x) + ',' + Math.round(textTarget.y) : 'null') +
+						' clickTimer=' + (this.clickTimer ? 1 : 0),
+				);
 				if (isPresentation) {
 					this.clickCount = 0;
 					AndroidSelectionMenu.dispatchPresentationTap(this, clickInfo, textTarget, isTouchTap);
@@ -2079,6 +2240,11 @@ class AndroidSelectionMenu {
 					AndroidSelectionMenu.cancelTextInputRequest('double_tap');
 				} else {
 					inputRequestForTap = AndroidSelectionMenu.isEditMode() && !isCalcEdit && isTouchTap && !!textTarget;
+					AndroidSelectionMenu.imeDiag(
+						'click_input_request=' + (inputRequestForTap ? 1 : 0) +
+							' edit=' + (AndroidSelectionMenu.isEditMode() ? 1 : 0) +
+							' calcEdit=' + (isCalcEdit ? 1 : 0),
+					);
 					if (inputRequestForTap && textTarget) {
 						// End the previous selection gesture before a new caret request.
 						// Otherwise pendingLongPressSelection blocks its keyboard reply.
