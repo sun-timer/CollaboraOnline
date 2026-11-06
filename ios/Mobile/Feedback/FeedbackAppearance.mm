@@ -39,32 +39,34 @@
     return [UIColor colorWithRed:0xF7 / 255.0 green:0xF7 / 255.0 blue:0xF7 / 255.0 alpha:1];
 }
 
-+ (UIView *)requiredDotView {
-    UIView *dot = [[UIView alloc] init];
-    dot.translatesAutoresizingMaskIntoConstraints = NO;
-    dot.backgroundColor = [UIColor colorWithRed:0xD8 / 255.0 green:0x1E / 255.0 blue:0x06 / 255.0 alpha:1];
-    dot.layer.cornerRadius = 2.5;
-    [NSLayoutConstraint activateConstraints:@[
-        [dot.widthAnchor constraintEqualToConstant:5],
-        [dot.heightAnchor constraintEqualToConstant:5],
-    ]];
-    return dot;
++ (UILabel *)requiredStarLabel {
+    // 设计 429:20679：必填是文字后面的红色星号（#D81E06），不是前面一个红点
+    UILabel *star = [[UILabel alloc] init];
+    star.text = @"*";
+    star.font = [UIFont systemFontOfSize:14];
+    star.textColor = [UIColor colorWithRed:0xD8 / 255.0 green:0x1E / 255.0 blue:0x06 / 255.0 alpha:1];
+    [star setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [star setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    return star;
 }
 
 + (UIStackView *)sectionHeaderRowWithText:(NSString *)text required:(BOOL)required {
     UIStackView *row = [[UIStackView alloc] init];
     row.axis = UILayoutConstraintAxisHorizontal;
-    row.spacing = 4;
+    row.spacing = 0;
     row.alignment = UIStackViewAlignmentCenter;
     row.translatesAutoresizingMaskIntoConstraints = NO;
-    if (required) {
-        [row addArrangedSubview:[self requiredDotView]];
-    }
     UILabel *label = [[UILabel alloc] init];
     label.text = text;
     label.font = [UIFont systemFontOfSize:14];
     label.textColor = [self textSecondaryColor];
     [row addArrangedSubview:label];
+    if (required) {
+        UILabel *star = [self requiredStarLabel];
+        [row addArrangedSubview:star];
+        // 设计实测：文字结束到星号 8.5pt
+        [row setCustomSpacing:8.5 afterView:label];
+    }
     return row;
 }
 

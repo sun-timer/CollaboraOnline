@@ -64,6 +64,24 @@ static UIColor *CardDestructiveAccent(void) {
     [self.view addSubview:card];
     self.cardView = card;
 
+    // 弹窗定位：在「键盘顶边以上的可见区」内居中，键盘一弹出弹窗就整体上移，不再被键盘压住。
+    // 设计稿 403:20431（文件列表-修改头像-输入框）：弹窗 670×396px，底边距键盘顶 108pt；
+    // 这里用键盘布局引导自适应，任何机型/任何键盘高度都不会盖住「取消/确定」。
+    UILayoutGuide *visibleArea = [[UILayoutGuide alloc] init];
+    [self.view addLayoutGuide:visibleArea];
+    // 键盘收起时让引导顶边落在视图底边（而不是安全区底边），这样没有键盘时弹窗仍按原来的屏幕居中出现，
+    // 只有键盘弹出时可见区才变矮、弹窗才上移。
+    if (@available(iOS 17.0, *)) {
+        self.view.keyboardLayoutGuide.usesBottomSafeArea = NO;
+    }
+    self.view.keyboardLayoutGuide.followsUndockedKeyboard = NO;
+
+    NSLayoutConstraint *centerY = [card.centerYAnchor constraintEqualToAnchor:visibleArea.centerYAnchor];
+    centerY.priority = UILayoutPriorityDefaultHigh;
+    NSLayoutConstraint *topClamp = [card.topAnchor constraintGreaterThanOrEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor
+                                                                              constant:8];
+    topClamp.priority = UILayoutPriorityRequired - 1;
+
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     titleLabel.text = title;
@@ -74,15 +92,23 @@ static UIColor *CardDestructiveAccent(void) {
 
     UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
     close.translatesAutoresizingMaskIntoConstraints = NO;
-    UIImage *closeIcon = [[UIImage writerIconNamed:@"close"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    // 设计稿 414:21297：关闭是 16pt、2.2pt 圆头、近黑色的 X（原来用的细线灰色 X 太轻）
+    UIImage *closeIcon = [[UIImage imageNamed:@"CardCloseX"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     [close setImage:closeIcon forState:UIControlStateNormal];
-    close.tintColor = [UIColor colorWithWhite:0.35 alpha:1];
+    close.tintColor = CardTitleColor();
+    close.accessibilityLabel = @"关闭";
     [close addTarget:self action:@selector(dismissShell) forControlEvents:UIControlEventTouchUpInside];
     [card addSubview:close];
 
     [NSLayoutConstraint activateConstraints:@[
+        [visibleArea.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [visibleArea.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [visibleArea.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [visibleArea.bottomAnchor constraintEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor],
         [card.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
-        [card.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
+        centerY,
+        topClamp,
+        [card.bottomAnchor constraintLessThanOrEqualToAnchor:visibleArea.bottomAnchor constant:-16],
         [card.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.view.leadingAnchor constant:20],
         [card.trailingAnchor constraintLessThanOrEqualToAnchor:self.view.trailingAnchor constant:-20],
         [card.widthAnchor constraintEqualToConstant:kCardMaxWidth],
@@ -132,8 +158,9 @@ static UIColor *CardDestructiveAccent(void) {
                          cancelTitle:(NSString *)cancelTitle
                         confirmTitle:(NSString *)confirmTitle
                         confirmStyle:(HomeCardDialogConfirmStyle)confirmStyle
-                         onCancel:(void (^)(void))onCancel
-                        onConfirm:(void (^)(void))onConfirm {
+                        spacingAbove:(CGFloat)spacingAbove
+                          onCancel:(void (^)(void))onCancel
+                         onConfirm:(void (^)(void))onConfirm {
     UIButton *cancel = [self pillButtonWithTitle:cancelTitle
                                  backgroundColor:[UIColor colorWithWhite:0 alpha:0.06]
                                        textColor:[UIColor colorWithWhite:0 alpha:0.9]];
@@ -161,10 +188,10 @@ static UIColor *CardDestructiveAccent(void) {
     [card addSubview:row];
 
     [NSLayoutConstraint activateConstraints:@[
-        [row.topAnchor constraintEqualToAnchor:anchor.bottomAnchor constant:12],
+        [row.topAnchor constraintEqualToAnchor:anchor.bottomAnchor constant:spacingAbove],
         [row.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20],
         [row.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20],
-        [row.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-12],
+        [row.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-20],
         [cancel.heightAnchor constraintEqualToConstant:kButtonHeight],
         [confirm.heightAnchor constraintEqualToConstant:kButtonHeight],
     ]];
@@ -226,6 +253,7 @@ static UIColor *CardDestructiveAccent(void) {
                        cancelTitle:@"取消"
                       confirmTitle:@"确定"
                       confirmStyle:HomeCardDialogConfirmStylePrimary
+                    spacingAbove:12
                           onCancel:^{ [shell dismissShell]; }
                          onConfirm:^{
             NSString *value = [field.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
@@ -269,17 +297,20 @@ static UIColor *CardDestructiveAccent(void) {
         body.font = [UIFont systemFontOfSize:16];
         body.textColor = [UIColor colorWithRed:0x33 / 255.0 green:0x33 / 255.0 blue:0x33 / 255.0 alpha:1];
         body.numberOfLines = 0;
+        body.textAlignment = NSTextAlignmentCenter;
         [shell.cardView addSubview:body];
         [NSLayoutConstraint activateConstraints:@[
+            // 设计稿 内容块 134px：正文上下各 24pt；正文与按钮之间再叠按钮块上内边距 12pt = 36pt
             [body.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:24],
-            [body.leadingAnchor constraintEqualToAnchor:shell.cardView.leadingAnchor constant:12],
-            [body.trailingAnchor constraintEqualToAnchor:shell.cardView.trailingAnchor constant:-12],
+            [body.leadingAnchor constraintEqualToAnchor:shell.cardView.leadingAnchor constant:24],
+            [body.trailingAnchor constraintEqualToAnchor:shell.cardView.trailingAnchor constant:-24],
         ]];
         [shell buildButtonRowBelow:body
                             inCard:shell.cardView
                        cancelTitle:@"取消"
                       confirmTitle:resolvedConfirmTitle
                       confirmStyle:confirmStyle
+                    spacingAbove:36
                           onCancel:^{
             [shell dismissViewControllerAnimated:YES completion:^{
                 if (completion) {
@@ -309,6 +340,7 @@ static UIColor *CardDestructiveAccent(void) {
                        cancelTitle:@"取消"
                       confirmTitle:@"确定"
                       confirmStyle:HomeCardDialogConfirmStylePrimary
+                    spacingAbove:12
                           onCancel:^{ [shell dismissShell]; }
                          onConfirm:^{
             NSString *value = [field.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];

@@ -67,11 +67,11 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
     [card addSubview:rows];
 
     [NSLayoutConstraint activateConstraints:@[
-        [back.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
-        [back.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],
+        [back.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:0],
+        [back.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:12],
         [header.centerYAnchor constraintEqualToAnchor:back.centerYAnchor],
-        [header.leadingAnchor constraintEqualToAnchor:back.trailingAnchor constant:8],
-        [card.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:16],
+        [header.leadingAnchor constraintEqualToAnchor:back.trailingAnchor constant:4],
+        [card.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:4],
         [card.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
         [card.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
         [rows.topAnchor constraintEqualToAnchor:card.topAnchor],

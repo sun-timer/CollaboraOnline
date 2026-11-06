@@ -113,125 +113,45 @@ static UIImage *AIDrawerRender(NSString *cacheKey, CGFloat size, void (^draw)(CG
         });
     }
     if ([name isEqualToString:@"profile-edit"]) {
-        return AIDrawerRender(name, size, ^(CGRect rect, CGFloat scale) {
-            UIBezierPath *frame = [UIBezierPath bezierPath];
-            [frame moveToPoint:CGPointMake(18.0 * scale, 12.5 * scale)];
-            [frame addLineToPoint:CGPointMake(18.0 * scale, 17.5 * scale)];
-            [frame addLineToPoint:CGPointMake(6.5 * scale, 17.5 * scale)];
-            [frame addLineToPoint:CGPointMake(6.5 * scale, 6.5 * scale)];
-            [frame addLineToPoint:CGPointMake(11.5 * scale, 6.5 * scale)];
-            AIDrawerStrokePath(frame, AIDrawerIconColor(@"#101010"), 1.2 * scale);
-            UIBezierPath *pencil = [UIBezierPath bezierPath];
-            [pencil moveToPoint:CGPointMake(8.5 * scale, 13.0 * scale)];
-            [pencil addLineToPoint:CGPointMake(10.8 * scale, 15.3 * scale)];
-            [pencil addLineToPoint:CGPointMake(17.0 * scale, 9.1 * scale)];
-            [pencil addLineToPoint:CGPointMake(14.7 * scale, 6.8 * scale)];
-            [pencil closePath];
-            AIDrawerStrokePath(pencil, AIDrawerIconColor(@"#101010"), 1.2 * scale);
-        });
-    }
-    if ([name isEqualToString:@"ai-connection"]) {
-        return AIDrawerRender(name, size, ^(CGRect rect, CGFloat scale) {
-            UIColor *orange = AIDrawerIconColor(@"#fa6200");
-            CGFloat factor = scale * 0.6;
-            UIBezierPath *link = [UIBezierPath bezierPath];
-            [link moveToPoint:CGPointMake(30.001 * factor, 6.667 * factor)];
-            [link addLineToPoint:CGPointMake(10.834 * factor, 6.667 * factor)];
-            [link addCurveToPoint:CGPointMake(3.334 * factor, 13.333 * factor)
-                    controlPoint1:CGPointMake(8.334 * factor, 6.667 * factor)
-                    controlPoint2:CGPointMake(3.334 * factor, 8.333 * factor)];
-            [link addCurveToPoint:CGPointMake(10.834 * factor, 20.0 * factor)
-                    controlPoint1:CGPointMake(3.334 * factor, 18.333 * factor)
-                    controlPoint2:CGPointMake(8.334 * factor, 20.0 * factor)];
-            [link addLineToPoint:CGPointMake(29.167 * factor, 20.0 * factor)];
-            [link addCurveToPoint:CGPointMake(36.667 * factor, 26.667 * factor)
-                    controlPoint1:CGPointMake(31.667 * factor, 20.0 * factor)
-                    controlPoint2:CGPointMake(36.667 * factor, 21.667 * factor)];
-            [link addCurveToPoint:CGPointMake(29.167 * factor, 33.333 * factor)
-                    controlPoint1:CGPointMake(36.667 * factor, 31.667 * factor)
-                    controlPoint2:CGPointMake(31.667 * factor, 33.333 * factor)];
-            [link addLineToPoint:CGPointMake(10.001 * factor, 33.333 * factor)];
-            AIDrawerStrokePath(link, orange, 3.0 * factor);
-
-            UIBezierPath *topNode = [UIBezierPath bezierPathWithOvalInRect:
-                CGRectMake((33.333 - 3.333) * factor, (6.666 - 3.333) * factor,
-                           6.666 * factor, 6.666 * factor)];
-            AIDrawerStrokePath(topNode, orange, 3.0 * factor);
-            UIBezierPath *bottomNode = [UIBezierPath bezierPathWithOvalInRect:
-                CGRectMake((6.667 - 3.333) * factor, (33.333 - 3.333) * factor,
-                           6.666 * factor, 6.666 * factor)];
-            AIDrawerStrokePath(bottomNode, orange, 3.0 * factor);
-        });
-    }
-    if ([name isEqualToString:@"ai-params"]) {
-        return AIDrawerRender(name, size, ^(CGRect rect, CGFloat scale) {
-            UIColor *orange = AIDrawerIconColor(@"#fa6200");
-            CGFloat factor = scale * 0.6;
-            UIBezierPath *wrench = [UIBezierPath bezierPath];
-            [wrench moveToPoint:CGPointMake(36.6673 * factor, 13.3334 * factor)];
-            [wrench addCurveToPoint:CGPointMake(26.6673 * factor, 23.3334 * factor)
-                      controlPoint1:CGPointMake(36.6673 * factor, 18.8562 * factor)
-                      controlPoint2:CGPointMake(32.1901 * factor, 23.3334 * factor)];
-            [wrench addCurveToPoint:CGPointMake(21.992 * factor, 22.1754 * factor)
-                      controlPoint1:CGPointMake(24.9784 * factor, 23.3334 * factor)
-                      controlPoint2:CGPointMake(23.3872 * factor, 22.9146 * factor)];
-            [wrench addLineToPoint:CGPointMake(9.584 * factor, 34.5834 * factor)];
-            [wrench addCurveToPoint:CGPointMake(5.4173 * factor, 34.5834 * factor)
-                      controlPoint1:CGPointMake(8.4334 * factor, 35.734 * factor)
-                      controlPoint2:CGPointMake(6.5679 * factor, 35.734 * factor)];
-            [wrench addCurveToPoint:CGPointMake(5.4173 * factor, 30.4167 * factor)
-                      controlPoint1:CGPointMake(4.2667 * factor, 33.4328 * factor)
-                      controlPoint2:CGPointMake(4.2667 * factor, 31.5673 * factor)];
-            [wrench addLineToPoint:CGPointMake(17.8253 * factor, 18.0087 * factor)];
-            [wrench addCurveToPoint:CGPointMake(16.6673 * factor, 13.3334 * factor)
-                      controlPoint1:CGPointMake(17.0861 * factor, 16.6135 * factor)
-                      controlPoint2:CGPointMake(16.6673 * factor, 15.0223 * factor)];
-            [wrench addCurveToPoint:CGPointMake(26.6673 * factor, 3.3334 * factor)
-                      controlPoint1:CGPointMake(21.1445 * factor, 3.3334 * factor)
-                      controlPoint2:CGPointMake(26.6673 * factor, 7.8105 * factor)];
-            [wrench addCurveToPoint:CGPointMake(31.3427 * factor, 4.4914 * factor)
-                      controlPoint1:CGPointMake(28.3562 * factor, 3.3334 * factor)
-                      controlPoint2:CGPointMake(29.9474 * factor, 3.7521 * factor)];
-            [wrench addLineToPoint:CGPointMake(25.0007 * factor, 10.8334 * factor)];
-            [wrench addLineToPoint:CGPointMake(29.1673 * factor, 15.0 * factor)];
-            [wrench addLineToPoint:CGPointMake(35.5093 * factor, 8.658 * factor)];
-            [wrench addCurveToPoint:CGPointMake(36.6673 * factor, 13.3334 * factor)
-                      controlPoint1:CGPointMake(36.2486 * factor, 10.0533 * factor)
-                      controlPoint2:CGPointMake(36.6673 * factor, 11.6445 * factor)];
-            [wrench closePath];
-            AIDrawerStrokePath(wrench, orange, 3.0 * factor);
-        });
+        // 设计 417:22741 的原始矢量（plumb_assets 导出），14pt、描边 2 design px
+        UIImage *compose = [UIImage imageNamed:@"DrawerCompose"];
+        if (compose != nil) {
+            return [compose imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        }
+        return nil;
     }
     if ([name isEqualToString:@"model-vision"]) {
+        // 设计 417:22741：方框（取景框）是正方形，四角 5.5 单位、线宽 2 单位，内部一只眼睛
         return AIDrawerRender(name, size, ^(CGRect rect, CGFloat scale) {
             UIColor *gray = AIDrawerIconColor(@"#6a6a6a");
             void (^corner)(CGFloat, CGFloat, CGFloat, CGFloat) = ^(CGFloat x1, CGFloat y1, CGFloat x2, CGFloat y2) {
                 UIBezierPath *path = [UIBezierPath bezierPath];
                 [path moveToPoint:CGPointMake(x1 * scale, y1 * scale)];
                 [path addLineToPoint:CGPointMake(x2 * scale, y2 * scale)];
-                AIDrawerStrokePath(path, gray, 1.3 * scale);
+                AIDrawerStrokePath(path, gray, 2.0 * scale);
             };
-            corner(9, 3.75, 4.5, 3.75);
-            corner(4.5, 3.75, 4.5, 9.25);
-            corner(15, 3.75, 19.5, 3.75);
-            corner(19.5, 3.75, 19.5, 9.25);
-            corner(9, 20.75, 4.5, 20.75);
-            corner(4.5, 20.75, 4.5, 15.25);
-            corner(15, 20.75, 19.5, 20.75);
-            corner(19.5, 20.75, 19.5, 15.25);
+            corner(10.0, 3.0, 3.0, 3.0);
+            corner(3.0, 3.0, 3.0, 10.0);
+            corner(14.0, 3.0, 21.0, 3.0);
+            corner(21.0, 3.0, 21.0, 10.0);
+            corner(10.0, 21.0, 3.0, 21.0);
+            corner(3.0, 21.0, 3.0, 14.0);
+            corner(14.0, 21.0, 21.0, 21.0);
+            corner(21.0, 21.0, 21.0, 14.0);
             UIBezierPath *eye = [UIBezierPath bezierPath];
-            [eye moveToPoint:CGPointMake(6.0 * scale, 12.25 * scale)];
-            [eye addQuadCurveToPoint:CGPointMake(18.0 * scale, 12.25 * scale)
-                        controlPoint:CGPointMake(12.0 * scale, 16.0 * scale)];
-            [eye addQuadCurveToPoint:CGPointMake(6.0 * scale, 12.25 * scale)
-                        controlPoint:CGPointMake(12.0 * scale, 8.5 * scale)];
-            AIDrawerStrokePath(eye, gray, 1.3 * scale);
-            UIBezierPath *pupil = [UIBezierPath bezierPathWithArcCenter:CGPointMake(12.0 * scale, 12.25 * scale)
-                                                                 radius:1.5 * scale
+            [eye moveToPoint:CGPointMake(5.6 * scale, 12.0 * scale)];
+            [eye addQuadCurveToPoint:CGPointMake(18.4 * scale, 12.0 * scale)
+                        controlPoint:CGPointMake(12.0 * scale, 16.6 * scale)];
+            [eye addQuadCurveToPoint:CGPointMake(5.6 * scale, 12.0 * scale)
+                        controlPoint:CGPointMake(12.0 * scale, 7.4 * scale)];
+            AIDrawerStrokePath(eye, gray, 2.0 * scale);
+            UIBezierPath *pupil = [UIBezierPath bezierPathWithArcCenter:CGPointMake(12.0 * scale, 12.0 * scale)
+                                                                 radius:2.0 * scale
                                                              startAngle:0
                                                                endAngle:(CGFloat)(2 * M_PI)
                                                               clockwise:YES];
-            AIDrawerStrokePath(pupil, gray, 1.3 * scale);
+            [gray setFill];
+            [pupil fill];
         });
     }
     if ([name isEqualToString:@"model-local-inference"]) {

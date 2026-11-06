@@ -63,7 +63,10 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
         self.moreButton = [UIButton buttonWithType:UIButtonTypeSystem];
         self.moreButton.translatesAutoresizingMaskIntoConstraints = NO;
         [self.moreButton setImage:[AppIcons iconNamed:@"more"] forState:UIControlStateNormal];
-        self.moreButton.tintColor = [UIColor colorWithWhite:0 alpha:0.35];
+        // 设计 111:3579：常态就是一个裸的三点，没有底板；只有按下/选中时才出现阴影
+        self.moreButton.tintColor = [UIColor colorWithRed:0xCC / 255.0 green:0xCC / 255.0 blue:0xCC / 255.0 alpha:1];
+        [self.moreButton addTarget:self action:@selector(moreButtonTouchDown) forControlEvents:UIControlEventTouchDown];
+        [self.moreButton addTarget:self action:@selector(moreButtonTouchUp) forControlEvents:UIControlEventTouchUpInside];
         [self.moreButton addTarget:self action:@selector(moreTapped) forControlEvents:UIControlEventTouchUpInside];
         [self.contentView addSubview:self.moreButton];
 
@@ -86,6 +89,20 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
         ]];
     }
     return self;
+}
+
+- (void)moreButtonTouchDown {
+    // 设计 111:3579：只有按下/选中时才出现阴影，常态是裸三点
+    self.moreButton.layer.shadowColor = UIColor.blackColor.CGColor;
+    self.moreButton.layer.shadowOpacity = 0.12;
+    self.moreButton.layer.shadowRadius = 6;
+    self.moreButton.layer.shadowOffset = CGSizeMake(0, 2);
+}
+
+- (void)moreButtonTouchUp {
+    if (self.moreAction == nil) {
+        self.moreButton.layer.shadowOpacity = 0.0;
+    }
 }
 
 - (void)moreTapped {
@@ -152,6 +169,7 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 @property (strong, nonatomic) AISettingsDrawerController *drawer;
 @property (strong, nonatomic) NSArray<RecentDocumentItem *> *visibleItems;
 @property (assign, nonatomic) NSUInteger totalCount;
+@property (weak, nonatomic) UIView *actionsPopupSourceView;
 @property (assign, nonatomic) BOOL gridMode;
 @property (strong, nonatomic) UIView *topBar;
 @property (strong, nonatomic) UIButton *avatarButton;
@@ -276,7 +294,7 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 
     self.openFileButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.openFileButton.translatesAutoresizingMaskIntoConstraints = NO;
-    UIImage *folderIcon = [[self scaledIconNamed:@"folder" size:24] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    UIImage *folderIcon = [[UIImage imageNamed:@"HomeFolderOpen"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     [self.openFileButton setImage:folderIcon forState:UIControlStateNormal];
     self.openFileButton.tintColor = [UIColor colorWithRed:0x43 / 255.0 green:0x43 / 255.0 blue:0x43 / 255.0 alpha:1];
     self.openFileButton.accessibilityIdentifier = @"homeOpenFileButton";
@@ -802,10 +820,15 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
 }
 
 - (UIColor *)homeActionsPopupColor {
-    return [UIColor colorWithRed:0xF0 / 255.0 green:0xF4 / 255.0 blue:0xF9 / 255.0 alpha:1];
+    // 设计 117:5200：更多弹窗是纯白底板 + 阴影，不是浅灰
+    return UIColor.whiteColor;
 }
 
 - (void)dismissRecentActionsPopup {
+    if (self.actionsPopupSourceView != nil) {
+        [self setMoreButtonShadowed:NO forView:self.actionsPopupSourceView];
+        self.actionsPopupSourceView = nil;
+    }
     [self.actionsDismissOverlay removeFromSuperview];
     [self.actionsPopup removeFromSuperview];
     self.actionsDismissOverlay = nil;
@@ -838,9 +861,24 @@ static NSString *const kHomeGridModeKey = @"HOME_RECENT_GRID_MODE";
     return divider;
 }
 
+- (void)setMoreButtonShadowed:(BOOL)shadowed forView:(UIView *)view {
+    UIView *target = view ?: self.actionsPopupSourceView;
+    if (target == nil) {
+        return;
+    }
+    target.layer.shadowColor = UIColor.blackColor.CGColor;
+    target.layer.shadowOpacity = shadowed ? 0.12 : 0.0;
+    target.layer.shadowRadius = shadowed ? 6.0 : 0.0;
+    target.layer.shadowOffset = CGSizeMake(0, shadowed ? 2.0 : 0.0);
+}
+
 - (void)showActionsForItem:(RecentDocumentItem *)item sourceView:(UIView *)sourceView {
     [self dismissRecentActionsPopup];
     self.actionsPopupItem = item;
+    if ([sourceView isKindOfClass:[UIButton class]]) {
+        self.actionsPopupSourceView = sourceView;
+        [self setMoreButtonShadowed:YES forView:sourceView];
+    }
 
     self.actionsDismissOverlay = [[UIView alloc] initWithFrame:self.view.bounds];
     self.actionsDismissOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;

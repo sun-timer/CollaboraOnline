@@ -100,6 +100,8 @@ static NSString *ImpressTrimmed(NSString *text) {
 @property (strong, nonatomic) UILabel *impressPlaceholder;
 @property (strong, nonatomic) UIView *impressInputBox;
 @property (strong, nonatomic) UIButton *impressModeButton;
+@property (strong, nonatomic) UIView *impressModeDropdown;
+@property (strong, nonatomic) UIView *impressModeDropdownOverlay;
 @property (strong, nonatomic) UIView *impressDocZone;
 @property (strong, nonatomic) UILabel *impressDocTitle;
 @property (strong, nonatomic) UILabel *impressDocHint;
@@ -242,6 +244,12 @@ static NSString *ImpressTrimmed(NSString *text) {
     aiRow.backgroundColor = [UIColor colorWithWhite:0.97 alpha:1];
     aiRow.layer.cornerRadius = 8;
 
+    // 设计 125:7180：这一行左边有「✨」图标，之前是光秃秃一行字
+    UIImageView *aiIcon = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"WriterIconAiSparkle"]];
+    aiIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    aiIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [aiRow addSubview:aiIcon];
+
     UILabel *aiLabel = [[UILabel alloc] init];
     aiLabel.translatesAutoresizingMaskIntoConstraints = NO;
     aiLabel.text = @"使用 AI 生成内容";
@@ -293,6 +301,13 @@ static NSString *ImpressTrimmed(NSString *text) {
         }
     }
     [aiRow addSubview:aiLabel];
+    [NSLayoutConstraint activateConstraints:@[
+        [aiIcon.leadingAnchor constraintEqualToAnchor:aiRow.leadingAnchor constant:14],
+        [aiIcon.centerYAnchor constraintEqualToAnchor:aiLabel.centerYAnchor],
+        [aiIcon.widthAnchor constraintEqualToConstant:22],
+        [aiIcon.heightAnchor constraintEqualToConstant:22],
+        [aiLabel.leadingAnchor constraintEqualToAnchor:aiIcon.trailingAnchor constant:7],
+    ]];
     [aiRow addSubview:self.aiSwitchTrack];
 
     self.aiSwitchThumbLeading = [self.aiSwitchThumb.leadingAnchor constraintEqualToAnchor:self.aiSwitchTrack.leadingAnchor
@@ -326,7 +341,6 @@ static NSString *ImpressTrimmed(NSString *text) {
         [aiRow.leadingAnchor constraintEqualToAnchor:self.fileNameField.leadingAnchor],
         [aiRow.trailingAnchor constraintEqualToAnchor:self.fileNameField.trailingAnchor],
         [aiRow.heightAnchor constraintEqualToConstant:45],
-        [aiLabel.leadingAnchor constraintEqualToAnchor:aiRow.leadingAnchor constant:12],
         [aiLabel.centerYAnchor constraintEqualToAnchor:aiRow.centerYAnchor],
         [self.aiSwitchTrack.trailingAnchor constraintEqualToAnchor:aiRow.trailingAnchor constant:-12],
         [self.aiSwitchTrack.centerYAnchor constraintEqualToAnchor:aiRow.centerYAnchor],
@@ -494,10 +508,10 @@ static NSString *ImpressTrimmed(NSString *text) {
     chevron.userInteractionEnabled = NO;
     [button addSubview:chevron];
     [NSLayoutConstraint activateConstraints:@[
-        [chevron.trailingAnchor constraintEqualToAnchor:button.trailingAnchor constant:-10],
+        [chevron.trailingAnchor constraintEqualToAnchor:button.trailingAnchor constant:(tag == 0 ? -14 : -10)],
         [chevron.centerYAnchor constraintEqualToAnchor:button.centerYAnchor],
-        [chevron.widthAnchor constraintEqualToConstant:12],
-        [chevron.heightAnchor constraintEqualToConstant:12],
+        [chevron.widthAnchor constraintEqualToConstant:(tag == 0 ? 18.0 : 14.0)],
+        [chevron.heightAnchor constraintEqualToConstant:(tag == 0 ? 18.0 : 14.0)],
     ]];
     [button addTarget:self action:@selector(pickImpressOption:) forControlEvents:UIControlEventTouchUpInside];
     return button;
@@ -831,8 +845,8 @@ static NSString *ImpressTrimmed(NSString *text) {
     NSArray<NSString *> *titles = nil;
     switch (button.tag) {
         case 0:
-            titles = @[@"快速生成", @"文档生成", @"粘贴大纲"];
-            break;
+            [self showImpressModeDropdown];
+            return;
         case 1:
             titles = @[@"1-10页", @"11-20页", @"21-30页", @"30+页"];
             break;
@@ -864,6 +878,73 @@ static NSString *ImpressTrimmed(NSString *text) {
     picker.popoverPresentationController.sourceView = button;
     picker.popoverPresentationController.sourceRect = button.bounds;
     [self presentViewController:picker animated:YES completion:nil];
+}
+
+/// 设计 490:27559：模式选择是白色圆角下拉卡片（快速生成 / 文档生成 / 粘贴大纲），
+/// 不是系统 action sheet 气泡。
+- (void)showImpressModeDropdown {
+    [self dismissImpressModeDropdown];
+    NSArray<NSString *> *titles = @[@"快速生成", @"文档生成", @"粘贴大纲"];
+
+    UIView *overlay = [[UIView alloc] initWithFrame:self.view.bounds];
+    overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    overlay.backgroundColor = UIColor.clearColor;
+    [overlay addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self
+                                                                         action:@selector(dismissImpressModeDropdown)]];
+    [self.view addSubview:overlay];
+    self.impressModeDropdownOverlay = overlay;
+
+    UIView *card = [[UIView alloc] init];
+    card.translatesAutoresizingMaskIntoConstraints = NO;
+    card.backgroundColor = UIColor.whiteColor;
+    card.layer.cornerRadius = 16;
+    card.layer.shadowColor = UIColor.blackColor.CGColor;
+    card.layer.shadowOpacity = 0.12;
+    card.layer.shadowRadius = 12;
+    card.layer.shadowOffset = CGSizeMake(0, 6);
+    [self.view addSubview:card];
+    self.impressModeDropdown = card;
+
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.spacing = 0;
+    [card addSubview:stack];
+    for (NSUInteger i = 0; i < titles.count; i++) {
+        UIButton *row = [UIButton buttonWithType:UIButtonTypeCustom];
+        row.tag = (NSInteger)i;
+        row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+        row.contentEdgeInsets = UIEdgeInsetsMake(0, 20, 0, 20);
+        row.titleLabel.font = [UIFont systemFontOfSize:16];
+        [row setTitle:titles[i] forState:UIControlStateNormal];
+        [row setTitleColor:ImpressTextColor() forState:UIControlStateNormal];
+        [row.heightAnchor constraintEqualToConstant:44].active = YES;
+        [row addTarget:self action:@selector(impressModeRowTapped:) forControlEvents:UIControlEventTouchUpInside];
+        [stack addArrangedSubview:row];
+    }
+
+    CGRect anchor = [self.impressModeButton convertRect:self.impressModeButton.bounds toView:self.view];
+    [NSLayoutConstraint activateConstraints:@[
+        [card.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:CGRectGetMaxY(anchor) + 6],
+        [card.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:CGRectGetMinX(anchor)],
+        [card.widthAnchor constraintEqualToConstant:CGRectGetWidth(anchor)],
+        [stack.topAnchor constraintEqualToAnchor:card.topAnchor constant:6],
+        [stack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
+        [stack.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-6],
+    ]];
+}
+
+- (void)dismissImpressModeDropdown {
+    [self.impressModeDropdownOverlay removeFromSuperview];
+    [self.impressModeDropdown removeFromSuperview];
+    self.impressModeDropdownOverlay = nil;
+    self.impressModeDropdown = nil;
+}
+
+- (void)impressModeRowTapped:(UIButton *)sender {
+    [self dismissImpressModeDropdown];
+    [self selectImpressMode:(NSInteger)sender.tag];
 }
 
 - (void)selectImpressMode:(NSInteger)mode {

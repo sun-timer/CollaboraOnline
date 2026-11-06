@@ -225,8 +225,9 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
 
     self.profileEditButton = [UIButton buttonWithType:UIButtonTypeCustom];
     self.profileEditButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.profileEditButton setImage:[AISettingsDrawerIcons iconNamed:@"profile-edit" size:28]
+    [self.profileEditButton setImage:[AISettingsDrawerIcons iconNamed:@"profile-edit" size:14]
                             forState:UIControlStateNormal];
+    self.profileEditButton.tintColor = AIDrawerColorTextPrimary();
     self.profileEditButton.accessibilityLabel = @"编辑昵称";
     [self.profileEditButton addTarget:self action:@selector(editProfile) forControlEvents:UIControlEventTouchUpInside];
     [profile addSubview:self.profileEditButton];
@@ -349,27 +350,27 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     footer.translatesAutoresizingMaskIntoConstraints = NO;
     footer.backgroundColor = AIDrawerColorPanelBg();
     [self.panelView addSubview:footer];
-    UIButton *cache = [self footerButton:@"清理缓存" action:@selector(clearCache)];
+    UIButton *cache = [self footerButton:@"清理缓存" icon:@"CommentInfoDelete" action:@selector(clearCache)];
     cache.accessibilityIdentifier = @"aiDrawerClearCache";
-    UIButton *about = [self footerButton:@"关于" action:@selector(showAbout)];
+    UIButton *about = [self footerButton:@"关于" icon:@"DrawerInfoCircle" action:@selector(showAbout)];
     about.accessibilityIdentifier = @"aiDrawerAbout";
     [footer addSubview:cache];
     [footer addSubview:about];
 
     [NSLayoutConstraint activateConstraints:@[
-        [profile.topAnchor constraintEqualToAnchor:safe.topAnchor],
+        [profile.topAnchor constraintEqualToAnchor:self.panelView.topAnchor],
         [profile.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor],
         [profile.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor],
         [self.avatarView.leadingAnchor constraintEqualToAnchor:profile.leadingAnchor constant:20],
-        [self.avatarView.topAnchor constraintEqualToAnchor:profile.topAnchor constant:16],
+        [self.avatarView.topAnchor constraintEqualToAnchor:safe.topAnchor constant:16],
         [self.avatarView.widthAnchor constraintEqualToConstant:40],
         [self.avatarView.heightAnchor constraintEqualToConstant:40],
         [self.nameLabel.leadingAnchor constraintEqualToAnchor:self.avatarView.trailingAnchor constant:8],
         [self.nameLabel.centerYAnchor constraintEqualToAnchor:self.avatarView.centerYAnchor],
         [self.profileEditButton.trailingAnchor constraintEqualToAnchor:profile.trailingAnchor constant:-20],
         [self.profileEditButton.centerYAnchor constraintEqualToAnchor:self.avatarView.centerYAnchor],
-        [self.profileEditButton.widthAnchor constraintEqualToConstant:28],
-        [self.profileEditButton.heightAnchor constraintEqualToConstant:28],
+        [self.profileEditButton.widthAnchor constraintEqualToConstant:44],
+        [self.profileEditButton.heightAnchor constraintEqualToConstant:44],
         [profileDivider.leadingAnchor constraintEqualToAnchor:profile.leadingAnchor],
         [profileDivider.trailingAnchor constraintEqualToAnchor:profile.trailingAnchor],
         [profileDivider.topAnchor constraintEqualToAnchor:self.avatarView.bottomAnchor constant:16],
@@ -377,15 +378,15 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
         [footer.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor],
         [footer.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor],
         [footer.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
-        [footer.heightAnchor constraintEqualToConstant:96],
+        [footer.heightAnchor constraintEqualToConstant:112],
         [cache.topAnchor constraintEqualToAnchor:footer.topAnchor constant:8],
         [cache.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor],
         [cache.trailingAnchor constraintEqualToAnchor:footer.trailingAnchor],
-        [cache.heightAnchor constraintEqualToConstant:40],
+        [cache.heightAnchor constraintEqualToConstant:48],
         [about.topAnchor constraintEqualToAnchor:cache.bottomAnchor],
         [about.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor],
         [about.trailingAnchor constraintEqualToAnchor:footer.trailingAnchor],
-        [about.heightAnchor constraintEqualToConstant:40],
+        [about.heightAnchor constraintEqualToConstant:48],
         [scroll.topAnchor constraintEqualToAnchor:profile.bottomAnchor],
         [scroll.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor],
         [scroll.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor],
@@ -515,14 +516,30 @@ shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherG
     return row;
 }
 
-- (UIButton *)footerButton:(NSString *)title action:(SEL)action {
-    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+static UIImage *AIDrawerScaledIcon(UIImage *image, CGFloat side) {
+    if (image == nil || side <= 0) {
+        return image;
+    }
+    UIGraphicsImageRenderer *renderer =
+        [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(side, side)];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+        [image drawInRect:CGRectMake(0, 0, side, side)];
+    }];
+}
+
+- (UIButton *)footerButton:(NSString *)title icon:(NSString *)iconName action:(SEL)action {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
     button.translatesAutoresizingMaskIntoConstraints = NO;
-    [button setTitle:title forState:UIControlStateNormal];
+    // 设计 417:22741：底部两行是「16pt 图标 + 9.5pt 间距 + 14pt 文字」，左侧内边距 28pt
+    UIImage *icon = AIDrawerScaledIcon([UIImage imageNamed:iconName], 16);
+    [button setImage:icon forState:UIControlStateNormal];
     button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
-    button.contentEdgeInsets = UIEdgeInsetsMake(0, 20, 0, 20);
-    button.titleLabel.font = [UIFont systemFontOfSize:16];
-    [button setTitleColor:[UIColor colorWithWhite:0.15 alpha:1] forState:UIControlStateNormal];
+    button.contentEdgeInsets = UIEdgeInsetsMake(0, 28, 0, 20);
+    button.titleLabel.font = [UIFont systemFontOfSize:14];
+    [button setTitleColor:[UIColor colorWithRed:0x33 / 255.0 green:0x33 / 255.0 blue:0x33 / 255.0 alpha:1]
+                 forState:UIControlStateNormal];
+    [button setTitle:title forState:UIControlStateNormal];
+    button.titleEdgeInsets = UIEdgeInsetsMake(0, 9.5, 0, -9.5);
     [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
     return button;
 }

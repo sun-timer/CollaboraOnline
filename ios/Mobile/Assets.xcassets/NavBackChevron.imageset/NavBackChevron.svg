@@ -1,0 +1,10 @@
+<svg width="32" height="32" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Figma: AI Office移动端「标题栏2」403:20284 → 80/返回 → 64/上
+       width/height 即点尺寸（Xcode 按 SVG 的宽高当 pt）：32pt 画布内 chevron 8×16pt、描边 1.5pt
+       （viewBox 仍是 64，故 stroke-width 3 会按 0.5 缩放成 1.5pt）；颜色由 tintColor 决定 -->
+  <path d="M38.8574 48L22.8574 32L38.8574 16"
+        stroke="#000000"
+        stroke-width="3"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+</svg>
