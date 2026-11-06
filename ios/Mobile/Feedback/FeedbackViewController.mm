@@ -519,12 +519,14 @@ static NSString *feedbackTruncateToCodePoints(NSString *string, NSUInteger maxPo
     [NSLayoutConstraint activateConstraints:@[
         [header.heightAnchor constraintGreaterThanOrEqualToConstant:62],
         [back.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:15],
-        [back.topAnchor constraintEqualToAnchor:header.topAnchor constant:11],
+        // 返回热区变成 40pt 高后（原文字按钮约 20pt），这里跟着收：与标题列同顶 8pt、底部留 4pt，
+        // 否则会和 headerBottom（= titleCol.bottom + 8）在 required 优先级上打架。
+        [back.topAnchor constraintEqualToAnchor:header.topAnchor constant:8],
         [titleCol.leadingAnchor constraintEqualToAnchor:back.trailingAnchor constant:4],
         [titleCol.topAnchor constraintEqualToAnchor:header.topAnchor constant:8],
         [titleCol.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-12],
         headerBottom,
-        [back.bottomAnchor constraintLessThanOrEqualToAnchor:header.bottomAnchor constant:-8],
+        [back.bottomAnchor constraintLessThanOrEqualToAnchor:header.bottomAnchor constant:-4],
     ]];
     return header;
 }
@@ -591,7 +593,35 @@ static NSString *feedbackTruncateToCodePoints(NSString *string, NSUInteger maxPo
             initWithTarget:self action:@selector(removeAttachment:)];
         [thumb addGestureRecognizer:press];
         objc_setAssociatedObject(thumb, @selector(removeAttachment:), path, OBJC_ASSOCIATION_COPY_NONATOMIC);
+
+        // 缩略图右上角给一个可见的删除按钮（长按是隐藏操作，用户找不到）
+        UIButton *remove = [UIButton buttonWithType:UIButtonTypeCustom];
+        remove.translatesAutoresizingMaskIntoConstraints = NO;
+        remove.backgroundColor = [UIColor colorWithWhite:0 alpha:0.45];
+        remove.layer.cornerRadius = 9;
+        remove.tintColor = UIColor.whiteColor;
+        [remove setImage:[UIImage systemImageNamed:@"xmark"] forState:UIControlStateNormal];
+        remove.imageView.contentMode = UIViewContentModeScaleAspectFit;
+        remove.accessibilityLabel = @"删除图片";
+        [remove addTarget:self action:@selector(removeAttachmentTapped:) forControlEvents:UIControlEventTouchUpInside];
+        objc_setAssociatedObject(remove, @selector(removeAttachmentTapped:), path, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        [thumb addSubview:remove];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [remove.widthAnchor constraintEqualToConstant:18],
+            [remove.heightAnchor constraintEqualToConstant:18],
+            [remove.topAnchor constraintEqualToAnchor:thumb.topAnchor constant:4],
+            [remove.trailingAnchor constraintEqualToAnchor:thumb.trailingAnchor constant:-4],
+        ]];
         [self.attachRow addArrangedSubview:thumb];
+    }
+}
+
+- (void)removeAttachmentTapped:(UIButton *)sender {
+    NSString *path = objc_getAssociatedObject(sender, @selector(removeAttachmentTapped:));
+    if (path.length > 0) {
+        [self.imagePaths removeObject:path];
+        [self refreshAttachRow];
     }
 }
 

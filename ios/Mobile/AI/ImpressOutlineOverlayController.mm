@@ -86,7 +86,7 @@ static NSString *PptxOutlineText(id value) {
 @property (strong, nonatomic) UIButton *generateBtn;
 @property (strong, nonatomic) UIView *generatingGroup;
 @property (strong, nonatomic) UILabel *generatingQuery;
-@property (strong, nonatomic) UIActivityIndicatorView *spinner;
+@property (strong, nonatomic) UIView *spinner;
 @property (strong, nonatomic) UIButton *stopBtn;
 @property (strong, nonatomic) UIView *completedGroup;
 @property (strong, nonatomic) UIScrollView *completedScroll;
@@ -101,6 +101,7 @@ static NSString *PptxOutlineText(id value) {
 @property (strong, nonatomic) UIScrollView *templateScroll;
 @property (strong, nonatomic) UIStackView *templateStack;
 @property (strong, nonatomic) UIButton *templateGenerateBtn;
+@property (strong, nonatomic) UIView *templateHeaderRow;
 @property (strong, nonatomic) UIView *generatingPptGroup;
 @property (strong, nonatomic) UILabel *generatingPptText;
 @property (strong, nonatomic) UIProgressView *pptProgress;
@@ -130,6 +131,10 @@ static NSString *PptxOutlineText(id value) {
 @property (assign, nonatomic) BOOL panelPinned;
 @property (copy, nonatomic) NSString *fillRequestId;
 - (id)jsonObjectFromModelText:(NSString *)raw truncated:(BOOL *)truncatedOut;
+@end
+
+/// 渐变胶囊按钮：图层随按钮尺寸变化（设计 714:35901 的「✦ 生成PPT」）
+@interface ImpressGradientPillButton : UIButton
 @end
 
 @implementation ImpressOutlineOverlayController
@@ -203,15 +208,21 @@ static NSString *PptxOutlineText(id value) {
     [self.overlay addSubview:self.panel];
 
     self.backButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [self.backButton setTitle:@"返回" forState:UIControlStateNormal];
+    // 设计 714:35901：左侧是一个 < 图标，不是「返回」文字
+    UIImage *backChevron = [[UIImage systemImageNamed:@"chevron.left"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    [self.backButton setImage:backChevron forState:UIControlStateNormal];
+    self.backButton.tintColor = ImpressInkColor();
     [self.backButton addTarget:self action:@selector(onBack) forControlEvents:UIControlEventTouchUpInside];
     self.titleLabel = [[UILabel alloc] init];
-    self.titleLabel.font = [UIFont boldSystemFontOfSize:18];
+    self.titleLabel.font = [UIFont boldSystemFontOfSize:20];
     self.titleLabel.textColor = ImpressInkColor();
     self.titleLabel.text = @"生成PPT";
     self.titleLabel.textAlignment = NSTextAlignmentCenter;
     self.closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [self.closeButton setTitle:@"关闭" forState:UIControlStateNormal];
+    // 设计 490:27559：右上角是一个 X 图标，而不是「关闭」文字
+    UIImage *closeIcon = [[UIImage imageNamed:@"CardCloseX"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    [self.closeButton setImage:closeIcon forState:UIControlStateNormal];
+    self.closeButton.tintColor = ImpressInkColor();
     [self.closeButton addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
 
     UIStackView *header = [[UIStackView alloc] initWithArrangedSubviews:@[self.backButton, self.titleLabel, self.closeButton]];
@@ -321,12 +332,12 @@ static NSString *PptxOutlineText(id value) {
     self.generatingQuery.numberOfLines = 3;
     self.generatingQuery.font = [UIFont systemFontOfSize:15];
     self.generatingQuery.textColor = [UIColor colorWithWhite:0.6 alpha:1];
-    self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    self.spinner = [self outlineArcSpinner];
     UILabel *status = [[UILabel alloc] init];
     status.text = @"大纲生成中";
     status.textColor = ImpressOrange();
     status.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
-    self.stopBtn = [self secondaryButton:@"停止生成" action:@selector(onStop)];
+    self.stopBtn = [self stopPillButton];
     UIStackView *genStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.generatingQuery, self.spinner, status, self.stopBtn]];
     genStack.axis = UILayoutConstraintAxisVertical;
     genStack.alignment = UIStackViewAlignmentCenter;
@@ -399,8 +410,12 @@ static NSString *PptxOutlineText(id value) {
     self.templateStack.spacing = 8;
     self.templateStack.translatesAutoresizingMaskIntoConstraints = NO;
     [self.templateScroll addSubview:self.templateStack];
-    self.templateGenerateBtn = [self primaryButton:@"生成PPT" action:@selector(onTemplateSelected)];
-    UIStackView *tmplCol = [[UIStackView alloc] initWithArrangedSubviews:@[self.templateScroll, self.templateGenerateBtn]];
+    // 设计 714:35901：滚动区上方是「推荐模板」+ 风格胶囊
+    self.templateHeaderRow = [self templateHeaderRowView];
+    self.templateGenerateBtn = [self gradientPillButton:@"生成PPT" action:@selector(onTemplateSelected)];
+    UIStackView *tmplCol = [[UIStackView alloc] initWithArrangedSubviews:@[
+        self.templateHeaderRow, self.templateScroll, self.templateGenerateBtn
+    ]];
     tmplCol.axis = UILayoutConstraintAxisVertical;
     tmplCol.spacing = 10;
     tmplCol.translatesAutoresizingMaskIntoConstraints = NO;
@@ -600,6 +615,60 @@ static NSString *PptxOutlineText(id value) {
     return self.overlay.superview != nil && !self.overlay.hidden;
 }
 
+/// 设计稿的圆弧 loading：26pt 开口圆环 + 旋转
+- (UIView *)outlineArcSpinner {
+    UIView *view = [[UIView alloc] init];
+    view.translatesAutoresizingMaskIntoConstraints = NO;
+    view.userInteractionEnabled = NO;
+    [view.widthAnchor constraintEqualToConstant:26].active = YES;
+    [view.heightAnchor constraintEqualToConstant:26].active = YES;
+    CAShapeLayer *arc = [CAShapeLayer layer];
+    arc.frame = CGRectMake(0, 0, 26, 26);
+    arc.path = [UIBezierPath bezierPathWithArcCenter:CGPointMake(13, 13)
+                                              radius:10.5
+                                          startAngle:-M_PI_2
+                                            endAngle:M_PI_2 * 1.15
+                                           clockwise:YES].CGPath;
+    arc.fillColor = UIColor.clearColor.CGColor;
+    arc.strokeColor = [UIColor colorWithWhite:0.72 alpha:1].CGColor;
+    arc.lineWidth = 2.6;
+    arc.lineCap = kCALineCapRound;
+    [view.layer addSublayer:arc];
+    CABasicAnimation *spin = [CABasicAnimation animationWithKeyPath:@"transform.rotation.z"];
+    spin.fromValue = @(0.0);
+    spin.toValue = @(M_PI * 2.0);
+    spin.duration = 0.9;
+    spin.repeatCount = HUGE_VALF;
+    [view.layer addAnimation:spin forKey:@"outlineArcSpin"];
+    return view;
+}
+
+- (void)startOutlineSpinner {
+    [self.spinner.layer removeAnimationForKey:@"outlineArcSpin"];
+    CABasicAnimation *spin = [CABasicAnimation animationWithKeyPath:@"transform.rotation.z"];
+    spin.fromValue = @(0.0);
+    spin.toValue = @(M_PI * 2.0);
+    spin.duration = 0.9;
+    spin.repeatCount = HUGE_VALF;
+    [self.spinner.layer addAnimation:spin forKey:@"outlineArcSpin"];
+}
+
+/// 设计稿的「停止生成」：橙色描边胶囊
+- (UIButton *)stopPillButton {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    [button setTitle:@"停止生成" forState:UIControlStateNormal];
+    [button setTitleColor:ImpressOrange() forState:UIControlStateNormal];
+    button.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    button.layer.cornerRadius = 17.5;
+    button.layer.borderWidth = 1;
+    button.layer.borderColor = ImpressOrange().CGColor;
+    button.contentEdgeInsets = UIEdgeInsetsMake(0, 20, 0, 20);
+    [button.heightAnchor constraintEqualToConstant:35].active = YES;
+    [button addTarget:self action:@selector(onStop) forControlEvents:UIControlEventTouchUpInside];
+    return button;
+}
+
 - (void)dismiss {
     [self cancelActiveRequests];
     self.overlay.hidden = YES;
@@ -635,7 +704,7 @@ static NSString *PptxOutlineText(id value) {
     self.errorGroup.hidden = state != ImpressOutlineStateError;
     self.templateGroup.hidden = state != ImpressOutlineStateTemplateSelect;
     self.generatingPptGroup.hidden = state != ImpressOutlineStateGeneratingPpt;
-    self.backButton.hidden = !(state == ImpressOutlineStateCompleted || state == ImpressOutlineStateTemplateSelect);
+    self.backButton.hidden = state != ImpressOutlineStateCompleted && state != ImpressOutlineStateTemplateSelect;
     if (state == ImpressOutlineStateTemplateSelect) {
         self.titleLabel.text = @"选择模板";
     } else if (state == ImpressOutlineStateGeneratingPpt) {
@@ -646,9 +715,9 @@ static NSString *PptxOutlineText(id value) {
         self.titleLabel.text = @"生成PPT";
     }
     if (state == ImpressOutlineStateGenerating) {
-        [self.spinner startAnimating];
+        [self startOutlineSpinner];
     } else {
-        [self.spinner stopAnimating];
+        [self.spinner.layer removeAnimationForKey:@"outlineArcSpin"];
     }
 }
 
@@ -1096,11 +1165,78 @@ static NSString *PptxOutlineText(id value) {
     [self toast:@"大纲已复制"];
 }
 
+/// 设计 714:35901：模板区头部「推荐模板」+ 右侧风格胶囊（当前只有一套模板，胶囊作静态展示）
+- (UIView *)templateHeaderRowView {
+    UIView *row = [[UIView alloc] init];
+    row.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UILabel *title = [[UILabel alloc] init];
+    title.translatesAutoresizingMaskIntoConstraints = NO;
+    title.text = @"推荐模板";
+    title.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+    title.textColor = ImpressInkColor();
+    [row addSubview:title];
+
+    UIView *chip = [[UIView alloc] init];
+    chip.translatesAutoresizingMaskIntoConstraints = NO;
+    chip.backgroundColor = [UIColor colorWithRed:0xF5 / 255.0 green:0xF5 / 255.0 blue:0xF5 / 255.0 alpha:1];
+    chip.layer.cornerRadius = 8;
+    [row addSubview:chip];
+
+    UILabel *chipLabel = [[UILabel alloc] init];
+    chipLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    chipLabel.text = @"简约";
+    chipLabel.font = [UIFont systemFontOfSize:16];
+    chipLabel.textColor = ImpressInkColor();
+    [chip addSubview:chipLabel];
+
+    UIImageView *chevron = [[UIImageView alloc] initWithImage:
+        [[UIImage systemImageNamed:@"chevron.down"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]];
+    chevron.translatesAutoresizingMaskIntoConstraints = NO;
+    chevron.tintColor = [UIColor colorWithWhite:0.35 alpha:1];
+    chevron.contentMode = UIViewContentModeScaleAspectFit;
+    [chip addSubview:chevron];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [row.heightAnchor constraintEqualToConstant:36],
+        [title.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
+        [title.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        [chip.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
+        [chip.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        [chip.heightAnchor constraintEqualToConstant:32],
+        [chipLabel.leadingAnchor constraintEqualToAnchor:chip.leadingAnchor constant:12],
+        [chipLabel.centerYAnchor constraintEqualToAnchor:chip.centerYAnchor],
+        [chevron.leadingAnchor constraintEqualToAnchor:chipLabel.trailingAnchor constant:6],
+        [chevron.trailingAnchor constraintEqualToAnchor:chip.trailingAnchor constant:-12],
+        [chevron.centerYAnchor constraintEqualToAnchor:chip.centerYAnchor],
+        [chevron.widthAnchor constraintEqualToConstant:16],
+        [chevron.heightAnchor constraintEqualToConstant:16],
+    ]];
+    return row;
+}
+
+- (UIButton *)gradientPillButton:(NSString *)title action:(SEL)action {
+    ImpressGradientPillButton *button = [ImpressGradientPillButton buttonWithType:UIButtonTypeCustom];
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    [button setTitle:title forState:UIControlStateNormal];
+    [button setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    button.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
+    [button setImage:[[UIImage imageNamed:@"WriterIconAiSparkle"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]
+            forState:UIControlStateNormal];
+    button.tintColor = UIColor.whiteColor;
+    button.imageEdgeInsets = UIEdgeInsetsMake(0, -6, 0, 6);
+    button.titleEdgeInsets = UIEdgeInsetsMake(0, 6, 0, -6);
+    button.layer.cornerRadius = 24;
+    button.clipsToBounds = YES;
+    [button.heightAnchor constraintEqualToConstant:48].active = YES;
+    [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    return button;
+}
+
 - (UIButton *)templateGridCardForInfo:(PptxTemplateInfo *)info {
     UIButton *card = [UIButton buttonWithType:UIButtonTypeSystem];
-    card.backgroundColor = [UIColor colorWithWhite:0.96 alpha:1];
+    card.backgroundColor = UIColor.clearColor;
     card.layer.cornerRadius = 12;
-    card.clipsToBounds = YES;
     [card addTarget:self action:@selector(selectTemplateCard:) forControlEvents:UIControlEventTouchUpInside];
     UIImage *cover = [PptxTemplateService coverImageForTemplate:info];
     UIImageView *image = [[UIImageView alloc] initWithImage:cover];
@@ -1110,7 +1246,7 @@ static NSString *PptxOutlineText(id value) {
     image.translatesAutoresizingMaskIntoConstraints = NO;
     UILabel *name = [[UILabel alloc] init];
     name.text = info.name;
-    name.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    name.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
     name.textColor = ImpressInkColor();
     name.textAlignment = NSTextAlignmentCenter;
     name.numberOfLines = 2;
@@ -1120,13 +1256,15 @@ static NSString *PptxOutlineText(id value) {
     col.userInteractionEnabled = NO;
     col.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:col];
+    image.layer.cornerRadius = 8;
     [NSLayoutConstraint activateConstraints:@[
-        [image.heightAnchor constraintEqualToConstant:72],
-        [col.topAnchor constraintEqualToAnchor:card.topAnchor constant:8],
-        [col.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:8],
-        [col.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-8],
-        [col.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-8],
-        [card.heightAnchor constraintEqualToConstant:118],
+        // 设计：16:10 封面 + 14pt 标题，整块 150pt 高
+        [image.heightAnchor constraintEqualToAnchor:image.widthAnchor multiplier:0.625],
+        [col.topAnchor constraintEqualToAnchor:card.topAnchor constant:4],
+        [col.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:4],
+        [col.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-4],
+        [col.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-4],
+        [card.heightAnchor constraintEqualToConstant:150],
     ]];
     objc_setAssociatedObject(card, @selector(selectTemplateCard:), info.templateId, OBJC_ASSOCIATION_COPY_NONATOMIC);
     return card;
@@ -1188,6 +1326,7 @@ static NSString *PptxOutlineText(id value) {
     }
     sender.layer.borderWidth = 2;
     sender.layer.borderColor = ImpressOrange().CGColor;
+    sender.layer.cornerRadius = 12;
     [self updateTemplateGenerateEnabled];
 }
 
@@ -1374,6 +1513,47 @@ static NSString *PptxOutlineText(id value) {
             [alert dismissViewControllerAnimated:YES completion:nil];
         });
     }];
+}
+
+@end
+
+@implementation ImpressGradientPillButton {
+    CAGradientLayer *_pillGradient;
+}
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        [self setupPillGradient];
+    }
+    return self;
+}
+
+- (instancetype)initWithCoder:(NSCoder *)coder {
+    self = [super initWithCoder:coder];
+    if (self) {
+        [self setupPillGradient];
+    }
+    return self;
+}
+
+- (void)setupPillGradient {
+    if (_pillGradient != nil) {
+        return;
+    }
+    _pillGradient = [CAGradientLayer layer];
+    _pillGradient.colors = @[(id)[UIColor colorWithRed:0.26 green:0.55 blue:1 alpha:1].CGColor,
+                             (id)[UIColor colorWithRed:0.55 green:0.31 blue:1 alpha:1].CGColor,
+                             (id)[UIColor colorWithRed:0.9 green:0 blue:0.92 alpha:1].CGColor];
+    _pillGradient.startPoint = CGPointMake(0, 0.5);
+    _pillGradient.endPoint = CGPointMake(1, 0.5);
+    [self.layer insertSublayer:_pillGradient atIndex:0];
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    [self setupPillGradient];
+    _pillGradient.frame = self.bounds;
 }
 
 @end

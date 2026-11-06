@@ -1021,9 +1021,14 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     };
     nativeBridgeHandler.documentTextInserter = ^(NSString *html, NSInteger viewId, NSString *resultMode, NativeBridgeTextInsertCompletion completion) {
         DocumentViewController *strongSelf = weakSelf;
-        if (!strongSelf || strongSelf->isClosing || !strongSelf->nativeEditMode) {
-            completion(NO, @"请先进入编辑模式并选择要插入的文本框");
+        if (!strongSelf || strongSelf->isClosing) {
+            completion(NO, @"文档正在关闭，无法插入内容");
             return;
+        }
+        // AI 生成可能在阅读模式下触发：先自动切到编辑模式，再插入，
+        // 避免“请先进入编辑模式”这类用户无法自助解决的失败。
+        if (!strongSelf->nativeEditMode) {
+            [strongSelf applyNativeEditMode:YES];
         }
         lok::Document *doc = [strongSelf loKitDocumentOrNull];
         NSData *data = [html dataUsingEncoding:NSUTF8StringEncoding];

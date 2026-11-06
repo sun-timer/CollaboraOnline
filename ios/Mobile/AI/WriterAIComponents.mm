@@ -270,24 +270,36 @@ static UIColor *WriterAIColorAccent(void) {
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     titleLabel.text = _title;
-    titleLabel.font = [UIFont boldSystemFontOfSize:17];
+    titleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightSemibold];
     titleLabel.textColor = WriterAIColorTextPrimary();
+    titleLabel.textAlignment = NSTextAlignmentCenter;
     [_card addSubview:titleLabel];
+
+    // 设计：卡片右上角是 X 图标（不是文字），标题居中
+    UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    closeBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [closeBtn setImage:[[UIImage imageNamed:@"CardCloseX"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]
+              forState:UIControlStateNormal];
+    closeBtn.tintColor = WriterAIColorTextPrimary();
+    [closeBtn addTarget:self action:@selector(dismiss) forControlEvents:UIControlEventTouchUpInside];
+    [_card addSubview:closeBtn];
 
     _statusLabel = [[UILabel alloc] init];
     _statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _statusLabel.text = @"生成中…";
-    _statusLabel.font = [UIFont systemFontOfSize:13];
+    _statusLabel.font = [UIFont systemFontOfSize:14];
     _statusLabel.textColor = WriterAIColorTextSecondary();
+    _statusLabel.textAlignment = NSTextAlignmentCenter;
     [_card addSubview:_statusLabel];
 
     _textView = [[UITextView alloc] init];
     _textView.translatesAutoresizingMaskIntoConstraints = NO;
     _textView.editable = NO;
-    _textView.font = [UIFont systemFontOfSize:15];
-    _textView.textColor = WriterAIColorTextPrimary();
-    _textView.backgroundColor = [UIColor colorWithWhite:0.97 alpha:1];
-    _textView.layer.cornerRadius = 8;
+    _textView.font = [UIFont systemFontOfSize:14];
+    _textView.textColor = [UIColor colorWithRed:0x33 / 255.0 green:0x33 / 255.0 blue:0x33 / 255.0 alpha:1];
+    _textView.backgroundColor = [UIColor colorWithRed:0xF7 / 255.0 green:0xF7 / 255.0 blue:0xF7 / 255.0 alpha:1];
+    _textView.layer.cornerRadius = 12;
+    _textView.textContainerInset = UIEdgeInsetsMake(12, 12, 12, 12);
     [_card addSubview:_textView];
 
     _stopButton = [self actionButton:@"停止" tint:WriterAIColorTextSecondary() selector:@selector(stopTapped)];
@@ -295,7 +307,11 @@ static UIColor *WriterAIColorAccent(void) {
     _insertButton = [self actionButton:@"插入文档" tint:UIColor.whiteColor selector:@selector(insertTapped)];
     _copyButton = [self actionButton:@"复制" tint:WriterAIColorTextPrimary() selector:@selector(copyTapped)];
     _insertButton.backgroundColor = WriterAIColorAccent();
-    _insertButton.layer.cornerRadius = 8;
+    _insertButton.layer.cornerRadius = 20;
+    _retryButton.backgroundColor = WriterAIColorAccent();
+    [_retryButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    _retryButton.layer.borderWidth = 0;
+    _retryButton.layer.cornerRadius = 20;
     _retryButton.hidden = YES;
 
     UIStackView *actionRow = [[UIStackView alloc] initWithArrangedSubviews:@[ _stopButton, _retryButton, _copyButton, _insertButton ]];
@@ -309,10 +325,15 @@ static UIColor *WriterAIColorAccent(void) {
         [_card.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
         [_card.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
         [_card.widthAnchor constraintEqualToConstant:MIN(parent.bounds.size.width - 40, 420)],
-        [titleLabel.topAnchor constraintEqualToAnchor:_card.topAnchor constant:16],
-        [titleLabel.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:16],
-        [_statusLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:4],
-        [_statusLabel.leadingAnchor constraintEqualToAnchor:titleLabel.leadingAnchor],
+        [titleLabel.topAnchor constraintEqualToAnchor:_card.topAnchor constant:20],
+        [titleLabel.centerXAnchor constraintEqualToAnchor:_card.centerXAnchor],
+        [closeBtn.centerYAnchor constraintEqualToAnchor:titleLabel.centerYAnchor],
+        [closeBtn.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-12],
+        [closeBtn.widthAnchor constraintEqualToConstant:44],
+        [closeBtn.heightAnchor constraintEqualToConstant:44],
+        [_statusLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:6],
+        [_statusLabel.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:16],
+        [_statusLabel.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-16],
         [_textView.topAnchor constraintEqualToAnchor:_statusLabel.bottomAnchor constant:8],
         [_textView.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:16],
         [_textView.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-16],

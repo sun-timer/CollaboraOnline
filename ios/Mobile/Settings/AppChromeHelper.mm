@@ -41,11 +41,26 @@
     view.backgroundColor = [self homePlateColor];
 }
 
++ (UIColor *)secondaryBackChevronColor {
+    // Figma「标题栏2」返回 chevron：stroke black / opacity 0.9
+    return [UIColor colorWithWhite:0.0 alpha:0.9];
+}
+
 + (UIButton *)secondaryBackButtonWithTarget:(id)target action:(SEL)action {
     UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
     back.translatesAutoresizingMaskIntoConstraints = NO;
-    [back setTitle:@"‹ 返回" forState:UIControlStateNormal];
+    // Figma 只有 chevron（画布 64×64 → 32pt，chevron 本体 8×16pt、描边 1.5pt），不再带「返回」两个字。
+    UIImage *chevron = [[UIImage imageNamed:@"NavBackChevron"]
+        imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    [back setImage:chevron forState:UIControlStateNormal];
+    back.tintColor = [self secondaryBackChevronColor];
+    back.accessibilityLabel = @"返回";
     [back addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+    // 点击热区按 Figma 的 80×80px = 40×40pt 给；chevron 居中出现，视觉左边距 27pt（设计稿 26.75pt）。
+    [NSLayoutConstraint activateConstraints:@[
+        [back.widthAnchor constraintEqualToConstant:40.0],
+        [back.heightAnchor constraintEqualToConstant:40.0],
+    ]];
     return back;
 }
 

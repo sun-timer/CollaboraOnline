@@ -77,11 +77,11 @@ static UIColor *QuickCreateHintColor(void) {
     }
 
     [NSLayoutConstraint activateConstraints:@[
-        [back.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
+        [back.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:0],
         [back.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:12],
         [title.centerYAnchor constraintEqualToAnchor:back.centerYAnchor],
-        [title.leadingAnchor constraintEqualToAnchor:back.trailingAnchor constant:8],
-        [self.docTypeControl.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:24],
+        [title.leadingAnchor constraintEqualToAnchor:back.trailingAnchor constant:4],
+        [self.docTypeControl.topAnchor constraintEqualToAnchor:back.bottomAnchor constant:12],
         [self.docTypeControl.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:24],
         [self.docTypeControl.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-24],
         [self.topicField.topAnchor constraintEqualToAnchor:self.docTypeControl.bottomAnchor constant:16],
