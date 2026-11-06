@@ -241,11 +241,10 @@ final class CalcHyperlinkPickerController {
         openButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         openButton.setTypeface(null, Typeface.BOLD);
         openButton.setBackgroundResource(R.drawable.lolib_bg_calc_primary_button);
-        int btnVPad = host.dpToPx(14);
-        openButton.setPadding(host.dpToPx(16), btnVPad, host.dpToPx(16), btnVPad);
+        openButton.setPadding(host.dpToPx(16), 0, host.dpToPx(16), 0);
         LinearLayout.LayoutParams openLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        openLp.setMargins(host.dpToPx(16), host.dpToPx(4), host.dpToPx(16), host.dpToPx(8));
+                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(35));
+        openLp.setMargins(host.dpToPx(16), host.dpToPx(16), host.dpToPx(16), host.dpToPx(8));
         openButton.setLayoutParams(openLp);
         openButton.setOnClickListener(v -> showDocumentTargetPicker());
         content.addView(openButton);
@@ -498,10 +497,9 @@ final class CalcHyperlinkPickerController {
         button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         button.setTypeface(null, Typeface.BOLD);
         button.setBackgroundResource(R.drawable.lolib_bg_calc_primary_button);
-        int vPad = host.dpToPx(14);
-        button.setPadding(host.dpToPx(16), vPad, host.dpToPx(16), vPad);
+        button.setPadding(host.dpToPx(16), 0, host.dpToPx(16), 0);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(35));
         lp.setMargins(host.dpToPx(16), host.dpToPx(8), host.dpToPx(16), host.dpToPx(16));
         button.setLayoutParams(lp);
         button.setOnClickListener(v -> onPrimaryButtonClicked());

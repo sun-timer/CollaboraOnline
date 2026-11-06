@@ -433,7 +433,7 @@ final class CalcDataValidationController {
         box.setGravity(Gravity.CENTER_VERTICAL);
         box.setBackgroundResource(R.drawable.lolib_bg_calc_validation_picker);
         box.setMinimumHeight(host.dpToPx(44));
-        box.setPadding(host.dpToPx(12), host.dpToPx(10), host.dpToPx(8), host.dpToPx(10));
+        box.setPadding(host.dpToPx(12), host.dpToPx(10), host.dpToPx(16), host.dpToPx(10));
 
         valueView.setTextColor(Color.parseColor("#333333"));
         valueView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
@@ -476,7 +476,7 @@ final class CalcDataValidationController {
         LinearLayout row = new LinearLayout(host.getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(host.dpToPx(44));
+        row.setMinimumHeight(host.dpToPx(52));
 
         // 值框：操作类型（停止/警告/信息/宏/默默拒绝）+ chevron，#F2F3F5 圆角 24
         errorActionValueView = new TextView(host.getContext());
@@ -487,7 +487,7 @@ final class CalcDataValidationController {
         box.setOrientation(LinearLayout.HORIZONTAL);
         box.setGravity(Gravity.CENTER_VERTICAL);
         box.setBackgroundResource(R.drawable.lolib_bg_calc_validation_picker);
-        box.setPadding(host.dpToPx(12), host.dpToPx(8), host.dpToPx(8), host.dpToPx(8));
+        box.setPadding(host.dpToPx(12), host.dpToPx(8), host.dpToPx(16), host.dpToPx(8));
         box.addView(errorActionValueView, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         TextView chevron = new TextView(host.getContext());

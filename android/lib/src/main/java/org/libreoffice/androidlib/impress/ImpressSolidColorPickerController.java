@@ -61,7 +61,7 @@ public final class ImpressSolidColorPickerController {
         LinearLayout content = new LinearLayout(host.getContext());
         content.setOrientation(LinearLayout.VERTICAL);
         int sidePad = host.dpToPx(CONTENT_SIDE_PAD_DP);
-        content.setPadding(sidePad, host.dpToPx(4), sidePad, host.dpToPx(16));
+        content.setPadding(sidePad, host.dpToPx(20), sidePad, host.dpToPx(16));
 
         for (int b = 0; b < ImpressSolidColorCatalog.BLOCKS.length; b++) {
             if (b > 0) {
@@ -95,9 +95,6 @@ public final class ImpressSolidColorPickerController {
         checkViews[blockIndex] = new View[entries.length];
         int swatchSize = host.dpToPx(SWATCH_SIZE_DP);
         int rowGap = host.dpToPx(ROW_GAP_DP);
-        int innerWidth = host.getContext().getResources().getDisplayMetrics().widthPixels
-                - host.dpToPx(CONTENT_SIDE_PAD_DP * 2 + GRID_PAD_DP * 2);
-        int gap = Math.max(0, (innerWidth - GRID_COLS * swatchSize) / (GRID_COLS - 1));
         LinearLayout row = null;
 
         for (int i = 0; i < entries.length; i++) {
@@ -116,14 +113,18 @@ public final class ImpressSolidColorPickerController {
             ImpressSolidColorCatalog.Entry entry = entries[i];
             FrameLayout cell = createColorCell(entry);
             checkViews[blockIndex][i] = cell.findViewWithTag("check");
-            LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(swatchSize, swatchSize);
-            if (i % GRID_COLS > 0) {
-                cellLp.setMarginStart(gap);
-            }
+            LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(0, swatchSize, 1f);
             cell.setLayoutParams(cellLp);
             cell.setOnClickListener(v -> onColorClicked(entry));
             if (row != null) {
                 row.addView(cell);
+            }
+        }
+        int remainder = entries.length % GRID_COLS;
+        if (remainder != 0 && row != null) {
+            for (int i = remainder; i < GRID_COLS; i++) {
+                row.addView(new View(host.getContext()),
+                        new LinearLayout.LayoutParams(0, swatchSize, 1f));
             }
         }
         return card;
@@ -148,8 +149,9 @@ public final class ImpressSolidColorPickerController {
         check.setImageTintList(android.content.res.ColorStateList.valueOf(
                 isLightSwatch(entry.rgb) ? Color.parseColor("#333333") : Color.WHITE));
         check.setVisibility(selected ? View.VISIBLE : View.GONE);
-        cell.addView(check, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        FrameLayout.LayoutParams checkLp = new FrameLayout.LayoutParams(
+                host.dpToPx(16), host.dpToPx(16), Gravity.CENTER);
+        cell.addView(check, checkLp);
         return cell;
     }
 

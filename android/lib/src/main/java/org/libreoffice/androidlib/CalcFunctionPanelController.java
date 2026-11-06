@@ -722,7 +722,7 @@ public class CalcFunctionPanelController {
         value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        valueLp.setMarginEnd(host.dpToPx(8));
+        valueLp.setMarginEnd(host.dpToPx(4));
         row.addView(value, valueLp);
         row.addView(createChevron());
         row.setOnClickListener(v -> onPickerClick(item, value));
@@ -1062,10 +1062,11 @@ public class CalcFunctionPanelController {
         TextView value = new TextView(host.getContext());
         applyStepperPreviewText(value, valueText);
         value.setGravity(Gravity.CENTER);
+        value.setSingleLine(true);
         value.setTextColor(COLOR_TITLE);
         value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         value.setBackgroundResource(R.drawable.lolib_bg_stepper_value);
-        int valuePadH = host.dpToPx(10);
+        int valuePadH = host.dpToPx(4);
         int valuePadV = host.dpToPx(8);
         value.setPadding(valuePadH, valuePadV, valuePadH, valuePadV);
 
@@ -1102,7 +1103,7 @@ public class CalcFunctionPanelController {
         ImageView icon = new ImageView(host.getContext());
         icon.setImageResource(iconRes);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        icon.setPadding(host.dpToPx(6), host.dpToPx(6), host.dpToPx(6), host.dpToPx(6));
+        icon.setPadding(host.dpToPx(4), host.dpToPx(6), host.dpToPx(4), host.dpToPx(6));
         icon.setMinimumWidth(host.dpToPx(32));
         return icon;
     }
@@ -1435,6 +1436,9 @@ public class CalcFunctionPanelController {
         contentContainer.removeAllViews();
         LinearLayout root = new LinearLayout(host.getContext());
         root.setOrientation(LinearLayout.VERTICAL);
+        // Figma 5283:59098: 518px total minus 40px nav, then minus
+        // this scroll container's 8dp top and 16dp bottom padding.
+        root.setMinimumHeight(host.dpToPx(215));
         root.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1498,8 +1502,8 @@ public class CalcFunctionPanelController {
                     0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
             ImageView check = new ImageView(host.getContext());
-            check.setImageResource(R.drawable.lolib_ic_calc_toggle_checked);
-            check.setImageTintList(null);
+            check.setImageResource(R.drawable.lolib_ic_figma_option_check);
+            check.setImageTintList(android.content.res.ColorStateList.valueOf(COLOR_TAB_ACTIVE));
             check.setVisibility(selected ? View.VISIBLE : View.GONE);
             row.addView(check, new LinearLayout.LayoutParams(
                     host.dpToPx(24), host.dpToPx(24)));
@@ -2309,6 +2313,11 @@ public class CalcFunctionPanelController {
     }
 
     private void runItemAction(PanelItem item) {
+        if ("find_replace".equals(item.id)) {
+            dismiss();
+            host.runAfterFunctionPanelDismiss(() -> host.executeUnoCommand(".uno:SearchDialog"));
+            return;
+        }
         if ("insert_shape".equals(item.id)) {
             showShapePickerDialog();
             return;
@@ -2476,6 +2485,8 @@ public class CalcFunctionPanelController {
         result.add(new PanelTab("data", "数据", data));
 
         List<PanelItem> review = new ArrayList<>();
+        review.add(new PanelItem(ItemType.ACTION, "find_replace", "查找替换",
+                R.drawable.lolib_ic_function_find_replace, ".uno:SearchDialog"));
         review.add(new PanelItem(ItemType.ACTION, "spell_check", "拼写检查",
                 R.drawable.lolib_ic_calc_spell_check, ".uno:SpellDialog"));
         review.add(new PanelItem(ItemType.ACTION, "review_comment", "批注",

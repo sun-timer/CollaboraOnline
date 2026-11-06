@@ -2507,6 +2507,10 @@ public class LOActivity extends AppCompatActivity {
             imagePickerInFlight = false;
         }
         if (resultCode != RESULT_OK) {
+            if (requestCode == REQUEST_TEXT_EXTRACT_CAMERA) {
+                pendingTextExtractCameraUri = null;
+                if (textExtractDialog != null) textExtractDialog.dismiss();
+            }
             if (requestCode == REQUEST_SELECT_IMAGE_FILE) {
                 if (valueCallback != null) {
                     valueCallback.onReceiveValue(null);
@@ -2548,6 +2552,7 @@ public class LOActivity extends AppCompatActivity {
             case REQUEST_TEXT_EXTRACT_CAMERA: {
                 if (pendingTextExtractCameraUri != null) {
                     handleTextExtractImageUri(pendingTextExtractCameraUri);
+                    pendingTextExtractCameraUri = null;
                 }
                 return;
             }
@@ -8400,8 +8405,15 @@ public class LOActivity extends AppCompatActivity {
                 break;
             }
         }
-        showImpressAnchorPicker(impressOutlineModeCard, IMPRESS_OUTLINE_MODE_LABELS, selected,
-                idx -> switchImpressOutlineInputType(IMPRESS_OUTLINE_MODE_TYPES[idx]));
+        dismissImpressOptionPopup();
+        View arrow = impressOutlinePanel.findViewById(R.id.impress_outline_mode_arrow);
+        arrow.setRotation(180);
+        WaiDropdownPopup.show(this, impressOutlineModeCard, impressOutlinePanel,
+                IMPRESS_OUTLINE_MODE_LABELS, selected,
+                Math.round(impressOutlineModeCard.getWidth() / getResources().getDisplayMetrics().density),
+                WaiDropdownPopup.Style.GRADIENT, null,
+                (idx, label) -> switchImpressOutlineInputType(IMPRESS_OUTLINE_MODE_TYPES[idx]),
+                () -> arrow.setRotation(0));
     }
 
     private static final int IMPRESS_TEXT_HIGHLIGHT = Color.argb(0x33, 0xEC, 0x5D, 0x1F);
@@ -8509,6 +8521,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void dismissImpressOptionPopup() {
+        WaiDropdownPopup.dismissIfShowing();
         if (impressOptionPopup != null) {
             if (impressOptionPopup.isShowing()) {
                 impressOptionPopup.dismiss();
@@ -12443,6 +12456,19 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public void fetchSpellCheckState(java.util.function.Consumer<Boolean> callback) {
+                    runWebJs("(function(){try{"
+                            + "var h=window.app&&app.map&&app.map.stateChangeHandler;"
+                            + "if(!h)return null;"
+                            + "return h.getItemValue('.uno:SpellOnline');"
+                            + "}catch(e){return null;}})();", value -> {
+                        String state = value == null ? "" : value.replace("\"", "");
+                        callback.accept("true".equals(state) ? Boolean.TRUE
+                                : "false".equals(state) ? Boolean.FALSE : null);
+                    });
+                }
+
+                @Override
                 public void saveDocument() {
                     postMobileMessageNative("save dontTerminateEdit=1 dontSaveIfUnmodified=1");
                     Toast toast = Toast.makeText(LOActivity.this, "已保存", Toast.LENGTH_SHORT);
@@ -14987,9 +15013,9 @@ public class LOActivity extends AppCompatActivity {
     private static final int AI_FUNCTION_GRID_COLUMNS = 3;
     private static final int AI_FUNCTION_ICON_DP = 24;
     private static final int AI_FUNCTION_CARD_HEIGHT_DP = 80;
-    /** Impress AI 功能图标（Figma 放大版）。 */
-    private static final int AI_FUNCTION_IMPRESS_ICON_DP = 80;
-    private static final int AI_FUNCTION_IMPRESS_CARD_HEIGHT_DP = 120;
+    /** Figma 64px icons and 160px cards on the 750px design canvas. */
+    private static final int AI_FUNCTION_IMPRESS_ICON_DP = 32;
+    private static final int AI_FUNCTION_IMPRESS_CARD_HEIGHT_DP = 80;
     private static final int AI_FUNCTION_CARD_GAP_DP = 8;
     /** Calc AI 功能网格：Figma 750 画布尺寸 ÷2 */
     private static final int AI_FUNCTION_CALC_ICON_DP = 24;
@@ -15026,7 +15052,7 @@ public class LOActivity extends AppCompatActivity {
                     AI_FUNCTION_GRID_COLUMNS,
                     AI_FUNCTION_IMPRESS_ICON_DP,
                     AI_FUNCTION_IMPRESS_CARD_HEIGHT_DP,
-                    AI_FUNCTION_CARD_GAP_DP,
+                    20,
                     false);
         }
         int[] otherRowIds = {
@@ -15129,7 +15155,8 @@ public class LOActivity extends AppCompatActivity {
             View child = group.getChildAt(i);
             if (child instanceof ImageView) {
                 ImageView icon = (ImageView) child;
-                icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                icon.setScaleType(mIsImpressDocument
+                        ? ImageView.ScaleType.FIT_CENTER : ImageView.ScaleType.CENTER_INSIDE);
                 int iconPx = dpToPx(iconDp);
                 ViewGroup.LayoutParams raw = icon.getLayoutParams();
                 if (raw instanceof LinearLayout.LayoutParams) {
@@ -15291,6 +15318,7 @@ public class LOActivity extends AppCompatActivity {
             params.gravity = Gravity.CENTER;
             typesetSelectDialog.getWindow().setAttributes(params);
             root.post(() -> applyTypesetSelectDialogSize(root));
+            root.postDelayed(() -> applyTypesetSelectDialogSize(root), 48);
         }
         Log.i(TAG, "ai_typeset_select_shown");
     }
@@ -15304,10 +15332,7 @@ public class LOActivity extends AppCompatActivity {
         }
         // 宽度与 Writer AI 弹窗统一：min(335dp, 屏宽-40dp)，避免窄屏/横屏横向截断
         int widthPx = AiDialogHelper.computeWriterDialogWidthPx(getResources());
-        int maxHeightPx = AiDialogHelper.computeCenteredDialogMaxHeightPx(this, true);
-        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
-        int screenMax = dm.heightPixels - dpToPx(48);
-        maxHeightPx = Math.max(maxHeightPx, screenMax);
+        int maxHeightPx = AiDialogHelper.computeCenteredDialogMaxHeightPx(this, false);
 
         ViewGroup.LayoutParams rootLp = root.getLayoutParams();
         if (rootLp == null) {
@@ -15321,9 +15346,11 @@ public class LOActivity extends AppCompatActivity {
         int widthSpec = View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY);
         int heightSpec = View.MeasureSpec.makeMeasureSpec(maxHeightPx, View.MeasureSpec.AT_MOST);
         root.measure(widthSpec, heightSpec);
-        int windowHeight = Math.min(Math.max(root.getMeasuredHeight(), 1), maxHeightPx);
+        int overhead = AiDialogHelper.getAncestorVerticalOverhead(root, typesetSelectDialog);
+        int windowHeight = Math.min(Math.max(root.getMeasuredHeight() + overhead, 1), maxHeightPx);
 
         typesetSelectDialog.getWindow().setLayout(widthPx, windowHeight);
+        AiDialogHelper.logActionButtonBounds(root);
         rootLp.width = widthPx;
         rootLp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
         root.setLayoutParams(rootLp);
@@ -17339,6 +17366,7 @@ public class LOActivity extends AppCompatActivity {
         articleDialog = dialog;
         switchArticleDialogStage(ARTICLE_STAGE_SELECT);
         root.post(this::applyArticleDialogSize);
+        root.postDelayed(this::applyArticleDialogSize, 48);
     }
 
     /**
@@ -17373,7 +17401,8 @@ public class LOActivity extends AppCompatActivity {
         AiDialogHelper.restoreWeightedChildHeights(relaxed);
 
         // 内容超上限时窗口封顶,表单滚动区(0dp+weight)在 root EXACTLY 下自动分到剩余空间,可滚动
-        int windowHeight = Math.max(Math.min(Math.max(contentHeight, 1), maxHeight), minHeight);
+        int overhead = AiDialogHelper.getAncestorVerticalOverhead(articleDialogRoot, articleDialog);
+        int windowHeight = Math.max(Math.min(Math.max(contentHeight + overhead, 1), maxHeight), minHeight);
         articleDialog.getWindow().setLayout(targetWidth, windowHeight);
         ViewGroup.LayoutParams lp = articleDialogRoot.getLayoutParams();
         if (lp == null) {
@@ -17382,10 +17411,11 @@ public class LOActivity extends AppCompatActivity {
             lp.width = targetWidth;
         }
         // 根部恒撑满窗口:键盘压缩/结果态下限时内部 weight 弹性区收缩,底部按钮不溢出
-        lp.height = windowHeight;
+        lp.height = Math.max(1, windowHeight - overhead);
         articleDialogRoot.setLayoutParams(lp);
+        AiDialogHelper.logActionButtonBounds(articleDialogRoot);
         Log.d(TAG, "article_dialog_size w=" + targetWidth + " h=" + windowHeight
-                + " contentH=" + contentHeight + " form=" + formVisible);
+                + " contentH=" + contentHeight + " overhead=" + overhead + " form=" + formVisible);
     }
 
     private ArticleFieldKind detectArticleFieldKind(ArticleTemplate.Variable variable) {
@@ -17419,7 +17449,10 @@ public class LOActivity extends AppCompatActivity {
         field.setSingleLine(true);
         int iconPad = dpToPx(8);
         field.setCompoundDrawablePadding(iconPad);
-        field.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.lolib_ic_calc_insert_date, 0);
+        android.graphics.drawable.Drawable calendarIcon = getDrawable(R.drawable.lolib_ic_figma_article_calendar).mutate();
+        calendarIcon.setTint(Color.parseColor("#777777"));
+        calendarIcon.setBounds(0, 0, dpToPx(18), dpToPx(18));
+        field.setCompoundDrawables(null, null, calendarIcon, null);
         Calendar initial = parseArticleHintCalendar(hint);
         field.setOnClickListener(v -> {
             Calendar seed = parseArticleHintCalendar(field.getText().toString());
@@ -17499,7 +17532,7 @@ public class LOActivity extends AppCompatActivity {
         if (articleCategoryChevron != null) {
             articleCategoryChevron.setRotation(180f);
         }
-        WaiDropdownPopup.show(this, anchor, categories, selectedIndex, 0,
+        WaiDropdownPopup.show(this, anchor, articleDialogRoot, categories, selectedIndex, 0,
                 WaiDropdownPopup.Style.GRADIENT, null,
                 (idx, label) -> {
                     pendingArticleCategory = categories[idx];
@@ -17544,7 +17577,7 @@ public class LOActivity extends AppCompatActivity {
         if (articleSubTypeChevron != null) {
             articleSubTypeChevron.setRotation(180f);
         }
-        WaiDropdownPopup.show(this, anchor, labels, selectedIndex, 0,
+        WaiDropdownPopup.show(this, anchor, articleDialogRoot, labels, selectedIndex, 0,
                 WaiDropdownPopup.Style.GRADIENT, null,
                 (idx, label) -> {
                     ArticleTemplate tmpl = templates.get(idx);
@@ -18068,6 +18101,7 @@ public class LOActivity extends AppCompatActivity {
         TextView title = root.findViewById(R.id.wai_title);
         if (title != null) {
             title.setText("格式批量处理");
+            title.setTypeface(null, android.graphics.Typeface.BOLD);
         }
         root.findViewById(R.id.wai_close).setOnClickListener(v -> dialog.dismiss());
         formatBatchExecuteBtn.setOnClickListener(v -> executeFormatBatch());
@@ -18184,6 +18218,16 @@ public class LOActivity extends AppCompatActivity {
         }
         pendingTextExtractResult = null;
         textExtractActiveRequestId = "";
+        hideKeyboardForBottomSheet();
+        Log.i(TAG, "text_extract_camera_entry direct=true");
+        launchTextExtractCamera();
+    }
+
+    /** Create the result surface only after the camera/album has returned an image. */
+    private void showTextExtractResultDialog() {
+        if (textExtractDialog != null && textExtractDialog.isShowing()) {
+            return;
+        }
 
         final AlertDialog dialog = new AlertDialog.Builder(this).create();
         View root = getLayoutInflater().inflate(R.layout.lolib_wai_extract_dialog, null);
@@ -18203,9 +18247,7 @@ public class LOActivity extends AppCompatActivity {
             title.setText("文字提取");
         }
         root.findViewById(R.id.wai_close).setOnClickListener(v -> dialog.dismiss());
-        root.findViewById(R.id.wai_extract_album_card).setOnClickListener(v -> launchTextExtractAlbum());
-        root.findViewById(R.id.wai_extract_camera_card).setOnClickListener(v -> launchTextExtractCamera());
-        textExtractReRecognizeBtn.setOnClickListener(v -> switchTextExtractStage(TEXT_EXTRACT_STAGE_INPUT));
+        textExtractReRecognizeBtn.setOnClickListener(v -> showTextExtractDialog());
         textExtractInsertBtn.setOnClickListener(v -> applyTextExtractResult());
         textExtractCopyRow.setOnClickListener(v -> copyTextExtractResult());
 
@@ -18221,11 +18263,11 @@ public class LOActivity extends AppCompatActivity {
         AiDialogHelper.applyTransparentWindow(dialog);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
         hideKeyboardForBottomSheet();
-        dialog.show();
         textExtractDialog = dialog;
-        switchTextExtractStage(TEXT_EXTRACT_STAGE_INPUT);
+        switchTextExtractStage(TEXT_EXTRACT_STAGE_RESULT);
+        dialog.show();
         root.post(this::applyTextExtractDialogSize);
-        Log.i(TAG, "text_extract_dialog_show");
+        Log.i(TAG, "text_extract_result_dialog_show");
     }
 
     /**
@@ -18252,6 +18294,11 @@ public class LOActivity extends AppCompatActivity {
     }
     private void switchTextExtractStage(int stage) {
         boolean input = stage == TEXT_EXTRACT_STAGE_INPUT;
+        if (input) {
+            // Failure/cancel returns to the document; the source chooser is never shown.
+            if (textExtractDialog != null) textExtractDialog.dismiss();
+            return;
+        }
         if (textExtractInputGroup != null) {
             textExtractInputGroup.setVisibility(input ? View.VISIBLE : View.GONE);
         }
@@ -18293,7 +18340,7 @@ public class LOActivity extends AppCompatActivity {
             File photoFile = new File(getCacheDir(), "text_extract_" + System.currentTimeMillis() + ".jpg");
             pendingTextExtractCameraUri = FileProvider.getUriForFile(this,
                     getApplicationContext().getPackageName() + ".fileprovider", photoFile);
-            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            Intent intent = new Intent(this, TextExtractCameraActivity.class);
             intent.putExtra(MediaStore.EXTRA_OUTPUT, pendingTextExtractCameraUri);
             intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
             startActivityForResult(intent, REQUEST_TEXT_EXTRACT_CAMERA);
@@ -18309,6 +18356,7 @@ public class LOActivity extends AppCompatActivity {
             toastTodo("未获取到图片");
             return;
         }
+        showTextExtractResultDialog();
         switchTextExtractStage(TEXT_EXTRACT_STAGE_RESULT);
         if (textExtractResultText != null) {
             textExtractResultText.setText("正在识别...");
@@ -18328,6 +18376,7 @@ public class LOActivity extends AppCompatActivity {
 
     private void startTextExtractRequest(String base64Image) {
         if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_TEXT_EXTRACT, "vision")) {
+            switchTextExtractStage(TEXT_EXTRACT_STAGE_INPUT);
             return;
         }
         try {
@@ -18438,6 +18487,7 @@ public class LOActivity extends AppCompatActivity {
         TextView title = root.findViewById(R.id.wai_title);
         if (title != null) {
             title.setText("AI 图片");
+            title.setTypeface(null, android.graphics.Typeface.BOLD);
         }
         aiImageSelectedRatioIndex = 0;
         if (aiImageRatioLabel != null) {
@@ -18730,6 +18780,7 @@ public class LOActivity extends AppCompatActivity {
         TextView title = root.findViewById(R.id.wai_title);
         if (title != null) {
             title.setText("AI 图片");
+            title.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
         }
         root.findViewById(R.id.wai_close).setOnClickListener(v -> {
             dialog.dismiss();
@@ -18997,12 +19048,9 @@ public class LOActivity extends AppCompatActivity {
         if (textOperateTitle != null) {
             textOperateTitle.setText(getTextOperateTitle(mode));
         }
-        // 设计 326:25793: 润色 CTA = 星形图标;扩写/缩写/重写 = 火花图标
+        // Figma 1689:60206 supplies the shared generation icon for text operations.
         if (textOperateGenerateIcon != null) {
-            textOperateGenerateIcon.setImageResource(
-                    AiChatCoordinator.MODE_POLISH.equals(mode)
-                            ? R.drawable.lolib_wai_ic_star
-                            : R.drawable.lolib_wai_ic_sparkle);
+            textOperateGenerateIcon.setImageResource(R.drawable.lolib_ic_figma_ai_generate);
         }
 
         textOperateInputContainer.removeAllViews();
@@ -19103,7 +19151,7 @@ public class LOActivity extends AppCompatActivity {
         if (textOperatePolishStyleChevron != null) {
             textOperatePolishStyleChevron.setRotation(180f);
         }
-        WaiDropdownPopup.show(this, textOperatePolishStyleCard, labels, selectedIndex, 0,
+        WaiDropdownPopup.show(this, textOperatePolishStyleCard, textOperateDialogRoot, labels, selectedIndex, 0,
                 WaiDropdownPopup.Style.GRADIENT, null,
                 (index, label) -> {
                     pendingPolishStyle = styles[index].key;
@@ -19299,7 +19347,7 @@ public class LOActivity extends AppCompatActivity {
 
         TextView title = root.findViewById(R.id.wai_title);
         if (title != null) {
-            title.setText("翻译");
+            title.setText("AI翻译");
         }
         if (translateSourceEdit != null) {
             translateSourceEdit.setText(selection != null ? selection : "");
@@ -19396,7 +19444,9 @@ public class LOActivity extends AppCompatActivity {
                 selected = i;
             }
         }
-        WaiDropdownPopup.show(this, translateSourceLabel, labels, selected, 0,
+        View anchor = translateDialogRoot.findViewById(R.id.wai_translate_source_card);
+        int widthDp = Math.round(anchor.getWidth() / getResources().getDisplayMetrics().density);
+        WaiDropdownPopup.show(this, anchor, translateDialogRoot, labels, selected, Math.max(1, widthDp),
                 WaiDropdownPopup.Style.CHECK, null,
                 (index, label) -> {
                     pendingTranslateSourceLang = langs[index].key;
@@ -19405,7 +19455,7 @@ public class LOActivity extends AppCompatActivity {
                     }
                     updateTranslateLanguageLabels();
                     Log.i(TAG, "translate_source_selected lang=" + pendingTranslateSourceLang);
-                });
+                }, null);
     }
 
     private void showTranslateTargetPicker() {
@@ -19422,7 +19472,9 @@ public class LOActivity extends AppCompatActivity {
                 selected = i;
             }
         }
-        WaiDropdownPopup.show(this, translateTargetLabel, labels, selected, 0,
+        View anchor = translateDialogRoot.findViewById(R.id.wai_translate_target_card);
+        int widthDp = Math.round(anchor.getWidth() / getResources().getDisplayMetrics().density);
+        WaiDropdownPopup.show(this, anchor, translateDialogRoot, labels, selected, Math.max(1, widthDp),
                 WaiDropdownPopup.Style.CHECK, null,
                 (index, label) -> {
                     pendingTranslateTargetLang = langs.get(index).key;
@@ -19431,7 +19483,7 @@ public class LOActivity extends AppCompatActivity {
                     }
                     updateTranslateLanguageLabels();
                     Log.i(TAG, "translate_target_selected lang=" + pendingTranslateTargetLang);
-                });
+                }, null);
     }
 
     private void swapTranslateLanguages() {
@@ -20481,6 +20533,8 @@ public class LOActivity extends AppCompatActivity {
         if (buttonRow != null) {
             buttonRow.removeAllViews();
             TextView cancelBtn = buildHugDialogButton("取消", false);
+            // Match the 35dp pill radius of the primary button.
+            cancelBtn.setBackgroundResource(R.drawable.lolib_bg_continue_pill_secondary_35);
             TextView confirmBtn = buildHugDialogButton("确定", true);
             int btnH = dpToPx(35);
             LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(0, btnH, 1f);
@@ -20645,12 +20699,13 @@ public class LOActivity extends AppCompatActivity {
         if (aiRunButton != null) {
             ViewGroup.LayoutParams sendParams = aiRunButton.getLayoutParams();
             if (sendParams != null) {
-                int sendSize = getResources().getDimensionPixelSize(R.dimen.ai_panel_send_button_size);
+                int sendSize = dpToPx(48);
                 sendParams.width = sendSize;
                 sendParams.height = sendSize;
                 aiRunButton.setLayoutParams(sendParams);
             }
-            aiRunButton.setBackgroundResource(R.drawable.lolib_bg_ai_send_button);
+            aiRunButton.setBackgroundResource(android.R.color.transparent);
+            aiRunButton.setPadding(dpToPx(6), dpToPx(6), dpToPx(6), dpToPx(6));
         }
         if (aiPromptInput != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             aiPromptInput.setTextCursorDrawable(R.drawable.lolib_ai_text_cursor);

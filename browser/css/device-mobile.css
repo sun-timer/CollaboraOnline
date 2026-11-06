@@ -228,18 +228,20 @@ body.android-native-bottom-toolbar #toolbar-down {
 	display: none !important;
 }
 
+/* The Android WebView already ends above the native bottom toolbar. */
 body.android-native-bottom-toolbar #mobile-edit-button {
 	position: fixed !important;
 	left: auto !important;
 	top: auto !important;
 	right: 16px !important;
-	bottom: 100px !important;
+	bottom: 20px !important;
 	transform: scale(1) !important;
 }
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #spreadsheet-toolbar {
-	grid-template-columns: 40px auto;
-	height: 40px;
+	grid-template-columns: 36px auto;
+	height: 36px;
+	box-sizing: border-box;
 	border-top: 1px solid #E3E3E3;
 	background-color: #FFFFFF;
 }
@@ -257,16 +259,16 @@ body.ios-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tabs-con
 }
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #sheets-buttons-toolbox > div.toolbox {
-	height: 40px;
+	height: 36px;
 	align-content: stretch;
 }
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #sheets-buttons-toolbox #insertsheet.unotoolbutton,
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet {
-	width: 40px !important;
-	height: 40px !important;
-	min-width: 40px !important;
-	min-height: 40px !important;
+	width: 36px !important;
+	height: 36px !important;
+	min-width: 36px !important;
+	min-height: 36px !important;
 	margin: 0 !important;
 	padding: 0 !important;
 	border-radius: 0 !important;
@@ -361,17 +363,39 @@ body.android-native-bottom-toolbar[data-docType='spreadsheet'] #lastrecord {
 	min-width: 0 !important;
 }
 
+/* Figma 4069:24287: full-height, flat sheet cells, with no button padding or rounding. */
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tabs-container,
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab-scroll {
+	height: 100%;
+	margin: 0;
+	padding: 0;
+}
+
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab-scroll {
+	display: flex;
+	align-items: stretch;
+}
+
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab {
+	flex: 0 0 auto;
+	height: 100%;
+	min-height: 0;
+	margin: 0 !important;
+	padding: 0 16px !important;
+	box-sizing: border-box;
+	border-radius: 0 !important;
+	box-shadow: none !important;
+	outline: none !important;
+	appearance: none;
 	background-color: #FFFFFF !important;
 	color: #6A6A6A !important;
-	border: 1px solid transparent !important;
+	border: 0 !important;
 	font-weight: 400 !important;
 }
 
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] .spreadsheet-tab.spreadsheet-tab-selected {
 	background-color: #FFFFFF !important;
 	color: #3B8040 !important;
-	border: 1px solid transparent !important;
 	font-weight: 700 !important;
 }
 
@@ -496,6 +520,7 @@ body.native-mobile-bottom-toolbar #mobile-edit-button {
 	bottom: 100px !important;
 	transform: scale(1) !important;
 }
+
 .ui-scroll-wrapper {
 	overflow-x: scroll !important;
 	scrollbar-width: none; /*css draft (firefox only)*/
@@ -1237,6 +1262,51 @@ body.ios-native-bottom-toolbar[data-docType='presentation'] #slide-sorter .previ
 	-webkit-user-drag: none;
 	user-select: none;
 	-webkit-touch-callout: none;
+}
+
+/* Figma 183:9052: 204x114 at 2x, 4px selection stroke outside the thumbnail.
+ * Keep the page badge inside the picture and separate from the selection ring. */
+body.android-native-bottom-toolbar[data-docType='presentation'] #presentation-controls-wrapper.portrait,
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait {
+	max-height: 89px;
+	height: 89px;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait .preview-frame,
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.landscape .preview-frame {
+	line-height: 0;
+	vertical-align: middle;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait .preview-img,
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.landscape .preview-img {
+	width: 102px !important;
+	height: 57px !important;
+	max-width: 102px;
+	max-height: 57px;
+	object-fit: contain;
+	background-color: #FFFFFF;
+	border: 0.5px solid #CBD1D7 !important;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait .preview-img.preview-img-currentpart,
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.landscape .preview-img.preview-img-currentpart,
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait .preview-img.preview-img-selectedpart,
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.landscape .preview-img.preview-img-selectedpart {
+	border: 0.5px solid #CBD1D7 !important;
+	outline: 2px solid #EC5D1F !important;
+	outline-offset: 2px;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.portrait .preview-page-badge,
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.landscape .preview-page-badge {
+	right: 7px;
+	bottom: 3px;
+}
+
+body.android-native-bottom-toolbar[data-docType='presentation'] #slide-sorter.landscape .preview-page-badge {
+	right: calc((100% - 102px) / 2 + 3px);
+	bottom: 7px;
 }
 
 body.slide-dnd-active.android-native-bottom-toolbar .preview-img,

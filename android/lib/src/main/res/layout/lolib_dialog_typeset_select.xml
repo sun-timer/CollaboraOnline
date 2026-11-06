@@ -37,6 +37,9 @@
         </LinearLayout>
         <Space android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
         <FrameLayout android:id="@+id/typeset_select_footer" android:paddingTop="@dimen/ai_typeset_button_padding_v" android:paddingBottom="@dimen/ai_typeset_button_padding_v" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="@dimen/ai_typeset_button_padding_h" android:paddingEnd="@dimen/ai_typeset_button_padding_h">
-                <TextView android:textSize="16sp" android:textColor="#ffffff" android:gravity="center" android:id="@+id/typeset_select_start" android:background="@drawable/lolib_bg_gradient_button_outline" android:focusable="true" android:clickable="true" android:layout_width="match_parent" android:layout_height="@dimen/ai_typeset_button_height" android:text="开始排版"/>
+                <LinearLayout android:id="@+id/typeset_select_start" android:orientation="horizontal" android:gravity="center" android:background="@drawable/lolib_bg_gradient_button_outline" android:focusable="true" android:clickable="true" android:layout_width="match_parent" android:layout_height="@dimen/ai_typeset_button_height">
+                        <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/lolib_ic_figma_ai_generate" android:importantForAccessibility="no"/>
+                        <TextView android:textSize="16sp" android:textColor="#ffffff" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="4dp" android:text="开始排版"/>
+                </LinearLayout>
         </FrameLayout>
 </LinearLayout>

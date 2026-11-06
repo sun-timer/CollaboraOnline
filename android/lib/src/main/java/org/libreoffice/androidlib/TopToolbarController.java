@@ -1,8 +1,10 @@
 package org.libreoffice.androidlib;
 
 import android.os.Looper;
+import android.graphics.Rect;
 import android.util.Log;
 import android.view.View;
+import android.view.TouchDelegate;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -77,6 +79,7 @@ public class TopToolbarController {
         searchEditButton = host.findViewById(R.id.top_btn_search_edit);
 
         bindClick(R.id.top_btn_back, v -> host.onTopToolbarBack());
+        extendPreviewBackTouchTarget();
         bindClick(R.id.top_btn_done, v -> host.switchToViewingMode());
         bindClick(R.id.top_btn_close_edit, v -> host.requestCloseDocument());
 
@@ -212,6 +215,20 @@ public class TopToolbarController {
         if (view != null) {
             view.setOnClickListener(listener);
         }
+    }
+
+    private void extendPreviewBackTouchTarget() {
+        View back = host.findViewById(R.id.top_btn_back);
+        if (previewToolbarView == null || back == null) {
+            return;
+        }
+        previewToolbarView.post(() -> {
+            Rect bounds = new Rect();
+            back.getHitRect(bounds);
+            int minimumWidth = Math.round(48 * back.getResources().getDisplayMetrics().density);
+            bounds.right = Math.max(bounds.right, bounds.left + minimumWidth);
+            previewToolbarView.setTouchDelegate(new TouchDelegate(bounds, back));
+        });
     }
 
     private void requestUndo() {

@@ -131,8 +131,8 @@ public class ImpressShapePickerController {
             return;
         }
         bottomSheet.setBackgroundResource(R.drawable.lolib_bg_calc_bottom_sheet);
-        BottomSheetAnchorHelper.Options options = new BottomSheetAnchorHelper.Options();
-        options.logTag = "ImpressShapePicker";
+        BottomSheetAnchorHelper.Options options = BottomSheetAnchorHelper.overlayDocumentSheetOptions(
+                pickerContext(), "ImpressShapePicker");
         options.draggable = false;
         BottomSheetAnchorHelper.expandRatio(dialog, SHEET_HEIGHT_RATIO, options);
     }
@@ -202,7 +202,7 @@ public class ImpressShapePickerController {
                 cell.setForeground(pickerContext().getDrawable(android.R.drawable.list_selector_background));
 
                 ImageView icon = new ImageView(pickerContext());
-                icon.setImageResource(entry.iconResId);
+                icon.setImageResource(getShapeIconResource(entry));
                 icon.setImageTintList(null);
                 icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 FrameLayout.LayoutParams iconLp = new FrameLayout.LayoutParams(iconSize, iconSize);
@@ -225,6 +225,36 @@ public class ImpressShapePickerController {
             }
         }
         return card;
+    }
+
+    /** The shared PNGs retain Writer colors; use the Figma geometry with Impress colors here. */
+    private int getShapeIconResource(ImpressShapeCatalog.Entry entry) {
+        if (themeResId != R.style.LolibShapePickerThemeImpress) {
+            return entry.iconResId;
+        }
+        switch (entry.index) {
+            case 12: return R.drawable.lolib_ic_shape_theme_012;
+            case 13: return R.drawable.lolib_ic_shape_theme_013;
+            case 14: return R.drawable.lolib_ic_shape_theme_014;
+            case 15: return R.drawable.lolib_ic_shape_theme_015;
+            case 16: return R.drawable.lolib_ic_shape_theme_016;
+            case 17: return R.drawable.lolib_ic_shape_theme_017;
+            case 18: return R.drawable.lolib_ic_shape_theme_018;
+            case 19: return R.drawable.lolib_ic_shape_theme_019;
+            case 24: return R.drawable.lolib_ic_shape_theme_024;
+            case 25: return R.drawable.lolib_ic_shape_theme_025;
+            case 26: return R.drawable.lolib_ic_shape_theme_026;
+            case 27: return R.drawable.lolib_ic_shape_theme_027;
+            case 28: return R.drawable.lolib_ic_shape_theme_028;
+            case 29: return R.drawable.lolib_ic_shape_theme_029;
+            case 30: return R.drawable.lolib_ic_shape_theme_030;
+            case 31: return R.drawable.lolib_ic_shape_theme_031;
+            case 32: return R.drawable.lolib_ic_shape_theme_032;
+            case 33: return R.drawable.lolib_ic_shape_theme_033;
+            case 34: return R.drawable.lolib_ic_shape_theme_034;
+            case 35: return R.drawable.lolib_ic_shape_theme_035;
+            default: return entry.iconResId;
+        }
     }
 
     private void onShapeSelected(ImpressShapeCatalog.Entry entry) {

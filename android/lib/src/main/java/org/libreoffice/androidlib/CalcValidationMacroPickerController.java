@@ -235,7 +235,7 @@ final class CalcValidationMacroPickerController {
         LinearLayout row = new LinearLayout(host.getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(host.dpToPx(8), 0, host.dpToPx(8), 0);
+        row.setPadding(host.dpToPx(32), 0, host.dpToPx(8), 0);
 
         ImageView icon = new ImageView(host.getContext());
         icon.setImageResource(R.drawable.lolib_ic_calc_macro_app);

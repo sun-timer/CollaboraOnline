@@ -296,10 +296,30 @@ public final class AiDialogHelper {
         root.setLayoutParams(lp);
     }
 
-    /**
-     * 小型居中 Hug 弹窗（Sheet 重命名等）：固定宽度 + 高度随内容；
-     * 在安全区 padding 应用后需 {@link View#post(Runnable)} 再调一次。
-     */
+    /** Vertical space consumed between the supplied content root and its window decor.
+     * The root's own padding is already part of its measurement and is not added again. */
+    public static int getAncestorVerticalOverhead(View root, AlertDialog dialog) {
+        if (root == null || dialog == null || dialog.getWindow() == null) {
+            return 0;
+        }
+        View decor = dialog.getWindow().getDecorView();
+        View child = root;
+        int overhead = 0;
+        while (child != decor && child.getParent() instanceof View) {
+            android.view.ViewGroup.LayoutParams lp = child.getLayoutParams();
+            if (lp instanceof android.view.ViewGroup.MarginLayoutParams) {
+                android.view.ViewGroup.MarginLayoutParams margins =
+                        (android.view.ViewGroup.MarginLayoutParams) lp;
+                overhead += Math.max(0, margins.topMargin) + Math.max(0, margins.bottomMargin);
+            }
+            View parent = (View) child.getParent();
+            overhead += parent.getPaddingTop() + parent.getPaddingBottom();
+            child = parent;
+        }
+        return child == decor ? overhead : 0;
+    }
+
+    /** 小型居中 Hug 弹窗：固定宽度，高度随内容。 */
     public static void applyFlexibleWidthHug(android.view.View root, AlertDialog dialog,
             int targetWidthPx, int maxHeightPx) {
         if (dialog == null || dialog.getWindow() == null || root == null) {
@@ -311,9 +331,8 @@ public final class AiDialogHelper {
                 android.view.View.MeasureSpec.UNSPECIFIED);
         root.measure(widthSpec, heightSpec);
         int contentHeight = root.getMeasuredHeight();
-        int windowHeight = contentHeight <= maxHeightPx
-                ? android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-                : Math.min(Math.max(contentHeight, 1), maxHeightPx);
+        int overhead = getAncestorVerticalOverhead(root, dialog);
+        int windowHeight = Math.min(Math.max(contentHeight + overhead, 1), maxHeightPx);
 
         dialog.getWindow().setLayout(targetWidthPx, windowHeight);
         android.view.ViewGroup.LayoutParams lp = root.getLayoutParams();
@@ -379,19 +398,34 @@ public final class AiDialogHelper {
      */
     public static void applyWriterFixedSize(AlertDialog dialog, android.view.View root,
                                             int widthPx, int heightPx) {
+        applyWriterFixedSizeOnce(dialog, root, widthPx, heightPx);
+        if (root != null && dialog != null) {
+            root.post(() -> {
+                if (dialog.isShowing()) {
+                    applyWriterFixedSizeOnce(dialog, root, widthPx, heightPx);
+                }
+            });
+        }
+    }
+
+    private static void applyWriterFixedSizeOnce(AlertDialog dialog, android.view.View root,
+                                                int widthPx, int heightPx) {
         if (dialog == null || dialog.getWindow() == null || root == null) {
             return;
         }
         int h = Math.max(heightPx, dpToPx(root.getResources(), MIN_HEIGHT_DP));
+        int overhead = getAncestorVerticalOverhead(root, dialog);
+        int rootHeight = Math.max(1, h - overhead);
         dialog.getWindow().setLayout(widthPx, h);
         android.view.ViewGroup.LayoutParams lp = root.getLayoutParams();
         if (lp == null) {
-            lp = new android.view.ViewGroup.LayoutParams(widthPx, h);
+            lp = new android.view.ViewGroup.LayoutParams(widthPx, rootHeight);
         } else {
             lp.width = widthPx;
-            lp.height = h;
+            lp.height = rootHeight;
         }
         root.setLayoutParams(lp);
+        android.util.Log.d("LOActivity", "ai_dialog_fixed windowH=" + h + " overhead=" + overhead);
     }
 
     /**
@@ -403,6 +437,18 @@ public final class AiDialogHelper {
      */
     public static void applyContentAdaptiveSize(AlertDialog dialog, android.view.View root,
                                                 int widthPx, int maxHeightPx, int minHeightPx) {
+        applyContentAdaptiveSizeOnce(dialog, root, widthPx, maxHeightPx, minHeightPx);
+        if (root != null && dialog != null) {
+            root.post(() -> {
+                if (dialog.isShowing()) {
+                    applyContentAdaptiveSizeOnce(dialog, root, widthPx, maxHeightPx, minHeightPx);
+                }
+            });
+        }
+    }
+
+    private static void applyContentAdaptiveSizeOnce(AlertDialog dialog, android.view.View root,
+                                                     int widthPx, int maxHeightPx, int minHeightPx) {
         if (dialog == null || dialog.getWindow() == null || root == null) {
             return;
         }
@@ -418,7 +464,8 @@ public final class AiDialogHelper {
         root.measure(widthSpec, heightSpec);
         int contentHeight = root.getMeasuredHeight();
         restoreWeightedChildHeights(relaxed);
-        int windowHeight = Math.min(Math.max(contentHeight, minHeightPx), maxHeightPx);
+        int overhead = getAncestorVerticalOverhead(root, dialog);
+        int windowHeight = Math.min(Math.max(contentHeight + overhead, minHeightPx), maxHeightPx);
         windowHeight = Math.max(windowHeight, dpToPx(root.getResources(), MIN_HEIGHT_DP));
         dialog.getWindow().setLayout(widthPx, windowHeight);
         android.view.ViewGroup.LayoutParams lp = root.getLayoutParams();
@@ -428,10 +475,37 @@ public final class AiDialogHelper {
             lp.width = widthPx;
         }
         // 根部恒撑满窗口:键盘压缩/结果态下限时内部 weight 弹性区收缩,底部按钮不溢出
-        lp.height = windowHeight;
+        lp.height = Math.max(1, windowHeight - overhead);
         root.setLayoutParams(lp);
+        logActionButtonBounds(root);
         android.util.Log.d("LOActivity", "ai_dialog_adaptive contentH=" + contentHeight
-                + " windowH=" + windowHeight + " min=" + minHeightPx + " cap=" + maxHeightPx);
+                + " windowH=" + windowHeight + " overhead=" + overhead
+                + " min=" + minHeightPx + " cap=" + maxHeightPx);
+    }
+
+    /** Record actual CTA clipping after layout, including device-specific dialog insets. */
+    public static void logActionButtonBounds(View root) {
+        if (root == null) return;
+        root.post(() -> {
+            int[] ids = {
+                    R.id.wai_text_op_generate_btn, R.id.wai_image_generate_btn,
+                    R.id.wai_format_execute_btn, R.id.wai_outline_generate_btn,
+                    R.id.wai_article_generate_btn, R.id.wai_translate_generate_btn,
+                    R.id.typeset_select_start
+            };
+            for (int id : ids) {
+                View button = root.findViewById(id);
+                if (button == null || !button.isShown()) continue;
+                android.graphics.Rect visible = new android.graphics.Rect();
+                boolean shown = button.getGlobalVisibleRect(visible);
+                int visibleHeight = shown ? visible.height() : 0;
+                android.util.Log.d("LOActivity", "ai_dialog_cta_bounds id=" + id
+                        + " expectedHeight=" + button.getHeight()
+                        + " visibleHeight=" + visibleHeight
+                        + " rootHeight=" + root.getHeight()
+                        + " clipped=" + (visibleHeight < button.getHeight()));
+            }
+        });
     }
 
     /** 递归放开 0dp+weight 子项:高度临时转 wrap_content(原值记录在 relaxed,由恢复方还原)。 */

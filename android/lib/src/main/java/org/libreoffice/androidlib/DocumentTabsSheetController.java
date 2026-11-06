@@ -233,11 +233,14 @@ public class DocumentTabsSheetController {
         });
     }
 
-    private static int fileTypeIconRes(String name) {
+    private int fileTypeIconRes(String name) {
         if (TextUtils.isEmpty(name)) {
             return R.drawable.lolib_ic_file_type_writer;
         }
         String lower = name.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".pdf")) {
+            return R.drawable.lolib_ic_figma_file_pdf;
+        }
         if (lower.endsWith(".ods") || lower.endsWith(".xls") || lower.endsWith(".xlsx") || lower.endsWith(".csv")) {
             return R.drawable.lolib_ic_file_type_calc;
         }

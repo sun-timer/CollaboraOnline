@@ -96,7 +96,8 @@ public class FindReplaceSheetController {
         View panel = LayoutInflater.from(host.getContext()).inflate(R.layout.lolib_sheet_find_replace, null);
         mainPanel = panel;
         bindMainPanel(panel);
-        floatingDialog = showFloatingDialog(panel);
+        floatingDialog = BottomSheetAnchorHelper.isLandscape(host.getContext())
+                ? showFloatingDialog(panel) : showPortraitFindDialog(panel);
     }
 
     public void dismiss() {
@@ -148,6 +149,58 @@ public class FindReplaceSheetController {
             Log.i("FindReplaceSheet", "find_panel_size content=" + targetWidthPx + "x" + contentHeight
                     + " window=" + windowWidth + "x" + windowHeight + " replace=" + replaceTabActive);
         });
+    }
+
+    /** Portrait find and settings panels follow the keyboard without resizing the document view. */
+    private AlertDialog showPortraitFindDialog(View panel) {
+        AlertDialog dialog = new AlertDialog.Builder(host.getContext()).create();
+        final int[] bottomInset = {0};
+        android.widget.ScrollView scroll = new android.widget.ScrollView(host.getContext()) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                int available = Math.max(host.dpToPx(80),
+                        getResources().getDisplayMetrics().heightPixels - bottomInset[0] - host.dpToPx(24));
+                int mode = MeasureSpec.getMode(heightSpec);
+                int size = MeasureSpec.getSize(heightSpec);
+                int limit = mode == MeasureSpec.UNSPECIFIED ? available : Math.min(size, available);
+                super.onMeasure(widthSpec, MeasureSpec.makeMeasureSpec(limit, MeasureSpec.AT_MOST));
+            }
+        };
+        panel.setBackgroundResource(R.drawable.lolib_bg_find_bottom_panel);
+        scroll.addView(panel, new android.widget.ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        dialog.setView(scroll, 0, 0, 0, 0);
+        AiDialogHelper.applyCloseOnlyDismiss(dialog);
+        AiDialogHelper.applyTransparentWindow(dialog);
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            WindowManager.LayoutParams attrs = window.getAttributes();
+            attrs.gravity = Gravity.BOTTOM;
+            attrs.x = 0;
+            window.setAttributes(attrs);
+            View decor = window.getDecorView();
+            ViewCompat.setOnApplyWindowInsetsListener(decor, (v, insets) -> {
+                int bottom = insets.isVisible(WindowInsetsCompat.Type.ime())
+                        ? insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+                        : insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
+                if (bottomInset[0] != bottom) {
+                    bottomInset[0] = bottom;
+                    scroll.requestLayout();
+                }
+                WindowManager.LayoutParams current = window.getAttributes();
+                if (current.y != bottom) {
+                    current.y = bottom;
+                    window.setAttributes(current);
+                }
+                return insets;
+            });
+            ViewCompat.requestApplyInsets(decor);
+        }
+        return dialog;
     }
 
     /** 悬浮查找窗：默认在顶栏下方靠右，按住标题可拖开，避免挡住正文。 */
@@ -221,7 +274,8 @@ public class FindReplaceSheetController {
     }
 
     private void relayoutFloating(View panel) {
-        if (floatingDialog == null || panel == null || !floatingDialog.isShowing()) {
+        if (!BottomSheetAnchorHelper.isLandscape(host.getContext())
+                || floatingDialog == null || panel == null || !floatingDialog.isShowing()) {
             return;
         }
         android.util.DisplayMetrics metrics = host.getContext().getResources().getDisplayMetrics();
@@ -312,6 +366,13 @@ public class FindReplaceSheetController {
         EditText findQuery = panel.findViewById(R.id.find_query_input);
         EditText replaceQuery = panel.findViewById(R.id.find_replace_query_input);
         EditText replaceWith = panel.findViewById(R.id.find_replace_with_input);
+        for (EditText input : new EditText[] {findQuery, replaceQuery}) {
+            android.graphics.drawable.Drawable searchIcon = host.getContext()
+                    .getDrawable(R.drawable.lolib_ic_figma_find_search).mutate();
+            searchIcon.setBounds(0, 0, host.dpToPx(28), host.dpToPx(28));
+            input.setCompoundDrawablesRelative(searchIcon, null, null, null);
+            input.setCompoundDrawablePadding(host.dpToPx(4));
+        }
 
         ImageButton close = panel.findViewById(R.id.find_sheet_close);
         ImageButton settings = panel.findViewById(R.id.find_sheet_settings);
@@ -468,20 +529,8 @@ public class FindReplaceSheetController {
         back.setOnClickListener(v -> dismissSettings());
 
         settingsPanel = panel;
-        if (BottomSheetAnchorHelper.isLandscape(host.getContext())) {
-            floatingSettingsDialog = showFloatingDialog(panel);
-        } else {
-            settingsDialog = new BottomSheetDialog(host.getContext());
-            settingsDialog.setContentView(panel);
-            AiDialogHelper.applyCloseOnlyDismiss(settingsDialog);
-            settingsDialog.setOnDismissListener(dialog -> {
-                settingsDialog = null;
-                settingsPanel = null;
-            });
-            settingsDialog.setOnShowListener(d -> expandSettingsSheet(settingsDialog, panel));
-            settingsDialog.show();
-            AiDialogHelper.applyNoDimScrim(settingsDialog);
-        }
+        floatingSettingsDialog = BottomSheetAnchorHelper.isLandscape(host.getContext())
+                ? showFloatingDialog(panel) : showPortraitFindDialog(panel);
     }
 
     private void dismissSettings() {

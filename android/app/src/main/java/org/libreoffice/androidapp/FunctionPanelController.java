@@ -1,7 +1,9 @@
 package org.libreoffice.androidlib;
 
-import android.app.AlertDialog;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.util.TypedValue;
+import android.graphics.drawable.ColorDrawable;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -9,20 +11,23 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.HorizontalScrollView;
 import android.widget.FrameLayout;
-import androidx.core.widget.NestedScrollView;
 import android.widget.ImageButton;
+import androidx.core.widget.NestedScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.CompoundButton;
+import android.widget.PopupWindow;
 import android.widget.TextView;
-import androidx.appcompat.widget.SwitchCompat;
 
-import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
+
+import org.libreoffice.androidlib.ai.AiDialogHelper;
+import org.libreoffice.androidlib.impress.ImpressShapePickerController;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -31,19 +36,28 @@ import java.util.Map;
 public class FunctionPanelController {
     private static final String TAG = "FunctionPanelController";
 
+    // Figma style: tab selected = blue text + underline, unselected = dark gray text
     private static final int COLOR_TAB_SELECTED_BG = Color.parseColor("#F4F5F7");
     private static final int COLOR_TAB_UNSELECTED_BG = Color.parseColor("#E4E4E6");
+    private static final int COLOR_TAB_ACTIVE_TEXT = Color.parseColor("#1278D9");
+    private static final int COLOR_TAB_INACTIVE_TEXT = Color.parseColor("#333333");
     private static final int COLOR_TAB_SELECTED_TEXT = Color.parseColor("#202124");
     private static final int COLOR_TAB_UNSELECTED_TEXT = Color.parseColor("#80868B");
     private static final int COLOR_DIVIDER = Color.parseColor("#E3E3E3");
     private static final int COLOR_SECTION = Color.parseColor("#80868B");
+    private static final int COLOR_SECTION_TITLE = Color.parseColor("#101010");
+    private static final int COLOR_CARD_BG = Color.parseColor("#F2F3F5");
+    private static final int COLOR_TAB_BAR_BORDER = Color.parseColor("#A2A9B2");
+    /** Figma 750×1624 canvas: 功能面板统一固定高度（切换 tab 不变；内容滚动/留白）。 */
+    private static final float SHEET_HEIGHT_RATIO = BottomSheetAnchorHelper.FUNCTION_PANEL_HEIGHT_RATIO;
 
     public interface StringListCallback {
         void onResult(List<String> labels, List<String> values);
     }
 
     public interface FormattingCallback {
-        void onResult(String styleName, String fontName, String fontSizePt, String paragraphAlignment);
+        void onResult(String styleName, String fontName, String fontSizePt, String paragraphAlignment,
+                      boolean bold, boolean italic, boolean underline, boolean strikethrough);
     }
 
     public interface Host {
@@ -65,7 +79,7 @@ public class FunctionPanelController {
 
         void toastTodo(String text);
 
-        void showWatermarkDialog(boolean enabled);
+        void applyWatermark(String text, String font, int angle, int transparency);
 
         void applyParagraphStyle(String styleName);
 
@@ -75,11 +89,31 @@ public class FunctionPanelController {
 
         void insertComment();
 
+        String getCommentAuthorName();
+        String getCommentAuthorAvatarUri();
+
+        void insertCommentWithText(String text);
+
+        void insertChartWithType(String unoChartType);
+
+        void runAfterFunctionPanelDismiss(Runnable action);
+
         void fetchStyleList(StringListCallback callback);
+
+        default void fetchSpellCheckState(java.util.function.Consumer<Boolean> callback) {
+            callback.accept(null);
+        }
 
         void fetchFontList(StringListCallback callback);
 
         void fetchCurrentFormatting(FormattingCallback callback);
+
+        void showAiOperationSheet();
+
+        void focusDocumentAndShowIme();
+
+        /** Bottom toolbar + nav spacer height; sheets anchor above this chrome. */
+        int getBottomChromeHeightPx();
     }
 
     private enum ItemType {
@@ -90,7 +124,8 @@ public class FunctionPanelController {
         PARAGRAPH_CHIP,
         ACTION,
         GRID_ACTION,
-        TOGGLE
+        TOGGLE,
+        WATERMARK
     }
 
     private static final class FunctionItem {
@@ -149,24 +184,54 @@ public class FunctionPanelController {
     private BottomSheetDialog dialog;
     private LinearLayout tabBar;
     private NestedScrollView contentContainer;
+    private View tabHeader;
+    private View functionTabArea;
+    private View fontPickerPanel;
+    private View optionPickerPanel;
+    private PopupWindow fontSizePopup;
+    private View sheetContentRoot;
+    private boolean fontPickerVisible;
+    private boolean optionPickerVisible;
+    /** 审阅：接收/拒绝修订互斥选中，右侧 √ 仅展示在选中项。 */
+    private String selectedReviewTrackedAction = "accept_change";
+    /** 打开纸张方向等二级页前缓存的 sheet 高度，避免内容隐藏后自适应变矮。 */
+    private int functionPanelLockedHeightPx = -1;
     private final List<TextView> tabViews = new ArrayList<>();
+    private View tabIndicator;
     private final List<FunctionTab> tabs;
     private int selectedTabIndex = 0;
     private final Map<String, String> pickerValues = new HashMap<>();
     private final Map<String, Boolean> toggleStates = new HashMap<>();
     private String[] cachedFontOptions = FALLBACK_FONT_OPTIONS;
     private String[] cachedFontValues = FALLBACK_FONT_VALUES;
+    private String[] cachedStyleLabels;
+    private String[] cachedStyleValues;
+    private ImpressInsertTablePickerController tablePicker;
+    private ImpressShapePickerController shapePicker;
+    private ImpressCommentPickerController commentPicker;
+    private boolean commentPickerVisible;
+    private boolean chartPickerVisible;
+    private WatermarkSettingsController watermarkPicker;
+    private PaperSizePickerController paperSizePicker;
+    private double customPaperWidthCm = 21.0;
+    private double customPaperHeightCm = 29.7;
     private String currentStyleName = "";
     private String currentParagraphAlignment = "";
+    private String watermarkText = "水印文本";
+    private String watermarkFont = "";
+    private int watermarkAngle = 45;
+    private int watermarkTransparency = 50;
+    private LolibSettingsSwitch watermarkToggleView;
 
     public FunctionPanelController(Host host) {
         this.host = host;
         this.tabs = buildTabs();
         pickerValues.put("font_name", "字体");
         pickerValues.put("font_size", "4号");
-        pickerValues.put("page_margins", "默认");
+        pickerValues.put("page_margins", WriterLayoutCatalog.MARGINS[0].label);
         pickerValues.put("paper_size", "A4");
         pickerValues.put("paper_orientation", "纵向");
+        pickerValues.put("style_picker", "正文");
         toggleStates.put("watermark", false);
         toggleStates.put("track_changes", false);
         toggleStates.put("show_changes", true);
@@ -177,9 +242,30 @@ public class FunctionPanelController {
             return;
         }
         View panel = LayoutInflater.from(host.getContext()).inflate(R.layout.lolib_sheet_functions_edit, null, false);
+        sheetContentRoot = panel;
+        tabHeader = panel.findViewById(R.id.function_edit_tab_header);
+        functionTabArea = panel.findViewById(R.id.function_edit_tab_area);
+        fontPickerPanel = panel.findViewById(R.id.function_font_picker_panel);
+        optionPickerPanel = panel.findViewById(R.id.function_option_picker_panel);
         tabBar = panel.findViewById(R.id.function_edit_tab_bar);
         contentContainer = panel.findViewById(R.id.function_edit_content_container);
+        applyFunctionPanelContentPadding();
+        tabIndicator = panel.findViewById(R.id.function_edit_tab_indicator);
+        ImageButton aiBtn = panel.findViewById(R.id.function_edit_btn_ai);
+        ImageButton keyboardBtn = panel.findViewById(R.id.function_edit_btn_keyboard);
         ImageButton collapseBtn = panel.findViewById(R.id.function_edit_btn_collapse);
+        if (aiBtn != null) {
+            aiBtn.setOnClickListener(v -> {
+                dismiss();
+                host.showAiOperationSheet();
+            });
+        }
+        if (keyboardBtn != null) {
+            keyboardBtn.setOnClickListener(v -> {
+                dismiss();
+                host.runAfterFunctionPanelDismiss(() -> host.focusDocumentAndShowIme());
+            });
+        }
         if (collapseBtn != null) {
             collapseBtn.setOnClickListener(v -> dismiss());
         }
@@ -189,12 +275,23 @@ public class FunctionPanelController {
 
         dialog = new BottomSheetDialog(host.getContext());
         dialog.setContentView(panel);
-        dialog.setOnDismissListener(d -> dialog = null);
+        AiDialogHelper.applyCloseOnlyDismiss(dialog);
+        dialog.setOnDismissListener(d -> {
+            BottomSheetAnchorHelper.clearAppliedHeight(dialog);
+            dialog = null;
+        });
+        dialog.setOnShowListener(d -> applyAdaptiveSheetHeight());
         dialog.show();
-        expandSheet();
     }
 
     public void dismiss() {
+        dismissFontPickerDialog();
+        dismissOptionPicker();
+        dismissFontSizePopup();
+        dismissCommentPickerPage();
+        dismissChartPickerPage();
+        dismissWatermarkSettingsPage();
+        dismissPaperSizePickerPage();
         if (dialog != null) {
             dialog.dismiss();
             dialog = null;
@@ -205,22 +302,46 @@ public class FunctionPanelController {
         return dialog != null && dialog.isShowing();
     }
 
+    /** 横竖屏切换：关闭锚点浮层/二级页，并重算 BottomSheet 高度。 */
+    public void onConfigurationChanged() {
+        if (dialog == null || !dialog.isShowing()) {
+            return;
+        }
+        dismissFontPickerDialog();
+        dismissOptionPicker();
+        dismissFontSizePopup();
+        dismissCommentPickerPage();
+        dismissChartPickerPage();
+        dismissWatermarkSettingsPage();
+        dismissPaperSizePickerPage();
+        dismissTablePickerPage();
+        if (shapePicker != null) {
+            shapePicker.onConfigurationChanged();
+        }
+        applyAdaptiveSheetHeight();
+    }
+
     private void buildTabBar() {
         tabBar.removeAllViews();
         tabViews.clear();
+        tabBar.setBackgroundColor(Color.TRANSPARENT);
+        tabBar.setPadding(0, 0, 0, 0);
+        tabBar.setOrientation(LinearLayout.HORIZONTAL);
+
+        // Build tabs with Figma style: 17sp text, blue active / gray inactive
         for (int i = 0; i < tabs.size(); i++) {
             final int index = i;
             FunctionTab tab = tabs.get(i);
             TextView tabView = new TextView(host.getContext());
             tabView.setText(tab.title);
             tabView.setGravity(Gravity.CENTER);
-            tabView.setTextSize(15);
-            tabView.setPadding(host.dpToPx(12), 0, host.dpToPx(12), 0);
+            tabView.setTextSize(17);
+            tabView.setPadding(host.dpToPx(16), 0, host.dpToPx(16), 0);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.MATCH_PARENT);
             if (i > 0) {
-                lp.setMarginStart(host.dpToPx(6));
+                lp.setMarginStart(host.dpToPx(4));
             }
             tabView.setLayoutParams(lp);
             tabView.setOnClickListener(v -> selectTab(index));
@@ -234,13 +355,97 @@ public class FunctionPanelController {
         for (int i = 0; i < tabViews.size(); i++) {
             TextView tabView = tabViews.get(i);
             boolean selected = i == index;
-            tabView.setBackgroundColor(selected ? COLOR_TAB_SELECTED_BG : COLOR_TAB_UNSELECTED_BG);
-            tabView.setTextColor(selected ? COLOR_TAB_SELECTED_TEXT : COLOR_TAB_UNSELECTED_TEXT);
+            tabView.setBackgroundColor(Color.TRANSPARENT);
+            tabView.setTextColor(selected ? COLOR_TAB_ACTIVE_TEXT : COLOR_TAB_INACTIVE_TEXT);
         }
+        // Update indicator position to center under the selected tab
         renderTabContent(tabs.get(index));
-        if (dialog != null) {
-            expandSheet();
+        if (contentContainer != null) {
+            contentContainer.scrollTo(0, 0);
         }
+        if (dialog != null && dialog.isShowing()) {
+            final int tabIndex = index;
+            View anchor = contentContainer != null ? contentContainer : tabBar;
+            anchor.post(() -> {
+                applyAdaptiveSheetHeight();
+                updateTabIndicator(tabIndex);
+            });
+        } else {
+            updateTabIndicator(index);
+        }
+    }
+
+    private void applyAdaptiveSheetHeight() {
+        if (dialog == null) {
+            return;
+        }
+        AiDialogHelper.applyNoDimScrim(dialog);
+        FrameLayout bottomSheet = dialog.findViewById(
+                com.google.android.material.R.id.design_bottom_sheet);
+        if (bottomSheet != null) {
+            bottomSheet.setBackgroundResource(R.drawable.lolib_bg_font_picker_sheet);
+            bottomSheet.setElevation(host.dpToPx(28));
+        }
+        BottomSheetAnchorHelper.Options options =
+                BottomSheetAnchorHelper.overlayDocumentSheetOptions(host.getContext(), TAG);
+        options.logTag = TAG;
+        if (shouldLockFunctionPanelSheetHeight()) {
+            reapplyFunctionPanelSheetHeightLock(options);
+            applyFunctionPanelContentPadding();
+            return;
+        }
+        functionPanelLockedHeightPx = -1;
+        BottomSheetAnchorHelper.clearAppliedHeight(dialog);
+        BottomSheetAnchorHelper.expandFunctionPanel(dialog, SHEET_HEIGHT_RATIO, options);
+        functionPanelLockedHeightPx = BottomSheetAnchorHelper.getAppliedHeightPx(dialog);
+        applyFunctionPanelContentPadding();
+    }
+
+    private boolean shouldLockFunctionPanelSheetHeight() {
+        return optionPickerVisible || fontPickerVisible;
+    }
+
+    private void captureFunctionPanelSheetHeightForLock() {
+        if (dialog == null) {
+            return;
+        }
+        int applied = BottomSheetAnchorHelper.getAppliedHeightPx(dialog);
+        if (applied > 0) {
+            functionPanelLockedHeightPx = applied;
+            return;
+        }
+        FrameLayout bottomSheet = dialog.findViewById(
+                com.google.android.material.R.id.design_bottom_sheet);
+        if (bottomSheet != null && bottomSheet.getHeight() > 0) {
+            functionPanelLockedHeightPx = bottomSheet.getHeight();
+        }
+    }
+
+    private void reapplyFunctionPanelSheetHeightLock(BottomSheetAnchorHelper.Options options) {
+        if (dialog == null || functionPanelLockedHeightPx <= 0) {
+            return;
+        }
+        BottomSheetAnchorHelper.expandFixed(dialog, functionPanelLockedHeightPx, options);
+    }
+
+    private void applyFunctionPanelContentPadding() {
+        if (contentContainer == null) {
+            return;
+        }
+        int horizontal = host.dpToPx(16);
+        int top = host.dpToPx(8);
+        int designPad = host.getContext().getResources().getDimensionPixelSize(
+                R.dimen.lolib_function_sheet_bottom_pad);
+        int navPad = Math.max(0, host.getBottomChromeHeightPx());
+        contentContainer.setClipToPadding(false);
+        contentContainer.setPadding(horizontal, top, horizontal, Math.max(designPad, navPad));
+    }
+
+    private void updateTabIndicator(int index) {
+        if (tabIndicator == null || index < 0 || index >= tabViews.size()) {
+            return;
+        }
+        FunctionPanelTabIndicatorHelper.updateForSelectedTab(tabViews.get(index), tabBar, tabIndicator);
     }
 
     private void renderTabContent(FunctionTab tab) {
@@ -251,27 +456,28 @@ public class FunctionPanelController {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        List<FunctionItem> pendingStyleChips = new ArrayList<>();
+        if ("review".equals(tab.id)) {
+            renderReviewTabContent(root, tab);
+            contentContainer.addView(root);
+            return;
+        }
+        if ("file".equals(tab.id)) {
+            renderFileTabContent(root, tab);
+            contentContainer.addView(root);
+            return;
+        }
+
         List<FunctionItem> pendingParagraphChips = new ArrayList<>();
         List<FunctionItem> pendingGridActions = new ArrayList<>();
+        List<FunctionItem> pendingLayoutPickers = new ArrayList<>();
 
         for (FunctionItem item : tab.items) {
             switch (item.type) {
                 case SECTION:
-                    flushStyleChips(root, pendingStyleChips);
                     flushParagraphChips(root, pendingParagraphChips);
                     flushGridActions(root, pendingGridActions);
+                    flushLayoutPickers(root, pendingLayoutPickers);
                     root.addView(createSectionHeader(item.label));
-                    break;
-                case STYLE_SECTION:
-                    flushStyleChips(root, pendingStyleChips);
-                    flushParagraphChips(root, pendingParagraphChips);
-                    flushGridActions(root, pendingGridActions);
-                    root.addView(createSectionHeader(item.label));
-                    root.addView(createDynamicStylePlaceholder());
-                    break;
-                case STYLE_CHIP:
-                    pendingStyleChips.add(item);
                     break;
                 case PARAGRAPH_CHIP:
                     pendingParagraphChips.add(item);
@@ -280,41 +486,126 @@ public class FunctionPanelController {
                     pendingGridActions.add(item);
                     break;
                 case PICKER:
-                    flushStyleChips(root, pendingStyleChips);
                     flushParagraphChips(root, pendingParagraphChips);
                     flushGridActions(root, pendingGridActions);
-                    root.addView(createPickerRow(item));
+                    if ("layout".equals(tab.id)) {
+                        pendingLayoutPickers.add(item);
+                    } else {
+                        flushLayoutPickers(root, pendingLayoutPickers);
+                        root.addView(createPickerRow(item));
+                    }
                     break;
                 case ACTION:
-                    flushStyleChips(root, pendingStyleChips);
                     flushParagraphChips(root, pendingParagraphChips);
                     flushGridActions(root, pendingGridActions);
+                    flushLayoutPickers(root, pendingLayoutPickers);
                     root.addView(createActionRow(item));
                     root.addView(createDivider());
                     break;
                 case TOGGLE:
-                    flushStyleChips(root, pendingStyleChips);
                     flushParagraphChips(root, pendingParagraphChips);
                     flushGridActions(root, pendingGridActions);
+                    flushLayoutPickers(root, pendingLayoutPickers);
                     root.addView(createToggleRow(item));
-                    root.addView(createDivider());
+                    break;
+                case WATERMARK:
+                    flushParagraphChips(root, pendingParagraphChips);
+                    flushGridActions(root, pendingGridActions);
+                    flushLayoutPickers(root, pendingLayoutPickers);
+                    root.addView(createWatermarkRow(item));
                     break;
                 default:
                     break;
             }
         }
-        flushStyleChips(root, pendingStyleChips);
         flushParagraphChips(root, pendingParagraphChips);
         flushGridActions(root, pendingGridActions);
+        flushLayoutPickers(root, pendingLayoutPickers);
 
         contentContainer.addView(root);
     }
 
-    private void flushStyleChips(LinearLayout root, List<FunctionItem> chips) {
-        if (!chips.isEmpty()) {
-            root.addView(createStyleChipRow(chips));
-            chips.clear();
+    private void flushLayoutPickers(LinearLayout root, List<FunctionItem> pickers) {
+        if (pickers.isEmpty()) {
+            return;
         }
+        root.addView(createGroupedLayoutPickers(pickers));
+        pickers.clear();
+    }
+
+    private View createLayoutSectionSpacer() {
+        View spacer = new View(host.getContext());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(40));
+        spacer.setLayoutParams(lp);
+        return spacer;
+    }
+
+    private View createGroupedLayoutPickers(List<FunctionItem> pickers) {
+        LinearLayout group = new LinearLayout(host.getContext());
+        group.setOrientation(LinearLayout.VERTICAL);
+        group.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
+        LinearLayout.LayoutParams groupLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        group.setLayoutParams(groupLp);
+
+        for (int i = 0; i < pickers.size(); i++) {
+            group.addView(createGroupedPickerRow(pickers.get(i)));
+            if (i < pickers.size() - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x14000000);
+                group.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+        return group;
+    }
+
+    private View createGroupedPickerRow(FunctionItem item) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(host.dpToPx(16), host.dpToPx(12), host.dpToPx(12), host.dpToPx(12));
+        row.setMinimumHeight(host.dpToPx(56));
+
+        if (item.iconResId != 0) {
+            ImageView icon = new ImageView(host.getContext());
+            icon.setImageResource(item.iconResId);
+            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            row.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
+        }
+
+        TextView label = new TextView(host.getContext());
+        label.setText(item.label);
+        label.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+        label.setTextSize(16);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        labelLp.setMarginStart(host.dpToPx(item.iconResId != 0 ? 16 : 0));
+        row.addView(label, labelLp);
+
+        TextView valueView = null;
+        if ("paper_size".equals(item.id) || "paper_orientation".equals(item.id)) {
+            String currentValue = pickerValues.getOrDefault(item.id, item.subtitle);
+            valueView = new TextView(host.getContext());
+            valueView.setText(currentValue);
+            valueView.setTextColor(Color.parseColor("#6A6A6A"));
+            valueView.setTextSize(14);
+            LinearLayout.LayoutParams valueLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            valueLp.setMarginEnd(host.dpToPx(8));
+            row.addView(valueView, valueLp);
+        }
+
+        ImageView chevron = new ImageView(host.getContext());
+        chevron.setImageResource(R.drawable.lolib_ic_chevron_right);
+        chevron.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        int chevronSize = host.dpToPx(16);
+        row.addView(chevron, new LinearLayout.LayoutParams(chevronSize, chevronSize));
+
+        final TextView valueTarget = valueView;
+        row.setOnClickListener(v -> showPickerDialog(item, valueTarget != null ? valueTarget : label));
+        return row;
     }
 
     private void flushParagraphChips(LinearLayout root, List<FunctionItem> chips) {
@@ -334,9 +625,9 @@ public class FunctionPanelController {
     private TextView createSectionHeader(String title) {
         TextView header = new TextView(host.getContext());
         header.setText(title);
-        header.setTextColor(COLOR_SECTION);
-        header.setTextSize(14);
-        header.setPadding(host.dpToPx(8), host.dpToPx(8), host.dpToPx(8), host.dpToPx(6));
+        header.setTextColor(COLOR_SECTION_TITLE);
+        header.setTextSize(16);
+        header.setPadding(host.dpToPx(4), host.dpToPx(12), host.dpToPx(4), host.dpToPx(10));
         return header;
     }
 
@@ -349,110 +640,49 @@ public class FunctionPanelController {
         return divider;
     }
 
-    private View createDynamicStylePlaceholder() {
-        FrameLayout container = new FrameLayout(host.getContext());
-        container.setTag("dynamic_style_container");
-        container.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        populateDynamicStyleContainer(container, buildStyleLabels(), buildStyleValues());
-        return container;
-    }
-
-    private List<String> buildStyleLabels() {
-        List<String> labels = new ArrayList<>();
-        if (currentStyleName != null && !currentStyleName.trim().isEmpty()) {
-            labels.add("当前：" + currentStyleName.trim());
-        }
-        for (String fallback : FALLBACK_STYLE_LABELS) {
-            labels.add(fallback);
-        }
-        return labels;
-    }
-
-    private List<String> buildStyleValues() {
-        List<String> values = new ArrayList<>();
-        if (currentStyleName != null && !currentStyleName.trim().isEmpty()) {
-            values.add(currentStyleName.trim());
-        }
-        for (String fallback : FALLBACK_STYLE_VALUES) {
-            values.add(fallback);
-        }
-        return values;
-    }
-
-    private void populateDynamicStyleContainer(FrameLayout container, List<String> labels, List<String> values) {
-        container.removeAllViews();
-        if (labels == null || values == null || labels.isEmpty()) {
-            labels = new ArrayList<>();
-            values = new ArrayList<>();
-            for (int i = 0; i < FALLBACK_STYLE_LABELS.length; i++) {
-                labels.add(FALLBACK_STYLE_LABELS[i]);
-                values.add(FALLBACK_STYLE_VALUES[i]);
-            }
-        }
-        container.addView(createHorizontalStyleChipRow(labels, values));
-    }
-
-    private View createHorizontalStyleChipRow(List<String> labels, List<String> styleIds) {
-        HorizontalScrollView scroll = new HorizontalScrollView(host.getContext());
-        scroll.setHorizontalScrollBarEnabled(false);
-        scroll.setFillViewport(false);
-        LinearLayout row = new LinearLayout(host.getContext());
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(host.dpToPx(4), host.dpToPx(4), host.dpToPx(4), host.dpToPx(8));
-        for (int i = 0; i < labels.size(); i++) {
-            final String label = labels.get(i);
-            final String styleId = i < styleIds.size() ? styleIds.get(i) : label;
-            TextView button = new TextView(host.getContext());
-            button.setText(label);
-            button.setGravity(Gravity.CENTER);
-            button.setTextColor(COLOR_TAB_SELECTED_TEXT);
-            button.setTextSize(14);
-            button.setBackgroundResource(R.drawable.lolib_bg_function_chip);
-            button.setPadding(host.dpToPx(14), host.dpToPx(12), host.dpToPx(14), host.dpToPx(12));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.setMarginEnd(host.dpToPx(8));
-            button.setLayoutParams(lp);
-            button.setOnClickListener(v -> runAndDismiss(() -> host.applyParagraphStyle(styleId)));
-            row.addView(button);
-        }
-        scroll.addView(row);
-        return scroll;
-    }
-
-    private View createStyleChipRow(List<FunctionItem> chips) {
-        List<String> labels = new ArrayList<>();
-        List<String> styleIds = new ArrayList<>();
-        for (FunctionItem chip : chips) {
-            labels.add(chip.label);
-            styleIds.add(chip.unoCommand);
-        }
-        return createHorizontalStyleChipRow(labels, styleIds);
-    }
-
     private View createParagraphChipGrid(List<FunctionItem> chips) {
+        // Figma: 3-column grid of cards (icon 24dp + label 14sp), bg #F2F3F5, no border
         LinearLayout grid = new LinearLayout(host.getContext());
         grid.setOrientation(LinearLayout.VERTICAL);
-        grid.setPadding(host.dpToPx(4), host.dpToPx(4), host.dpToPx(4), host.dpToPx(8));
-        for (int rowStart = 0; rowStart < chips.size(); rowStart += 3) {
+        int cols = 3;
+        for (int rowStart = 0; rowStart < chips.size(); rowStart += cols) {
             LinearLayout row = new LinearLayout(host.getContext());
             row.setOrientation(LinearLayout.HORIZONTAL);
-            for (int i = rowStart; i < Math.min(rowStart + 3, chips.size()); i++) {
+            for (int i = rowStart; i < Math.min(rowStart + cols, chips.size()); i++) {
                 FunctionItem chip = chips.get(i);
-                ImageButton button = new ImageButton(host.getContext());
-                button.setImageResource(chip.iconResId);
-                button.setBackgroundResource(isCurrentParagraphAlignment(chip.id)
+                LinearLayout card = new LinearLayout(host.getContext());
+                card.setOrientation(LinearLayout.VERTICAL);
+                card.setGravity(Gravity.CENTER);
+                // Figma card: #F2F3F5, no border. Selected = blue tint.
+                card.setBackgroundResource(isCurrentParagraphAlignment(chip.id)
                         ? R.drawable.lolib_bg_function_chip_selected
-                        : R.drawable.lolib_bg_function_chip);
-                button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-                button.setPadding(host.dpToPx(10), host.dpToPx(10), host.dpToPx(10), host.dpToPx(10));
-                button.setContentDescription(chip.label);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, host.dpToPx(52), 1f);
-                lp.setMarginEnd(host.dpToPx(8));
-                button.setLayoutParams(lp);
-                button.setOnClickListener(v -> runAndDismiss(() -> host.executeUnoCommand(chip.unoCommand)));
-                row.addView(button);
+                        : R.drawable.lolib_bg_function_card_figma);
+                card.setPadding(host.dpToPx(8), host.dpToPx(16), host.dpToPx(8), host.dpToPx(14));
+                card.setMinimumHeight(host.dpToPx(80));
+
+                ImageView icon = new ImageView(host.getContext());
+                icon.setImageResource(chip.iconResId);
+                icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                icon.setAdjustViewBounds(true);
+                LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(
+                        host.dpToPx(24), host.dpToPx(24));
+                card.addView(icon, iconLp);
+
+                TextView label = new TextView(host.getContext());
+                label.setText(chip.label);
+                label.setGravity(Gravity.CENTER);
+                label.setTextColor(COLOR_SECTION_TITLE);
+                label.setTextSize(14);
+                label.setPadding(0, host.dpToPx(8), 0, 0);
+                card.addView(label);
+
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                lp.setMarginEnd(host.dpToPx(i < Math.min(rowStart + cols, chips.size()) - 1 ? 12 : 0));
+                lp.bottomMargin = host.dpToPx(10);
+                card.setLayoutParams(lp);
+                card.setOnClickListener(v -> runAndDismiss(() -> host.executeUnoCommand(chip.unoCommand)));
+                row.addView(card);
             }
             grid.addView(row, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -461,56 +691,118 @@ public class FunctionPanelController {
     }
 
     private View createPickerRow(FunctionItem item) {
-        LinearLayout row = new LinearLayout(host.getContext());
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(host.dpToPx(8), host.dpToPx(12), host.dpToPx(8), host.dpToPx(12));
-        row.setMinimumHeight(host.dpToPx(52));
+        // Figma picker: entire row in a bg #F2F3F5 rounded card, no border
+        LinearLayout card = new LinearLayout(host.getContext());
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
+        card.setPadding(host.dpToPx(16), host.dpToPx(12), host.dpToPx(12), host.dpToPx(12));
+        card.setMinimumHeight(host.dpToPx(52));
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cardLp.bottomMargin = host.dpToPx(10);
+        card.setLayoutParams(cardLp);
 
-        TextView label = new TextView(host.getContext());
-        label.setText(item.label);
-        label.setTextColor(COLOR_TAB_SELECTED_TEXT);
-        label.setTextSize(18);
-        row.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        TextView value = new TextView(host.getContext());
-        value.setText(pickerValues.getOrDefault(item.id, item.subtitle));
-        value.setTextColor(COLOR_TAB_UNSELECTED_TEXT);
-        value.setTextSize(16);
-        row.addView(value);
-
-        TextView arrow = new TextView(host.getContext());
-        arrow.setText("›");
-        arrow.setTextColor(COLOR_TAB_UNSELECTED_TEXT);
-        arrow.setTextSize(22);
-        arrow.setPadding(host.dpToPx(8), 0, 0, 0);
-        row.addView(arrow);
-
-        row.setOnClickListener(v -> showPickerDialog(item, value));
-        return row;
-    }
-
-    private View createActionRow(FunctionItem item) {
-        LinearLayout row = new LinearLayout(host.getContext());
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(host.dpToPx(8), host.dpToPx(12), host.dpToPx(8), host.dpToPx(12));
-        row.setMinimumHeight(host.dpToPx(56));
-
+        // Icon 24dp (Figma 48px at ~2x scale)
         if (item.iconResId != 0) {
             ImageView icon = new ImageView(host.getContext());
             icon.setImageResource(item.iconResId);
-            icon.setLayoutParams(new LinearLayout.LayoutParams(host.dpToPx(28), host.dpToPx(28)));
-            row.addView(icon);
+            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(
+                    host.dpToPx(24), host.dpToPx(24));
+            card.addView(icon, iconLp);
+        }
+
+        String currentValue = pickerValues.getOrDefault(item.id, item.subtitle);
+        if ("font_size".equals(item.id)) {
+            // Figma字号: icon + "大小" label + [bordered value box "4号" + arrow]
+            TextView label = new TextView(host.getContext());
+            label.setText("大小");
+            label.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+            label.setTextSize(16);
+            LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            labelLp.setMarginStart(host.dpToPx(16));
+            card.addView(label, labelLp);
+
+            LinearLayout valueBox = new LinearLayout(host.getContext());
+            valueBox.setOrientation(LinearLayout.HORIZONTAL);
+            valueBox.setGravity(Gravity.CENTER_VERTICAL);
+            valueBox.setBackgroundResource(R.drawable.lolib_bg_function_value_box);
+            valueBox.setPadding(host.dpToPx(12), host.dpToPx(4), host.dpToPx(4), host.dpToPx(4));
+            valueBox.setMinimumWidth(host.dpToPx(80));
+
+            TextView value = new TextView(host.getContext());
+            value.setText(currentValue);
+            value.setTextColor(Color.parseColor("#6A6A6A"));
+            value.setTextSize(14);
+            valueBox.addView(value);
+
+            // 字号箭头：开口朝下（Figma 3082:59940），点击弹出字号浮层
+            ImageView arrow = new ImageView(host.getContext());
+            arrow.setImageResource(R.drawable.lolib_ic_chevron_down);
+            arrow.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            arrow.setContentDescription("选择字号");
+            int arrowSize = host.dpToPx(20);
+            LinearLayout.LayoutParams arrowLp = new LinearLayout.LayoutParams(arrowSize, arrowSize);
+            arrowLp.setMarginStart(host.dpToPx(6));
+            valueBox.addView(arrow, arrowLp);
+
+            valueBox.setOnClickListener(v -> showFontSizePopup(value, valueBox));
+            card.addView(valueBox);
+        } else {
+            // Figma字体: icon + current font name (e.g. "宋体") + arrow
+            TextView fontName = new TextView(host.getContext());
+            fontName.setText(currentValue);
+            fontName.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+            fontName.setTextSize(16);
+            LinearLayout.LayoutParams fontLp = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            fontLp.setMarginStart(host.dpToPx(16));
+            card.addView(fontName, fontLp);
+
+            TextView arrow = new TextView(host.getContext());
+            arrow.setText("›");
+            arrow.setTextColor(COLOR_TAB_UNSELECTED_TEXT);
+            arrow.setTextSize(18);
+            arrow.setPadding(host.dpToPx(8), 0, 0, 0);
+            card.addView(arrow);
+
+            card.setOnClickListener(v -> showPickerDialog(item, fontName));
+        }
+        return card;
+    }
+
+    private View createActionRow(FunctionItem item) {
+        return createActionRow(item, false, true);
+    }
+
+    private View createActionRow(FunctionItem item, boolean indent, boolean wrapCard) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        if (wrapCard) {
+            row.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
+        }
+        int startPad = indent ? host.dpToPx(40) : host.dpToPx(16);
+        row.setPadding(startPad, host.dpToPx(14), host.dpToPx(16), host.dpToPx(14));
+        row.setMinimumHeight(host.dpToPx(56));
+
+        int leadingIcon = item.iconResId;
+        if (leadingIcon != 0) {
+            ImageView icon = new ImageView(host.getContext());
+            icon.setImageResource(leadingIcon);
+            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            row.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
         }
 
         TextView label = new TextView(host.getContext());
         label.setText(item.label);
-        label.setTextColor(COLOR_TAB_SELECTED_TEXT);
-        label.setTextSize(18);
+        label.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+        label.setTextSize(16);
         LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        labelLp.setMarginStart(host.dpToPx(14));
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        labelLp.setMarginStart(host.dpToPx(leadingIcon != 0 ? 14 : 0));
         row.addView(label, labelLp);
 
         row.setOnClickListener(v -> runItemAction(item));
@@ -521,60 +813,319 @@ public class FunctionPanelController {
         LinearLayout row = new LinearLayout(host.getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(host.dpToPx(8), host.dpToPx(8), host.dpToPx(8), host.dpToPx(8));
-        row.setMinimumHeight(host.dpToPx(56));
+        row.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
+        row.setPadding(host.dpToPx(16), host.dpToPx(12), host.dpToPx(12), host.dpToPx(12));
+        row.setMinimumHeight(host.dpToPx(52));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.bottomMargin = host.dpToPx(10);
+        row.setLayoutParams(rowLp);
+
+        if (item.iconResId != 0) {
+            ImageView icon = new ImageView(host.getContext());
+            icon.setImageResource(item.iconResId);
+            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            row.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
+        }
 
         TextView label = new TextView(host.getContext());
         label.setText(item.label);
-        label.setTextColor(COLOR_TAB_SELECTED_TEXT);
-        label.setTextSize(18);
-        row.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        label.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+        label.setTextSize(16);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        labelLp.setMarginStart(host.dpToPx(item.iconResId != 0 ? 16 : 0));
+        row.addView(label, labelLp);
 
-        SwitchCompat toggle = new SwitchCompat(host.getContext());
+        LolibSettingsSwitch toggle = SwitchUiHelper.createSettingsSwitch(host.getContext());
         boolean initial = toggleStates.getOrDefault(item.id, item.defaultToggleOn);
-        toggle.setChecked(initial);
+        toggle.setCheckedSilent(initial);
         toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
             toggleStates.put(item.id, isChecked);
             dispatchToggle(item, isChecked, buttonView);
         });
-        row.addView(toggle);
+        row.addView(toggle, SwitchUiHelper.createSettingsSwitchLayoutParams(host.getContext()));
+        return row;
+    }
+
+    private View createGroupedToggleRow(FunctionItem item) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(host.dpToPx(16), host.dpToPx(12), host.dpToPx(12), host.dpToPx(12));
+        row.setMinimumHeight(host.dpToPx(52));
+
+        if (item.iconResId != 0) {
+            ImageView icon = new ImageView(host.getContext());
+            icon.setImageResource(item.iconResId);
+            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            row.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
+        }
+
+        TextView label = new TextView(host.getContext());
+        label.setText(item.label);
+        label.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+        label.setTextSize(16);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        labelLp.setMarginStart(host.dpToPx(item.iconResId != 0 ? 16 : 0));
+        row.addView(label, labelLp);
+
+        LolibSettingsSwitch toggle = SwitchUiHelper.createSettingsSwitch(host.getContext());
+        boolean initial = toggleStates.getOrDefault(item.id, item.defaultToggleOn);
+        toggle.setCheckedSilent(initial);
+        toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            toggleStates.put(item.id, isChecked);
+            dispatchToggle(item, isChecked, buttonView);
+        });
+        row.addView(toggle, SwitchUiHelper.createSettingsSwitchLayoutParams(host.getContext()));
+        if ("spell_check".equals(item.id)) {
+            host.fetchSpellCheckState(state -> {
+                if (state != null) {
+                    toggle.post(() -> {
+                        toggleStates.put(item.id, state);
+                        toggle.setCheckedSilent(state);
+                    });
+                }
+            });
+        }
+        return row;
+    }
+
+    private View createGroupedCard(List<View> rows) {
+        LinearLayout group = new LinearLayout(host.getContext());
+        group.setOrientation(LinearLayout.VERTICAL);
+        group.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
+        LinearLayout.LayoutParams groupLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        groupLp.bottomMargin = host.dpToPx(10);
+        group.setLayoutParams(groupLp);
+        for (int i = 0; i < rows.size(); i++) {
+            group.addView(rows.get(i));
+            if (i < rows.size() - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x14000000);
+                group.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+        return group;
+    }
+
+    private void renderReviewTabContent(LinearLayout root, FunctionTab tab) {
+        FunctionItem findReplace = null;
+        FunctionItem spellCheck = null;
+        FunctionItem trackChanges = null;
+        FunctionItem showChanges = null;
+        FunctionItem acceptChange = null;
+        FunctionItem rejectChange = null;
+        for (FunctionItem item : tab.items) {
+            switch (item.id) {
+                case "find_replace":
+                    findReplace = item;
+                    break;
+                case "spell_check":
+                    spellCheck = item;
+                    break;
+                case "track_changes":
+                    trackChanges = item;
+                    break;
+                case "show_changes":
+                    showChanges = item;
+                    break;
+                case "accept_change":
+                    acceptChange = item;
+                    break;
+                case "reject_change":
+                    rejectChange = item;
+                    break;
+                default:
+                    break;
+            }
+        }
+        if (findReplace != null) {
+            root.addView(createActionRow(findReplace));
+            View gap = new View(host.getContext());
+            gap.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(10)));
+            root.addView(gap);
+        }
+        List<View> cardOne = new ArrayList<>();
+        if (spellCheck != null) {
+            cardOne.add(createGroupedToggleRow(spellCheck));
+        }
+        if (trackChanges != null) {
+            cardOne.add(createGroupedToggleRow(trackChanges));
+        }
+        if (!cardOne.isEmpty()) {
+            root.addView(createGroupedCard(cardOne));
+        }
+        List<View> cardTwo = new ArrayList<>();
+        if (showChanges != null) {
+            cardTwo.add(createGroupedToggleRow(showChanges));
+        }
+        if (!cardTwo.isEmpty()) {
+            root.addView(createGroupedCard(cardTwo));
+        }
+        if (acceptChange != null) {
+            root.addView(createReviewTrackedChangeRow(acceptChange));
+        }
+        if (rejectChange != null) {
+            root.addView(createReviewTrackedChangeRow(rejectChange));
+        }
+    }
+
+    private View createReviewTrackedChangeRow(FunctionItem item) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setBackgroundColor(Color.WHITE);
+        row.setPadding(host.dpToPx(56), host.dpToPx(14), host.dpToPx(16), host.dpToPx(14));
+        row.setMinimumHeight(host.dpToPx(52));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.bottomMargin = host.dpToPx(10);
+        row.setLayoutParams(rowLp);
+
+        TextView label = new TextView(host.getContext());
+        label.setText(item.label);
+        label.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+        label.setTextSize(16);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        row.addView(label, labelLp);
+
+        boolean selected = item.id.equals(selectedReviewTrackedAction);
+        ImageView trailing = new ImageView(host.getContext());
+        trailing.setImageResource(R.drawable.lolib_ic_review_accept_change);
+        trailing.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        trailing.setVisibility(selected ? View.VISIBLE : View.GONE);
+        row.addView(trailing, new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
+
+        row.setOnClickListener(v -> {
+            selectedReviewTrackedAction = item.id;
+            renderTabContent(tabs.get(selectedTabIndex));
+            runItemAction(item);
+        });
+        return row;
+    }
+
+    private void renderFileTabContent(LinearLayout root, FunctionTab tab) {
+        for (int i = 0; i < tab.items.size(); i++) {
+            root.addView(createActionRow(tab.items.get(i), false, false));
+            if (i < tab.items.size() - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(COLOR_DIVIDER);
+                root.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+    }
+
+    private View createWatermarkRow(FunctionItem item) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
+        row.setPadding(host.dpToPx(16), host.dpToPx(12), host.dpToPx(8), host.dpToPx(12));
+        row.setMinimumHeight(host.dpToPx(56));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.bottomMargin = host.dpToPx(20);
+        row.setLayoutParams(rowLp);
+
+        if (item.iconResId != 0) {
+            ImageView icon = new ImageView(host.getContext());
+            icon.setImageResource(item.iconResId);
+            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            row.addView(icon, new LinearLayout.LayoutParams(host.dpToPx(24), host.dpToPx(24)));
+        }
+
+        TextView label = new TextView(host.getContext());
+        label.setText(item.label);
+        label.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+        label.setTextSize(16);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        labelLp.setMarginStart(host.dpToPx(item.iconResId != 0 ? 16 : 0));
+        row.addView(label, labelLp);
+
+        LolibSettingsSwitch toggle = SwitchUiHelper.createSettingsSwitch(host.getContext());
+        boolean initial = toggleStates.getOrDefault(item.id, item.defaultToggleOn);
+        toggle.setCheckedSilent(initial);
+        toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            toggleStates.put(item.id, isChecked);
+            dispatchWatermarkToggle(isChecked, buttonView);
+        });
+        watermarkToggleView = toggle;
+        row.addView(toggle, SwitchUiHelper.createSettingsSwitchLayoutParams(host.getContext()));
+
+        ImageView chevron = new ImageView(host.getContext());
+        chevron.setImageResource(R.drawable.lolib_ic_chevron_right);
+        chevron.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        chevron.setContentDescription("水印设置");
+        int chevronSize = host.dpToPx(32);
+        LinearLayout.LayoutParams chevronLp = new LinearLayout.LayoutParams(chevronSize, chevronSize);
+        chevronLp.setMarginStart(host.dpToPx(4));
+        row.addView(chevron, chevronLp);
+        chevron.setOnClickListener(v -> showWatermarkSettingsPage());
+
         return row;
     }
 
     private View createGridActions(List<FunctionItem> actions) {
+        // Figma-style: 3-column grid of large cards (icon 24dp + label 14sp), h ~84dp
         LinearLayout grid = new LinearLayout(host.getContext());
         grid.setOrientation(LinearLayout.VERTICAL);
-        grid.setPadding(host.dpToPx(4), host.dpToPx(4), host.dpToPx(4), host.dpToPx(8));
-        for (int rowStart = 0; rowStart < actions.size(); rowStart += 2) {
+        int cols = 3;
+        for (int rowStart = 0; rowStart < actions.size(); rowStart += cols) {
             LinearLayout row = new LinearLayout(host.getContext());
             row.setOrientation(LinearLayout.HORIZONTAL);
-            for (int i = rowStart; i < Math.min(rowStart + 2, actions.size()); i++) {
+            for (int i = rowStart; i < Math.min(rowStart + cols, actions.size()); i++) {
                 FunctionItem action = actions.get(i);
                 LinearLayout cell = new LinearLayout(host.getContext());
                 cell.setOrientation(LinearLayout.VERTICAL);
                 cell.setGravity(Gravity.CENTER);
-                cell.setBackgroundResource(R.drawable.lolib_bg_function_chip);
-                cell.setPadding(host.dpToPx(8), host.dpToPx(12), host.dpToPx(8), host.dpToPx(12));
+                cell.setBackgroundResource(R.drawable.lolib_bg_function_card_figma);
+                cell.setPadding(host.dpToPx(8), host.dpToPx(14), host.dpToPx(8), host.dpToPx(14));
+                cell.setMinimumHeight(host.dpToPx(80));
 
                 ImageView icon = new ImageView(host.getContext());
                 icon.setImageResource(action.iconResId);
-                icon.setLayoutParams(new LinearLayout.LayoutParams(host.dpToPx(32), host.dpToPx(32)));
-                cell.addView(icon);
+                icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(
+                        host.dpToPx(24), host.dpToPx(24));
+                cell.addView(icon, iconLp);
 
                 TextView label = new TextView(host.getContext());
                 label.setText(action.label);
-                label.setTextColor(COLOR_TAB_SELECTED_TEXT);
+                label.setTextColor(COLOR_SECTION_TITLE);
                 label.setTextSize(14);
                 label.setGravity(Gravity.CENTER);
-                label.setPadding(0, host.dpToPx(6), 0, 0);
+                label.setPadding(0, host.dpToPx(8), 0, 0);
                 cell.addView(label);
 
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-                lp.setMarginEnd(host.dpToPx(8));
-                lp.bottomMargin = host.dpToPx(8);
+                // 显式固定高度（不再依赖 minHeight），保证卡片接近方形，避免内容不足时高度塌缩成宽扁长方形
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        0, host.dpToPx(84), 1f);
+                lp.setMarginEnd(host.dpToPx(
+                        i < Math.min(rowStart + cols, actions.size()) - 1 ? 12 : 0));
+                lp.bottomMargin = host.dpToPx(10);
                 cell.setLayoutParams(lp);
                 cell.setOnClickListener(v -> runItemAction(action));
                 row.addView(cell);
+            }
+            int cellsInRow = Math.min(rowStart + cols, actions.size()) - rowStart;
+            for (int pad = cellsInRow; pad < cols; pad++) {
+                View placeholder = new View(host.getContext());
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        0, host.dpToPx(84), 1f);
+                if (pad < cols - 1) {
+                    lp.setMarginEnd(host.dpToPx(12));
+                }
+                lp.bottomMargin = host.dpToPx(10);
+                placeholder.setLayoutParams(lp);
+                row.addView(placeholder);
             }
             grid.addView(row, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -587,38 +1138,113 @@ public class FunctionPanelController {
             showFontPickerDialog(valueView);
             return;
         }
+        if ("style_picker".equals(item.id)) {
+            showStylePickerPage(valueView);
+            return;
+        }
+        if ("page_margins".equals(item.id)) {
+            showPageMarginsPickerPage(valueView);
+            return;
+        }
+        if ("paper_size".equals(item.id)) {
+            showPaperSizePickerPage(valueView);
+            return;
+        }
+        if ("paper_orientation".equals(item.id)) {
+            showPaperOrientationPickerPage(valueView);
+            return;
+        }
         if (item.pickerOptions == null || item.pickerOptions.length == 0) {
             host.toastTodo(item.label + " 后续接入");
             return;
         }
-        new AlertDialog.Builder(host.getContext())
-                .setTitle(item.label)
-                .setItems(item.pickerOptions, (dialog, which) -> {
-                    String label = item.pickerOptions[which];
-                    String value = item.pickerValues != null && which < item.pickerValues.length
-                            ? item.pickerValues[which] : label;
-                    pickerValues.put(item.id, label);
-                    valueView.setText(label);
-                    applyPickerValue(item.id, value);
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        showOptionPickerPage(item.label, item.pickerOptions,
+                item.pickerValues != null ? item.pickerValues : item.pickerOptions,
+                item.id, valueView, SHEET_HEIGHT_RATIO);
+    }
+
+    // === 字号浮层（Figma 3082:60036：320×460 圆角卡片，锚定在字号框下方，不用二级页） ===
+
+    private void showFontSizePopup(TextView valueView, View anchor) {
+        dismissFontSizePopup();
+        LinearLayout rows = new LinearLayout(host.getContext());
+        rows.setOrientation(LinearLayout.VERTICAL);
+        rows.setPadding(host.dpToPx(8), host.dpToPx(8), host.dpToPx(8), host.dpToPx(8));
+
+        String selectedLabel = pickerValues.getOrDefault("font_size", "");
+        for (int i = 0; i < SIZE_OPTIONS.length; i++) {
+            final String label = SIZE_OPTIONS[i];
+            final String value = SIZE_VALUES[i];
+            rows.addView(createFontSizeRow(label, value, selectedLabel, valueView));
+            if (i < SIZE_OPTIONS.length - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x1F000000);
+                rows.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+
+        NestedScrollView scroll = new NestedScrollView(host.getContext());
+        scroll.setFillViewport(false);
+        scroll.setVerticalScrollBarEnabled(true);
+        scroll.setBackgroundResource(R.drawable.lolib_bg_font_size_popup);
+        scroll.setClipToOutline(true);
+        scroll.setOutlineProvider(android.view.ViewOutlineProvider.BACKGROUND);
+        scroll.addView(rows);
+
+        int width = host.dpToPx(160);
+        int height = host.dpToPx(230);
+        fontSizePopup = new PopupWindow(scroll, width, height, true);
+        fontSizePopup.setElevation(host.dpToPx(24));
+        fontSizePopup.setBackgroundDrawable(host.getContext().getDrawable(
+                R.drawable.lolib_bg_font_size_popup));
+        fontSizePopup.setOutsideTouchable(true);
+        fontSizePopup.showAsDropDown(anchor, anchor.getWidth() - width, -host.dpToPx(4));
+    }
+
+    private LinearLayout createFontSizeRow(String label, String value, String selectedLabel,
+            TextView valueView) {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(host.dpToPx(12), host.dpToPx(10), host.dpToPx(12), host.dpToPx(10));
+        row.setMinimumHeight(host.dpToPx(40));
+        boolean selected = label.equals(selectedLabel) || value.equals(selectedLabel);
+
+        TextView text = new TextView(host.getContext());
+        text.setText(label);
+        text.setTextSize(14);
+        text.setTextColor(selected ? COLOR_TAB_ACTIVE_TEXT : COLOR_TAB_INACTIVE_TEXT);
+        row.addView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        ImageView check = new ImageView(host.getContext());
+        check.setImageResource(selected
+                ? R.drawable.lolib_ic_font_size_selected
+                : R.drawable.lolib_ic_font_size_unselected);
+        int checkSize = host.dpToPx(16);
+        check.setLayoutParams(new LinearLayout.LayoutParams(checkSize, checkSize));
+        row.addView(check);
+
+        row.setOnClickListener(v -> {
+            pickerValues.put("font_size", label);
+            valueView.setText(label);
+            dismissFontSizePopup();
+            applyPickerValue("font_size", value);
+        });
+        return row;
+    }
+
+    private void dismissFontSizePopup() {
+        if (fontSizePopup != null) {
+            fontSizePopup.dismiss();
+            fontSizePopup = null;
+        }
     }
 
     private void showFontPickerDialog(TextView valueView) {
-        Runnable showDialog = () -> new AlertDialog.Builder(host.getContext())
-                .setTitle("字体")
-                .setItems(cachedFontOptions, (dialog, which) -> {
-                    String label = cachedFontOptions[which];
-                    String value = which < cachedFontValues.length ? cachedFontValues[which] : label;
-                    pickerValues.put("font_name", label);
-                    valueView.setText(label);
-                    applyPickerValue("font_name", value);
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        Runnable openSheet = () -> showFontPickerSheet(valueView);
         if (cachedFontOptions != null && cachedFontOptions.length > FALLBACK_FONT_OPTIONS.length) {
-            showDialog.run();
+            openSheet.run();
             return;
         }
         host.fetchFontList((labels, values) -> {
@@ -627,16 +1253,204 @@ public class FunctionPanelController {
                 cachedFontValues = values != null && !values.isEmpty()
                         ? values.toArray(new String[0]) : cachedFontOptions;
             }
-            showDialog.run();
+            openSheet.run();
         });
     }
 
+    private void showFontPickerSheet(TextView valueView) {
+        if (fontPickerPanel == null || dialog == null) {
+            return;
+        }
+        ImageButton back = fontPickerPanel.findViewById(R.id.font_picker_back);
+        LinearLayout list = fontPickerPanel.findViewById(R.id.font_picker_list);
+        fontPickerPanel.setBackgroundColor(Color.WHITE);
+        if (list != null) {
+            list.post(() -> {
+                int navigationInset = SystemUiHelper.readSafeAreaInsets(fontPickerPanel).bottom;
+                list.setPadding(list.getPaddingLeft(), list.getPaddingTop(), list.getPaddingRight(),
+                        Math.max(host.dpToPx(16), navigationInset));
+            });
+            if (list.getParent() instanceof ViewGroup) {
+                ((ViewGroup) list.getParent()).setClipToPadding(false);
+            }
+        }
+        if (back != null) {
+            back.setOnClickListener(v -> dismissFontPickerDialog());
+        }
+        populateFontPickerList(list, valueView);
+
+        dismissOptionPicker();
+        captureFunctionPanelSheetHeightForLock();
+        setTabChromeVisible(false);
+        if (contentContainer != null) {
+            contentContainer.setVisibility(View.GONE);
+        }
+        fontPickerPanel.setVisibility(View.VISIBLE);
+        fontPickerVisible = true;
+        if (dialog != null && dialog.isShowing()) {
+            fontPickerPanel.post(this::applyAdaptiveSheetHeight);
+        }
+    }
+
+    private void populateFontPickerList(LinearLayout list, TextView valueView) {
+        list.removeAllViews();
+        String selectedLabel = pickerValues.get("font_name");
+        LayoutInflater inflater = LayoutInflater.from(host.getContext());
+        for (int i = 0; i < cachedFontOptions.length; i++) {
+            final String label = cachedFontOptions[i];
+            final String value = i < cachedFontValues.length ? cachedFontValues[i] : label;
+            View row = inflater.inflate(R.layout.lolib_item_font_picker_row, list, false);
+            TextView name = row.findViewById(R.id.font_picker_item_name);
+            ImageView check = row.findViewById(R.id.font_picker_item_check);
+            name.setText(label);
+            Typeface previewTypeface = resolveFontTypeface(label);
+            if (previewTypeface != null) {
+                name.setTypeface(previewTypeface);
+            }
+            boolean selected = label.equals(selectedLabel) || value.equals(selectedLabel);
+            if (selected) {
+                name.setTextColor(COLOR_TAB_ACTIVE_TEXT);
+                check.setVisibility(View.VISIBLE);
+            } else {
+                name.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+                check.setVisibility(View.GONE);
+            }
+            row.setOnClickListener(v -> {
+                pickerValues.put("font_name", label);
+                valueView.setText(label);
+                applyPickerValue("font_name", value);
+                dismissFontPickerDialog();
+            });
+            list.addView(row);
+            if (i < cachedFontOptions.length - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x14000000);
+                list.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+    }
+
+    /**
+     * CO（LibreOffice core）提供的字体名 → Android assets 里打包的真实字体文件。
+     * Android 端在 assets/unpack/user/fonts/ 下打包了 core 的部分字体（Liberation 系列、
+     * Caladea、Carlito、Gentium、OpenSymbol），用 createFromAsset 加载，使字体选项行
+     * 显示对应真实字形。匹配不到的（如中文 Noto CJK 未打包）再 fallback 系统家族。
+     */
+    private static final String[][] FONT_ASSET_MAP = new String[][]{
+            {"Liberation Serif", "unpack/user/fonts/LiberationSerif-Regular.ttf"},
+            {"Liberation Sans", "unpack/user/fonts/LiberationSans-Regular.ttf"},
+            {"Liberation Mono", "unpack/user/fonts/LiberationMono-Regular.ttf"},
+            {"Liberation Sans Narrow", "unpack/user/fonts/LiberationSansNarrow-Regular.ttf"},
+            {"Caladea", "unpack/user/fonts/Caladea-Regular.ttf"},
+            {"Carlito", "unpack/user/fonts/Carlito-Regular.ttf"},
+            {"Gentium Basic", "unpack/user/fonts/GenBasR.ttf"},
+            {"Gentium Book Basic", "unpack/user/fonts/GenBkBasR.ttf"},
+            {"OpenSymbol", "unpack/user/fonts/opens___.ttf"},
+    };
+
+    /** 常见「Windows 字体名 / 替代字体」→ CO 打包字体名（.uno:CharFontName 可能返回这些）。 */
+    private static final String[][] FONT_ALIAS_MAP = new String[][]{
+            {"Times New Roman", "Liberation Serif"},
+            {"Arial", "Liberation Sans"},
+            {"Courier New", "Liberation Mono"},
+            {"Calibri", "Carlito"},
+            {"Cambria", "Caladea"},
+    };
+
+    /** 加载后缓存，避免重复 createFromAsset（该调用耗时）。 */
+    private final Map<String, Typeface> fontTypefaceCache = new HashMap<>();
+
+    private Typeface resolveFontTypeface(String fontName) {
+        if (fontName == null) {
+            return null;
+        }
+        Typeface cached = fontTypefaceCache.get(fontName);
+        if (cached != null) {
+            return cached;
+        }
+        Typeface tf = loadAssetFont(fontName);
+        if (tf != null) {
+            fontTypefaceCache.put(fontName, tf);
+            return tf;
+        }
+        // 无打包字体文件时，按关键字给一个语义接近的系统 family（衬线/无衬线/等宽）
+        tf = Typeface.create(fallbackSystemFamily(fontName), Typeface.NORMAL);
+        fontTypefaceCache.put(fontName, tf);
+        return tf;
+    }
+
+    private Typeface loadAssetFont(String fontName) {
+        String target = resolveAssetFamily(fontName);
+        if (target == null) {
+            return null;
+        }
+        try {
+            Typeface tf = Typeface.createFromAsset(host.getContext().getAssets(), target);
+            if (tf != null) {
+                return tf;
+            }
+        } catch (RuntimeException ignored) {
+            // 字体文件缺失/损坏 → fallback
+        }
+        return null;
+    }
+
+    private String resolveAssetFamily(String fontName) {
+        String n = fontName.trim();
+        for (String[] pair : FONT_ASSET_MAP) {
+            if (n.equalsIgnoreCase(pair[0])) {
+                return pair[1];
+            }
+        }
+        for (String[] pair : FONT_ALIAS_MAP) {
+            if (n.equalsIgnoreCase(pair[0])) {
+                for (String[] asset : FONT_ASSET_MAP) {
+                    if (asset[0].equalsIgnoreCase(pair[1])) {
+                        return asset[1];
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private String fallbackSystemFamily(String fontName) {
+        String n = fontName.toLowerCase(Locale.US);
+        if (n.contains("mono") || n.contains("courier") || n.contains("consolas")
+                || n.contains("code") || n.contains("等宽")) {
+            return "monospace";
+        }
+        if (n.contains("serif") || n.contains("song") || n.contains("ming")
+                || n.contains("宋") || n.contains("明") || n.contains("楷")
+                || n.contains("kai") || n.contains("仿") || n.contains("fangsong")
+                || n.contains("times") || n.contains("simsun") || n.contains("cambria")
+                || n.contains("georgia") || n.contains("cjk") || n.contains("noto")) {
+            return "serif";
+        }
+        return "sans-serif";
+    }
+
+    private void dismissFontPickerDialog() {
+        if (!fontPickerVisible) {
+            return;
+        }
+        fontPickerVisible = false;
+        setTabChromeVisible(true);
+        if (contentContainer != null) {
+            contentContainer.setVisibility(View.VISIBLE);
+        }
+        if (fontPickerPanel != null) {
+            fontPickerPanel.setVisibility(View.GONE);
+        }
+    }
+
     private void syncCurrentFormatting() {
-        host.fetchCurrentFormatting((styleName, fontName, fontSizePt, paragraphAlignment) -> {
+        host.fetchCurrentFormatting((styleName, fontName, fontSizePt, paragraphAlignment,
+                                    bold, italic, underline, strikethrough) -> {
             applyCurrentFormatting(styleName, fontName, fontSizePt, paragraphAlignment);
             if (dialog != null && dialog.isShowing() && selectedTabIndex == 0) {
                 renderTabContent(tabs.get(selectedTabIndex));
-                expandSheet();
             }
         });
     }
@@ -645,6 +1459,7 @@ public class FunctionPanelController {
             String paragraphAlignment) {
         if (styleName != null && !styleName.trim().isEmpty()) {
             currentStyleName = styleName.trim();
+            pickerValues.put("style_picker", styleName.trim());
         }
         if (paragraphAlignment != null && !paragraphAlignment.trim().isEmpty()) {
             currentParagraphAlignment = paragraphAlignment.trim();
@@ -682,18 +1497,703 @@ public class FunctionPanelController {
         return normalized + " pt";
     }
 
+    // === Shape picker — delegates to ImpressShapePickerController ===
+
     private void showShapePickerDialog() {
-        final String[] labels = new String[SHAPE_LABELS.length];
-        System.arraycopy(SHAPE_LABELS, 0, labels, 0, SHAPE_LABELS.length);
-        new AlertDialog.Builder(host.getContext())
-                .setTitle("插入形状")
-                .setItems(labels, (dialog, which) -> {
-                    if (which >= 0 && which < SHAPE_COMMANDS.length) {
-                        runAndDismiss(() -> host.executeUnoCommand(SHAPE_COMMANDS[which]));
+        dismiss();
+        if (shapePicker == null) {
+            shapePicker = new ImpressShapePickerController(
+                    new ImpressShapePickerController.Host() {
+                        @Override
+                        public android.content.Context getContext() {
+                            return host.getContext();
+                        }
+
+                        @Override
+                        public int dpToPx(int dp) {
+                            return host.dpToPx(dp);
+                        }
+
+                        @Override
+                        public int getBottomChromeHeightPx() {
+                            return host.getBottomChromeHeightPx();
+                        }
+
+                        @Override
+                        public void executeUnoCommand(String command) {
+                            host.executeUnoCommand(command);
+                        }
+
+                        @Override
+                        public void runAfterDismiss(Runnable action) {
+                            action.run();
+                        }
+                    },
+                    R.style.LolibShapePickerThemeWriter);
+        }
+        shapePicker.show();
+    }
+
+    // === Table picker — reuses ImpressInsertTablePickerController ===
+
+    private void showTablePickerPage() {
+        if (optionPickerVisible) {
+            dismissOptionPicker();
+        }
+        dismissFontPickerDialog();
+        setTabChromeVisible(false);
+        if (tablePicker == null) {
+            tablePicker = new ImpressInsertTablePickerController(new ImpressInsertTablePickerController.Host() {
+                @Override
+                public android.content.Context getContext() {
+                    return host.getContext();
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return host.dpToPx(dp);
+                }
+
+                @Override
+                public void insertTable(int rows, int columns) {
+                    runAndDismiss(() -> host.executeUnoCommand(
+                            ".uno:InsertTable?Columns=" + columns + "&Rows=" + rows));
+                }
+
+                @Override
+                public void onBack() {
+                    dismissTablePickerPage();
+                }
+            });
+            // 文档主题色：插入按钮用 Writer 蓝，而非 Impress 橙
+            tablePicker.setPrimaryButtonBackground(R.drawable.lolib_bg_writer_primary_button);
+        }
+        if (contentContainer != null) {
+            contentContainer.removeAllViews();
+            contentContainer.addView(tablePicker.buildRootView());
+        }
+    }
+
+    private void dismissTablePickerPage() {
+        setTabChromeVisible(true);
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(selectedTabIndex));
+        }
+    }
+
+    // === Comment picker — reuses ImpressCommentPickerController（native 输入框 → UNO 插入） ===
+
+    private void showCommentPickerPage() {
+        if (optionPickerVisible) {
+            dismissOptionPicker();
+        }
+        dismissFontPickerDialog();
+        setTabChromeVisible(false);
+        commentPickerVisible = true;
+        if (commentPicker == null) {
+            commentPicker = new ImpressCommentPickerController(new ImpressCommentPickerController.Host() {
+                @Override
+                public android.content.Context getContext() {
+                    return host.getContext();
+                }
+
+                @Override
+                public int dpToPx(int dp) {
+                    return host.dpToPx(dp);
+                }
+
+                @Override
+                public String getCommentAuthorName() {
+                    return host.getCommentAuthorName();
+                }
+
+                @Override
+                public String getCommentAuthorAvatarUri() {
+                    return host.getCommentAuthorAvatarUri();
+                }
+
+                @Override
+                public void toastTodo(String text) {
+                    host.toastTodo(text);
+                }
+
+                @Override
+                public void insertCommentWithText(String text) {
+                    dismiss();
+                    host.runAfterFunctionPanelDismiss(() -> host.insertCommentWithText(text));
+                }
+
+                @Override
+                public void onBack() {
+                    dismissCommentPickerPage();
+                }
+            });
+        }
+        commentPicker.setPrimaryButtonBackground(R.drawable.lolib_bg_writer_primary_button);
+        if (contentContainer != null) {
+            contentContainer.removeAllViews();
+            contentContainer.addView(commentPicker.buildRootView());
+        }
+    }
+
+    private void dismissCommentPickerPage() {
+        if (!commentPickerVisible) {
+            return;
+        }
+        commentPickerVisible = false;
+        setTabChromeVisible(true);
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(selectedTabIndex));
+        }
+    }
+
+    private void showChartTypePickerPage() {
+        if (optionPickerVisible) {
+            dismissOptionPicker();
+        }
+        dismissFontPickerDialog();
+        dismissChartPickerPage();
+        chartPickerVisible = true;
+        setTabChromeVisible(false);
+
+        if (contentContainer != null) {
+            contentContainer.removeAllViews();
+            LinearLayout root = new LinearLayout(host.getContext());
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT));
+            root.addView(createChartPickerHeader());
+            root.addView(ChartTypePickerUi.buildPickerBody(host.getContext(), host::dpToPx,
+                    (unoType, label) -> {
+                        Log.i(TAG, "chart_type_selected type=" + unoType + " label=" + label);
+                        dismiss();
+                        host.runAfterFunctionPanelDismiss(() -> host.insertChartWithType(unoType));
+                    }));
+            contentContainer.addView(root);
+        }
+        Log.i(TAG, "chart_type_picker_show");
+    }
+
+    private View createChartPickerHeader() {
+        LinearLayout header = new LinearLayout(host.getContext());
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setMinimumHeight(host.dpToPx(48));
+        header.setPadding(host.dpToPx(4), 0, host.dpToPx(8), 0);
+
+        ImageButton back = new ImageButton(host.getContext());
+        TypedValue rippleAttr = new TypedValue();
+        if (host.getContext().getTheme().resolveAttribute(
+                android.R.attr.selectableItemBackgroundBorderless, rippleAttr, true)) {
+            back.setBackgroundResource(rippleAttr.resourceId);
+        }
+        back.setImageResource(R.drawable.lolib_ic_top_back);
+        back.setContentDescription("返回");
+        back.setPadding(host.dpToPx(12), host.dpToPx(12), host.dpToPx(12), host.dpToPx(12));
+        back.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        back.setOnClickListener(v -> dismissChartPickerPage());
+        header.addView(back, new LinearLayout.LayoutParams(host.dpToPx(48), host.dpToPx(48)));
+
+        TextView title = new TextView(host.getContext());
+        title.setText("图表");
+        title.setTextColor(COLOR_SECTION_TITLE);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        title.setTypeface(null, Typeface.BOLD);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleLp.setMarginStart(host.dpToPx(4));
+        header.addView(title, titleLp);
+        return header;
+    }
+
+    private void dismissChartPickerPage() {
+        if (!chartPickerVisible) {
+            return;
+        }
+        chartPickerVisible = false;
+        setTabChromeVisible(true);
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(selectedTabIndex));
+        }
+    }
+
+    private void showWatermarkSettingsPage() {
+        if (optionPickerVisible) {
+            dismissOptionPicker();
+        }
+        dismissFontPickerDialog();
+        setTabChromeVisible(false);
+        ensureWatermarkFontDefault();
+        watermarkPicker = new WatermarkSettingsController(
+                new WatermarkSettingsController.Host() {
+                    @Override
+                    public android.content.Context getContext() {
+                        return host.getContext();
                     }
-                })
-                .setNegativeButton("取消", null)
-                .show();
+
+                    @Override
+                    public int dpToPx(int dp) {
+                        return host.dpToPx(dp);
+                    }
+
+                    @Override
+                    public void onBack() {
+                        dismissWatermarkSettingsPage();
+                    }
+
+                    @Override
+                    public void onConfirm(String text, String font, int angle, int transparency) {
+                        watermarkText = text == null ? "" : text.trim();
+                        watermarkFont = font == null || font.isEmpty() ? watermarkFont : font;
+                        watermarkAngle = angle;
+                        watermarkTransparency = transparency;
+                        toggleStates.put("watermark", true);
+                        if (watermarkToggleView != null) {
+                            watermarkToggleView.setChecked(true);
+                        }
+                        applyCurrentWatermarkSettings();
+                        dismissWatermarkSettingsPage();
+                    }
+
+                    @Override
+                    public void pickFont(String currentFont, WatermarkSettingsController.FontPickCallback callback) {
+                        showWatermarkFontPicker(currentFont, callback);
+                    }
+
+                    @Override
+                    public android.graphics.Typeface resolveFontPreviewTypeface(String fontName) {
+                        return resolveFontTypeface(fontName);
+                    }
+                },
+                watermarkText, watermarkFont, watermarkAngle, watermarkTransparency);
+        if (contentContainer != null) {
+            contentContainer.removeAllViews();
+            contentContainer.addView(watermarkPicker.buildRootView());
+        }
+    }
+
+    private void showWatermarkFontPicker(String currentFont,
+            WatermarkSettingsController.FontPickCallback callback) {
+        Runnable openSheet = () -> {
+            if (fontPickerPanel == null || dialog == null) {
+                return;
+            }
+            ImageButton back = fontPickerPanel.findViewById(R.id.font_picker_back);
+            LinearLayout list = fontPickerPanel.findViewById(R.id.font_picker_list);
+            if (back != null) {
+                back.setOnClickListener(v -> {
+                    dismissFontPickerDialog();
+                    if (contentContainer != null && watermarkPicker != null) {
+                        contentContainer.setVisibility(View.VISIBLE);
+                        contentContainer.removeAllViews();
+                        contentContainer.addView(watermarkPicker.buildRootView());
+                    }
+                    setTabChromeVisible(false);
+                });
+            }
+            populateWatermarkFontList(list, currentFont, callback);
+            if (contentContainer != null) {
+                contentContainer.setVisibility(View.GONE);
+            }
+            fontPickerPanel.setVisibility(View.VISIBLE);
+            fontPickerVisible = true;
+        };
+        if (cachedFontOptions != null && cachedFontOptions.length > FALLBACK_FONT_OPTIONS.length) {
+            openSheet.run();
+            return;
+        }
+        host.fetchFontList((labels, values) -> {
+            if (labels != null && !labels.isEmpty()) {
+                cachedFontOptions = labels.toArray(new String[0]);
+                cachedFontValues = values != null && !values.isEmpty()
+                        ? values.toArray(new String[0]) : cachedFontOptions;
+            }
+            openSheet.run();
+        });
+    }
+
+    private void populateWatermarkFontList(LinearLayout list, String currentFont,
+            WatermarkSettingsController.FontPickCallback callback) {
+        list.removeAllViews();
+        LayoutInflater inflater = LayoutInflater.from(host.getContext());
+        for (int i = 0; i < cachedFontOptions.length; i++) {
+            final String label = cachedFontOptions[i];
+            View row = inflater.inflate(R.layout.lolib_item_font_picker_row, list, false);
+            TextView name = row.findViewById(R.id.font_picker_item_name);
+            ImageView check = row.findViewById(R.id.font_picker_item_check);
+            name.setText(label);
+            Typeface previewTypeface = resolveFontTypeface(label);
+            if (previewTypeface != null) {
+                name.setTypeface(previewTypeface);
+            }
+            boolean selected = label.equals(currentFont);
+            name.setTextColor(selected ? COLOR_TAB_ACTIVE_TEXT : COLOR_TAB_INACTIVE_TEXT);
+            check.setVisibility(selected ? View.VISIBLE : View.GONE);
+            row.setOnClickListener(v -> {
+                callback.onFontPicked(label);
+                dismissFontPickerDialog();
+                if (contentContainer != null && watermarkPicker != null) {
+                    contentContainer.setVisibility(View.VISIBLE);
+                    contentContainer.removeAllViews();
+                    contentContainer.addView(watermarkPicker.buildRootView());
+                }
+                setTabChromeVisible(false);
+            });
+            list.addView(row);
+            if (i < cachedFontOptions.length - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x14000000);
+                list.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+    }
+
+    private void dismissWatermarkSettingsPage() {
+        setTabChromeVisible(true);
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(selectedTabIndex));
+        }
+    }
+
+    private void showPageMarginsPickerPage(TextView valueView) {
+        dismissPaperSizePickerPage();
+        showOptionPickerPage("页边距", WriterLayoutCatalog.marginLabels(),
+                WriterLayoutCatalog.marginIds(), "page_margins", valueView,
+                SHEET_HEIGHT_RATIO);
+    }
+
+    private void showPaperOrientationPickerPage(TextView valueView) {
+        dismissPaperSizePickerPage();
+        showOptionPickerPage("纸张方向", ORIENTATION_OPTIONS, ORIENTATION_VALUES,
+                "paper_orientation", valueView, SHEET_HEIGHT_RATIO);
+    }
+
+    private void showPaperSizePickerPage(TextView valueView) {
+        if (optionPickerVisible) {
+            dismissOptionPicker();
+        }
+        dismissFontPickerDialog();
+        setTabChromeVisible(false);
+        paperSizePicker = new PaperSizePickerController(
+                new PaperSizePickerController.Host() {
+                    @Override
+                    public android.content.Context getContext() {
+                        return host.getContext();
+                    }
+
+                    @Override
+                    public int dpToPx(int dp) {
+                        return host.dpToPx(dp);
+                    }
+
+                    @Override
+                    public void onBack() {
+                        dismissPaperSizePickerPage();
+                    }
+
+                    @Override
+                    public void onPresetSelected(WriterLayoutCatalog.PaperSizeOption option) {
+                        pickerValues.put("paper_size", option.label);
+                        if (valueView != null) {
+                            valueView.setText(option.label);
+                        }
+                        applyPaperFormat(option.paperFormat);
+                        dismissPaperSizePickerPage();
+                    }
+
+                    @Override
+                    public void onCustomSizeApplied(double widthCm, double heightCm) {
+                        customPaperWidthCm = widthCm;
+                        customPaperHeightCm = heightCm;
+                        String label = PaperSizePickerController.formatCustomLabel(widthCm, heightCm);
+                        pickerValues.put("paper_size", label);
+                        if (valueView != null) {
+                            valueView.setText(label);
+                        }
+                        applyCustomPaperSize(widthCm, heightCm);
+                    }
+                },
+                pickerValues.getOrDefault("paper_size", "A4"),
+                customPaperWidthCm, customPaperHeightCm);
+        if (contentContainer != null) {
+            contentContainer.removeAllViews();
+            contentContainer.setVisibility(View.VISIBLE);
+            contentContainer.addView(paperSizePicker.buildRootView());
+        }
+        if (optionPickerPanel != null) {
+            optionPickerPanel.setVisibility(View.GONE);
+        }
+    }
+
+    private void dismissPaperSizePickerPage() {
+        if (paperSizePicker == null) {
+            return;
+        }
+        paperSizePicker = null;
+        setTabChromeVisible(true);
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(selectedTabIndex));
+        }
+    }
+
+    private void ensureWatermarkFontDefault() {
+        if (watermarkFont != null && !watermarkFont.isEmpty() && !"宋体".equals(watermarkFont)) {
+            return;
+        }
+        String docFont = pickerValues.get("font_name");
+        if (docFont != null && !docFont.isEmpty() && !"字体".equals(docFont)) {
+            watermarkFont = docFont;
+            return;
+        }
+        if (cachedFontOptions != null && cachedFontOptions.length > 0) {
+            watermarkFont = cachedFontOptions[0];
+        } else {
+            watermarkFont = FALLBACK_FONT_OPTIONS[0];
+        }
+    }
+
+    // === Generic option picker page — replaces AlertDialog ===
+
+    /** 打开二级页框架（隐藏 tab chrome、显示 option picker 面板；sheet 高度保持不变）。 */
+    private void openOptionPickerFrame(String title, @SuppressWarnings("unused") float heightRatio) {
+        if (optionPickerPanel == null || dialog == null) {
+            return;
+        }
+        dismissFontPickerDialog();
+        dismissPaperSizePickerPage();
+        captureFunctionPanelSheetHeightForLock();
+        setTabChromeVisible(false);
+        if (contentContainer != null) {
+            contentContainer.setVisibility(View.GONE);
+        }
+        if (fontPickerPanel != null) {
+            fontPickerPanel.setVisibility(View.GONE);
+        }
+        TextView titleView = optionPickerPanel.findViewById(R.id.option_picker_title);
+        if (titleView != null) {
+            titleView.setText(title);
+        }
+        ImageButton back = optionPickerPanel.findViewById(R.id.option_picker_back);
+        if (back != null) {
+            back.setOnClickListener(v -> dismissOptionPicker());
+        }
+        optionPickerPanel.setVisibility(View.VISIBLE);
+        optionPickerVisible = true;
+        if (dialog != null && dialog.isShowing() && optionPickerPanel != null) {
+            optionPickerPanel.post(this::applyAdaptiveSheetHeight);
+        }
+    }
+
+    private void showOptionPickerPage(String title, String[] labels, String[] values,
+            String pickerId, TextView valueView, float heightRatio) {
+        openOptionPickerFrame(title, heightRatio);
+        LinearLayout list = optionPickerPanel.findViewById(R.id.option_picker_list);
+        populateOptionList(list, labels, values, pickerId, valueView);
+    }
+
+    private void populateOptionList(LinearLayout list, String[] labels, String[] values,
+            String pickerId, TextView valueView) {
+        list.removeAllViews();
+        String selectedLabel = pickerValues.getOrDefault(pickerId,
+                labels.length > 0 ? labels[0] : "");
+        LayoutInflater inflater = LayoutInflater.from(host.getContext());
+        for (int i = 0; i < labels.length; i++) {
+            final String label = labels[i];
+            final String value = i < values.length ? values[i] : label;
+            View row = inflater.inflate(R.layout.lolib_item_option_picker_row, list, false);
+            TextView name = row.findViewById(R.id.option_picker_item_name);
+            ImageView check = row.findViewById(R.id.option_picker_item_check);
+            name.setText(label);
+            boolean selected = label.equals(selectedLabel) || value.equals(selectedLabel);
+            if (selected) {
+                name.setTextColor(COLOR_TAB_ACTIVE_TEXT);
+                check.setVisibility(View.VISIBLE);
+            } else {
+                name.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+                check.setVisibility(View.GONE);
+            }
+            row.setOnClickListener(v -> {
+                pickerValues.put(pickerId, label);
+                if (valueView != null) {
+                    valueView.setText(label);
+                }
+                dismissOptionPicker();
+                applyPickerValue(pickerId, value);
+            });
+            list.addView(row);
+            if (i < labels.length - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x14000000);
+                list.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+    }
+
+    private void dismissOptionPicker() {
+        if (!optionPickerVisible) {
+            return;
+        }
+        optionPickerVisible = false;
+        setTabChromeVisible(true);
+        if (contentContainer != null) {
+            contentContainer.setVisibility(View.VISIBLE);
+        }
+        if (optionPickerPanel != null) {
+            optionPickerPanel.setVisibility(View.GONE);
+        }
+        if (dialog != null && dialog.isShowing()) {
+            renderTabContent(tabs.get(selectedTabIndex));
+            if (contentContainer != null) {
+                contentContainer.post(this::applyAdaptiveSheetHeight);
+            }
+        }
+    }
+
+    // === Style picker — fetches full Collabora style list, then opens option picker ===
+
+    /** 样式二级页顺序（Figma 5252:56110 + 用户指定）：正文/列表/题注/索引/标题1/2/3/caption，其余 CO 选项追加在后。 */
+    private static final String[][] STYLE_ORDER = new String[][]{
+            {"正文", "Default Paragraph Style"},
+            {"列表", "List"},
+            {"题注", "Caption"},
+            {"索引", "Index"},
+            {"标题1", "Heading 1"},
+            {"标题2", "Heading 2"},
+            {"标题3", "Heading 3"},
+            {"caption", "caption"},
+    };
+
+    private void showStylePickerPage(TextView valueView) {
+        Runnable openSheet = () -> {
+            openOptionPickerFrame("样式", SHEET_HEIGHT_RATIO);
+            LinearLayout list = optionPickerPanel.findViewById(R.id.option_picker_list);
+            populateStyleOptionList(list, valueView);
+        };
+        if (cachedStyleLabels != null && cachedStyleLabels.length > 0) {
+            openSheet.run();
+            return;
+        }
+        host.fetchStyleList((labels, values) -> {
+            if (labels != null && !labels.isEmpty()) {
+                reorderStyles(labels.toArray(new String[0]),
+                        values != null && !values.isEmpty()
+                                ? values.toArray(new String[0])
+                                : labels.toArray(new String[0]));
+            } else {
+                cachedStyleLabels = new String[]{"正文", "列表", "题注", "索引", "标题1", "标题2", "标题3", "caption"};
+                cachedStyleValues = new String[]{"Default Paragraph Style", "List", "Caption",
+                        "Index", "Heading 1", "Heading 2", "Heading 3", "caption"};
+            }
+            openSheet.run();
+        });
+    }
+
+    /** 按 STYLE_ORDER 重排样式，未匹配的 CO 其它样式按原序追加在后。 */
+    private void reorderStyles(String[] labels, String[] values) {
+        List<String> newLabels = new ArrayList<>();
+        List<String> newValues = new ArrayList<>();
+        boolean[] used = new boolean[values.length];
+        for (String[] pair : STYLE_ORDER) {
+            boolean matched = false;
+            for (int i = 0; i < values.length; i++) {
+                if (!used[i] && styleMatches(values[i], pair[1])) {
+                    newLabels.add(pair[0]);
+                    newValues.add(values[i]);
+                    used[i] = true;
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched && "正文".equals(pair[0])) {
+                // The native catalog also uses this built-in Writer style when command values omit it.
+                newLabels.add(pair[0]);
+                newValues.add(pair[1]);
+            }
+        }
+        for (int i = 0; i < values.length; i++) {
+            if (!used[i]) {
+                newLabels.add(labels[i]);
+                newValues.add(values[i]);
+            }
+        }
+        cachedStyleLabels = newLabels.toArray(new String[0]);
+        cachedStyleValues = newValues.toArray(new String[0]);
+    }
+
+    private boolean styleMatches(String styleId, String target) {
+        if (styleId == null) {
+            return false;
+        }
+        String s = styleId.trim();
+        if (s.equalsIgnoreCase(target)) {
+            return true;
+        }
+        String lower = s.toLowerCase(Locale.US);
+        if ("list".equalsIgnoreCase(target) && lower.startsWith("list")) {
+            return true;
+        }
+        if ("index".equalsIgnoreCase(target) && lower.startsWith("index")) {
+            return true;
+        }
+        return false;
+    }
+
+    private void populateStyleOptionList(LinearLayout list, TextView valueView) {
+        list.removeAllViews();
+        TextView section = new TextView(host.getContext());
+        section.setText("标题样式");
+        section.setTextColor(COLOR_SECTION);
+        section.setTextSize(14);
+        section.setPadding(host.dpToPx(16), host.dpToPx(12), host.dpToPx(16), host.dpToPx(8));
+        list.addView(section);
+        String selectedLabel = pickerValues.getOrDefault("style_picker", "");
+        String[] labels = cachedStyleLabels;
+        String[] values = cachedStyleValues;
+        if (labels == null || values == null) {
+            return;
+        }
+        LayoutInflater inflater = LayoutInflater.from(host.getContext());
+        for (int i = 0; i < labels.length; i++) {
+            final String label = labels[i];
+            final String styleId = i < values.length ? values[i] : label;
+            View row = inflater.inflate(R.layout.lolib_item_option_picker_row, list, false);
+            TextView name = row.findViewById(R.id.option_picker_item_name);
+            ImageView check = row.findViewById(R.id.option_picker_item_check);
+            name.setText(label);
+            if (label.equals(selectedLabel) || styleId.equals(selectedLabel)) {
+                name.setTextColor(COLOR_TAB_ACTIVE_TEXT);
+                check.setVisibility(View.VISIBLE);
+            } else {
+                name.setTextColor(COLOR_TAB_INACTIVE_TEXT);
+                check.setVisibility(View.GONE);
+            }
+            row.setOnClickListener(v -> {
+                pickerValues.put("style_picker", label);
+                valueView.setText(label);
+                dismissOptionPicker();
+                host.applyParagraphStyle(styleId);
+            });
+            list.addView(row);
+            if (i < labels.length - 1) {
+                View divider = new View(host.getContext());
+                divider.setBackgroundColor(0x14000000);
+                list.addView(divider, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, host.dpToPx(1)));
+            }
+        }
+    }
+
+    private void setTabChromeVisible(boolean visible) {
+        int v = visible ? View.VISIBLE : View.GONE;
+        if (tabHeader != null) {
+            tabHeader.setVisibility(v);
+        }
+        if (functionTabArea != null) {
+            functionTabArea.setVisibility(v);
+        }
     }
 
     private void applyPickerValue(String pickerId, String value) {
@@ -724,21 +2224,10 @@ public class FunctionPanelController {
     }
 
     private void dispatchToggle(FunctionItem item, boolean enabled, CompoundButton buttonView) {
-        if ("watermark".equals(item.id)) {
-            host.showWatermarkDialog(enabled);
-            return;
-        }
         switch (item.id) {
-            case "watermark":
-                if (enabled) {
-                    host.toastTodo("水印设置需要对话框，移动端后续接入");
-                    toggleStates.put(item.id, false);
-                    if (buttonView != null) {
-                        buttonView.setChecked(false);
-                    }
-                } else {
-                    host.toastTodo("关闭水印后续接入");
-                }
+            case "spell_check":
+                host.executeUnoCommand(".uno:SpellOnline {\"Enable\":{\"type\":\"boolean\",\"value\":"
+                        + enabled + "}}");
                 break;
             case "track_changes":
                 host.executeUnoCommand(enabled ? ".uno:TrackChangesInAllViews" : ".uno:TrackChanges?TrackChanges:bool=false");
@@ -754,34 +2243,59 @@ public class FunctionPanelController {
         }
     }
 
-    private void applyPageMargins(String value) {
-        int left = 2000;
-        int right = 2000;
-        int top = 2000;
-        int bottom = 2000;
-        if ("narrow".equals(value)) {
-            left = right = top = bottom = 1270;
-        } else if ("moderate".equals(value)) {
-            left = right = 1905;
-            top = bottom = 2540;
-        } else if ("wide".equals(value)) {
-            left = right = 5080;
-            top = bottom = 2540;
+    private void dispatchWatermarkToggle(boolean enabled, CompoundButton buttonView) {
+        if (enabled) {
+            applyCurrentWatermarkSettings();
+        } else {
+            host.applyWatermark("", watermarkFont, watermarkAngle, watermarkTransparency);
         }
-        host.executeUnoCommand(".uno:PageLRMargin?Page.Left:long=" + left + "&Page.Right:long=" + right);
-        host.executeUnoCommand(".uno:PageULMargin?Page.Upper:long=" + top + "&Page.Lower:long=" + bottom);
+    }
+
+    private void applyCurrentWatermarkSettings() {
+        host.applyWatermark(watermarkText, resolveWatermarkFontValue(watermarkFont),
+                watermarkAngle, watermarkTransparency);
+    }
+
+    private String resolveWatermarkFontValue(String label) {
+        if (label == null || label.isEmpty()) {
+            return FALLBACK_FONT_OPTIONS[0];
+        }
+        if (cachedFontOptions != null && cachedFontValues != null) {
+            for (int i = 0; i < cachedFontOptions.length; i++) {
+                if (label.equals(cachedFontOptions[i])) {
+                    return i < cachedFontValues.length ? cachedFontValues[i] : label;
+                }
+            }
+        }
+        return label;
+    }
+
+    private void applyPageMargins(String value) {
+        WriterLayoutCatalog.MarginOption option = WriterLayoutCatalog.findMarginByLabel(value);
+        host.executeUnoCommand(".uno:PageLRMargin?Page.Left:long=" + option.leftHmm
+                + "&Page.Right:long=" + option.rightHmm);
+        host.executeUnoCommand(".uno:PageULMargin?Page.Upper:long=" + option.topHmm
+                + "&Page.Lower:long=" + option.bottomHmm);
     }
 
     private void applyPaperSize(String value) {
-        int paperFormat = 4; // A4
-        if ("A3".equals(value)) {
-            paperFormat = 3;
-        } else if ("Letter".equals(value)) {
-            paperFormat = 8;
-        } else if ("Legal".equals(value)) {
-            paperFormat = 9;
+        WriterLayoutCatalog.PaperSizeOption option = WriterLayoutCatalog.findPaperByLabel(value);
+        if (option.label.equals(value) || option.id.equals(value)) {
+            applyPaperFormat(option.paperFormat);
+            return;
         }
+        applyCustomPaperSize(customPaperWidthCm, customPaperHeightCm);
+    }
+
+    private void applyPaperFormat(int paperFormat) {
         host.executeUnoCommand(".uno:AttributePageSize?PaperFormat:short=" + paperFormat);
+    }
+
+    private void applyCustomPaperSize(double widthCm, double heightCm) {
+        int widthHmm = PaperSizePickerController.cmToHmm(widthCm);
+        int heightHmm = PaperSizePickerController.cmToHmm(heightCm);
+        host.executeUnoCommand(".uno:AttributePageSize?AttributePageSize.Width:long="
+                + widthHmm + "&AttributePageSize.Height:long=" + heightHmm);
     }
 
     private void runItemAction(FunctionItem item) {
@@ -789,13 +2303,31 @@ public class FunctionPanelController {
             showShapePickerDialog();
             return;
         }
-        runAndDismiss(() -> {
+        if ("insert_chart".equals(item.id)) {
+            showChartTypePickerPage();
+            return;
+        }
+        if ("insert_table".equals(item.id)) {
+            showTablePickerPage();
+            return;
+        }
+        if ("insert_comment".equals(item.id)) {
+            showCommentPickerPage();
+            return;
+        }
+        Runnable action = () -> {
             if (item.hostAction != null) {
                 item.hostAction.run();
             } else if (item.unoCommand != null && !item.unoCommand.isEmpty()) {
                 host.executeUnoCommand(item.unoCommand);
             }
-        });
+        };
+        dismiss();
+        if (FunctionPanelSpellCheckHelper.needsDeferredUnoAfterPanelDismiss(item.unoCommand)) {
+            host.runAfterFunctionPanelDismiss(action);
+        } else {
+            action.run();
+        }
     }
 
     private void runAndDismiss(Runnable action) {
@@ -803,41 +2335,23 @@ public class FunctionPanelController {
         action.run();
     }
 
-    private void expandSheet() {
-        if (dialog == null) {
-            return;
-        }
-        FrameLayout bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
-        if (bottomSheet == null) {
-            return;
-        }
-        BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
-        behavior.setFitToContents(true);
-        behavior.setSkipCollapsed(true);
-        behavior.setHideable(false);
-        behavior.setDraggable(false);
-        bottomSheet.post(() -> {
-            behavior.setPeekHeight(bottomSheet.getHeight(), false);
-            behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
-            Log.i(TAG, "function_edit_sheet_expanded height=" + bottomSheet.getHeight());
-        });
-    }
-
     private List<FunctionTab> buildTabs() {
         List<FunctionTab> result = new ArrayList<>();
 
         List<FunctionItem> commonItems = new ArrayList<>();
-        commonItems.add(new FunctionItem(ItemType.STYLE_SECTION, "section_style", "样式"));
+        commonItems.add(new FunctionItem(ItemType.SECTION, "section_style", "样式"));
+        commonItems.add(new FunctionItem(ItemType.PICKER, "style_picker", "样式", "正文",
+                R.drawable.lolib_ic_style_body, "", null, null, null, false));
         commonItems.add(new FunctionItem(ItemType.SECTION, "section_font", "字体"));
-        commonItems.add(new FunctionItem(ItemType.PICKER, "font_name", "字体", "字体", 0, "", null,
-                null, null, false));
+        commonItems.add(new FunctionItem(ItemType.PICKER, "font_name", "字体", "字体",
+                R.drawable.lolib_ic_picker_font, "", null, null, null, false));
         commonItems.add(new FunctionItem(ItemType.SECTION, "section_size", "字号"));
-        commonItems.add(new FunctionItem(ItemType.PICKER, "font_size", "字号", "4号", 0, "", null,
-                SIZE_OPTIONS, SIZE_VALUES, false));
+        commonItems.add(new FunctionItem(ItemType.PICKER, "font_size", "字号", "4号",
+                R.drawable.lolib_ic_picker_font_size, "", null, SIZE_OPTIONS, SIZE_VALUES, false));
         commonItems.add(new FunctionItem(ItemType.SECTION, "section_para", "段落"));
         commonItems.add(new FunctionItem(ItemType.PARAGRAPH_CHIP, "para_left", "左对齐",
                 R.drawable.lolib_ic_quick_align_left, ".uno:LeftPara"));
-        commonItems.add(new FunctionItem(ItemType.PARAGRAPH_CHIP, "para_center", "居中",
+        commonItems.add(new FunctionItem(ItemType.PARAGRAPH_CHIP, "para_center", "居中对齐",
                 R.drawable.lolib_ic_quick_align_center, ".uno:CenterPara"));
         commonItems.add(new FunctionItem(ItemType.PARAGRAPH_CHIP, "para_right", "右对齐",
                 R.drawable.lolib_ic_quick_align_right, ".uno:RightPara"));
@@ -853,59 +2367,65 @@ public class FunctionPanelController {
         fileItems.add(new FunctionItem(ItemType.ACTION, "file_save", "保存",
                 R.drawable.lolib_ic_function_save, host::saveDocument));
         fileItems.add(new FunctionItem(ItemType.ACTION, "file_save_as", "另存为",
-                R.drawable.lolib_ic_function_download, host::saveDocumentAs));
+                R.drawable.lolib_ic_function_save_as, host::saveDocumentAs));
         fileItems.add(new FunctionItem(ItemType.ACTION, "file_export", "导出为",
-                R.drawable.lolib_ic_function_download, host::exportDocumentAsPdf));
+                R.drawable.lolib_ic_function_export, host::exportDocumentAsPdf));
         fileItems.add(new FunctionItem(ItemType.ACTION, "file_print", "打印",
                 R.drawable.lolib_ic_function_print, host::initiatePrint));
         result.add(new FunctionTab("file", "文件", fileItems));
 
         List<FunctionItem> insertItems = new ArrayList<>();
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_image", "图片",
-                android.R.drawable.ic_menu_gallery, host::openLocalImagePickerFromWeb));
+                R.drawable.lolib_ic_insert_image, host::openLocalImagePickerFromWeb));
+        insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_chart", "图表",
+                R.drawable.lolib_ic_word_insert_chart, ""));
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_table", "表格",
-                android.R.drawable.ic_menu_agenda, ".uno:InsertTable?Columns=2&Rows=2"));
+                R.drawable.lolib_ic_insert_table, ".uno:InsertTable?Columns=2&Rows=2"));
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_shape", "形状",
-                android.R.drawable.ic_menu_crop, ""));
+                R.drawable.lolib_ic_insert_shape, ""));
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_comment", "批注",
-                android.R.drawable.ic_menu_edit, host::insertComment));
+                R.drawable.lolib_ic_insert_comment, host::insertComment));
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_page_number", "页码",
-                android.R.drawable.ic_menu_sort_by_size, ".uno:InsertPageNumberField"));
+                R.drawable.lolib_ic_insert_page_number, ".uno:InsertPageNumberField"));
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_page_break", "分页符",
-                android.R.drawable.ic_menu_add, ".uno:InsertPagebreak"));
+                R.drawable.lolib_ic_insert_page_break, ".uno:InsertPagebreak"));
         result.add(new FunctionTab("insert", "插入", insertItems));
 
         List<FunctionItem> layoutItems = new ArrayList<>();
-        layoutItems.add(new FunctionItem(ItemType.TOGGLE, "watermark", "水印", "", 0, ".uno:Watermark",
+        layoutItems.add(new FunctionItem(ItemType.WATERMARK, "watermark", "水印", "",
+                R.drawable.lolib_ic_layout_watermark, ".uno:Watermark",
                 null, null, null, false));
-        layoutItems.add(new FunctionItem(ItemType.PICKER, "page_margins", "页边距", "默认", 0, "", null,
-                MARGIN_OPTIONS, MARGIN_VALUES, false));
-        layoutItems.add(new FunctionItem(ItemType.PICKER, "paper_size", "纸张大小", "A4", 0, "", null,
-                PAPER_SIZE_OPTIONS, PAPER_SIZE_VALUES, false));
-        layoutItems.add(new FunctionItem(ItemType.PICKER, "paper_orientation", "纸张方向", "纵向", 0, "", null,
+        layoutItems.add(new FunctionItem(ItemType.PICKER, "page_margins", "页边距", WriterLayoutCatalog.MARGINS[0].label,
+                R.drawable.lolib_ic_layout_page_margins, "", null,
+                WriterLayoutCatalog.marginLabels(), WriterLayoutCatalog.marginIds(), false));
+        layoutItems.add(new FunctionItem(ItemType.PICKER, "paper_size", "纸张大小", "A4",
+                R.drawable.lolib_ic_layout_paper_size, "", null,
+                null, null, false));
+        layoutItems.add(new FunctionItem(ItemType.PICKER, "paper_orientation", "纸张方向", "纵向",
+                R.drawable.lolib_ic_layout_paper_orientation, "", null,
                 ORIENTATION_OPTIONS, ORIENTATION_VALUES, false));
         result.add(new FunctionTab("layout", "布局", layoutItems));
 
         List<FunctionItem> reviewItems = new ArrayList<>();
-        reviewItems.add(new FunctionItem(ItemType.TOGGLE, "track_changes", "追踪修订", "", 0,
-                ".uno:TrackChanges", null, null, null, false));
-        reviewItems.add(new FunctionItem(ItemType.TOGGLE, "show_changes", "显示修订", "", 0,
-                ".uno:ShowTrackedChanges", null, null, null, true));
+        reviewItems.add(new FunctionItem(ItemType.ACTION, "find_replace", "查找替换",
+                R.drawable.lolib_ic_function_find_replace, ".uno:SearchDialog"));
+        reviewItems.add(new FunctionItem(ItemType.TOGGLE, "spell_check", "拼写检查", "",
+                R.drawable.lolib_ic_calc_spell_check, ".uno:SpellOnline",
+                null, null, null, false));
+        reviewItems.add(new FunctionItem(ItemType.TOGGLE, "track_changes", "追踪修订", "",
+                R.drawable.lolib_ic_review_track_changes, ".uno:TrackChanges",
+                null, null, null, false));
+        reviewItems.add(new FunctionItem(ItemType.TOGGLE, "show_changes", "显示修订", "",
+                R.drawable.lolib_ic_review_show_changes, ".uno:ShowTrackedChanges",
+                null, null, null, true));
         reviewItems.add(new FunctionItem(ItemType.ACTION, "accept_change", "接收修订",
-                android.R.drawable.ic_menu_send, ".uno:AcceptTrackedChange"));
+                0, ".uno:AcceptTrackedChange"));
         reviewItems.add(new FunctionItem(ItemType.ACTION, "reject_change", "拒绝修订",
-                android.R.drawable.ic_menu_close_clear_cancel, ".uno:RejectTrackedChange"));
+                0, ".uno:RejectTrackedChange"));
         result.add(new FunctionTab("review", "审阅", reviewItems));
 
         return result;
     }
-
-    private static final String[] FALLBACK_STYLE_LABELS = new String[] {
-            "标题 1", "标题 2", "正文"
-    };
-    private static final String[] FALLBACK_STYLE_VALUES = new String[] {
-            "Heading 1", "Heading 2", "Default Paragraph Style"
-    };
 
     private static final String[] FALLBACK_FONT_OPTIONS = new String[] {
             "Liberation Serif", "Liberation Sans", "Liberation Mono", "Arial", "Times New Roman"
@@ -930,12 +2450,6 @@ public class FunctionPanelController {
     private static final String[] SIZE_VALUES = new String[] {
             "42", "36", "26", "24", "22", "18", "16", "15", "14", "12", "10.5", "9"
     };
-
-    private static final String[] MARGIN_OPTIONS = new String[] { "默认", "窄", "适中", "宽" };
-    private static final String[] MARGIN_VALUES = new String[] { "default", "narrow", "moderate", "wide" };
-
-    private static final String[] PAPER_SIZE_OPTIONS = new String[] { "A4", "A3", "Letter", "Legal" };
-    private static final String[] PAPER_SIZE_VALUES = new String[] { "A4", "A3", "Letter", "Legal" };
 
     private static final String[] ORIENTATION_OPTIONS = new String[] { "纵向", "横向" };
     private static final String[] ORIENTATION_VALUES = new String[] { "portrait", "landscape" };

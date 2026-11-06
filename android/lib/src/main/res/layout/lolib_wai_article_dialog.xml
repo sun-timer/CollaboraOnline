@@ -44,7 +44,7 @@
                 android:layout_width="16dp"
                 android:layout_height="16dp"
                 android:layout_marginStart="12dp"
-                android:src="@drawable/lolib_wai_ic_chevron_right"
+                android:src="@drawable/lolib_wai_ic_chevron_down"
                 android:contentDescription="选择类型" />
         </LinearLayout>
 
@@ -77,7 +77,7 @@
                 android:layout_width="16dp"
                 android:layout_height="16dp"
                 android:layout_marginStart="12dp"
-                android:src="@drawable/lolib_wai_ic_chevron_right"
+                android:src="@drawable/lolib_wai_ic_chevron_down"
                 android:contentDescription="选择子类" />
         </LinearLayout>
 
@@ -217,7 +217,7 @@
             <ImageView
                 android:layout_width="20dp"
                 android:layout_height="20dp"
-                android:src="@drawable/lolib_wai_ic_sparkle"
+                android:src="@drawable/lolib_ic_figma_ai_generate"
                 android:contentDescription="生成" />
 
             <TextView

@@ -32,9 +32,9 @@ public final class CalcMergeCellOptionsController {
             ".uno:MergeCells?MoveContents:bool=false",
     };
     private static final int[] PREVIEW_DRAWABLES = {
-            R.drawable.lolib_img_merge_preview_content,
-            R.drawable.lolib_img_merge_preview_cells,
-            R.drawable.lolib_img_merge_preview_same,
+            R.drawable.lolib_img_calc_merge_content,
+            R.drawable.lolib_img_calc_merge_cells,
+            R.drawable.lolib_img_calc_merge_same,
     };
 
     public interface Host {
@@ -100,8 +100,8 @@ public final class CalcMergeCellOptionsController {
 
             ImageView radio = new ImageView(host.getContext());
             radio.setImageResource(i == 0
-                    ? R.drawable.lolib_ic_calc_toggle_checked
-                    : R.drawable.lolib_ic_calc_toggle_unchecked);
+                    ? R.drawable.lolib_ic_calc_merge_radio_checked
+                    : R.drawable.lolib_ic_calc_merge_radio_unchecked);
             radio.setImageTintList(null);
             int radioSize = host.dpToPx(20);
             rowHeader.addView(radio, new LinearLayout.LayoutParams(radioSize, radioSize));
@@ -112,6 +112,8 @@ public final class CalcMergeCellOptionsController {
             // 等比缩放至内容区宽度（618×57 资源），不横向拉伸；三图同尺寸 PNG 线宽一致
             preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
             preview.setAdjustViewBounds(true);
+            // Figma: 618px preview inside a 686px content row (2px per dp).
+            preview.setPadding(0, 0, host.dpToPx(34), 0);
             LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             previewLp.topMargin = host.dpToPx(8);
@@ -124,8 +126,8 @@ public final class CalcMergeCellOptionsController {
                 selectedIndex[0] = index;
                 for (int j = 0; j < radioViews.length; j++) {
                     radioViews[j].setImageResource(j == index
-                            ? R.drawable.lolib_ic_calc_toggle_checked
-                            : R.drawable.lolib_ic_calc_toggle_unchecked);
+                            ? R.drawable.lolib_ic_calc_merge_radio_checked
+                            : R.drawable.lolib_ic_calc_merge_radio_unchecked);
                 }
             });
             content.addView(row);

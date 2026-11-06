@@ -59,6 +59,32 @@ class ShapeHandleScalingSubSection extends CanvasSectionObject {
 	}
 
 	onDraw(frameCount?: number, elapsedTime?: number): void {
+		const kind = String(this.sectionProperties.ownInfo.kind);
+		if (window.ThisIsTheAndroidApp && app.map.getDocType() === 'presentation' &&
+			!this.sectionProperties.cropModeEnabled && ['1', '2', '3', '4', '5', '6', '7', '8'].includes(kind)) {
+			// Draw inside the existing handle section so the hit target and drag logic stay unchanged.
+			const corner = ['1', '3', '6', '8'].includes(kind);
+			// Figma 183:11282/11286: 16px squares, 20px circles on a 750px screen.
+			const diameter = Math.min(this.size[0], this.size[1], (corner ? 10 : 8) * app.dpiScale);
+			const width = diameter;
+			const height = diameter;
+			const x = (this.size[0] - width) / 2;
+			const y = (this.size[1] - height) / 2;
+			this.context.save();
+			this.context.fillStyle = ShapeHandlesSection.impressSelectionStrokeColor;
+			this.context.strokeStyle = 'white';
+			this.context.lineWidth = Math.max(1, 0.5 * app.dpiScale);
+			this.context.beginPath();
+			if (corner)
+				this.context.ellipse(x + width / 2, y + height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
+			else
+				this.context.rect(x, y, width, height);
+			this.context.closePath();
+			this.context.fill();
+			this.context.stroke();
+			this.context.restore();
+			return;
+		}
 		this.context.fillStyle = 'white';
 		this.context.strokeStyle = ShapeHandlesSection.getSelectionStrokeColor();
 		this.context.beginPath();

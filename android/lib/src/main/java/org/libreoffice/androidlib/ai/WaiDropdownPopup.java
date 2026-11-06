@@ -62,6 +62,13 @@ public final class WaiDropdownPopup {
     public static void show(Activity activity, View anchor, String[] labels,
             int selectedIndex, int widthDp, Style style, Drawable[] icons,
             Listener listener, Runnable onDismiss) {
+        show(activity, anchor, anchor == null ? null : anchor.getRootView(), labels,
+                selectedIndex, widthDp, style, icons, listener, onDismiss);
+    }
+
+    public static void show(Activity activity, View anchor, View boundary, String[] labels,
+            int selectedIndex, int widthDp, Style style, Drawable[] icons,
+            Listener listener, Runnable onDismiss) {
         if (activity == null || anchor == null || labels == null || labels.length == 0) {
             return;
         }
@@ -156,8 +163,29 @@ public final class WaiDropdownPopup {
         } else {
             widthPx = Math.max(anchor.getWidth(), Math.round(311f * density));
         }
-        int contentWidth = Math.min(widthPx,
-                activity.getResources().getDisplayMetrics().widthPixels - padPx * 2);
+        // Keep the dropdown inside its host dialog, including when the anchor is
+        // close to the dialog's right edge.
+        View host = boundary != null ? boundary : anchor.getRootView();
+        int[] hostLocation = new int[2];
+        int[] anchorLocation = new int[2];
+        host.getLocationOnScreen(hostLocation);
+        anchor.getLocationOnScreen(anchorLocation);
+        int hostWidth = host.getWidth();
+        if (hostWidth <= 0) {
+            hostWidth = activity.getResources().getDisplayMetrics().widthPixels;
+            hostLocation[0] = 0;
+        }
+        int leftInset = Math.max(padPx, host.getPaddingLeft());
+        int rightInset = Math.max(padPx, host.getPaddingRight());
+        int availableWidth = hostWidth > 0 ? hostWidth - leftInset - rightInset
+                : activity.getResources().getDisplayMetrics().widthPixels - padPx * 2;
+        int contentWidth = Math.min(widthPx, Math.max(1, availableWidth));
+        int rightEdge = Math.min(hostLocation[0] + hostWidth - rightInset,
+                activity.getResources().getDisplayMetrics().widthPixels - padPx);
+        int leftEdge = Math.max(padPx, hostLocation[0] + leftInset);
+        contentWidth = Math.min(contentWidth, Math.max(1, rightEdge - leftEdge));
+        int popupLeft = Math.max(leftEdge, Math.min(anchorLocation[0], rightEdge - contentWidth));
+        int horizontalOffset = popupLeft - anchorLocation[0];
         int contentHeight = Math.min(listHeight, maxListH);
 
         PopupWindow popup = new PopupWindow(content, contentWidth, contentHeight, true);
@@ -177,7 +205,14 @@ public final class WaiDropdownPopup {
             if (anchor.getWindowToken() == null) {
                 return;
             }
-            popup.showAsDropDown(anchor, 0, Math.round(8f * density));
+            // Figma 326:25950 ends at y=864 and 326:26075 starts at y=874.
+            // The 750px canvas uses 2px per dp, so the polish list gap is 5dp.
+            int gap = Math.round((anchor.getId() == R.id.wai_text_op_polish_style_card
+                    ? 5f : 8f) * density);
+            popup.showAsDropDown(anchor, horizontalOffset, gap);
+            android.util.Log.d("WaiDropdownPopup", "dropdown_position anchor=" + anchor.getId()
+                    + " bottom=" + (anchorLocation[1] + anchor.getHeight())
+                    + " gap=" + gap + " height=" + contentHeight);
         };
         if (anchor.getWidth() > 0) {
             showPopup.run();

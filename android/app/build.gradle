@@ -69,6 +69,13 @@ android {
         }
     }
 
+    sourceSets {
+        main {
+            // Keep the legacy source mirror synchronized, but package the lib implementation once.
+            java.exclude 'org/libreoffice/androidapp/FunctionPanelController.java'
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8

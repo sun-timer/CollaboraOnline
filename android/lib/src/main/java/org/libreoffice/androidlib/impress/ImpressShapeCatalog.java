@@ -33,7 +33,6 @@ public final class ImpressShapeCatalog {
 
     public static final Section[] SECTIONS = new Section[] {
         new Section("线条和箭头", new Entry[] {
-            new Entry(1, R.drawable.lolib_ic_impress_shape_001, ".uno:Line"),
             new Entry(2, R.drawable.lolib_ic_impress_shape_002, ".uno:LineArrowEnd"),
             new Entry(3, R.drawable.lolib_ic_impress_shape_003, ".uno:LineCircleArrow"),
             new Entry(4, R.drawable.lolib_ic_impress_shape_004, ".uno:LineSquareArrow"),
@@ -41,6 +40,8 @@ public final class ImpressShapeCatalog {
             new Entry(6, R.drawable.lolib_ic_impress_shape_006, ".uno:LineArrowStart"),
             new Entry(7, R.drawable.lolib_ic_impress_shape_007, ".uno:LineArrowCircle"),
             new Entry(8, R.drawable.lolib_ic_impress_shape_008, ".uno:LineArrowSquare"),
+            new Entry(1, R.drawable.lolib_ic_impress_shape_001, ".uno:Line"),
+            new Entry(10, R.drawable.lolib_ic_impress_shape_010, ".uno:Line_Diagonal"),
             new Entry(9, R.drawable.lolib_ic_impress_shape_009, ".uno:MeasureLine")
         }),
         new Section("曲线和多边形", new Entry[] {

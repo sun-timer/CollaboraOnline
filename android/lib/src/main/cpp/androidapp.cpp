@@ -32,8 +32,6 @@
 #include <SetupKitEnvironment.hpp>
 #include <Util.hpp>
 
-#include <MobileImpressBackground.hpp>
-
 #include <osl/detail/android-bootstrap.h>
 
 #include <unistd.h>
@@ -1176,13 +1174,15 @@ Java_org_libreoffice_androidlib_LOActivity_setImpressMasterBackgroundOnKitThread
         return;
     }
     auto apply = [document, session, actionGeneration, documentSession, viewId, part, visible, finish] {
-        bool changed = false;
         const bool current = session == g_coolwsdSessionGeneration.load()
                 && actionGeneration == g_androidPendingKitActionGeneration.load()
                 && document == getLOKDocumentForAndroidOnly();
-        const bool success = current && !documentSession.empty()
-                && setMobileImpressMasterBackground(document.get(), viewId, part, visible, &changed);
-        finish(success, success && changed);
+        // Symbols used here live inside liblo-native-code.so and are not exported.
+        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                "impress_background_core_fail reason=lo_core_symbols_not_exported current=%d session=%s view=%d part=%d visible=%d",
+                current && !documentSession.empty() ? 1 : 0,
+                documentSession.c_str(), viewId, part, visible ? 1 : 0);
+        finish(false, false);
     };
     if (poll->getThreadOwner() == std::this_thread::get_id()) apply();
     else poll->addCallback(std::move(apply));

@@ -31,7 +31,7 @@ public final class ImpressSubpageHeader {
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp.dp(43)));
-        header.setPadding(dp.dp(16), dp.dp(12), dp.dp(16), dp.dp(12));
+        header.setPadding(dp.dp(8), 0, dp.dp(16), 0);
         header.setBackgroundColor(Color.WHITE);
 
         ImageButton back = new ImageButton(context);
@@ -44,7 +44,7 @@ public final class ImpressSubpageHeader {
         back.setContentDescription("返回");
         back.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         back.setOnClickListener(onBack);
-        header.addView(back, new LinearLayout.LayoutParams(dp.dp(32), dp.dp(32)));
+        header.addView(back, new LinearLayout.LayoutParams(dp.dp(24), dp.dp(32)));
 
         TextView titleView = new TextView(context);
         titleView.setText(title);
@@ -54,7 +54,7 @@ public final class ImpressSubpageHeader {
         titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        titleLp.setMarginStart(dp.dp(8));
+        titleLp.setMarginStart(dp.dp(4));
         header.addView(titleView, titleLp);
 
         return header;

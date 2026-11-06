@@ -9,6 +9,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.TextView;
 
 import org.libreoffice.androidlib.R;
 import org.libreoffice.androidlib.impress.ImpressSubpageHeader;
@@ -42,6 +43,7 @@ public final class CalcFontColorPickerController {
 
     private final Host host;
     private Integer selectedIndex;
+    private ImageView automaticColorCheck;
     private final View[][] checkViews = new View[CalcFontColorCatalog.BLOCKS.length][];
 
     public CalcFontColorPickerController(Host host) {
@@ -50,6 +52,10 @@ public final class CalcFontColorPickerController {
     }
 
     public View buildRootView(String title) {
+        return buildRootView(title, false);
+    }
+
+    public View buildRootView(String title, boolean showAutomaticColor) {
         LinearLayout root = new LinearLayout(host.getContext());
         root.setOrientation(LinearLayout.VERTICAL);
         root.setLayoutParams(new FrameLayout.LayoutParams(
@@ -60,12 +66,16 @@ public final class CalcFontColorPickerController {
                 host.getContext(), host::dpToPx, title, v -> host.onBack()));
         root.addView(ImpressSubpageHeader.createDivider(host.getContext()));
 
+        if (showAutomaticColor) {
+            root.addView(createAutomaticColorRow());
+        }
+
         ScrollView scroll = new ScrollView(host.getContext());
         scroll.setFillViewport(true);
         LinearLayout content = new LinearLayout(host.getContext());
         content.setOrientation(LinearLayout.VERTICAL);
         int sidePad = host.dpToPx(CONTENT_SIDE_PAD_DP);
-        content.setPadding(sidePad, host.dpToPx(4), sidePad, host.dpToPx(16));
+        content.setPadding(sidePad, host.dpToPx(20), sidePad, host.dpToPx(16));
 
         for (int b = 0; b < CalcFontColorCatalog.BLOCKS.length; b++) {
             if (b > 0) {
@@ -82,6 +92,37 @@ public final class CalcFontColorPickerController {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         return root;
+    }
+
+    private View createAutomaticColorRow() {
+        LinearLayout row = new LinearLayout(host.getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(host.dpToPx(24), 0, host.dpToPx(24), 0);
+        row.setMinimumHeight(host.dpToPx(56));
+        ImageView automaticIcon = new ImageView(host.getContext());
+        automaticIcon.setImageResource(R.drawable.lolib_ic_figma_automatic_color);
+        automaticIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(
+                host.dpToPx(32), host.dpToPx(32));
+        iconLp.setMarginEnd(host.dpToPx(8));
+        row.addView(automaticIcon, iconLp);
+        TextView label = new TextView(host.getContext());
+        label.setText("自动颜色");
+        label.setTextColor(Color.parseColor("#202124"));
+        label.setTextSize(16);
+        row.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        automaticColorCheck = new ImageView(host.getContext());
+        automaticColorCheck.setImageResource(R.drawable.lolib_ic_figma_option_check);
+        automaticColorCheck.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        automaticColorCheck.setVisibility(Integer.valueOf(-1).equals(selectedIndex) ? View.VISIBLE : View.GONE);
+        row.addView(automaticColorCheck, new LinearLayout.LayoutParams(host.dpToPx(16), host.dpToPx(16)));
+        row.setOnClickListener(v -> {
+            selectedIndex = -1;
+            refreshSelectionUi();
+            host.onColorSelected(-1, -1);
+        });
+        return row;
     }
 
     private View createColorBlock(int blockIndex, CalcFontColorCatalog.Entry[] entries) {
@@ -152,8 +193,9 @@ public final class CalcFontColorPickerController {
         check.setImageTintList(android.content.res.ColorStateList.valueOf(
                 isLightSwatch(entry.rgb) ? Color.parseColor("#333333") : Color.WHITE));
         check.setVisibility(selected ? View.VISIBLE : View.GONE);
-        cell.addView(check, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        FrameLayout.LayoutParams checkLp = new FrameLayout.LayoutParams(
+                host.dpToPx(16), host.dpToPx(16), Gravity.CENTER);
+        cell.addView(check, checkLp);
         return cell;
     }
 
@@ -166,6 +208,9 @@ public final class CalcFontColorPickerController {
     }
 
     private void refreshSelectionUi() {
+        if (automaticColorCheck != null) {
+            automaticColorCheck.setVisibility(Integer.valueOf(-1).equals(selectedIndex) ? View.VISIBLE : View.GONE);
+        }
         for (int b = 0; b < CalcFontColorCatalog.BLOCKS.length; b++) {
             CalcFontColorCatalog.Entry[] entries = CalcFontColorCatalog.BLOCKS[b].entries;
             View[] checks = checkViews[b];

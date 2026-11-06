@@ -20,7 +20,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="@drawable/lolib_wai_bg_box"
+            android:background="@android:color/transparent"
             android:orientation="vertical"
             android:paddingTop="8dp"
             android:paddingBottom="8dp">
@@ -166,7 +166,7 @@
             <ImageView
                 android:layout_width="20dp"
                 android:layout_height="20dp"
-                android:src="@drawable/lolib_wai_ic_sparkle"
+                android:src="@drawable/lolib_ic_figma_ai_generate"
                 android:contentDescription="执行" />
 
             <TextView

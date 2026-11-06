@@ -100,6 +100,10 @@ public class FunctionPanelController {
 
         void fetchStyleList(StringListCallback callback);
 
+        default void fetchSpellCheckState(java.util.function.Consumer<Boolean> callback) {
+            callback.accept(null);
+        }
+
         void fetchFontList(StringListCallback callback);
 
         void fetchCurrentFormatting(FormattingCallback callback);
@@ -875,6 +879,16 @@ public class FunctionPanelController {
             dispatchToggle(item, isChecked, buttonView);
         });
         row.addView(toggle, SwitchUiHelper.createSettingsSwitchLayoutParams(host.getContext()));
+        if ("spell_check".equals(item.id)) {
+            host.fetchSpellCheckState(state -> {
+                if (state != null) {
+                    toggle.post(() -> {
+                        toggleStates.put(item.id, state);
+                        toggle.setCheckedSilent(state);
+                    });
+                }
+            });
+        }
         return row;
     }
 
@@ -938,7 +952,7 @@ public class FunctionPanelController {
         }
         List<View> cardOne = new ArrayList<>();
         if (spellCheck != null) {
-            cardOne.add(createActionRow(spellCheck, false, false));
+            cardOne.add(createGroupedToggleRow(spellCheck));
         }
         if (trackChanges != null) {
             cardOne.add(createGroupedToggleRow(trackChanges));
@@ -966,7 +980,7 @@ public class FunctionPanelController {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setBackgroundColor(Color.WHITE);
-        row.setPadding(host.dpToPx(40), host.dpToPx(14), host.dpToPx(16), host.dpToPx(14));
+        row.setPadding(host.dpToPx(56), host.dpToPx(14), host.dpToPx(16), host.dpToPx(14));
         row.setMinimumHeight(host.dpToPx(52));
         LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -1017,6 +1031,7 @@ public class FunctionPanelController {
         row.setMinimumHeight(host.dpToPx(56));
         LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.bottomMargin = host.dpToPx(20);
         row.setLayoutParams(rowLp);
 
         if (item.iconResId != 0) {
@@ -1174,17 +1189,17 @@ public class FunctionPanelController {
         scroll.setVerticalScrollBarEnabled(true);
         scroll.setBackgroundResource(R.drawable.lolib_bg_font_size_popup);
         scroll.setClipToOutline(true);
-        scroll.setElevation(host.dpToPx(24));
-        scroll.setOutlineProvider(android.view.ViewOutlineProvider.BOUNDS);
+        scroll.setOutlineProvider(android.view.ViewOutlineProvider.BACKGROUND);
         scroll.addView(rows);
 
         int width = host.dpToPx(160);
         int height = host.dpToPx(230);
         fontSizePopup = new PopupWindow(scroll, width, height, true);
         fontSizePopup.setElevation(host.dpToPx(24));
-        fontSizePopup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        fontSizePopup.setBackgroundDrawable(host.getContext().getDrawable(
+                R.drawable.lolib_bg_font_size_popup));
         fontSizePopup.setOutsideTouchable(true);
-        fontSizePopup.showAsDropDown(anchor, 0, -host.dpToPx(4));
+        fontSizePopup.showAsDropDown(anchor, anchor.getWidth() - width, -host.dpToPx(4));
     }
 
     private LinearLayout createFontSizeRow(String label, String value, String selectedLabel,
@@ -1204,8 +1219,8 @@ public class FunctionPanelController {
 
         ImageView check = new ImageView(host.getContext());
         check.setImageResource(selected
-                ? R.drawable.lolib_ic_option_circle_checked
-                : R.drawable.lolib_ic_option_circle_unchecked);
+                ? R.drawable.lolib_ic_font_size_selected
+                : R.drawable.lolib_ic_font_size_unselected);
         int checkSize = host.dpToPx(16);
         check.setLayoutParams(new LinearLayout.LayoutParams(checkSize, checkSize));
         row.addView(check);
@@ -1248,6 +1263,17 @@ public class FunctionPanelController {
         }
         ImageButton back = fontPickerPanel.findViewById(R.id.font_picker_back);
         LinearLayout list = fontPickerPanel.findViewById(R.id.font_picker_list);
+        fontPickerPanel.setBackgroundColor(Color.WHITE);
+        if (list != null) {
+            list.post(() -> {
+                int navigationInset = SystemUiHelper.readSafeAreaInsets(fontPickerPanel).bottom;
+                list.setPadding(list.getPaddingLeft(), list.getPaddingTop(), list.getPaddingRight(),
+                        Math.max(host.dpToPx(16), navigationInset));
+            });
+            if (list.getParent() instanceof ViewGroup) {
+                ((ViewGroup) list.getParent()).setClipToPadding(false);
+            }
+        }
         if (back != null) {
             back.setOnClickListener(v -> dismissFontPickerDialog());
         }
@@ -1603,6 +1629,7 @@ public class FunctionPanelController {
                 }
             });
         }
+        commentPicker.setPrimaryButtonBackground(R.drawable.lolib_bg_writer_primary_button);
         if (contentContainer != null) {
             contentContainer.removeAllViews();
             contentContainer.addView(commentPicker.buildRootView());
@@ -2070,13 +2097,20 @@ public class FunctionPanelController {
         List<String> newValues = new ArrayList<>();
         boolean[] used = new boolean[values.length];
         for (String[] pair : STYLE_ORDER) {
+            boolean matched = false;
             for (int i = 0; i < values.length; i++) {
                 if (!used[i] && styleMatches(values[i], pair[1])) {
                     newLabels.add(pair[0]);
                     newValues.add(values[i]);
                     used[i] = true;
+                    matched = true;
                     break;
                 }
+            }
+            if (!matched && "正文".equals(pair[0])) {
+                // The native catalog also uses this built-in Writer style when command values omit it.
+                newLabels.add(pair[0]);
+                newValues.add(pair[1]);
             }
         }
         for (int i = 0; i < values.length; i++) {
@@ -2109,6 +2143,12 @@ public class FunctionPanelController {
 
     private void populateStyleOptionList(LinearLayout list, TextView valueView) {
         list.removeAllViews();
+        TextView section = new TextView(host.getContext());
+        section.setText("标题样式");
+        section.setTextColor(COLOR_SECTION);
+        section.setTextSize(14);
+        section.setPadding(host.dpToPx(16), host.dpToPx(12), host.dpToPx(16), host.dpToPx(8));
+        list.addView(section);
         String selectedLabel = pickerValues.getOrDefault("style_picker", "");
         String[] labels = cachedStyleLabels;
         String[] values = cachedStyleValues;
@@ -2185,6 +2225,10 @@ public class FunctionPanelController {
 
     private void dispatchToggle(FunctionItem item, boolean enabled, CompoundButton buttonView) {
         switch (item.id) {
+            case "spell_check":
+                host.executeUnoCommand(".uno:SpellOnline {\"Enable\":{\"type\":\"boolean\",\"value\":"
+                        + enabled + "}}");
+                break;
             case "track_changes":
                 host.executeUnoCommand(enabled ? ".uno:TrackChangesInAllViews" : ".uno:TrackChanges?TrackChanges:bool=false");
                 break;
@@ -2259,6 +2303,10 @@ public class FunctionPanelController {
             showShapePickerDialog();
             return;
         }
+        if ("insert_chart".equals(item.id)) {
+            showChartTypePickerPage();
+            return;
+        }
         if ("insert_table".equals(item.id)) {
             showTablePickerPage();
             return;
@@ -2329,6 +2377,8 @@ public class FunctionPanelController {
         List<FunctionItem> insertItems = new ArrayList<>();
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_image", "图片",
                 R.drawable.lolib_ic_insert_image, host::openLocalImagePickerFromWeb));
+        insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_chart", "图表",
+                R.drawable.lolib_ic_word_insert_chart, ""));
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_table", "表格",
                 R.drawable.lolib_ic_insert_table, ".uno:InsertTable?Columns=2&Rows=2"));
         insertItems.add(new FunctionItem(ItemType.GRID_ACTION, "insert_shape", "形状",
@@ -2359,8 +2409,9 @@ public class FunctionPanelController {
         List<FunctionItem> reviewItems = new ArrayList<>();
         reviewItems.add(new FunctionItem(ItemType.ACTION, "find_replace", "查找替换",
                 R.drawable.lolib_ic_function_find_replace, ".uno:SearchDialog"));
-        reviewItems.add(new FunctionItem(ItemType.ACTION, "spell_check", "拼写检查",
-                R.drawable.lolib_ic_calc_spell_check, ".uno:SpellDialog"));
+        reviewItems.add(new FunctionItem(ItemType.TOGGLE, "spell_check", "拼写检查", "",
+                R.drawable.lolib_ic_calc_spell_check, ".uno:SpellOnline",
+                null, null, null, false));
         reviewItems.add(new FunctionItem(ItemType.TOGGLE, "track_changes", "追踪修订", "",
                 R.drawable.lolib_ic_review_track_changes, ".uno:TrackChanges",
                 null, null, null, false));

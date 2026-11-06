@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plumb SVG 3110:64396; geometry preserved, colors follow the document theme. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="32dp" android:height="32dp" android:viewportWidth="64" android:viewportHeight="64">
+    <path android:pathData="M8 11.2267H24.0686V40.0003H52.0499L52 56.0003H8V11.2267Z" android:fillColor="#00000000" android:strokeColor="#333333" android:strokeWidth="2.66667" android:strokeLineJoin="round" />
+</vector>

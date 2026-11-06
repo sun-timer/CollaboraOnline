@@ -294,7 +294,7 @@ public class SelectionMenuController {
         } else if (calcMode) {
             updatePopupWidth(false);
         } else {
-            updatePopupWidth(true);
+            updatePopupWidth(host.isEditModeActive());
         }
         if (menuView != null && visible) {
             menuView.post(this::positionPopupNearAnchor);

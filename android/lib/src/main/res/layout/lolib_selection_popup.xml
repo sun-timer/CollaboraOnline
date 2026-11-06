@@ -49,15 +49,15 @@
                     <TextView android:text="全选" style="@style/SelectionPopupButtonText" />
                 </LinearLayout>
                 <LinearLayout android:id="@+id/selection_op_delete" android:visibility="gone" style="@style/SelectionPopupButton">
-                    <ImageView android:src="@drawable/lolib_ic_selection_delete" style="@style/SelectionPopupButtonIcon" />
+                    <ImageView android:src="@drawable/lolib_ic_figma_selection_delete" android:layout_width="20dp" android:layout_height="20dp" style="@style/SelectionPopupButtonIcon" />
                     <TextView android:text="删除" style="@style/SelectionPopupButtonText" />
                 </LinearLayout>
                 <LinearLayout android:id="@+id/selection_op_image_edit" android:visibility="gone" style="@style/SelectionPopupButton">
-                    <ImageView android:src="@drawable/lolib_ic_impress_insert_local_image" style="@style/SelectionPopupButtonIcon" />
+                    <ImageView android:src="@drawable/lolib_ic_figma_selection_image_edit" android:layout_width="20dp" android:layout_height="20dp" style="@style/SelectionPopupButtonIcon" />
                     <TextView android:text="图片编辑" style="@style/SelectionPopupButtonText" />
                 </LinearLayout>
                 <LinearLayout android:id="@+id/selection_op_save" android:visibility="gone" style="@style/SelectionPopupButton">
-                    <ImageView android:src="@drawable/lolib_ic_impress_file_save_as" style="@style/SelectionPopupButtonIcon" />
+                    <ImageView android:src="@drawable/lolib_ic_figma_selection_save" android:layout_width="20dp" android:layout_height="20dp" style="@style/SelectionPopupButtonIcon" />
                     <TextView android:text="保存" style="@style/SelectionPopupButtonText" />
                 </LinearLayout>
                 <LinearLayout android:id="@+id/selection_op_translate" style="@style/SelectionPopupButtonWeighted">

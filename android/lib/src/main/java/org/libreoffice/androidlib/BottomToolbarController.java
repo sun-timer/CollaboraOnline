@@ -830,7 +830,7 @@ public class BottomToolbarController {
                         dismissColorPicker();
                     }
                 });
-        View panel = picker.buildRootView(title);
+        View panel = picker.buildRootView(title, ".uno:FontColor".equals(unoCommand));
         colorPickerSession = AiDialogHelper.showCompactPanel(host.getContext(), panel, TAG + ":color");
         Log.i(TAG, "show_catalog_color_picker title=" + title + " cmd=" + unoCommand);
     }

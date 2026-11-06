@@ -47,9 +47,20 @@ final class ImpressCommentPickerController {
     private final Host host;
     private View rootView;
     private EditText contentInput;
+    private final boolean presentationLayout;
+    private int primaryButtonBackground = R.drawable.lolib_bg_impress_primary_button;
 
     ImpressCommentPickerController(Host host) {
+        this(host, false);
+    }
+
+    ImpressCommentPickerController(Host host, boolean presentationLayout) {
         this.host = host;
+        this.presentationLayout = presentationLayout;
+    }
+
+    void setPrimaryButtonBackground(int backgroundResId) {
+        primaryButtonBackground = backgroundResId;
     }
 
     View buildRootView() {
@@ -64,8 +75,7 @@ final class ImpressCommentPickerController {
 
         root.addView(createHeader());
         root.addView(ImpressSubpageHeader.createDivider(host.getContext()));
-        root.addView(createCommentCard(), new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        root.addView(createCommentCard());
         root.addView(createButtonRow());
 
         rootView = root;
@@ -81,11 +91,12 @@ final class ImpressCommentPickerController {
         LinearLayout card = new LinearLayout(host.getContext());
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackgroundResource(R.drawable.lolib_bg_impress_comment_card);
-        int pad = host.dpToPx(16);
+        int pad = host.dpToPx(presentationLayout ? 12 : 16);
         card.setPadding(pad, pad, pad, pad);
         LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cardLp.setMargins(host.dpToPx(16), host.dpToPx(8), host.dpToPx(16), host.dpToPx(8));
+        cardLp.setMargins(host.dpToPx(16), host.dpToPx(presentationLayout ? 20 : 8),
+                host.dpToPx(16), host.dpToPx(8));
         card.setLayoutParams(cardLp);
 
         card.addView(createAuthorRow());
@@ -101,8 +112,9 @@ final class ImpressCommentPickerController {
         contentInput.setMinLines(4);
         contentInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         LinearLayout.LayoutParams inputLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        inputLp.topMargin = host.dpToPx(12);
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                presentationLayout ? host.dpToPx(80) : ViewGroup.LayoutParams.WRAP_CONTENT);
+        inputLp.topMargin = host.dpToPx(presentationLayout ? 10 : 12);
         card.addView(contentInput, inputLp);
         return card;
     }
@@ -113,13 +125,31 @@ final class ImpressCommentPickerController {
         row.setGravity(Gravity.CENTER_VERTICAL);
 
         FrameLayout avatarWrap = new FrameLayout(host.getContext());
-        int avatarSize = host.dpToPx(40);
+        int avatarSize = host.dpToPx(presentationLayout ? 32 : 40);
         avatarWrap.setBackgroundResource(R.drawable.lolib_bg_impress_comment_avatar);
         ImageView avatar = new ImageView(host.getContext());
         avatar.setImageResource(R.drawable.lolib_ic_impress_insert_comment);
         avatar.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         int iconPad = host.dpToPx(8);
         avatar.setPadding(iconPad, iconPad, iconPad, iconPad);
+        if (presentationLayout) {
+            avatar.setPadding(0, 0, 0, 0);
+            avatar.setBackgroundResource(R.drawable.lolib_bg_impress_comment_avatar);
+            avatar.setClipToOutline(true);
+            avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            int fallback = host.getContext().getResources().getIdentifier(
+                    "drawer_header", "drawable", host.getContext().getPackageName());
+            if (fallback != 0) avatar.setImageResource(fallback);
+            String avatarUri = host.getCommentAuthorAvatarUri();
+            if (avatarUri != null && !avatarUri.isEmpty()) {
+                try {
+                    avatar.setImageURI(android.net.Uri.parse(avatarUri));
+                } catch (RuntimeException e) {
+                    Log.w(TAG, "comment_avatar_load_failed", e);
+                    if (fallback != 0) avatar.setImageResource(fallback);
+                }
+            }
+        }
         avatarWrap.addView(avatar, new FrameLayout.LayoutParams(avatarSize, avatarSize));
         row.addView(avatarWrap, new LinearLayout.LayoutParams(avatarSize, avatarSize));
 
@@ -127,7 +157,7 @@ final class ImpressCommentPickerController {
         meta.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams metaLp = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        metaLp.setMarginStart(host.dpToPx(12));
+        metaLp.setMarginStart(host.dpToPx(presentationLayout ? 6 : 12));
         meta.setLayoutParams(metaLp);
 
         String author = host.getCommentAuthorName();
@@ -158,16 +188,16 @@ final class ImpressCommentPickerController {
         LinearLayout row = new LinearLayout(host.getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
         int hPad = host.dpToPx(16);
-        row.setPadding(hPad, host.dpToPx(8), hPad, host.dpToPx(16));
+        row.setPadding(hPad, host.dpToPx(presentationLayout ? 12 : 8), hPad, host.dpToPx(16));
 
         TextView cancel = createFooterButton("取消", false);
         cancel.setOnClickListener(v -> host.onBack());
-        row.addView(cancel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(cancel, new LinearLayout.LayoutParams(0, host.dpToPx(presentationLayout ? 35 : 36), 1f));
 
         TextView save = createFooterButton("保存", true);
         LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        saveLp.setMarginStart(host.dpToPx(12));
+                0, host.dpToPx(presentationLayout ? 35 : 36), 1f);
+        saveLp.setMarginStart(host.dpToPx(presentationLayout ? 20 : 12));
         save.setLayoutParams(saveLp);
         save.setOnClickListener(v -> onSaveClicked());
         row.addView(save);
@@ -179,12 +209,11 @@ final class ImpressCommentPickerController {
         button.setText(label);
         button.setGravity(Gravity.CENTER);
         button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        button.setTypeface(null, Typeface.BOLD);
-        int vPad = host.dpToPx(14);
-        button.setPadding(host.dpToPx(16), vPad, host.dpToPx(16), vPad);
+        button.setTypeface(null, Typeface.NORMAL);
+        button.setPadding(host.dpToPx(16), 0, host.dpToPx(16), 0);
         if (primary) {
             button.setTextColor(Color.WHITE);
-            button.setBackgroundResource(R.drawable.lolib_bg_impress_primary_button);
+            button.setBackgroundResource(primaryButtonBackground);
         } else {
             button.setTextColor(Color.parseColor("#101010"));
             button.setBackgroundResource(R.drawable.lolib_bg_impress_comment_cancel_button);

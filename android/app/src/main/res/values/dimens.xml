@@ -98,7 +98,7 @@
     <dimen name="rename_dialog_btn_height">35dp</dimen>
     <dimen name="rename_dialog_btn_gap">28dp</dimen>
     <dimen name="rename_dialog_btn_text_size">16sp</dimen>
-    <dimen name="ai_drawer_panel_width">356dp</dimen>
+    <dimen name="ai_drawer_panel_width">320dp</dimen>
     <dimen name="ai_model_config_header_height">72dp</dimen>
     <dimen name="ai_model_config_title_size">20sp</dimen>
     <dimen name="ai_model_config_section_title_size">16sp</dimen>
