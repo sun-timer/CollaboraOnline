@@ -76,6 +76,7 @@ class AndroidSelectionMenu {
 		caret: { x1: number; y1: number; x2: number; y2: number };
 	} | null = null;
 	private static androidWriterCaretMenuTimer = 0;
+	private static iosLongPressCaretHookInstalled = false;
 	private static suppressWriterCommentClick: {
 		x: number;
 		y: number;
@@ -2106,6 +2107,9 @@ class AndroidSelectionMenu {
 		if (AndroidSelectionMenu.isAndroid()) {
 			AndroidSelectionMenu.installAndroidWriterTapHooks();
 		}
+		if (AndroidSelectionMenu.isIOS()) {
+			AndroidSelectionMenu.installIOSLongPressCaretMenuHook();
+		}
 
 		document.addEventListener(
 			'contextmenu',
@@ -2902,13 +2906,76 @@ class AndroidSelectionMenu {
 			: null;
 	}
 
-	private static showIOSWriterCaretMenu(): void {
+	/**
+	 * iOS: a long press that selects nothing (blank page area, or an empty document)
+	 * currently ends up with no menu at all, so 粘贴 is unreachable. iOS taps open the
+	 * caret menu through a 320 ms tap timer, but a held press never reaches it.
+	 * Broadcast the paste-only menu anchored at the press point instead; when the
+	 * press did select text, the native selection menu still wins.
+	 */
+	private static installIOSLongPressCaretMenuHook(): void {
+		if (AndroidSelectionMenu.iosLongPressCaretHookInstalled) {
+			return;
+		}
+		AndroidSelectionMenu.iosLongPressCaretHookInstalled = true;
+		let pressStart = 0;
+		let startX = 0;
+		let startY = 0;
+		let moved = false;
+		const reset = () => {
+			pressStart = 0;
+			moved = false;
+		};
+		document.addEventListener('touchstart', (e: TouchEvent) => {
+			const touch = e.touches[0];
+			if (!touch) return;
+			pressStart = Date.now();
+			startX = touch.clientX;
+			startY = touch.clientY;
+			moved = false;
+		}, { capture: true, passive: true });
+		document.addEventListener('touchmove', (e: TouchEvent) => {
+			const touch = e.touches[0];
+			if (!touch || !pressStart) return;
+			if (Math.abs(touch.clientX - startX) + Math.abs(touch.clientY - startY) > 12) {
+				moved = true;
+			}
+		}, { capture: true, passive: true });
+		document.addEventListener('touchend', (e: TouchEvent) => {
+			const heldMs = pressStart ? Date.now() - pressStart : 0;
+			const touch = e.changedTouches[0];
+			reset();
+			if (!touch || moved || heldMs < 500) return;
+			if (!AndroidSelectionMenu.isWriterDoc() || !AndroidSelectionMenu.isEditMode()) return;
+			if (AndroidSelectionMenu.hasVisibleTextSelection()) return;
+			AndroidSelectionMenu.showIOSWriterCaretMenu({ x: touch.clientX, y: touch.clientY });
+		}, { capture: true, passive: true });
+		document.addEventListener('touchcancel', reset, { capture: true, passive: true });
+	}
+
+	private static showIOSWriterCaretMenu(anchorCss?: { x: number; y: number }): void {
 		const caret = app.file?.textCursor?.rectangle;
 		const layout = app.activeDocument?.activeLayout;
-		if (
-			!caret || !layout || !app.file?.textCursor?.visible ||
-			AndroidSelectionMenu.hasVisibleTextSelection() || !app.sectionContainer
-		) {
+		if (AndroidSelectionMenu.hasVisibleTextSelection() || !app.sectionContainer) {
+			return;
+		}
+		if (!caret || !layout || !app.file?.textCursor?.visible) {
+			// Empty document, or a caret that is not painted yet: there is no caret
+			// rectangle to anchor to, so a long press used to show no menu at all and
+			// 粘贴 was unreachable. Anchor the paste-only menu at the press point.
+			if (anchorCss) {
+				const fallback = AndroidSelectionMenu.clampIosAnchor(
+					Math.round(anchorCss.x),
+					Math.round(anchorCss.y),
+					Math.round(anchorCss.y) + 24,
+				);
+				MobileSelectionEvents.broadcastShow(
+					{ anchorX: fallback.x, anchorY: fallback.y, anchorBottomY: fallback.bottomY },
+					'',
+					'text',
+					false,
+				);
+			}
 			return;
 		}
 		const scale = app.dpiScale || 1;
