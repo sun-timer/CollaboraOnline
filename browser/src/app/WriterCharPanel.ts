@@ -36,6 +36,19 @@ class WriterCharPanel {
 		this.bar.open();
 	}
 
+	isOpen(): boolean {
+		return this.bar.isOpen() || !!this.colorPicker;
+	}
+
+	/** The 字符 toolbar button toggles: a second tap closes the panel (issue: it never closed). */
+	toggle(): void {
+		if (this.isOpen()) {
+			this.close();
+		} else {
+			this.open();
+		}
+	}
+
 	close(): void {
 		if (this.colorPicker) {
 			this.colorPicker.close();

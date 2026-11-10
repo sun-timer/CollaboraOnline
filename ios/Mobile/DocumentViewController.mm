@@ -4091,8 +4091,11 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
 - (void)bottomToolbarDidPressCharacter
 {
     // Android BottomToolbarController CHARACTER quick-action row (all edit doc types).
+    // Toggle: a second tap on 字符 must close the panel it opened.
     [self sendToolbarJavaScript:
-     @"if(window.__coolWriterCharPanel){window.__coolWriterCharPanel.open();}"];
+     @"if(window.__coolWriterCharPanel){"
+      "if(window.__coolWriterCharPanel.toggle){window.__coolWriterCharPanel.toggle();}"
+      "else{window.__coolWriterCharPanel.open();}}"];
 }
 
 - (void)bottomToolbarDidPressParagraph
