@@ -167,8 +167,15 @@ class WriterCharPanelIcons {
 	static readonly calcFontColor =
 		'<svg viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M11 34L24 5L37 34M16 23H32" fill="none" stroke="#333333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="6" y="35" width="36" height="7" fill="#FE3A3A" stroke="#333333" stroke-width="2"/></svg>';
 
+	/**
+	 * Figma icon/24/工具栏/P/字符颜色: one A over an outlined color bar.
+	 *
+	 * The previous glyph stacked two hand-drawn "A" strokes plus a blue bar, which
+	 * rendered as an unreadable scribble in the iOS character bar. Use the exported
+	 * Figma asset (same one Calc already uses) instead of drawing a new icon.
+	 */
 	static readonly fontColor =
-		'<svg viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg"><path d="M17 14 L11 34 M17 14 L24 34 M17 14 L20 24 H28" fill="none" stroke="#101010" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M32 18 L37 34 M32 18 L39 27 M37 34 L41 34 M33 28 H40" fill="none" stroke="#101010" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="14" y="36" width="20" height="5" rx="2" fill="#1278D9"/></svg>';
+		'<svg viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M11 34L24 5L37 34M16 23H32" fill="none" stroke="#333333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="6" y="35" width="36" height="7" fill="#FE3A3A" stroke="#333333" stroke-width="2"/></svg>';
 }
 
 if (typeof window !== 'undefined' && (window as any).ThisIsTheiOSApp) {
