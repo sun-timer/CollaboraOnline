@@ -12,11 +12,14 @@ class CalcEditorPanel {
 	private readonly inlineSubpage: WriterEditorInlineSubpage;
 	private readonly controller = WriterEditorController.getInstance();
 	private readonly pickerLabels: Record<string, string> = {
-		'font-name': '宋体',
-		'font-size': '四号',
 		'paper-orientation': '纵向',
 		'print-area': 'A4',
 	};
+	private fontNameNode: HTMLElement | null = null;
+	private fontSizeNode: HTMLElement | null = null;
+	/** Shown until the cell's CharFontName / FontHeight state arrives. */
+	private fontNameOverride: string | null = null;
+	private fontSizeOverride: string | null = null;
 	private fontColorRgb: number | null = null;
 	private backgroundColorRgb: number | null = null;
 	private borderColorRgb: number | null = null;
@@ -43,6 +46,7 @@ class CalcEditorPanel {
 			'.uno:SuperScript', '.uno:SubScript', '.uno:InsertMode',
 			'.uno:ResetAttributes',
 			'.uno:FreezePanes', '.uno:FreezePanesRow', '.uno:FreezePanesColumn',
+			'.uno:CharFontName', '.uno:FontHeight',
 		].includes(event.commandName)) return;
 		if (event?.commandName === '.uno:NumberFormat' && this.numberFormatPending) {
 			this.finishNumberFormatWrite();
@@ -88,6 +92,8 @@ class CalcEditorPanel {
 		this.finishNumberFormatWrite();
 		this.clearFormatOverride('rotation');
 		this.clearFormatOverride('stack');
+		this.fontNameOverride = null;
+		this.fontSizeOverride = null;
 		Object.keys(this.colorOverrideTimers).forEach((command) => this.clearColorOverride(command));
 		this.colorOverrides = {};
 		this.syncToggleStateFromDocument();
@@ -472,7 +478,8 @@ class CalcEditorPanel {
 		row.setAttribute('aria-label', '字体');
 		const value = document.createElement('span');
 		value.className = 'writer-function-calc-value-picker-row__value';
-		value.textContent = this.pickerLabels['font-name'];
+		value.textContent = this.fontNameLabel();
+		this.fontNameNode = value;
 		row.appendChild(value);
 		const chevron = document.createElement('span');
 		chevron.className = 'writer-function-calc-value-picker-row__chevron';
@@ -549,7 +556,8 @@ class CalcEditorPanel {
 		sizeButton.setAttribute('aria-label', '字号');
 		const sizeValue = document.createElement('span');
 		sizeValue.className = 'writer-function-split-picker-row__value';
-		sizeValue.textContent = this.pickerLabels['font-size'];
+		sizeValue.textContent = this.fontSizeLabel();
+		this.fontSizeNode = sizeValue;
 		sizeButton.appendChild(sizeValue);
 		const sizeChevron = document.createElement('span');
 		sizeChevron.className = 'writer-function-split-picker-row__chevron';
@@ -1263,10 +1271,11 @@ class CalcEditorPanel {
 				'字体',
 				options,
 				(option) => {
-					this.pickerLabels['font-name'] = option.label;
+					this.fontNameOverride = option.label;
+					this.refreshFontLabels();
 					this.controller.applyFontName(WriterEditorCatalog.aliasFont(option.value));
 				},
-				undefined,
+				this.fontNameLabel(),
 				this.subHost(),
 			),
 		);
@@ -1280,10 +1289,11 @@ class CalcEditorPanel {
 				'字号',
 				options,
 				(option) => {
-					this.pickerLabels['font-size'] = option.label;
+					this.fontSizeOverride = option.label;
+					this.refreshFontLabels();
 					this.controller.applyFontSize(option.value);
 				},
-				undefined,
+				this.fontSizeLabel(),
 				this.subHost(),
 			),
 		);
@@ -1731,6 +1741,43 @@ class CalcEditorPanel {
 			}
 			button.disabled = state === 'disabled';
 		});
+		this.refreshFontLabels();
+	}
+
+	/** Cell font from `.uno:CharFontName` / `.uno:FontHeight`, then the last pick. */
+	private fontCommandState(command: string): string {
+		if (typeof this.controller.getCommandState !== 'function') {
+			return '';
+		}
+		return this.controller.getCommandState(command);
+	}
+
+	private fontNameLabel(): string {
+		if (this.fontNameOverride) {
+			return this.fontNameOverride;
+		}
+		const state = this.fontCommandState('.uno:CharFontName').split(';')[0].trim();
+		return state || '字体';
+	}
+
+	private fontSizeLabel(): string {
+		if (this.fontSizeOverride) {
+			return this.fontSizeOverride;
+		}
+		const state = this.fontCommandState('.uno:FontHeight');
+		if (!state) {
+			return '字号';
+		}
+		return WriterEditorCatalog.charHeightLabelFor(state) || state;
+	}
+
+	private refreshFontLabels(): void {
+		if (this.fontNameNode) {
+			this.fontNameNode.textContent = this.fontNameLabel();
+		}
+		if (this.fontSizeNode) {
+			this.fontSizeNode.textContent = this.fontSizeLabel();
+		}
 	}
 
 	private sendUno(command: string): void {
