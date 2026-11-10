@@ -990,7 +990,9 @@ window.L.TextInput = window.L.Layer.extend({
 			for (var i = 0; i < l; i++) {
 				if (i !== 0) {
 					this._sendKeyEvent(13, 1280);
-					if (!this.hasAccessibilitySupport()) {
+					// A multi-line insert keeps the whole run in the field. Resetting
+					// here would drop the characters a held delete still has to consume.
+					if (!this.hasAccessibilitySupport() && !this._suspendFieldReset) {
 						this._emptyArea();
 					}
 				}
@@ -1549,7 +1551,8 @@ window.L.TextInput = window.L.Layer.extend({
 			var pos = this._getLastCursorPosition();
 			var empty = this._lastContent.length === 0;
 		}
-		this._emptyArea();
+		if (!this._suspendFieldReset)
+			this._emptyArea();
 		if (this.hasAccessibilitySupport()) {
 			this._setSelectionFlag(false);
 			if (pos === 0 && !empty)
@@ -1569,6 +1572,49 @@ window.L.TextInput = window.L.Layer.extend({
 		} catch (err) {
 			// old firefox throws an exception on start.
 		}
+	},
+
+	// Insert text through the same input handler a keystroke uses.
+	// The field must already be focused before any characters are added.
+	// Rewriting innerHTML after focus tears down the iOS text session, which
+	// is why a later held delete stops. Newlines must not reset the field
+	// either: that reset is what drops the run a held delete consumes.
+	typeTextLikeUser: function(text) {
+		if (typeof text !== 'string' || text.length === 0 || !this._textArea)
+			return false;
+		if (document.activeElement !== this._textArea)
+			this._emptyArea();
+		try {
+			this._textArea.focus();
+		} catch (e) {
+			return false;
+		}
+		var beforeLen = this._lastContent.length;
+		this._ignoreInputCount++;
+		var node = document.createTextNode(text);
+		var post = this._hasPostSpace() ? this._textArea.lastChild : null;
+		if (post)
+			this._textArea.insertBefore(node, post);
+		else
+			this._textArea.appendChild(node);
+		this._setCursorPosition(this.getPlainTextContent().length);
+		this._ignoreInputCount--;
+		if (this.getPlainTextContent().length === 0)
+			return false;
+		this._suspendFieldReset = true;
+		try {
+			if (this._lastContent.length === beforeLen)
+				this._onInput({ inputType: 'insertText', data: text });
+		} finally {
+			this._suspendFieldReset = false;
+		}
+		if (typeof window.postMobileDebug === 'function') {
+			window.postMobileDebug(
+				'ime_diag type_like last=' + this._lastContent.length +
+				' field=' + this.getPlainTextContent().length
+			);
+		}
+		return this._lastContent.length > beforeLen && this.getPlainTextContent().length > 0;
 	},
 
 	setSwitchedToEditMode: function() {

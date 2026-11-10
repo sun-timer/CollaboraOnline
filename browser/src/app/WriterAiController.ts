@@ -420,6 +420,48 @@ class WriterAiController {
 		return true;
 	}
 
+	/**
+	 * iOS Writer：把文案按手打送进隐藏输入框。输入事件自己更新缓冲并把字写入
+	 * 文档，不再走 HTML 粘贴。光标先移到文末，和「插入文档」的落点一致。
+	 */
+	insertPreviewByTyping(text: string): boolean {
+		if (
+			this.state.state !== 'ready' ||
+			!this.state.requestId ||
+			!this.state.preview ||
+			!this.isWriterDocument()
+		) {
+			return false;
+		}
+		const typed = (text || '').trim();
+		if (!typed) {
+			return false;
+		}
+		const map = (window as any).app?.map;
+		const textInput = map?._textInput;
+		const socket = (window as any).app?.socket;
+		if (!textInput || typeof textInput.typeTextLikeUser !== 'function') {
+			return false;
+		}
+		if (socket && typeof socket.sendMessage === 'function') {
+			socket.sendMessage('uno .uno:GoToEndOfDoc');
+		}
+		let typedOk = false;
+		try {
+			typedOk = textInput.typeTextLikeUser(typed) === true;
+		} catch (_error) {
+			typedOk = false;
+		}
+		if (!typedOk) {
+			return false;
+		}
+		this.bridge.accept(this.state.requestId, this.state.preview);
+		this.notifyNativeUndoRecord('ai_insert');
+		this.state = { ...this.state, state: 'accepted' };
+		this.notify();
+		return true;
+	}
+
 	/** iOS Writer and Impress wait for LOK's native paste acknowledgement. */
 	async acceptAsync(html: string): Promise<boolean> {
 		const isIOS = typeof window !== 'undefined' && !!(window as any).ThisIsTheiOSApp;
