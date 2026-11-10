@@ -636,7 +636,9 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             || strongSelf.webView != expectedWebView || !strongSelf.document
             || strongSelf.document->appDocId != expectedDocumentId) return;
         NSInteger viewId = [result respondsToSelector:@selector(integerValue)] ? [result integerValue] : -1;
-        if (error || viewId < 0 || !strongSelf->nativeBridgeHandler.documentTextInserter) {
+        // viewId stays -1 when the web layer cannot resolve `_viewId`; the
+        // inserter then resolves the active view itself instead of failing.
+        if (error || !strongSelf->nativeBridgeHandler.documentTextInserter) {
             strongSelf->autoGenerateInsertPending = NO;
             [strongSelf->aiResultModal setErrorWithMessage:@"无法定位文档插入位置，请重试"];
             return;
@@ -1042,13 +1044,25 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             auto *mutex = comphelper::SolarMutex::get();
             if (!mutex) { completion(NO, @"文档未准备好"); return; }
             osl::Guard<comphelper::SolarMutex> guard(mutex);
+            // The web layer resolves this from `_docLayer._viewId`, which can
+            // stay undefined on the iOS load path whose status messages omit
+            // `viewid` (the web side then posts -1). Single-view documents are
+            // unambiguous, so fall back to the first view rather than refusing
+            // the insertion the user just asked for.
+            int targetViewId = static_cast<int>(viewId);
             std::vector<int> viewIds(std::max(1, doc->getViewsCount()));
-            if (!doc->getViewIds(viewIds.data(), viewIds.size())
-                || std::find(viewIds.begin(), viewIds.end(), viewId) == viewIds.end()) {
+            BOOL haveViewIds = doc->getViewIds(viewIds.data(), viewIds.size());
+            if (haveViewIds) {
+                if (std::find(viewIds.begin(), viewIds.end(), targetViewId) == viewIds.end()) {
+                    LOG_INF("ai.text.insert: view " << viewId << " unknown, using view "
+                            << viewIds.front() << " of " << doc->getViewsCount());
+                    targetViewId = viewIds.front();
+                }
+            } else if (targetViewId < 0) {
                 completion(NO, @"文档视图已失效，请重新打开后重试");
                 return;
             }
-            doc->setView(static_cast<int>(viewId));
+            doc->setView(targetViewId);
             auto dispatchSynchronously = [&](const char *command) -> BOOL {
                 css::uno::Sequence<css::beans::PropertyValue> arguments(1);
                 arguments[0].Name = "SynchronMode";
