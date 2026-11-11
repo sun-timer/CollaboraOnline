@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <mutex>
+#include <memory>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -24,6 +25,8 @@
 #include <unordered_set>
 #include <string>
 
+#include <Poco/JSON/Parser.h>
+#include <sstream>
 #include <FakeSocket.hpp>
 #include <Kit.hpp>
 #include <Log.hpp>
@@ -854,9 +857,10 @@ Java_org_libreoffice_androidlib_LOActivity_paste(JNIEnv *env, jobject, jstring i
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_org_libreoffice_androidlib_LOActivity_pasteOnKitThread(JNIEnv* env, jobject instance,
+Java_org_libreoffice_androidlib_LOActivity_pasteAtCellOnKitThread(JNIEnv* env, jobject instance,
                                                             jstring inMimeType, jbyteArray inData,
-                                                            jstring inRequestId) {
+                                                            jstring inRequestId, jstring inCellAddress,
+                                                            jint viewId, jint part) {
     if (inMimeType == nullptr || inData == nullptr || inRequestId == nullptr)
         return;
 
@@ -873,6 +877,13 @@ Java_org_libreoffice_androidlib_LOActivity_pasteOnKitThread(JNIEnv* env, jobject
     const std::string requestId(requestChars);
     env->ReleaseStringUTFChars(inMimeType, mimeChars);
     env->ReleaseStringUTFChars(inRequestId, requestChars);
+
+    bool validCell = false;
+    const std::string cell = javaStringToUtf8(env, inCellAddress, validCell);
+    validCell = validCell && !cell.empty()
+            && std::all_of(cell.begin(), cell.end(), [](unsigned char c) {
+                return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+            });
 
     const jsize dataLength = env->GetArrayLength(inData);
     std::vector<char> data(static_cast<size_t>(dataLength));
@@ -922,14 +933,25 @@ Java_org_libreoffice_androidlib_LOActivity_pasteOnKitThread(JNIEnv* env, jobject
         finish(false);
         return;
     }
-    auto paste = [document, session, actionGeneration, mimeType,
+    auto paste = [document, session, actionGeneration, mimeType, cell, validCell, viewId, part,
                   data = std::move(data), finish]() mutable {
         const bool currentSession = session == g_coolwsdSessionGeneration.load();
         const bool currentActionGeneration =
                 actionGeneration == g_androidPendingKitActionGeneration.load();
         const bool currentDocument = document == getLOKDocumentForAndroidOnly();
-        const bool success = currentSession && currentActionGeneration && currentDocument
-                && !mimeType.empty()
+        const bool currentTarget = cell.empty() || (validCell
+                && document->getDocumentType() == LOK_DOCTYPE_SPREADSHEET
+                && document->getView() == viewId && document->getPart() == part);
+        if (!currentSession || !currentActionGeneration || !currentDocument || !currentTarget) {
+            finish(false);
+            return;
+        }
+        if (!cell.empty()) {
+            const std::string arguments = "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + cell
+                    + "\"},\"SynchronMode\":{\"type\":\"boolean\",\"value\":true}}";
+            document->postUnoCommand(".uno:GoToCell", arguments.c_str(), false);
+        }
+        const bool success = !mimeType.empty()
                 && document->paste(mimeType.c_str(), data.data(), data.size());
         finish(success);
     };
@@ -942,6 +964,128 @@ Java_org_libreoffice_androidlib_LOActivity_pasteOnKitThread(JNIEnv* env, jobject
     } else {
         poll->addCallback(std::move(paste));
     }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_libreoffice_androidlib_LOActivity_insertCalcChartOnKitThread(
+        JNIEnv* env, jobject instance, jstring inRequestId, jstring inArguments,
+        jobjectArray inCells, jobjectArray inFormulas, jint viewId, jint part)
+{
+    if (!inRequestId || !inArguments || !inCells || !inFormulas)
+        return;
+    bool validRequest = false;
+    bool validArguments = false;
+    const std::string requestId = javaStringToUtf8(env, inRequestId, validRequest);
+    const std::string arguments = javaStringToUtf8(env, inArguments, validArguments);
+    const jsize count = env->GetArrayLength(inCells);
+    bool valid = validRequest && validArguments && !requestId.empty() && !arguments.empty()
+            && env->GetArrayLength(inFormulas) == count && viewId >= 0 && part >= 0;
+    std::vector<std::pair<std::string, std::string>> operations;
+    for (jsize i = 0; valid && i < count; ++i)
+    {
+        auto cellValue = static_cast<jstring>(env->GetObjectArrayElement(inCells, i));
+        auto formulaValue = static_cast<jstring>(env->GetObjectArrayElement(inFormulas, i));
+        bool validCell = false;
+        bool validFormula = false;
+        std::string cell = javaStringToUtf8(env, cellValue, validCell);
+        std::string formula = javaStringToUtf8(env, formulaValue, validFormula);
+        if (cellValue) env->DeleteLocalRef(cellValue);
+        if (formulaValue) env->DeleteLocalRef(formulaValue);
+        valid = validCell && validFormula && !cell.empty() && !formula.empty()
+                && formula[0] == '=' && formula.find_first_of("\r\n\t") == std::string::npos
+                && std::all_of(cell.begin(), cell.end(), [](unsigned char c) {
+                    return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+                });
+        operations.emplace_back(std::move(cell), std::move(formula));
+    }
+    if (env->ExceptionCheck())
+    {
+        env->ExceptionClear();
+        valid = false;
+    }
+    auto document = getLOKDocumentForAndroidOnly();
+    auto* poll = KitSocketPoll::getMainPoll();
+    const int session = g_coolwsdSessionGeneration.load();
+    const int actionGeneration = g_androidPendingKitActionGeneration.load();
+    jobject activity = env->NewGlobalRef(instance);
+    jclass activityClass = static_cast<jclass>(env->NewGlobalRef(env->GetObjectClass(instance)));
+    if (activity == nullptr || activityClass == nullptr) {
+        if (activity != nullptr)
+            env->DeleteGlobalRef(activity);
+        if (activityClass != nullptr)
+            env->DeleteGlobalRef(activityClass);
+        return;
+    }
+
+    auto finish = [activity, activityClass, requestId](bool success) {
+        JNIThreadContext context;
+        JNIEnv* callbackEnv = context.getEnv();
+        if (callbackEnv == nullptr)
+        {
+            LOG_ERR("Unable to obtain JNIEnv for native paste result callback");
+            return;
+        }
+        jmethodID callback = callbackEnv->GetMethodID(activityClass, "onNativePasteResult",
+                                                       "(Ljava/lang/String;Z)V");
+        if (callback != nullptr) {
+            jstring request = callbackEnv->NewStringUTF(requestId.c_str());
+            callbackEnv->CallVoidMethod(activity, callback, request,
+                                        success ? JNI_TRUE : JNI_FALSE);
+            callbackEnv->DeleteLocalRef(request);
+        }
+        if (callbackEnv->ExceptionCheck())
+            callbackEnv->ExceptionClear();
+        callbackEnv->DeleteGlobalRef(activityClass);
+        callbackEnv->DeleteGlobalRef(activity);
+    };
+
+    if (!valid || !document || !poll)
+    {
+        finish(false);
+        return;
+    }
+    auto insert = [document, session, actionGeneration, viewId, part, arguments,
+                   operations = std::move(operations), finish] {
+        if (session != g_coolwsdSessionGeneration.load()
+                || actionGeneration != g_androidPendingKitActionGeneration.load()
+                || getLOKDocumentForAndroidOnly() != document
+                || document->getDocumentType() != LOK_DOCTYPE_SPREADSHEET
+                || document->getView() != viewId || document->getPart() != part)
+        {
+            finish(false);
+            return;
+        }
+        try
+        {
+            for (const auto& operation : operations)
+            {
+                const auto& [cell, formula] = operation;
+                const std::string goTo = "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + cell
+                        + "\"},\"SynchronMode\":{\"type\":\"boolean\",\"value\":true}}";
+                document->postUnoCommand(".uno:GoToCell", goTo.c_str(), false);
+                if (!document->paste("text/plain;charset=utf-8", formula.data(), formula.size()))
+                {
+                    __android_log_print(ANDROID_LOG_WARN, "LOActivity",
+                            "calc_chart_preprocess_failed cell=%s", cell.c_str());
+                    finish(false);
+                    return;
+                }
+            }
+            document->postUnoCommand(".uno:InsertObjectChart", arguments.c_str(), false);
+            finish(true);
+        }
+        catch (const std::exception& error)
+        {
+            __android_log_print(ANDROID_LOG_WARN, "LOActivity",
+                    "calc_chart_insert_failed reason=%s", error.what());
+            finish(false);
+        }
+    };
+    if (poll->getThreadOwner() == std::this_thread::get_id())
+        insert();
+    else
+        poll->addCallback(std::move(insert));
 }
 
 extern "C"
@@ -1007,6 +1151,148 @@ std::string javaStringToUtf8(JNIEnv* env, jstring value, bool& valid)
     return result;
 }
 }
+
+// Both extraction and application run on the document's kit thread.
+// Selection may change while the confirmation dialog enters edit mode. Content,
+// formatting and geometry remain part of the optimistic concurrency snapshot.
+static std::string typesetContentSnapshot(const std::string& json)
+{
+    auto document = Poco::JSON::Parser().parse(json).extract<Poco::JSON::Object::Ptr>();
+    auto slides = document->getObject("DocStructure")->getObject("Slides");
+    for (auto& entry : *slides)
+    {
+        auto slide = entry.second.extract<Poco::JSON::Object::Ptr>();
+        slide->remove("SelectedObjects");
+        auto objects = slide->getObject("Objects");
+        if (objects)
+            for (auto& object : *objects)
+            {
+                auto textObject = object.second.extract<Poco::JSON::Object::Ptr>();
+                textObject->remove("ActiveSelection");
+            }
+    }
+    std::ostringstream result;
+    document->stringify(result);
+    return result.str();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_libreoffice_androidlib_LOActivity_requestImpressTypesetOnKitThread(
+        JNIEnv* env, jobject instance, jstring inRequestId, jbyteArray inExpected,
+        jstring inArguments, jint view, jint part)
+{
+    bool validRequest = false;
+    bool validArguments = false;
+    const std::string requestId = javaStringToUtf8(env, inRequestId, validRequest);
+    const std::string arguments = javaStringToUtf8(env, inArguments, validArguments);
+    if (!validRequest || !validArguments)
+        return;
+    const bool applying = inExpected != nullptr;
+    std::string expected;
+    if (applying)
+    {
+        const jsize length = env->GetArrayLength(inExpected);
+        expected.resize(length);
+        env->GetByteArrayRegion(inExpected, 0, length, reinterpret_cast<jbyte*>(expected.data()));
+        if (env->ExceptionCheck())
+            return;
+    }
+    auto document = getLOKDocumentForAndroidOnly();
+    const int session = g_coolwsdSessionGeneration.load();
+    const int generation = g_androidPendingKitActionGeneration.load();
+    jobject activity = env->NewGlobalRef(instance);
+    jclass activityClass = static_cast<jclass>(env->NewGlobalRef(env->GetObjectClass(instance)));
+    if (!activity || !activityClass)
+    {
+        if (activity) env->DeleteGlobalRef(activity);
+        if (activityClass) env->DeleteGlobalRef(activityClass);
+        return;
+    }
+    auto finish = [activity, activityClass, requestId](const std::string* structure,
+            int resultView, int resultPart, bool success, const char* reason) {
+        JNIThreadContext context;
+        JNIEnv* callbackEnv = context.getEnv();
+        if (!callbackEnv)
+            return;
+        jmethodID callback = callbackEnv->GetMethodID(activityClass, "onNativeImpressTypesetResult",
+                "(Ljava/lang/String;[BIIZLjava/lang/String;)V");
+        if (callback)
+        {
+            jstring request = callbackEnv->NewStringUTF(requestId.c_str());
+            jstring message = callbackEnv->NewStringUTF(reason);
+            jbyteArray bytes = nullptr;
+            if (structure)
+            {
+                bytes = callbackEnv->NewByteArray(structure->size());
+                if (bytes)
+                    callbackEnv->SetByteArrayRegion(bytes, 0, structure->size(),
+                            reinterpret_cast<const jbyte*>(structure->data()));
+            }
+            if (!callbackEnv->ExceptionCheck())
+                callbackEnv->CallVoidMethod(activity, callback, request, bytes,
+                        resultView, resultPart, success ? JNI_TRUE : JNI_FALSE, message);
+            if (bytes) callbackEnv->DeleteLocalRef(bytes);
+            callbackEnv->DeleteLocalRef(message);
+            callbackEnv->DeleteLocalRef(request);
+        }
+        if (callbackEnv->ExceptionCheck()) callbackEnv->ExceptionClear();
+        callbackEnv->DeleteGlobalRef(activityClass);
+        callbackEnv->DeleteGlobalRef(activity);
+    };
+    auto action = [document, session, generation, expected, arguments, applying, view, part, finish]() {
+        if (!document || document != getLOKDocumentForAndroidOnly()
+                || session != g_coolwsdSessionGeneration.load()
+                || generation != g_androidPendingKitActionGeneration.load()
+                || document->getDocumentType() != LOK_DOCTYPE_PRESENTATION)
+        {
+            finish(nullptr, view, part, false, "document_changed");
+            return;
+        }
+        try
+        {
+            const int currentView = document->getView();
+            const int currentPart = document->getPart();
+            std::unique_ptr<char, decltype(&std::free)> raw(
+                    document->getCommandValues(".uno:ExtractDocumentStructure?filter=slides&typeset=1"), &std::free);
+            if (!raw || !*raw)
+            {
+                __android_log_print(ANDROID_LOG_WARN, "LOActivity",
+                        "impress_typeset_structure result=unavailable part=%d view=%d", currentPart, currentView);
+                finish(nullptr, currentView, currentPart, false, "structure_unavailable");
+                return;
+            }
+            const std::string structure(raw.get());
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                    "impress_typeset_structure result=ok part=%d view=%d bytes=%zu applying=%d",
+                    currentPart, currentView, structure.size(), applying ? 1 : 0);
+            if (!applying)
+            {
+                finish(&structure, currentView, currentPart, true, "extracted");
+                return;
+            }
+            if (view != currentView || part != currentPart || typesetContentSnapshot(expected) != typesetContentSnapshot(structure) || arguments.empty())
+            {
+                finish(nullptr, currentView, currentPart, false, "target_changed");
+                return;
+            }
+            document->postUnoCommand(".uno:TransformDocumentStructure", arguments.c_str(), true);
+            finish(nullptr, currentView, currentPart, true, "dispatched");
+        }
+        catch (const std::exception& error)
+        {
+            LOG_ERR("Impress typeset failed: " << error.what());
+            finish(nullptr, view, part, false, error.what());
+        }
+    };
+    auto* poll = KitSocketPoll::getMainPoll();
+    if (!poll)
+        finish(nullptr, view, part, false, "kit_unavailable");
+    else if (poll->getThreadOwner() == std::this_thread::get_id())
+        action();
+    else
+        poll->addCallback(std::move(action));
+}
+
 
 extern "C"
 JNIEXPORT void JNICALL
@@ -1075,6 +1361,9 @@ Java_org_libreoffice_androidlib_LOActivity_appendContinueWriteOnKitThread(
 
     if (!document || !poll || !validSelection || expectedSelection.empty() || html.empty() || viewId < 0)
     {
+        __android_log_print(ANDROID_LOG_WARN, "LOActivity",
+                "continue_write_insert_rejected reason=invalid_context document=%d poll=%d selection=%d html=%zu view=%d",
+                document ? 1 : 0, poll ? 1 : 0, validSelection && !expectedSelection.empty(), html.size(), viewId);
         finish(false);
         return;
     }
@@ -1098,13 +1387,19 @@ Java_org_libreoffice_androidlib_LOActivity_appendContinueWriteOnKitThread(
             char* selected = document->getTextSelection("text/plain;charset=utf-8", nullptr);
             const std::string actualSelection = selected == nullptr ? "" : selected;
             free(selected);
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                    "continue_write_insert_selection matches=%d expectedBytes=%zu actualBytes=%zu",
+                    actualSelection == expectedSelection, expectedSelection.size(), actualSelection.size());
             if (actualSelection == expectedSelection
                     && actionGeneration == g_androidPendingKitActionGeneration.load())
             {
-                document->postUnoCommand(".uno:Right", "{}", false);
+                document->postUnoCommand(".uno:GoRight",
+                        R"({"SynchronMode":{"type":"boolean","value":true}})", false);
                 char* remaining = document->getTextSelection("text/plain;charset=utf-8", nullptr);
                 const bool collapsed = remaining == nullptr || remaining[0] == '\0';
                 free(remaining);
+                __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                        "continue_write_insert_collapse command=GoRight collapsed=%d", collapsed);
                 if (collapsed && session == g_coolwsdSessionGeneration.load()
                         && actionGeneration == g_androidPendingKitActionGeneration.load()
                         && getLOKDocumentForAndroidOnly() == document)

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Figma 4149:55972, 750px canvas at 2x. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:orientation="vertical" android:paddingBottom="12dp"
+    android:background="@drawable/lolib_bg_continue_dialog">
+    <FrameLayout android:layout_width="match_parent" android:layout_height="60dp"
+        android:paddingStart="16dp" android:paddingEnd="16dp">
+        <TextView android:layout_width="match_parent" android:layout_height="match_parent"
+            android:gravity="center" android:text="AI 排版" android:textSize="20sp" android:textColor="#1f1f1f"/>
+        <ImageButton android:id="@+id/impress_typeset_close" android:layout_width="40dp"
+            android:layout_height="40dp" android:layout_gravity="end|center_vertical"
+            android:background="?attr/selectableItemBackgroundBorderless" android:padding="0dp"
+            android:src="@drawable/lolib_ic_impress_typeset_close" android:contentDescription="关闭"/>
+    </FrameLayout>
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:layout_marginStart="12dp" android:layout_marginEnd="12dp" android:fillViewport="true">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical">
+            <EditText android:id="@+id/impress_typeset_input" android:layout_width="match_parent"
+                android:layout_height="163dp" android:padding="10dp" android:gravity="start|top"
+                android:background="@drawable/lolib_bg_calc_formula_input" android:textSize="16sp"
+                android:textColor="#101010" android:textColorHint="#999999"
+                android:hint="请输入要修改的排版内容" android:inputType="textMultiLine|textCapSentences"
+                android:maxLength="2000" android:scrollbars="vertical"/>
+            <TextView android:id="@+id/impress_typeset_status" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="8dp" android:visibility="gone"
+                android:textSize="14sp" android:textColor="#5f6368" android:accessibilityLiveRegion="polite"/>
+            <TextView android:id="@+id/impress_typeset_result" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="8dp" android:visibility="gone"
+                android:textSize="16sp" android:textColor="#101010" android:textIsSelectable="true"/>
+        </LinearLayout>
+    </ScrollView>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="12dp" android:paddingStart="20dp" android:paddingEnd="20dp"
+        android:orientation="horizontal" android:gravity="center">
+        <TextView android:id="@+id/impress_typeset_regenerate" android:layout_width="0dp"
+            android:layout_height="35dp" android:layout_weight="1" android:layout_marginEnd="8dp"
+            android:background="@drawable/lolib_bg_continue_pill_secondary_35" android:text="重新生成"
+            android:gravity="center" android:textSize="16sp" android:textColor="#101010"
+            android:visibility="gone" android:clickable="true" android:focusable="true"/>
+        <LinearLayout android:id="@+id/impress_typeset_start" android:layout_width="0dp"
+            android:layout_height="35dp" android:layout_weight="1" android:orientation="horizontal"
+            android:background="@drawable/lolib_bg_continue_pill_primary_35" android:gravity="center"
+            android:clickable="true" android:focusable="true">
+            <ImageView android:layout_width="20dp" android:layout_height="20dp"
+                android:src="@drawable/lolib_ic_impress_typeset_generate" android:importantForAccessibility="no"/>
+            <TextView android:id="@+id/impress_typeset_start_label" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:layout_marginStart="4dp"
+                android:text="开始生成" android:textSize="16sp" android:textColor="#ffffff"/>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

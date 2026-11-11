@@ -653,6 +653,10 @@ public class LOActivity extends AppCompatActivity {
     private View calcFormulaInsertBtn;
     private TextView calcFormulaCellHint;
     private String calcFormulaCellAddress = "";
+    private int calcFormulaViewId = -1;
+    private int calcFormulaPart = -1;
+    private long calcFormulaDocumentGeneration = -1L;
+    private String calcFormulaInsertRequestId = "";
     private String calcFormulaLastInput = "";
     private String calcFormulaActiveRequestId = "";
     private String calcFormulaResultText = "";
@@ -746,6 +750,8 @@ public class LOActivity extends AppCompatActivity {
     private TextView chartExecutingStatus;
     private String chartActiveRequestId = "";
     private String chartResultJson = "";
+    private long chartDocumentGeneration = -1L;
+    private String chartInsertRequestId = "";
     private String chartLastInput = "";
     private String chartSelectedRange = "";
     // Calc 通用：在 AI 功能面板弹出时缓存选区范围（避免 dismiss 后读取为空）
@@ -2025,6 +2031,49 @@ public class LOActivity extends AppCompatActivity {
         return copyTempBackToIntent(uri, mTempFile);
     }
 
+    private boolean validateSavedChartXml(File file) {
+        if (!mIsCalcDocument) {
+            return true;
+        }
+        try (InputStream signature = new FileInputStream(file)) {
+            // Legacy XLS exports are not ZIP packages.
+            if (signature.read() != 'P' || signature.read() != 'K') {
+                return true;
+            }
+        } catch (IOException e) {
+            Log.w(TAG, "calc_save_validation_failed reason=read", e);
+            return false;
+        }
+        try (java.util.zip.ZipFile archive = new java.util.zip.ZipFile(file)) {
+            java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = archive.entries();
+            while (entries.hasMoreElements()) {
+                java.util.zip.ZipEntry entry = entries.nextElement();
+                String name = entry.getName();
+                boolean chartXml = (name.startsWith("Object ") && name.endsWith("/content.xml"))
+                        || (name.startsWith("xl/charts/chart") && name.endsWith(".xml"));
+                if (!chartXml) {
+                    continue;
+                }
+                try (InputStream input = archive.getInputStream(entry)) {
+                    org.xmlpull.v1.XmlPullParser parser = android.util.Xml.newPullParser();
+                    parser.setInput(input, "UTF-8");
+                    while (parser.nextToken() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                        if (parser.getEventType() == org.xmlpull.v1.XmlPullParser.DOCDECL) {
+                            throw new IOException("Unexpected chart document type declaration");
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "calc_save_validation_failed entry=" + name + " bytes=" + entry.getSize(), e);
+                    return false;
+                }
+            }
+            return true;
+        } catch (IOException e) {
+            Log.w(TAG, "calc_save_validation_failed reason=archive", e);
+            return false;
+        }
+    }
+
     private boolean copyTempBackToIntent(Uri targetUri, File sourceFile) {
         class CopyThread extends Thread {
             private boolean result;
@@ -2034,6 +2083,9 @@ public class LOActivity extends AppCompatActivity {
                 InputStream inputStream = null;
                 OutputStream outputStream = null;
                 try {
+                    if (!validateSavedChartXml(sourceFile)) {
+                        return;
+                    }
                     inputStream = new FileInputStream(sourceFile);
                     if (ContentResolver.SCHEME_CONTENT.equals(targetUri.getScheme())) {
                         try {
@@ -2236,6 +2288,9 @@ public class LOActivity extends AppCompatActivity {
             }
             if (articleDialog != null && articleDialog.isShowing()) {
                 applyArticleDialogSize();
+            }
+            if (impressTypesetDialog != null && impressTypesetDialog.isShowing()) {
+                applyImpressTypesetDialogSize();
             }
             if (formatBatchDialog != null && formatBatchDialog.isShowing()) {
                 applyFormatBatchDialogSize();
@@ -3144,6 +3199,7 @@ public class LOActivity extends AppCompatActivity {
             runOnUiThread(() -> mProgressDialog.dismiss());
         } else if (messageStartsWith(message, "unocommandresult:")) {
             handleCondFormatUnoCommandResult(message);
+            handleImpressTypesetCommandResult(message);
         }
     }
 
@@ -3316,9 +3372,20 @@ public class LOActivity extends AppCompatActivity {
                         }
                     });
                 } else {
-                    documentModified = false;
+                    documentModified = !saveCopied;
                 }
-                sendBroadcast(messageAndParam[0], messageAndParam.length > 1 ? messageAndParam[1] : "");
+                if (saveCopied) {
+                    sendBroadcast(messageAndParam[0], messageAndParam.length > 1 ? messageAndParam[1] : "");
+                } else {
+                    documentModified = true;
+                    closeAfterSaveRequested = false;
+                    runOnUiThread(() -> {
+                        mProgressDialog.dismiss();
+                        if (switchUri == null) {
+                            Toast.makeText(this, "保存失败，原文件保留，请检查图表后重试", Toast.LENGTH_LONG).show();
+                        }
+                    });
+                }
                 if (closeAfterSaveRequested) {
                     closeAfterSaveRequested = false;
                     finishWithProgress();
@@ -4106,6 +4173,9 @@ public class LOActivity extends AppCompatActivity {
                     + " modelMode=" + modelMode
                     + " payloadChars=" + payloadChars);
             if (!ensureCloudModelConfigured(requestMode, modelMode)) {
+                if (AiChatCoordinator.MODE_IMPRESS_TYPESET.equals(requestMode)) {
+                    failImpressTypeset(finalRequestId, "请先配置基础模型");
+                }
                 Log.w(TAG, "ai_request_blocked reason=config_missing requestId=" + finalRequestId
                         + " mode=" + requestMode + " modelMode=" + modelMode);
                 return;
@@ -4429,6 +4499,9 @@ public class LOActivity extends AppCompatActivity {
                 }
                 Log.i(TAG, "ai_operate_mode requestId=" + requestId + " mode=" + taskType
                         + " selectionChars=" + selection.length());
+            } else if (AiChatCoordinator.MODE_IMPRESS_TYPESET.equals(taskType)) {
+                messages = org.libreoffice.androidlib.ai.ImpressTypesetPlan.messages(
+                        request.getString("requirement"), request.getJSONObject("slide"));
             } else if (AiChatCoordinator.MODE_TYPESET.equals(taskType)) {
                 String typesetType = request.optString("typesetType", "general");
                 // 段落分类模式：LLM 只做段落分类，不改写原文
@@ -4632,6 +4705,8 @@ public class LOActivity extends AppCompatActivity {
                                 Log.i(TAG, "impress_outline_done_suppressed requestId=" + callbackRequestId);
                             } else if (callbackRequestId.equals(generateActiveRequestId)) {
                                 runOnUiThread(() -> onImpressGenerateDone(callbackRequestId, fullText));
+                            } else if (AiChatCoordinator.MODE_IMPRESS_TYPESET.equals(taskType)) {
+                                onImpressTypesetDone(callbackRequestId, fullText);
                             } else if (AiChatCoordinator.isOperateMode(taskType)) {
                                 onAiOperationDone(callbackRequestId, fullText);
                             } else if (AiChatCoordinator.MODE_TYPESET.equals(taskType)) {
@@ -4876,6 +4951,9 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void dispatchAiError(String requestId, String code, String message) {
+        if (requestId != null && requestId.startsWith("impress-typeset-")) {
+            failImpressTypeset(requestId, message);
+        }
         try {
             JSONObject errorPayload = new JSONObject();
             errorPayload.put("requestId", requestId);
@@ -6602,37 +6680,41 @@ public class LOActivity extends AppCompatActivity {
      * 打开公式生成浮层。先从 JS 读取当前选中单元格地址，再以输入态展示。
      */
     private void openCalcFormulaDialog() {
-        if (calcSelectedRange != null && !calcSelectedRange.isEmpty()) {
-            String[] parts = calcSelectedRange.split(":");
-            openCalcFormulaDialogWithAddress(parts[0]);
-            Log.i(TAG, "formula_open addr=" + calcFormulaCellAddress + " source=cached");
-        } else if (mWebView != null) {
-            openCalcFormulaDialogWithAddressNow();
-        } else {
-            openCalcFormulaDialogWithAddress("");
+        if (mWebView == null) {
+            return;
         }
-    }
-
-    private void openCalcFormulaDialogWithAddressNow() {
-        if (mWebView == null) { openCalcFormulaDialogWithAddress(""); return; }
+        final long generation = documentLifecycleGeneration;
         mWebView.evaluateJavascript(
-            "(function(){var cl=function(c){var s='';while(c>=0){s=String.fromCharCode(65+(c%26))+s;c=Math.floor(c/26)-1;}return s;};var a=app.calc&&app.calc.cellAddress;if(!a)return'';return cl(a.x)+(a.y+1);})()",
-            new android.webkit.ValueCallback<String>() {
-                @Override
-                public void onReceiveValue(String value) {
-                    String addr = "";
-                    if (value != null && !value.equals("null") && value.length() > 2) {
-                        try {
-                            Object p = new org.json.JSONTokener(value).nextValue();
-                            addr = (p instanceof String) ? (String) p : "";
-                        } catch (org.json.JSONException e) { /* fallback */ }
+                "(function(){try{var d=window.app&&app.map&&app.map._docLayer;"
+                + "var a=window.app&&app.calc&&app.calc.cellAddress;"
+                + "if(!d||!a||!Number.isInteger(a.x)||!Number.isInteger(a.y)||a.x<0||a.y<0)"
+                + "return JSON.stringify({reason:'cell_not_ready'});"
+                + "var c=a.x,s='';while(c>=0){s=String.fromCharCode(65+c%26)+s;c=Math.floor(c/26)-1;}"
+                + "return JSON.stringify({cell:s+(a.y+1),view:d._viewId,part:d._selectedPart});"
+                + "}catch(e){return JSON.stringify({reason:String(e)});}})()",
+                value -> {
+                    if (generation != documentLifecycleGeneration) {
+                        return;
                     }
-                    calcFormulaCellAddress = addr;
-                    final String r = addr;
-                    runOnUiThread(() -> openCalcFormulaDialogWithAddress(r));
-                    Log.i(TAG, "formula_open addr=" + r + " source=direct");
-                }
-            });
+                    try {
+                        JSONObject target = new JSONObject(parseJsString(value));
+                        if (target.has("reason")) {
+                            Log.w(TAG, "calc_formula_target_missing reason=" + target.optString("reason"));
+                            Toast.makeText(this, "单元格尚未准备好，请稍后重试", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        calcFormulaCellAddress = target.getString("cell");
+                        calcFormulaViewId = target.getInt("view");
+                        calcFormulaPart = target.getInt("part");
+                        calcFormulaDocumentGeneration = generation;
+                        Log.i(TAG, "calc_formula_target cell=" + calcFormulaCellAddress
+                                + " view=" + calcFormulaViewId + " part=" + calcFormulaPart);
+                        openCalcFormulaDialogWithAddress(calcFormulaCellAddress);
+                    } catch (JSONException e) {
+                        Log.w(TAG, "calc_formula_target_missing", e);
+                        Toast.makeText(this, "请先选择目标单元格", Toast.LENGTH_SHORT).show();
+                    }
+                });
     }
 
     private void openCalcFormulaDialogWithAddress(String cellAddress) {
@@ -6899,30 +6981,70 @@ public class LOActivity extends AppCompatActivity {
         Log.i(TAG, "calc_formula_regenerate");
     }
 
-    /**
-     * 点「复制到单元格」（暂做复制）：将公式结果复制到剪贴板。
-     * 后面改为真实插入单元格逻辑。
-     */
+    /** Insert the generated formula into the cell captured when the dialog opened. */
     private void onCalcFormulaInsertOrCopy() {
         String text = calcFormulaResultText;
         if ((text == null || text.isEmpty()) && calcFormulaContentText != null) {
             text = calcFormulaContentText.getText().toString();
         }
-        if (text == null || text.trim().isEmpty()) {
-            Toast.makeText(this, "没有可复制的内容", Toast.LENGTH_SHORT).show();
+        String formula = text == null ? "" : text.trim();
+        if (formula.startsWith("```")) {
+            int firstLine = formula.indexOf('\n');
+            int closingFence = formula.lastIndexOf("```");
+            if (firstLine >= 0 && closingFence > firstLine) {
+                formula = formula.substring(firstLine + 1, closingFence).trim();
+            }
+        }
+        if (!formula.startsWith("=") || formula.contains("\n") || formula.contains("\r")
+                || formula.contains("\t")) {
+            Toast.makeText(this, "请重新生成有效的单条公式", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (clipboardManager != null) {
-            clipboardManager.setPrimaryClip(ClipData.newPlainText("calc_formula", text));
+        if (calcFormulaDocumentGeneration != documentLifecycleGeneration
+                || !calcFormulaCellAddress.matches("[A-Z]+[1-9][0-9]*")
+                || calcFormulaViewId < 0 || calcFormulaPart < 0) {
+            Toast.makeText(this, "文档已切换，请重新选择目标单元格", Toast.LENGTH_SHORT).show();
+            return;
         }
-        Toast.makeText(this, "公式已复制", Toast.LENGTH_SHORT).show();
-        Log.i(TAG, "calc_formula_insert_copy chars=" + text.length());
+        if (!calcFormulaInsertRequestId.isEmpty()) {
+            return;
+        }
+        final long generation = calcFormulaDocumentGeneration;
+        final String content = formula;
+        final String cell = calcFormulaCellAddress;
+        final int viewId = calcFormulaViewId;
+        final int part = calcFormulaPart;
+        final String requestId = "formula:" + UUID.randomUUID();
+        calcFormulaInsertRequestId = requestId;
+        calcFormulaInsertBtn.setEnabled(false);
+        final boolean[] queued = {false};
+        ensureEditModeThen(() -> {
+            if (generation != documentLifecycleGeneration
+                    || !requestId.equals(calcFormulaInsertRequestId)) {
+                return;
+            }
+            queued[0] = true;
+            Log.i(TAG, "calc_formula_insert_queued cell=" + cell + " part=" + part);
+            pasteAtCellOnKitThread("text/plain;charset=utf-8", content.getBytes(StandardCharsets.UTF_8),
+                    requestId, cell, viewId, part);
+        });
+        getMainHandler().postDelayed(() -> {
+            if (requestId.equals(calcFormulaInsertRequestId) && !queued[0]) {
+                calcFormulaInsertRequestId = "";
+                calcFormulaInsertBtn.setEnabled(true);
+                Toast.makeText(this, "无法进入编辑模式，请重试插入", Toast.LENGTH_SHORT).show();
+            }
+        }, 3000L);
     }
 
     /**
      * 关闭公式生成浮层：取消在途请求、清理流式注册、隐藏 overlay+panel。
      */
     private void dismissCalcFormulaDialog() {
+        calcFormulaInsertRequestId = "";
+        if (calcFormulaInsertBtn != null) {
+            calcFormulaInsertBtn.setEnabled(true);
+        }
         if (!calcFormulaActiveRequestId.isEmpty()) {
             cancelAiRequest(calcFormulaActiveRequestId);
             aiStreamingViewByRequestId.remove(calcFormulaActiveRequestId);
@@ -7966,6 +8088,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void openChartDialogWithRange(String cellRange) {
+        chartDocumentGeneration = documentLifecycleGeneration;
         chartSelectedRange = cellRange;
         setChartDialogState(CHART_STATE_INPUT);
         TextView rangeHint = chartPanel.findViewById(R.id.chart_range_hint);
@@ -8154,80 +8277,85 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void onChartInsert() {
-        setChartDialogState(CHART_STATE_EXECUTING);
-        if (chartExecutingStatus != null) {
-            chartExecutingStatus.setText("正在插入图表...");
+        if (!chartInsertRequestId.isEmpty()) {
+            return;
         }
-        final String requestId = chartActiveRequestId;
-
-        new Thread(() -> {
-            try {
-                org.json.JSONObject result = new org.json.JSONObject(chartResultJson);
-
-                // Step 1: Execute preprocessing operations
-                org.json.JSONArray preprocess = result.optJSONArray("preprocess");
-                if (preprocess != null && preprocess.length() > 0) {
-                    for (int i = 0; i < preprocess.length(); i++) {
-                        final int step = i;
-                        org.json.JSONObject op = preprocess.getJSONObject(i);
-                        String type = op.optString("type", "");
-                        String address = op.optString("address", "");
-                        String value = op.optString("value", "");
-
-                        runOnUiThread(() -> {
-                            if (chartExecutingStatus != null) {
-                                chartExecutingStatus.setText("正在执行第 " + (step + 1) + "/" + preprocess.length() + " 步...");
-                            }
-                        });
-
-                        if ("formula".equals(type) && !address.isEmpty() && !value.isEmpty()) {
-                            // Set formula via GoToCell + paste（typed JSON 格式，参考 gtv-signal-handlers.cxx）
-                            String cellRef = address.split("\\.")[1];
-                            postUnoCommand(".uno:GoToCell",
-                                "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + cellRef + "\"}}",
-                                false);
-                            Thread.sleep(100);
-                            paste("text/plain;charset=utf-8", value.getBytes("UTF-8"));
-                            Thread.sleep(100);
+        if (mWebView == null || chartDocumentGeneration != documentLifecycleGeneration) {
+            Toast.makeText(this, "文档已切换，请重新生成图表", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final long generation = chartDocumentGeneration;
+        final String resultJson = chartResultJson;
+        final String selectedRange = chartSelectedRange;
+        final String requestId = "chart-insert:" + UUID.randomUUID();
+        chartInsertRequestId = requestId;
+        setChartDialogState(CHART_STATE_EXECUTING);
+        final boolean[] queued = {false};
+        ensureEditModeThen(() -> {
+            if (generation != documentLifecycleGeneration || mWebView == null) {
+                return;
+            }
+            mWebView.evaluateJavascript(
+                    "(function(){var d=window.app&&app.map&&app.map._docLayer;"
+                    + "if(!d)return '{}';return JSON.stringify({view:d._viewId,part:d._selectedPart,"
+                    + "sheet:d._partNames&&d._partNames[d._selectedPart]});})()", value -> {
+                if (!requestId.equals(chartInsertRequestId) || generation != documentLifecycleGeneration) {
+                    return;
+                }
+                try {
+                    JSONObject target = new JSONObject(parseJsString(value));
+                    int viewId = target.getInt("view");
+                    int part = target.getInt("part");
+                    String sheetName = target.getString("sheet");
+                    JSONObject result = new JSONObject(resultJson);
+                    JSONArray preprocess = result.optJSONArray("preprocess");
+                    int count = preprocess == null ? 0 : preprocess.length();
+                    String[] cells = new String[count];
+                    String[] formulas = new String[count];
+                    for (int i = 0; i < count; i++) {
+                        JSONObject operation = preprocess.getJSONObject(i);
+                        if (!"formula".equals(operation.optString("type"))) {
+                            throw new IllegalArgumentException("不支持的图表数据预处理");
+                        }
+                        cells[i] = CalcChartTypeMapper.cellAddress(operation.getString("address"));
+                        formulas[i] = operation.getString("value");
+                        if (!formulas[i].startsWith("=") || formulas[i].contains("\n")
+                                || formulas[i].contains("\t") || formulas[i].contains("\r")) {
+                            throw new IllegalArgumentException("图表数据预处理公式无效");
                         }
                     }
+                    JSONObject chart = result.getJSONObject("chart");
+                    String range = count == 0 && selectedRange != null && !selectedRange.isEmpty()
+                            ? selectedRange : chart.getString("dataRange");
+                    String dataRange = CalcChartTypeMapper.qualifyRange(range, sheetName);
+                    String chartType = chart.optString("chartType", "column");
+                    String template = CalcChartTypeMapper.needsCustomTemplate(chartType)
+                            ? CalcChartTypeMapper.toTemplateService(chartType) : "";
+                    String arguments = CalcChartTypeMapper.buildInsertChartJson(dataRange, template,
+                            CalcChartTypeMapper.toCurveStyle(chartType));
+                    queued[0] = true;
+                    Log.i(TAG, "calc_chart_insert_queued request=" + requestId + " range=" + dataRange
+                            + " type=" + chartType + " preprocess=" + count);
+                    insertCalcChartOnKitThread(requestId, arguments, cells, formulas, viewId, part);
+                } catch (JSONException | IllegalArgumentException e) {
+                    Log.w(TAG, "calc_chart_target_invalid", e);
+                    chartInsertRequestId = "";
+                    setChartDialogState(CHART_STATE_COMPLETED);
+                    Toast.makeText(this, "图表数据范围无效，请重新选择单元格后生成", Toast.LENGTH_LONG).show();
                 }
-
-                // Step 2: Insert chart
-                runOnUiThread(() -> {
-                    if (chartExecutingStatus != null) {
-                        chartExecutingStatus.setText("正在插入图表...");
-                    }
-                });
-
-                org.json.JSONObject chart = result.optJSONObject("chart");
-                String dataRange = chart != null ? chart.optString("dataRange", "") : "";
-                String chartType = chart != null ? chart.optString("chartType", "column") : "column";
-                String templateService = CalcChartTypeMapper.needsCustomTemplate(chartType)
-                        ? CalcChartTypeMapper.toTemplateService(chartType) : "";
-                int curveStyle = CalcChartTypeMapper.toCurveStyle(chartType);
-                String insertArgs = CalcChartTypeMapper.buildInsertChartJson(dataRange, templateService, curveStyle);
-
-                postUnoCommand(".uno:InsertObjectChart", insertArgs, false);
-
-                runOnUiThread(() -> {
-                    Log.i(TAG, "calc_chart_insert_done id=" + requestId
-                            + " type=" + chartType + " template=" + templateService);
-                    dismissChartDialog();
-                    Toast.makeText(LOActivity.this, "图表已生成", Toast.LENGTH_SHORT).show();
-                });
-
-            } catch (Exception e) {
-                Log.e(TAG, "calc_chart_insert_error", e);
-                runOnUiThread(() -> {
-                    Toast.makeText(LOActivity.this, "图表插入失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-                    getMainHandler().postDelayed(() -> setChartDialogState(CHART_STATE_COMPLETED), 1500L);
-                });
+            });
+        });
+        getMainHandler().postDelayed(() -> {
+            if (requestId.equals(chartInsertRequestId) && !queued[0]) {
+                chartInsertRequestId = "";
+                setChartDialogState(CHART_STATE_COMPLETED);
+                Toast.makeText(this, "无法进入编辑模式，请重试插入", Toast.LENGTH_SHORT).show();
             }
-        }, "chart-executor-" + requestId).start();
+        }, 3000L);
     }
 
     private void dismissChartDialog() {
+        chartInsertRequestId = "";
         if (!chartActiveRequestId.isEmpty()) {
             cancelAiRequest(chartActiveRequestId);
             aiStreamingViewByRequestId.remove(chartActiveRequestId);
@@ -10787,6 +10915,7 @@ public class LOActivity extends AppCompatActivity {
                     aiOpPendingSelection = plain;
                     Log.i(TAG, "selection_popup_preread_native chars=" + plain.length());
                 });
+                return;
             }
             getSelectedTextFromJs(selection -> {
                 if (selection != null && !selection.isEmpty()) {
@@ -13112,6 +13241,22 @@ public class LOActivity extends AppCompatActivity {
             showFindReplaceSheet();
             return;
         }
+        if (mIsImpressDocument && (".uno:Bold".equals(normalizedCommand)
+                || ".uno:Italic".equals(normalizedCommand))) {
+            final long generation = documentLifecycleGeneration;
+            fetchCurrentFormattingAsync((style, font, size, alignment, bold, italic, underline, strike) -> {
+                if (generation != documentLifecycleGeneration || !mIsImpressDocument) {
+                    return;
+                }
+                String property = normalizedCommand.substring(".uno:".length());
+                boolean enabled = ".uno:Bold".equals(normalizedCommand) ? !bold : !italic;
+                // Explicit arguments enter Impress's script-set path, which applies
+                // the attribute to Latin, CJK and CTL text together.
+                executeUnoCommand(normalizedCommand + " {\"" + property
+                        + "\":{\"type\":\"boolean\",\"value\":" + enabled + "}}");
+            });
+            return;
+        }
         Log.i(TAG, "dispatch_uno_from_native_panel command=" + normalizedCommand);
         requestWebViewFocusForPanelAction("uno_dispatch");
         postMobileMessage("uno " + normalizedCommand);
@@ -14856,6 +15001,7 @@ public class LOActivity extends AppCompatActivity {
         bindAiOpAction(panel, R.id.ai_op_impress_text_extract, this::showTextExtractDialog);
         bindAiOpAction(panel, R.id.ai_op_impress_image_generate, this::showAiImageDialog);
         bindAiOpFormatBatchButton(panel, R.id.ai_op_impress_format_batch);
+        bindAiOpAction(panel, R.id.ai_op_impress_typeset, this::showImpressTypesetDialog);
 
         // Bind operation buttons with their modes
         // 6 个有 AI 链路的 operate mode 按钮（依赖选区）
@@ -15269,6 +15415,256 @@ public class LOActivity extends AppCompatActivity {
                             Toast.LENGTH_SHORT).show());
         }
     }
+
+    private AlertDialog impressTypesetDialog;
+    private View impressTypesetRoot;
+    private String impressTypesetRequestId = "";
+    private long impressTypesetGeneration;
+    private byte[] impressTypesetSnapshot;
+    private JSONObject impressTypesetSlide;
+    private JSONObject impressTypesetPlan;
+    private int impressTypesetView;
+    private int impressTypesetPart;
+    private boolean impressTypesetBusy;
+    private String impressTypesetRequirement = "";
+    private String impressTypesetQuestion = "";
+    private String impressTypesetApplyRequestId = "";
+
+    private void showImpressTypesetDialog() {
+        if (!mIsImpressDocument || isFinishing()) return;
+        if (impressTypesetDialog != null && impressTypesetDialog.isShowing()) return;
+        impressTypesetRequirement = "";
+        impressTypesetQuestion = "";
+        impressTypesetGeneration = documentLifecycleGeneration;
+        impressTypesetPlan = null;
+        impressTypesetBusy = false;
+        View root = getLayoutInflater().inflate(R.layout.lolib_dialog_impress_typeset, null);
+        impressTypesetRoot = root;
+        AlertDialog dialog = new AlertDialog.Builder(this).create();
+        impressTypesetDialog = dialog;
+        dialog.setView(root);
+        dialog.setCanceledOnTouchOutside(false);
+        root.findViewById(R.id.impress_typeset_close).setOnClickListener(v -> dialog.dismiss());
+        root.findViewById(R.id.impress_typeset_start).setOnClickListener(v -> {
+            if (impressTypesetPlan == null) startImpressTypeset();
+            else applyImpressTypeset();
+        });
+        root.findViewById(R.id.impress_typeset_regenerate).setOnClickListener(v -> startImpressTypeset());
+        dialog.setOnDismissListener(d -> {
+            cancelAiRequest(impressTypesetRequestId);
+            impressTypesetRequestId = "";
+            impressTypesetApplyRequestId = "";
+            impressTypesetSnapshot = null;
+            impressTypesetSlide = null;
+            impressTypesetPlan = null;
+            impressTypesetDialog = null;
+            impressTypesetRoot = null;
+        });
+        dialog.show();
+        AiDialogHelper.applyTransparentWindow(dialog);
+        AiDialogHelper.applyWriterFixedSize(dialog, root,
+                AiDialogHelper.computeWriterDialogWidthPx(getResources()),
+                Math.min(dpToPx(318), AiDialogHelper.computeCenteredDialogMaxHeightPx(this, true)));
+        Log.i(TAG, "impress_typeset_dialog_show");
+    }
+
+    private void startImpressTypeset() {
+        if (impressTypesetBusy || impressTypesetRoot == null) return;
+        EditText input = impressTypesetRoot.findViewById(R.id.impress_typeset_input);
+        String requirement = input.getText().toString().trim();
+        if (requirement.isEmpty()) {
+            input.setError("请输入排版要求");
+            return;
+        }
+        if (!ensureCloudModelConfigured(AiChatCoordinator.MODE_IMPRESS_TYPESET, "base")) return;
+        impressTypesetRequirement = impressTypesetQuestion.isEmpty() ? requirement
+                : impressTypesetRequirement + "\n待确认问题：" + impressTypesetQuestion + "\n用户补充：" + requirement;
+        impressTypesetQuestion = "";
+        cancelAiRequest(impressTypesetRequestId);
+        impressTypesetRequestId = "impress-typeset-" + UUID.randomUUID();
+        impressTypesetPlan = null;
+        impressTypesetBusy = true;
+        setImpressTypesetUi("正在读取当前幻灯片…", false);
+        hideKeyboardForBottomSheet();
+        requestImpressTypesetOnKitThread(impressTypesetRequestId, null, "", -1, -1);
+    }
+
+    public void onNativeImpressTypesetResult(String requestId, byte[] structure,
+            int view, int part, boolean success, String reason) {
+        runOnUiThread(() -> {
+            if (!isCurrentImpressTypeset(requestId)) return;
+            if (!success) {
+                failImpressTypeset(requestId, "target_changed".equals(reason) || "document_changed".equals(reason)
+                        ? "当前文档或页面已变化，请重新生成" : reason);
+                return;
+            }
+            if (structure == null) {
+                Log.i(TAG, "impress_typeset_apply_dispatched part=" + part + " requestId=" + requestId);
+                return;
+            }
+            try {
+                JSONObject document = new JSONObject(new String(structure, StandardCharsets.UTF_8));
+                JSONObject slide = document.getJSONObject("DocStructure").getJSONObject("Slides")
+                        .getJSONObject("Slide " + part);
+                if (slide.optInt("ObjectCount") == 0) throw new JSONException("当前页没有可排版的文本");
+                impressTypesetSnapshot = structure;
+                impressTypesetSlide = slide;
+                impressTypesetView = view;
+                impressTypesetPart = part;
+                EditText input = impressTypesetRoot.findViewById(R.id.impress_typeset_input);
+                JSONObject request = new JSONObject().put("requestId", requestId)
+                        .put("taskType", AiChatCoordinator.MODE_IMPRESS_TYPESET)
+                        .put("requirement", impressTypesetRequirement).put("slide", slide);
+                setImpressTypesetUi("正在生成第 " + (part + 1) + " 页排版方案…", false);
+                handleAiRequestFromWeb(request.toString());
+            } catch (JSONException e) {
+                failImpressTypeset(requestId, e.getMessage());
+            }
+        });
+    }
+
+    private boolean isCurrentImpressTypeset(String requestId) {
+        return requestId != null && requestId.equals(impressTypesetRequestId)
+                && impressTypesetRoot != null && impressTypesetDialog != null
+                && impressTypesetDialog.isShowing() && mIsImpressDocument && documentLoaded
+                && !documentSwitchInProgress && !isFinishing()
+                && impressTypesetGeneration == documentLifecycleGeneration;
+    }
+
+    private void onImpressTypesetDone(String requestId, String response) {
+        runOnUiThread(() -> {
+            if (!isCurrentImpressTypeset(requestId)) return;
+            try {
+                impressTypesetPlan = org.libreoffice.androidlib.ai.ImpressTypesetPlan.parse(response, impressTypesetSlide);
+                String status = impressTypesetPlan.optString("status", "ready");
+                if (!"ready".equals(status)) {
+                    String message = impressTypesetPlan.getString("message");
+                    impressTypesetPlan = null;
+                    impressTypesetBusy = false;
+                    if ("needs_clarification".equals(status)) {
+                        impressTypesetQuestion = message;
+                        EditText input = impressTypesetRoot.findViewById(R.id.impress_typeset_input);
+                        input.setText("");
+                        input.setHint("请补充说明，原排版要求已保留");
+                    }
+                    setImpressTypesetUi(message, false);
+                    return;
+                }
+                TextView result = impressTypesetRoot.findViewById(R.id.impress_typeset_result);
+                result.setText(org.libreoffice.androidlib.ai.ImpressTypesetPlan.summary(impressTypesetPlan, impressTypesetSlide));
+                impressTypesetBusy = false;
+                setImpressTypesetUi("仅应用于第 " + (impressTypesetPart + 1) + " 页，请确认排版方案", true);
+            } catch (JSONException e) {
+                failImpressTypeset(requestId, e.getMessage());
+            }
+        });
+    }
+
+    private void applyImpressTypeset() {
+        if (impressTypesetBusy || !isCurrentImpressTypeset(impressTypesetRequestId)) return;
+        final String requestId = impressTypesetRequestId;
+        if (!isDocEditable) {
+            failImpressTypeset(requestId, "当前文档为只读");
+            return;
+        }
+        impressTypesetBusy = true;
+        setImpressTypesetUi("正在应用当前页排版…", true);
+        impressTypesetDialog.setCancelable(false);
+        impressTypesetRoot.findViewById(R.id.impress_typeset_close).setEnabled(false);
+        getMainHandler().postDelayed(() -> {
+            if (isCurrentImpressTypeset(requestId) && impressTypesetBusy && !mIsEditModeActive) {
+                failImpressTypeset(requestId, "无法进入编辑模式");
+            }
+        }, 3000L);
+        ensureEditModeThen(() -> {
+            if (!isCurrentImpressTypeset(requestId)) return;
+            try {
+                String arguments = org.libreoffice.androidlib.ai.ImpressTypesetPlan.arguments(impressTypesetPlan, impressTypesetPart, requestId);
+                Log.i(TAG, "impress_typeset_apply_start part=" + impressTypesetPart + " arguments=" + arguments);
+                impressTypesetApplyRequestId = requestId;
+                requestImpressTypesetOnKitThread(requestId, impressTypesetSnapshot, arguments,
+                        impressTypesetView, impressTypesetPart);
+                getMainHandler().postDelayed(() -> {
+                    if (requestId.equals(impressTypesetApplyRequestId) && isCurrentImpressTypeset(requestId)) {
+                        impressTypesetApplyRequestId = "";
+                        failImpressTypeset(requestId, "未收到内核确认，请检查文档后重新打开排版");
+                    }
+                }, 15000L);
+            } catch (JSONException e) {
+                failImpressTypeset(requestId, e.getMessage());
+            }
+        });
+    }
+
+    private void failImpressTypeset(String requestId, String message) {
+        runOnUiThread(() -> {
+            if (!isCurrentImpressTypeset(requestId)) return;
+            Log.w(TAG, "impress_typeset_fail requestId=" + requestId + " reason=" + message);
+            cancelAiRequest(requestId);
+            impressTypesetApplyRequestId = "";
+            impressTypesetRequestId = "";
+            impressTypesetBusy = false;
+            impressTypesetPlan = null;
+            impressTypesetDialog.setCancelable(true);
+            impressTypesetRoot.findViewById(R.id.impress_typeset_close).setEnabled(true);
+            setImpressTypesetUi("排版失败，请重试。" + (message == null ? "" : message), false);
+        });
+    }
+
+    private void setImpressTypesetUi(String status, boolean hasPlan) {
+        TextView statusView = impressTypesetRoot.findViewById(R.id.impress_typeset_status);
+        statusView.setText(status);
+        statusView.setVisibility(View.VISIBLE);
+        impressTypesetRoot.findViewById(R.id.impress_typeset_start).setEnabled(!impressTypesetBusy);
+        impressTypesetRoot.findViewById(R.id.impress_typeset_input).setEnabled(!impressTypesetBusy && !hasPlan);
+        impressTypesetRoot.findViewById(R.id.impress_typeset_result).setVisibility(hasPlan ? View.VISIBLE : View.GONE);
+        View regenerate = impressTypesetRoot.findViewById(R.id.impress_typeset_regenerate);
+        regenerate.setVisibility(hasPlan ? View.VISIBLE : View.GONE);
+        regenerate.setEnabled(!impressTypesetBusy);
+        ((TextView) impressTypesetRoot.findViewById(R.id.impress_typeset_start_label))
+                .setText(hasPlan ? "应用排版" : "开始生成");
+        applyImpressTypesetDialogSize();
+    }
+
+    private void handleImpressTypesetCommandResult(byte[] message) {
+        try {
+            String text = new String(message, StandardCharsets.UTF_8);
+            int brace = text.indexOf('{');
+            if (brace < 0) return;
+            JSONObject payload = new JSONObject(text.substring(brace));
+            if (!".uno:TransformDocumentStructure".equals(payload.optString("commandName"))) return;
+            JSONObject result = payload.optJSONObject("result");
+            final boolean success = payload.optBoolean("success", false);
+            final String returnedId = result == null ? "" : result.optString("value", "");
+            runOnUiThread(() -> {
+                String requestId = impressTypesetApplyRequestId;
+                if (requestId.isEmpty() || !isCurrentImpressTypeset(requestId)) return;
+                if (!returnedId.isEmpty() && !requestId.equals(returnedId)) return;
+                impressTypesetApplyRequestId = "";
+                Log.i(TAG, "impress_typeset_apply_ack requestId=" + requestId + " success=" + success);
+                if (!success || !requestId.equals(returnedId)) {
+                    failImpressTypeset(requestId, "内核未确认应用成功，请检查执行日志");
+                    return;
+                }
+                impressTypesetDialog.dismiss();
+                forceVisibleTileRedrawFromAndroid("impress_typeset");
+                Toast.makeText(this, "已应用排版，可一次撤销本次修改", Toast.LENGTH_LONG).show();
+            });
+        } catch (JSONException error) {
+            Log.w(TAG, "impress_typeset_ack_invalid", error);
+        }
+    }
+
+    private void applyImpressTypesetDialogSize() {
+        int height = impressTypesetPlan == null ? 350 : 480;
+        AiDialogHelper.applyWriterFixedSize(impressTypesetDialog, impressTypesetRoot,
+                AiDialogHelper.computeWriterDialogWidthPx(getResources()),
+                Math.min(dpToPx(height), AiDialogHelper.computeCenteredDialogMaxHeightPx(this, true)));
+    }
+
+    private native void requestImpressTypesetOnKitThread(String requestId, byte[] expectedStructure,
+            String arguments, int view, int part);
+
 
     // ==================== AI排版相关方法 ====================
 
@@ -19859,6 +20255,43 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         runOnUiThread(() -> {
+            if (requestId.startsWith("chart-insert:")) {
+                if (!requestId.equals(chartInsertRequestId)) {
+                    return;
+                }
+                chartInsertRequestId = "";
+                if (chartDocumentGeneration != documentLifecycleGeneration) {
+                    return;
+                }
+                Log.i(TAG, "calc_chart_insert_ack success=" + success);
+                if (success) {
+                    dismissChartDialog();
+                    forceVisibleTileRedrawFromAndroid("calc_chart_insert");
+                } else {
+                    setChartDialogState(CHART_STATE_COMPLETED);
+                }
+                Toast.makeText(this, success ? "图表已插入" : "图表插入失败，请检查工作表是否可编辑",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (requestId.startsWith("formula:")) {
+                if (!requestId.equals(calcFormulaInsertRequestId)) {
+                    return;
+                }
+                calcFormulaInsertRequestId = "";
+                calcFormulaInsertBtn.setEnabled(true);
+                if (calcFormulaDocumentGeneration != documentLifecycleGeneration) {
+                    return;
+                }
+                Log.i(TAG, "calc_formula_insert_ack success=" + success);
+                if (success) {
+                    dismissCalcFormulaDialog();
+                    forceVisibleTileRedrawFromAndroid("calc_formula_insert");
+                }
+                Toast.makeText(this, success ? "公式已插入" : "插入失败，请确认仍在原工作表中",
+                        Toast.LENGTH_SHORT).show();
+                return;
+            }
             if (requestId.startsWith("continue:")) {
                 if (!requestId.equals(continueInsertRequestId)) {
                     Log.i(TAG, "continue_write_insert_ack_ignored requestId=" + requestId);
@@ -20966,6 +21399,7 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void resetAiSessionState(boolean clearHistoryFiles) {
+        if (impressTypesetDialog != null) impressTypesetDialog.dismiss();
         cancelAllAiRequests();
         aiTextByRequestId.clear();
         aiRequestModeById.clear();
@@ -21736,7 +22170,15 @@ public class LOActivity extends AppCompatActivity {
 
     public native void paste(String mimeType, byte[] data);
 
-    public native void pasteOnKitThread(String mimeType, byte[] data, String requestId);
+    public void pasteOnKitThread(String mimeType, byte[] data, String requestId) {
+        pasteAtCellOnKitThread(mimeType, data, requestId, "", -1, -1);
+    }
+
+    private native void pasteAtCellOnKitThread(String mimeType, byte[] data, String requestId,
+            String cellAddress, int viewId, int part);
+
+    private native void insertCalcChartOnKitThread(String requestId, String arguments,
+            String[] cells, String[] formulas, int viewId, int part);
 
     /** Invalidates Kit-thread document edits queued for the previous document. */
     private native void invalidatePendingKitActions();

@@ -37,6 +37,7 @@ public class AiChatCoordinator {
     public static final String MODE_CALC_CHART = "calc_chart";
     public static final String MODE_IMPRESS_OUTLINE = "impress_outline";
     public static final String MODE_IMPRESS_GENERATE = "impress_generate";
+    public static final String MODE_IMPRESS_TYPESET = "impress_typeset";
 
     // 润色风格
     public static final String POLISH_STYLE_QUICK = "quick";
@@ -1168,7 +1169,7 @@ public class AiChatCoordinator {
             + "{\n"
             + "  \"preprocess\": [],\n"
             + "  \"chart\": {\n"
-            + "    \"dataRange\": \"$Sheet1.$A$1:$B$10\",\n"
+            + "    \"dataRange\": \"$A$1:$B$10\",\n"
             + "    \"chartType\": \"pie|bar|column|line\",\n"
             + "    \"title\": \"图表标题\"\n"
             + "  }\n"
@@ -1178,15 +1179,16 @@ public class AiChatCoordinator {
             + "```json\n"
             + "{\n"
             + "  \"preprocess\": [\n"
-            + "    {\"type\": \"formula\", \"address\": \"$Sheet1.$C$1\", \"value\": \"=AVERAGE($Sheet1.$A$1:$A$10)\"}\n"
+            + "    {\"type\": \"formula\", \"address\": \"$C$1\", \"value\": \"=AVERAGE($A$1:$A$10)\"}\n"
             + "  ],\n"
             + "  \"chart\": {\n"
-            + "    \"dataRange\": \"$Sheet1.$A$1:$C$11\",\n"
+            + "    \"dataRange\": \"$A$1:$C$11\",\n"
             + "    \"chartType\": \"pie\",\n"
             + "    \"title\": \"图表标题\"\n"
             + "  }\n"
             + "}\n"
             + "```\n\n"
+            + "所有地址仅使用当前工作表内的 A1 格式，不要添加或猜测工作表名称。\n"
             + "chartType 只支持: pie(饼图), bar(条形图/横向), column(柱状图/纵向), line(折线图)\n"
             + "请严格用 JSON 格式回复，不要添加额外的解释文本。";
         systemMsg.put("content", prompt);

@@ -786,11 +786,7 @@ public class BottomToolbarController {
             Object tag = child.getTag();
             if (unoCommand.equals(tag)) {
                 child.setSelected(active);
-                if (active) {
-                    child.getBackground().mutate().setTint(0xFF1A73E8);
-                    ((AppCompatImageButton) child).setImageTintList(
-                            android.content.res.ColorStateList.valueOf(0xFFFFFFFF));
-                }
+                ((AppCompatImageButton) child).setImageTintList(null);
                 break;
             }
         }

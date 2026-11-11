@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        F01111110000000000000001 /* ImpressTypesetPlan.mm in Sources */ = {isa = PBXBuildFile; fileRef = F01111110000000000000011; };
+        F01111110000000000000002 /* ImpressTypesetOverlayController.mm in Sources */ = {isa = PBXBuildFile; fileRef = F01111110000000000000012; };
 		1F957DC22BA8229A006C9E78 /* Util-mobile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1F957DC12BA82296006C9E78 /* Util-mobile.cpp */; };
 		1FCFA28A2B2AF13F007EE2DF /* coolwsd-fork.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1FCFA2892B2AF13C007EE2DF /* coolwsd-fork.cpp */; };
 		3F3A77D22C59B04000947249 /* global.js in Resources */ = {isa = PBXBuildFile; fileRef = 3F3A77D12C59B04000947249 /* global.js */; };
@@ -179,6 +181,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+        F01111110000000000000011 /* ImpressTypesetPlan.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ImpressTypesetPlan.mm; sourceTree = "<group>"; };
+        F01111110000000000000012 /* ImpressTypesetOverlayController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ImpressTypesetOverlayController.mm; sourceTree = "<group>"; };
+        F01111110000000000000013 /* ImpressTypesetPlan.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ImpressTypesetPlan.h; sourceTree = "<group>"; };
+        F01111110000000000000014 /* ImpressTypesetOverlayController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ImpressTypesetOverlayController.h; sourceTree = "<group>"; };
 		1F957DC12BA82296006C9E78 /* Util-mobile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = "Util-mobile.cpp"; sourceTree = "<group>"; };
 		1FCFA2892B2AF13C007EE2DF /* coolwsd-fork.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = "coolwsd-fork.cpp"; sourceTree = "<group>"; };
 		3F3A77D12C59B04000947249 /* global.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = global.js; path = ../../../browser/dist/global.js; sourceTree = "<group>"; };
@@ -3854,6 +3860,10 @@
 				C0FFEE152026081200000001 /* AIRequestSession.mm */,
 				C0FFEE1B2026081200000001 /* AIService.h */,
 				C0FFEE172026081200000001 /* AIService.mm */,
+                F01111110000000000000011 /* ImpressTypesetPlan.mm */,
+                F01111110000000000000012 /* ImpressTypesetOverlayController.mm */,
+                F01111110000000000000013 /* ImpressTypesetPlan.h */,
+                F01111110000000000000014 /* ImpressTypesetOverlayController.h */,
 				C0FFEE422026091500000001 /* ImpressOutlineOverlayController.h */,
 				C0FFEE412026091500000001 /* ImpressOutlineOverlayController.mm */,
 				A1C0NV022026091400000001 /* AiConversationStore.h */,
@@ -4281,6 +4291,8 @@
 				C0FFEE132026081200000001 /* AIConfigurationStore.mm in Sources */,
 				C0FFEE142026081200000001 /* AIRequestSession.mm in Sources */,
 				C0FFEE162026081200000001 /* AIService.mm in Sources */,
+                F01111110000000000000001 /* ImpressTypesetPlan.mm in Sources */,
+                F01111110000000000000002 /* ImpressTypesetOverlayController.mm in Sources */,
 				C0FFEE402026091500000001 /* ImpressOutlineOverlayController.mm in Sources */,
 				A1C0NV012026091400000001 /* AiConversationStore.mm in Sources */,
 				C0FFEE202026082400000001 /* HomeViewController.mm in Sources */,

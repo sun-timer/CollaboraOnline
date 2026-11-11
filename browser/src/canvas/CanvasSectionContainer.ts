@@ -581,9 +581,15 @@ class CanvasSectionContainer {
 				continue;
 			}
 			const section = this.getSectionWithName(name);
-			if (section && this.doesHeaderSectionIncludePoint(section, canvasPos)) {
+			if (section && (window.ThisIsTheAndroidApp
+				? this.doesSectionIncludePoint(section, canvasPos)
+				: this.doesHeaderSectionIncludePoint(section, canvasPos))) {
 				return section;
 			}
+		}
+
+		if (window.ThisIsTheAndroidApp) {
+			return null;
 		}
 
 		const rowHeader = this.doesSectionExist(app.CSections.RowHeader.name)
