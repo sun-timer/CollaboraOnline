@@ -32,7 +32,8 @@
 }
 
 + (BOOL)isCloudOnlyTask:(NSString *)taskType {
-    return [taskType isEqualToString:@"image_generate"] || [taskType isEqualToString:@"text_extract"];
+    return [taskType isEqualToString:@"image_generate"] || [taskType isEqualToString:@"text_extract"]
+        || [taskType isEqualToString:@"impress_typeset"];
 }
 
 + (BOOL)isLocalTextTask:(NSString *)taskType {

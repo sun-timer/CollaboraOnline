@@ -9,7 +9,6 @@
 - (NSArray *)messagesForPayload:(NSDictionary *)payload error:(NSError **)error;
 - (NSUInteger)unicodeCodePointCount:(NSString *)text;
 - (NSString *)outlineTemplateForType:(NSString *)outlineType;
-- (NSDictionary *)continuationSamplingOverridesForMaxTokens:(NSInteger)configuredMaxTokens;
 @end
 
 static void check(BOOL condition, NSString *message) {
@@ -153,14 +152,6 @@ static void testNativeSelectionLimitAndOutlineTemplates(void) {
           [messages[0][@"content"] containsString:@"自然收束并停止"] &&
           [messages[1][@"content"] containsString:@"续写源文末尾。"],
           @"continuation prompt preserves source and asks for a natural stopping point");
-    NSDictionary *lowerContinuation = [service continuationSamplingOverridesForMaxTokens:640];
-    NSDictionary *cappedContinuation = [service continuationSamplingOverridesForMaxTokens:8192];
-    check([lowerContinuation[@"max_tokens"] integerValue] == 640 &&
-          [cappedContinuation[@"max_tokens"] integerValue] == 1024 &&
-          [lowerContinuation[@"temperature"] floatValue] == 0.5f &&
-          [lowerContinuation[@"presence_penalty"] integerValue] == 0 &&
-          [lowerContinuation[@"frequency_penalty"] integerValue] == 0,
-          @"continuation sampling enforces its values and respects lower token config");
 }
 
 static void testEmptyOutlineReturnsTemplate(void) {

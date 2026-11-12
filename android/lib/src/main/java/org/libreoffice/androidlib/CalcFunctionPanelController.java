@@ -998,7 +998,13 @@ public class CalcFunctionPanelController {
     private View finishGridCell(LinearLayout cell, String command, String label,
             LinearLayout.LayoutParams lp) {
         cell.setLayoutParams(lp);
-        cell.setOnClickListener(v -> onGridCommand(command, label));
+        cell.setOnClickListener(v -> {
+            if (".uno:SetBorderStyle".equals(command)) {
+                applyBorderPreset(java.util.Arrays.asList(BORDER_LABELS).indexOf(label));
+            } else {
+                onGridCommand(command, label);
+            }
+        });
         return cell;
     }
 
@@ -2036,11 +2042,50 @@ public class CalcFunctionPanelController {
         return unoCommand + " {\"" + propertyName + "\":{\"type\":\"long\",\"value\":" + rgb + "}}";
     }
 
+    private void applyBorderPreset(int index) {
+        int rgb = pickerColorRgb.getOrDefault("border_color", 0);
+        try {
+            if (index >= 10) {
+                String property = index == 10 ? "BorderTLBR" : "BorderBLTR";
+                JSONObject arguments = new JSONObject();
+                // JsonToPropertyValues accepts reflected UNO structs through an any wrapper.
+                JSONObject border = new JSONObject();
+                border.put("type", "any");
+                border.put("value", makeBorderLineJson(rgb, 20));
+                arguments.put(property, border);
+                host.executeUnoCommand(".uno:" + property + " " + arguments);
+                Log.i(TAG, "calc_border_preset index=" + index + " command=" + property + " color=" + rgb);
+                return;
+            }
+            // Faint grid strokes in the icons show cell guides, not dashed borders.
+            // BorderLine2 widths are 1/100 mm. Use 0.2 mm and 0.4 mm lines.
+            // left, right, bottom, top, inner horizontal, inner vertical
+            int[][] presets = {
+                    {0, 0, 0, 0, 0, 0}, {20, 20, 20, 20, 20, 20},
+                    {20, 20, 20, 20, 0, 0}, {40, 40, 40, 40, 0, 0},
+                    {0, 0, 0, 20, 0, 0}, {0, 0, 20, 0, 0, 0},
+                    {20, 0, 0, 0, 0, 0}, {0, 20, 0, 0, 0, 0},
+                    {0, 0, 0, 0, 0, 20}, {0, 0, 0, 0, 20, 0}
+            };
+            if (index < 0 || index >= presets.length) {
+                return;
+            }
+            host.executeUnoCommand(buildBorderUnoCommand(rgb, presets[index], 0, 0));
+            Log.i(TAG, "calc_border_preset index=" + index + " color=" + rgb);
+        } catch (JSONException e) {
+            Log.w(TAG, "calc_border_preset_failed index=" + index, e);
+        }
+    }
+
     private String buildBorderColorUnoCommand(int rgb) {
+        return buildBorderUnoCommand(rgb, new int[] {1, 1, 1, 1, 0, 0}, 0, 0);
+    }
+
+    private String buildBorderUnoCommand(int rgb, int[] widths, int outerStyle, int innerStyle) {
         try {
             JSONArray outer = new JSONArray();
             for (int i = 0; i < 4; i++) {
-                outer.put(makeBorderLineJson(rgb, 1));
+                outer.put(makeBorderLineJson(rgb, widths[i], outerStyle));
             }
             outer.put(typedLong(0));
             outer.put(typedLong(0));
@@ -2049,8 +2094,8 @@ public class CalcFunctionPanelController {
             outer.put(typedLong(0));
 
             JSONArray inner = new JSONArray();
-            inner.put(makeBorderLineJson(rgb, 0));
-            inner.put(makeBorderLineJson(rgb, 0));
+            inner.put(makeBorderLineJson(rgb, widths[4], innerStyle));
+            inner.put(makeBorderLineJson(rgb, widths[5], innerStyle));
             inner.put(typedShort(0));
             inner.put(typedShort(127));
             inner.put(typedLong(0));
@@ -2066,6 +2111,10 @@ public class CalcFunctionPanelController {
     }
 
     private JSONObject makeBorderLineJson(int rgb, int outerWidth) throws JSONException {
+        return makeBorderLineJson(rgb, outerWidth, 0);
+    }
+
+    private JSONObject makeBorderLineJson(int rgb, int outerWidth, int style) throws JSONException {
         JSONObject color = new JSONObject();
         color.put("type", "com.sun.star.util.Color");
         color.put("value", rgb);
@@ -2075,7 +2124,7 @@ public class CalcFunctionPanelController {
         value.put("InnerLineWidth", typedShort(0));
         value.put("OuterLineWidth", typedShort(outerWidth));
         value.put("LineDistance", typedShort(0));
-        value.put("LineStyle", typedShort(0));
+        value.put("LineStyle", typedShort(style));
         value.put("LineWidth", typedULong(0));
 
         JSONObject line = new JSONObject();
@@ -2583,8 +2632,8 @@ public class CalcFunctionPanelController {
     };
 
     private static final String[] BORDER_LABELS = {
-            "全", "外", "框", "粗",
-            "上", "下", "左", "右", "竖", "内横", "↘", "↙"
+            "无边框", "所有边框", "外边框", "粗外边框",
+            "上边框", "下边框", "左边框", "右边框", "内部竖线", "内部横线", "右下斜线", "右上斜线"
     };
     private static final int[] BORDER_ICONS = {
             R.drawable.lolib_ic_calc_border_all_dashed,

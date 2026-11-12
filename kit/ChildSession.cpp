@@ -3723,10 +3723,20 @@ void ChildSession::loKitCallback(const int type, const std::string& payload)
         break;
     case LOK_CALLBACK_DOCUMENT_SIZE_CHANGED:
 #if defined(__ANDROID__)
-        // documentStatus() calls getParts(), which SIGSEGVs after Calc paste
-        // even when deferred onto the kit poll. Sheet "+" sends "status" itself.
-        __android_log_print(ANDROID_LOG_INFO, "LOActivity",
-                            "docsize_status_skipped reason=android_size_callback");
+        // Calc paste can crash getParts() while handling this callback.
+        // Writer needs the status update to extend its page and scroll bounds.
+        if (getLOKitDocument()->getDocumentType() == LOK_DOCTYPE_SPREADSHEET)
+        {
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "docsize_status_skipped reason=android_calc_size_callback");
+        }
+        else
+        {
+            const bool delivered = getStatus();
+            __android_log_print(ANDROID_LOG_INFO, "LOActivity",
+                                "docsize_status_refresh documentType=%d delivered=%d",
+                                getLOKitDocument()->getDocumentType(), delivered);
+        }
 #else
         getStatus();
 #endif

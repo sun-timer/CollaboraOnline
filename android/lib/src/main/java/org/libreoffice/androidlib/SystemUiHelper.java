@@ -477,22 +477,31 @@ public final class SystemUiHelper {
         Window window = dialog.getWindow();
         WindowCompat.setDecorFitsSystemWindows(window, false);
         View decor = window.getDecorView();
-        ViewCompat.setOnApplyWindowInsetsListener(decor, (v, windowInsets) -> {
-            SafeAreaInsets safe = computeSafeAreaInsets(v.getContext(), windowInsets);
-            View content = v.findViewById(android.R.id.content);
-            if (content instanceof ViewGroup && ((ViewGroup) content).getChildCount() > 0) {
-                View root = ((ViewGroup) content).getChildAt(0);
-                // 保留布局 XML 的设计底部 padding(如 12dp),按钮不贴底;
-                // 另补居中弹窗进导航区的最小补偿 (safe.bottom-safe.top)/2,避免大 padding 留白。
-                int bottomPad = Math.max(root.getPaddingBottom(),
-                        Math.max(0, (safe.bottom - safe.top) / 2));
-                root.setPadding(safe.left, root.getPaddingTop(), safe.right, bottomPad);
+        ViewCompat.setOnApplyWindowInsetsListener(decor, new androidx.core.view.OnApplyWindowInsetsListener() {
+            private int originalBottomPadding = -1;
+
+            @Override
+            public WindowInsetsCompat onApplyWindowInsets(View v, WindowInsetsCompat windowInsets) {
+                SafeAreaInsets safe = computeSafeAreaInsets(v.getContext(), windowInsets);
+                View content = v.findViewById(android.R.id.content);
+                if (content instanceof ViewGroup && ((ViewGroup) content).getChildCount() > 0) {
+                    View root = ((ViewGroup) content).getChildAt(0);
+                    if (originalBottomPadding < 0) {
+                        originalBottomPadding = root.getPaddingBottom();
+                    }
+                    // The window's adjustResize handles IME space. Only compensate navigation
+                    // insets here, always starting from the original layout padding.
+                    int navigationBottom = safe.navigationBottom + getBottomSafeExtraPx(v.getContext());
+                    int bottomPad = Math.max(originalBottomPadding,
+                            Math.max(0, (navigationBottom - safe.top) / 2));
+                    root.setPadding(safe.left, root.getPaddingTop(), safe.right, bottomPad);
+                }
+                // Preserve IME insets for the window's keyboard layout handling.
+                return new WindowInsetsCompat.Builder(windowInsets)
+                        .setInsets(WindowInsetsCompat.Type.systemBars()
+                                | WindowInsetsCompat.Type.displayCutout(), Insets.NONE)
+                        .build();
             }
-            // 仅消费已手动处理的 systemBars / cutout，保留 IME inset 供软键盘布局。
-            return new WindowInsetsCompat.Builder(windowInsets)
-                    .setInsets(WindowInsetsCompat.Type.systemBars()
-                            | WindowInsetsCompat.Type.displayCutout(), Insets.NONE)
-                    .build();
         });
         ViewCompat.requestApplyInsets(decor);
     }

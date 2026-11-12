@@ -1,3 +1,4 @@
+#import "ImpressTypesetPlan.h"
 // -*- Mode: ObjC++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 /*
  * Copyright the Collabora Online contributors.
@@ -276,7 +277,8 @@
         @"messages": messages,
     } mutableCopy];
     [body addEntriesFromDictionary:[self.modelStore samplingBodyFieldsForForm:form]];
-    BOOL structuredPpt = [taskType isEqualToString:@"impress_outline"] || [taskType isEqualToString:@"impress_generate"];
+    BOOL structuredPpt = [taskType isEqualToString:@"impress_outline"] || [taskType isEqualToString:@"impress_generate"]
+        || [taskType isEqualToString:@"impress_typeset"];
     NSDictionary *context = [payload[@"context"] isKindOfClass:NSDictionary.class] ? payload[@"context"] : @{};
     BOOL jsonResponseMode = structuredPpt && ![context[@"__pptPlainJsonRetry"] boolValue];
     if (structuredPpt) {
@@ -805,6 +807,16 @@ didCompleteWithError:(NSError *)error {
 - (NSArray *)messagesForPayload:(NSDictionary *)payload error:(NSError **)error {
     NSString *taskType = [payload[@"taskType"] isKindOfClass:[NSString class]]
         ? payload[@"taskType"] : @"";
+    if ([taskType isEqualToString:@"impress_typeset"]) {
+        NSString *requirement = [payload[@"requirement"] isKindOfClass:NSString.class] ? payload[@"requirement"] : nil;
+        NSDictionary *slide = [payload[@"slide"] isKindOfClass:NSDictionary.class] ? payload[@"slide"] : nil;
+        if (!requirement.length || !slide) {
+            if (error) *error = [NSError errorWithDomain:@"ImpressTypeset" code:1
+                userInfo:@{NSLocalizedDescriptionKey:@"缺少排版要求或当前页结构"}];
+            return nil;
+        }
+        return [ImpressTypesetPlan messagesForRequirement:requirement slide:slide];
+    }
     NSString *text = [payload[@"selection"] isKindOfClass:[NSString class]]
         ? [payload[@"selection"] stringByTrimmingCharactersInSet:
             [NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"";
