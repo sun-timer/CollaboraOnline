@@ -6,7 +6,7 @@ interface CalcFormatStateResult {
 	viewId: number;
 	part: number;
 	range: { sheet: number; col1: number; row1: number; col2: number; row2: number };
-	states?: { [command: string]: string | number | boolean };
+	states?: { [command: string]: string | number | boolean | null };
 }
 
 class CalcFormatStateBridge {
@@ -17,7 +17,7 @@ class CalcFormatStateBridge {
 	private static generation = 0;
 	private static observedSelectionKey: string | null = null;
 	private static serial = 0;
-	private static values: { [command: string]: string | number | boolean } = {};
+	private static values: { [command: string]: string | number | boolean | null } = {};
 	private static pending: any = null;
 	private static readonly requestTimeoutMs = 2500;
 	private static readonly onAddress = (event: any) => {
@@ -44,57 +44,90 @@ class CalcFormatStateBridge {
 		map.on?.('updateparts', CalcFormatStateBridge.onParts);
 	}
 
-	static state(command: string): string | number | boolean | undefined {
+	static state(command: string): string | number | boolean | null | undefined {
 		return CalcFormatStateBridge.values[command];
 	}
 
 	static handles(command: string): boolean {
-		return ['.uno:NumberFormat', '.uno:AlignmentRotation', '.uno:AlignmentStacked'].includes(command);
+		return [
+			'.uno:NumberFormat', '.uno:AlignmentRotation', '.uno:AlignmentStacked',
+			'.uno:CharFontName', '.uno:FontHeight', '.uno:Color', '.uno:BackgroundColor', '.uno:FrameLineColor',
+			'.uno:Bold', '.uno:Italic', '.uno:Underline', '.uno:Strikeout', '.uno:Shadowed', '.uno:SuperScript', '.uno:SubScript',
+			'.uno:AlignLeft', '.uno:AlignHorizontalCenter', '.uno:AlignRight', '.uno:AlignBlock',
+			'.uno:AlignTop', '.uno:AlignVCenter', '.uno:AlignBottom', '.uno:ParaLeftToRight', '.uno:ParaRightToLeft',
+			'.uno:ParaIndent', '.uno:WrapText', '.uno:ToggleMergeCells',
+			'.uno:IncrementIndent', '.uno:DecrementIndent', '.uno:InsertRowsBefore', '.uno:InsertColumnsAfter', '.uno:DeleteRows', '.uno:DeleteColumns',
+		].includes(command) || command.startsWith('.uno:NumberFormat') || command.startsWith('border.') || command.startsWith('Diagonal');
+	}
+
+	private static viewId(): number | null {
+		const app = (window as any).app;
+		const layer = app?.map?._docLayer;
+		if (Number.isInteger(layer?._viewId) && layer._viewId >= 0) return layer._viewId;
+		const active = app?.activeDocument?.activeViewID;
+		const ids = Object.keys(app?.map?._viewInfo || {});
+		const candidate = Number.isInteger(active) && active >= 0 ? active :
+			ids.length === 1 && /^\d+$/.test(ids[0]) ? Number(ids[0]) : null;
+		if (candidate !== null && layer) layer._viewId = candidate;
+		return candidate;
 	}
 
 	static selectionKey(): string | null {
 		if (!CalcEditorFormat.isActive() || typeof NativeBridge === 'undefined') return null;
 		const map = (window as any).app.map;
 		const range = CalcFormatStateBridge.selection();
-		const viewId = map._docLayer?._viewId;
-		if (!range || !Number.isInteger(viewId) || viewId < 0) return null;
+		const viewId = CalcFormatStateBridge.viewId();
+		if (!range || viewId === null || !Number.isInteger(viewId) || viewId < 0) return null;
 		return [NativeBridge.getInstance().getDocumentSessionId(), viewId, range.sheet,
 			range.col1, range.row1, range.col2, range.row2].join(':');
 	}
 
-	static request(): void {
+	static applyBorderColor(rgb: number): Promise<boolean> {
+		return new Promise((resolve) => CalcFormatStateBridge.request(rgb, resolve));
+	}
+
+	static mergeIdenticalCells(): Promise<boolean> {
+		return new Promise((resolve) => CalcFormatStateBridge.request(undefined, resolve, true));
+	}
+
+	static request(borderColor?: number, resolve?: (success: boolean) => void, mergeSame = false): void {
 		if (!CalcEditorFormat.isActive() || typeof NativeBridge === 'undefined' ||
-			typeof (window as any).postMobileMessage !== 'function') return;
+			typeof (window as any).postMobileMessage !== 'function') { resolve?.(false); return; }
 		CalcFormatStateBridge.observeSelection();
+		if (!resolve && CalcFormatStateBridge.pending?.resolve) return;
+		CalcFormatStateBridge.pending?.resolve?.(false);
 		const map = (window as any).app.map;
 		if (CalcFormatStateBridge.pending) window.clearTimeout(CalcFormatStateBridge.pending.timer);
 		CalcFormatStateBridge.pending = null;
 		const range = CalcFormatStateBridge.selection();
-		const viewId = map._docLayer?._viewId;
-		if (!range || !Number.isInteger(viewId) || viewId < 0) return;
+		const viewId = CalcFormatStateBridge.viewId();
+		if (!range || viewId === null || !Number.isInteger(viewId) || viewId < 0) { resolve?.(false); return; }
 		const requestId = 'calc-format-state-' + Date.now() + '-' + (++CalcFormatStateBridge.serial);
 		const generation = CalcFormatStateBridge.generation;
 		const documentSessionId = NativeBridge.getInstance().getDocumentSessionId();
-		const payload = { requestId, documentSessionId, viewId, part: range.sheet, range };
+		const payload = { requestId, documentSessionId, viewId, part: range.sheet, range, borderColor, mergeSame };
 		const timer = window.setTimeout(() => {
 			const pending = CalcFormatStateBridge.pending;
 			if (!pending || pending.requestId !== requestId) return;
 			CalcFormatStateBridge.pending = null;
 			CalcFormatStateBridge.values = {};
+			pending.resolve?.(false);
 			map.fire?.('calcformatstatechanged', { states: {}, error: 'timeout' });
 		}, CalcFormatStateBridge.requestTimeoutMs);
-		CalcFormatStateBridge.pending = { ...payload, map, generation, timer };
+		CalcFormatStateBridge.pending = { ...payload, map, generation, timer, resolve };
 		try {
 			(window as any).postMobileMessage('CALC_FORMAT_STATE ' + JSON.stringify(payload));
 		} catch (_error) {
 			window.clearTimeout(timer);
 			CalcFormatStateBridge.pending = null;
 			CalcFormatStateBridge.values = {};
+			resolve?.(false);
 			map.fire?.('calcformatstatechanged', { states: {}, error: 'send-failed' });
 		}
 	}
 
 	static invalidate(): void {
+		CalcFormatStateBridge.pending?.resolve?.(false);
 		CalcFormatStateBridge.generation++;
 		if (CalcFormatStateBridge.pending) window.clearTimeout(CalcFormatStateBridge.pending.timer);
 		CalcFormatStateBridge.pending = null;
@@ -109,7 +142,7 @@ class CalcFormatStateBridge {
 		CalcFormatStateBridge.pending = null;
 		const liveRange = CalcFormatStateBridge.selection();
 		const liveMap = (window as any).app?.map;
-		const liveViewId = liveMap?._docLayer?._viewId;
+		const liveViewId = CalcFormatStateBridge.viewId();
 		const liveSession = NativeBridge.getInstance().getDocumentSessionId();
 		if (result.success !== true || pending.map !== liveMap ||
 			pending.generation !== CalcFormatStateBridge.generation ||
@@ -117,12 +150,14 @@ class CalcFormatStateBridge {
 			pending.part !== CalcFormatStateBridge.currentPart() ||
 			!liveRange || !CalcFormatStateBridge.sameRange(pending.range, liveRange)) {
 			CalcFormatStateBridge.values = {};
+			pending.resolve?.(false);
 			pending.map.fire?.('calcformatstatechanged', { states: {}, error: 'stale-or-failed' });
 			return;
 		}
 		CalcFormatStateBridge.values = {};
 		const states = result.states;
 		if (!states || typeof states !== 'object' || Array.isArray(states)) {
+			pending.resolve?.(false);
 			pending.map.fire?.('calcformatstatechanged', { states: {}, error: 'invalid-states' });
 			return;
 		}
@@ -133,14 +168,16 @@ class CalcFormatStateBridge {
 			(rotation !== undefined && (typeof rotation !== 'number' || !Number.isSafeInteger(rotation))) ||
 			(stacked !== undefined && typeof stacked !== 'boolean')) {
 			CalcFormatStateBridge.values = {};
+			pending.resolve?.(false);
 			pending.map.fire?.('calcformatstatechanged', { states: {}, error: 'invalid-state-type' });
 			return;
 		}
 		Object.keys(states).forEach((key) => {
 			const value = states[key];
-			if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
+			if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
 				CalcFormatStateBridge.values[key] = value;
 		});
+		pending.resolve?.(true);
 		pending.map.fire?.('calcformatstatechanged', { states: CalcFormatStateBridge.values });
 	}
 
@@ -153,6 +190,7 @@ class CalcFormatStateBridge {
 		const nextKey = CalcFormatStateBridge.selectionKey();
 		if (nextKey === CalcFormatStateBridge.observedSelectionKey) return;
 		CalcFormatStateBridge.observedSelectionKey = nextKey;
+		CalcFormatStateBridge.pending?.resolve?.(false);
 		CalcFormatStateBridge.generation++;
 		if (CalcFormatStateBridge.pending) window.clearTimeout(CalcFormatStateBridge.pending.timer);
 		CalcFormatStateBridge.pending = null;

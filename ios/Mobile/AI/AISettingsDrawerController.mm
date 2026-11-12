@@ -6,6 +6,8 @@
  */
 
 #import "AISettingsDrawerController.h"
+#import <math.h>
+#import <limits.h>
 #import "../KeyboardAccessory.h"
 #import <WebKit/WebKit.h>
 
@@ -89,12 +91,13 @@ static NSString *const kAvatarFileName = @"ai_profile_avatar.jpg";
 @property (strong, nonatomic) UITextField *apiKeyField;
 @property (strong, nonatomic) UITextField *modelNameField;
 @property (assign, nonatomic) BOOL configDetailsVisible;
-@property (strong, nonatomic) UISlider *topPSlider;
-@property (strong, nonatomic) UISlider *temperatureSlider;
-@property (strong, nonatomic) UISlider *presenceSlider;
-@property (strong, nonatomic) UISlider *frequencySlider;
-@property (strong, nonatomic) UISlider *maxTokensSlider;
-@property (strong, nonatomic) UISlider *seedSlider;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, UISlider *> *samplingSliders;
+@property (strong, nonatomic) UITextField *topPParameterField;
+@property (strong, nonatomic) UITextField *temperatureParameterField;
+@property (strong, nonatomic) UITextField *presenceParameterField;
+@property (strong, nonatomic) UITextField *frequencyParameterField;
+@property (strong, nonatomic) UITextField *maxTokensParameterField;
+@property (strong, nonatomic) UITextField *seedParameterField;
 @property (strong, nonatomic) UILabel *topPValue;
 @property (strong, nonatomic) UILabel *temperatureValue;
 @property (strong, nonatomic) UILabel *presenceValue;
@@ -683,12 +686,12 @@ static UIImage *AIDrawerScaledIcon(UIImage *image, CGFloat side) {
     UILabel *frequencyValue = nil;
     UILabel *maxTokensValue = nil;
     UILabel *seedValue = nil;
-    self.topPSlider = [self addSlider:@"top_p" valueLabel:&topPValue to:paramsStack];
-    self.temperatureSlider = [self addSlider:@"temperature" valueLabel:&temperatureValue to:paramsStack];
-    self.presenceSlider = [self addSlider:@"presence_penalty" valueLabel:&presenceValue to:paramsStack];
-    self.frequencySlider = [self addSlider:@"frequency_penalty" valueLabel:&frequencyValue to:paramsStack];
-    self.maxTokensSlider = [self addSlider:@"max_tokens" valueLabel:&maxTokensValue to:paramsStack];
-    self.seedSlider = [self addSlider:@"seed" valueLabel:&seedValue to:paramsStack];
+    self.topPParameterField = [self addSamplingField:@"top_p" valueLabel:&topPValue to:paramsStack];
+    self.temperatureParameterField = [self addSamplingField:@"temperature" valueLabel:&temperatureValue to:paramsStack];
+    self.presenceParameterField = [self addSamplingField:@"presence_penalty" valueLabel:&presenceValue to:paramsStack];
+    self.frequencyParameterField = [self addSamplingField:@"frequency_penalty" valueLabel:&frequencyValue to:paramsStack];
+    self.maxTokensParameterField = [self addSamplingField:@"max_tokens" valueLabel:&maxTokensValue to:paramsStack];
+    self.seedParameterField = [self addSamplingField:@"seed" valueLabel:&seedValue to:paramsStack];
     self.topPValue = topPValue;
     self.temperatureValue = temperatureValue;
     self.presenceValue = presenceValue;
@@ -813,51 +816,61 @@ static UIImage *AIDrawerScaledIcon(UIImage *image, CGFloat side) {
     return field;
 }
 
-- (UISlider *)addSlider:(NSString *)title valueLabel:(UILabel **)valueLabel to:(UIStackView *)stack {
-    UIView *row = [[UIView alloc] init];
-    row.translatesAutoresizingMaskIntoConstraints = NO;
-    UILabel *name = [[UILabel alloc] init];
-    name.translatesAutoresizingMaskIntoConstraints = NO;
-    name.text = title;
-    name.font = [UIFont systemFontOfSize:13];
-    name.textColor = AIDrawerColorTextPrimary();
-    [row addSubview:name];
-    UILabel *value = [[UILabel alloc] init];
-    value.translatesAutoresizingMaskIntoConstraints = NO;
-    value.font = [UIFont monospacedDigitSystemFontOfSize:12 weight:UIFontWeightRegular];
-    value.textColor = AIDrawerColorTextSecondary();
-    value.textAlignment = NSTextAlignmentRight;
-    [row addSubview:value];
-    *valueLabel = value;
-    UISlider *slider = [[UISlider alloc] init];
-    slider.translatesAutoresizingMaskIntoConstraints = NO;
-    slider.minimumValue = 0;
-    slider.maximumValue = 1;
-    slider.tintColor = [self accentColor];
-    [slider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
-    [row addSubview:slider];
-    [NSLayoutConstraint activateConstraints:@[
-        [row.heightAnchor constraintEqualToConstant:48],
-        [name.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
-        [name.topAnchor constraintEqualToAnchor:row.topAnchor],
-        [value.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
-        [value.centerYAnchor constraintEqualToAnchor:name.centerYAnchor],
-        [slider.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
-        [slider.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
-        [slider.bottomAnchor constraintEqualToAnchor:row.bottomAnchor],
-    ]];
-    [stack addArrangedSubview:row];
-    return slider;
+- (NSArray<UITextField *> *)samplingValueFields {
+    return @[self.topPParameterField, self.temperatureParameterField, self.presenceParameterField,
+        self.frequencyParameterField, self.maxTokensParameterField, self.seedParameterField];
 }
 
-- (void)sliderChanged:(UISlider *)slider {
-    NSString *text = [NSString stringWithFormat:@"%.2f", slider.value];
-    if (slider == self.topPSlider) self.topPValue.text = text;
-    else if (slider == self.temperatureSlider) self.temperatureValue.text = text;
-    else if (slider == self.presenceSlider) self.presenceValue.text = text;
-    else if (slider == self.frequencySlider) self.frequencyValue.text = text;
-    else if (slider == self.maxTokensSlider) self.maxTokensValue.text = text;
-    else if (slider == self.seedSlider) self.seedValue.text = text;
+- (UITextField *)addSamplingField:(NSString *)key valueLabel:(UILabel **)valueLabel to:(UIStackView *)stack {
+    NSArray *keys = @[@"top_p", @"temperature", @"presence_penalty", @"frequency_penalty", @"max_tokens", @"seed"];
+    NSArray *titles = @[@"Top P", @"Temperature", @"Presence Penalty", @"Frequency Penalty", @"Max Tokens", @"Seed"];
+    NSArray *hints = @[@"默认 1", @"参考 0.7", @"默认 0", @"默认 0", @"参考 2048", @"随机"];
+    NSUInteger index = [keys indexOfObject:key];
+    UIStackView *group = [[UIStackView alloc] init]; group.axis = UILayoutConstraintAxisVertical; group.spacing = 4;
+    UIStackView *header = [[UIStackView alloc] init]; header.alignment = UIStackViewAlignmentCenter; header.spacing = 8;
+    UILabel *label = [[UILabel alloc] init]; label.text = titles[index]; label.font = [UIFont systemFontOfSize:14]; label.textColor = AIDrawerColorTextPrimary();
+    UITextField *field = [[UITextField alloc] init]; field.textAlignment = NSTextAlignmentRight; field.font = [UIFont systemFontOfSize:14];
+    field.placeholder = hints[index]; field.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
+    field.clearButtonMode = UITextFieldViewModeWhileEditing; field.accessibilityLabel = titles[index];
+    [field addTarget:self action:@selector(samplingFieldChanged:) forControlEvents:UIControlEventEditingChanged];
+    [field.widthAnchor constraintEqualToConstant:100].active = YES;
+    [header addArrangedSubview:label]; [header addArrangedSubview:field]; [group addArrangedSubview:header];
+    UISlider *slider = [[UISlider alloc] init]; slider.accessibilityIdentifier = key; slider.accessibilityLabel = titles[index];
+    float minimum[] = {0, 0, -2, -2, 1, 0}; float maximum[] = {1, 2, 2, 2, 32768, 999999};
+    slider.minimumValue = minimum[index]; slider.maximumValue = maximum[index];
+    slider.minimumTrackTintColor = AIDrawerColorCardBg(); slider.maximumTrackTintColor = AIDrawerColorCardBg();
+    slider.thumbTintColor = AIDrawerColorOrange();
+    UIImage *thumb = [[UIImage systemImageNamed:@"circle.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightRegular]] imageWithTintColor:AIDrawerColorOrange() renderingMode:UIImageRenderingModeAlwaysOriginal];
+    [slider setThumbImage:thumb forState:UIControlStateNormal];
+    [slider setThumbImage:thumb forState:UIControlStateHighlighted];
+    [slider.heightAnchor constraintEqualToConstant:16].active = YES;
+    [slider addTarget:self action:@selector(samplingSliderChanged:) forControlEvents:UIControlEventValueChanged];
+    if (!self.samplingSliders) self.samplingSliders = [NSMutableDictionary dictionary];
+    self.samplingSliders[key] = slider;
+    [group addArrangedSubview:slider]; [stack addArrangedSubview:group];
+    *valueLabel = label;
+    return field;
+}
+
+- (void)samplingFieldChanged:(UITextField *)field {
+    [self synchronizeSamplingSliders];
+}
+
+- (void)samplingSliderChanged:(UISlider *)slider {
+    NSArray *keys = @[@"top_p", @"temperature", @"presence_penalty", @"frequency_penalty", @"max_tokens", @"seed"];
+    NSUInteger index = [keys indexOfObject:slider.accessibilityIdentifier];
+    UITextField *field = [self samplingValueFields][index];
+    field.text = index >= 4 ? [NSString stringWithFormat:@"%ld", (long)lroundf(slider.value)] : [NSString stringWithFormat:@"%.2f", roundf(slider.value * 100) / 100];
+}
+
+- (void)synchronizeSamplingSliders {
+    NSArray *keys = @[@"top_p", @"temperature", @"presence_penalty", @"frequency_penalty", @"max_tokens", @"seed"];
+    float suggestions[] = {1, 0.7, 0, 0, 2048, 0};
+    NSArray *fields = [self samplingValueFields];
+    for (NSUInteger index = 0; index < keys.count; index++) {
+        UITextField *field = fields[index]; UISlider *slider = self.samplingSliders[keys[index]];
+        slider.value = field.text.length ? field.text.floatValue : suggestions[index];
+    }
 }
 
 - (void)handleEdgePan:(UIScreenEdgePanGestureRecognizer *)gesture {
@@ -953,18 +966,14 @@ static UIImage *AIDrawerScaledIcon(UIImage *image, CGFloat side) {
     [self updateURLFieldError:NO];
     self.apiKeyField.text = form.apiKey;
     self.modelNameField.text = form.modelName;
-    self.topPSlider.value = form.topP;
-    self.temperatureSlider.value = form.temperature;
-    self.presenceSlider.value = form.presencePenalty;
-    self.frequencySlider.value = form.frequencyPenalty;
-    self.maxTokensSlider.value = form.maxTokensRatio;
-    self.seedSlider.value = form.seedRatio;
-    [self sliderChanged:self.topPSlider];
-    [self sliderChanged:self.temperatureSlider];
-    [self sliderChanged:self.presenceSlider];
-    [self sliderChanged:self.frequencySlider];
-    [self sliderChanged:self.maxTokensSlider];
-    [self sliderChanged:self.seedSlider];
+    self.topPParameterField.text = form.samplingParameters[@"top_p"] ? [form.samplingParameters[@"top_p"] stringValue] : @"";
+    self.temperatureParameterField.text = form.samplingParameters[@"temperature"] ? [form.samplingParameters[@"temperature"] stringValue] : @"";
+    self.presenceParameterField.text = form.samplingParameters[@"presence_penalty"] ? [form.samplingParameters[@"presence_penalty"] stringValue] : @"";
+    self.frequencyParameterField.text = form.samplingParameters[@"frequency_penalty"] ? [form.samplingParameters[@"frequency_penalty"] stringValue] : @"";
+    self.maxTokensParameterField.text = form.samplingParameters[@"max_tokens"] ? [form.samplingParameters[@"max_tokens"] stringValue] : @"";
+    self.seedParameterField.text = form.samplingParameters[@"seed"] ? [form.samplingParameters[@"seed"] stringValue] : @"";
+    [self synchronizeSamplingSliders];
+
 
     CGFloat width = self.panelView.bounds.size.width;
     self.configDetailsVisible = NO;
@@ -1014,12 +1023,23 @@ static UIImage *AIDrawerScaledIcon(UIImage *image, CGFloat side) {
     form.endpointMode = self.endpointModeControl.selectedSegmentIndex == 1 ? @"manual" : @"automatic";
     form.apiKey = self.apiKeyField.text;
     form.modelName = self.modelNameField.text;
-    form.topP = self.topPSlider.value;
-    form.temperature = self.temperatureSlider.value;
-    form.presencePenalty = self.presenceSlider.value;
-    form.frequencyPenalty = self.frequencySlider.value;
-    form.maxTokensRatio = self.maxTokensSlider.value;
-    form.seedRatio = self.seedSlider.value;
+    NSMutableDictionary *parameters = [NSMutableDictionary dictionary];
+    NSArray *parameterFields = @[self.topPParameterField, self.temperatureParameterField, self.presenceParameterField, self.frequencyParameterField, self.maxTokensParameterField, self.seedParameterField];
+    NSArray *names = @[@"top_p", @"temperature", @"presence_penalty", @"frequency_penalty", @"max_tokens", @"seed"];
+    double minimum[] = {0, 0, -2, -2, 1, 0};
+    double maximum[] = {1, 2, 2, 2, INT_MAX, INT_MAX};
+    for (NSUInteger i = 0; i < names.count; i++) {
+        NSString *text = [((UITextField *)parameterFields[i]).text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (!text.length) continue;
+        NSScanner *scanner = [NSScanner scannerWithString:text]; double value;
+        if (![scanner scanDouble:&value] || !scanner.isAtEnd || !isfinite(value) || value < minimum[i] || value > maximum[i] || (i >= 4 && floor(value) != value)) {
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"参数无效" message:[NSString stringWithFormat:@"%@ 的范围为 %g 至 %g%@", names[i], minimum[i], maximum[i], i >= 4 ? @"，且必须为整数" : @""] preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:alert animated:YES completion:nil]; return;
+        }
+        parameters[names[i]] = i >= 4 ? @((NSInteger)value) : @(value);
+    }
+    form.samplingParameters = parameters;
     NSError *error = nil;
     if (![self.modelStore saveForm:form modelType:self.editingType error:&error]) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"保存失败"

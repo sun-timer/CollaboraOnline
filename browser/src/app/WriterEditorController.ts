@@ -472,8 +472,11 @@ class WriterEditorController {
 		) {
 			return { dispatched: 'none', reason: 'unknown_chart_type' };
 		}
+		const calc = (window as any).ThisIsTheiOSApp && this.adapter.getDocType() === 'spreadsheet';
+		const range = calc ? CalcAiContext.chartRange(CalcAiContext.getSelectedRange()) : '';
+		if (calc && !range) return { dispatched: 'none', reason: 'empty_range' };
 		const args: { [key: string]: any } = {
-			RangeList: { type: 'string', value: '' },
+			RangeList: { type: 'string', value: range },
 			InNewTable: { type: 'boolean', value: false },
 		};
 		if (WriterEditorCatalog.needsChartTemplate(unoChartType)) {
@@ -710,24 +713,22 @@ class WriterEditorController {
 
 	private static impressShapeStateTarget(): any {
 		const map = (window as any).app?.map;
-		if (!(window as any).ThisIsTheiOSApp || map?.getDocType?.() !== 'presentation' ||
-			typeof NativeBridge === 'undefined' || typeof GraphicSelection === 'undefined' ||
-			!GraphicSelection.hasActiveSelection() ||
-			(typeof TextSelections !== 'undefined' && TextSelections.isActive()) ||
-			(window as any).app?.file?.textCursor?.visible) return null;
-		const selectionId = String(GraphicSelection.extraInfo?.id || '');
+		if (!(window as any).ThisIsTheiOSApp || map?.getDocType?.() !== 'presentation' || typeof NativeBridge === 'undefined') return null;
+		const text = typeof TextSelections !== 'undefined' && TextSelections.isActive() || !!(window as any).app?.file?.textCursor?.visible;
+		const selectionId = text ? 'text' : typeof GraphicSelection !== 'undefined' && GraphicSelection.hasActiveSelection() ? String(GraphicSelection.extraInfo?.id || '') : '';
 		const viewId = map._docLayer?._viewId, part = map._docLayer?._selectedPart;
-		if (!/^\d{1,20}$/.test(selectionId) || !Number.isInteger(viewId) || !Number.isInteger(part)) return null;
+		if ((!text && !/^\d{1,20}$/.test(selectionId)) || !Number.isInteger(viewId) || !Number.isInteger(part)) return null;
 		const documentSessionId = NativeBridge.getInstance().getDocumentSessionId();
+		const rangeKey = text && typeof TextSelections !== 'undefined' ? TextSelections.formatStateKey() : '';
 		return { map, layer: map._docLayer, viewId, part, selectionId, documentSessionId,
-			key: [documentSessionId, viewId, part, selectionId].join(':') };
+			key: [documentSessionId, viewId, part, selectionId, rangeKey].join(':') };
 	}
 
 	static impressShapeState(command: string): string | undefined {
 		const target = this.impressShapeStateTarget();
 		const saved = this.impressStates;
 		return target && saved && saved.key === target.key && saved.layer === target.layer
-			? saved.values[command] : undefined;
+			? saved.values[command] : target ? 'mixed' : undefined;
 	}
 
 	static requestImpressShapeStates(): void {
@@ -768,6 +769,13 @@ class WriterEditorController {
 
 	static onImpressShapeFormatResult(result: any): boolean {
 		const target = this.impressShapeStateTarget();
+		if (result.success && !result.selectionId && target?.selectionId === 'text') {
+			if (this.impressStatePending) window.clearTimeout(this.impressStatePending.timer);
+			this.impressStatePending = null;
+			this.impressStates = null;
+			this.requestImpressShapeStates();
+			return false;
+		}
 		if (!result.success || !target || result.documentSessionId !== target.documentSessionId ||
             result.selectionId !== target.selectionId || result.viewId !== target.viewId || result.part !== target.part) return false;
 		if (this.impressStatePending) window.clearTimeout(this.impressStatePending.timer);

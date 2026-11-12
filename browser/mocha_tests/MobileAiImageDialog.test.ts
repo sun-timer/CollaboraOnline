@@ -13,6 +13,8 @@ describe('Mobile AI Image Dialog', function () {
 			taskType: 'image_generate',
 			selection: '夕阳下的海面插画',
 			context: {},
+			size: '576x1024',
+			n: 4,
 		});
 	});
 

@@ -9,6 +9,10 @@
  */
 
 class TextSelections {
+	public static formatStateKey(): string {
+		return JSON.stringify([this.active, this.startRectangle, this.endRectangle, (window as any).app?.file?.textCursor?.rectangle]);
+	}
+
 	// Below 4 are used for text selection handles, which are visible where mouse pointer doesn't exist (search "pointer: fine" in css).
 	private static start: TextSelectionHandle;
 	private static end: TextSelectionHandle;
@@ -193,6 +197,8 @@ class TextSelections {
 	}
 
 	private static publishAndroidHandleRects(visible: boolean) {
+		if (typeof window !== 'undefined' && (window as any).ThisIsTheiOSApp && (window as any).app?.map?.getDocType?.() === 'presentation')
+			(window as any).app.map.fire('impresscharacterselectionchanged');
 		if (typeof window === 'undefined' || !(window as any).ThisIsTheAndroidApp) return;
 		visible = visible && app.map?.getDocType() === 'text';
 		const bridge = (window as any).COOLMessageHandler;

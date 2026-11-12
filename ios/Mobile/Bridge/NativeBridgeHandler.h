@@ -14,7 +14,7 @@ typedef NSString * (^NativeBridgeSessionIdProvider)(void);
 typedef AiConversationStore * _Nullable (^NativeBridgeConversationStoreProvider)(void);
 typedef void (^NativeBridgeMessageEmitter)(NSDictionary *message);
 typedef NSURL * _Nullable (^NativeBridgeDocumentURLProvider)(void);
-typedef void (^NativeBridgeReloadDocumentHandler)(void);
+typedef BOOL (^NativeBridgeReloadDocumentHandler)(NSURL *replacementURL);
 typedef void (^NativeBridgeDocumentTextCompletion)(NSString * _Nullable text);
 typedef void (^NativeBridgeDocumentTextExtractor)(NativeBridgeDocumentTextCompletion completion);
 
@@ -24,7 +24,9 @@ typedef void (^NativeBridgeTextInserter)(NSString *html, NSInteger viewId, NSStr
 @interface NativeBridgeHandler : NSObject <WKScriptMessageHandler>
 
 @property (copy, nonatomic, nullable) NativeBridgeTextInserter documentTextInserter;
-@property (copy, nonatomic, nullable) NativeBridgeDocumentURLProvider documentFileURLProvider;
+// Returns a fresh temporary snapshot of the current document. The caller
+// removes it after structured extraction; never return the original/backup URL.
+@property (copy, nonatomic, nullable) NativeBridgeDocumentURLProvider typesetSnapshotURLProvider;
 @property (copy, nonatomic, nullable) NativeBridgeDocumentURLProvider originalDocumentURLProvider;
 @property (copy, nonatomic, nullable) NativeBridgeReloadDocumentHandler reloadDocumentHandler;
 @property (copy, nonatomic, nullable) NativeBridgeConversationStoreProvider conversationStoreProvider;

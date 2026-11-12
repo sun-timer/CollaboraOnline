@@ -13,6 +13,7 @@ interface MobileSelectionMenuItemSpec {
 	androidTaskType?: string;
 	catalogTaskType?: string;
 	unoCommand?: string;
+	targetKey?: string;
 }
 
 interface MobileSelectionShowDetail {
@@ -201,6 +202,19 @@ class MobileSelectionMenu {
 			{ id: 'calc_data_process', label: '数据处理', iconKey: 'calc_data_process', kind: 'ai', catalogTaskType: 'calc_data_process' },
 			{ id: 'calc_chart', label: '生成图表', iconKey: 'calc_chart', kind: 'ai', catalogTaskType: 'calc_chart' },
 		];
+	}
+
+	private static tableTargetKey(): string {
+		const app = (window as any).app;
+		if (!(window as any).ThisIsTheiOSApp || app?.map?.getDocType?.() !== 'presentation' || !app?.activeDocument?.tableMiddleware?.hasTableSelection()) return '';
+		return JSON.stringify([NativeBridge.getInstance().getDocumentSessionId(), app.map._docLayer?._viewId,
+			app.map._docLayer?._selectedPart, typeof GraphicSelection !== 'undefined' ? GraphicSelection.extraInfo?.id : '',
+			app.activeDocument.tableMiddleware.currentTableMarkerJson]);
+	}
+
+	private static tableDeleteItems(): MobileSelectionMenuItemSpec[] {
+		const targetKey = MobileSelectionMenu.tableTargetKey();
+		return targetKey ? [{id:'delete_table', label:'删除表格', iconKey:'delete', kind:'action', unoCommand:'.uno:DeleteTable', targetKey}] : [];
 	}
 
 	/** Match the existing PPT AI sheet, including its PPT generation route. */
@@ -427,7 +441,7 @@ class MobileSelectionMenu {
 		}
 		if (mode === 'graphic') {
 			return [
-				MobileSelectionMenu.buildButtonRow(MobileSelectionMenu.graphicMenuItems(), {
+				MobileSelectionMenu.buildButtonRow(MobileSelectionMenu.graphicMenuItems().concat(MobileSelectionMenu.tableDeleteItems()), {
 					editMode,
 					editable,
 					mode,
@@ -436,7 +450,7 @@ class MobileSelectionMenu {
 		}
 
 		const documentType = (window as any).app?.map?.getDocType?.() || 'text';
-		const items = MobileSelectionMenu.editMenuItems(documentType);
+		const items = MobileSelectionMenu.editMenuItems(documentType).concat(MobileSelectionMenu.tableDeleteItems());
 		if (editMode) {
 			return [
 				MobileSelectionMenu.buildTextEditStrip(items, { editMode, editable, mode }),
@@ -634,6 +648,7 @@ class MobileSelectionMenu {
 		item: MobileSelectionMenuItemSpec,
 		ctx: { editMode: boolean; editable: boolean; mode: 'text' | 'calc' | 'graphic' },
 	): boolean {
+		if (item.id === 'delete_table') return ctx.editable && ctx.editMode;
 		if (ctx.mode === 'calc') {
 			if (item.id === 'paste') {
 				return ctx.editable && ctx.editMode;
@@ -797,7 +812,12 @@ class MobileSelectionMenu {
 		if (!item.unoCommand) {
 			return;
 		}
-		const run = () => map.sendUnoCommand(item.unoCommand as string);
+		const run = () => {
+			if (item.id === 'delete_table' && item.targetKey !== MobileSelectionMenu.tableTargetKey()) {
+				map.uiManager?.showSnackbar('表格选区已变化，请重新选择'); return;
+			}
+			map.sendUnoCommand(item.unoCommand as string);
+		};
 		if (MobileSelectionMenu.isEditModeActive()) {
 			run();
 		} else if (typeof map.setEditMode === 'function') {

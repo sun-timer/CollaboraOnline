@@ -18,8 +18,7 @@ class CalcEditorPanel {
 	private fontNameNode: HTMLElement | null = null;
 	private fontSizeNode: HTMLElement | null = null;
 	/** Shown until the cell's CharFontName / FontHeight state arrives. */
-	private fontNameOverride: string | null = null;
-	private fontSizeOverride: string | null = null;
+	private readbackTimer: number | null = null;
 	private fontColorRgb: number | null = null;
 	private backgroundColorRgb: number | null = null;
 	private borderColorRgb: number | null = null;
@@ -38,16 +37,8 @@ class CalcEditorPanel {
 	private observedSelectionKey: string | null = null;
 	private readonly onDocumentState = (event: any) => {
 		if (!CalcEditorFormat.isActive()) return;
-		if (event?.commandName && ![
-			'.uno:Color', '.uno:BackgroundColor', '.uno:FrameLineColor',
-			'.uno:NumberFormat', '.uno:NumberFormatIncDecimals', '.uno:NumberFormatDecDecimals',
-			'.uno:AlignmentRotation', '.uno:AlignmentStacked', '.uno:WrapText', '.uno:ToggleSheetGrid',
-			'.uno:Bold', '.uno:Italic', '.uno:Underline', '.uno:Strikeout', '.uno:Shadowed',
-			'.uno:SuperScript', '.uno:SubScript', '.uno:InsertMode',
-			'.uno:ResetAttributes',
-			'.uno:FreezePanes', '.uno:FreezePanesRow', '.uno:FreezePanesColumn',
-			'.uno:CharFontName', '.uno:FontHeight',
-		].includes(event.commandName)) return;
+		if (event?.commandName || event?.command || event?.success !== undefined) this.requestReadback();
+		if (event?.command && event.success === false) CalcEditorFormat.notify('格式操作未能完成，请检查选区是否可编辑');
 		if (event?.commandName === '.uno:NumberFormat' && this.numberFormatPending) {
 			this.finishNumberFormatWrite();
 			if (this.numberFormatDirty) this.scheduleNumberFormatWrite(0);
@@ -92,8 +83,7 @@ class CalcEditorPanel {
 		this.finishNumberFormatWrite();
 		this.clearFormatOverride('rotation');
 		this.clearFormatOverride('stack');
-		this.fontNameOverride = null;
-		this.fontSizeOverride = null;
+
 		Object.keys(this.colorOverrideTimers).forEach((command) => this.clearColorOverride(command));
 		this.colorOverrides = {};
 		this.syncToggleStateFromDocument();
@@ -504,6 +494,7 @@ class CalcEditorPanel {
 		label.className = 'writer-function-calc-flat-action-row__label';
 		label.textContent = feature.label;
 		row.appendChild(label);
+		row.dataset.calcState = '.uno:ToggleMergeCells';
 		row.onclick = () => this.onFeature(feature);
 		return row;
 	}
@@ -615,6 +606,7 @@ class CalcEditorPanel {
 					if (tool.id === 'super' || tool.id === 'sub') {
 						const operation = tool.id === 'super' ? 'superscript' : 'subscript';
 						CalcTextFormatBridge.apply(operation, true);
+						this.requestReadback();
 					} else {
 						this.sendUno(tool.unocmd);
 					}
@@ -669,13 +661,22 @@ class CalcEditorPanel {
 		}
 		button.onclick = () => {
 			if (gridFeatureId === 'border-styles' && cell.icon) {
-				CalcEditorBorder.applyPreset(cell.icon, this.borderColorRgb !== null && this.borderColorRgb >= 0 ? this.borderColorRgb : 0);
+				const command = CalcEditorBorder.buildPresetCommand(cell.icon, CalcEditorBorder.drawingColor);
+				if (command) this.sendUno(command);
 				return;
 			}
 			if (cell.unocmd) {
 				this.sendUno(cell.unocmd);
 			}
 		};
+		button.onmousedown = (event) => event.preventDefault();
+		button.dataset.calcCommand = cell.unocmd.split(' ')[0];
+		if (gridFeatureId === 'align-grid' && cell.unocmd.indexOf('Indent') < 0 || gridFeatureId === 'numfmt-grid') {
+			button.dataset.calcState = cell.icon === 'calc-num-fraction' ? '.uno:NumberFormatFraction' :
+				cell.icon === 'calc-num-boolean' ? '.uno:NumberFormatLogical' :
+				cell.icon === 'calc-num-text' ? '.uno:NumberFormatText' : cell.unocmd.split(' ')[0];
+		}
+		if (gridFeatureId === 'border-styles') button.dataset.calcBorder = cell.icon;
 		if (cell.unocmd.startsWith('.uno:FreezePanes')) {
 			button.dataset.calcFreeze = cell.unocmd.split(' ')[0];
 		}
@@ -794,6 +795,8 @@ class CalcEditorPanel {
 		label.className = 'writer-function-calc-command-row__label';
 		label.textContent = feature.label;
 		row.appendChild(label);
+		row.dataset.calcCommand = feature.unocmd?.split(' ')[0] || '';
+		if (feature.id === 'merge-cells') row.dataset.calcState = '.uno:ToggleMergeCells';
 		row.onclick = () => this.onFeature(feature);
 		return row;
 	}
@@ -941,9 +944,10 @@ class CalcEditorPanel {
 			row.appendChild(
 				this.createStepperColumn(
 					'缩进',
-					'0 点(pt)',
+					'—',
 					'.uno:IncrementIndent',
 					'.uno:DecrementIndent',
+					'indent',
 				),
 			);
 			row.appendChild(
@@ -1109,6 +1113,10 @@ class CalcEditorPanel {
 			return;
 		}
 		if (feature.id === 'merge-cells') {
+			if (CalcEditorFormat.checked('.uno:ToggleMergeCells') === true) {
+				this.sendUno('.uno:SplitCell');
+				return;
+			}
 			this.openMergeCellsDialog();
 			return;
 		}
@@ -1271,9 +1279,8 @@ class CalcEditorPanel {
 				'字体',
 				options,
 				(option) => {
-					this.fontNameOverride = option.label;
-					this.refreshFontLabels();
 					this.controller.applyFontName(WriterEditorCatalog.aliasFont(option.value));
+					this.requestReadback();
 				},
 				this.fontNameLabel(),
 				this.subHost(),
@@ -1282,16 +1289,17 @@ class CalcEditorPanel {
 	}
 
 	private openFontSizeDialog(): void {
-		const table = WriterEditorCatalog.CHAR_HEIGHT_CN;
-		const options = Object.keys(table).map((label) => ({ label, value: table[label] }));
+		const current = CalcEditorPanel.fontSizeValue(CalcEditorFormat.state('.uno:FontHeight'));
+		const sizes = [4, 5, 6, 7, 8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 44, 48, 54, 60, 66, 72, 80, 88, 96];
+		if (current !== null && !sizes.includes(current)) sizes.push(current);
+		const options = sizes.sort((a, b) => a - b).map((pt) => ({ label: pt + ' pt', value: String(pt) }));
 		this.presentSub(
 			new WriterEditorChooseDialog(
 				'字号',
 				options,
 				(option) => {
-					this.fontSizeOverride = option.label;
-					this.refreshFontLabels();
 					this.controller.applyFontSize(option.value);
+					this.requestReadback();
 				},
 				this.fontSizeLabel(),
 				this.subHost(),
@@ -1328,27 +1336,20 @@ class CalcEditorPanel {
 			new WriterColorPickerDialog(
 				'边框颜色',
 				this.borderColorRgb,
-				(rgb) => this.applyColor('.uno:FrameLineColor', rgb,
-					CalcEditorBorder.buildBorderColorUnoCommand(rgb)),
-				this.subHost(),
+				async (rgb) => {
+					const applied = await CalcFormatStateBridge.applyBorderColor(rgb);
+					if (applied) CalcEditorBorder.drawingColor = rgb;
+					else CalcEditorFormat.notify('边框颜色未能应用，请检查选区是否可编辑');
+					return applied;
+				},
+				this.subHost(), undefined, true,
 			),
 		);
 	}
 
 	private applyColor(command: string, rgb: number, unoCommand: string): void {
 		this.sendUno(unoCommand);
-		this.clearColorOverride(command);
-		this.colorOverrides[command] = rgb;
-		this.colorOverrideTimers[command] = window.setTimeout(() => {
-			this.clearColorOverride(command);
-			this.syncToggleStateFromDocument();
-			this.refreshStateControls();
-		}, 1000);
-		if (command === '.uno:Color') this.fontColorRgb = rgb;
-		else if (command === '.uno:BackgroundColor') this.backgroundColorRgb = rgb;
-		else this.borderColorRgb = rgb;
-		this.refreshStateControls();
-		CalcFormatStateBridge.request();
+		this.requestReadback();
 	}
 
 	private clearColorOverride(command: string): void {
@@ -1417,7 +1418,7 @@ class CalcEditorPanel {
 			},
 			{
 				label: '合并相同单元格',
-				value: '.uno:MergeCells?MoveContents:bool=false',
+				value: 'merge-identical',
 			},
 		];
 		this.close();
@@ -1431,7 +1432,13 @@ class CalcEditorPanel {
 				options,
 				(option) => {
 					window.setTimeout(() => {
-						this.sendUno(option.value);
+						if (option.value === 'merge-identical') {
+							CalcFormatStateBridge.mergeIdenticalCells().then((ok) => {
+								if (!ok) CalcEditorFormat.notify('无法合并，请检查选区是否可编辑');
+								else if (CalcFormatStateBridge.state('merge.same.count') === 0)
+									CalcEditorFormat.notify('未找到连续相同的非空单元格');
+							});
+						} else this.sendUno(option.value);
 						this.recoverDocumentCanvas();
 					}, 200);
 				},
@@ -1563,6 +1570,7 @@ class CalcEditorPanel {
 		this.stateMap = map;
 		this.observedSelectionKey = CalcFormatStateBridge.selectionKey();
 		map.on('commandstatechanged', this.onDocumentState);
+		map.on('commandresult', this.onDocumentState);
 		map.on('calctextformatresult', this.onDocumentState);
 		map.on('calcformatstatechanged', this.onDocumentState);
 		map.on('celladdress', this.onSelectionChanged);
@@ -1571,6 +1579,7 @@ class CalcEditorPanel {
 
 	private unsubscribeDocumentState(): void {
 		this.stateMap?.off('commandstatechanged', this.onDocumentState);
+		this.stateMap?.off('commandresult', this.onDocumentState);
 		this.stateMap?.off('calctextformatresult', this.onDocumentState);
 		this.stateMap?.off('calcformatstatechanged', this.onDocumentState);
 		this.stateMap?.off('celladdress', this.onSelectionChanged);
@@ -1698,20 +1707,23 @@ class CalcEditorPanel {
 			const value = this.calcToggleState[id];
 			button.setAttribute('aria-pressed', value === undefined ? 'mixed' : String(value));
 			const indicator = button.querySelector('.writer-function-calc-toggle-card__indicator');
-			if (indicator) indicator.innerHTML = WriterEditorIcons.get(value === true ? 'calc-toggle-checked' : 'calc-toggle-unchecked');
+			if (indicator) {
+				if (value === undefined) indicator.textContent = '—';
+				else indicator.innerHTML = WriterEditorIcons.get(value === true ? 'calc-toggle-checked' : 'calc-toggle-unchecked');
+			}
 			button.disabled = (id === 'negative-red' || id === 'thousands-sep') && !this.numberFormat;
 		});
 		this.content.querySelectorAll<HTMLElement>('[data-calc-value]').forEach((node) => {
 			const key = node.dataset.calcValue;
-			const value = key === 'rotation' ? this.rotation :
+			const value = key === 'indent' ? CalcEditorFormat.numeric('.uno:ParaIndent') : key === 'rotation' ? this.rotation :
 				key === 'precision' ? this.numberFormat?.precision : this.numberFormat?.leadingZeroes;
 			node.textContent = value === null || value === undefined ? '—' :
-				key === 'rotation' ? String(value / 100) + ' °' : String(value);
+				key === 'rotation' ? String(value / 100) + ' °' : key === 'indent' ? Number(value.toFixed(2)) + ' 点(pt)' : String(value);
 		});
 		this.content.querySelectorAll<HTMLButtonElement>('[data-calc-stepper]').forEach((button) => {
 			const key = button.dataset.calcStepper;
 			const delta = Number(button.dataset.calcDelta);
-			button.disabled = key === 'rotation' ? this.rotation === null :
+			button.disabled = key === 'indent' ? CalcEditorFormat.numeric('.uno:ParaIndent') === null || (delta < 0 && CalcEditorFormat.numeric('.uno:ParaIndent') === 0) : key === 'rotation' ? this.rotation === null :
 				key === 'leadingZeroes' ? !this.numberFormat ||
 					(delta < 0 && this.numberFormat.leadingZeroes <= 0) || (delta > 0 && this.numberFormat.leadingZeroes >= 20) :
 				!this.numberFormat || (delta < 0 && this.numberFormat.precision <= 0) ||
@@ -1719,9 +1731,8 @@ class CalcEditorPanel {
 		});
 		this.content.querySelectorAll<HTMLButtonElement>('[data-calc-character]').forEach((button) => {
 			const command = button.dataset.calcCharacter || '';
-			const operation = command === '.uno:SuperScript' ? 'superscript' : command === '.uno:SubScript' ? 'subscript' : null;
-			const checked = operation && (window as any).app.map._docLayer?.insertMode !== true
-				? undefined : CalcEditorFormat.checked(command);
+			const operation = command === '.uno:SuperScript' || command === '.uno:SubScript';
+			const checked = CalcEditorFormat.checked(command);
 			if (command === '.uno:ResetAttributes') button.removeAttribute('aria-pressed');
 			else button.setAttribute('aria-pressed', checked === undefined ? 'mixed' : String(checked));
 			button.classList.toggle('calc-character-tool--active', checked === true);
@@ -1732,7 +1743,7 @@ class CalcEditorPanel {
 			const command = button.dataset.calcFreeze || '';
 			const state = CalcEditorFormat.state(command);
 			if (command === '.uno:FreezePanes') {
-				button.setAttribute('aria-pressed', String(state === 'true' || state === true));
+				button.setAttribute('aria-pressed', state === undefined || state === null ? 'mixed' : String(state === 'true' || state === true));
 			} else {
 				const match = typeof state === 'string' ? state.match(/^(-?\d+)(?:\s*\/\s*|,)(\d+)$/) : null;
 				const part = (window as any).app.map.getCurrentPartNumber?.();
@@ -1741,34 +1752,53 @@ class CalcEditorPanel {
 			}
 			button.disabled = state === 'disabled';
 		});
+		this.content.querySelectorAll<HTMLButtonElement>('[data-calc-command]').forEach((button) => {
+			button.disabled = CalcEditorFormat.state(button.dataset.calcCommand || '') === 'disabled';
+		});
+		this.content.querySelectorAll<HTMLButtonElement>('[data-calc-state]').forEach((button) => {
+			const state = CalcEditorFormat.checked(button.dataset.calcState || '');
+			if (button.dataset.calcState === '.uno:ToggleMergeCells') {
+				const label = button.querySelector('.writer-function-calc-flat-action-row__label');
+				const text = state === true ? '取消合并单元格' : '合并单元格';
+				if (label) label.textContent = text;
+				button.setAttribute('aria-label', text);
+			}
+			button.setAttribute('aria-pressed', state === undefined ? 'mixed' : String(state));
+		});
+		this.content.querySelectorAll<HTMLButtonElement>('[data-calc-border]').forEach((button) => {
+			const icon = button.dataset.calcBorder || '';
+			const edge = icon.replace('calc-border-', '');
+			const command = edge === 'diag-tl-br' ? 'DiagonalTLBR2' : edge === 'diag-tr-bl' ? 'DiagonalBLTR2' :
+				['top', 'bottom', 'left', 'right'].includes(edge) ? 'border.' + edge : 'border.preset.' + edge;
+			const state = CalcEditorFormat.checked(command);
+			button.setAttribute('aria-pressed', state === undefined ? 'mixed' : String(state));
+		});
 		this.refreshFontLabels();
 	}
 
-	/** Cell font from `.uno:CharFontName` / `.uno:FontHeight`, then the last pick. */
-	private fontCommandState(command: string): string {
-		if (typeof this.controller.getCommandState !== 'function') {
-			return '';
-		}
-		return this.controller.getCommandState(command);
+	static fontSizeValue(state: unknown): number | null {
+		if (typeof state !== 'number' && typeof state !== 'string') return null;
+		const match = String(state).trim().match(/^(\d+(?:\.\d+)?)(?:\s*pt)?$/);
+		return match && Number(match[1]) > 0 ? Number(match[1]) : null;
 	}
 
 	private fontNameLabel(): string {
-		if (this.fontNameOverride) {
-			return this.fontNameOverride;
-		}
-		const state = this.fontCommandState('.uno:CharFontName').split(';')[0].trim();
-		return state || '字体';
+		const state = CalcEditorFormat.state('.uno:CharFontName');
+		return typeof state === 'string' && state !== 'disabled' && state.trim() ? state.split(';')[0].trim() : '—';
 	}
 
 	private fontSizeLabel(): string {
-		if (this.fontSizeOverride) {
-			return this.fontSizeOverride;
-		}
-		const state = this.fontCommandState('.uno:FontHeight');
-		if (!state) {
-			return '字号';
-		}
-		return WriterEditorCatalog.charHeightLabelFor(state) || state;
+		const value = CalcEditorPanel.fontSizeValue(CalcEditorFormat.state('.uno:FontHeight'));
+		return value === null ? '—' : value + ' pt';
+	}
+
+	private requestReadback(): void {
+		if (this.readbackTimer !== null) window.clearTimeout(this.readbackTimer);
+		const key = CalcFormatStateBridge.selectionKey();
+		this.readbackTimer = window.setTimeout(() => {
+			this.readbackTimer = null;
+			if (this.stateMap && key === CalcFormatStateBridge.selectionKey()) CalcFormatStateBridge.request();
+		}, 180);
 	}
 
 	private refreshFontLabels(): void {
@@ -1785,6 +1815,7 @@ class CalcEditorPanel {
 		const map = (window as any).app && (window as any).app.map;
 		if (map && typeof map.sendUnoCommand === 'function') {
 			map.sendUnoCommand(command);
+			this.requestReadback();
 			return;
 		}
 		if ((window as any).app && (window as any).app.socket) {

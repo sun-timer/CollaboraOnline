@@ -103,9 +103,9 @@ class WriterQuickActionBar {
 		}
 		Object.keys(this.toggleButtons).forEach((command) => {
 			const state = WriterEditorController.impressShapeState(command) ?? handler.getItemValue(command);
-			const active = state === 'true' || (CalcEditorFormat.isActive() && state === true);
+			const active = state === 'true' || state === true;
 			this.setToggleActive(command, active);
-			if (CalcEditorFormat.isActive()) {
+			{
 				this.toggleButtons[command].disabled = state === 'disabled';
 				if (state !== true && state !== false && state !== 'true' && state !== 'false') {
 					this.toggleButtons[command].setAttribute('aria-pressed', 'mixed');
@@ -116,14 +116,17 @@ class WriterQuickActionBar {
 	}
 
 	private refreshCalcColors(): void {
-		if (!CalcEditorFormat.isActive()) return;
 		Object.keys(this.colorIcons).forEach((command) => {
-			let color = CalcEditorFormat.color(command);
-			if (command === '.uno:CharBackColor') {
+			const calc = CalcEditorFormat.isActive();
+			const stateHandler = (window as any).app?.map?.stateChangeHandler;
+			const colorCommand = command === '.uno:Color' && (window as any).app?.map?.getDocType?.() === 'text' ? '.uno:FontColor' : command;
+			const value = stateHandler?.getItemValue(colorCommand);
+			let color = calc ? CalcEditorFormat.color(command) : (typeof value === 'number' ? value : /^-?\d+$/.test(String(value)) ? Number(value) : null);
+			if (CalcEditorFormat.isActive() && command === '.uno:CharBackColor') {
 				color = CalcEditorFormat.highlightColor();
 			}
 			const icon = this.colorIcons[command];
-			const marker = command === '.uno:Color' ? icon.querySelector('rect') : icon.querySelector('path[fill]');
+			const marker = icon.querySelector('rect') || icon.querySelector('path[fill]');
 			marker?.setAttribute('fill', command === '.uno:Color'
 				? CalcEditorFormat.fontColorCss(color) : CalcEditorFormat.colorCss(color));
 			icon.classList.toggle('calc-format-state-unknown', color === null);
@@ -136,7 +139,7 @@ class WriterQuickActionBar {
 			return;
 		}
 		button.classList.toggle('writer-quick-action-bar__button--active', active);
-		if (CalcEditorFormat.isActive()) button.setAttribute('aria-pressed', String(active));
+		button.setAttribute('aria-pressed', String(active));
 	}
 
 	private static closeSiblingChrome(): void {
@@ -170,7 +173,7 @@ class WriterQuickActionBar {
 			return;
 		}
 		const onState = (event: any) => {
-			if (CalcEditorFormat.isActive()) this.refreshCalcColors();
+			this.refreshCalcColors();
 			if (!event || typeof event.commandName !== 'string') {
 				return;
 			}
@@ -181,9 +184,8 @@ class WriterQuickActionBar {
 					WriterEditorController.requestImpressShapeStates();
 					return;
 				}
-				this.setToggleActive(event.commandName, event.state === 'true' ||
-					(CalcEditorFormat.isActive() && event.state === true));
-				if (CalcEditorFormat.isActive()) {
+				this.setToggleActive(event.commandName, event.state === 'true' || event.state === true);
+				{
 					this.toggleButtons[event.commandName].disabled = event.state === 'disabled';
 					if (event.state !== true && event.state !== false && event.state !== 'true' && event.state !== 'false') {
 						this.toggleButtons[event.commandName].setAttribute('aria-pressed', 'mixed');

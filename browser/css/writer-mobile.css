@@ -723,8 +723,8 @@
 }
 
 [data-mobile-doc-theme='impress'] .writer-function-char-tools__btn--active {
-	background: #eaf2ff;
-	outline: 1px solid #1278d9;
+	background: #f2f3f5;
+	outline: none;
 }
 
 /* Android thumbnail/confirmation layout: dp values map to CSS viewport pixels. */
@@ -2910,8 +2910,8 @@
 }
 
 .writer-quick-action-bar__button--active {
-	background: #eaf2ff;
-	outline: 1px solid #1278d9;
+	background: #f2f3f5;
+	outline: none;
 }
 
 .writer-quick-action-bar__icon {
@@ -3849,6 +3849,24 @@
 	font-weight: 400;
 }
 
+/* Figma 330:32821: 335x509pt dialog, with two rows of template cards. */
+.mobile-ai-task-dialog--typeset {
+	max-height: 509px;
+}
+
+.mobile-ai-task-dialog--typeset .mobile-ai-task-dialog__select-card {
+	min-height: 77px;
+	padding: 12px 14px;
+	border-radius: 12px;
+}
+
+.mobile-ai-task-dialog--typeset .mobile-ai-task-dialog__generate {
+	min-height: 35px;
+	border-radius: 18px;
+	font-size: 16px;
+	font-weight: 600;
+}
+
 .mobile-ai-task-dialog__result-bar .mobile-ai-task-dialog__btn--primary {
 	font-weight: 600;
 }
@@ -4148,3 +4166,112 @@
 .fabric-selection-menu--calc .fabric-selection-menu__row::-webkit-scrollbar {
 	display: none;
 }
+
+/* Figma 330:32821 strong override: win over .mobile-ai-sheet-body--writer > .mobile-ai-task-dialog */
+.mobile-ai-sheet-body--writer > .mobile-ai-task-dialog.mobile-ai-task-dialog--typeset {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	max-height: 509px;
+	padding: 0;
+	border-radius: 12px;
+}
+
+.mobile-ai-sheet-body--writer > .mobile-ai-task-dialog.mobile-ai-task-dialog--typeset .mobile-ai-task-dialog__title {
+	height: 60px;
+	line-height: 60px;
+	font-size: 20px;
+	font-weight: 500;
+}
+
+.mobile-ai-sheet-body--writer > .mobile-ai-task-dialog.mobile-ai-task-dialog--typeset .mobile-ai-task-dialog__select-card {
+	box-sizing: border-box;
+	min-height: 77px;
+	padding: 12px 14px;
+	border-radius: 12px;
+}
+
+/* Calc selected formatting is driven by model readback. */
+[data-mobile-doc-theme='calc'] [data-calc-state][aria-pressed='true'],
+[data-mobile-doc-theme='calc'] [data-calc-border][aria-pressed='true'] {
+	background-color: #e5e6e8;
+}
+
+/* Figma Calc character controls use 32 design px = 16 pt. */
+[data-mobile-doc-theme='calc'] .writer-function-split-picker-row__cell {
+	font-size: 16px;
+}
+[data-mobile-doc-theme='calc'] .writer-function-split-picker-row__swatch {
+	width: 24px;
+	height: 24px;
+}
+
+.writer-quick-action-bar:has([aria-label='\7C97\4F53']) { padding: 10px; min-height: 32px; border-radius: 9px; }
+.writer-quick-action-bar:has([aria-label='\7C97\4F53']) .writer-quick-action-bar__row { justify-content: space-between; gap: 15px; min-height: 32px; }
+.writer-quick-action-bar:has([aria-label='\7C97\4F53']) .writer-quick-action-bar__button { width: 32px; height: 32px; border-radius: 4px; }
+.writer-quick-action-bar__button[aria-pressed='mixed'] { background: #f2f3f5; opacity: 0.55; }
+
+/* Figma Word AI typeset/image dialogs, 750px design at 2x logical scale. */
+.mobile-ai-sheet-root--typeset-design,
+.mobile-ai-sheet-root--image-design { box-sizing: border-box; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; line-height: 1.2; }
+.mobile-ai-sheet-root--typeset-design .mobile-ai-sheet-panel,
+.mobile-ai-sheet-root--image-design .mobile-ai-sheet-panel { box-sizing: border-box; width: 100%; max-width: 440px; border-radius: 12px; max-height: calc(100dvh - 40px); }
+.mobile-ai-sheet-root--typeset-design .mobile-ai-sheet-header,
+.mobile-ai-sheet-root--image-design .mobile-ai-sheet-header { display: grid; grid-template-columns: 40px 1fr 40px; height: 60px; min-height: 60px; padding: 0 16px; }
+.mobile-ai-sheet-root--typeset-design .mobile-ai-sheet-header-leading,
+.mobile-ai-sheet-root--image-design .mobile-ai-sheet-header-leading { width: 40px; visibility: hidden; }
+.mobile-ai-sheet-root--typeset-design .mobile-ai-sheet-header.mobile-ai-sheet-header--writer .mobile-ai-sheet-header-leading,
+.mobile-ai-sheet-root--image-design .mobile-ai-sheet-header.mobile-ai-sheet-header--writer .mobile-ai-sheet-header-leading { display: block; }
+.mobile-ai-sheet-root--typeset-design .mobile-ai-sheet-title-row,
+.mobile-ai-sheet-root--image-design .mobile-ai-sheet-title-row { justify-content: center; }
+.mobile-ai-sheet-root--typeset-design .mobile-ai-sheet-title,
+.mobile-ai-sheet-root--image-design .mobile-ai-sheet-title { font-size: 20px; font-weight: 600; color: #1f1f1f; }
+.mobile-ai-sheet-root--typeset-design .mobile-ai-sheet-close,
+.mobile-ai-sheet-root--image-design .mobile-ai-sheet-close { width: 40px; height: 40px; padding: 0; }
+.mobile-ai-sheet-root--typeset-design .mobile-ai-sheet-close svg,
+.mobile-ai-sheet-root--image-design .mobile-ai-sheet-close svg { width: 40px; height: 40px; }
+.mobile-ai-sheet-root--typeset-design .mobile-ai-sheet-body,
+.mobile-ai-sheet-root--image-design .mobile-ai-sheet-body { padding: 12px 12px 24px; overflow-y: auto; }
+.mobile-ai-typeset-select { display: flex; flex-direction: column; gap: 24px; }
+.mobile-ai-typeset-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); column-gap: 8px; row-gap: 24px; margin: 0 6px; }
+.mobile-ai-typeset-card { display: flex; flex-direction: column; align-items: center; gap: 8px; box-sizing: border-box; min-width: 0; padding: 11px 11px 6px; border: 1px solid transparent; border-radius: 12px; background: linear-gradient(#f7f5ff,#ebe6ff); color: #707070; font: inherit; font-size: 16px; line-height: 19px; cursor: pointer; }
+.mobile-ai-typeset-card--gov { background: linear-gradient(#fff5f9,#ffe6ed); }
+.mobile-ai-typeset-card--contract { background: linear-gradient(#ecfcff,#e6fdff); }
+.mobile-ai-typeset-card--general { background: linear-gradient(#f5f9ff,#e6f0ff); }
+.mobile-ai-typeset-card img { width: 100%; aspect-ratio: 242/238; object-fit: contain; border-radius: 8px; }
+.mobile-ai-typeset-card[aria-pressed='true'] { border-color: #a641ff; color: #101010; box-shadow: 0 0 0 0.5px #249aff; }
+.mobile-ai-design-primary { display: flex; align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: 999px; min-height: 35px; padding: 6px 20px; background: linear-gradient(135deg,#1da8ff,#dd00ce); color: white; font: inherit; font-size: 16px; cursor: pointer; }
+.mobile-ai-design-primary:disabled { opacity: .5; }
+.mobile-ai-design-sparkle { display: flex; align-items: center; }
+.mobile-ai-design-sparkle svg { width: 20px; height: 20px; }
+.mobile-ai-design-secondary { border: 0; border-radius: 999px; min-height: 35px; padding: 6px 28px; background: #f0f0f0; color: #1f1f1f; font: inherit; font-size: 16px; cursor: pointer; }
+.mobile-ai-image-design { display: flex; flex-direction: column; gap: 20px; }
+.mobile-ai-sheet-root--image-design .mobile-ai-sheet-body { padding-top: 24px; }
+.mobile-ai-image-card { display: flex; flex-direction: column; gap: 12px; border: .5px solid #cbd1d7; border-radius: 12px; padding: 10px; }
+.mobile-ai-image-prompt { width: 100%; box-sizing: border-box; min-height: 140px; max-height: 200px; border: 0; resize: none; background: white; color: #101010; font: inherit; font-size: 16px; line-height: 1.5; outline-offset: 2px; }
+.mobile-ai-image-design--ready .mobile-ai-image-prompt { min-height: 96px; }
+.mobile-ai-image-ratio { display: flex; align-items: center; align-self: flex-start; gap: 24px; padding: 5px; background: #f2f3f5; border-radius: 8px; font-size: 16px; }
+.mobile-ai-image-ratio select { border: 0; background: transparent; color: #101010; font: inherit; }
+.mobile-ai-image-gallery { display: grid; grid-template-columns: 1.8fr 1fr; grid-template-rows: repeat(3,minmax(0,1fr)); gap: 10px; aspect-ratio: 580/640; }
+.mobile-ai-image-candidate { display: block; min-height: 0; min-width: 0; padding: 0; border: 0; border-radius: 8px; overflow: hidden; background: #f2f3f5; cursor: pointer; }
+.mobile-ai-image-candidate:first-child { grid-column: 1; grid-row: 1/span 3; }
+.mobile-ai-image-candidate:not(:first-child) { grid-column: 2; }
+.mobile-ai-image-candidate img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.mobile-ai-image-actions { display: flex; align-items: center; justify-content: space-evenly; gap: 12px; }
+.mobile-ai-image-actions > .mobile-ai-design-primary:first-child { flex: 1; }
+.mobile-ai-image-status { font-size: 13px; color: #707070; line-height: 1.5; }
+.mobile-ai-image-status:empty { display: none; }
+.mobile-ai-image-full { display: flex; flex-direction: column; gap: 12px; padding: 0 10px; }
+.mobile-ai-image-back { align-self: flex-start; border: 0; padding: 0; width: 28px; height: 28px; background: white; cursor: pointer; }
+.mobile-ai-image-back svg { width: 24px; height: 24px; }
+.mobile-ai-image-full-picture { position: relative; overflow: hidden; border-radius: 8px; }
+.mobile-ai-image-full-picture > img { display: block; width: 100%; max-height: 62dvh; object-fit: contain; }
+.mobile-ai-image-pages { position: absolute; bottom: 12px; left: 0; right: 0; display: flex; justify-content: center; gap: 8px; }
+.mobile-ai-image-pages button { width: 6px; height: 6px; padding: 0; border: 0; border-radius: 999px; background: #ffffff80; }
+.mobile-ai-image-page-dot { flex: 0 0 auto; margin: 0; }
+.mobile-ai-image-pages button[aria-pressed='true'] { width: 14px; background: #1278d9; }
+.mobile-ai-image-design [hidden] { display: none !important; }
+@media (max-height: 650px) { .mobile-ai-typeset-select { gap: 12px; } .mobile-ai-typeset-grid { row-gap: 12px; } }
+.mobile-ai-image-gallery[data-count='1'] { display: block; aspect-ratio: auto; }
+.mobile-ai-image-gallery[data-count='1'] .mobile-ai-image-candidate { width: 100%; max-height: 320px; }
+.mobile-ai-image-gallery[data-count='1'] img { max-height: 320px; object-fit: contain; }

@@ -21,6 +21,7 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
 @property (strong, nonatomic) AIService *aiService;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, NSString *> *insertedRequestIds;
 @property (assign, nonatomic) BOOL closed;
+@property (assign, nonatomic) BOOL typesetInsertInProgress;
 @end
 
 @implementation NativeBridgeHandler
@@ -177,7 +178,7 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
             && [self.insertedRequestIds[sourceId] isEqualToString:documentSessionId];
         BOOL sessionKnown = sourceId.length > 0 && documentSessionId.length > 0
             && [self.requestSessions[sourceId] isEqualToString:documentSessionId];
-        BOOL validResultMode = [@[@"replaceSelection", @"appendAfterSelection", @"insertAtEnd"] containsObject:resultMode];
+        BOOL validResultMode = [@[@"replaceSelection", @"appendAfterSelection", @"insertAtEnd", @"replaceDocument"] containsObject:resultMode];
         if (self.closed || (!sessionKnown && !cached) || !self.documentTextInserter || html.length == 0
             || !validResultMode
             || !viewId || viewId.integerValue < 0 || viewId.doubleValue != viewId.integerValue) {
@@ -388,20 +389,24 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
     }
 
     if ([type isEqualToString:@"typeset.extract"]) {
-        NSURL *fileURL = self.documentFileURLProvider ? self.documentFileURLProvider() : nil;
+        NSURL *fileURL = self.typesetSnapshotURLProvider ? self.typesetSnapshotURLProvider() : nil;
         NSDictionary *result = fileURL ? [TypesetService extractStructuredFromFile:fileURL] : nil;
+        if (fileURL) [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil];
         if (!result) {
             [self emitErrorType:@"typeset.extract.error"
                       requestId:requestId
                 documentSessionId:documentSessionId
                            code:@"extract_failed"
-                        message:@"文档结构化提取失败"];
+                        message:@"无法读取当前文档内容，请稍后重试"];
             return;
         }
+        NSMutableDictionary *extractPayload = [result mutableCopy];
+        NSURL *sourceURL = self.originalDocumentURLProvider ? self.originalDocumentURLProvider() : nil;
+        extractPayload[@"sourceExtension"] = sourceURL.pathExtension.lowercaseString ?: @"";
         [self emitEnvelopeType:@"typeset.extract.done"
                      requestId:requestId
                documentSessionId:documentSessionId
-                          payload:result];
+                          payload:extractPayload];
         return;
     }
     if ([type isEqualToString:@"typeset.fill"]) {
@@ -436,28 +441,60 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
         return;
     }
     if ([type isEqualToString:@"typeset.insert"]) {
+        NSString *currentSessionId = self.sessionIdProvider ? self.sessionIdProvider() : self.nativeSessionId;
+        if (documentSessionId.length == 0 || ![documentSessionId isEqualToString:currentSessionId]) {
+            [self emitErrorType:@"typeset.insert.error"
+                      requestId:requestId
+                documentSessionId:documentSessionId
+                           code:@"session_mismatch"
+                        message:@"文档会话已变化，请重新生成排版结果"];
+            return;
+        }
+        if (self.typesetInsertInProgress) {
+            [self emitEnvelopeType:@"typeset.insert.done"
+                         requestId:requestId
+                   documentSessionId:documentSessionId
+                              payload:@{@"reloading": @YES, @"inProgress": @YES}];
+            return;
+        }
         NSDictionary *payload = [envelope[@"payload"] isKindOfClass:[NSDictionary class]]
                                     ? envelope[@"payload"] : @{};
         NSString *docxPath = [payload[@"docxPath"] isKindOfClass:[NSString class]]
                                ? payload[@"docxPath"] : @"";
         NSURL *docxURL = docxPath.length > 0 ? [NSURL fileURLWithPath:docxPath] : nil;
         NSURL *originalURL = self.originalDocumentURLProvider ? self.originalDocumentURLProvider() : nil;
-        BOOL replaced = [TypesetService copyDocxToOriginalURL:docxURL originalURL:originalURL];
-        if (!replaced) {
+        if (![originalURL.pathExtension.lowercaseString isEqualToString:@"docx"]) {
+            [self emitErrorType:@"typeset.insert.error"
+                      requestId:requestId
+                documentSessionId:documentSessionId
+                           code:@"source_format_unsupported"
+                        message:@"当前文档格式将使用兼容方式排版"];
+            return;
+        }
+        if (!docxURL || ![[NSFileManager defaultManager] fileExistsAtPath:docxURL.path] || !self.reloadDocumentHandler) {
             [self emitErrorType:@"typeset.insert.error"
                       requestId:requestId
                 documentSessionId:documentSessionId
                            code:@"insert_failed"
-                        message:@"无法将排版文档写回原文件"];
+                        message:@"无法准备重新加载排版文档"];
             return;
         }
-        if (self.reloadDocumentHandler) {
-            self.reloadDocumentHandler();
+        // The active UIDocument must finish closing and saving before replacing
+        // its source; otherwise the old document can overwrite the new file.
+        self.typesetInsertInProgress = YES;
+        if (!self.reloadDocumentHandler(docxURL)) {
+            self.typesetInsertInProgress = NO;
+            [self emitErrorType:@"typeset.insert.error"
+                      requestId:requestId
+                documentSessionId:documentSessionId
+                           code:@"reload_unavailable"
+                        message:@"无法重新加载排版文档"];
+            return;
         }
         [self emitEnvelopeType:@"typeset.insert.done"
                      requestId:requestId
                documentSessionId:documentSessionId
-                          payload:@{@"replaced": @YES}];
+                          payload:@{@"reloading": @YES}];
         return;
     }
 

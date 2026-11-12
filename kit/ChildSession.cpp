@@ -2378,6 +2378,19 @@ bool ChildSession::unoCommand(const StringVector& tokens)
 
     // we need to get LOK_CALLBACK_UNO_COMMAND_RESULT callback when saving
     const bool notify = (
+#if defined(IOS)
+                          tokens.startsWith(1, ".uno:GoToCell") ||
+                          tokens.startsWith(1, ".uno:EnterString") ||
+                          tokens.startsWith(1, ".uno:SortAscending") ||
+                          tokens.startsWith(1, ".uno:SortDescending") ||
+                          tokens.startsWith(1, ".uno:DataFilterAutoFilter") ||
+                          tokens.startsWith(1, ".uno:MergeCells") ||
+                          tokens.startsWith(1, ".uno:Bold") ||
+                          tokens.startsWith(1, ".uno:ResetAttributes") ||
+                          tokens.startsWith(1, ".uno:Calculate") ||
+                          tokens.startsWith(1, ".uno:InsertObjectChart") ||
+#endif
+
 #if defined(__ANDROID__) || defined(IOS)
                           tokens.equals(1, ".uno:ExecuteSearch") ||
 #endif

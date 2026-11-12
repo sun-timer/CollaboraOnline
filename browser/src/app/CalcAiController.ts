@@ -19,7 +19,7 @@ interface CalcAiDocumentAdapter {
 }
 
 interface CalcAiControllerState {
-	state: 'idle' | 'loading' | 'streaming' | 'ready' | 'accepted' | 'cancelled' | 'error';
+	state: 'idle' | 'loading' | 'streaming' | 'applying' | 'ready' | 'accepted' | 'cancelled' | 'error';
 	requestId?: string;
 	taskType?: string;
 	preview: string;
@@ -34,6 +34,7 @@ class CalcAiController {
 	private readonly listeners: CalcAiStateListener[] = [];
 	private readonly unsubscribeBridge: () => void;
 	private state: CalcAiControllerState = { state: 'idle', preview: '' };
+	private requestContext = '';
 	private resultMode: 'insertFormula' | 'conversation' | 'mutateConfirm' = 'insertFormula';
 	private lastRequest: {
 		taskType: string;
@@ -93,7 +94,7 @@ class CalcAiController {
 		prompt: string,
 		contextOverride?: { [key: string]: any },
 	): string | null {
-		if (this.state.state === 'loading' || this.state.state === 'streaming') {
+		if (['loading', 'streaming', 'applying'].includes(this.state.state)) {
 			this.setError('已有 AI 请求正在进行');
 			return null;
 		}
@@ -129,6 +130,7 @@ class CalcAiController {
 			return null;
 		}
 
+		this.requestContext = CalcAiContext.snapshot();
 		this.resultMode = task.resultMode;
 		this.lastRequest = {
 			taskType,
@@ -147,7 +149,7 @@ class CalcAiController {
 	}
 
 	cancel(): boolean {
-		if (!this.state.requestId) {
+		if (!this.state.requestId || !['loading', 'streaming', 'ready'].includes(this.state.state)) {
 			return false;
 		}
 		const cancelled = this.bridge.cancel(this.state.requestId);
@@ -162,10 +164,14 @@ class CalcAiController {
 	}
 
 	regenerate(): string | null {
+		if (this.requestContext !== CalcAiContext.snapshot()) {
+			this.setError('文档、工作表或选区已变化，请重新生成');
+			return null;
+		}
 		if (!this.lastRequest) {
 			return null;
 		}
-		if (this.state.state === 'loading' || this.state.state === 'streaming') {
+		if (['loading', 'streaming', 'applying'].includes(this.state.state)) {
 			return null;
 		}
 		return this.request(
@@ -198,20 +204,28 @@ class CalcAiController {
 		}
 	}
 
-	accept(): boolean {
+	async accept(): Promise<boolean> {
 		if (this.state.state !== 'ready' || !this.state.requestId || !this.state.preview) {
 			return false;
 		}
+		if (this.requestContext !== CalcAiContext.snapshot()) {
+			this.setError('文档、工作表或选区已变化，请重新生成');
+			return false;
+		}
 		if (this.resultMode === 'mutateConfirm') {
-			const result = CalcAiMutateApply.apply(
+			this.state = { ...this.state, state: 'applying' };
+			this.notify();
+			const applyingRequestId = this.state.requestId;
+			const result = await CalcAiMutateApply.apply(
 				this.state.taskType || '',
 				this.state.preview,
+				this.lastRequest?.context.cellRange,
 			);
 			if (!result.ok) {
 				this.setError(result.error || '改表执行失败');
 				return false;
 			}
-			const accepted = this.bridge.accept(this.state.requestId, this.state.preview);
+			const accepted = this.bridge.accept(applyingRequestId!, this.state.preview);
 			if (!accepted) {
 				this.setError('NativeBridge 未确认 AI 结果');
 				return false;
@@ -317,7 +331,9 @@ class CalcAiController {
 			case 'ai.error':
 			case 'native.error':
 				this.setError(
-					typeof payload.message === 'string'
+					typeof payload.code === 'string'
+						? this.messageForError(payload.code)
+						: typeof payload.message === 'string'
 						? payload.message
 						: 'AI 请求失败',
 				);
@@ -338,6 +354,10 @@ class CalcAiController {
 
 	private messageForError(errorCode: string): string {
 		const messages: { [code: string]: string } = {
+			session_mismatch: '文档会话已变化，请重新生成',
+			request_not_found: '请求已结束，请重新生成',
+			cancelled: '请求已取消',
+			network_error: '网络连接失败，请重试',
 			empty_prompt: '请输入公式或分析需求',
 			empty_range: '请先选择要分析的单元格区域',
 			sensitive_field: '请求不能包含 API 凭据',

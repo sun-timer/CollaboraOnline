@@ -25,12 +25,7 @@ typedef NS_ENUM(NSInteger, AIModelType) {
 @property (copy, nonatomic) NSString *endpointMode;
 @property (copy, nonatomic) NSString *apiKey;
 @property (copy, nonatomic) NSString *modelName;
-@property (assign, nonatomic) float topP;
-@property (assign, nonatomic) float temperature;
-@property (assign, nonatomic) float presencePenalty;
-@property (assign, nonatomic) float frequencyPenalty;
-@property (assign, nonatomic) float maxTokensRatio;
-@property (assign, nonatomic) float seedRatio;
+@property (copy, nonatomic) NSDictionary<NSString *, NSNumber *> *samplingParameters;
 
 @end
 

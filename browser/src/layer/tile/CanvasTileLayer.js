@@ -1440,6 +1440,8 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		// When the user moves the focus to a different cell, a 'cellformula'
 		// message is received from coolwsd, *then* a 'celladdress' message.
 		var address = textMsg.substring(13);
+		// Keep the core selection even when the mobile address control is absent.
+		this._calcAiSelection = { address: address, part: this._selectedPart };
 		if (this._map._clip && !this._map['wopi'].DisableCopy) {
 			this._map._clip.setTextSelectionText(this._lastFormula);
 		}
@@ -1895,6 +1897,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		const layout = app.activeDocument ? (app.activeDocument.activeLayout ?  app.activeDocument.activeLayout.type : "") : "";
 		if (layout === 'ViewLayoutMultiPage' && app.UI.horizontalRuler)
 			app.UI.horizontalRuler.fixOffset();
+		if (window.ThisIsTheiOSApp && this._map.getDocType() === 'presentation') this._map.fire('impresscharacterselectionchanged');
 	},
 
 	_isHyperlinkChanged: function(hyperlink)

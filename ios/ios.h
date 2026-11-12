@@ -48,6 +48,7 @@ IOSImpressShapeFormatStates getIOSImpressShapeFormatStates(lok::Document *docume
 bool setIOSImpressMasterBackground(lok::Document *document, int viewId, int part, bool visible, bool *changed);
 struct IOSCalcFormatStates {
     bool success = false;
+    std::string statesJSON;
     std::string numberFormat;
     int rotation = 0;
     bool stacked = false;
@@ -57,6 +58,10 @@ struct IOSCalcFormatStates {
 };
 IOSCalcFormatStates getIOSCalcFormatStates(lok::Document *document, int viewId,
     const IOSCalcTextRange &range);
+bool updateIOSCalcBorderColor(lok::Document *document, int viewId,
+    const IOSCalcTextRange &range, int color);
+// Merge equal, nonempty vertical runs independently in each selected column.
+int mergeIOSCalcIdenticalCells(lok::Document *document, int viewId, const IOSCalcTextRange &range);
 #ifdef __OBJC__
 @class NSString;
 // Settings nickname (USER_PROFILE_NAME). Never a LOK LocalUser#N placeholder.

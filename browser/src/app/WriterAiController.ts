@@ -23,7 +23,7 @@ interface WriterAiDocumentAdapter {
 	insertWriterHtml?(
 		html: string,
 		sourceRequestId: string,
-		resultMode: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd',
+		resultMode: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd' | 'replaceDocument',
 	): Promise<boolean>;
 	replaceSelection?(text: string): boolean;
 	appendAfterSelection?(text: string, originalSelection?: string): boolean;
@@ -78,7 +78,7 @@ function resolveIosViewId(): number | null {
 function insertIosNativeHtml(
 	html: string,
 	sourceRequestId: string,
-	resultMode?: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd',
+	resultMode?: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd' | 'replaceDocument',
 ): Promise<boolean> {
 	const nativeBridge = NativeBridge.getInstance();
 	const requestId = (resultMode ? 'ai-writer-insert-' : 'ai-insert-') + sourceRequestId;
@@ -463,7 +463,7 @@ class WriterAiController {
 	}
 
 	/** iOS Writer and Impress wait for LOK's native paste acknowledgement. */
-	async acceptAsync(html: string): Promise<boolean> {
+	async acceptAsync(html: string, resultModeOverride?: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd' | 'replaceDocument'): Promise<boolean> {
 		const isIOS = typeof window !== 'undefined' && !!(window as any).ThisIsTheiOSApp;
 		const isPresentation = this.isPresentationDocument();
 		const isWriter = this.isWriterDocument();
@@ -485,7 +485,7 @@ class WriterAiController {
 				: html;
 			const inserted = isPresentation
 				? await this.documentAdapter.insertPresentationHtml!(insertionHtml, requestId)
-				: await this.documentAdapter.insertWriterHtml!(insertionHtml, requestId, this.resultMode);
+				: await this.documentAdapter.insertWriterHtml!(insertionHtml, requestId, resultModeOverride || this.resultMode);
 			if (this.state.requestId !== requestId || this.state.state !== 'inserting') {
 				return false;
 			}
@@ -667,7 +667,7 @@ class WriterAiController {
 			insertWriterHtml(
 				html: string,
 				sourceRequestId: string,
-				resultMode: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd',
+				resultMode: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd' | 'replaceDocument',
 			): Promise<boolean> {
 				return insertIosNativeHtml(html, sourceRequestId, resultMode);
 			},
