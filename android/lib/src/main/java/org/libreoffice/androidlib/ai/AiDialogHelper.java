@@ -16,6 +16,7 @@ import android.widget.EditText;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import org.libreoffice.androidlib.R;
+import org.libreoffice.androidlib.RoundedPopupShadow;
 import org.libreoffice.androidlib.BottomSheetAnchorHelper;
 import org.libreoffice.androidlib.SystemUiHelper;
 import org.libreoffice.androidlib.SafeAreaInsets;
@@ -210,11 +211,8 @@ public final class AiDialogHelper {
             return;
         }
         Window window = dialog.getWindow();
-        // 窗口背景用同款圆角白卡(而非透明):窗口与 root 高度有偏差时(键盘收起/系统 relayout),
-        // 底部露出的窗口区域仍是圆角,不会出现「上方圆角、下方直角」。
-        android.graphics.drawable.Drawable card =
-                dialog.getContext().getDrawable(R.drawable.lolib_wai_bg_dialog);
-        window.setBackgroundDrawable(card != null ? card : new ColorDrawable(Color.TRANSPARENT));
+        window.setElevation(0);
+        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         // 设计稿遮罩 #0000004D（30%）；AlertDialog 默认 60% 过重
         WindowManager.LayoutParams params = window.getAttributes();
         params.dimAmount = 0.3f;
@@ -223,7 +221,125 @@ public final class AiDialogHelper {
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
                         | WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED);
         SystemUiHelper.applyDialogChrome(dialog);
-        SystemUiHelper.applyCenteredDialogSafeInsets(dialog);
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true);
+    }
+
+    private static int prepareDialogShadow(View root, AlertDialog dialog) {
+        root.setElevation(0);
+        if (!(root.getParent() instanceof android.view.ViewGroup)) return 0;
+        android.view.ViewGroup frame = (android.view.ViewGroup) root.getParent();
+        if (!(frame.getBackground() instanceof RoundedPopupShadow)) {
+            RoundedPopupShadow shadow = new RoundedPopupShadow(root.getResources(), 12);
+            frame.setBackground(shadow);
+            int gutter = shadow.gutter();
+            frame.setPadding(gutter, gutter, gutter, gutter);
+            installCloseButtons(root, 0);
+        }
+        View ancestor = frame;
+        View decor = dialog.getWindow().getDecorView();
+        while (ancestor instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) ancestor;
+            group.setClipChildren(false);
+            group.setClipToPadding(false);
+            if (ancestor != frame) {
+                group.setBackgroundColor(Color.TRANSPARENT);
+                group.setPadding(0, 0, 0, 0);
+            }
+            if (ancestor == decor || !(ancestor.getParent() instanceof View)) break;
+            ancestor = (View) ancestor.getParent();
+        }
+        return ((RoundedPopupShadow) frame.getBackground()).gutter();
+    }
+
+    /** A white rounded card drawn inside a transparent, explicitly reserved shadow gutter. */
+    public static int applyOverlayShadow(View panel) {
+        if (panel.getBackground() instanceof RoundedPopupShadow) {
+            return ((RoundedPopupShadow) panel.getBackground()).gutter();
+        }
+        int left = panel.getPaddingLeft();
+        int top = panel.getPaddingTop();
+        int right = panel.getPaddingRight();
+        int bottom = panel.getPaddingBottom();
+        RoundedPopupShadow shadow = new RoundedPopupShadow(panel.getResources(), 12);
+        int gutter = shadow.gutter();
+        panel.setBackground(shadow);
+        panel.setPadding(left + gutter, top + gutter, right + gutter, bottom + gutter);
+        if (panel.getParent() instanceof android.view.ViewGroup) {
+            android.view.ViewGroup parent = (android.view.ViewGroup) panel.getParent();
+            parent.setClipChildren(false);
+            parent.setClipToPadding(false);
+        }
+        installCloseButtons(panel, gutter);
+        return gutter;
+    }
+
+    private static void installCloseButtons(View card, int gutter) {
+        java.util.List<View> buttons = new java.util.ArrayList<>();
+        collectCloseButtons(card, buttons);
+        int touchSize = dpToPx(card.getResources(), 40);
+        int iconSize = dpToPx(card.getResources(), 24);
+        for (View button : buttons) {
+            android.view.ViewGroup.LayoutParams params = button.getLayoutParams();
+            params.width = touchSize;
+            params.height = touchSize;
+            button.setLayoutParams(params);
+            android.widget.ImageView icon = button instanceof android.widget.ImageView
+                    ? (android.widget.ImageView) button : findCloseImage(button);
+            if (icon == null) continue;
+            icon.setImageResource(R.drawable.lolib_ic_ai_close_figma);
+            icon.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+            if (icon == button) {
+                int pad = dpToPx(card.getResources(), 8);
+                icon.setPadding(pad, pad, pad, pad);
+            } else {
+                android.view.ViewGroup.LayoutParams iconParams = icon.getLayoutParams();
+                iconParams.width = iconSize;
+                iconParams.height = iconSize;
+                icon.setLayoutParams(iconParams);
+            }
+        }
+        Runnable align = () -> {
+            int[] cardLocation = new int[2];
+            card.getLocationOnScreen(cardLocation);
+            // 4dp touch edge + 8dp padding + 4dp artwork border = 16dp ink inset.
+            int touchRight = cardLocation[0] + card.getWidth() - gutter
+                    - dpToPx(card.getResources(), 4);
+            for (View button : buttons) {
+                if (!button.isShown()) continue;
+                int[] location = new int[2];
+                button.getLocationOnScreen(location);
+                button.setTranslationX(button.getTranslationX()
+                        + touchRight - location[0] - button.getWidth());
+            }
+        };
+        card.addOnLayoutChangeListener((v, l, t, r, b, oldL, oldT, oldR, oldB) -> align.run());
+        card.post(align);
+    }
+
+    private static void collectCloseButtons(View view, java.util.List<View> buttons) {
+        if ("关闭".contentEquals(view.getContentDescription() == null
+                ? "" : view.getContentDescription())) {
+            buttons.add(view);
+            return;
+        }
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                collectCloseButtons(group.getChildAt(i), buttons);
+            }
+        }
+    }
+
+    private static android.widget.ImageView findCloseImage(View view) {
+        if (view instanceof android.widget.ImageView) return (android.widget.ImageView) view;
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                android.widget.ImageView image = findCloseImage(group.getChildAt(i));
+                if (image != null) return image;
+            }
+        }
+        return null;
     }
 
     /** 弹窗内 EditText：点击/获焦时显式唤起软键盘（Activity 为 adjustNothing 时需配合窗口 softInputMode）。 */
@@ -276,15 +392,17 @@ public final class AiDialogHelper {
         if (dialog == null || dialog.getWindow() == null || root == null) {
             return;
         }
+        int gutter = prepareDialogShadow(root, dialog);
         int widthSpec = android.view.View.MeasureSpec.makeMeasureSpec(targetWidthPx,
                 android.view.View.MeasureSpec.EXACTLY);
         int heightSpec = android.view.View.MeasureSpec.makeMeasureSpec(0,
                 android.view.View.MeasureSpec.UNSPECIFIED);
         root.measure(widthSpec, heightSpec);
         int contentHeight = root.getMeasuredHeight();
-        int windowHeight = Math.min(Math.max(contentHeight, 1), maxHeightPx);
+        int windowHeight = Math.min(Math.max(contentHeight
+                + getAncestorVerticalOverhead(root, dialog), 1), maxHeightPx);
 
-        dialog.getWindow().setLayout(targetWidthPx, windowHeight);
+        dialog.getWindow().setLayout(targetWidthPx + 2 * gutter, windowHeight);
         android.view.ViewGroup.LayoutParams lp = root.getLayoutParams();
         if (lp == null) {
             lp = new android.view.ViewGroup.LayoutParams(targetWidthPx,
@@ -325,6 +443,7 @@ public final class AiDialogHelper {
         if (dialog == null || dialog.getWindow() == null || root == null) {
             return;
         }
+        int gutter = prepareDialogShadow(root, dialog);
         int widthSpec = android.view.View.MeasureSpec.makeMeasureSpec(targetWidthPx,
                 android.view.View.MeasureSpec.EXACTLY);
         int heightSpec = android.view.View.MeasureSpec.makeMeasureSpec(0,
@@ -334,7 +453,7 @@ public final class AiDialogHelper {
         int overhead = getAncestorVerticalOverhead(root, dialog);
         int windowHeight = Math.min(Math.max(contentHeight + overhead, 1), maxHeightPx);
 
-        dialog.getWindow().setLayout(targetWidthPx, windowHeight);
+        dialog.getWindow().setLayout(targetWidthPx + 2 * gutter, windowHeight);
         android.view.ViewGroup.LayoutParams lp = root.getLayoutParams();
         if (lp == null) {
             lp = new android.view.ViewGroup.LayoutParams(targetWidthPx,
@@ -387,7 +506,7 @@ public final class AiDialogHelper {
      */
     public static int computeWriterDialogWidthPx(Resources res) {
         DisplayMetrics dm = res.getDisplayMetrics();
-        int target = Math.min(dpToPx(res, 335), dm.widthPixels - dpToPx(res, 40));
+        int target = Math.min(dpToPx(res, 335), dm.widthPixels - dpToPx(res, 48));
         return Math.max(target, dpToPx(res, MIN_WIDTH_DP));
     }
 
@@ -413,10 +532,11 @@ public final class AiDialogHelper {
         if (dialog == null || dialog.getWindow() == null || root == null) {
             return;
         }
+        int gutter = prepareDialogShadow(root, dialog);
         int h = Math.max(heightPx, dpToPx(root.getResources(), MIN_HEIGHT_DP));
         int overhead = getAncestorVerticalOverhead(root, dialog);
         int rootHeight = Math.max(1, h - overhead);
-        dialog.getWindow().setLayout(widthPx, h);
+        dialog.getWindow().setLayout(widthPx + 2 * gutter, h);
         android.view.ViewGroup.LayoutParams lp = root.getLayoutParams();
         if (lp == null) {
             lp = new android.view.ViewGroup.LayoutParams(widthPx, rootHeight);
@@ -452,6 +572,7 @@ public final class AiDialogHelper {
         if (dialog == null || dialog.getWindow() == null || root == null) {
             return;
         }
+        int gutter = prepareDialogShadow(root, dialog);
         // 测量前递归放开 0dp+weight 子项(临时转 wrap),让内容自适应拿到自然高;
         // 测后恢复——运行时 0dp+weight 保持弹性,键盘/窗口压缩时由弹性区收缩吸收,
         // 固定高 CTA 永不溢出窗口被裁。
@@ -467,7 +588,7 @@ public final class AiDialogHelper {
         int overhead = getAncestorVerticalOverhead(root, dialog);
         int windowHeight = Math.min(Math.max(contentHeight + overhead, minHeightPx), maxHeightPx);
         windowHeight = Math.max(windowHeight, dpToPx(root.getResources(), MIN_HEIGHT_DP));
-        dialog.getWindow().setLayout(widthPx, windowHeight);
+        dialog.getWindow().setLayout(widthPx + 2 * gutter, windowHeight);
         android.view.ViewGroup.LayoutParams lp = root.getLayoutParams();
         if (lp == null) {
             lp = new android.view.ViewGroup.LayoutParams(widthPx, windowHeight);

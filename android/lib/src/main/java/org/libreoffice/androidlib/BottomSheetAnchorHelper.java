@@ -45,6 +45,9 @@ public final class BottomSheetAnchorHelper {
         public boolean hideable = true;
         public boolean skipCollapsed = true;
         public boolean applyNavBarPadding = true;
+        /** -1 retains the default content safe padding. Navigation is anchored externally. */
+        public int contentBottomPaddingPx = -1;
+        public boolean resizeForIme = false;
         /** Overlay sheets leave 0; only inset-layout panels use a non-zero anchor. */
         public int anchorAboveBottomPx = 0;
         /**
@@ -325,14 +328,15 @@ public final class BottomSheetAnchorHelper {
         // Bottom inset is applied via expandedOffset; add only a small content safe pad here.
         View contentRoot = bottomSheet.getChildCount() > 0 ? bottomSheet.getChildAt(0) : null;
         if (contentRoot != null && options.applyNavBarPadding) {
-            int safePad = SystemUiHelper.bottomContentSafePaddingPx(context);
+            int safePad = options.contentBottomPaddingPx >= 0
+                    ? options.contentBottomPaddingPx : SystemUiHelper.bottomContentSafePaddingPx(context);
             contentRoot.setPadding(contentRoot.getPaddingLeft(), contentRoot.getPaddingTop(),
                     contentRoot.getPaddingRight(), safePad);
         }
 
         AnchorState state = new AnchorState(targetHeight, screenHeight, options.logTag,
                 options.applyNavBarPadding, options.anchorAboveBottomPx,
-                options.internalBottomDesignPadPx);
+                options.internalBottomDesignPadPx, options.resizeForIme);
         bottomSheet.post(() -> {
             state.apply(bottomSheet, behavior, false, 0, 0, true);
             bottomSheet.postDelayed(() -> {
@@ -488,10 +492,13 @@ public final class BottomSheetAnchorHelper {
         private final int anchorAboveBottomPx;
         private final int internalBottomDesignPadPx;
         private boolean expandedOnce;
+        private final boolean resizeForIme;
 
         AnchorState(int targetHeight, int screenHeight, String logTag,
-                boolean applyNavBarPadding, int anchorAboveBottomPx, int internalBottomDesignPadPx) {
+                boolean applyNavBarPadding, int anchorAboveBottomPx, int internalBottomDesignPadPx,
+                boolean resizeForIme) {
             this.targetHeight = targetHeight;
+            this.resizeForIme = resizeForIme;
             this.screenHeight = screenHeight;
             this.logTag = logTag != null ? logTag : TAG;
             this.applyNavBarPadding = applyNavBarPadding;
@@ -508,11 +515,26 @@ public final class BottomSheetAnchorHelper {
                     anchorAboveBottomPx, imeVisible, imeBottomPx);
             int bottomInset = SystemUiHelper.resolveSheetAnchorBottomInset(
                     imeVisible, imeBottomPx, navigationInsetPx, effectiveAnchor);
+            int appliedHeight = targetHeight;
+            if (resizeForIme) {
+                int topInset = SystemUiHelper.readSafeAreaInsets(bottomSheet).top;
+                appliedHeight = Math.min(targetHeight,
+                        Math.max(1, screenHeight - bottomInset - effectiveAnchor - topInset));
+                if (bottomSheet.getLayoutParams().height != appliedHeight) {
+                    applyBottomSheetLayout(bottomSheet, appliedHeight);
+                    if (bottomSheet.getChildCount() > 0) {
+                        View content = bottomSheet.getChildAt(0);
+                        ViewGroup.LayoutParams params = content.getLayoutParams();
+                        params.height = appliedHeight;
+                        content.setLayoutParams(params);
+                    }
+                }
+            }
             int expandedOffset = computeExpandedOffset(
-                    bottomSheet, screenHeight, targetHeight,
+                    bottomSheet, screenHeight, appliedHeight,
                     imeVisible, imeBottomPx, navigationInsetPx, anchorAboveBottomPx);
             behavior.setFitToContents(false);
-            behavior.setPeekHeight(targetHeight, false);
+            behavior.setPeekHeight(appliedHeight, false);
             behavior.setExpandedOffset(expandedOffset);
             if (allowExpandState && !expandedOnce) {
                 behavior.setState(BottomSheetBehavior.STATE_EXPANDED);

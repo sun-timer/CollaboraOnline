@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Center color of the Figma welcome artwork's background strip. -->
+    <color name="lolib_welcome_start_background">#CAE2FF</color>
+</resources>

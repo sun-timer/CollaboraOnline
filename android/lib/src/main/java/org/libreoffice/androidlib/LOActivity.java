@@ -765,7 +765,7 @@ public class LOActivity extends AppCompatActivity {
     // ========== Impress PPT 大纲生成弹窗 ==========
     private View impressOutlineOverlay;
     private View impressOutlinePanel;
-    private LinearLayout impressOutlineInputGroup;
+    private ViewGroup impressOutlineInputGroup;
     private EditText impressOutlineQuickInput;
     private View impressOutlineDocGroup;
     private View impressOutlineDocUploadZone;
@@ -4828,7 +4828,8 @@ public class LOActivity extends AppCompatActivity {
                                     || AiChatCoordinator.MODE_REWRITE.equals(taskType)) {
                                 runOnUiThread(() -> {
                                     toastTodo("生成失败：" + message);
-                                    switchTextOperateStage(TEXT_OP_STAGE_INPUT);
+                                    switchTextOperateStage(isTextOperateDirectGenerateMode(textOperateMode)
+                    ? TEXT_OP_STAGE_RESULT : TEXT_OP_STAGE_INPUT);
                                 });
                             } else if (AiChatCoordinator.MODE_TRANSLATE.equals(taskType)) {
                                 runOnUiThread(() -> {
@@ -5452,9 +5453,17 @@ public class LOActivity extends AppCompatActivity {
         if (parentWidth <= 0 || parentHeight <= 0) {
             return;
         }
-        int targetWidth = AiDialogHelper.computeTargetWidthPx(getResources(), parentWidth);
+        int shadowGutter = AiDialogHelper.applyOverlayShadow(panel);
+        int targetWidth = AiDialogHelper.computeTargetWidthPx(getResources(), parentWidth) + 2 * shadowGutter;
+        targetWidth = Math.min(targetWidth, parentWidth);
         int targetHeight = AiDialogHelper.computeOverlayPanelHeightPx(
-                getResources(), parentHeight, contentHeavy);
+                getResources(), parentHeight, contentHeavy) + 2 * shadowGutter;
+        View topToolbar = findViewById(R.id.doc_top_toolbar_include);
+        View bottomToolbar = findViewById(R.id.doc_bottom_toolbar);
+        int availableHeight = parentHeight;
+        if (topToolbar != null && topToolbar.isShown()) availableHeight -= topToolbar.getHeight();
+        if (bottomToolbar != null && bottomToolbar.isShown()) availableHeight -= bottomToolbar.getHeight();
+        targetHeight = Math.min(targetHeight, Math.max(1, availableHeight));
 
         ViewGroup.LayoutParams rawLp = panel.getLayoutParams();
         if (rawLp instanceof ConstraintLayout.LayoutParams) {
@@ -5492,7 +5501,9 @@ public class LOActivity extends AppCompatActivity {
         if (parentWidth <= 0 || parentHeight <= 0) {
             return;
         }
-        int targetWidth = AiDialogHelper.computeTargetWidthPx(getResources(), parentWidth);
+        int shadowGutter = AiDialogHelper.applyOverlayShadow(panel);
+        int targetWidth = AiDialogHelper.computeTargetWidthPx(getResources(), parentWidth) + 2 * shadowGutter;
+        targetWidth = Math.min(targetWidth, parentWidth);
         int widthSpec = View.MeasureSpec.makeMeasureSpec(targetWidth, View.MeasureSpec.EXACTLY);
         int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
         panel.measure(widthSpec, heightSpec);
@@ -6216,6 +6227,7 @@ public class LOActivity extends AppCompatActivity {
      * divert 调用，覆盖选区弹窗 + AI 功能面板两个入口。
      */
     private void openContinueWriteDialog(String selection) {
+        continueImpressTarget = mIsImpressDocument ? aiOpImpressTarget : null;
         continueSelection = selection == null ? "" : selection;
         if (continueSelection.trim().isEmpty()) {
             Toast.makeText(this, "请先选择文本", Toast.LENGTH_SHORT).show();
@@ -6317,6 +6329,10 @@ public class LOActivity extends AppCompatActivity {
 
     /** Read context from a temporary ODT copy; only use an unambiguous selection match. */
     private void captureContinueNeighboringContext(String selectedText, Consumer<String> callback) {
+        if (continueImpressTarget != null) {
+            callback.accept("当前文本框：" + continueImpressTarget.fullText);
+            return;
+        }
         final long documentGeneration = documentLifecycleGeneration;
         new Thread(() -> {
             String context = "";
@@ -6473,6 +6489,10 @@ public class LOActivity extends AppCompatActivity {
         }
         if (text.trim().isEmpty()) {
             Toast.makeText(this, "没有可插入的内容", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (continueImpressTarget != null) {
+            applyImpressTextResult(continueImpressTarget, text, true, this::dismissContinueWriteDialog);
             return;
         }
         if (!continueInsertRequestId.isEmpty()) {
@@ -8379,6 +8399,7 @@ public class LOActivity extends AppCompatActivity {
         }
         impressOutlineOverlay.setOnClickListener(v -> dismissImpressOutlineDialog());
         impressOutlinePanel.setClickable(true);
+        AiDialogHelper.applyOverlayShadow(impressOutlinePanel);
 
         impressOutlineInputGroup = impressOutlinePanel.findViewById(R.id.impress_outline_input_group);
         impressOutlineQuickInput = impressOutlinePanel.findViewById(R.id.impress_outline_quick_input);
@@ -8842,7 +8863,8 @@ public class LOActivity extends AppCompatActivity {
         int parentWidth = parent.getWidth();
         int parentHeight = parent.getHeight();
         if (parentWidth <= 0 || parentHeight <= 0) return;
-        int targetWidth = Math.min(dpToPx(670), parentWidth - dpToPx(48));
+        int shadowGutter = AiDialogHelper.applyOverlayShadow(impressOutlinePanel);
+        int targetWidth = Math.min(dpToPx(335), parentWidth - 2 * shadowGutter) + 2 * shadowGutter;
         int targetHeight;
         switch (impressOutlineDialogState) {
             case IMPRESS_OUTLINE_STATE_COMPLETED:
@@ -8870,6 +8892,12 @@ public class LOActivity extends AppCompatActivity {
                     impressOutlinePanel.getMeasuredHeight(),
                     AiDialogHelper.computeMaxHeightHugPx(getResources()));
         }
+        int availableHeight = parentHeight - dpToPx(16);
+        View topToolbar = findViewById(R.id.doc_top_toolbar_include);
+        View bottomToolbar = findViewById(R.id.doc_bottom_toolbar);
+        if (topToolbar != null && topToolbar.isShown()) availableHeight -= topToolbar.getHeight();
+        if (bottomToolbar != null && bottomToolbar.isShown()) availableHeight -= bottomToolbar.getHeight();
+        targetHeight = Math.min(targetHeight, Math.max(dpToPx(140), availableHeight));
         AiDialogHelper.applyOverlayCenterConstraintsInChromeArea(lp, targetWidth, targetHeight,
                 R.id.doc_top_toolbar_include, R.id.doc_bottom_toolbar);
         impressOutlinePanel.setLayoutParams(lp);
@@ -10211,6 +10239,7 @@ public class LOActivity extends AppCompatActivity {
         org.libreoffice.androidlib.ai.AiDialogHelper.applyCloseOnlyDismiss(impressGenerationSuccessDialog);
         org.libreoffice.androidlib.ai.AiDialogHelper.applyTransparentWindow(impressGenerationSuccessDialog);
         impressGenerationSuccessDialog.show();
+        AiDialogHelper.applyCenteredHugDialogSize(this, impressGenerationSuccessDialog, root);
         setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
         Log.i(TAG, "ppt_generation_success_dialog shown file=" + pptxFile.getName());
     }
@@ -10250,6 +10279,7 @@ public class LOActivity extends AppCompatActivity {
         org.libreoffice.androidlib.ai.AiDialogHelper.applyCloseOnlyDismiss(impressGenerationErrorDialog);
         org.libreoffice.androidlib.ai.AiDialogHelper.applyTransparentWindow(impressGenerationErrorDialog);
         impressGenerationErrorDialog.show();
+        AiDialogHelper.applyCenteredHugDialogSize(this, impressGenerationErrorDialog, root);
         setImpressOutlineDialogState(IMPRESS_OUTLINE_STATE_COMPLETED);
         Log.i(TAG, "ppt_generation_error_dialog shown reason=" + reason);
     }
@@ -11194,6 +11224,37 @@ public class LOActivity extends AppCompatActivity {
     }
 
     /*package*/ boolean startAiOperationFromSelection(String taskType) {
+        if (mIsImpressDocument && isImpressTextOperation(taskType)) {
+            readImpressTextTarget(target -> {
+                if (target == null || target.text.trim().isEmpty()) {
+                    if ("text_extract".equals(taskType)) {
+                        aiOpImpressTarget = null;
+                        showTextExtractDialog();
+                    } else {
+                        toastTodo("请选择一个包含文字的文本框或框内文字");
+                    }
+                    return;
+                }
+                dismissAiOperationSheetIfShowing();
+                aiOpImpressTarget = target;
+                aiOpPendingSelection = target.text;
+                if ("format_batch".equals(taskType)) {
+                    showFormatBatchDialog(target.text);
+                } else if ("text_extract".equals(taskType)) {
+                    textExtractImpressTarget = target;
+                    pendingTextExtractResult = target.text;
+                    showTextExtractResultDialog();
+                    textExtractResultText.setText(target.text);
+                    switchTextExtractStage(TEXT_EXTRACT_STAGE_RESULT);
+                } else if (AiChatCoordinator.MODE_CONTINUE.equals(taskType)) {
+                    continueImpressTarget = target;
+                    runAiOperation(taskType);
+                } else {
+                    showTextOperateDialog(taskType, target.text);
+                }
+            });
+            return true;
+        }
         // Use the same Impress dialogs as its AI function sheet.
         if (mIsImpressDocument) {
             if ("impress_generate".equals(taskType)) { openImpressOutlineDialog(); return true; }
@@ -12463,7 +12524,8 @@ public class LOActivity extends AppCompatActivity {
 
                 @Override
                 public String getCommentAuthorAvatarUri() {
-                    return LOActivity.this.getPrefs().getString(KEY_PROFILE_AVATAR_URI, "");
+                    return LOActivity.this.getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE)
+                            .getString(KEY_PROFILE_AVATAR_URI, "");
                 }
 
                 @Override
@@ -12663,7 +12725,8 @@ public class LOActivity extends AppCompatActivity {
 
                 @Override
                 public String getCommentAuthorAvatarUri() {
-                    return LOActivity.this.getPrefs().getString(KEY_PROFILE_AVATAR_URI, "");
+                    return LOActivity.this.getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE)
+                            .getString(KEY_PROFILE_AVATAR_URI, "");
                 }
 
                 @Override
@@ -12922,7 +12985,8 @@ public class LOActivity extends AppCompatActivity {
 
                 @Override
                 public String getCommentAuthorAvatarUri() {
-                    return LOActivity.this.getPrefs().getString(KEY_PROFILE_AVATAR_URI, "");
+                    return LOActivity.this.getSharedPreferences(EXPLORER_PREFS_KEY, MODE_PRIVATE)
+                            .getString(KEY_PROFILE_AVATAR_URI, "");
                 }
 
                 @Override
@@ -14916,6 +14980,7 @@ public class LOActivity extends AppCompatActivity {
         Log.i(TAG, "ai_op_sheet_doc_type isCalc=" + mIsCalcDocument
                 + " calcBlockVisible=" + (calcBlock != null && calcBlock.getVisibility() == View.VISIBLE));
 
+        arrangeImpressAiCards(panel);
         normalizeAiFunctionSheetLayout(panel);
 
         // Bind Calc AI formula button
@@ -14998,10 +15063,11 @@ public class LOActivity extends AppCompatActivity {
         bindAiOpButton(panel, R.id.ai_op_impress_condense, AiChatCoordinator.MODE_CONDENSE);
         bindAiOpButton(panel, R.id.ai_op_impress_rewrite, AiChatCoordinator.MODE_REWRITE);
         bindAiOpAction(panel, R.id.ai_op_impress_article_generate, this::showArticleGenerateDialog);
-        bindAiOpAction(panel, R.id.ai_op_impress_text_extract, this::showTextExtractDialog);
+        bindAiOpAction(panel, R.id.ai_op_impress_text_extract, () -> startAiOperationFromSelection("text_extract"));
         bindAiOpAction(panel, R.id.ai_op_impress_image_generate, this::showAiImageDialog);
         bindAiOpFormatBatchButton(panel, R.id.ai_op_impress_format_batch);
-        bindAiOpAction(panel, R.id.ai_op_impress_typeset, this::showImpressTypesetDialog);
+        View impressTypeset = panel.findViewById(R.id.ai_op_impress_typeset);
+        if (impressTypeset != null) impressTypeset.setVisibility(View.GONE);
 
         // Bind operation buttons with their modes
         // 6 个有 AI 链路的 operate mode 按钮（依赖选区）
@@ -15139,7 +15205,112 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+    private interface ImpressTextCallback {
+        void onResult(byte[] snapshot, int view, int part, boolean success, String reason);
+    }
+
+    private final Map<String, ImpressTextCallback> impressTextCallbacks = new HashMap<>();
+    private ImpressTextTarget aiOpImpressTarget;
+    private ImpressTextTarget textOperateImpressTarget;
+    private ImpressTextTarget continueImpressTarget;
+    private ImpressTextTarget formatBatchImpressTarget;
+    private ImpressTextTarget textExtractImpressTarget;
+    private String impressTextApplyRequest = "";
+
+    private boolean isImpressTextOperation(String mode) {
+        return AiChatCoordinator.MODE_CONTINUE.equals(mode) || AiChatCoordinator.MODE_EXPAND.equals(mode)
+                || AiChatCoordinator.MODE_CONDENSE.equals(mode) || AiChatCoordinator.MODE_REWRITE.equals(mode)
+                || AiChatCoordinator.MODE_POLISH.equals(mode) || "format_batch".equals(mode)
+                || "text_extract".equals(mode);
+    }
+
+    private void readImpressTextTarget(Consumer<ImpressTextTarget> callback) {
+        final long generation = documentLifecycleGeneration;
+        String requestId = "impress-text-read:" + UUID.randomUUID();
+        impressTextCallbacks.put(requestId, (snapshot, view, part, success, reason) -> {
+            if (generation != documentLifecycleGeneration || !mIsImpressDocument) return;
+            ImpressTextTarget target = null;
+            if (success && snapshot != null) {
+                try {
+                    target = ImpressTextTarget.read(snapshot, view, part, generation);
+                } catch (JSONException error) {
+                    Log.w(TAG, "impress_text_target_invalid", error);
+                }
+            }
+            callback.accept(target);
+        });
+        requestImpressTextOnKitThread(requestId, null, "", -1, -1);
+        getMainHandler().postDelayed(() -> {
+            ImpressTextCallback pending = impressTextCallbacks.remove(requestId);
+            if (pending != null) pending.onResult(null, -1, -1, false, "timeout");
+        }, 10000L);
+    }
+
+    private void applyImpressTextResult(ImpressTextTarget target, String result, boolean append, Runnable accepted) {
+        if (target.generation != documentLifecycleGeneration || !mIsImpressDocument) {
+            toastTodo("当前文档已变化，请重新选择文本");
+            return;
+        }
+        if (!impressTextApplyRequest.isEmpty()) return;
+        if (isFinishing() || exitingToHome || documentSwitchInProgress) return;
+        final String requestId = "impress-text-apply:" + UUID.randomUUID();
+        try {
+            String arguments = target.arguments(result, append, requestId);
+            String expected = target.expectedText(result, append);
+            impressTextApplyRequest = requestId;
+            impressTextCallbacks.put(requestId, (snapshot, view, part, success, reason) -> {
+                impressTextApplyRequest = "";
+                if (target.generation != documentLifecycleGeneration) return;
+                boolean applied = false;
+                try {
+                    applied = success && snapshot != null && target.matchesResult(snapshot, expected);
+                } catch (JSONException error) {
+                    Log.w(TAG, "impress_text_apply_invalid", error);
+                }
+                Log.i(TAG, "impress_text_apply request=" + requestId + " success=" + applied + " reason=" + reason);
+                if (applied) {
+                    forceVisibleTileRedrawFromAndroid("impress_text_apply");
+                    accepted.run();
+                    toastTodo("已更新文本框");
+                } else {
+                    toastTodo("目标文本框已变化或写入未完成，请重新选择后操作");
+                }
+            });
+            ensureEditModeThen(() -> {
+                if (!requestId.equals(impressTextApplyRequest)) return;
+                requestImpressTextOnKitThread(requestId, target.snapshot, arguments, target.view, target.part);
+            });
+            getMainHandler().postDelayed(() -> {
+                ImpressTextCallback pending = impressTextCallbacks.remove(requestId);
+                if (pending != null) pending.onResult(null, target.view, target.part, false, "timeout");
+            }, 15000L);
+        } catch (JSONException error) {
+            toastTodo("无法写入当前文本框");
+            Log.w(TAG, "impress_text_arguments_invalid", error);
+        }
+    }
+
+    public void onNativeImpressTextResult(String requestId, byte[] snapshot, int view, int part,
+            boolean success, String reason) {
+        runOnUiThread(() -> {
+            ImpressTextCallback callback = impressTextCallbacks.remove(requestId);
+            if (callback != null) callback.onResult(snapshot, view, part, success, reason);
+        });
+    }
+
+    private native void requestImpressTextOnKitThread(String requestId, byte[] expected,
+            String arguments, int view, int part);
+
     private void refreshAiOperationSelectionState(View panel) {
+        if (mIsImpressDocument) {
+            readImpressTextTarget(target -> {
+                if (panel != aiOperationSheetPanel) return;
+                aiOpImpressTarget = target;
+                aiOpPendingSelection = target == null ? "" : target.text;
+                setAiOpButtonsEnabled(panel, target != null && !target.text.trim().isEmpty());
+            });
+            return;
+        }
         new Thread(() -> {
             String nativeText = getTextSelection("text/plain;charset=utf-8");
             if (nativeText != null && !nativeText.isEmpty()) {
@@ -15169,6 +15340,29 @@ public class LOActivity extends AppCompatActivity {
     private static final int AI_FUNCTION_CALC_CARD_GAP_DP = 20;
 
     /** 统一 AI 功能面板网格：每行固定 3 列等宽，图标不随列数拉伸。 */
+    private void arrangeImpressAiCards(View panel) {
+        if (!mIsImpressDocument) return;
+        View typeset = panel.findViewById(R.id.ai_op_impress_typeset);
+        if (typeset != null) typeset.setVisibility(View.GONE);
+        int[] cards = {R.id.ai_op_impress_ppt, R.id.ai_op_impress_continue_write,
+                R.id.ai_op_impress_article_generate, R.id.ai_op_impress_expand,
+                R.id.ai_op_impress_polish, R.id.ai_op_impress_condense,
+                R.id.ai_op_impress_rewrite, R.id.ai_op_impress_text_extract,
+                R.id.ai_op_impress_image_generate, R.id.ai_op_impress_format_batch};
+        int[] rows = {R.id.ai_op_impress_row1, R.id.ai_op_impress_row2,
+                R.id.ai_op_impress_row3, R.id.ai_op_impress_row4};
+        java.util.List<View> views = new ArrayList<>();
+        for (int id : cards) {
+            View card = panel.findViewById(id);
+            if (card == null) return;
+            views.add(card);
+        }
+        for (View card : views) ((ViewGroup) card.getParent()).removeView(card);
+        for (int i = 0; i < views.size(); i++) {
+            ((LinearLayout) panel.findViewById(rows[i / 3])).addView(views.get(i));
+        }
+    }
+
     private void normalizeAiFunctionSheetLayout(View panel) {
         if (panel == null) {
             return;
@@ -15345,6 +15539,10 @@ public class LOActivity extends AppCompatActivity {
         View button = panel.findViewById(viewId);
         if (button != null) {
             button.setOnClickListener(v -> {
+                if (mIsImpressDocument) {
+                    startAiOperationFromSelection("format_batch");
+                    return;
+                }
                 String selection = aiOpPendingSelection == null ? "" : aiOpPendingSelection;
                 if (selection.isEmpty()) {
                     Toast.makeText(LOActivity.this, "请先在文档中选择文本", Toast.LENGTH_SHORT).show();
@@ -15682,7 +15880,7 @@ public class LOActivity extends AppCompatActivity {
         selectedTypesetType = "paper";
         View root = getLayoutInflater().inflate(R.layout.lolib_dialog_typeset_select, null, false);
         typesetSelectDialog = new AlertDialog.Builder(this).create();
-        typesetSelectDialog.setView(root);
+        typesetSelectDialog.setView(root, 0, 0, 0, 0);
         typesetSelectDialog.setCancelable(true);
         typesetSelectDialog.setCanceledOnTouchOutside(true);
 
@@ -15730,26 +15928,7 @@ public class LOActivity extends AppCompatActivity {
         int widthPx = AiDialogHelper.computeWriterDialogWidthPx(getResources());
         int maxHeightPx = AiDialogHelper.computeCenteredDialogMaxHeightPx(this, false);
 
-        ViewGroup.LayoutParams rootLp = root.getLayoutParams();
-        if (rootLp == null) {
-            rootLp = new ViewGroup.LayoutParams(widthPx, ViewGroup.LayoutParams.WRAP_CONTENT);
-        } else {
-            rootLp.width = widthPx;
-            rootLp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-        }
-        root.setLayoutParams(rootLp);
-
-        int widthSpec = View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY);
-        int heightSpec = View.MeasureSpec.makeMeasureSpec(maxHeightPx, View.MeasureSpec.AT_MOST);
-        root.measure(widthSpec, heightSpec);
-        int overhead = AiDialogHelper.getAncestorVerticalOverhead(root, typesetSelectDialog);
-        int windowHeight = Math.min(Math.max(root.getMeasuredHeight() + overhead, 1), maxHeightPx);
-
-        typesetSelectDialog.getWindow().setLayout(widthPx, windowHeight);
-        AiDialogHelper.logActionButtonBounds(root);
-        rootLp.width = widthPx;
-        rootLp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-        root.setLayoutParams(rootLp);
+        AiDialogHelper.applyContentAdaptiveSize(typesetSelectDialog, root, widthPx, maxHeightPx, 0);
     }
 
     private void bindTypesetTypeCard(View sheetView, int cardId, String type) {
@@ -17417,7 +17596,7 @@ public class LOActivity extends AppCompatActivity {
             outlineDialog = null;
             outlineDialogRoot = null;
         });
-        dialog.setView(root);
+        dialog.setView(root, 0, 0, 0, 0);
         AiDialogHelper.applyTransparentWindow(dialog);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
         hideKeyboardForBottomSheet();
@@ -17754,7 +17933,7 @@ public class LOActivity extends AppCompatActivity {
             articleDialog = null;
             articleDialogRoot = null;
         });
-        dialog.setView(root);
+        dialog.setView(root, 0, 0, 0, 0);
         AiDialogHelper.applyTransparentWindow(dialog);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
         hideKeyboardForBottomSheet();
@@ -17785,33 +17964,8 @@ public class LOActivity extends AppCompatActivity {
                 : AiDialogHelper.computeCenteredDialogMaxHeightPx(this, true);
         int minHeight = resultVisible && !formVisible ? dpToPx(351) : 0;
 
-        // 测量前 relax 全部 0dp+weight(含 setup 组、form 滚动区),拿到自然内容高;
-        // 测后恢复 weight 弹性——键盘压缩/窗口封顶时由 setup 组与滚动区收缩吸收,
-        // 表单字段与底部按钮互不重叠、按钮不溢出。
-        java.util.List<View> relaxed = new java.util.ArrayList<>();
-        AiDialogHelper.relaxWeightedChildHeights(articleDialogRoot, relaxed);
-        int widthSpec = View.MeasureSpec.makeMeasureSpec(targetWidth, View.MeasureSpec.EXACTLY);
-        int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
-        articleDialogRoot.measure(widthSpec, heightSpec);
-        int contentHeight = articleDialogRoot.getMeasuredHeight();
-        AiDialogHelper.restoreWeightedChildHeights(relaxed);
-
-        // 内容超上限时窗口封顶,表单滚动区(0dp+weight)在 root EXACTLY 下自动分到剩余空间,可滚动
-        int overhead = AiDialogHelper.getAncestorVerticalOverhead(articleDialogRoot, articleDialog);
-        int windowHeight = Math.max(Math.min(Math.max(contentHeight + overhead, 1), maxHeight), minHeight);
-        articleDialog.getWindow().setLayout(targetWidth, windowHeight);
-        ViewGroup.LayoutParams lp = articleDialogRoot.getLayoutParams();
-        if (lp == null) {
-            lp = new ViewGroup.LayoutParams(targetWidth, windowHeight);
-        } else {
-            lp.width = targetWidth;
-        }
-        // 根部恒撑满窗口:键盘压缩/结果态下限时内部 weight 弹性区收缩,底部按钮不溢出
-        lp.height = Math.max(1, windowHeight - overhead);
-        articleDialogRoot.setLayoutParams(lp);
-        AiDialogHelper.logActionButtonBounds(articleDialogRoot);
-        Log.d(TAG, "article_dialog_size w=" + targetWidth + " h=" + windowHeight
-                + " contentH=" + contentHeight + " overhead=" + overhead + " form=" + formVisible);
+        AiDialogHelper.applyContentAdaptiveSize(articleDialog, articleDialogRoot,
+                targetWidth, maxHeight, minHeight);
     }
 
     private ArticleFieldKind detectArticleFieldKind(ArticleTemplate.Variable variable) {
@@ -18439,6 +18593,7 @@ public class LOActivity extends AppCompatActivity {
         if (formatBatchDialog != null && formatBatchDialog.isShowing()) {
             formatBatchDialog.dismiss();
         }
+        formatBatchImpressTarget = mIsImpressDocument ? aiOpImpressTarget : null;
         formatBatchSelection = selection != null ? selection : "";
         pendingFormatBatchResult = null;
 
@@ -18510,7 +18665,7 @@ public class LOActivity extends AppCompatActivity {
             formatBatchDialog = null;
             formatBatchDialogRoot = null;
         });
-        dialog.setView(root);
+        dialog.setView(root, 0, 0, 0, 0);
         AiDialogHelper.applyTransparentWindow(dialog);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
         hideKeyboardForBottomSheet();
@@ -18588,6 +18743,13 @@ public class LOActivity extends AppCompatActivity {
         }
         Log.i(TAG, "format_batch_apply chars=" + pendingFormatBatchResult.length());
         final String text = pendingFormatBatchResult;
+        if (formatBatchImpressTarget != null) {
+            final AlertDialog dialog = formatBatchDialog;
+            applyImpressTextResult(formatBatchImpressTarget, text, false, () -> {
+                if (dialog != null) dialog.dismiss();
+            });
+            return;
+        }
         if (formatBatchDialog != null) {
             formatBatchDialog.dismiss();
         }
@@ -18612,6 +18774,7 @@ public class LOActivity extends AppCompatActivity {
         if (textExtractDialog != null && textExtractDialog.isShowing()) {
             textExtractDialog.dismiss();
         }
+        textExtractImpressTarget = null;
         pendingTextExtractResult = null;
         textExtractActiveRequestId = "";
         hideKeyboardForBottomSheet();
@@ -18655,7 +18818,7 @@ public class LOActivity extends AppCompatActivity {
             textExtractDialog = null;
             textExtractDialogRoot = null;
         });
-        dialog.setView(root);
+        dialog.setView(root, 0, 0, 0, 0);
         AiDialogHelper.applyTransparentWindow(dialog);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
         hideKeyboardForBottomSheet();
@@ -18828,6 +18991,13 @@ public class LOActivity extends AppCompatActivity {
         }
         Log.i(TAG, "text_extract_apply chars=" + pendingTextExtractResult.length());
         final String text = pendingTextExtractResult;
+        if (textExtractImpressTarget != null) {
+            final AlertDialog dialog = textExtractDialog;
+            applyImpressTextResult(textExtractImpressTarget, text, false, () -> {
+                if (dialog != null) dialog.dismiss();
+            });
+            return;
+        }
         if (textExtractDialog != null) {
             textExtractDialog.dismiss();
         }
@@ -18912,7 +19082,7 @@ public class LOActivity extends AppCompatActivity {
             aiImageDialog = null;
             aiImageDialogRoot = null;
         });
-        dialog.setView(root);
+        dialog.setView(root, 0, 0, 0, 0);
         AiDialogHelper.applyTransparentWindow(dialog);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
         hideKeyboardForBottomSheet();
@@ -19233,7 +19403,7 @@ public class LOActivity extends AppCompatActivity {
             aiImagePreviewDialog = null;
             Log.i(TAG, "ai_image_preview_dismissed index=" + index);
         });
-        dialog.setView(root);
+        dialog.setView(root, 0, 0, 0, 0);
         AiDialogHelper.applyTransparentWindow(dialog);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
         dialog.show();
@@ -19413,6 +19583,7 @@ public class LOActivity extends AppCompatActivity {
             textOperateDialog.dismiss();
         }
         dismissAiOperationSheetIfShowing();
+        textOperateImpressTarget = mIsImpressDocument ? aiOpImpressTarget : null;
         textOperateMode = mode;
         textOperateSelection = selection != null ? selection : "";
         pendingTextOperateResult = null;
@@ -19495,14 +19666,15 @@ public class LOActivity extends AppCompatActivity {
             textOperateDialog = null;
             textOperateDialogRoot = null;
         });
-        dialog.setView(root);
+        dialog.setView(root, 0, 0, 0, 0);
         AiDialogHelper.applyTransparentWindow(dialog);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
         hideKeyboardForBottomSheet();
         dialog.show();
         textOperateDialog = dialog;
-        switchTextOperateStage(TEXT_OP_STAGE_INPUT);
+        switchTextOperateStage(isTextOperateDirectGenerateMode(mode) ? TEXT_OP_STAGE_RESULT : TEXT_OP_STAGE_INPUT);
         root.post(this::applyTextOperateDialogSize);
+        if (isTextOperateDirectGenerateMode(mode)) startTextOperateGeneration();
         Log.i(TAG, "text_op_dialog_show mode=" + mode + " selectionChars=" + textOperateSelection.length());
     }
     private void applyTextOperateDialogSize() {
@@ -19588,6 +19760,8 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void sendTextOperateRequest() {
+        cancelAndSuppressAiRequest(textOperateActiveRequestId);
+        pendingTextOperateResult = null;
         if (!ensureCloudModelConfigured(textOperateMode, "base")) {
             return;
         }
@@ -19630,7 +19804,8 @@ public class LOActivity extends AppCompatActivity {
         } catch (JSONException e) {
             Log.e(TAG, "ai_text_op_request_error", e);
             toastTodo("启动生成失败");
-            switchTextOperateStage(TEXT_OP_STAGE_INPUT);
+            switchTextOperateStage(isTextOperateDirectGenerateMode(textOperateMode)
+                    ? TEXT_OP_STAGE_RESULT : TEXT_OP_STAGE_INPUT);
         }
     }
 
@@ -19688,6 +19863,14 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         final String text = pendingTextOperateResult;
+        if (textOperateImpressTarget != null) {
+            final AlertDialog dialog = textOperateDialog;
+            applyImpressTextResult(textOperateImpressTarget, text, false, () -> {
+                if (textOperateDialog == dialog) pendingTextOperateResult = null;
+                if (dialog != null) dialog.dismiss();
+            });
+            return;
+        }
         ensureEditModeThen(() -> {
             pasteAiTextAsHtml(text);
             Log.i(TAG, "ai_text_op_inserted mode=" + textOperateMode
@@ -19767,7 +19950,7 @@ public class LOActivity extends AppCompatActivity {
             translateDialog = null;
             translateDialogRoot = null;
         });
-        dialog.setView(root);
+        dialog.setView(root, 0, 0, 0, 0);
         AiDialogHelper.applyTransparentWindow(dialog);
         AiDialogHelper.applyCloseOnlyDismiss(dialog);
         hideKeyboardForBottomSheet();
@@ -20949,7 +21132,7 @@ public class LOActivity extends AppCompatActivity {
             messageView.setText(message);
         }
         aiModelRequiredDialog = new AlertDialog.Builder(this).create();
-        aiModelRequiredDialog.setView(root);
+        aiModelRequiredDialog.setView(root, 0, 0, 0, 0);
         AiDialogHelper.applyTransparentWindow(aiModelRequiredDialog);
         aiModelRequiredDialog.setCancelable(true);
         aiModelRequiredDialog.setCanceledOnTouchOutside(true);
@@ -21010,7 +21193,8 @@ public class LOActivity extends AppCompatActivity {
             }
         }
         if (requestId.equals(textOperateActiveRequestId)) {
-            switchTextOperateStage(TEXT_OP_STAGE_INPUT);
+            switchTextOperateStage(isTextOperateDirectGenerateMode(textOperateMode)
+                    ? TEXT_OP_STAGE_RESULT : TEXT_OP_STAGE_INPUT);
         }
         if (requestId.equals(translateActiveRequestId)) {
             switchTranslateStage(TRANSLATE_STAGE_INPUT);

@@ -263,7 +263,7 @@ final class CalcValidationMacroPickerController {
         LinearLayout row = new LinearLayout(host.getContext());
         row.setOrientation(LinearLayout.VERTICAL);
         int pad = host.dpToPx(16);
-        row.setPadding(pad, host.dpToPx(4), pad, host.dpToPx(4));
+        row.setPadding(0, host.dpToPx(4), 0, host.dpToPx(4));
 
         EditText input = new EditText(host.getContext());
         input.setHint("搜索");

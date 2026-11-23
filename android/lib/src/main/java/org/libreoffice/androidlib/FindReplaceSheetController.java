@@ -529,11 +529,15 @@ public class FindReplaceSheetController {
         back.setOnClickListener(v -> dismissSettings());
 
         settingsPanel = panel;
+        if (floatingDialog != null) floatingDialog.hide();
+        if (mainDialog != null) mainDialog.hide();
         floatingSettingsDialog = BottomSheetAnchorHelper.isLandscape(host.getContext())
                 ? showFloatingDialog(panel) : showPortraitFindDialog(panel);
     }
 
     private void dismissSettings() {
+        if (floatingDialog != null) floatingDialog.show();
+        if (mainDialog != null) mainDialog.show();
         if (settingsDialog != null) {
             settingsDialog.dismiss();
             settingsDialog = null;

@@ -353,6 +353,9 @@ public class CalcFunctionPanelController {
         tabIndicatorArea = panel.findViewById(R.id.calc_function_tab_indicator_area);
         tabBar = panel.findViewById(R.id.calc_function_tab_bar);
         contentContainer = panel.findViewById(R.id.calc_function_content_container);
+        contentContainer.addOnLayoutChangeListener((v, l, t, r, b, oldL, oldT, oldR, oldB) -> {
+            if (dataValidationVisible) fitDataValidationViewport();
+        });
         tabIndicator = panel.findViewById(R.id.calc_function_tab_indicator);
         fontPickerPanel = panel.findViewById(R.id.calc_function_font_picker_panel);
 
@@ -407,7 +410,43 @@ public class CalcFunctionPanelController {
         }
         BottomSheetAnchorHelper.Options options =
                 BottomSheetAnchorHelper.overlayDocumentSheetOptions(host.getContext(), TAG);
-        BottomSheetAnchorHelper.expandFunctionPanel(dialog, SHEET_HEIGHT_RATIO, options);
+        if (commentPickerVisible || dataValidationVisible) {
+            options.applyNavBarPadding = true;
+            options.internalBottomDesignPadPx = 0;
+            options.contentBottomPaddingPx = 0;
+            options.resizeForIme = true;
+            sheetRoot.setPadding(sheetRoot.getPaddingLeft(), sheetRoot.getPaddingTop(), sheetRoot.getPaddingRight(), 0);
+        }
+        if (dataValidationVisible) {
+            // Bound the validation root to the viewport. Its own tab scroll views
+            // consume the remaining height while the confirmation row stays visible.
+            int height = BottomSheetAnchorHelper.resolveTargetHeight(host.getContext(), SHEET_HEIGHT_RATIO);
+            ViewGroup.LayoutParams panelParams = sheetRoot.getLayoutParams();
+            panelParams.height = height;
+            sheetRoot.setLayoutParams(panelParams);
+            LinearLayout.LayoutParams scrollParams = (LinearLayout.LayoutParams) contentContainer.getLayoutParams();
+            scrollParams.height = 0;
+            scrollParams.weight = 1f;
+            contentContainer.setLayoutParams(scrollParams);
+            contentContainer.setFillViewport(true);
+            BottomSheetAnchorHelper.expandFixed(dialog, height, options);
+            contentContainer.post(this::fitDataValidationViewport);
+        } else {
+            BottomSheetAnchorHelper.expandFunctionPanel(dialog, SHEET_HEIGHT_RATIO, options);
+        }
+    }
+
+    private void fitDataValidationViewport() {
+        if (!dataValidationVisible || contentContainer == null
+                || contentContainer.getChildCount() == 0 || contentContainer.getHeight() <= 0) return;
+        View root = contentContainer.getChildAt(0);
+        int height = contentContainer.getHeight()
+                - contentContainer.getPaddingTop() - contentContainer.getPaddingBottom();
+        ViewGroup.LayoutParams params = root.getLayoutParams();
+        if (params.height != height) {
+            params.height = height;
+            root.setLayoutParams(params);
+        }
     }
 
     /** Re-measure and re-anchor after secondary-page content changes. */
@@ -1781,6 +1820,7 @@ public class CalcFunctionPanelController {
             return;
         }
         dataValidationVisible = false;
+        restoreCommentPickerContainer();
         host.dismissCoValidationDialog();
         setTabChromeVisible(true);
         int returnIndex = submenuReturnTabIndex >= 0 && submenuReturnTabIndex < tabs.size()
@@ -1843,6 +1883,8 @@ public class CalcFunctionPanelController {
             });
         }
 
+        contentContainer.setPadding(0, 0, 0, 0);
+        contentContainer.setFillViewport(true);
         contentContainer.removeAllViews();
         contentContainer.addView(dataValidationPicker.buildRootView());
         scheduleSheetReanchor();

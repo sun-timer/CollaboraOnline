@@ -238,6 +238,11 @@ body.android-native-bottom-toolbar #mobile-edit-button {
 	transform: scale(1) !important;
 }
 
+/* 11.12 review: clear the sheet tabs as well as the native bottom toolbar. */
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #mobile-edit-button {
+	bottom: 56px !important;
+}
+
 body.android-native-bottom-toolbar[data-docType='spreadsheet'] #spreadsheet-toolbar {
 	grid-template-columns: 36px auto;
 	height: 36px;
@@ -327,6 +332,13 @@ body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet img 
 	width: 0 !important;
 	height: 0 !important;
 	opacity: 0 !important;
+	filter: none !important;
+}
+
+/* The button surface keeps the design green while the command is disabled in preview. */
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet,
+body.android-native-bottom-toolbar[data-docType='spreadsheet'] #insertsheet[disabled] {
+	opacity: 1 !important;
 	filter: none !important;
 }
 

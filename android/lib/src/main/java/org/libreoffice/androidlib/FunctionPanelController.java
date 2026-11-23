@@ -389,6 +389,14 @@ public class FunctionPanelController {
         BottomSheetAnchorHelper.Options options =
                 BottomSheetAnchorHelper.overlayDocumentSheetOptions(host.getContext(), TAG);
         options.logTag = TAG;
+        if (commentPickerVisible) {
+            options.applyNavBarPadding = true;
+            options.internalBottomDesignPadPx = 0;
+            options.contentBottomPaddingPx = 0;
+            options.resizeForIme = true;
+            sheetContentRoot.setPadding(sheetContentRoot.getPaddingLeft(), sheetContentRoot.getPaddingTop(), sheetContentRoot.getPaddingRight(), 0);
+        }
+        applyFunctionPanelContentPadding();
         if (shouldLockFunctionPanelSheetHeight()) {
             reapplyFunctionPanelSheetHeightLock(options);
             applyFunctionPanelContentPadding();
@@ -430,6 +438,11 @@ public class FunctionPanelController {
 
     private void applyFunctionPanelContentPadding() {
         if (contentContainer == null) {
+            return;
+        }
+        contentContainer.setFillViewport(false);
+        if (commentPickerVisible) {
+            contentContainer.setPadding(0, 0, 0, 0);
             return;
         }
         int horizontal = host.dpToPx(16);
@@ -1192,14 +1205,14 @@ public class FunctionPanelController {
         scroll.setOutlineProvider(android.view.ViewOutlineProvider.BACKGROUND);
         scroll.addView(rows);
 
-        int width = host.dpToPx(160);
-        int height = host.dpToPx(230);
+        RoundedPopupShadow shadow = new RoundedPopupShadow(host.getContext().getResources(), 8);
+        int width = host.dpToPx(160) + shadow.gutter() * 2;
+        int height = host.dpToPx(230) + shadow.gutter() * 2;
         fontSizePopup = new PopupWindow(scroll, width, height, true);
         fontSizePopup.setElevation(host.dpToPx(24));
-        fontSizePopup.setBackgroundDrawable(host.getContext().getDrawable(
-                R.drawable.lolib_bg_font_size_popup));
+        fontSizePopup.setBackgroundDrawable(shadow);
         fontSizePopup.setOutsideTouchable(true);
-        fontSizePopup.showAsDropDown(anchor, anchor.getWidth() - width, -host.dpToPx(4));
+        fontSizePopup.showAsDropDown(anchor, anchor.getWidth() - width + shadow.gutter(), -host.dpToPx(4) - shadow.gutter());
     }
 
     private LinearLayout createFontSizeRow(String label, String value, String selectedLabel,
@@ -1299,6 +1312,7 @@ public class FunctionPanelController {
         for (int i = 0; i < cachedFontOptions.length; i++) {
             final String label = cachedFontOptions[i];
             final String value = i < cachedFontValues.length ? cachedFontValues[i] : label;
+            if ("9".equals(label.trim()) || "9".equals(value.trim())) continue;
             View row = inflater.inflate(R.layout.lolib_item_font_picker_row, list, false);
             TextView name = row.findViewById(R.id.font_picker_item_name);
             ImageView check = row.findViewById(R.id.font_picker_item_check);
@@ -1633,6 +1647,8 @@ public class FunctionPanelController {
         if (contentContainer != null) {
             contentContainer.removeAllViews();
             contentContainer.addView(commentPicker.buildRootView());
+            applyFunctionPanelContentPadding();
+            contentContainer.post(this::applyAdaptiveSheetHeight);
         }
     }
 
@@ -1641,9 +1657,11 @@ public class FunctionPanelController {
             return;
         }
         commentPickerVisible = false;
+        applyFunctionPanelContentPadding();
         setTabChromeVisible(true);
         if (dialog != null && dialog.isShowing()) {
             renderTabContent(tabs.get(selectedTabIndex));
+            contentContainer.post(this::applyAdaptiveSheetHeight);
         }
     }
 
@@ -2054,18 +2072,6 @@ public class FunctionPanelController {
 
     // === Style picker — fetches full Collabora style list, then opens option picker ===
 
-    /** 样式二级页顺序（Figma 5252:56110 + 用户指定）：正文/列表/题注/索引/标题1/2/3/caption，其余 CO 选项追加在后。 */
-    private static final String[][] STYLE_ORDER = new String[][]{
-            {"正文", "Default Paragraph Style"},
-            {"列表", "List"},
-            {"题注", "Caption"},
-            {"索引", "Index"},
-            {"标题1", "Heading 1"},
-            {"标题2", "Heading 2"},
-            {"标题3", "Heading 3"},
-            {"caption", "caption"},
-    };
-
     private void showStylePickerPage(TextView valueView) {
         Runnable openSheet = () -> {
             openOptionPickerFrame("样式", SHEET_HEIGHT_RATIO);
@@ -2083,72 +2089,245 @@ public class FunctionPanelController {
                                 ? values.toArray(new String[0])
                                 : labels.toArray(new String[0]));
             } else {
-                cachedStyleLabels = new String[]{"正文", "列表", "题注", "索引", "标题1", "标题2", "标题3", "caption"};
-                cachedStyleValues = new String[]{"Default Paragraph Style", "List", "Caption",
-                        "Index", "Heading 1", "Heading 2", "Heading 3", "caption"};
+                reorderStyles(new String[]{"清除格式", "默认段落样式", "正文", "标题", "副标题", "标题 1", "标题 2", "标题 3"},
+                        new String[]{".uno:ResetAttributes", "Default Paragraph Style", "Text Body", "Title", "Subtitle", "Heading 1", "Heading 2", "Heading 3"});
             }
             openSheet.run();
         });
     }
 
-    /** 按 STYLE_ORDER 重排样式，未匹配的 CO 其它样式按原序追加在后。 */
+    /** Preserve the command/paragraph order supplied by Collabora. */
     private void reorderStyles(String[] labels, String[] values) {
-        List<String> newLabels = new ArrayList<>();
-        List<String> newValues = new ArrayList<>();
-        boolean[] used = new boolean[values.length];
-        for (String[] pair : STYLE_ORDER) {
-            boolean matched = false;
-            for (int i = 0; i < values.length; i++) {
-                if (!used[i] && styleMatches(values[i], pair[1])) {
-                    newLabels.add(pair[0]);
-                    newValues.add(values[i]);
-                    used[i] = true;
-                    matched = true;
-                    break;
-                }
-            }
-            if (!matched && "正文".equals(pair[0])) {
-                // The native catalog also uses this built-in Writer style when command values omit it.
-                newLabels.add(pair[0]);
-                newValues.add(pair[1]);
-            }
-        }
+        cachedStyleValues = values.clone();
+        cachedStyleLabels = new String[values.length];
         for (int i = 0; i < values.length; i++) {
-            if (!used[i]) {
-                newLabels.add(labels[i]);
-                newValues.add(values[i]);
-            }
+            cachedStyleLabels[i] = localizeStyleName(values[i], i < labels.length ? labels[i] : values[i]);
         }
-        cachedStyleLabels = newLabels.toArray(new String[0]);
-        cachedStyleValues = newValues.toArray(new String[0]);
     }
 
-    private boolean styleMatches(String styleId, String target) {
-        if (styleId == null) {
-            return false;
-        }
-        String s = styleId.trim();
-        if (s.equalsIgnoreCase(target)) {
-            return true;
-        }
-        String lower = s.toLowerCase(Locale.US);
-        if ("list".equalsIgnoreCase(target) && lower.startsWith("list")) {
-            return true;
-        }
-        if ("index".equalsIgnoreCase(target) && lower.startsWith("index")) {
-            return true;
-        }
-        return false;
+    private String localizeStyleName(String value, String label) {
+        String translated = BUILTIN_STYLE_NAMES.get(value);
+        if (translated == null) translated = BUILTIN_STYLE_NAMES.get(label);
+        if (translated != null) return translated;
+        if (value.matches("Heading [0-9]+")) return "标题 " + value.substring(8);
+        return label;
+    }
+
+    private static final java.util.Map<String, String> BUILTIN_STYLE_NAMES = new java.util.HashMap<>();
+    static {
+        String[][] names = {
+            {"Addressee", "收件人"},
+            {"Background", "背景"},
+            {"Background objects", "背景对象"},
+            {"Bibliography 1", "参考文献 1"},
+            {"Bibliography Heading", "参考文献标题"},
+            {"Block Quotation", "成段引文"},
+            {"Body Text", "正文"},
+            {"Bullet Symbols", "项目符号"},
+            {"Bullets", "项目符号"},
+            {"Caption", "题注"},
+            {"Caption Characters", "题注字符"},
+            {"Caption characters", "题注字符"},
+            {"Citation", "引用"},
+            {"Clear formatting", "清除格式"},
+            {"Complimentary Close", "结尾敬语"},
+            {"Contents 1", "目录 1"},
+            {"Contents 10", "目录 10"},
+            {"Contents 2", "目录 2"},
+            {"Contents 3", "目录 3"},
+            {"Contents 4", "目录 4"},
+            {"Contents 5", "目录 5"},
+            {"Contents 6", "目录 6"},
+            {"Contents 7", "目录 7"},
+            {"Contents 8", "目录 8"},
+            {"Contents 9", "目录 9"},
+            {"Contents Heading", "目录标题"},
+            {"Default", "默认"},
+            {"Default Paragraph Style", "默认段落样式"},
+            {"Definition", "定义"},
+            {"Drawing", "绘图"},
+            {"Drop Caps", "首字下沉"},
+            {"Emphasis", "强调"},
+            {"Endnote", "尾注"},
+            {"Endnote Anchor", "尾注锚点"},
+            {"Endnote Characters", "尾注符"},
+            {"Endnote Symbol", "尾注符"},
+            {"Endnote anchor", "尾注锚点"},
+            {"Envelope", "信封"},
+            {"Example", "示例"},
+            {"First Line Indent", "首行缩进"},
+            {"First Page", "首页"},
+            {"First line indent", "首行缩进"},
+            {"Footer", "页脚"},
+            {"Footer Left", "页脚左侧"},
+            {"Footer Right", "页脚右侧"},
+            {"Footer left", "页脚左侧"},
+            {"Footer right", "页脚右侧"},
+            {"Footnote", "脚注"},
+            {"Footnote Anchor", "脚注锚点"},
+            {"Footnote Characters", "脚注符"},
+            {"Footnote Symbol", "脚注符"},
+            {"Footnote anchor", "脚注锚点"},
+            {"Formula", "公式"},
+            {"Frame", "框架"},
+            {"Frame Contents", "框架内容"},
+            {"Frame contents", "框架内容"},
+            {"Graphics", "图形"},
+            {"HTML", "HTML"},
+            {"Hanging Indent", "悬挂缩进"},
+            {"Hanging indent", "悬挂缩进"},
+            {"Header", "页眉"},
+            {"Header Left", "页眉左侧"},
+            {"Header Right", "页眉右侧"},
+            {"Header left", "页眉左侧"},
+            {"Header right", "页眉右侧"},
+            {"Heading", "标题"},
+            {"Heading 1", "标题 1"},
+            {"Heading 10", "标题 10"},
+            {"Heading 2", "标题 2"},
+            {"Heading 3", "标题 3"},
+            {"Heading 4", "标题 4"},
+            {"Heading 5", "标题 5"},
+            {"Heading 6", "标题 6"},
+            {"Heading 7", "标题 7"},
+            {"Heading 8", "标题 8"},
+            {"Heading 9", "标题 9"},
+            {"Horizontal Line", "水平线"},
+            {"Illustration", "插图"},
+            {"Index", "索引"},
+            {"Index 1", "索引 1"},
+            {"Index 2", "索引 2"},
+            {"Index 3", "索引 3"},
+            {"Index Heading", "索引标题"},
+            {"Index Link", "索引链接"},
+            {"Index Separator", "索引分隔符"},
+            {"Insert", "插入"},
+            {"Internet Link", "Internet 链接"},
+            {"Internet link", "Internet 链接"},
+            {"Labels", "标签"},
+            {"Landscape", "横向"},
+            {"Left Page", "左页"},
+            {"Line Numbering", "行号"},
+            {"Line numbering", "行号"},
+            {"List", "列表"},
+            {"List 1", "列表 1"},
+            {"List 1 Cont.", "列表 1 续"},
+            {"List 1 End", "列表 1 结束"},
+            {"List 1 Start", "列表 1 起始"},
+            {"List 2", "列表 2"},
+            {"List 2 Cont.", "列表 2 续"},
+            {"List 2 End", "列表 2 结束"},
+            {"List 2 Start", "列表 2 起始"},
+            {"List 3", "列表 3"},
+            {"List 3 Cont.", "列表 3 续"},
+            {"List 3 End", "列表 3 结束"},
+            {"List 3 Start", "列表 3 起始"},
+            {"List 4", "列表 4"},
+            {"List 4 Cont.", "列表 4 续"},
+            {"List 4 End", "列表 4 结束"},
+            {"List 4 Start", "列表 4 起始"},
+            {"List 5", "列表 5"},
+            {"List 5 Cont.", "列表 5 续"},
+            {"List 5 End", "列表 5 结束"},
+            {"List 5 Start", "列表 5 起始"},
+            {"List Contents", "列表内容"},
+            {"List Heading", "列表标题"},
+            {"List Indent", "列表缩进"},
+            {"Main Index Entry", "主索引条目"},
+            {"Main index entry", "主索引条目"},
+            {"Marginalia", "旁注"},
+            {"Notes", "备注"},
+            {"Numbering 1", "编号 1"},
+            {"Numbering 1 Cont.", "编号 1 续"},
+            {"Numbering 1 End", "编号 1 结束"},
+            {"Numbering 1 Start", "编号 1 起始"},
+            {"Numbering 2", "编号 2"},
+            {"Numbering 2 Cont.", "编号 2 续"},
+            {"Numbering 2 End", "编号 2 结束"},
+            {"Numbering 2 Start", "编号 2 起始"},
+            {"Numbering 3", "编号 3"},
+            {"Numbering 3 Cont.", "编号 3 续"},
+            {"Numbering 3 End", "编号 3 结束"},
+            {"Numbering 3 Start", "编号 3 起始"},
+            {"Numbering 4", "编号 4"},
+            {"Numbering 4 Cont.", "编号 4 续"},
+            {"Numbering 4 End", "编号 4 结束"},
+            {"Numbering 4 Start", "编号 4 起始"},
+            {"Numbering 5", "编号 5"},
+            {"Numbering 5 Cont.", "编号 5 续"},
+            {"Numbering 5 End", "编号 5 结束"},
+            {"Numbering 5 Start", "编号 5 起始"},
+            {"Numbering Symbols", "编号符号"},
+            {"OLE", "OLE"},
+            {"Object Index 1", "对象索引 1"},
+            {"Object Index Heading", "对象索引标题"},
+            {"Object index 1", "对象索引 1"},
+            {"Object index heading", "对象索引标题"},
+            {"Object with no fill and no line", "无填充且无边框的对象"},
+            {"Object without fill", "无填充的对象"},
+            {"Overwrite", "改写"},
+            {"Page Number", "页码"},
+            {"Placeholder", "占位符"},
+            {"Preformatted Text", "预设定格式的文本"},
+            {"Quotation", "引用"},
+            {"Quotations", "成段引文"},
+            {"Report", "报表"},
+            {"Result", "结果"},
+            {"Result2", "结果 2"},
+            {"Right Page", "右页"},
+            {"Rubies", "字旁标音"},
+            {"Salutation", "结尾敬语"},
+            {"Sender", "发件人"},
+            {"Signature", "签名"},
+            {"Source Text", "源文本"},
+            {"Strong Emphasis", "特别强调"},
+            {"Subtitle", "副标题"},
+            {"Table", "表格"},
+            {"Table Contents", "表格内容"},
+            {"Table Heading", "表格标题"},
+            {"Table Index 1", "表格索引 1"},
+            {"Table Index Heading", "表格索引标题"},
+            {"Table index 1", "表格索引 1"},
+            {"Table index heading", "表格索引标题"},
+            {"Teletype", "电传打字"},
+            {"Text", "文本"},
+            {"Text Body", "正文"},
+            {"Text body", "正文"},
+            {"Title", "标题"},
+            {"User Entry", "用户输入"},
+            {"User Index 1", "自定义索引 1"},
+            {"User Index 10", "自定义索引 10"},
+            {"User Index 2", "自定义索引 2"},
+            {"User Index 3", "自定义索引 3"},
+            {"User Index 4", "自定义索引 4"},
+            {"User Index 5", "自定义索引 5"},
+            {"User Index 6", "自定义索引 6"},
+            {"User Index 7", "自定义索引 7"},
+            {"User Index 8", "自定义索引 8"},
+            {"User Index 9", "自定义索引 9"},
+            {"User Index Heading", "自定义索引标题"},
+            {"Variable", "变量"},
+            {"Vertical Numbering Symbols", "竖式编号符号"},
+            {"Visited Internet Link", "访问过的 Internet 链接"},
+            {"Watermark", "水印"},
+            {"background", "背景"},
+            {"backgroundobjects", "背景对象"},
+            {"false", "改写"},
+            {"headline", "标题"},
+            {"notes", "备注"},
+            {"objectwithoutfill", "无填充的对象"},
+            {"standard", "默认"},
+            {"subtitle", "副标题"},
+            {"text", "文本"},
+            {"textbody", "正文"},
+            {"title", "标题"},
+            {"true", "插入"}
+        };
+        for (String[] name : names) BUILTIN_STYLE_NAMES.put(name[0], name[1]);
     }
 
     private void populateStyleOptionList(LinearLayout list, TextView valueView) {
         list.removeAllViews();
-        TextView section = new TextView(host.getContext());
-        section.setText("标题样式");
-        section.setTextColor(COLOR_SECTION);
-        section.setTextSize(14);
-        section.setPadding(host.dpToPx(16), host.dpToPx(12), host.dpToPx(16), host.dpToPx(8));
-        list.addView(section);
         String selectedLabel = pickerValues.getOrDefault("style_picker", "");
         String[] labels = cachedStyleLabels;
         String[] values = cachedStyleValues;

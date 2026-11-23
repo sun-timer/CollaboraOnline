@@ -120,6 +120,7 @@ public class SelectionMenuController {
 
         overlayView.setOnClickListener(v -> hide());
         menuView.setClickable(true);
+        ((ViewGroup) menuView.getParent()).setClipChildren(false);
         View menuParent = (View) menuView.getParent();
         if (menuParent != null) {
             menuParent.addOnLayoutChangeListener((v, left, top, right, bottom,
@@ -472,7 +473,7 @@ public class SelectionMenuController {
         if (calcMode || host.isImpressDocument()) {
             if (!host.isDocEditable() || !host.isEditModeActive()) return;
         }
-        if (!calcMode && !requireTextSelection()) return;
+        if (!calcMode && !host.isImpressDocument() && !requireTextSelection()) return;
         hide();
         if (host.onAiOperation(taskType)) {
             Log.i(TAG, "ai_operation started: " + taskType);
@@ -493,6 +494,7 @@ public class SelectionMenuController {
         boolean docEditable = host.isDocEditable();
         boolean editMode = host.isEditModeActive();
         textEditMode = !calcMode && !graphicMode && editMode;
+        applyPopupAppearance();
         applyPopupMaxWidthConstraint();
         for (int id : CALC_AI_ACTION_IDS) {
             setViewVisibility(id, calcMode && docEditable && editMode ? View.VISIBLE : View.GONE);
@@ -585,15 +587,10 @@ public class SelectionMenuController {
         if (menuView == null) {
             return;
         }
-        if (textEditMode) {
-            menuView.setBackgroundResource(R.drawable.lolib_bg_selection_popup_edit);
-            int padding = Math.round(dpToPx(4f));
-            menuView.setPadding(padding, padding, padding, padding);
-        } else {
-            menuView.setBackgroundResource(R.drawable.lolib_bg_selection_popup);
-            int padding = Math.round(dpToPx(8f));
-            menuView.setPadding(padding, padding, padding, padding);
-        }
+        RoundedPopupShadow shadow = new RoundedPopupShadow(menuView.getResources(), textEditMode ? 8 : 12);
+        menuView.setBackground(shadow);
+        int padding = shadow.gutter() + Math.round(dpToPx(textEditMode ? 4f : 8f));
+        menuView.setPadding(padding, padding, padding, padding);
         ImageButton nextButton = menuView.findViewById(R.id.selection_strip_next);
         HorizontalScrollView scrollView = menuView.findViewById(R.id.selection_basic_scroll);
         if (nextButton != null) {
@@ -621,7 +618,7 @@ public class SelectionMenuController {
         }
         ConstraintLayout.LayoutParams params =
                 (ConstraintLayout.LayoutParams) menuView.getLayoutParams();
-        int maxWidth = Math.round(dpToPx(textEditMode ? POPUP_EDIT_MAX_WIDTH_DP : POPUP_MAX_WIDTH_DP));
+        int maxWidth = Math.round(dpToPx((textEditMode ? POPUP_EDIT_MAX_WIDTH_DP : POPUP_MAX_WIDTH_DP) + 48f));
         if (params.matchConstraintMaxWidth != maxWidth) {
             params.matchConstraintMaxWidth = maxWidth;
             menuView.setLayoutParams(params);
@@ -832,7 +829,7 @@ public class SelectionMenuController {
                     : Math.min(content, available);
         } else {
             targetWidth = Math.min(
-                    computeVisibleChipRowWidthPx(56f, 8f),
+                    computeVisibleChipRowWidthPx(56f),
                     computeAvailablePopupWidth());
         }
         if (lp.width != targetWidth) {
@@ -845,11 +842,11 @@ public class SelectionMenuController {
     private int computeAvailablePopupWidth() {
         View parent = menuView != null ? (View) menuView.getParent() : null;
         int parentWidth = parent != null ? parent.getWidth() : 0;
-        int margin = Math.round(dpToPx(32f));
+        int margin = Math.round(dpToPx(8f));
         if (parentWidth > margin) {
             return parentWidth - margin;
         }
-        return Math.round(dpToPx(POPUP_MAX_WIDTH_DP));
+        return Math.round(dpToPx(POPUP_MAX_WIDTH_DP + 48f));
     }
 
     /** Visible fixed-width actions plus the popup's horizontal padding. */
@@ -887,10 +884,10 @@ public class SelectionMenuController {
     private int computePopupTargetWidth() {
         View parent = menuView != null ? (View) menuView.getParent() : null;
         int parentWidth = parent != null ? parent.getWidth() : 0;
-        int maxWidth = Math.round(dpToPx(POPUP_MAX_WIDTH_DP));
-        int minWidth = Math.round(dpToPx(POPUP_MIN_WIDTH_DP));
+        int maxWidth = Math.round(dpToPx(POPUP_MAX_WIDTH_DP + 48f));
+        int minWidth = Math.round(dpToPx(POPUP_MIN_WIDTH_DP + 48f));
         if (parentWidth > 0) {
-            int available = parentWidth - Math.round(dpToPx(32f));
+            int available = parentWidth - Math.round(dpToPx(8f));
             return Math.max(minWidth, Math.min(maxWidth, available));
         }
         return maxWidth;
@@ -900,9 +897,9 @@ public class SelectionMenuController {
     private int computeTextEditPopupWidth() {
         View parent = menuView != null ? (View) menuView.getParent() : null;
         int parentWidth = parent != null ? parent.getWidth() : 0;
-        int maxWidth = Math.round(dpToPx(POPUP_EDIT_MAX_WIDTH_DP));
+        int maxWidth = Math.round(dpToPx(POPUP_EDIT_MAX_WIDTH_DP + 48f));
         if (parentWidth > 0) {
-            int available = Math.max(1, parentWidth - Math.round(dpToPx(32f)));
+            int available = Math.max(1, parentWidth - Math.round(dpToPx(8f)));
             return Math.min(maxWidth, available);
         }
         return maxWidth;
