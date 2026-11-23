@@ -56,7 +56,14 @@ window.L.TextInput = window.L.Layer.extend({
 
 		this._preSpaceChar = '<img id="pre-space" alt=" " aria-hidden="true">';
 		this._postSpaceChar = '<img id="post-space" alt=" " aria-hidden="true">';
+		// Give the iOS Writer keyboard a real, consumable text run so its
+		// delete repeat can continue after document text (which lives in core)
+		// has reached the beginning. This run is stripped from all document text.
+		this._iosBackspaceGuardLength = 64;
+		this._iosBackspaceGuard = '<span id="pre-space" aria-hidden="true">' +
+			'\u00a0'.repeat(this._iosBackspaceGuardLength) + '</span>';
 		this._initialContent = this._preSpaceChar + this._postSpaceChar;
+		this._iosBackspaceGuardBeforeInputLength = 0;
 
 		// Debug flag, used in fancyLog(). See the debug() method.
 		// this._isDebugOn = true;
@@ -120,7 +127,16 @@ window.L.TextInput = window.L.Layer.extend({
 		return false;
 	},
 
+	setDocumentType: function(docType) {
+		this._documentType = docType;
+	},
+
 	onAdd: function() {
+		if (this._isIOSWriterBackspaceGuardActive()) {
+			this._preSpaceChar = this._iosBackspaceGuard;
+			this._initialContent = this._preSpaceChar + this._postSpaceChar;
+			this._iosBackspaceGuardBudget = this._iosBackspaceGuardLength;
+		}
 		if (this._container) {
 			this.getPane().appendChild(this._container);
 			this.update();
@@ -414,7 +430,32 @@ window.L.TextInput = window.L.Layer.extend({
 	},
 
 	getPlainTextContent: function() {
-		return 	this._textArea.textContent;
+		var value = this._textArea.textContent;
+		var guardNode = this._getIOSBackspaceGuardNode();
+		if (guardNode) {
+			var leadingSpaces = (guardNode.textContent.match(/^[\u00a0 ]*/) || [''])[0].length;
+			value = value.slice(Math.min(this._iosBackspaceGuardBudget, leadingSpaces));
+		}
+		return value;
+	},
+
+	_isIOSWriterBackspaceGuardActive: function() {
+		return !!(window.ThisIsTheiOSApp && this._map &&
+			(this._documentType || this._map.getDocType()) === 'text' &&
+			!this.hasAccessibilitySupport());
+	},
+
+	_getIOSBackspaceGuardNode: function() {
+		var element = this._textArea && this._textArea.firstChild;
+		return this._isIOSWriterBackspaceGuardActive() && element && element.id === 'pre-space'
+			? element.firstChild : null;
+	},
+
+	_getGuardPrefixLength: function(node) {
+		if (!this._isIOSWriterBackspaceGuardActive() || !node || node !== this._getIOSBackspaceGuardNode())
+			return 0;
+		var leading = (node.textContent.match(/^[\u00a0 ]*/) || [''])[0].length;
+		return Math.min(this._iosBackspaceGuardBudget, leading);
 	},
 
 	getHTML: function() {
@@ -432,6 +473,10 @@ window.L.TextInput = window.L.Layer.extend({
 
 	resetContent: function() {
 		this._textArea.innerHTML = this._initialContent;
+		if (this._isIOSWriterBackspaceGuardActive()) {
+			this._iosBackspaceGuardBudget = this._iosBackspaceGuardLength;
+			this._iosBackspaceGuardBeforeInputLength = 0;
+		}
 	},
 
 	// Convert an array of Unicode code points to a string of UTF-16 code units. Workaround
@@ -747,6 +792,13 @@ window.L.TextInput = window.L.Layer.extend({
 			return;
 		this._statusLog('_onBeforeInput [');
 		this._ignoreNextBackspace = false;
+		this._iosBackspaceGuardBeforeInputLength = 0;
+		if (this._isIOSWriterBackspaceGuardActive() && !this._isComposing && !ev.isComposing &&
+			ev.inputType === 'deleteContentBackward' && this._hasPreSpace() &&
+			window.getSelection().isCollapsed && this._getSelectionStart() === 0 &&
+			this._getIOSBackspaceGuardNode()) {
+			this._iosBackspaceGuardBeforeInputLength = this._getGuardPrefixLength(this._getIOSBackspaceGuardNode());
+		}
 		if (!this._isSelectionValid()) {
 			this._emptyArea();
 		}
@@ -795,6 +847,39 @@ window.L.TextInput = window.L.Layer.extend({
 				this._deleteHint = 'delete';
 			else if (ev.inputType === 'deleteContentBackward')
 				this._deleteHint = 'backspace';
+		}
+
+		// WebKit consumes NBSPs from the stable leading text node for each
+		// repeated delete. Mirror only those consumed guard characters to core,
+		// then replenish at the front of the same node without resetting focus.
+		if (this._isIOSWriterBackspaceGuardActive() && !this._isComposing && !ev.isComposing &&
+			ev.inputType === 'deleteContentBackward' && this._iosBackspaceGuardBeforeInputLength > 0) {
+			var guardNode = this._getIOSBackspaceGuardNode();
+			var remainingGuard = guardNode ? this._getGuardPrefixLength(guardNode) : this._iosBackspaceGuardBeforeInputLength;
+			var deletedGuard = this._iosBackspaceGuardBeforeInputLength - remainingGuard;
+			if (deletedGuard > 0) {
+				app.idleHandler.notifyActive();
+				this._deleteHint = 'backspace';
+				// One backward input event represents one user delete even if
+				// WebKit coalesces the whole text run into the same DOM edit.
+				this._removeTextContent(1, 0);
+				this._iosBackspaceGuardBudget = Math.max(0, this._iosBackspaceGuardBudget - deletedGuard);
+				if (remainingGuard < this._iosBackspaceGuardLength / 2) {
+					var refill = this._iosBackspaceGuardLength - remainingGuard;
+					guardNode.insertData(0, '\u00a0'.repeat(refill));
+					this._iosBackspaceGuardBudget += refill;
+				}
+				this._iosBackspaceGuardBeforeInputLength = 0;
+				this._statusLog('_onInput ]');
+				return;
+			} else if (!guardNode) {
+				// WebKit removed the whole sentinel in one operation. Count it as
+				// one logical deletion and recreate the hidden input safely.
+				this._removeTextContent(1, 0);
+				this._emptyArea();
+				this._iosBackspaceGuardBeforeInputLength = 0;
+				return;
+			}
 		}
 
 		var ignoreBackspace = this._ignoreNextBackspace;
@@ -990,7 +1075,9 @@ window.L.TextInput = window.L.Layer.extend({
 			for (var i = 0; i < l; i++) {
 				if (i !== 0) {
 					this._sendKeyEvent(13, 1280);
-					if (!this.hasAccessibilitySupport()) {
+					// A multi-line insert keeps the whole run in the field. Resetting
+					// here would drop the characters a held delete still has to consume.
+					if (!this.hasAccessibilitySupport() && !this._suspendFieldReset) {
 						this._emptyArea();
 					}
 				}
@@ -1549,7 +1636,8 @@ window.L.TextInput = window.L.Layer.extend({
 			var pos = this._getLastCursorPosition();
 			var empty = this._lastContent.length === 0;
 		}
-		this._emptyArea();
+		if (!this._suspendFieldReset)
+			this._emptyArea();
 		if (this.hasAccessibilitySupport()) {
 			this._setSelectionFlag(false);
 			if (pos === 0 && !empty)
@@ -1569,6 +1657,49 @@ window.L.TextInput = window.L.Layer.extend({
 		} catch (err) {
 			// old firefox throws an exception on start.
 		}
+	},
+
+	// Insert text through the same input handler a keystroke uses.
+	// The field must already be focused before any characters are added.
+	// Rewriting innerHTML after focus tears down the iOS text session, which
+	// is why a later held delete stops. Newlines must not reset the field
+	// either: that reset is what drops the run a held delete consumes.
+	typeTextLikeUser: function(text) {
+		if (typeof text !== 'string' || text.length === 0 || !this._textArea)
+			return false;
+		if (document.activeElement !== this._textArea)
+			this._emptyArea();
+		try {
+			this._textArea.focus();
+		} catch (e) {
+			return false;
+		}
+		var beforeLen = this._lastContent.length;
+		this._ignoreInputCount++;
+		var node = document.createTextNode(text);
+		var post = this._hasPostSpace() ? this._textArea.lastChild : null;
+		if (post)
+			this._textArea.insertBefore(node, post);
+		else
+			this._textArea.appendChild(node);
+		this._setCursorPosition(this.getPlainTextContent().length);
+		this._ignoreInputCount--;
+		if (this.getPlainTextContent().length === 0)
+			return false;
+		this._suspendFieldReset = true;
+		try {
+			if (this._lastContent.length === beforeLen)
+				this._onInput({ inputType: 'insertText', data: text });
+		} finally {
+			this._suspendFieldReset = false;
+		}
+		if (typeof window.postMobileDebug === 'function') {
+			window.postMobileDebug(
+				'ime_diag type_like last=' + this._lastContent.length +
+				' field=' + this.getPlainTextContent().length
+			);
+		}
+		return this._lastContent.length > beforeLen && this.getPlainTextContent().length > 0;
 	},
 
 	setSwitchedToEditMode: function() {
@@ -1619,7 +1750,8 @@ window.L.TextInput = window.L.Layer.extend({
 
 	_isInitialContent: function() {
 		var children = this._textArea.childNodes;
-		return children.length === 2 && this._hasPreSpace() && this._hasPostSpace();
+		return children.length === 2 && this._hasPreSpace() && this._hasPostSpace() &&
+			(!this._isIOSWriterBackspaceGuardActive() || this.getPlainTextContent().length === 0);
 	},
 
 	_isCursorAtBeginning: function() {
@@ -1657,6 +1789,8 @@ window.L.TextInput = window.L.Layer.extend({
 
 		if (!node)
 			return;
+		if (node.nodeType === Node.TEXT_NODE && this._getGuardPrefixLength(node) > 0)
+			return Math.max(0, offset - this._getGuardPrefixLength(node));
 		if (node.id === 'pre-space')      // cursor position: <div><img>|</img> ... <img></img></div>
 			return -1;
 		if (node.id === 'post-space')     // cursor position: <div><img></img> ... <img>|</img></div>
@@ -1682,7 +1816,7 @@ window.L.TextInput = window.L.Layer.extend({
 			if (currentNode === node) {
 				return pos + offset;
 			}
-			pos += currentNode.textContent.length;
+			pos += currentNode.textContent.length - this._getGuardPrefixLength(currentNode);
 			currentNode = walker.nextNode();
 		}
 	},
@@ -1735,24 +1869,29 @@ window.L.TextInput = window.L.Layer.extend({
 		var walker = document.createTreeWalker(this._textArea, NodeFilter.SHOW_TEXT);
 		var currentNode = walker.nextNode(); // first text node in <div>
 		var pos = 0;
+		var guardPrefixLength = this._getGuardPrefixLength(currentNode);
 		// walker iterates over text nodes only
 		while (currentNode) {
 			msg += '    current node: ' + currentNode + ', text content: "' + currentNode.textContent + '"\n';
 			var len = currentNode.textContent.length;
 			msg += '    pos: ' + pos + ', len: ' + len +'\n';
-			if (!startContainer && start <= pos + len) {
+			var logicalLength = len - guardPrefixLength;
+			if (!startContainer && start <= pos + logicalLength) {
 				startContainer = currentNode;
-				range.setStart(currentNode, start - pos);
-				msg += '    current node set as start: offset: ' + (start - pos) + '\n';
+				var startOffset = guardPrefixLength + start - pos;
+				range.setStart(currentNode, startOffset);
+				msg += '    current node set as start: offset: ' + startOffset + '\n';
 			}
 			// The range end is set only after the range start has been set.
-			if (startContainer && end <= pos + len) {
-				range.setEnd(currentNode, end - pos);
-				msg += '    current node set as end:   offset: ' + (end - pos) + '\n';
+			if (startContainer && end <= pos + logicalLength) {
+				var endOffset = guardPrefixLength + end - pos;
+				range.setEnd(currentNode, endOffset);
+				msg += '    current node set as end:   offset: ' + endOffset + '\n';
 				break;
 			}
-			pos += len;
+			pos += logicalLength;
 			currentNode = walker.nextNode();
+			guardPrefixLength = this._getGuardPrefixLength(currentNode);
 		}
 
 		// Get the selection object and add the range to it

@@ -16,6 +16,7 @@
 #import "LocalModelStore.h"
 
 #import <CoreFoundation/CoreFoundation.h>
+#import <UIKit/UIKit.h>
 
 @interface AIServiceRequest : NSObject
 @property (strong, nonatomic) AIRequestSession *session;
@@ -42,6 +43,17 @@
 @implementation AIServiceLocalSlot
 @end
 
+@interface AIServiceImageBatch : NSObject
+@property (copy, nonatomic) AIServiceEventEmitter emitter;
+@property (copy, nonatomic) NSString *documentSessionId;
+@property (strong, nonatomic) NSMutableArray<NSString *> *childIds;
+@property (strong, nonatomic) NSMutableArray *images;
+@property (strong, nonatomic) NSMutableIndexSet *finished;
+@property (copy, nonatomic) NSString *lastError;
+@end
+@implementation AIServiceImageBatch
+@end
+
 @interface AIService ()
 @property (strong, nonatomic) AIConfigurationStore *configurationStore;
 @property (strong, nonatomic) AIModelConfigStore *modelStore;
@@ -49,6 +61,7 @@
 @property (strong, nonatomic) NSOperationQueue *delegateQueue;
 @property (strong, nonatomic) NSMutableDictionary<NSURLSessionTask *, AIServiceRequest *> *requestsByTask;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, AIServiceRequest *> *requestsById;
+@property (strong, nonatomic) NSMutableDictionary<NSString *, AIServiceImageBatch *> *imageBatches;
 @property (strong, nonatomic) NSMutableDictionary<NSString *, AIServiceLocalSlot *> *localSlotsById;
 @property (strong, nonatomic) AiBackendRouter *backendRouter;
 @end
@@ -68,6 +81,7 @@
         _delegateQueue.maxConcurrentOperationCount = 1;
         _requestsByTask = [[NSMutableDictionary alloc] init];
         _requestsById = [[NSMutableDictionary alloc] init];
+        _imageBatches = [NSMutableDictionary dictionary];
         _localSlotsById = [[NSMutableDictionary alloc] init];
         _backendRouter = [[AiBackendRouter alloc] init];
         _urlSession = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration defaultSessionConfiguration]
@@ -124,22 +138,20 @@
         }
         AIModelConfigForm *form = [self.modelStore loadForm:modelType];
         NSString *endpoint = form.url;
+        if (![form.endpointMode isEqualToString:@"manual"] && ![[NSURL URLWithString:endpoint].path.lowercaseString hasSuffix:@"/images/generations"]) {
+            NSURL *chatURL = [self.modelStore chatCompletionsURLForForm:form error:nil];
+            NSURLComponents *parts = chatURL ? [NSURLComponents componentsWithURL:chatURL resolvingAgainstBaseURL:NO] : nil;
+            if ([parts.path hasSuffix:@"/chat/completions"])
+                parts.path = [[parts.path substringToIndex:parts.path.length - @"/chat/completions".length] stringByAppendingString:@"/images/generations"];
+            endpoint = parts.URL.absoluteString;
+        }
         NSString *model = form.modelName;
         NSString *apiKey = form.apiKey;
-        if (endpoint.length == 0 || model.length == 0) {
-            NSError *configurationError = nil;
-            AIConfiguration *configuration = [self.configurationStore configurationWithError:&configurationError];
-            if (configuration != nil && configuration.endpoint.length > 0) {
-                endpoint = configuration.endpoint;
-                model = configuration.model ?: model;
-                apiKey = configuration.apiKey ?: apiKey;
-            }
-        }
         if (endpoint.length == 0 || model.length == 0) {
             [self emitType:@"ai.error"
                   requestId:requestId
            documentSessionId:documentSessionId
-                  payload:@{@"code": @"config_missing", @"message": @"AI service is not configured"}
+                  payload:@{@"code": @"config_missing", @"message": @"AI 服务尚未配置，请检查模型、接口地址与密钥"}
                    emitter:emit];
             return;
         }
@@ -229,7 +241,7 @@
         [self emitType:@"ai.error"
               requestId:requestId
            documentSessionId:documentSessionId
-                  payload:@{@"code": @"config_missing", @"message": @"AI service is not configured"}
+                  payload:@{@"code": @"config_missing", @"message": @"AI 服务尚未配置，请检查模型、接口地址与密钥"}
                    emitter:emit];
         return;
     }
@@ -264,22 +276,7 @@
         @"stream": @YES,
         @"messages": messages,
     } mutableCopy];
-    if (form.temperature > 0) {
-        body[@"temperature"] = @(form.temperature);
-    }
-    if (form.topP > 0) {
-        body[@"top_p"] = @(form.topP);
-    }
-    if (form.presencePenalty != 0) {
-        body[@"presence_penalty"] = @(form.presencePenalty);
-    }
-    if (form.frequencyPenalty != 0) {
-        body[@"frequency_penalty"] = @(form.frequencyPenalty);
-    }
     [body addEntriesFromDictionary:[self.modelStore samplingBodyFieldsForForm:form]];
-    if ([taskType isEqualToString:@"continue"]) {
-        [body addEntriesFromDictionary:[self continuationSamplingOverridesForMaxTokens:[body[@"max_tokens"] integerValue]]];
-    }
     BOOL structuredPpt = [taskType isEqualToString:@"impress_outline"] || [taskType isEqualToString:@"impress_generate"]
         || [taskType isEqualToString:@"impress_typeset"];
     NSDictionary *context = [payload[@"context"] isKindOfClass:NSDictionary.class] ? payload[@"context"] : @{};
@@ -287,10 +284,6 @@
     if (structuredPpt) {
         // These replies are machine-readable data, not conversational prose.
         // Penalizing repeated tokens also penalizes JSON keys and punctuation.
-        body[@"temperature"] = @0.2;
-        [body removeObjectForKey:@"presence_penalty"];
-        [body removeObjectForKey:@"frequency_penalty"];
-        [body removeObjectForKey:@"seed"];
         if (jsonResponseMode) body[@"response_format"] = @{@"type": @"json_object"};
     }
     if ([taskType isEqualToString:@"impress_outline"]) {
@@ -326,7 +319,44 @@
                                requestId:(NSString *)requestId
                       documentSessionId:(NSString *)documentSessionId
                                   emit:(AIServiceEventEmitter)emit {
+    NSInteger count = [payload[@"n"] respondsToSelector:@selector(integerValue)] ? [payload[@"n"] integerValue] : 1;
+    if (count < 1 || count > 4) {
+        [self emitType:@"ai.error" requestId:requestId documentSessionId:documentSessionId payload:@{@"code":@"invalid_payload", @"message":@"图片数量必须为 1 至 4 张"} emitter:emit]; return;
+    }
+    if (count > 1) {
+        // Independent one-image requests also support providers that only accept n=1.
+        AIServiceImageBatch *batch = [AIServiceImageBatch new]; batch.documentSessionId = documentSessionId; batch.emitter = emit;
+        batch.childIds = [NSMutableArray array]; batch.images = [NSMutableArray array]; batch.finished = [NSMutableIndexSet indexSet];
+        for (NSInteger i = 0; i < count; i++) {
+            [batch.childIds addObject:[requestId stringByAppendingFormat:@"-image-%ld", (long)i]];
+            [batch.images addObject:NSNull.null];
+        }
+        self.imageBatches[requestId] = batch;
+        [self emitType:@"ai.state" requestId:requestId documentSessionId:documentSessionId payload:@{@"state":@"loading"} emitter:emit];
+        NSMutableDictionary *single = [payload mutableCopy]; single[@"n"] = @1;
+        for (NSInteger i = 0; i < count; i++) {
+            [self startImageGenerationWithEndpoint:endpoint model:model apiKey:apiKey payload:single requestId:batch.childIds[i] documentSessionId:documentSessionId emit:^(NSString *type, NSString *rid, NSString *sid, NSDictionary *result) {
+                if (self.imageBatches[requestId] != batch || [batch.finished containsIndex:i]) return;
+                if ([type isEqualToString:@"ai.done"] && [result[@"imageBase64"] isKindOfClass:NSString.class]) batch.images[i] = result[@"imageBase64"];
+                else if ([type isEqualToString:@"ai.error"]) batch.lastError = result[@"message"];
+                else if (!([type isEqualToString:@"ai.state"] && [result[@"state"] isEqualToString:@"cancelled"])) return;
+                [batch.finished addIndex:i];
+                if (batch.finished.count != count) return;
+                [self.imageBatches removeObjectForKey:requestId];
+                NSMutableArray *images = [NSMutableArray array];
+                for (id image in batch.images) if ([image isKindOfClass:NSString.class]) [images addObject:image];
+                if (images.count) {
+                    NSString *warning = images.count == count ? @"" : [NSString stringWithFormat:@"已生成 %lu/%ld 张，部分图片生成失败，可重新生成", (unsigned long)images.count, (long)count];
+                    [self emitType:@"ai.done" requestId:requestId documentSessionId:documentSessionId payload:@{@"images":images, @"imageBase64":images.firstObject, @"warning":warning} emitter:emit];
+                } else [self emitType:@"ai.error" requestId:requestId documentSessionId:documentSessionId payload:@{@"code":@"image_batch_failed", @"message":batch.lastError ?: @"图片生成失败，请重试"} emitter:emit];
+            }];
+        }
+        return;
+    }
     NSURL *endpointURL = [NSURL URLWithString:endpoint];
+    if (!endpointURL.host.length || ![@[@"http", @"https"] containsObject:endpointURL.scheme.lowercaseString]) {
+        [self emitType:@"ai.error" requestId:requestId documentSessionId:documentSessionId payload:@{@"code":@"config_invalid", @"message":@"图片接口地址无效，请检查模型配置"} emitter:emit]; return;
+    }
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:endpointURL];
     request.HTTPMethod = @"POST";
     request.timeoutInterval = 60.0;
@@ -359,7 +389,6 @@
         @"model": model,
         @"prompt": prompt,
         @"size": size.length > 0 ? size : @"1024x1024",
-        @"response_format": @"b64_json",
         @"n": @1,
     };
 
@@ -396,6 +425,13 @@
 
 - (void)cancelRequest:(NSString *)requestId
    documentSessionId:(NSString *)documentSessionId {
+    AIServiceImageBatch *batch = self.imageBatches[requestId];
+    if (batch && [batch.documentSessionId isEqualToString:documentSessionId]) {
+        [self.imageBatches removeObjectForKey:requestId];
+        for (NSString *child in batch.childIds) [self cancelRequest:child documentSessionId:documentSessionId];
+        [self emitType:@"ai.state" requestId:requestId documentSessionId:documentSessionId payload:@{@"state":@"cancelled"} emitter:batch.emitter];
+        return;
+    }
     AIServiceLocalSlot *localSlot = self.localSlotsById[requestId];
     if (localSlot != nil
         && [localSlot.documentSessionId isEqualToString:documentSessionId]) {
@@ -417,7 +453,7 @@
     }
 
     [serviceRequest.session cancel];
-    [self.requestsById removeObjectForKey:requestId];
+    [self removeRequest:serviceRequest];
     [self emitType:@"ai.state"
           requestId:requestId
        documentSessionId:documentSessionId
@@ -426,6 +462,9 @@
 }
 
 - (void)cancelRequestsForDocumentSession:(NSString *)documentSessionId {
+    for (NSString *key in self.imageBatches.allKeys.copy) {
+        if ([self.imageBatches[key].documentSessionId isEqualToString:documentSessionId]) [self cancelRequest:key documentSessionId:documentSessionId];
+    }
     NSArray<NSString *> *localRequestIds = [self.localSlotsById.allKeys copy];
     for (NSString *requestId in localRequestIds) {
         AIServiceLocalSlot *slot = self.localSlotsById[requestId];
@@ -457,6 +496,10 @@ didReceiveResponse:(NSURLResponse *)response
         if ([serviceRequest.session.requestId hasPrefix:@"impress-outline-"]) {
             NSLog(@"[AI] impress_outline http_error status=%ld", (long)httpResponse.statusCode);
         }
+        if (serviceRequest.imageGeneration) {
+            completionHandler(NSURLSessionResponseAllow);
+            return;
+        }
         completionHandler(NSURLSessionResponseCancel);
         // A few otherwise compatible providers reject response_format. Retry
         // once without that optional field, retaining the same UI request id.
@@ -479,7 +522,7 @@ didReceiveResponse:(NSURLResponse *)response
         }
         [self finishErrorForRequest:serviceRequest code:[NSString stringWithFormat:@"http_%ld",
                                                          (long)httpResponse.statusCode]
-                            message:@"AI request failed"];
+                            message:@"AI 网络请求失败，请检查连接后重试"];
         return;
     }
     completionHandler(NSURLSessionResponseAllow);
@@ -525,12 +568,12 @@ didCompleteWithError:(NSError *)error {
     }
     if (error != nil && ![error.domain isEqualToString:NSURLErrorDomain]) {
         [self finishErrorForRequest:serviceRequest code:@"request_failed"
-                            message:@"AI request failed"];
+                            message:@"AI 网络请求失败，请检查连接后重试"];
         return;
     }
     if (error != nil && error.code != NSURLErrorCancelled) {
         [self finishErrorForRequest:serviceRequest code:@"request_failed"
-                            message:@"AI request failed"];
+                            message:@"AI 网络请求失败，请检查连接后重试"];
         return;
     }
     if (serviceRequest.imageGeneration) {
@@ -629,55 +672,58 @@ didCompleteWithError:(NSError *)error {
     }
 }
 
-- (void)finishImageGenerationForRequest:(AIServiceRequest *)serviceRequest {
-    if (![serviceRequest.session markTerminal]) {
+- (void)completeImageData:(NSData *)data request:(AIServiceRequest *)request {
+    if (![request.session canEmit]) return;
+    UIImage *image = data.length ? [UIImage imageWithData:data] : nil;
+    NSData *png = image ? UIImagePNGRepresentation(image) : nil;
+    if (!png.length) {
+        [self finishErrorForRequest:request code:@"image_decode_failed" message:@"生成结果不是可解码的图片，请检查图像模型配置"];
         return;
     }
-    NSError *jsonError = nil;
-    NSDictionary *response = nil;
-    if (serviceRequest.responseData.length > 0) {
-        response = [NSJSONSerialization JSONObjectWithData:serviceRequest.responseData
-                                                   options:0
-                                                     error:&jsonError];
+    if (![request.session markTerminal]) return;
+    [self emitType:@"ai.done" requestId:request.session.requestId documentSessionId:request.session.documentSessionId
+        payload:@{@"state":@"ready", @"imageBase64":[png base64EncodedStringWithOptions:0]} emitter:request.emitter];
+    [self removeRequest:request];
+}
+
+- (void)finishImageGenerationForRequest:(AIServiceRequest *)request {
+    if (![request.session canEmit]) return;
+    id response = [NSJSONSerialization JSONObjectWithData:request.responseData options:0 error:nil];
+    if (request.statusCode < 200 || request.statusCode >= 300) {
+        NSString *reason = request.statusCode == 401 || request.statusCode == 403 ? @"图片服务鉴权失败，请检查密钥和权限" :
+            request.statusCode == 404 || request.statusCode == 405 ? @"图片接口不存在或不支持，请检查图片模型和接口地址" :
+            request.statusCode == 429 ? @"图片服务请求受限或额度不足，请稍后重试" :
+            request.statusCode == 400 || request.statusCode == 422 ? @"图片服务不接受当前模型或参数，请检查配置" : @"图片服务暂时不可用，请稍后重试";
+        [self finishErrorForRequest:request code:[NSString stringWithFormat:@"http_%ld", (long)request.statusCode] message:reason]; return;
     }
-    if (jsonError != nil || ![response isKindOfClass:[NSDictionary class]]) {
-        [self emitType:@"ai.error"
-              requestId:serviceRequest.session.requestId
-           documentSessionId:serviceRequest.session.documentSessionId
-                  payload:@{@"code": @"image_response_invalid",
-                            @"message": @"图片生成响应解析失败"}
-                   emitter:serviceRequest.emitter];
-        [self removeRequest:serviceRequest];
-        return;
+    if (![response isKindOfClass:NSDictionary.class]) {
+        [self finishErrorForRequest:request code:@"image_response_invalid" message:@"图片生成响应解析失败"]; return;
     }
-    NSString *base64Image = nil;
-    NSArray *dataArray = [response[@"data"] isKindOfClass:[NSArray class]]
-        ? response[@"data"] : nil;
-    for (id item in dataArray) {
-        if ([item isKindOfClass:[NSDictionary class]]
-            && [item[@"b64_json"] isKindOfClass:[NSString class]]) {
-            NSString *candidate = item[@"b64_json"];
-            if (candidate.length > 0) {
-                base64Image = candidate;
-                break;
-            }
+    NSArray *items = [response[@"data"] isKindOfClass:NSArray.class] ? response[@"data"] : @[];
+    for (id item in items) {
+        if (![item isKindOfClass:NSDictionary.class]) continue;
+        NSString *encoded = [item[@"b64_json"] isKindOfClass:NSString.class] ? item[@"b64_json"] : nil;
+        if (encoded.length) {
+            [self completeImageData:[[NSData alloc] initWithBase64EncodedString:encoded options:0] request:request]; return;
+        }
+        NSString *address = [item[@"url"] isKindOfClass:NSString.class] ? item[@"url"] : nil;
+        NSURL *url = address.length ? [NSURL URLWithString:address] : nil;
+        if (url.host.length && [@[@"https", @"http"] containsObject:url.scheme.lowercaseString]) {
+            // A new unauthenticated request: never forward the model API key.
+            NSMutableURLRequest *download = [NSMutableURLRequest requestWithURL:url]; download.timeoutInterval = 60;
+            NSURLSessionDataTask *task = [NSURLSession.sharedSession dataTaskWithRequest:download completionHandler:^(NSData *data, NSURLResponse *reply, NSError *error) {
+                [self.urlSession.delegateQueue addOperationWithBlock:^{
+                    if (![request.session canEmit]) return;
+                    NSInteger status = [(NSHTTPURLResponse *)reply statusCode];
+                    if (error || status < 200 || status >= 300)
+                        [self finishErrorForRequest:request code:@"image_download_failed" message:@"图片已生成，但下载失败，请重试"];
+                    else [self completeImageData:data request:request];
+                }];
+            }];
+            [request.session bindTask:task]; [task resume]; return;
         }
     }
-    if (base64Image == nil) {
-        [self emitType:@"ai.error"
-              requestId:serviceRequest.session.requestId
-           documentSessionId:serviceRequest.session.documentSessionId
-                  payload:@{@"code": @"no_b64", @"message": @"返回数据未包含 b64_json 字段"}
-                   emitter:serviceRequest.emitter];
-        [self removeRequest:serviceRequest];
-        return;
-    }
-    [self emitType:@"ai.done"
-          requestId:serviceRequest.session.requestId
-       documentSessionId:serviceRequest.session.documentSessionId
-              payload:@{@"state": @"ready", @"imageBase64": base64Image}
-               emitter:serviceRequest.emitter];
-    [self removeRequest:serviceRequest];
+    [self finishErrorForRequest:request code:@"image_response_invalid" message:@"图片响应缺少有效的图片数据或地址，请检查接口类型"];
 }
 
 - (void)finishDoneForRequest:(AIServiceRequest *)serviceRequest {
@@ -891,7 +937,7 @@ didCompleteWithError:(NSError *)error {
              "选中范围：%@\n选中数据：\n%@\n"
              "JSON 字段：conditionType(greater|less|equal|between|top_n|bottom_n|above_average|below_average|duplicate|unique|contains_text|formula|clear),"
              "value,value2,range,format{backgroundColor,fontColor,fontBold,fontItalic},description。\n"
-             "clear 表示清除条件/直接格式。颜色用 #RRGGBB。",
+             "clear 仅清除条件格式，不得清除直接格式。清除直接格式请使用数据处理的 clear_formatting。未指定样式时默认浅黄色背景。颜色用 #RRGGBB。",
             cellRange.length > 0 ? cellRange : @"未知",
             cellData.length > 0 ? cellData : @"（无数据）"];
         userPrompt = text;
@@ -903,8 +949,11 @@ didCompleteWithError:(NSError *)error {
             ? context[@"cellData"] : @"";
         systemPrompt = [NSString stringWithFormat:
             @"你是电子表格数据处理专家。只返回 JSON："
-             "{\"description\":\"...\",\"actions\":[{\"type\":\"set_formula|set_value|sort|filter|clear_formatting|merge_cells|bold|calculate\","
+             "{\"description\":\"...\",\"actions\":[{\"type\":\"set_formula|set_value|clear_contents|sort|filter|clear_formatting|merge_cells|bold|calculate\","
              "\"range\":\"A1:C10\",\"value\":\"...\",\"ascending\":true}]}。\n"
+             "清除或删除数据必须使用 clear_contents，不能用 clear_formatting，也不能删除行列。\n"
+             "例如删除 B 列所有数据：{\"description\":\"清除 B 列内容，保留格式\",\"actions\":[{\"type\":\"clear_contents\",\"range\":\"B1:B1048576\"}]}。\n"
+             "每个动作必须明确 range。清除整列保持完整范围。生成数据与公式仅限实际相关数据行，每次最多 1000 个单元格；不得把整列选区直接变成 B1:B1048576 等百万行写入。先参考已用区域与数据样本确定行数；无法确定对应数据或计算规则时返回 actions:[] 并在 description 中文说明缺少信息，不得擅自生成序号或默认值。\n"
              "选中范围：%@\n数据样本：\n%@\n不要 Markdown 代码块。",
             cellRange.length > 0 ? cellRange : @"未知",
             cellData.length > 0 ? cellData : @"（无数据）"];
@@ -916,10 +965,12 @@ didCompleteWithError:(NSError *)error {
         NSString *cellData = [context[@"cellData"] isKindOfClass:[NSString class]]
             ? context[@"cellData"] : @"";
         systemPrompt = [NSString stringWithFormat:
-            @"你是 Calc 图表专家。只返回 JSON："
-             "{\"preprocess\":[],\"chart\":{\"dataRange\":\"$Sheet1.$A$1:$B$10\","
-             "\"chartType\":\"pie|bar|column|line\",\"title\":\"...\"}}。\n"
-             "选中范围：%@\n数据样本：\n%@\n不要多余解释。",
+            @"你是 Calc 图表专家。只返回一个 JSON 对象，不要 Markdown，不要英文句子。\n"
+             "给人看的 summary 和 title 必须是中文。JSON 键名保持英文。\n"
+             "格式：{\"summary\":\"用一句中文说明这张图\",\"preprocess\":[],"
+             "\"chart\":{\"dataRange\":\"与选中范围一致\",\"chartType\":\"pie|bar|column|line\",\"title\":\"中文标题\"}}\n"
+             "dataRange 必须使用下面给出的选中范围，不要改成别的示例。\n"
+             "选中范围：%@\n数据样本：\n%@",
             cellRange.length > 0 ? cellRange : @"未知",
             cellData.length > 0 ? cellData : @"（无数据）"];
         userPrompt = text;
@@ -1207,12 +1258,6 @@ didCompleteWithError:(NSError *)error {
     return count;
 }
 
-- (NSDictionary *)continuationSamplingOverridesForMaxTokens:(NSInteger)configuredMaxTokens {
-    return @{@"temperature": @0.5,
-             @"presence_penalty": @0,
-             @"frequency_penalty": @0,
-             @"max_tokens": @(MAX(1, MIN(1024, configuredMaxTokens)))};
-}
 
 - (NSString *)outlineTemplateForType:(NSString *)outlineType {
     if ([outlineType isEqualToString:@"meeting"]) {

@@ -459,8 +459,17 @@ window.L.CalcTileLayer = window.L.CanvasTileLayer.extend({
 				this.requestSheetGeometryData();
 			}
 
-			this._viewId = statusJSON.viewid;
-			app.activeDocument.setActiveViewID(this._viewId);
+			// Incremental iOS status messages can omit viewid. Keep the live view;
+			// clearing it here breaks all selection-bound format readbacks.
+			if (Number.isInteger(statusJSON.viewid) && statusJSON.viewid >= 0)
+				this._viewId = statusJSON.viewid;
+			if (!Number.isInteger(this._viewId) && window.ThisIsTheiOSApp) {
+				const ids = Object.keys(this._map._viewInfo || {});
+				if (ids.length === 1 && /^\d+$/.test(ids[0]))
+					this._viewId = Number(ids[0]);
+			}
+			if (Number.isInteger(this._viewId) && this._viewId >= 0)
+				app.activeDocument.setActiveViewID(this._viewId);
 
 			console.assert(this._viewId >= 0, 'Incorrect viewId received: ' + this._viewId);
 

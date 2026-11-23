@@ -338,11 +338,14 @@ window.L.Map = window.L.Evented.extend({
 			(docType === 'text' || docType === 'presentation'|| docType === 'spreadsheet');
 
 		this.setupCoreAccessibility(hasAccessibilitySupport);
-		this.createTextInput(hasAccessibilitySupport);
+		this.createTextInput(hasAccessibilitySupport, docType);
 	},
 
-	createTextInput: function(enableA11y) {
+	createTextInput: function(enableA11y, docType) {
 		this._textInput = enableA11y ? window.L.a11yTextInput() : window.L.textInput();
+		// The first status creates this input before _docLayer exists. Use the
+		// type from that status rather than reading a still-null getDocType().
+		this._textInput.setDocumentType(docType || this.getDocType());
 		this.addLayer(this._textInput);
 	},
 

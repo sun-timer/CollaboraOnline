@@ -106,7 +106,7 @@ class MobileAiCalcDialog {
 
 	private render(): void {
 		const state = this.controller.getState();
-		this.layout.resultPreview.textContent = state.preview || '';
+		this.layout.resultPreview.textContent = this.previewText(state.preview || '');
 		const active = state.state === 'loading' || state.state === 'streaming';
 		const ready = state.state === 'ready' && !!state.preview;
 		if (ready) {
@@ -117,7 +117,7 @@ class MobileAiCalcDialog {
 			this.layout.setStage('input');
 		}
 		const canGenerate =
-			!active &&
+			!active && state.state !== 'applying' &&
 			(this.taskType === 'calc_formula' ||
 				this.taskType === 'calc_new_table' ||
 				!!CalcAiContext.getSelectedRange());
@@ -129,7 +129,7 @@ class MobileAiCalcDialog {
 			this.layout.applyButton.disabled = !ready;
 		}
 		this.layout.status.textContent =
-			state.error ||
+			state.error || (state.state === 'applying' ? '正在执行，请稍候…' : '') ||
 			(active
 				? state.state === 'streaming'
 					? 'AI 正在输出…'
@@ -137,5 +137,22 @@ class MobileAiCalcDialog {
 				: ready
 					? '生成完成'
 					: '');
+	}
+
+	/** Chart results stay JSON for apply; the sheet shows the Chinese summary. */
+	private previewText(preview: string): string {
+		if (this.taskType !== 'calc_chart' || !preview) {
+			return preview;
+		}
+		const plan = CalcAiCatalog.extractJsonObject(preview);
+		if (!plan || typeof plan !== 'object') {
+			return '正在生成图表方案…';
+		}
+		const summary = typeof plan.summary === 'string' ? plan.summary.trim() : '';
+		const title =
+			plan.chart && typeof plan.chart.title === 'string'
+				? plan.chart.title.trim()
+				: '';
+		return summary || title || '将根据原始选区创建图表';
 	}
 }

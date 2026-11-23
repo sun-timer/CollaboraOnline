@@ -2,6 +2,34 @@
  * Android lolib_wai_article_dialog — category → subtype → dynamic fields.
  */
 
+/** Visible words of the generated HTML, with paragraph breaks kept as newlines. */
+function visibleTextForTyping(html: string): string {
+	const holder = document.createElement('div');
+	holder.innerHTML = html;
+	const walk = (node: Node): string => {
+		if (node.nodeType === Node.TEXT_NODE) {
+			return node.textContent || '';
+		}
+		if (node.nodeType !== Node.ELEMENT_NODE) {
+			return '';
+		}
+		const el = node as HTMLElement;
+		if (el.tagName === 'BR') {
+			return '\n';
+		}
+		let inner = '';
+		el.childNodes.forEach((child) => {
+			inner += walk(child);
+		});
+		if (el.tagName === 'P' || el.tagName === 'LI' || /^H[1-6]$/.test(el.tagName)) {
+			const line = inner.trim();
+			return line ? line + '\n' : '';
+		}
+		return inner;
+	};
+	return walk(holder).replace(/\n{3,}/g, '\n\n').trim();
+}
+
 class MobileAiArticleGenerateDialog {
 	private readonly controller: WriterAiController;
 	private readonly sheet: MobileAiSheet;
@@ -130,7 +158,22 @@ class MobileAiArticleGenerateDialog {
 			'mobile-ai-task-dialog__btn mobile-ai-task-dialog__btn--primary';
 		this.insertBtn.textContent = '插入文档';
 		this.insertBtn.onclick = async () => {
-			const html = MobileAiResultRenderer.toHtml(this.controller.getState().preview);
+			const preview = this.controller.getState().preview || '';
+			const html = MobileAiResultRenderer.toHtml(preview);
+			const iosWriter =
+				!!(window as any).ThisIsTheiOSApp &&
+				(window as any).app?.map?.getDocType?.() === 'text';
+			if (iosWriter) {
+				// Visible words go through the hidden field, same as typing.
+				// HTML paste leaves the field empty, so a held delete stops.
+				const typed = visibleTextForTyping(html) || preview.trim();
+				if (this.controller.insertPreviewByTyping(typed)) {
+					if (!this.disposed) this.close();
+				} else {
+					this.status.textContent = '未能写入文档，请重试';
+				}
+				return;
+			}
 			if ((window as any).ThisIsTheiOSApp) {
 				if (await this.controller.acceptAsync(html) && !this.disposed) this.close();
 			} else {

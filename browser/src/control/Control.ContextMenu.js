@@ -190,6 +190,10 @@ window.L.Control.ContextMenu = window.L.Control.extend({
 
 	_createContextMenuStructure: function(obj) {
 		var docType = this._map.getDocType();
+		if (window.ThisIsTheiOSApp && docType === 'presentation' && app.activeDocument.tableMiddleware.hasTableSelection() &&
+			!obj.menu.some(function(item) { return item.command === '.uno:DeleteTable'; })) {
+			obj.menu.unshift({text: '删除表格', type: 'command', command: '.uno:DeleteTable', enabled: true});
+		}
 		var contextMenu = {};
 		var sepIdx = 1, itemName;
 		var subMenuIdx = 1;
@@ -251,7 +255,8 @@ window.L.Control.ContextMenu = window.L.Control.extend({
 					(this._map['wopi'].HideChangeTrackingControls || this.options.allowlist.tracking.indexOf(commandName) === -1) &&
 					!(docType === 'text' && this.options.allowlist.text.indexOf(commandName) !== -1) &&
 					!(docType === 'spreadsheet' && this.options.allowlist.spreadsheet.indexOf(commandName) !== -1) &&
-					!(docType === 'presentation' && this.options.allowlist.presentation.indexOf(commandName) !== -1) &&
+					!(docType === 'presentation' && (this.options.allowlist.presentation.indexOf(commandName) !== -1 ||
+						(window.ThisIsTheiOSApp && commandName === 'DeleteTable' && app.activeDocument.tableMiddleware.hasTableSelection()))) &&
 					!(docType === 'drawing' && this.options.allowlist.drawing.indexOf(commandName) !== -1)) {
 					continue;
 				}

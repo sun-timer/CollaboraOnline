@@ -99,6 +99,36 @@ window.L.WriterTileLayer = window.L.CanvasTileLayer.extend({
 		}
 	},
 
+	/**
+	 * iOS opens documents through a load path whose status messages omit
+	 * `viewid`, leaving `_viewId` undefined: tiles, AI insertion and the native
+	 * insertion probe all need it. Single-view documents are unambiguous, so
+	 * adopt the first id from `map._viewInfo` (same fallback `Socket.ts` uses
+	 * after a docalreadyloaded reconnect).
+	 */
+	_ensureViewIdFromViewInfo: function () {
+		if (typeof this._viewId === 'number' && this._viewId >= 0) {
+			return this._viewId;
+		}
+		const viewInfo = this._map && this._map._viewInfo;
+		if (!viewInfo || typeof viewInfo !== 'object') {
+			return this._viewId;
+		}
+		const ids = Object.keys(viewInfo);
+		for (let i = 0; i < ids.length; i++) {
+			const id = parseInt(ids[i], 10);
+			if (!isNaN(id) && id >= 0) {
+				this._viewId = id;
+				if (app.activeDocument && app.activeDocument.setActiveViewID) {
+					app.activeDocument.setActiveViewID(id);
+				}
+				window.app.console.log('Restored viewId from _viewInfo in status handler: ' + id);
+				return id;
+			}
+		}
+		return this._viewId;
+	},
+
 	_onStatusMsg: function (textMsg) {
 		const statusJSON = JSON.parse(textMsg.replace('status:', '').replace('statusupdate:', ''));
 
@@ -119,6 +149,8 @@ window.L.WriterTileLayer = window.L.CanvasTileLayer.extend({
 			if (statusJSON.viewid !== undefined) {
 				this._viewId = statusJSON.viewid;
 				app.activeDocument.setActiveViewID(this._viewId);
+			} else {
+				this._ensureViewIdFromViewInfo();
 			}
 			if (this._documentInfo === '') {
 				this._documentInfo = textMsg;
@@ -143,6 +175,8 @@ window.L.WriterTileLayer = window.L.CanvasTileLayer.extend({
 		if (statusJSON.viewid !== undefined) {
 			this._viewId = statusJSON.viewid;
 			app.activeDocument.setActiveViewID(this._viewId);
+		} else {
+			this._ensureViewIdFromViewInfo();
 		}
 
 		console.assert(this._viewId >= 0, 'Incorrect viewId received: ' + this._viewId);

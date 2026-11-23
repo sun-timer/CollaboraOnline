@@ -82,7 +82,7 @@ describe('CalcAiController', function () {
 		};
 	});
 
-	it('streams a formula preview and inserts the normalized formula once', function () {
+	it('streams a formula preview and inserts the normalized formula once', async function () {
 		const bridge = createFakeBridge();
 		const inserted: string[] = [];
 		const controller = new CalcAiController(bridge, {
@@ -105,7 +105,7 @@ describe('CalcAiController', function () {
 
 		assert.equal(controller.getState().state, 'ready');
 		assert.equal(inserted.length, 0);
-		assert.equal(controller.accept(), true);
+		assert.equal(await controller.accept(), true);
 		assert.deepEqual(inserted, ['=AVERAGE(A1:A10)']);
 		assert.deepEqual(bridge.calls.accept, [
 			{ requestId: 'request-1', text: '=AVERAGE(A1:A10)' },
@@ -113,7 +113,7 @@ describe('CalcAiController', function () {
 		assert.equal(controller.getState().state, 'accepted');
 	});
 
-	it('keeps data analysis read-only without inserting into cells', function () {
+	it('keeps data analysis read-only without inserting into cells', async function () {
 		const bridge = createFakeBridge();
 		const inserted: string[] = [];
 		const controller = new CalcAiController(bridge, {
@@ -132,11 +132,11 @@ describe('CalcAiController', function () {
 		);
 		bridge.emit(aiMessage('ai.done', { fullText: '数据整体平稳' }));
 		assert.equal(controller.getState().state, 'ready');
-		assert.equal(controller.accept(), false);
+		assert.equal(await controller.accept(), false);
 		assert.deepEqual(inserted, []);
 	});
 
-	it('rejects empty prompts and empty analysis ranges', function () {
+	it('rejects empty prompts and empty analysis ranges', async function () {
 		const bridge = createFakeBridge();
 		const controller = new CalcAiController(bridge, {
 			pastePlainText() {
@@ -152,7 +152,7 @@ describe('CalcAiController', function () {
 		assert.equal(controller.getState().error, '请先选择要分析的单元格区域');
 	});
 
-	it('rejects Writer documents', function () {
+	it('rejects Writer documents', async function () {
 		(window as any).app.map.getDocType = function () {
 			return 'text';
 		};

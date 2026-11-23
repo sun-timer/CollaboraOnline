@@ -32,7 +32,7 @@ function harness(surface = 'quick') {
 		CalcEditorFormat: { isActive: () => false },
 		GraphicSelection: { hasActiveSelection: () => selection.active,
 			get extraInfo() { return { id: selection.id }; } },
-		TextSelections: { isActive: () => selection.text },
+		TextSelections: { isActive: () => selection.text, formatStateKey: () => String(selection.range || 0) },
 		NativeBridge: { getInstance: () => ({ getDocumentSessionId: () => selection.session }) },
 	});
 	for (const name of ['WriterEditorController', 'WriterQuickActionBar', 'ImpressEditorPanel'])
@@ -133,8 +133,11 @@ test(surface + ': text editing uses cursor/range state and stale whole-box resul
 		h.core['.uno:Bold'] = 'true';
 		h.map.fire('commandstatechanged', { commandName: '.uno:Bold', state: 'true' });
 		h.reply(old);
+		assert.deepEqual(h.active(), [false, false, false, false]);
+		const textRequest = h.request();
+		assert.equal(textRequest.selectionId, 'text');
+		h.reply(textRequest, ['true', 'mixed', 'false', 'false']);
 		assert.deepEqual(h.active(), [true, false, false, false]);
-		assert.equal(h.messages.length, 0);
 	} finally { h.close(); }
 });
 
@@ -170,7 +173,10 @@ test('opening the common panel reuses the quick bar snapshot and keeps both surf
 		h.map.fire('commandstatechanged', { commandName: '.uno:Bold', state: 'true' });
 		assert.deepEqual(h.active(), [false, true, false, true], 'a closed panel has no live subscriptions');
 		h.bar.open();
+		assert.deepEqual(h.active(), [false, false, false, false]);
+		const selectedText = h.request();
+		assert.equal(selectedText.selectionId, 'text');
+		h.reply(selectedText, ['true', 'false', 'false', 'false']);
 		assert.deepEqual(h.active(), [true, false, false, false]);
-		assert.equal(h.messages.length, 0, 'opening during text editing must not query or format a whole box');
 	} finally { quick.close(); h.close(); }
 });

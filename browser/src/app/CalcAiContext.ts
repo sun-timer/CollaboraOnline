@@ -36,18 +36,31 @@ class CalcAiContext {
 	}
 
 	static getSelectedRange(): string {
-		try {
-			const input = document.querySelector(
-				'#addressInput input',
-			) as HTMLInputElement | null;
-			const value = input && typeof input.value === 'string' ? input.value.trim() : '';
-			if (value) {
-				return value;
-			}
-		} catch (_error) {
-			// Fall through to the active cell.
-		}
-		return CalcAiContext.getActiveCellAddress();
+		// aria-label is maintained by the core celladdress callback; value may
+		// contain an unsubmitted address typed by the user.
+		const layer = (window as any).app?.map?._docLayer;
+		const selected = layer?._calcAiSelection;
+		const address = (selected?.part === layer?._selectedPart ? selected.address : '') ||
+			document.querySelector('#addressInput input')?.getAttribute('aria-label')?.trim() || '';
+		return /^\$?[A-Z]+\$?[1-9]\d*(?::\$?[A-Z]+\$?[1-9]\d*)?$/i.test(address)
+			? address : CalcAiContext.getActiveCellAddress();
+	}
+
+	static chartRange(range: string): string {
+		if (range.includes('.')) return range;
+		const layer = (window as any).app?.map?._docLayer;
+		const name = layer?._partNames?.[layer._selectedPart];
+		return typeof name === 'string' ? "$'" + name.replace(/'/g, "''") + "'." + range : range;
+	}
+
+	static scope(): string {
+		return JSON.stringify([NativeBridge.getInstance().getDocumentSessionId(), (window as any).app?.map?._docLayer?._selectedPart]);
+	}
+
+	static snapshot(): string {
+		const app = (window as any).app;
+		return JSON.stringify([NativeBridge.getInstance().getDocumentSessionId(),
+			app?.map?._docLayer?._selectedPart, CalcAiContext.getSelectedRange()]);
 	}
 
 	static getSelectedCellData(): string {
@@ -84,10 +97,17 @@ class CalcAiContext {
 		return cellAddress ? { cellAddress } : {};
 	}
 
+	private static usedRangeHint(): string {
+		const layer = (window as any).app?.map?._docLayer;
+		if (!Number.isInteger(layer?._lastRow) || !Number.isInteger(layer?._lastColumn)) return '';
+		return '当前工作表已用区域：A1:' + CalcAiContext.columnToLetters(layer._lastColumn) + (layer._lastRow + 1) +
+			'。整列选区不代表需要生成整列数据。以下是选区数据：\n';
+	}
+
 	static buildAnalysisContext(): { [key: string]: any } {
 		return {
 			cellRange: CalcAiContext.getSelectedRange(),
-			cellData: CalcAiContext.getSelectedCellData(),
+			cellData: CalcAiContext.usedRangeHint() + CalcAiContext.getSelectedCellData(),
 		};
 	}
 }

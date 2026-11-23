@@ -44,6 +44,12 @@ class CalcEditorFormat {
 			? CalcEditorFormat.color('.uno:CharBackColor') : null;
 	}
 
+	static numeric(command: string): number | null {
+		const value = CalcEditorFormat.state(command);
+		return (typeof value === 'number' || typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value.trim())) &&
+			Number.isFinite(Number(value)) ? Number(value) : null;
+	}
+
 	static number(command: string): number | null {
 		const state = CalcEditorFormat.state(command);
 		if (typeof state !== 'number' &&

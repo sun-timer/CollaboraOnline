@@ -459,7 +459,7 @@ class UserList extends window.L.Control {
 
 		// Android is a single local editor. A first-load status can arrive after
 		// addview, so the local "guest user" is announced as someone else joining.
-		if ((window as any).ThisIsTheAndroidApp) {
+		if ((window as any).ThisIsTheAndroidApp || (window as any).ThisIsTheiOSApp) {
 			return;
 		}
 

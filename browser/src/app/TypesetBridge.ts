@@ -14,6 +14,7 @@ interface TypesetStructuredExtract {
 	fullText: string;
 	paragraphs: string[];
 	images?: { [marker: string]: TypesetImagePayload };
+	sourceExtension?: string;
 }
 
 interface TypesetFillResult {

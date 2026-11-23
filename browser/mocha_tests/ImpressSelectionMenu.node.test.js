@@ -25,7 +25,7 @@ function createHarness(docType = 'presentation', editable = true) {
 		open() { calls.push([name, this.task]); }
 		close() {}
 	};
-	const context = vm.createContext({ window, document: window.document, console,
+	const context = vm.createContext({ NativeBridge: {getInstance:()=>({getDocumentSessionId:()=> 'deck'})}, window, document: window.document, console,
 		MobileAiOperationDialog: dialog('operation'),
 		MobileAiArticleGenerateDialog: dialog('article'),
 		MobileAiFormatBatchDialog: dialog('formatBatch'),
@@ -117,3 +117,22 @@ test('a stale Word outline item cannot open the Word dialog inside PPT', () => {
 		assert.equal(harness.calls.length, 0);
 	} finally { harness.close(); }
 });
+
+ test('table deletion is scoped to the captured table and never exposed in reading mode', () => {
+    const h = createHarness();
+    try {
+        const w = h.window;
+        w.ThisIsTheiOSApp = true;
+        w.app.activeDocument = {tableMiddleware:{hasTableSelection:()=>true,currentTableMarkerJson:'table-1'}};
+        w.app.map._docLayer = {_viewId:0,_selectedPart:0};
+        // Install the native session facade in the VM through the window binding.
+        w.NativeBridge = {getInstance:()=>({getDocumentSessionId:()=> 'deck'})};
+        const items = h.menu.tableDeleteItems();
+        assert.equal(items[0].unoCommand, '.uno:DeleteTable');
+        assert.equal(h.menu.isItemVisible(items[0],{mode:'text',editable:true,editMode:false}),false);
+        let calls = 0; w.app.map.sendUnoCommand=()=>calls++; w.app.map.isEditMode=()=>true;
+        h.menu.runAction(items[0]); assert.equal(calls,1);
+        w.app.activeDocument.tableMiddleware.currentTableMarkerJson='table-2';
+        h.menu.runAction(items[0]); assert.equal(calls,1);
+    } finally {h.close();}
+ });

@@ -490,6 +490,36 @@ describe('WriterAiController', function () {
 			(global as any).window = previousWindow;
 		}
 	});
+	it('allows typesetting to replace the complete document regardless of catalog append mode', async function () {
+		const previousWindow = (global as any).window;
+		const originalGetInstance = NativeBridge.getInstance;
+		const posted: NativeBridgeEnvelope[] = [];
+		const nativeBridge = new (NativeBridge as any)({
+			postMessage: (message: string) => posted.push(JSON.parse(message)),
+		}) as NativeBridge;
+		NativeBridge.getInstance = () => nativeBridge;
+		(global as any).window = {
+			ThisIsTheiOSApp: true, setTimeout, clearTimeout,
+			app: { map: { getDocType: () => 'text', isEditMode: () => true,
+				focus: () => undefined, _docLayer: { _viewId: 42 } } },
+		};
+		try {
+			const bridge = createFakeBridge('原文全文');
+			const controller = new WriterAiController(bridge);
+			controller.request('continue');
+			bridge.emit(aiMessage('ai.done', { fullText: '排版全文' }));
+			const insertion = controller.acceptAsync('<p>排版全文</p>', 'replaceDocument');
+			assert.equal(posted[0].payload?.resultMode, 'replaceDocument');
+			nativeBridge.onMessage({
+				...posted[0], type: 'ai.text.insert.done', payload: { inserted: true },
+			});
+			assert.equal(await insertion, true);
+			assert.equal(bridge.calls.accept.length, 1);
+		} finally {
+			NativeBridge.getInstance = originalGetInstance;
+			(global as any).window = previousWindow;
+		}
+	});
 	it('uses native Impress paste and ignores insertion replies from another document', async function () {
 		const previousWindow = (global as any).window;
 		const originalGetInstance = NativeBridge.getInstance;

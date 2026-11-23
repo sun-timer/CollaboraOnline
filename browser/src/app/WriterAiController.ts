@@ -23,7 +23,7 @@ interface WriterAiDocumentAdapter {
 	insertWriterHtml?(
 		html: string,
 		sourceRequestId: string,
-		resultMode: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd',
+		resultMode: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd' | 'replaceDocument',
 	): Promise<boolean>;
 	replaceSelection?(text: string): boolean;
 	appendAfterSelection?(text: string, originalSelection?: string): boolean;
@@ -43,23 +43,58 @@ interface WriterAiControllerState {
 
 type WriterAiStateListener = (state: WriterAiControllerState) => void;
 
+/**
+ * Resolve the LOK view id of the active document, or null when it is unknown.
+ *
+ * iOS opens some documents through a status path that does not carry `viewid`
+ * (the same gap `Socket.ts` patches for the reconnect path), which leaves
+ * `_docLayer._viewId` undefined and used to reject every AI insertion. Fall
+ * back to the active document view and then to `_viewInfo`, and write the
+ * resolved id back because the native insertion probe reads the same field.
+ */
+function resolveIosViewId(): number | null {
+	const app = (window as any).app;
+	const map = app?.map;
+	const docLayer = map?._docLayer;
+	const candidates: any[] = [docLayer?._viewId, app?.activeDocument?.activeViewID];
+	const viewInfo = map?._viewInfo;
+	if (viewInfo && typeof viewInfo === 'object') {
+		const keys = Object.keys(viewInfo);
+		if (keys.length > 0) {
+			candidates.push(parseInt(keys[0], 10));
+		}
+	}
+	for (const candidate of candidates) {
+		if (typeof candidate === 'number' && Number.isInteger(candidate) && candidate >= 0) {
+			if (docLayer && docLayer._viewId !== candidate) {
+				docLayer._viewId = candidate;
+			}
+			return candidate;
+		}
+	}
+	return null;
+}
+
 function insertIosNativeHtml(
 	html: string,
 	sourceRequestId: string,
-	resultMode?: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd',
+	resultMode?: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd' | 'replaceDocument',
 ): Promise<boolean> {
 	const nativeBridge = NativeBridge.getInstance();
 	const requestId = (resultMode ? 'ai-writer-insert-' : 'ai-insert-') + sourceRequestId;
 	const documentSessionId = nativeBridge.getDocumentSessionId();
 	const map = (window as any).app?.map;
-	const viewId = map?._docLayer?._viewId;
-	if (!sourceRequestId || !Number.isInteger(viewId) || viewId < 0) {
+	if (!sourceRequestId) {
 		return Promise.reject(new Error('文档视图未准备好，未插入 AI 结果'));
 	}
 	if (map?.isEditMode && !map.isEditMode() && map._switchToEditMode) {
 		map._switchToEditMode();
 	}
 	map?.focus?.(false);
+	// Resolve the view id only after the edit-mode switch: switching can rebuild
+	// the document layer. `-1` asks native to resolve the active view itself.
+	const resolvedViewId = resolveIosViewId();
+	const viewId = resolvedViewId === null ? -1 : resolvedViewId;
 	return new Promise((resolve, reject) => {
 		let settled = false;
 		const cleanup = { timer: undefined as number | undefined };
@@ -385,8 +420,50 @@ class WriterAiController {
 		return true;
 	}
 
+	/**
+	 * iOS Writer：把文案按手打送进隐藏输入框。输入事件自己更新缓冲并把字写入
+	 * 文档，不再走 HTML 粘贴。光标先移到文末，和「插入文档」的落点一致。
+	 */
+	insertPreviewByTyping(text: string): boolean {
+		if (
+			this.state.state !== 'ready' ||
+			!this.state.requestId ||
+			!this.state.preview ||
+			!this.isWriterDocument()
+		) {
+			return false;
+		}
+		const typed = (text || '').trim();
+		if (!typed) {
+			return false;
+		}
+		const map = (window as any).app?.map;
+		const textInput = map?._textInput;
+		const socket = (window as any).app?.socket;
+		if (!textInput || typeof textInput.typeTextLikeUser !== 'function') {
+			return false;
+		}
+		if (socket && typeof socket.sendMessage === 'function') {
+			socket.sendMessage('uno .uno:GoToEndOfDoc');
+		}
+		let typedOk = false;
+		try {
+			typedOk = textInput.typeTextLikeUser(typed) === true;
+		} catch (_error) {
+			typedOk = false;
+		}
+		if (!typedOk) {
+			return false;
+		}
+		this.bridge.accept(this.state.requestId, this.state.preview);
+		this.notifyNativeUndoRecord('ai_insert');
+		this.state = { ...this.state, state: 'accepted' };
+		this.notify();
+		return true;
+	}
+
 	/** iOS Writer and Impress wait for LOK's native paste acknowledgement. */
-	async acceptAsync(html: string): Promise<boolean> {
+	async acceptAsync(html: string, resultModeOverride?: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd' | 'replaceDocument'): Promise<boolean> {
 		const isIOS = typeof window !== 'undefined' && !!(window as any).ThisIsTheiOSApp;
 		const isPresentation = this.isPresentationDocument();
 		const isWriter = this.isWriterDocument();
@@ -408,7 +485,7 @@ class WriterAiController {
 				: html;
 			const inserted = isPresentation
 				? await this.documentAdapter.insertPresentationHtml!(insertionHtml, requestId)
-				: await this.documentAdapter.insertWriterHtml!(insertionHtml, requestId, this.resultMode);
+				: await this.documentAdapter.insertWriterHtml!(insertionHtml, requestId, resultModeOverride || this.resultMode);
 			if (this.state.requestId !== requestId || this.state.state !== 'inserting') {
 				return false;
 			}
@@ -590,7 +667,7 @@ class WriterAiController {
 			insertWriterHtml(
 				html: string,
 				sourceRequestId: string,
-				resultMode: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd',
+				resultMode: 'replaceSelection' | 'appendAfterSelection' | 'insertAtEnd' | 'replaceDocument',
 			): Promise<boolean> {
 				return insertIosNativeHtml(html, sourceRequestId, resultMode);
 			},

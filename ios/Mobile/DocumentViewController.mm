@@ -129,6 +129,7 @@ public:
     NSString *nativeDocumentType;
     AISettingsDrawerController *aiDrawer;
     BOOL isClosing;
+    BOOL cancelledWhileOpening;
     BOOL kitConnectionTornDown;
     UIView *documentKeyboardAccessory;
     BOOL documentPickerOpeningDocument;
@@ -672,7 +673,9 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             || strongSelf.webView != expectedWebView || !strongSelf.document
             || strongSelf.document->appDocId != expectedDocumentId) return;
         NSInteger viewId = [result respondsToSelector:@selector(integerValue)] ? [result integerValue] : -1;
-        if (error || viewId < 0 || !strongSelf->nativeBridgeHandler.documentTextInserter) {
+        // viewId stays -1 when the web layer cannot resolve `_viewId`; the
+        // inserter then resolves the active view itself instead of failing.
+        if (error || !strongSelf->nativeBridgeHandler.documentTextInserter) {
             strongSelf->autoGenerateInsertPending = NO;
             [strongSelf->aiResultModal setErrorWithMessage:@"无法定位文档插入位置，请重试"];
             return;
@@ -1000,39 +1003,66 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             if (!owner) { completion(NO, @"文档已关闭"); return; }
             [owner applyImpressTypesetContext:context transform:transform requestId:requestId completion:completion];
         }];
-    nativeBridgeHandler.documentFileURLProvider = ^NSURL * {
+    nativeBridgeHandler.typesetSnapshotURLProvider = ^NSURL * {
         DocumentViewController *strongSelf = weakSelf;
-        if (!strongSelf.document) {
+        if (!strongSelf.document || strongSelf->isClosing) {
             return nil;
         }
-        NSURL *backup = strongSelf.document->typesetSourceBackupURL;
-        if (backup && [[NSFileManager defaultManager] fileExistsAtPath:backup.path]) {
-            return backup;
+        // copyFileURL and the opening backup can both predate recent edits.
+        // Export the live model without changing its URL or original format.
+        lok::Document *doc = [strongSelf loKitDocumentOrNull];
+        if (!doc) return nil;
+        NSURL *snapshotURL = [NSURL fileURLWithPath:[NSTemporaryDirectory()
+            stringByAppendingPathComponent:[NSString stringWithFormat:@"ai-typeset-current-%@.docx", NSUUID.UUID.UUIDString]]];
+        BOOL exported = NO;
+        {
+            auto *mutex = comphelper::SolarMutex::get();
+            if (!mutex) return nil;
+            osl::Guard<comphelper::SolarMutex> guard(mutex);
+            exported = doc->saveAs(snapshotURL.absoluteString.UTF8String, "docx", nullptr);
         }
-        return strongSelf.document->copyFileURL;
+        if (!exported) {
+            [[NSFileManager defaultManager] removeItemAtURL:snapshotURL error:nil];
+            return nil;
+        }
+        return snapshotURL;
     };
     nativeBridgeHandler.originalDocumentURLProvider = ^NSURL * {
         DocumentViewController *strongSelf = weakSelf;
         return strongSelf.document.fileURL;
     };
-    nativeBridgeHandler.reloadDocumentHandler = ^{
+    nativeBridgeHandler.reloadDocumentHandler = ^(NSURL *replacementURL) {
         DocumentViewController *strongSelf = weakSelf;
-        if (!strongSelf.document) {
-            return;
+        if (!strongSelf.document || strongSelf->isClosing) {
+            return NO;
         }
-        NSURL *fileURL = strongSelf.document.fileURL;
-        NSURL *copyURL = strongSelf.document->copyFileURL;
-        if (fileURL && copyURL) {
-            [[NSFileManager defaultManager] removeItemAtURL:copyURL error:nil];
-            [[NSFileManager defaultManager] copyItemAtURL:fileURL toURL:copyURL error:nil];
-        }
+        CODocument *closingDocument = strongSelf.document;
+        NSURL *fileURL = closingDocument.fileURL;
         UIViewController *presenter = strongSelf.presentingViewController;
-        if (!presenter || !fileURL) {
-            return;
+        if (!presenter || !fileURL || !replacementURL) {
+            return NO;
         }
         [strongSelf requestCloseWithCompletion:^{
+            // requestCloseWithCompletion waits for UIDocument/LOK teardown and
+            // any old save to finish. Only then atomically replace the source.
+            // The shared close callback also runs after a failed UIDocument
+            // close. Never replace a file while that document can still save.
+            if (!(closingDocument.documentState & UIDocumentStateClosed)
+                || ![TypesetService copyDocxToOriginalURL:replacementURL originalURL:fileURL]) {
+                LOG_ERR("Could not atomically replace typeset document at " << [fileURL.path UTF8String]);
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"排版写入失败"
+                    message:@"原文件未被替换，已保留原文档内容。请重试或另存后操作。"
+                    preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault
+                    handler:^(UIAlertAction *action) {
+                        [DocumentPresentation presentDocumentAtURL:fileURL from:presenter];
+                    }]];
+                [presenter presentViewController:alert animated:YES completion:nil];
+                return;
+            }
             [DocumentPresentation presentDocumentAtURL:fileURL from:presenter];
         }];
+        return YES;
     };
     long long loadDocumentMillis = (long long)([NSDate date].timeIntervalSince1970 * 1000.0);
     aiConversationStore = [[AiConversationStore alloc]
@@ -1087,13 +1117,25 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             auto *mutex = comphelper::SolarMutex::get();
             if (!mutex) { completion(NO, @"文档未准备好"); return; }
             osl::Guard<comphelper::SolarMutex> guard(mutex);
+            // The web layer resolves this from `_docLayer._viewId`, which can
+            // stay undefined on the iOS load path whose status messages omit
+            // `viewid` (the web side then posts -1). Single-view documents are
+            // unambiguous, so fall back to the first view rather than refusing
+            // the insertion the user just asked for.
+            int targetViewId = static_cast<int>(viewId);
             std::vector<int> viewIds(std::max(1, doc->getViewsCount()));
-            if (!doc->getViewIds(viewIds.data(), viewIds.size())
-                || std::find(viewIds.begin(), viewIds.end(), viewId) == viewIds.end()) {
+            BOOL haveViewIds = doc->getViewIds(viewIds.data(), viewIds.size());
+            if (haveViewIds) {
+                if (std::find(viewIds.begin(), viewIds.end(), targetViewId) == viewIds.end()) {
+                    LOG_INF("ai.text.insert: view " << viewId << " unknown, using view "
+                            << viewIds.front() << " of " << doc->getViewsCount());
+                    targetViewId = viewIds.front();
+                }
+            } else if (targetViewId < 0) {
                 completion(NO, @"文档视图已失效，请重新打开后重试");
                 return;
             }
-            doc->setView(static_cast<int>(viewId));
+            doc->setView(targetViewId);
             auto dispatchSynchronously = [&](const char *command) -> BOOL {
                 css::uno::Sequence<css::beans::PropertyValue> arguments(1);
                 arguments[0].Name = "SynchronMode";
@@ -1114,6 +1156,13 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
                 // the HTML is pasted. This preserves the selected source text.
                 if (!dispatchSynchronously(".uno:GoRight")) {
                     completion(NO, @"无法定位到原文选区末尾");
+                    return;
+                }
+            } else if ([resultMode isEqualToString:@"replaceDocument"]) {
+                // Replace the complete Writer body for AI typesetting. This is
+                // a selection change followed by one HTML paste undo action.
+                if (!dispatchSynchronously(".uno:SelectAll")) {
+                    completion(NO, @"无法选择全文进行排版");
                     return;
                 }
             }
@@ -1286,7 +1335,13 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     }
 
     __weak DocumentViewController *weakSelf = self;
-    [self.document openWithCompletionHandler:^(BOOL success) {
+    CODocument *openingDocument = self.document;
+    [openingDocument openWithCompletionHandler:^(BOOL success) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            DocumentViewController *owner = weakSelf;
+            if (success && (!owner || owner->isClosing || owner->documentOpenGeneration != generation))
+                [openingDocument closeWithCompletionHandler:nil];
+        });
         if (!success) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 DocumentViewController *strongSelf = weakSelf;
@@ -1521,10 +1576,20 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
                                                     name:kCOIOSUserNameDidChangeNotification
                                                   object:nil];
     [self removeDocumentCopyIfNeeded];
+    if (cancelledWhileOpening) {
+        RecentDocumentsStore *store = [[RecentDocumentsStore alloc] init];
+        [store endSession];
+        [self dismissViewControllerAnimated:YES completion:^{
+            void (^done)(void) = self->pendingCloseCompletion;
+            self->pendingCloseCompletion = nil;
+            if (done) done();
+        }];
+    }
     dispatch_group_notify(forwardingThreadGroup, dispatch_get_main_queue(), ^{
         [self.document closeWithCompletionHandler:^(BOOL success) {
             LOG_TRC("close completion handler gets " << (success ? "YES" : "NO"));
             [self tearDownWebView];
+            if (self->cancelledWhileOpening) return;
             if (self->replacingDocument) {
                 void (^closeCompletion)(void) = self->pendingCloseCompletion;
                 self->pendingCloseCompletion = nil;
@@ -1548,6 +1613,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
 
 - (void)requestCloseWithCompletion:(void (^)(void))completion {
     [self hideWriterCommentInfoClearingWebState];
+    if (!isClosing) cancelledWhileOpening = !documentReady;
     self.launchOptions = nil;
     documentReady = NO;
     documentPageDidAppear = NO;
@@ -1556,6 +1622,9 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         return;
     }
     isClosing = YES;
+    documentOpenGeneration++;
+    documentOpeningEpoch++;
+    [self hideDocumentOpeningState];
     [impressOutlineOverlay dismiss];
     [impressTypesetOverlay dismiss];
     [self dismissAIPanel];
@@ -1568,7 +1637,7 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
         [self finishDocumentUiCloseWithCompletion:completion];
     };
 
-    if (self.webView != nil && self.document != nil && self.document->fakeClientFd >= 0) {
+    if (!cancelledWhileOpening && self.webView != nil && self.document != nil && self.document->fakeClientFd >= 0) {
         NSString *script =
             @"(function(){"
              // Close native-backed Web overlays before asking the document
@@ -4242,8 +4311,11 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
 - (void)bottomToolbarDidPressCharacter
 {
     // Android BottomToolbarController CHARACTER quick-action row (all edit doc types).
+    // Toggle: a second tap on 字符 must close the panel it opened.
     [self sendToolbarJavaScript:
-     @"if(window.__coolWriterCharPanel){window.__coolWriterCharPanel.open();}"];
+     @"if(window.__coolWriterCharPanel){"
+      "if(window.__coolWriterCharPanel.toggle){window.__coolWriterCharPanel.toggle();}"
+      "else{window.__coolWriterCharPanel.open();}}"];
 }
 
 - (void)bottomToolbarDidPressParagraph
@@ -4333,8 +4405,8 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
     NSString *session = [payload[@"documentSessionId"] isKindOfClass:NSString.class] ? payload[@"documentSessionId"] : nil;
     NSString *selectionId = [payload[@"selectionId"] isKindOfClass:NSString.class] ? payload[@"selectionId"] : nil;
     if (requestId.length == 0 || requestId.length > 160 || session.length == 0 || selectionId.length == 0
-        || selectionId.length > 20 || [selectionId rangeOfCharacterFromSet:
-            [[NSCharacterSet characterSetWithCharactersInString:@"0123456789"] invertedSet]].location != NSNotFound) return;
+        || selectionId.length > 20 || (![selectionId isEqualToString:@"text"] && [selectionId rangeOfCharacterFromSet:
+            [[NSCharacterSet characterSetWithCharactersInString:@"0123456789"] invertedSet]].location != NSNotFound)) return;
     for (NSString *key in @[@"viewId", @"part"]) {
         id number = payload[key];
         if (![number isKindOfClass:NSNumber.class] || [number doubleValue] < 0 || [number doubleValue] > INT_MAX
@@ -4570,8 +4642,28 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
             [range[@"sheet"] intValue], [range[@"col1"] intValue], [range[@"row1"] intValue],
             [range[@"col2"] intValue], [range[@"row2"] intValue]
         };
+        id borderColor = payload[@"borderColor"];
+        if (borderColor && (![borderColor isKindOfClass:NSNumber.class] ||
+            [borderColor doubleValue] != (double)[borderColor intValue] ||
+            !updateIOSCalcBorderColor(expectedDocument, [rawViewId intValue], expected, [borderColor intValue]))) {
+            [owner replyCalcFormatState:payload success:NO states:@{} error:@"border-color-failed"];
+            return;
+        }
+        if (borderColor) [owner->topToolbarController recordUndoableNativeEdit:@"calc_border_color"];
+        int mergeSameCount = -1;
+        if ([payload[@"mergeSame"] isEqual:@YES]) {
+            mergeSameCount = mergeIOSCalcIdenticalCells(expectedDocument, [rawViewId intValue], expected);
+            if (mergeSameCount < 0) {
+                [owner replyCalcFormatState:payload success:NO states:@{} error:@"merge-same-failed"];
+                return;
+            }
+            if (mergeSameCount > 0) [owner->topToolbarController recordUndoableNativeEdit:@"calc_merge_same"];
+        }
         IOSCalcFormatStates states = getIOSCalcFormatStates(expectedDocument, [rawViewId intValue], expected);
-        NSMutableDictionary *values = [NSMutableDictionary dictionary];
+        NSData *stateData = [NSData dataWithBytes:states.statesJSON.data() length:states.statesJSON.size()];
+        NSDictionary *extra = stateData.length ? [NSJSONSerialization JSONObjectWithData:stateData options:0 error:nil] : nil;
+        NSMutableDictionary *values = [extra isKindOfClass:NSDictionary.class] ? [extra mutableCopy] : [NSMutableDictionary dictionary];
+        if (mergeSameCount >= 0) values[@"merge.same.count"] = @(mergeSameCount);
         if (states.hasNumberFormat) values[@".uno:NumberFormat"] = [NSString stringWithUTF8String:states.numberFormat.c_str()];
         if (states.hasRotation) values[@".uno:AlignmentRotation"] = @(states.rotation);
         if (states.hasStacked) values[@".uno:AlignmentStacked"] = @(states.stacked);

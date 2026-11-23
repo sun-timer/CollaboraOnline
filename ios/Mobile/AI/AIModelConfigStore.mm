@@ -63,12 +63,29 @@ static NSString *const AIModelDefaultEndpoint = @"https://api.openai.com/v1/chat
         if ([[NSUserDefaults standardUserDefaults] stringForKey:endpointModeKey].length == 0) {
             [[NSUserDefaults standardUserDefaults] setObject:@"automatic" forKey:endpointModeKey];
         }
-        [self setFloatIfMissing:0.5f type:type field:@"top_p"];
-        [self setFloatIfMissing:0.9f type:type field:@"temperature"];
-        [self setFloatIfMissing:0.0f type:type field:@"presence_penalty"];
-        [self setFloatIfMissing:0.8f type:type field:@"frequency_penalty"];
-        [self setFloatIfMissing:0.8f type:type field:@"max_tokens_ratio"];
-        [self setFloatIfMissing:0.8f type:type field:@"seed_ratio"];
+        NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+        NSString *versionKey = [self keyForType:type field:@"sampling_version"];
+        if ([defaults integerForKey:versionKey] < 1) {
+            NSDictionary *legacy = @{@"top_p": @0.5, @"temperature": @0.9,
+                @"presence_penalty": @0, @"frequency_penalty": @0.8,
+                @"max_tokens_ratio": @0.8, @"seed_ratio": @0.8};
+            NSMutableDictionary *parameters = [NSMutableDictionary dictionary];
+            for (NSString *field in legacy) {
+                NSNumber *saved = [defaults objectForKey:[self keyForType:type field:field]];
+                if (![saved isKindOfClass:NSNumber.class] || fabs(saved.doubleValue - [legacy[field] doubleValue]) < 0.00001) continue;
+                NSString *name = field;
+                NSNumber *value = saved;
+                if ([field isEqualToString:@"max_tokens_ratio"]) {
+                    name = @"max_tokens"; value = @(MAX(1, lround(saved.doubleValue * 8192)));
+                } else if ([field isEqualToString:@"seed_ratio"]) {
+                    if (saved.doubleValue <= 0.001) continue;
+                    name = @"seed"; value = @(MAX(1, lround(saved.doubleValue * 999999)));
+                }
+                parameters[name] = value;
+            }
+            [defaults setObject:parameters forKey:[self keyForType:type field:@"sampling_parameters"]];
+            [defaults setInteger:1 forKey:versionKey];
+        }
     }
 
     NSString *runtimeEndpoint = [[NSUserDefaults standardUserDefaults] stringForKey:@"AI_OPENAI_ENDPOINT"];
@@ -102,12 +119,7 @@ static NSString *const AIModelDefaultEndpoint = @"https://api.openai.com/v1/chat
     form.endpointMode = [self stringFromDefaults:defaults key:[self keyForType:modelType field:@"endpoint_mode"] fallback:@"automatic"];
     form.modelName = [self stringFromDefaults:defaults key:[self keyForType:modelType field:@"model_name"]
                                      fallback:[self defaultModelName:modelType]];
-    form.topP = [self floatFromDefaults:defaults key:[self keyForType:modelType field:@"top_p"] fallback:0.5f];
-    form.temperature = [self floatFromDefaults:defaults key:[self keyForType:modelType field:@"temperature"] fallback:0.9f];
-    form.presencePenalty = [self floatFromDefaults:defaults key:[self keyForType:modelType field:@"presence_penalty"] fallback:0.0f];
-    form.frequencyPenalty = [self floatFromDefaults:defaults key:[self keyForType:modelType field:@"frequency_penalty"] fallback:0.8f];
-    form.maxTokensRatio = [self floatFromDefaults:defaults key:[self keyForType:modelType field:@"max_tokens_ratio"] fallback:0.8f];
-    form.seedRatio = [self floatFromDefaults:defaults key:[self keyForType:modelType field:@"seed_ratio"] fallback:0.8f];
+    form.samplingParameters = [defaults dictionaryForKey:[self keyForType:modelType field:@"sampling_parameters"]] ?: @{};
     form.apiKey = [self.keychainStore stringForService:AIModelConfigKeychainService
                                                account:[self keyForType:modelType field:@"api_key"]
                                                  error:nil] ?: @"";
@@ -129,12 +141,7 @@ static NSString *const AIModelDefaultEndpoint = @"https://api.openai.com/v1/chat
     [defaults setObject:[@[@"manual", @"automatic"] containsObject:form.endpointMode] ? form.endpointMode : @"automatic"
                    forKey:[self keyForType:modelType field:@"endpoint_mode"]];
     [defaults setObject:[self trimmed:form.modelName] forKey:[self keyForType:modelType field:@"model_name"]];
-    [defaults setFloat:[self clamp:form.topP] forKey:[self keyForType:modelType field:@"top_p"]];
-    [defaults setFloat:[self clamp:form.temperature] forKey:[self keyForType:modelType field:@"temperature"]];
-    [defaults setFloat:[self clamp:form.presencePenalty] forKey:[self keyForType:modelType field:@"presence_penalty"]];
-    [defaults setFloat:[self clamp:form.frequencyPenalty] forKey:[self keyForType:modelType field:@"frequency_penalty"]];
-    [defaults setFloat:[self clamp:form.maxTokensRatio] forKey:[self keyForType:modelType field:@"max_tokens_ratio"]];
-    [defaults setFloat:[self clamp:form.seedRatio] forKey:[self keyForType:modelType field:@"seed_ratio"]];
+    [defaults setObject:form.samplingParameters ?: @{} forKey:[self keyForType:modelType field:@"sampling_parameters"]];
     if (![self.keychainStore setString:[self trimmed:form.apiKey]
                             forService:AIModelConfigKeychainService
                                account:[self keyForType:modelType field:@"api_key"]
@@ -209,49 +216,21 @@ static NSString *const AIModelDefaultEndpoint = @"https://api.openai.com/v1/chat
     return [NSString stringWithFormat:@"%@_%@", [self prefixForType:modelType], field];
 }
 
-- (void)setFloatIfMissing:(float)value type:(AIModelType)type field:(NSString *)field {
-    NSString *key = [self keyForType:type field:field];
-    if ([[NSUserDefaults standardUserDefaults] objectForKey:key] == nil) {
-        [[NSUserDefaults standardUserDefaults] setFloat:value forKey:key];
-    }
-}
 
 - (NSString *)stringFromDefaults:(NSUserDefaults *)defaults key:(NSString *)key fallback:(NSString *)fallback {
     NSString *value = [defaults stringForKey:key];
     return value.length > 0 ? value : fallback;
 }
 
-- (float)floatFromDefaults:(NSUserDefaults *)defaults key:(NSString *)key fallback:(float)fallback {
-    if ([defaults objectForKey:key] == nil) {
-        return fallback;
-    }
-    return [defaults floatForKey:key];
-}
 
 - (NSString *)trimmed:(NSString *)value {
     return [[value isKindOfClass:[NSString class]] ? value : @"" stringByTrimmingCharactersInSet:
             [NSCharacterSet whitespaceAndNewlineCharacterSet]];
 }
 
-- (float)clamp:(float)value {
-    if (isnan(value)) {
-        return 0;
-    }
-    return MAX(0.0f, MIN(1.0f, value));
-}
 
 - (NSDictionary<NSString *, id> *)samplingBodyFieldsForForm:(AIModelConfigForm *)form {
-    static const int kMaxTokensCap = 8192;
-    static const int kMaxSeed = 999999;
-    float maxRatio = [self clamp:form.maxTokensRatio];
-    int maxTokens = MAX(1, (int)lround(maxRatio * kMaxTokensCap));
-    float seedRatio = [self clamp:form.seedRatio];
-    NSMutableDictionary<NSString *, id> *fields = [NSMutableDictionary dictionary];
-    fields[@"max_tokens"] = @(maxTokens);
-    if (seedRatio > 0.001f) {
-        fields[@"seed"] = @(MAX(1, (int)lround(seedRatio * kMaxSeed)));
-    }
-    return fields;
+    return form.samplingParameters ?: @{};
 }
 
 - (NSURL *)chatCompletionsURLForForm:(AIModelConfigForm *)form error:(NSError **)error {

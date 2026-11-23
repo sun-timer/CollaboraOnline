@@ -16,7 +16,7 @@ const vm = require('node:vm');
 
 function createHarness({ connected = true } = {}) {
 	const messages = [];
-	const window = { app: connected ? { socket: { sendMessage: message => messages.push(message) } } : {} };
+	const window = { setTimeout, clearTimeout, app: connected ? { map: { on: (_n, fn) => window.listener = fn, off: async () => {} }, socket: { sendMessage: message => { messages.push(message); queueMicrotask(() => window.listener({commandName: '.uno:InsertObjectChart', success: true})); } } } : {} };
 	const context = vm.createContext({ window, console });
 	for (const file of ['WriterEditorCatalog.ts', 'CalcAiCatalog.ts', 'CalcAiMutateApply.ts']) {
 		const source = fs.readFileSync(path.resolve(__dirname, '../src/app', file), 'utf8');
@@ -24,7 +24,7 @@ function createHarness({ connected = true } = {}) {
 	}
 	return {
 		messages,
-		apply: plan => window.CalcAiMutateApply.apply('calc_chart', JSON.stringify(plan)),
+		apply: plan => window.CalcAiMutateApply.apply('calc_chart', JSON.stringify(plan), plan.chart?.dataRange || plan.dataRange),
 	};
 }
 
@@ -32,9 +32,9 @@ const range = "$'销售 数据'.$A$1:$B$6";
 for (const [type, template] of [
 	['pie', 'Pie'], ['bar', 'Bar'], ['line', 'LineSymbol'], ['column', null],
 ]) {
-	test(`AI ${type} plan sends its type and source range to the document`, () => {
+	test(`AI ${type} plan sends its type and source range to the document`, async () => {
 		const harness = createHarness();
-		assert.equal(harness.apply({ chart: { chartType: type, dataRange: range } }).ok, true);
+		assert.equal((await harness.apply({ chart: { chartType: type, dataRange: range } })).ok, true);
 		assert.equal(harness.messages.length, 1);
 		const prefix = 'uno .uno:InsertObjectChart ';
 		assert.ok(harness.messages[0].startsWith(prefix));
@@ -46,33 +46,33 @@ for (const [type, template] of [
 	});
 }
 
-test('accepts a top-level plan and normalizes chart type whitespace and case', () => {
+test('accepts a top-level plan and normalizes chart type whitespace and case', async () => {
 	const harness = createHarness();
-	assert.equal(harness.apply({ chartType: ' PIE ', dataRange: ' A1:B6 ' }).ok, true);
+	assert.equal((await harness.apply({ chartType: ' PIE ', dataRange: ' A1:B6 ' })).ok, true);
 	const args = JSON.parse(harness.messages[0].slice('uno .uno:InsertObjectChart '.length));
 	assert.equal(args.ChartTemplate.value, 'com.sun.star.chart2.template.Pie');
 	assert.equal(args.RangeList.value, 'A1:B6');
 });
 
-test('invalid or missing chart type does not silently insert a column chart', () => {
+test('invalid or missing chart type does not silently insert a column chart', async () => {
 	for (const chartType of [undefined, '', 'radar', 'pie|bar|column|line']) {
 		const harness = createHarness();
-		const result = harness.apply({ chart: { chartType, dataRange: range } });
+		const result = await harness.apply({ chart: { chartType, dataRange: range } });
 		assert.equal(result.ok, false);
 		assert.match(result.error, /图表类型/);
 		assert.equal(harness.messages.length, 0);
 	}
 });
 
-test('missing source range fails without inserting a chart', () => {
+test('missing source range fails without inserting a chart', async () => {
 	const harness = createHarness();
-	assert.equal(harness.apply({ chart: { chartType: 'pie' } }).ok, false);
+	assert.equal((await harness.apply({ chart: { chartType: 'pie' } })).ok, false);
 	assert.equal(harness.messages.length, 0);
 });
 
-test('a disconnected document returns an insertion failure', () => {
+test('a disconnected document returns an insertion failure', async () => {
 	const harness = createHarness({ connected: false });
-	const result = harness.apply({ chart: { chartType: 'pie', dataRange: range } });
+	const result = await harness.apply({ chart: { chartType: 'pie', dataRange: range } });
 	assert.equal(result.ok, false);
 	assert.match(result.error, /无法发送插入图表命令/);
 });

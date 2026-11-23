@@ -923,33 +923,28 @@ static void TypesetAddContentTypeIfNeeded(Document *ctDoc, NSString *extension, 
 }
 
 + (BOOL)copyDocxToOriginalURL:(NSURL *)docxURL originalURL:(NSURL *)originalURL {
-    if (!docxURL || ![[NSFileManager defaultManager] fileExistsAtPath:docxURL.path]) {
+    if (!docxURL || ![[NSFileManager defaultManager] fileExistsAtPath:docxURL.path]
+        || !originalURL || ![originalURL.pathExtension.lowercaseString isEqualToString:@"docx"]) {
         return NO;
-    }
-    if (!originalURL) return NO;
-    if ([originalURL isFileURL]) {
-        NSError *error = nil;
-        if ([[NSFileManager defaultManager] fileExistsAtPath:originalURL.path]) {
-            [[NSFileManager defaultManager] removeItemAtURL:originalURL error:nil];
-        }
-        return [[NSFileManager defaultManager] copyItemAtURL:docxURL toURL:originalURL error:&error];
     }
     NSData *data = [NSData dataWithContentsOfURL:docxURL];
     if (!data) return NO;
-    if ([originalURL.scheme isEqualToString:@"file"]) {
-        return [data writeToURL:originalURL atomically:YES];
-    }
-    // content:// and other providers: best-effort via NSFileCoordinator
     __block NSError *coordError = nil;
+    __block NSError *writeError = nil;
     __block BOOL success = NO;
     NSFileCoordinator *coordinator = [[NSFileCoordinator alloc] init];
     [coordinator coordinateWritingItemAtURL:originalURL
                                       options:NSFileCoordinatorWritingForReplacing
                                         error:&coordError
                                    byAccessor:^(NSURL *newURL) {
-        success = [data writeToURL:newURL atomically:YES];
+        success = [data writeToURL:newURL options:NSDataWritingAtomic error:&writeError];
     }];
-    return success && !coordError;
+    if (!success || coordError || writeError) {
+        NSLog(@"[Typeset] atomic replace failed url=%@ coordination=%@ write=%@",
+              originalURL.path, coordError.localizedDescription, writeError.localizedDescription);
+        return NO;
+    }
+    return YES;
 }
 
 @end

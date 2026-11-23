@@ -106,6 +106,13 @@ class MobileToolbarColorPicker {
 				);
 				return;
 			case 'border':
+				if (CalcEditorFormat.isActive()) {
+					CalcFormatStateBridge.applyBorderColor(rgb).then((ok) => {
+						if (ok) CalcEditorBorder.drawingColor = rgb;
+						else CalcEditorFormat.notify('边框颜色未能应用');
+					});
+					return;
+				}
 				send(CalcEditorBorder.buildBorderColorUnoCommand(rgb));
 				return;
 		}
