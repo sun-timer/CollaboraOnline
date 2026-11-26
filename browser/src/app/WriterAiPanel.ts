@@ -75,6 +75,20 @@ class WriterAiPanel {
 		if (this.activeDialog && typeof (this.activeDialog as any).close === 'function') {
 			(this.activeDialog as any).close();
 		}
+		if (entry.dialog === 'typeset') {
+			const documentType = MobileAiOperationSheet.resolveDocumentType(
+				(window as any).MobileNativeDocumentType,
+				(window as any).app?.map?.getDocType?.(),
+			);
+			if (documentType === 'presentation') {
+				this.operationSheet.close();
+				this.activeDialog = null;
+				if (typeof (window as any).postMobileMessage === 'function') {
+					(window as any).postMobileMessage('IMPRESS_OPEN_TYPESET');
+				}
+				return;
+			}
+		}
 		if (entry.dialog === 'translate') {
 			this.activeDialog = new MobileAiTranslateDialog();
 		} else if (entry.dialog === 'calc') {

@@ -19,6 +19,7 @@ interface TypesetStructuredExtract {
 
 interface TypesetFillResult {
 	docxPath: string;
+	sourceRequestId?: string;
 	previewHtml?: string;
 }
 

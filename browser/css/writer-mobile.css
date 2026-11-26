@@ -415,6 +415,128 @@
 	text-align: center;
 }
 
+/* Figma PPT AI operation sheet; isolated from Writer and Calc menus. */
+.mobile-ai-sheet--impress-operations .mobile-ai-sheet-panel {
+	position: relative;
+	isolation: isolate;
+	background: #fff;
+	font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-sheet-panel::before {
+	position: absolute;
+	top: 0;
+	right: 0;
+	left: 0;
+	height: 74px;
+	background: linear-gradient(180deg, #f7e6ff 0%, #e5f2ff 58%, rgba(255, 255, 255, 0) 100%);
+	content: '';
+	pointer-events: none;
+	z-index: -1;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-sheet-header {
+	position: relative;
+	z-index: 1;
+	grid-template-columns: 40px minmax(0, 1fr) 40px;
+	height: 62px;
+	min-height: 62px;
+	padding: 0 16px;
+	border-radius: 24px 24px 0 0;
+	background: transparent;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-sheet-title-row {
+	gap: 8px;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-sheet-logo {
+	width: 32px;
+	height: 32px;
+	flex: 0 0 32px;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-sheet-logo img {
+	display: block;
+	width: 32px;
+	height: 32px;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-sheet-title {
+	font-size: 20px;
+	font-weight: 600;
+	color: #101010;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-sheet-close {
+	width: 40px;
+	height: 40px;
+	padding: 0;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-sheet-close img {
+	display: block;
+	width: 40px;
+	height: 40px;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-sheet-body {
+	position: relative;
+	z-index: 1;
+	padding: 0;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-op-root {
+	gap: 0;
+	padding: 20px 16px calc(32px + env(safe-area-inset-bottom));
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-op-sections {
+	gap: 20px;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-op-row {
+	gap: 20px;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-op-spacer,
+.mobile-ai-sheet--impress-operations .mobile-ai-operation-card {
+	box-sizing: border-box;
+	flex: 1 1 0;
+	width: 0;
+	height: 80px;
+	min-height: 80px;
+	max-height: 80px;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-operation-card {
+	gap: 8px;
+	padding: 0 4px;
+	border-radius: 12px;
+	background: #f2f3f5;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-operation-card__icon {
+	width: 32px;
+	height: 32px;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-operation-card__icon img {
+	display: block;
+	width: 32px;
+	height: 32px;
+	object-fit: contain;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-operation-card__label {
+	font-size: 16px;
+	line-height: 20px;
+}
+
+.mobile-ai-sheet--impress-operations .mobile-ai-operation-card--format-batch .mobile-ai-operation-card__label {
+	font-size: 14px;
+}
+
 .writer-function-panel {
 	display: flex;
 	flex-direction: column;

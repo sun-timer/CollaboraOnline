@@ -20,7 +20,7 @@ const CALC_AI_ROWS: Array<Array<string | null>> = [
 const IMPRESS_AI_ROWS: Array<Array<string | null>> = [
 	['impress_generate', 'continue', 'article_generate'],
 	['expand', 'polish', 'condense'],
-	['rewrite', 'text_extract', null],
+	['rewrite', 'text_extract', 'typeset'],
 	['image_generate', 'format_batch', null],
 ];
 
@@ -77,6 +77,7 @@ class MobileAiOperationSheet {
 
 	private render(): void {
 		const documentType = this.getDocumentType();
+		this.sheet.setImpressOperationsMode(documentType === 'presentation');
 		const map = (window as any).app?.map;
 		const isReadOnly =
 			typeof map?.isReadOnlyMode === 'function' && !!map.isReadOnlyMode();
@@ -195,12 +196,17 @@ class MobileAiOperationSheet {
 		button.setAttribute('aria-label', label);
 		const icon = document.createElement('span');
 		icon.className = 'mobile-ai-operation-card__icon';
-		icon.innerHTML = MobileAiOperationIcons.svgFor(entry.taskType);
+		icon.innerHTML = this.getDocumentType() === 'presentation'
+			? MobileAiOperationIcons.impressSvgFor(entry.taskType)
+			: MobileAiOperationIcons.svgFor(entry.taskType);
 		button.appendChild(icon);
 		const text = document.createElement('span');
 		text.className = 'mobile-ai-operation-card__label';
 		text.textContent = label;
 		button.appendChild(text);
+		if (entry.taskType === 'format_batch') {
+			button.classList.add('mobile-ai-operation-card--format-batch');
+		}
 		if (!entry.iosSupport) {
 			button.disabled = true;
 			button.title = 'iOS 尚未支持';

@@ -434,10 +434,14 @@ static const NSInteger kNativeBridgeProtocolVersion = 1;
                         message:@"docx 模板填充失败"];
             return;
         }
+        if (requestId.length > 0 && documentSessionId.length > 0) {
+            self.requestSessions[requestId] = documentSessionId;
+        }
         [self emitEnvelopeType:@"typeset.fill.done"
                      requestId:requestId
                documentSessionId:documentSessionId
-                          payload:@{@"docxPath": filled.path ?: @""}];
+                          payload:@{@"docxPath": filled.path ?: @"",
+                                    @"sourceRequestId": requestId ?: @""}];
         return;
     }
     if ([type isEqualToString:@"typeset.insert"]) {

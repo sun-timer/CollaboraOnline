@@ -473,7 +473,22 @@ static NSDictionary *TypesetExtractStructuredFromEntries(NSDictionary<NSString *
         if (fullText.length > 0) [fullText appendString:@"\n\n"];
         [fullText appendString:para];
     }
-    if (paragraphs.count == 0) return nil;
+    if (paragraphs.count == 0) {
+        // A valid empty Writer document contains only empty paragraphs and
+        // section properties. Do not mistake table/object-only documents for
+        // blank documents and overwrite them with a template.
+        for (Node *child = body->firstChild(); child; child = child->nextSibling()) {
+            if (child->nodeType() != Node::ELEMENT_NODE) continue;
+            NSString *name = TypesetLocalName(child);
+            if (![name isEqualToString:@"p"] && ![name isEqualToString:@"sectPr"]) {
+                return nil;
+            }
+        }
+        if (!TypesetElements(body, @"drawing", kTypesetWordNS).empty()
+            || !TypesetElements(body, @"pict", kTypesetWordNS).empty()
+            || !TypesetElements(body, @"object", kTypesetWordNS).empty()) return nil;
+        return @{@"fullText": @"", @"paragraphs": @[]};
+    }
     NSMutableDictionary *result = [@{
         @"fullText": fullText,
         @"paragraphs": paragraphs,
@@ -682,14 +697,16 @@ static NSDictionary *TypesetExtractFromOdfEntries(NSDictionary<NSString *, NSDat
                      sourceName:(NSString *)sourceName {
     NSString *base64 = TypesetTemplateBase64(typesetType ?: @"general");
     NSData *templateData = [[NSData alloc] initWithBase64EncodedString:base64 options:0];
-    if (!templateData || sections.count == 0) return nil;
+    if (!templateData) return nil;
     NSMutableDictionary<NSString *, NSData *> *entries = [NSMutableDictionary dictionary];
     if (!TypesetUnzipEntries(templateData, entries)) return nil;
     NSData *documentXml = entries[@"word/document.xml"];
     if (!documentXml) return nil;
-    NSData *filledXml = nil;
-    if (!TypesetFillDocumentXml(documentXml, typesetType ?: @"general", sections, &filledXml)) return nil;
-    entries[@"word/document.xml"] = filledXml;
+    if (sections.count > 0) {
+        NSData *filledXml = nil;
+        if (!TypesetFillDocumentXml(documentXml, typesetType ?: @"general", sections, &filledXml)) return nil;
+        entries[@"word/document.xml"] = filledXml;
+    }
     NSString *title = sections[@"title"];
     if (title.length == 0) title = sourceName.length > 0 ? sourceName : @"typeset_output";
     NSCharacterSet *illegal = [NSCharacterSet characterSetWithCharactersInString:@"/\\:?\"<>|"];

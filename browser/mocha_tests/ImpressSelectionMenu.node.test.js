@@ -25,6 +25,13 @@ function createHarness(docType = 'presentation', editable = true) {
 		open() { calls.push([name, this.task]); }
 		close() {}
 	};
+	class Sheet {
+		constructor() { this.root = window.document.createElement('div'); window.document.body.appendChild(this.root); }
+		setBody(body) { this.root.appendChild(body); }
+		setImpressOperationsMode() {}
+		open() {}
+		close() {}
+	}
 	const context = vm.createContext({ NativeBridge: {getInstance:()=>({getDocumentSessionId:()=> 'deck'})}, window, document: window.document, console,
 		MobileAiOperationDialog: dialog('operation'),
 		MobileAiArticleGenerateDialog: dialog('article'),
@@ -33,13 +40,18 @@ function createHarness(docType = 'presentation', editable = true) {
 		MobileAiTranslateDialog: dialog('translate'),
 		MobileAiCalcDialog: dialog('calc'),
 		MobileAiTypesetDialog: dialog('typeset'),
+		MobileAiSheet: Sheet,
+		MobileAiBridge: { getInstance: () => ({ getSelectedText: () => '' }) },
+		MobileAiOperationIcons: { svgFor: () => '<svg></svg>' },
+		WriterAiCatalog: { countUnicodeCodePoints: value => [...value].length },
 	});
 	for (const file of ['MobileAiUiCatalog.ts', 'MobileSelectionMenuIcons.ts',
-		'MobileAiOperationIcons.ts', 'MobileSelectionMenu.ts', 'WriterAiPanel.ts']) {
+		'MobileAiOperationIcons.ts', 'MobileAiOperationSheet.ts', 'MobileSelectionMenu.ts', 'WriterAiPanel.ts']) {
 		const source = fs.readFileSync(path.resolve(__dirname, '../src/app', file), 'utf8');
 		vm.runInContext(stripTypeScriptTypes(source), context, { filename: file });
 	}
-	vm.runInContext('window.__coolWriterAiPanel = Object.create(WriterAiPanel.prototype); window.Menu = MobileSelectionMenu;', context);
+	vm.runInContext('window.__coolWriterAiPanel = Object.create(WriterAiPanel.prototype); window.Menu = MobileSelectionMenu; window.OperationSheet = MobileAiOperationSheet;', context);
+	window.__coolWriterAiPanel.operationSheet = { close: () => calls.push('close-sheet') };
 	window.__coolMobileSelectionMenu = { hasTextSelection: true, hide() {} };
 	const rows = window.Menu.buildRows('text', editable, editable);
 	rows.forEach(row => window.document.body.appendChild(row));
@@ -72,6 +84,41 @@ test('Generate PPT click opens native PPT creation, while Word outline keeps its
 			assert.deepEqual(harness.calls, [expected]);
 		} finally { harness.close(); }
 	}
+});
+
+test('PPT AI typesetting closes the operation sheet and opens the native Impress overlay', () => {
+	const harness = createHarness();
+	try {
+		harness.window.MobileNativeDocumentType = 'presentation';
+		harness.window.__coolWriterAiPanel.openTask('typeset');
+		assert.deepEqual(harness.calls, ['close-sheet', 'IMPRESS_OPEN_TYPESET']);
+	} finally { harness.close(); }
+});
+
+test('Word AI typesetting keeps opening the existing browser dialog', () => {
+	const harness = createHarness('text');
+	try {
+		harness.window.MobileNativeDocumentType = 'text';
+		harness.window.__coolWriterAiPanel.openTask('typeset');
+		assert.deepEqual(harness.calls, [['typeset', undefined]]);
+	} finally { harness.close(); }
+});
+
+test('PPT operation sheet renders eleven actions with typesetting in row three', () => {
+	const harness = createHarness();
+	try {
+		const sheet = new harness.window.OperationSheet(() => {});
+		sheet.open();
+		const cards = [...harness.window.document.querySelectorAll('.mobile-ai-operation-card')];
+		assert.deepEqual(cards.map(card => card.getAttribute('aria-label')), [
+			'生成PPT', '续写', '文案生成', '文案扩写', '文案润色', '文案缩写',
+			'文案重写', '文案提取', 'AI排版', 'AI图片', '格式批量处理',
+		]);
+		const typeset = harness.window.document.querySelector('[aria-label="AI排版"]');
+		assert.ok(typeset);
+		assert.equal(typeset.closest('.mobile-ai-op-row').children[2], typeset);
+		assert.equal([...typeset.closest('.mobile-ai-op-sections').children].indexOf(typeset.closest('.mobile-ai-op-row')), 2);
+	} finally { harness.close(); }
 });
 
 test('PPT extraction, image and format actions open the existing corresponding dialogs', () => {

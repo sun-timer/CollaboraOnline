@@ -3,6 +3,28 @@
  */
 
 class TypesetPreviewHtml {
+	static buildEmptyTemplate(typesetType: string): string {
+		const templates: { [key: string]: { [key: string]: string } } = {
+			paper: {
+				title: '论文标题', abstract: '摘要正文', keywords: '关键词',
+				introduction: '引言正文', heading1: '一级标题', heading2: '二级标题',
+				heading3: '三级标题', body: '正文', conclusion_body: '结语正文', ack_body: '致谢内容',
+			},
+			gov: {
+				recipient: '主送机关：', body: '××××××××××××××××',
+				signature_org: '发文机关署名（比日期长）', signature_date: '20××年×月×日', notes: '（附注内容）',
+			},
+			contract: {
+				title: '合同协议', contract_number: '合同编号：XXXX-2023-001',
+				party_a: '甲方：', party_a_id: '身份证号码：', party_b: '乙方：', party_b_id: '身份证号码：',
+				preamble: '按照平等互利、团结协作、共同发展的精神，经甲乙双方友好协商，就双方共同参与的工程项目达成如下协议条款。',
+				clause_title: '第一条 一级标题', clause_subtitle: '1.1 二级标题', clause_body: '正文',
+			},
+			general: { title: '文档标题', heading1: '一级标题', heading2: '二级标题', heading3: '三级标题', body: '正文段落' },
+		};
+		return TypesetPreviewHtml.build(typesetType, templates[typesetType] || templates.general);
+	}
+
 	static build(typesetType: string, sections: { [key: string]: string }): string {
 		const rendered: { [key: string]: boolean } = {};
 		const parts: string[] = [];

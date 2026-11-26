@@ -1,0 +1,15 @@
+{
+  "images" : [
+    {
+      "filename" : "PptTypesetCloseFigma.svg",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "figma",
+    "version" : 1
+  },
+  "properties" : {
+    "preserves-vector-representation" : true
+  }
+}

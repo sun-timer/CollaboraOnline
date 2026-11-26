@@ -19,6 +19,11 @@
 #import <climits>
 #import <comphelper/solarmutex.hxx>
 #import <rtl/ustring.hxx>
+#include <rtl/ref.hxx>
+// Generated UNO headers specialize this trait, while the bundled SDK's
+// cppu/unotype.hxx predates its primary declaration. A forward declaration
+// also remains valid when building against SDKs that already define it.
+namespace cppu::detail { template<typename> struct IsUnoInterfaceType; }
 using rtl::OUString;
 #import <comphelper/dispatchcommand.hxx>
 #import <com/sun/star/beans/PropertyValue.hpp>
@@ -1855,7 +1860,8 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
     });
     try {
         NSLog(@"[ImpressTypeset] apply_start request=%@ part=%@", requestId, context[@"part"]);
-        if (!comphelper::dispatchCommand(OUString::fromUtf8(".uno:TransformDocumentStructure"), arguments, listener))
+        if (!comphelper::dispatchCommand(OUString::fromUtf8(".uno:TransformDocumentStructure"), arguments,
+                css::uno::Reference<css::frame::XDispatchResultListener>(listener.get())))
             listener->complete(NO, @"无法执行排版命令，请重新打开文档后重试");
     } catch (const css::uno::Exception&) { listener->complete(NO, @"内核应用排版失败，本次修改已回滚"); }
       catch (const std::exception& exception) { listener->complete(NO, [NSString stringWithUTF8String:exception.what()]); }
@@ -2835,6 +2841,10 @@ static const int kDocumentOpenKitIdleIntervalMs = 50;
             return;
         } else if ([message.body isEqualToString:@"IMPRESS_OPEN_OUTLINE"]) {
             [impressOutlineOverlay showWithPrefill:@""];
+            return;
+        } else if ([message.body isEqualToString:@"IMPRESS_OPEN_TYPESET"]) {
+            if (!isClosing && [nativeDocumentType isEqualToString:@"presentation"])
+                [impressTypesetOverlay show];
             return;
         } else if ([message.body isEqualToString:@"WRITER_OPEN_IMAGE_PICKER"]) {
             [self bottomToolbarDidPressInsertImage];
@@ -4288,24 +4298,7 @@ static const CGFloat kOnScreenKeyboardMinHeight = 120.0;
 
 - (void)bottomToolbarDidPressAIFeatures
 {
-    if (![nativeDocumentType isEqualToString:@"presentation"]) {
-        [self sendToolbarJavaScript:@"if(window.__coolWriterAiPanel){window.__coolWriterAiPanel.openOperationSheet();}"];
-        return;
-    }
-    UIAlertController *menu = [UIAlertController alertControllerWithTitle:@"AI功能" message:nil
-        preferredStyle:UIAlertControllerStyleActionSheet];
-    __weak DocumentViewController *weakSelf = self;
-    [menu addAction:[UIAlertAction actionWithTitle:@"AI 排版" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-        DocumentViewController *owner = weakSelf;
-        if (owner && !owner->isClosing) [owner->impressTypesetOverlay show];
-    }]];
-    [menu addAction:[UIAlertAction actionWithTitle:@"文案与图片" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-        [weakSelf sendToolbarJavaScript:@"if(window.__coolWriterAiPanel){window.__coolWriterAiPanel.openOperationSheet();}"];
-    }]];
-    [menu addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    menu.popoverPresentationController.sourceView = bottomToolbarContainer;
-    menu.popoverPresentationController.sourceRect = bottomToolbarContainer.bounds;
-    [self presentViewController:menu animated:YES completion:nil];
+    [self sendToolbarJavaScript:@"if(window.__coolWriterAiPanel){window.__coolWriterAiPanel.openOperationSheet();}"];
 }
 
 - (void)bottomToolbarDidPressCharacter

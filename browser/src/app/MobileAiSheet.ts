@@ -180,6 +180,19 @@ class MobileAiSheet {
 		this.title.textContent = title;
 	}
 
+	setImpressOperationsMode(enabled: boolean): void {
+		this.root.classList.toggle('mobile-ai-sheet--impress-operations', enabled);
+		const logo = this.panel.querySelector('.mobile-ai-sheet-logo');
+		if (logo) {
+			logo.innerHTML = enabled
+				? MobileAiOperationIcons.impressLogoSvg()
+				: MOBILE_AI_LOGO_SVG;
+		}
+		this.closeButton.innerHTML = enabled
+			? MobileAiOperationIcons.impressCloseSvg()
+			: MOBILE_AI_CLOSE_SVG;
+	}
+
 	setBody(content: HTMLElement): void {
 		this.body.replaceChildren(content);
 	}

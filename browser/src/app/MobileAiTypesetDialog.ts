@@ -26,6 +26,8 @@ class MobileAiTypesetDialog {
 	private typesetImages: { [marker: string]: TypesetImagePayload } | null = null;
 	private docxPath = '';
 	private sourceExtension = '';
+	private templateRequestId = '';
+	private blankTemplate = false;
 	private applyError = '';
 	private previewHtml = '';
 	private readonly unsubscribe: () => void;
@@ -132,6 +134,8 @@ class MobileAiTypesetDialog {
 		this.typesetImages = null;
 		this.docxPath = '';
 		this.sourceExtension = '';
+		this.templateRequestId = '';
+		this.blankTemplate = false;
 		this.applyError = '';
 		this.previewHtml = '';
 		this.paragraphs = [];
@@ -228,7 +232,11 @@ class MobileAiTypesetDialog {
 				this.paragraphMode = this.paragraphs.length > 1;
 				const fullText = result.fullText || this.paragraphs.join('\n\n');
 				if (!fullText.trim()) {
-					throw new Error('文档全文提取失败');
+					this.blankTemplate = true;
+					this.previewHtml = TypesetPreviewHtml.buildEmptyTemplate(this.selectedType);
+					this.preview.innerHTML = this.previewHtml;
+					this.fillTemplate({}, epoch);
+					return;
 				}
 				this.controller.request(
 					'typeset',
@@ -300,7 +308,7 @@ class MobileAiTypesetDialog {
 		this.render();
 	}
 
-	private fillTemplate(sections: { [key: string]: string }): void {
+	private fillTemplate(sections: { [key: string]: string }, epoch = this.extractionEpoch): void {
 		if (this.isPresentation() || !TypesetBridge.getInstance().isAvailable()) {
 			this.render();
 			return;
@@ -316,18 +324,23 @@ class MobileAiTypesetDialog {
 				this.typesetImages || undefined,
 			)
 			.then((result) => {
-				if (this.disposed) return;
+				if (this.disposed || epoch !== this.extractionEpoch) return;
 				this.docxPath = result.docxPath || '';
+				this.templateRequestId = result.sourceRequestId || '';
 				this.filling = false;
 				this.render();
 			})
 			.catch((error: Error) => {
-				if (this.disposed) return;
+				if (this.disposed || epoch !== this.extractionEpoch) return;
 				this.filling = false;
 				this.docxPath = '';
-				this.status.textContent =
-					(error && error.message ? error.message : '模板填充失败') +
-					'，将使用 HTML 方式插入';
+				if (this.blankTemplate) {
+					this.applyError = error && error.message ? error.message : '模板生成失败';
+				} else {
+					this.status.textContent =
+						(error && error.message ? error.message : '模板填充失败') +
+						'，将使用 HTML 方式插入';
+				}
 				this.render();
 			});
 	}
@@ -364,6 +377,31 @@ class MobileAiTypesetDialog {
 			this.render();
 			return;
 		}
+		if (this.blankTemplate && this.templateRequestId && (window as any).ThisIsTheiOSApp) {
+			this.inserting = true;
+			this.render();
+			try {
+				const inserted = await insertIosNativeHtml(
+					this.previewHtml,
+					this.templateRequestId,
+					'replaceDocument',
+				);
+				if (this.disposed) return;
+				this.inserting = false;
+				if (!inserted) {
+					this.applyError = '模板写入失败';
+					this.render();
+					return;
+				}
+				this.close();
+			} catch (error) {
+				if (this.disposed) return;
+				this.inserting = false;
+				this.applyError = error instanceof Error ? error.message : '模板写入失败';
+				this.render();
+			}
+			return;
+		}
 		const state = this.controller.getState();
 		const html = this.previewHtml
 			? this.previewHtml
@@ -395,7 +433,7 @@ class MobileAiTypesetDialog {
 			(!!this.docxPath && !this.filling);
 		this.startButton.disabled = active;
 		this.stopButton.disabled = !active || this.extracting;
-		this.copyButton.disabled = !ready;
+		this.copyButton.disabled = !ready || this.blankTemplate;
 		this.regenerateButton.disabled = !ready || active;
 		this.applyButton.disabled = !ready || active;
 		if (this.applyError) this.applyButton.disabled = true;
@@ -415,7 +453,11 @@ class MobileAiTypesetDialog {
 			this.status.textContent =
 				state.state === 'streaming' ? 'AI 正在排版...' : 'AI 正在生成...';
 		} else if (ready) {
-			this.status.textContent = this.sourceExtension === 'docx' && this.docxPath
+			this.status.textContent = this.blankTemplate && this.sourceExtension === 'docx'
+				? '空白文档：将生成所选的完整 DOCX 模板，不会补写正文'
+				: this.blankTemplate
+				? '空白文档：将按所选模板写入并保留原格式；完整页面样式请使用 DOCX'
+				: this.sourceExtension === 'docx' && this.docxPath
 				? '排版完成，可替换当前 DOCX 文档'
 				: '排版完成，将保留原格式并替换正文';
 			this.applyButton.textContent = '覆盖文档';
