@@ -476,7 +476,10 @@ final class CalcDataValidationController {
         LinearLayout row = new LinearLayout(host.getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(host.dpToPx(52));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.topMargin = host.dpToPx(8);
+        row.setLayoutParams(rowLp);
 
         // 值框：操作类型（停止/警告/信息/宏/默默拒绝）+ chevron，#F2F3F5 圆角 24
         errorActionValueView = new TextView(host.getContext());
@@ -497,8 +500,8 @@ final class CalcDataValidationController {
         box.addView(chevron);
         box.setOnClickListener(v -> openOptionPicker(OptionKind.ERROR_ACTION));
         LinearLayout.LayoutParams boxLp = new LinearLayout.LayoutParams(
-                0, host.dpToPx(44), 1f);
-        boxLp.topMargin = host.dpToPx(8);
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        box.setMinimumHeight(host.dpToPx(44));
         row.addView(box, boxLp);
 
         // 浏览按钮：144 宽，#3B80401F 半透明绿底圆角 full，绿字；仅操作=宏时显示
@@ -509,8 +512,7 @@ final class CalcDataValidationController {
         browse.setGravity(Gravity.CENTER);
         browse.setBackgroundResource(R.drawable.lolib_bg_calc_macro_browse);
         LinearLayout.LayoutParams browseLp = new LinearLayout.LayoutParams(
-                host.dpToPx(96), host.dpToPx(40));
-        browseLp.topMargin = host.dpToPx(8);
+                host.dpToPx(72), host.dpToPx(35));
         browseLp.setMarginStart(host.dpToPx(8));
         browse.setOnClickListener(v -> openMacroPicker());
         row.addView(browse, browseLp);

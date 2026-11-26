@@ -785,14 +785,7 @@ class AndroidSelectionMenu {
 	private static onTextCaretUpdate(cursorVisible: boolean): void {
 		if (cursorVisible) AndroidSelectionMenu.finishWriterEditKeyboard();
 		const request = AndroidSelectionMenu.pendingTextInputRequest;
-		if (!request) {
-			AndroidSelectionMenu.imeDiag(
-				'caret_update visible=' + (cursorVisible ? 1 : 0) +
-					' state=' + (app.file?.textCursor?.visible ? 1 : 0) +
-					' request=none',
-			);
-			return;
-		}
+		if (!request) return;
 		AndroidSelectionMenu.imeDiag(
 			'caret_update visible=' + (cursorVisible ? 1 : 0) +
 				' state=' + (app.file?.textCursor?.visible ? 1 : 0) +

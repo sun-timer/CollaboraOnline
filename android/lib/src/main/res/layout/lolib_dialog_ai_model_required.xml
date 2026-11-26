@@ -3,9 +3,9 @@
     android:orientation="vertical"
     android:background="@drawable/lolib_bg_dialog_outline"
     android:paddingTop="20dp"
-    android:paddingBottom="24dp"
-    android:paddingStart="24dp"
-    android:paddingEnd="24dp"
+    android:paddingBottom="20dp"
+    android:paddingStart="4dp"
+    android:paddingEnd="4dp"
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
     <include
@@ -13,6 +13,8 @@
         layout="@layout/lolib_include_ai_dialog_header" />
     <TextView
         android:id="@+id/ai_model_required_message"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
@@ -23,6 +25,8 @@
         android:textSize="16sp" />
     <LinearLayout
         android:id="@+id/ai_model_required_button_row"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"

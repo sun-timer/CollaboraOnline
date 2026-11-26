@@ -203,6 +203,13 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     private static final String[] PPT_CREATE_AUDIENCES = {"大众", "投资者", "学生", "教师", "领导"};
     private static final String[] PPT_CREATE_STYLES = {"通用", "行业调研", "市场推广", "工作汇报", "学术报告", "教学课件"};
     private AlertDialog aiGeneratingDialog;
+    private static boolean welcomeShownThisProcess;
+    private View welcomeOverlay;
+    private boolean homeUiInitializationPending;
+    private long welcomeFirstFrameUptime;
+    private final Runnable initializeHomeUiRunnable = this::initializeHomeUi;
+    private final Runnable dismissWelcomeOverlay = this::hideWelcomeOverlay;
+
 
     // 抽屉内二级面板：activity_ai_model_config.xml overlay（勿用 panel_ai_model_config，真机 ScrollView 灰屏）
     private View modelConfigPanel;
@@ -228,33 +235,97 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     @Override
     public void onCreate(Bundle savedInstanceState) {
         ExitDiagHelper.installOnce();
-        ExitDiagHelper.logPreviousProcessDeaths(this);
         logHomeLifecycle("onCreate_enter", savedInstanceState);
-        // Manifest 为 Splash 主题（首帧欢迎图）；此处切回正式主题后手动恢复 welcome 背景直至 createUI 完成
+        // The first application frame is the responsive welcome artwork.
         setTheme(R.style.LibreOfficeTheme);
         PreferenceManager.setDefaultValues(this, R.xml.documentprovider_preferences, false);
         readPreferences();
         int mode = prefs.getInt(NIGHT_MODE_KEY, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
         AppCompatDelegate.setDefaultNightMode(mode);
-        // 仅冷启动显示欢迎图；进程被杀后 savedInstanceState!=null 时不铺 splash，避免退出回首页闪屏
-        if (savedInstanceState == null) {
-            getWindow().setBackgroundDrawable(getDrawable(R.drawable.lolib_splash_bg));
-        }
+        getWindow().setBackgroundDrawable(null);
         super.onCreate(savedInstanceState);
-
-        // initialize document provider factory
-        //DocumentProviderFactory.initialize(this);
-        //documentProviderFactory = DocumentProviderFactory.getInstance();
+        SystemUiHelper.enableEdgeToEdge(this);
+        SystemUiHelper.applyDocumentChrome(this, SystemUiHelper.isLightMode(this));
 
         SettingsListenerModel.getInstance().setListener(this);
+        if (savedInstanceState == null && !welcomeShownThisProcess) {
+            homeUiInitializationPending = true;
+            showWelcomeOverlay();
+        } else {
+            initializeHomeUi();
+        }
+        logHomeLifecycle("onCreate_done", savedInstanceState);
+    }
 
-        // init UI and populate with contents from the provider
+    private void initializeHomeUi() {
+        if (homeUiInitialized || isFinishing() || isDestroyed()) return;
+        ExitDiagHelper.logPreviousProcessDeaths(this);
         createUI();
         homeUiInitialized = true;
-
-        // createUI 完成后清除 window 欢迎图，避免挡住首页内容；onResume/onStart 再次确保清除
+        homeUiInitializationPending = false;
+        updateRecentFiles();
+        refreshAiDrawerHeader();
         getWindow().setBackgroundDrawable(null);
-        logHomeLifecycle("onCreate_done", savedInstanceState);
+        Log.i(LOGTAG, "welcome_home_ready pid=" + android.os.Process.myPid());
+        if (welcomeOverlay != null) {
+            final View welcome = welcomeOverlay;
+            welcome.getViewTreeObserver().addOnPreDrawListener(
+                    new android.view.ViewTreeObserver.OnPreDrawListener() {
+                        @Override
+                        public boolean onPreDraw() {
+                            welcome.getViewTreeObserver().removeOnPreDrawListener(this);
+                            long elapsed = android.os.SystemClock.uptimeMillis() - welcomeFirstFrameUptime;
+                            if (welcomeOverlay == welcome) {
+                                welcome.postDelayed(dismissWelcomeOverlay, Math.max(0L, 1000L - elapsed));
+                            }
+                            return true;
+                        }
+                    });
+        }
+    }
+
+    private void showWelcomeOverlay() {
+        welcomeShownThisProcess = true;
+        Log.i(LOGTAG, "welcome_overlay_show pid=" + android.os.Process.myPid());
+        final FrameLayout decor = (FrameLayout) getWindow().getDecorView();
+        final View welcome = new View(this);
+        welcome.setBackground(new WelcomeDrawable(this));
+        welcome.setClickable(true);
+        welcome.setElevation(dpToPx(100));
+        welcomeOverlay = welcome;
+        decor.addView(welcome, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        welcome.getViewTreeObserver().addOnDrawListener(new android.view.ViewTreeObserver.OnDrawListener() {
+            private boolean scheduled;
+
+            @Override
+            public void onDraw() {
+                if (scheduled) return;
+                scheduled = true;
+                welcomeFirstFrameUptime = android.os.SystemClock.uptimeMillis();
+                Log.i(LOGTAG, "welcome_first_frame pid=" + android.os.Process.myPid());
+                welcome.post(() -> {
+                    if (welcome.getViewTreeObserver().isAlive()) {
+                        welcome.getViewTreeObserver().removeOnDrawListener(this);
+                    }
+                    if (welcomeOverlay == welcome) {
+                        // Let the welcome frame render before inflating the home screen.
+                        welcome.postOnAnimation(initializeHomeUiRunnable);
+                    }
+                });
+            }
+        });
+    }
+
+    private void hideWelcomeOverlay() {
+        if (welcomeOverlay == null) return;
+        welcomeOverlay.removeCallbacks(dismissWelcomeOverlay);
+        welcomeOverlay.removeCallbacks(initializeHomeUiRunnable);
+        if (welcomeOverlay.getParent() instanceof ViewGroup) {
+            ((ViewGroup) welcomeOverlay.getParent()).removeView(welcomeOverlay);
+        }
+        welcomeOverlay = null;
+        Log.i(LOGTAG, "welcome_overlay_hide pid=" + android.os.Process.myPid());
     }
 
     private String[] getRecentDocuments() {
@@ -580,6 +651,8 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         modelUrlInput = panel.findViewById(R.id.modelUrlInput);
         modelApiKeyInput = panel.findViewById(R.id.modelApiKeyInput);
         modelNameInput = panel.findViewById(R.id.modelNameInput);
+        AiModelPicker.bind(this, modelNameInput, panel.findViewById(R.id.modelFetchButton),
+                modelUrlInput, modelProviderInput, modelApiKeyInput);
         topPBar = panel.findViewById(R.id.topPBar);
         temperatureBar = panel.findViewById(R.id.temperatureBar);
         presencePenaltyBar = panel.findViewById(R.id.presencePenaltyBar);
@@ -1242,7 +1315,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     protected void onPostCreate(Bundle savedInstanceState) {
         super.onPostCreate(savedInstanceState);
 
-        drawerToggle.syncState();
+        if (drawerToggle != null) drawerToggle.syncState();
     }
 
     private void refreshView() {
@@ -1258,7 +1331,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     public void onBackPressed() {
         if (modelConfigPanel != null) {
             closeModelConfigPanel();
-        } else if (drawerLayout.isDrawerOpen(navigationDrawer)) {
+        } else if (drawerLayout != null && drawerLayout.isDrawerOpen(navigationDrawer)) {
             drawerLayout.closeDrawer(navigationDrawer);
             collapseFabMenu();
         } else if (isFabMenuOpen) {
@@ -2361,7 +2434,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // Will close the drawer if the home button is pressed
-        if (drawerToggle.onOptionsItemSelected(item)) {
+        if (drawerToggle != null && drawerToggle.onOptionsItemSelected(item)) {
             return true;
         }
 
@@ -2404,7 +2477,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     @Override
     public void settingsPreferenceChanged(SharedPreferences sharedPreferences, String key) {
         readPreferences();
-        refreshView();
+        if (homeUiInitialized) refreshView();
     }
 
     @Override
@@ -2547,15 +2620,15 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         final long resumeStart = System.currentTimeMillis();
         Log.d(LOGTAG, "onResume homeUiInitialized=" + homeUiInitialized);
         Log.d(LOGTAG, "sortMode=" + sortMode + " filterMode=" + filterMode);
-        if (homeUiInitialized) {
+        if (homeUiInitializationPending) {
+            Log.i(LOGTAG, "home_resume waiting_for_welcome_frame=true");
+        } else if (homeUiInitialized) {
             Log.i(LOGTAG, "home_resume incremental=true");
             updateRecentFiles();
             refreshAiDrawerHeader();
         } else {
             Log.i(LOGTAG, "home_resume full_createUI");
-            createUI();
-            homeUiInitialized = true;
-            refreshAiDrawerHeader();
+            initializeHomeUi();
         }
         Log.i(LOGTAG, "home_resume done ms=" + (System.currentTimeMillis() - resumeStart));
         logHomeLifecycle("onResume_done", null);
@@ -2596,6 +2669,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
 
     @Override
     protected void onDestroy() {
+        hideWelcomeOverlay();
         logHomeLifecycle("onDestroy", null);
         ExitDiagHelper.logHomeLifecycleAfterDocExit("onDestroy");
         ExitDiagHelper.logPhase("home_onDestroy");

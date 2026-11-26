@@ -72,6 +72,11 @@ public final class WaiDropdownPopup {
         if (activity == null || anchor == null || labels == null || labels.length == 0) {
             return;
         }
+        if (anchor.getWidth() == 0) {
+            anchor.post(() -> show(activity, anchor, boundary, labels, selectedIndex,
+                    widthDp, style, icons, listener, onDismiss));
+            return;
+        }
         dismissIfShowing();
 
         float density = activity.getResources().getDisplayMetrics().density;
@@ -142,6 +147,9 @@ public final class WaiDropdownPopup {
 
         ScrollView scroller = new ScrollView(activity);
         scroller.setFillViewport(true);
+        scroller.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+        scroller.setPadding(0, 0, padPx / 2, 0);
+        scroller.setClipToPadding(true);
         scroller.addView(list, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -161,7 +169,7 @@ public final class WaiDropdownPopup {
         if (widthDp > 0) {
             widthPx = Math.round(widthDp * density);
         } else {
-            widthPx = Math.max(anchor.getWidth(), Math.round(311f * density));
+            widthPx = anchor.getWidth();
         }
         // Keep the dropdown inside its host dialog, including when the anchor is
         // close to the dialog's right edge.
@@ -187,6 +195,7 @@ public final class WaiDropdownPopup {
         int popupLeft = Math.max(leftEdge, Math.min(anchorLocation[0], rightEdge - contentWidth));
         int horizontalOffset = popupLeft - anchorLocation[0];
         int contentHeight = Math.min(listHeight, maxListH);
+        scroller.getLayoutParams().height = Math.max(1, contentHeight - padPx * 2);
 
         PopupWindow popup = new PopupWindow(content, contentWidth, contentHeight, true);
         popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));

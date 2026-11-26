@@ -22,12 +22,12 @@
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:layout_gravity="end|center_vertical"
-        android:layout_marginEnd="16dp"
-        android:padding="12dp"
+        android:layout_marginEnd="8dp"
+        android:padding="8dp"
         android:scaleType="centerInside"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:clickable="true"
         android:focusable="true"
-        android:src="@drawable/lolib_wai_ic_close"
+        android:src="@drawable/lolib_ic_ai_close_figma"
         android:contentDescription="关闭" />
 </FrameLayout>

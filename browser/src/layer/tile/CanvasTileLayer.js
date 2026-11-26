@@ -1845,7 +1845,8 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 		if (URLPopUpSection.isOpen() && !(obj.hyperlink && obj.hyperlink.link))
 			URLPopUpSection.closeURLPopUp();
 		if (window.ThisIsTheAndroidApp && typeof window.postMobileMessage === 'function'
-			&& !(obj.hyperlink && obj.hyperlink.link)) {
+			&& this._androidHyperlinkPopupShown && !(obj.hyperlink && obj.hyperlink.link)) {
+			this._androidHyperlinkPopupShown = false;
 			window.postMobileMessage('HYPERLINK_POPUP hide');
 		}
 
@@ -1861,6 +1862,7 @@ window.L.CanvasTileLayer = window.L.Layer.extend({
 				var viewedRect = app.activeDocument.activeLayout.viewedRectangle;
 				var anchorX = (app.file.textCursor.rectangle.x1 - viewedRect.pX1) / app.dpiScale;
 				var anchorY = (app.file.textCursor.rectangle.y1 - viewedRect.pY1) / app.dpiScale;
+				this._androidHyperlinkPopupShown = true;
 				window.postMobileMessage('HYPERLINK_POPUP show ' + JSON.stringify({
 					url: obj.hyperlink.link,
 					text: displayLabel || obj.hyperlink.link,

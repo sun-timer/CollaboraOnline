@@ -38,7 +38,7 @@ public final class ImpressTransitionCatalog {
             new Entry(8, "框", "box", 7, R.drawable.lolib_ic_impress_transition_008),
             new Entry(9, "楔形", "wedge", 8, R.drawable.lolib_ic_impress_transition_009),
             new Entry(10, "百叶窗", "venetian-blinds", 9, R.drawable.lolib_ic_impress_transition_010),
-            new Entry(11, "淡入", "fade", 10, R.drawable.lolib_ic_impress_transition_011),
+            new Entry(11, "淡入", "fade", 10, R.drawable.lolib_ic_impress_fade_review),
             new Entry(12, "切入", "cut", 11, R.drawable.lolib_ic_impress_transition_012),
             new Entry(13, "覆盖", "cover", 12, R.drawable.lolib_ic_impress_transition_013),
             new Entry(14, "溶解", "dissolve", 13, R.drawable.lolib_ic_impress_transition_014),

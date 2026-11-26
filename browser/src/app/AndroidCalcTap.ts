@@ -20,6 +20,7 @@ class AndroidCalcTap {
 		docLayer: any;
 		part: number;
 		cell: string | null;
+		editStarted?: boolean;
 	} | null = null;
 	private static cellMenuTimer = 0;
 	private static androidMap: any = null;
@@ -145,7 +146,22 @@ class AndroidCalcTap {
 			(window as any).AndroidCalcCellMenu?.dismiss();
 			AndroidCalcTap.androidDispatchedAt = now;
 
-			if (sameCell && now - previousTap.at > AndroidCalcTap.doubleTapWindowMs) {
+			// A third tap can arrive while Android is still showing the IME for the double tap.
+			if (sameCell && previousTap.editStarted && app.map.isEditMode() &&
+				now - previousTap.at <= AndroidCalcTap.doubleTapWindowMs) {
+				const caret = app.file?.textCursor;
+				const bounds = app.calc?.cellCursorRectangle;
+				if (caret?.visible && caret.rectangle && bounds?.containsPoint([position.x, position.y])) {
+					const point = { x: caret.rectangle.x1, y: caret.rectangle.y1 };
+					if (bounds.containsPoint([point.x, point.y])) {
+						AndroidSelectionMenu.beginTextInputRequest(point);
+						AndroidSelectionMenu.resolveTextInputTap();
+					}
+				}
+				AndroidCalcTap.report('retain_cell_input=' + cell);
+				return true;
+			}
+			if (sameCell && !previousTap.editStarted && now - previousTap.at > AndroidCalcTap.doubleTapWindowMs) {
 				// Like iOS: a slow second tap requests the menu without sending
 				// another core single-click, which can enter in-cell editing.
 				previousTap.at = now;
@@ -158,7 +174,7 @@ class AndroidCalcTap {
 					(window as any).AndroidCalcCellMenu?.showForAndroidTap(docLayer, part, cell);
 				}, AndroidCalcTap.doubleTapWindowMs);
 				AndroidCalcTap.report('repeat_tap_cell=' + cell);
-			} else if (sameCell) {
+			} else if (sameCell && !previousTap.editStarted) {
 				// Preview keeps the selection, matching iOS; text input requires
 				// an editable document and must never be requested in read-only mode.
 				if (!app.map.isEditMode()) {
@@ -171,6 +187,7 @@ class AndroidCalcTap {
 					AndroidSelectionMenu.cancelTextInputRequest('calc_double_tap_failed');
 					return false;
 				}
+				AndroidCalcTap.lastCellTap = { at: now, x: position.x, y: position.y, docLayer, part, cell, editStarted: true };
 				AndroidSelectionMenu.resolveTextInputTap();
 				AndroidCalcTap.report('double_tap_cell=' + cell);
 			} else {

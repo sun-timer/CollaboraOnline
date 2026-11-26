@@ -968,6 +968,107 @@ Java_org_libreoffice_androidlib_LOActivity_pasteAtCellOnKitThread(JNIEnv* env, j
 
 extern "C"
 JNIEXPORT void JNICALL
+Java_org_libreoffice_androidlib_LOActivity_executeCalcDataCommandsOnKitThread(
+        JNIEnv* env, jobject instance, jstring inRequestId, jobjectArray inCommands,
+        jobjectArray inArguments, jint viewId, jint part)
+{
+    bool requestValid = false;
+    const std::string requestId = javaStringToUtf8(env, inRequestId, requestValid);
+    if (!requestValid || requestId.empty())
+        return;
+    const jsize count = inCommands ? env->GetArrayLength(inCommands) : 0;
+    bool valid = count > 0 && inArguments && env->GetArrayLength(inArguments) == count;
+    std::vector<std::pair<std::string, std::string>> steps;
+    for (jsize i = 0; valid && i < count; ++i)
+    {
+        auto commandValue = static_cast<jstring>(env->GetObjectArrayElement(inCommands, i));
+        auto argsValue = static_cast<jstring>(env->GetObjectArrayElement(inArguments, i));
+        bool commandValid = false;
+        bool argsValid = false;
+        auto command = javaStringToUtf8(env, commandValue, commandValid);
+        auto args = javaStringToUtf8(env, argsValue, argsValid);
+        if (commandValue) env->DeleteLocalRef(commandValue);
+        if (argsValue) env->DeleteLocalRef(argsValue);
+        valid = commandValid && argsValid && !command.empty() && !args.empty();
+        steps.emplace_back(std::move(command), std::move(args));
+    }
+    if (env->ExceptionCheck())
+    {
+        env->ExceptionClear();
+        valid = false;
+    }
+
+    auto activity = env->NewGlobalRef(instance);
+    if (!activity)
+        return;
+    auto finish = [activity, requestId](bool success) {
+        JNIThreadContext context;
+        JNIEnv* callbackEnv = context.getEnv();
+        if (!callbackEnv) return;
+        jclass cls = callbackEnv->GetObjectClass(activity);
+        jmethodID method = cls ? callbackEnv->GetMethodID(cls, "onNativePasteResult",
+                                                        "(Ljava/lang/String;Z)V") : nullptr;
+        if (method)
+        {
+            jstring id = callbackEnv->NewStringUTF(requestId.c_str());
+            if (id)
+            {
+                callbackEnv->CallVoidMethod(activity, method, id, success ? JNI_TRUE : JNI_FALSE);
+                callbackEnv->DeleteLocalRef(id);
+            }
+        }
+        if (callbackEnv->ExceptionCheck()) callbackEnv->ExceptionClear();
+        if (cls) callbackEnv->DeleteLocalRef(cls);
+        callbackEnv->DeleteGlobalRef(activity);
+    };
+    auto* poll = KitSocketPoll::getMainPoll();
+    auto document = getLOKDocumentForAndroidOnly();
+    if (!valid || !poll || !document)
+    {
+        finish(false);
+        return;
+    }
+    const int session = g_coolwsdSessionGeneration.load();
+    const int actionGeneration = g_androidPendingKitActionGeneration.load();
+    auto apply = [document, session, actionGeneration, viewId, part, steps = std::move(steps), finish] {
+        if (session != g_coolwsdSessionGeneration.load()
+                || actionGeneration != g_androidPendingKitActionGeneration.load()
+                || document != getLOKDocumentForAndroidOnly()
+                || document->getDocumentType() != LOK_DOCTYPE_SPREADSHEET
+                || document->getView() != viewId || document->getPart() != part)
+        {
+            finish(false);
+            return;
+        }
+        try
+        {
+            for (size_t index = 0; index < steps.size(); ++index)
+            {
+                const auto& [command, args] = steps[index];
+                // These arguments are JSON objects built by the Java executor.
+                std::string syncArgs = args.substr(0, args.size() - 1);
+                if (syncArgs.size() > 1) syncArgs += ',';
+                syncArgs += R"("SynchronMode":{"type":"boolean","value":true}})";
+                const bool notify = index + 1 == steps.size();
+                document->postUnoCommand(command.c_str(), syncArgs.c_str(), notify);
+            }
+            finish(true);
+        }
+        catch (const std::exception& error)
+        {
+            __android_log_print(ANDROID_LOG_WARN, "LOActivity",
+                    "calc_data_process_native_error reason=%s", error.what());
+            finish(false);
+        }
+    };
+    if (poll->getThreadOwner() == std::this_thread::get_id())
+        apply();
+    else
+        poll->addCallback(std::move(apply));
+}
+
+extern "C"
+JNIEXPORT void JNICALL
 Java_org_libreoffice_androidlib_LOActivity_insertCalcChartOnKitThread(
         JNIEnv* env, jobject instance, jstring inRequestId, jstring inArguments,
         jobjectArray inCells, jobjectArray inFormulas, jint viewId, jint part)
@@ -1028,10 +1129,9 @@ Java_org_libreoffice_androidlib_LOActivity_insertCalcChartOnKitThread(
         }
         jmethodID callback = callbackEnv->GetMethodID(activityClass, "onNativePasteResult",
                                                        "(Ljava/lang/String;Z)V");
-        if (callback != nullptr) {
+        if (callback != nullptr && !success) {
             jstring request = callbackEnv->NewStringUTF(requestId.c_str());
-            callbackEnv->CallVoidMethod(activity, callback, request,
-                                        success ? JNI_TRUE : JNI_FALSE);
+            callbackEnv->CallVoidMethod(activity, callback, request, JNI_FALSE);
             callbackEnv->DeleteLocalRef(request);
         }
         if (callbackEnv->ExceptionCheck())
@@ -1072,7 +1172,7 @@ Java_org_libreoffice_androidlib_LOActivity_insertCalcChartOnKitThread(
                     return;
                 }
             }
-            document->postUnoCommand(".uno:InsertObjectChart", arguments.c_str(), false);
+            document->postUnoCommand(".uno:InsertObjectChart", arguments.c_str(), true);
             finish(true);
         }
         catch (const std::exception& error)
@@ -1176,10 +1276,9 @@ static std::string typesetContentSnapshot(const std::string& json)
     return result.str();
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_org_libreoffice_androidlib_LOActivity_requestImpressTypesetOnKitThread(
+static void requestImpressStructureOnKitThread(
         JNIEnv* env, jobject instance, jstring inRequestId, jbyteArray inExpected,
-        jstring inArguments, jint view, jint part)
+        jstring inArguments, jint view, jint part, const char* callbackName)
 {
     bool validRequest = false;
     bool validArguments = false;
@@ -1208,13 +1307,13 @@ Java_org_libreoffice_androidlib_LOActivity_requestImpressTypesetOnKitThread(
         if (activityClass) env->DeleteGlobalRef(activityClass);
         return;
     }
-    auto finish = [activity, activityClass, requestId](const std::string* structure,
+    auto finish = [activity, activityClass, requestId, callbackName](const std::string* structure,
             int resultView, int resultPart, bool success, const char* reason) {
         JNIThreadContext context;
         JNIEnv* callbackEnv = context.getEnv();
         if (!callbackEnv)
             return;
-        jmethodID callback = callbackEnv->GetMethodID(activityClass, "onNativeImpressTypesetResult",
+        jmethodID callback = callbackEnv->GetMethodID(activityClass, callbackName,
                 "(Ljava/lang/String;[BIIZLjava/lang/String;)V");
         if (callback)
         {
@@ -1239,7 +1338,7 @@ Java_org_libreoffice_androidlib_LOActivity_requestImpressTypesetOnKitThread(
         callbackEnv->DeleteGlobalRef(activityClass);
         callbackEnv->DeleteGlobalRef(activity);
     };
-    auto action = [document, session, generation, expected, arguments, applying, view, part, finish]() {
+    auto action = [document, session, generation, expected, arguments, applying, view, part, finish, callbackName]() {
         if (!document || document != getLOKDocumentForAndroidOnly()
                 || session != g_coolwsdSessionGeneration.load()
                 || generation != g_androidPendingKitActionGeneration.load()
@@ -1270,13 +1369,25 @@ Java_org_libreoffice_androidlib_LOActivity_requestImpressTypesetOnKitThread(
                 finish(&structure, currentView, currentPart, true, "extracted");
                 return;
             }
-            if (view != currentView || part != currentPart || typesetContentSnapshot(expected) != typesetContentSnapshot(structure) || arguments.empty())
+            if (view != currentView || part != currentPart || (std::string(callbackName) == "onNativeImpressTextResult" ? expected != structure
+                    : typesetContentSnapshot(expected) != typesetContentSnapshot(structure)) || arguments.empty())
             {
                 finish(nullptr, currentView, currentPart, false, "target_changed");
                 return;
             }
             document->postUnoCommand(".uno:TransformDocumentStructure", arguments.c_str(), true);
-            finish(nullptr, currentView, currentPart, true, "dispatched");
+            if (std::string(callbackName) == "onNativeImpressTextResult") {
+                std::unique_ptr<char, decltype(&std::free)> updated(
+                        document->getCommandValues(".uno:ExtractDocumentStructure?filter=slides&typeset=1"), &std::free);
+                if (!updated || !*updated) {
+                    finish(nullptr, currentView, currentPart, false, "verification_unavailable");
+                    return;
+                }
+                const std::string result(updated.get());
+                finish(&result, currentView, currentPart, true, "applied");
+            } else {
+                finish(nullptr, currentView, currentPart, true, "dispatched");
+            }
         }
         catch (const std::exception& error)
         {
@@ -1293,6 +1404,24 @@ Java_org_libreoffice_androidlib_LOActivity_requestImpressTypesetOnKitThread(
         poll->addCallback(std::move(action));
 }
 
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_libreoffice_androidlib_LOActivity_requestImpressTypesetOnKitThread(
+        JNIEnv* env, jobject instance, jstring requestId, jbyteArray expected,
+        jstring arguments, jint view, jint part)
+{
+    requestImpressStructureOnKitThread(env, instance, requestId, expected,
+            arguments, view, part, "onNativeImpressTypesetResult");
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_libreoffice_androidlib_LOActivity_requestImpressTextOnKitThread(
+        JNIEnv* env, jobject instance, jstring requestId, jbyteArray expected,
+        jstring arguments, jint view, jint part)
+{
+    requestImpressStructureOnKitThread(env, instance, requestId, expected,
+            arguments, view, part, "onNativeImpressTextResult");
+}
 
 extern "C"
 JNIEXPORT void JNICALL

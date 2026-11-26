@@ -121,6 +121,7 @@ public class BottomToolbarController {
         void executeUnoCommand(String command);
 
         void fetchCharFormatState(CharFormatCallback callback);
+        void executeWriterCharacterToggle(String command);
     }
 
     public interface CharFormatCallback {
@@ -325,6 +326,9 @@ public class BottomToolbarController {
     }
 
     public void hideQuickActionPanel() {
+        if (quickActionPanelView != null) {
+            quickActionPanelView.removeCallbacks(refreshWriterCharacterActions);
+        }
         if (quickActionOverlayView != null) {
             quickActionOverlayView.setVisibility(View.GONE);
         }
@@ -697,6 +701,17 @@ public class BottomToolbarController {
         showQuickActionGroup(group);
     }
 
+    boolean isWriterCharacterPanelVisible() {
+        return !isCalcDocument && !isImpressDocument && activeQuickActionGroup == QuickActionGroup.CHARACTER
+                && isQuickActionPanelVisible();
+    }
+
+    void refreshVisibleCharacterPanel() {
+        if (!isWriterCharacterPanelVisible()) return;
+        quickActionPanelView.removeCallbacks(refreshWriterCharacterActions);
+        quickActionPanelView.postDelayed(refreshWriterCharacterActions, 80L);
+    }
+
     private boolean isQuickActionPanelVisible() {
         return quickActionPanelView != null && quickActionPanelView.getVisibility() == View.VISIBLE;
     }
@@ -721,15 +736,28 @@ public class BottomToolbarController {
         quickActionPanelView.setVisibility(View.VISIBLE);
         updateQuickActionToggleState();
 
-        // Fetch current char format state to highlight active toggle buttons
         if (group == QuickActionGroup.CHARACTER) {
-            host.fetchCharFormatState((bold, italic, underline, strikethrough) -> {
-                updateQuickActionToggleVisual(".uno:Bold", bold);
-                updateQuickActionToggleVisual(".uno:Italic", italic);
-                updateQuickActionToggleVisual(".uno:Underline", underline);
-                updateQuickActionToggleVisual(".uno:Strikeout", strikethrough);
-            });
+            refreshCharacterQuickActions();
         }
+    }
+
+    private final Runnable refreshWriterCharacterActions = this::refreshCharacterQuickActions;
+
+    private void refreshCharacterQuickActions() {
+        if (!isQuickActionPanelVisible() || activeQuickActionGroup != QuickActionGroup.CHARACTER) {
+            return;
+        }
+        View firstButton = quickActionActionsRow.getChildAt(0);
+        host.fetchCharFormatState((bold, italic, underline, strikethrough) -> {
+            if (!isQuickActionPanelVisible() || activeQuickActionGroup != QuickActionGroup.CHARACTER
+                    || firstButton != quickActionActionsRow.getChildAt(0)) {
+                return;
+            }
+            updateQuickActionToggleVisual(".uno:Bold", bold);
+            updateQuickActionToggleVisual(".uno:Italic", italic);
+            updateQuickActionToggleVisual(".uno:Underline", underline);
+            updateQuickActionToggleVisual(".uno:Strikeout", strikethrough);
+        });
     }
 
     private View createQuickActionButton(QuickActionItem item) {
@@ -769,6 +797,14 @@ public class BottomToolbarController {
         }
         if (item.type == QuickActionType.HIGHLIGHT_COLOR) {
             showColorPicker("荧光颜色", ".uno:CharBackColor", "CharBackColor.Color");
+            return;
+        }
+        if (!isCalcDocument && !isImpressDocument
+                && activeQuickActionGroup == QuickActionGroup.CHARACTER
+                && (".uno:Italic".equals(item.unoCommand) || ".uno:Underline".equals(item.unoCommand)
+                    || ".uno:Strikeout".equals(item.unoCommand) || ".uno:Bold".equals(item.unoCommand))) {
+            host.executeWriterCharacterToggle(item.unoCommand);
+            refreshVisibleCharacterPanel();
             return;
         }
         host.executeUnoCommand(item.unoCommand);

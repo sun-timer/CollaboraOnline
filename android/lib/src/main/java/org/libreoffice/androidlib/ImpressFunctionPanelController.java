@@ -1317,13 +1317,14 @@ public class ImpressFunctionPanelController {
         scroll.setClipToOutline(true);
         scroll.addView(rows);
 
-        int width = host.dpToPx(160);
-        int height = host.dpToPx(230);
+        RoundedPopupShadow shadow = new RoundedPopupShadow(host.getContext().getResources(), 8);
+        int width = host.dpToPx(160) + shadow.gutter() * 2;
+        int height = host.dpToPx(230) + shadow.gutter() * 2;
         fontSizePopup = new PopupWindow(scroll, width, height, true);
         fontSizePopup.setElevation(host.dpToPx(16));
-        fontSizePopup.setBackgroundDrawable(host.getContext().getDrawable(R.drawable.lolib_bg_font_size_popup));
+        fontSizePopup.setBackgroundDrawable(shadow);
         fontSizePopup.setOutsideTouchable(true);
-        fontSizePopup.showAsDropDown(anchor, anchor.getWidth() - width, -host.dpToPx(4));
+        fontSizePopup.showAsDropDown(anchor, anchor.getWidth() - width + shadow.gutter(), -host.dpToPx(4) - shadow.gutter());
     }
 
     private LinearLayout createFontSizeRow(String label, String value, String selectedLabel,
@@ -1420,6 +1421,7 @@ public class ImpressFunctionPanelController {
         for (int i = 0; i < cachedFontOptions.length; i++) {
             final String label = cachedFontOptions[i];
             final String value = i < cachedFontValues.length ? cachedFontValues[i] : label;
+            if ("9".equals(label.trim()) || "9".equals(value.trim())) continue;
             View row = inflater.inflate(R.layout.lolib_item_font_picker_row, list, false);
             TextView name = row.findViewById(R.id.font_picker_item_name);
             ImageView check = row.findViewById(R.id.font_picker_item_check);

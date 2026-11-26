@@ -71,7 +71,7 @@ final class ImpressCommentPickerController {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT));
+                ViewGroup.LayoutParams.WRAP_CONTENT));
 
         root.addView(createHeader());
         root.addView(ImpressSubpageHeader.createDivider(host.getContext()));
@@ -128,26 +128,20 @@ final class ImpressCommentPickerController {
         int avatarSize = host.dpToPx(presentationLayout ? 32 : 40);
         avatarWrap.setBackgroundResource(R.drawable.lolib_bg_impress_comment_avatar);
         ImageView avatar = new ImageView(host.getContext());
-        avatar.setImageResource(R.drawable.lolib_ic_impress_insert_comment);
-        avatar.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        int iconPad = host.dpToPx(8);
-        avatar.setPadding(iconPad, iconPad, iconPad, iconPad);
-        if (presentationLayout) {
-            avatar.setPadding(0, 0, 0, 0);
-            avatar.setBackgroundResource(R.drawable.lolib_bg_impress_comment_avatar);
-            avatar.setClipToOutline(true);
-            avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            int fallback = host.getContext().getResources().getIdentifier(
-                    "drawer_header", "drawable", host.getContext().getPackageName());
-            if (fallback != 0) avatar.setImageResource(fallback);
-            String avatarUri = host.getCommentAuthorAvatarUri();
-            if (avatarUri != null && !avatarUri.isEmpty()) {
-                try {
-                    avatar.setImageURI(android.net.Uri.parse(avatarUri));
-                } catch (RuntimeException e) {
-                    Log.w(TAG, "comment_avatar_load_failed", e);
-                    if (fallback != 0) avatar.setImageResource(fallback);
-                }
+        avatar.setBackgroundResource(R.drawable.lolib_bg_impress_comment_avatar);
+        avatar.setClipToOutline(true);
+        avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        int fallback = host.getContext().getResources().getIdentifier(
+                "drawer_header", "drawable", host.getContext().getPackageName());
+        if (fallback != 0) avatar.setImageResource(fallback);
+        String avatarUri = host.getCommentAuthorAvatarUri();
+        if (avatarUri != null && !avatarUri.isEmpty()) {
+            try {
+                avatar.setImageURI(android.net.Uri.parse(avatarUri));
+                if (avatar.getDrawable() == null && fallback != 0) avatar.setImageResource(fallback);
+            } catch (RuntimeException error) {
+                Log.w(TAG, "comment_avatar_load_failed", error);
+                if (fallback != 0) avatar.setImageResource(fallback);
             }
         }
         avatarWrap.addView(avatar, new FrameLayout.LayoutParams(avatarSize, avatarSize));
@@ -188,7 +182,7 @@ final class ImpressCommentPickerController {
         LinearLayout row = new LinearLayout(host.getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
         int hPad = host.dpToPx(16);
-        row.setPadding(hPad, host.dpToPx(presentationLayout ? 12 : 8), hPad, host.dpToPx(16));
+        row.setPadding(hPad, host.dpToPx(presentationLayout ? 12 : 8), hPad, host.dpToPx(presentationLayout ? 16 : 32));
 
         TextView cancel = createFooterButton("取消", false);
         cancel.setOnClickListener(v -> host.onBack());

@@ -178,7 +178,9 @@
     <LinearLayout
         android:id="@+id/wai_article_hint_bar"
         android:layout_width="match_parent"
-        android:layout_height="59dp"
+        android:layout_height="wrap_content"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
         android:orientation="horizontal"
         android:gravity="center"
         android:paddingStart="20dp"
@@ -196,7 +198,9 @@
     <LinearLayout
         android:id="@+id/wai_article_cta_bar"
         android:layout_width="match_parent"
-        android:layout_height="59dp"
+        android:layout_height="wrap_content"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingStart="20dp"
@@ -233,7 +237,9 @@
     <LinearLayout
         android:id="@+id/wai_article_result_bar"
         android:layout_width="match_parent"
-        android:layout_height="59dp"
+        android:layout_height="wrap_content"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingStart="20dp"

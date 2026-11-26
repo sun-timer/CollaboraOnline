@@ -35,7 +35,7 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:screenOrientation="sensorLandscape"/>
 
-        <!-- 首页：Splash 主题提供冷启动欢迎图（windowBackground）；onCreate 内切回正式主题 -->
+        <!-- The starting theme supplies a neutral surface. The activity renders the welcome artwork once. -->
         <activity
             android:name=".ui.LibreOfficeUIActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Suppress the system starting surface for launcher-originated starts too.
+         LibreOfficeUIActivity switches to the regular opaque theme before super.onCreate. -->
+    <style name="LibreOfficeTheme.Splash" parent="LibreOfficeTheme">
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
