@@ -722,9 +722,9 @@ public class LOActivity extends AppCompatActivity {
     private TextView dpRangeHint;
     private String dpCellRange = "";
     private String dpLastInput = "";
-    private String dpActiveRequestId = "";
+    private volatile String dpActiveRequestId = "";
     private String dpResultText = "";
-    private int dpDialogState = 0;
+    private volatile int dpDialogState = 0;
     private final java.util.Set<String> dpRequestIds =
             java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     private org.json.JSONArray dpPendingOperations = null;
@@ -880,7 +880,7 @@ public class LOActivity extends AppCompatActivity {
     private String autoGenerateAcceptRequestId = "";
     private long autoGenerateAcceptDocumentGeneration = -1L;
     private Uri autoGenerateAcceptDocumentUri;
-    private long documentLifecycleGeneration = 0L;
+    private volatile long documentLifecycleGeneration = 0L;
     private long writerAuthorSyncGeneration = 0L;
     private String documentAuthorNickname = "";
     private long autoGenerateLifecycleGeneration = -1L;
@@ -3197,9 +3197,64 @@ public class LOActivity extends AppCompatActivity {
             });
         } else if (messageStartsWith(message, "error:")) {
             runOnUiThread(() -> mProgressDialog.dismiss());
+        } else if (messageStartsWith(message, "graphicselection:") && mIsCalcDocument) {
+            observeCalcGraphicSelection(message);
         } else if (messageStartsWith(message, "unocommandresult:")) {
+            handleCalcAiUnoCommandResult(message);
             handleCondFormatUnoCommandResult(message);
             handleImpressTypesetCommandResult(message);
+        }
+    }
+
+    // Calc marks the newly created embedded chart after inserting it into the sheet.
+    private void observeCalcGraphicSelection(byte[] message) {
+        String request = calcChartCommandRequest;
+        String text = new String(message, StandardCharsets.UTF_8);
+        int start = text.indexOf('{');
+        try {
+            JSONObject object = start < 0 ? null : new JSONObject(text.substring(start));
+            String id = object == null ? "" : object.optString("id");
+            if (object != null && object.optInt("type", -1) == 23 && !id.isEmpty()) {
+                if (!request.isEmpty() && !id.equals(chartPreviousObjectId)) {
+                    Log.i(TAG, "calc_chart_new_embedded_object request=" + request);
+                    onNativePasteResult(request, true);
+                }
+                lastCalcEmbeddedObjectId = id;
+            }
+        } catch (JSONException e) {
+            if (!request.isEmpty()) Log.d(TAG, "calc_chart_graphic_selection_unreadable");
+        }
+    }
+
+    private void handleCalcAiUnoCommandResult(byte[] message) {
+        CalcDataCommandAck pending = calcDataCommandAck.get();
+        String chartRequest = calcChartCommandRequest;
+        if (pending == null && chartRequest.isEmpty()) return;
+        String text = new String(message, StandardCharsets.UTF_8);
+        int start = text.indexOf('{');
+        if (start < 0) return;
+        try {
+            JSONObject result = new JSONObject(text.substring(start));
+            String command = result.optString("commandName").split("\\?", 2)[0];
+            boolean success = result.optBoolean("success", false);
+            JSONObject payload = result.optJSONObject("result");
+            if (payload != null && "boolean".equals(payload.optString("type"))) {
+                success = payload.optBoolean("value", success);
+            }
+            if (!chartRequest.isEmpty() && ".uno:InsertObjectChart".equals(command)) {
+                // For this slot the API dispatch can return false/void even after Calc
+                // inserted and marked the chart. Await the object event in that case.
+                Log.i(TAG, "calc_chart_uno_ack request=" + chartRequest + " state="
+                        + result.optString("success", "unknown") + " payloadType="
+                        + (payload == null ? "none" : payload.optString("type")));
+                if (result.optBoolean("success", false)) onNativePasteResult(chartRequest, true);
+            }
+            if (pending != null && pending.command.equals(command)) {
+                java.util.concurrent.CompletableFuture<Boolean> future = calcDataResults.get(pending.id);
+                if (future != null) future.complete(success);
+            }
+        } catch (JSONException e) {
+            Log.w(TAG, "calc_ai_uno_result_invalid", e);
         }
     }
 
@@ -5777,6 +5832,14 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public boolean keepWriterCharacterPanel() {
+                    BottomToolbarController toolbar = ensureBottomToolbarController();
+                    if (!toolbar.isWriterCharacterPanelVisible()) return false;
+                    toolbar.refreshVisibleCharacterPanel();
+                    return true;
+                }
+
+                @Override
                 public boolean onAiOperation(String taskType) {
                     return LOActivity.this.startAiOperationFromSelection(taskType);
                 }
@@ -6700,41 +6763,13 @@ public class LOActivity extends AppCompatActivity {
      * 打开公式生成浮层。先从 JS 读取当前选中单元格地址，再以输入态展示。
      */
     private void openCalcFormulaDialog() {
-        if (mWebView == null) {
-            return;
-        }
-        final long generation = documentLifecycleGeneration;
-        mWebView.evaluateJavascript(
-                "(function(){try{var d=window.app&&app.map&&app.map._docLayer;"
-                + "var a=window.app&&app.calc&&app.calc.cellAddress;"
-                + "if(!d||!a||!Number.isInteger(a.x)||!Number.isInteger(a.y)||a.x<0||a.y<0)"
-                + "return JSON.stringify({reason:'cell_not_ready'});"
-                + "var c=a.x,s='';while(c>=0){s=String.fromCharCode(65+c%26)+s;c=Math.floor(c/26)-1;}"
-                + "return JSON.stringify({cell:s+(a.y+1),view:d._viewId,part:d._selectedPart});"
-                + "}catch(e){return JSON.stringify({reason:String(e)});}})()",
-                value -> {
-                    if (generation != documentLifecycleGeneration) {
-                        return;
-                    }
-                    try {
-                        JSONObject target = new JSONObject(parseJsString(value));
-                        if (target.has("reason")) {
-                            Log.w(TAG, "calc_formula_target_missing reason=" + target.optString("reason"));
-                            Toast.makeText(this, "单元格尚未准备好，请稍后重试", Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        calcFormulaCellAddress = target.getString("cell");
-                        calcFormulaViewId = target.getInt("view");
-                        calcFormulaPart = target.getInt("part");
-                        calcFormulaDocumentGeneration = generation;
-                        Log.i(TAG, "calc_formula_target cell=" + calcFormulaCellAddress
-                                + " view=" + calcFormulaViewId + " part=" + calcFormulaPart);
-                        openCalcFormulaDialogWithAddress(calcFormulaCellAddress);
-                    } catch (JSONException e) {
-                        Log.w(TAG, "calc_formula_target_missing", e);
-                        Toast.makeText(this, "请先选择目标单元格", Toast.LENGTH_SHORT).show();
-                    }
-                });
+        readCalcAiTarget("公式", target -> {
+            calcFormulaCellAddress = target.cell;
+            calcFormulaViewId = target.view;
+            calcFormulaPart = target.part;
+            calcFormulaDocumentGeneration = target.generation;
+            openCalcFormulaDialogWithAddress(target.cell);
+        });
     }
 
     private void openCalcFormulaDialogWithAddress(String cellAddress) {
@@ -7628,9 +7663,13 @@ public class LOActivity extends AppCompatActivity {
         dpRangeHint = dpPanel.findViewById(R.id.dp_range_hint);
         dpTitle = dpPanel.findViewById(R.id.dp_title);
 
-        dpOverlay.setOnClickListener(v -> dismissDataProcessDialog());
+        dpOverlay.setOnClickListener(v -> {
+            if (dpDialogState != DP_STATE_EXECUTING) dismissDataProcessDialog();
+        });
         View closeBtn = dpPanel.findViewById(R.id.dp_close_button);
-        if (closeBtn != null) closeBtn.setOnClickListener(v -> dismissDataProcessDialog());
+        if (closeBtn != null) closeBtn.setOnClickListener(v -> {
+            if (dpDialogState != DP_STATE_EXECUTING) dismissDataProcessDialog();
+        });
         if (dpGenerateBtn != null) dpGenerateBtn.setOnClickListener(v -> onDataProcessGenerate());
         if (dpStopGroup != null) dpStopGroup.setOnClickListener(v -> onDataProcessStop());
         if (dpRestartGroup != null) dpRestartGroup.setOnClickListener(v -> onDataProcessRestart());
@@ -7699,26 +7738,17 @@ public class LOActivity extends AppCompatActivity {
         positionAiOverlayPanelHug(dpPanel, AiDialogHelper.MAX_HEIGHT_HUG_DP);
     }
 
+    private volatile CalcAiTarget dpTarget;
+    private String dpSelectionText = "";
+
     private void openDataProcessDialog() {
         if (dpTitle != null) dpTitle.setText(dpIsAnalysisMode ? "AI数据分析" : "AI数据处理");
         if (dpInput != null) dpInput.setHint(dpIsAnalysisMode ? "分析这批数据的趋势..." : "重复数据全部清除");
-        if (mWebView != null) {
-            openDataProcessDialogWithRangeNow();
-        } else if (calcSelectedRange != null && !calcSelectedRange.isEmpty()) {
-            openDataProcessDialogWithRange(calcSelectedRange);
-            Log.i(TAG, "dp_open range=" + dpCellRange + " source=cached_fallback");
-        } else {
-            openDataProcessDialogWithRange("");
-        }
-    }
-
-    private void openDataProcessDialogWithRangeNow() {
-        if (mWebView == null) { openDataProcessDialogWithRange(""); return; }
-        readCalcSelectionRangeAsync(range -> runOnUiThread(() -> {
-            calcSelectedRange = range;
-            openDataProcessDialogWithRange(range);
-            Log.i(TAG, "dp_open range=" + range + " source=direct");
-        }));
+        readCalcAiTarget("数据处理", target -> {
+            dpTarget = target;
+            dpSelectionText = readCalcAiSelectionText();
+            openDataProcessDialogWithRange(target.range);
+        });
     }
 
     private void openDataProcessDialogWithRange(String cellRange) {
@@ -7770,14 +7800,7 @@ public class LOActivity extends AppCompatActivity {
             return;
         }
         try {
-            // Read selected cell data via native JNI getTextSelection (sub-thread safe)
-            String cellData = "";
-            try {
-                cellData = getTextSelection("text/plain;charset=utf-8");
-            } catch (Exception e) {
-                Log.w(TAG, "calc_data_process_getTextSelection_failed", e);
-            }
-            if (cellData == null) cellData = "";
+            String cellData = dpSelectionText;
             // Mixed strategy: if >200 rows, trim to first 20
             String dataSample = cellData;
             int lineCount = cellData.isEmpty() ? 0 : cellData.split("\n").length;
@@ -7854,6 +7877,7 @@ public class LOActivity extends AppCompatActivity {
                 Log.i(TAG, "calc_data_process_ai_raw requestId=" + requestId + " json=" + json);
                 // System prompt in buildDataProcessMessages() tells AI to use "actions" field
                 org.json.JSONArray ops = result.optJSONArray("actions");
+                if (ops == null) ops = result.optJSONArray("operations");
                 if (ops != null && ops.length() > 0) {
                     dpPendingOperations = ops;
                     String desc = result.optString("description", "");
@@ -7865,12 +7889,16 @@ public class LOActivity extends AppCompatActivity {
                     for (int i = 0; i < ops.length(); i++) {
                         org.json.JSONObject op = ops.getJSONObject(i);
                         String type = op.optString("type", "");
-                        String range = op.optString("range", "");
+                        JSONObject operation = calcDataActionParameters(op);
+                        String range = operation.optString("range", dpCellRange);
                         display.append("  ").append(i + 1).append(". [")
                                .append(getOperationTypeLabel(type)).append("] ");
                         if (!range.isEmpty()) display.append(range).append(" ");
                         if ("add_column".equals(type)) {
-                            display.append("→ 追加列: ").append(op.optString("header", "新列"));
+                            display.append("→ 追加列: ").append(operation.optString("header", "新列"));
+                        } else if ("set_value".equals(type) || "set_formula".equals(type)) {
+                            String value = operation.optString("value", operation.optString("valueFormula", ""));
+                            display.append(value.isEmpty() ? "→ 清空内容" : "→ " + value);
                         }
                         display.append("\n");
                     }
@@ -7966,6 +7994,8 @@ public class LOActivity extends AppCompatActivity {
     }
 
     private void dismissDataProcessDialog() {
+        dpTarget = null;
+        dpSelectionText = "";
         if (!dpActiveRequestId.isEmpty()) {
             cancelAiRequest(dpActiveRequestId);
             aiStreamingViewByRequestId.remove(dpActiveRequestId);
@@ -8075,36 +8105,22 @@ public class LOActivity extends AppCompatActivity {
         positionAiOverlayPanelHug(chartPanel, AiDialogHelper.MAX_HEIGHT_HUG_DP);
     }
 
-    private void openChartDialog() {
-        if (calcSelectedRange != null && !calcSelectedRange.isEmpty()) {
-            openChartDialogWithRange(calcSelectedRange);
-            Log.i(TAG, "chart_open range=" + chartSelectedRange + " source=cached");
-        } else if (mWebView != null) {
-            openChartDialogWithRangeNow();
-        } else {
-            openChartDialogWithRange("");
-        }
-    }
+    private CalcAiTarget chartTarget;
+    private volatile String lastCalcEmbeddedObjectId = "";
+    private String chartPreviousObjectId = "";
+    private volatile String calcChartCommandRequest = "";
+    private String chartSelectionText = "";
 
-    private void openChartDialogWithRangeNow() {
-        if (mWebView == null) { openChartDialogWithRange(""); return; }
-        mWebView.evaluateJavascript(
-            "(function(){try{var d=app.map._docLayer;if(!d)return'';var s=d._cellSelectionArea,g=d.sheetGeometry;if(g&&s){var cx=g._columns,ry=g._rows;if(cx&&ry&&typeof cx.getIndexFromPos==='function'){var ci=cx.getIndexFromPos(s.pX1,'tiletwips'),ri=ry.getIndexFromPos(s.pY1,'tiletwips'),cj=cx.getIndexFromPos(s.pX2,'tiletwips'),rj=ry.getIndexFromPos(s.pY2,'tiletwips');function cl(c){var s='';while(c>=0){s=String.fromCharCode(65+(c%26))+s;c=Math.floor(c/26)-1;}return s;}return cl(ci)+(ri+1)+':'+cl(cj)+(rj+1);}}var a=app.calc&&app.calc.cellAddress;if(!a)return'';function cl(c){var s='';while(c>=0){s=String.fromCharCode(65+(c%26))+s;c=Math.floor(c/26)-1;}return s;}return cl(a.x)+(a.y+1);}catch(e){return'';}})()",
-            new android.webkit.ValueCallback<String>() {
-                @Override
-                public void onReceiveValue(String value) {
-                    String range = "";
-                    if (value != null && !value.equals("null") && value.length() > 2) {
-                        try { Object p = new org.json.JSONTokener(value).nextValue();
-                            if (p instanceof String) range = (String) p;
-                        } catch (org.json.JSONException e) {}
-                    }
-                    calcSelectedRange = range;
-                    final String r = range;
-                    runOnUiThread(() -> openChartDialogWithRange(r));
-                    Log.i(TAG, "chart_open range=" + r + " source=direct");
-                }
-            });
+    private void openChartDialog() {
+        readCalcAiTarget("图表", target -> {
+            if (target.sheet.isEmpty()) {
+                toastTodo("无法获取图表所在的工作表，请稍后重试");
+                return;
+            }
+            chartTarget = target;
+            chartSelectionText = readCalcAiSelectionText();
+            openChartDialogWithRange(target.range);
+        });
     }
 
     private void openChartDialogWithRange(String cellRange) {
@@ -8159,35 +8175,8 @@ public class LOActivity extends AppCompatActivity {
             request.put("taskType", AiChatCoordinator.MODE_CALC_CHART);
             request.put("selection", input);
             request.put("cellRange", chartSelectedRange != null ? chartSelectedRange : "");
-            // Read cell data for AI context
-            if (mWebView != null) {
-                mWebView.evaluateJavascript(
-                    "(function(){ try { var r = app.calc && app.calc.cellAddress; if (!r) return ''; " +
-                    "var sheet = 'Sheet1'; var row = r.y; var col = r.x; " +
-                    "var data = ''; " +
-                    "for (var i = 0; i < 20 && row + i < 10000; i++) { " +
-                    "  var cell = app.calc.getCellText(sheet, row + i, col); " +
-                    "  if (cell === '') break; " +
-                    "  data += cell + '\\n'; " +
-                    "} return JSON.stringify({sample: data, range: 'col ' + col + ' rows ' + row + '-' + (row + i - 1)}); " +
-                    "} catch(e) { return ''; } })()",
-                    dataResult -> {
-                        try {
-                            String cellData = "";
-                            if (dataResult != null && !dataResult.equals("null") && dataResult.length() > 2) {
-                                org.json.JSONObject dataJson = new org.json.JSONObject(dataResult);
-                                cellData = dataJson.optString("sample", "");
-                            }
-                            request.put("cellData", cellData);
-                        } catch (Exception e) {
-                            Log.e(TAG, "calc_chart_cell_data_error", e);
-                        }
-                        startAiRequestSession(request, -1);
-                    });
-            } else {
-                request.put("cellData", "");
-                startAiRequestSession(request, -1);
-            }
+            request.put("cellData", chartSelectionText);
+            startAiRequestSession(request, -1);
         } catch (org.json.JSONException e) {
             Log.e(TAG, "calc_chart_request_error", e);
             setChartDialogState(CHART_STATE_INPUT);
@@ -8199,7 +8188,7 @@ public class LOActivity extends AppCompatActivity {
         Log.i(TAG, "calc_chart_done id=" + requestId + " textChars=" + (text != null ? text.length() : 0));
         if (!requestId.equals(chartActiveRequestId)) return;
 
-        chartResultJson = text != null ? text : "";
+        chartResultJson = text != null ? text.trim() : "";
 
         if (chartResultJson.startsWith("```")) {
             // Strip markdown code fences
@@ -8228,7 +8217,11 @@ public class LOActivity extends AppCompatActivity {
             org.json.JSONObject chart = result.optJSONObject("chart");
             if (chart != null) {
                 display.append("图表配置：\n");
-                display.append("  · 数据范围：").append(chart.optString("dataRange", "")).append("\n");
+                CalcAiTarget target = chartTarget;
+                if (target == null) return;
+                String range = preprocess == null || preprocess.length() == 0 ? target.range
+                        : calcAiRangeOnSheet(chart.getString("dataRange"), target.sheet);
+                display.append("  · 数据范围：").append(target.sheet).append(" · ").append(range).append("\n");
                 String chartType = chart.optString("chartType", "column");
                 String chartTypeLabel = chartType;
                 if ("pie".equals(chartType)) chartTypeLabel = "饼图";
@@ -8240,13 +8233,15 @@ public class LOActivity extends AppCompatActivity {
             }
 
             displayText = display.toString();
-        } catch (org.json.JSONException e) {
-            // If JSON parsing fails, show raw text
-            displayText = chartResultJson;
+        } catch (org.json.JSONException | IllegalArgumentException e) {
+            Log.w(TAG, "calc_chart_plan_invalid", e);
+            displayText = e instanceof JSONException ? "AI 返回的图表方案不完整，请重新生成"
+                    : "图表方案无法执行：" + e.getMessage();
         }
 
         final String finalDisplayText = displayText;
         runOnUiThread(() -> {
+            if (!requestId.equals(chartActiveRequestId)) return;
             chartResultText.setText(finalDisplayText);
             setChartDialogState(CHART_STATE_COMPLETED);
         });
@@ -8306,7 +8301,7 @@ public class LOActivity extends AppCompatActivity {
         }
         final long generation = chartDocumentGeneration;
         final String resultJson = chartResultJson;
-        final String selectedRange = chartSelectedRange;
+        final CalcAiTarget original = chartTarget;
         final String requestId = "chart-insert:" + UUID.randomUUID();
         chartInsertRequestId = requestId;
         setChartDialogState(CHART_STATE_EXECUTING);
@@ -8315,18 +8310,18 @@ public class LOActivity extends AppCompatActivity {
             if (generation != documentLifecycleGeneration || mWebView == null) {
                 return;
             }
-            mWebView.evaluateJavascript(
-                    "(function(){var d=window.app&&app.map&&app.map._docLayer;"
-                    + "if(!d)return '{}';return JSON.stringify({view:d._viewId,part:d._selectedPart,"
-                    + "sheet:d._partNames&&d._partNames[d._selectedPart]});})()", value -> {
+            mWebView.evaluateJavascript(JS_CALC_AI_TARGET, value -> {
                 if (!requestId.equals(chartInsertRequestId) || generation != documentLifecycleGeneration) {
                     return;
                 }
+                CalcAiTarget current = parseCalcAiTarget(value, generation);
+                if (original == null || !original.sameSheet(current)) {
+                    chartInsertRequestId = "";
+                    setChartDialogState(CHART_STATE_COMPLETED);
+                    toastTodo("工作表已切换，请回到原工作表后插入");
+                    return;
+                }
                 try {
-                    JSONObject target = new JSONObject(parseJsString(value));
-                    int viewId = target.getInt("view");
-                    int part = target.getInt("part");
-                    String sheetName = target.getString("sheet");
                     JSONObject result = new JSONObject(resultJson);
                     JSONArray preprocess = result.optJSONArray("preprocess");
                     int count = preprocess == null ? 0 : preprocess.length();
@@ -8337,7 +8332,7 @@ public class LOActivity extends AppCompatActivity {
                         if (!"formula".equals(operation.optString("type"))) {
                             throw new IllegalArgumentException("不支持的图表数据预处理");
                         }
-                        cells[i] = CalcChartTypeMapper.cellAddress(operation.getString("address"));
+                        cells[i] = calcAiCellOnSheet(operation.getString("address"), original.sheet);
                         formulas[i] = operation.getString("value");
                         if (!formulas[i].startsWith("=") || formulas[i].contains("\n")
                                 || formulas[i].contains("\t") || formulas[i].contains("\r")) {
@@ -8345,23 +8340,26 @@ public class LOActivity extends AppCompatActivity {
                         }
                     }
                     JSONObject chart = result.getJSONObject("chart");
-                    String range = count == 0 && selectedRange != null && !selectedRange.isEmpty()
-                            ? selectedRange : chart.getString("dataRange");
-                    String dataRange = CalcChartTypeMapper.qualifyRange(range, sheetName);
+                    String range = count == 0 ? original.range
+                            : calcAiRangeOnSheet(chart.getString("dataRange"), original.sheet);
+                    String dataRange = CalcChartTypeMapper.qualifyRange(range, original.sheet);
                     String chartType = chart.optString("chartType", "column");
                     String template = CalcChartTypeMapper.needsCustomTemplate(chartType)
                             ? CalcChartTypeMapper.toTemplateService(chartType) : "";
                     String arguments = CalcChartTypeMapper.buildInsertChartJson(dataRange, template,
                             CalcChartTypeMapper.toCurveStyle(chartType));
                     queued[0] = true;
+                    chartPreviousObjectId = lastCalcEmbeddedObjectId;
+                    calcChartCommandRequest = requestId;
                     Log.i(TAG, "calc_chart_insert_queued request=" + requestId + " range=" + dataRange
                             + " type=" + chartType + " preprocess=" + count);
-                    insertCalcChartOnKitThread(requestId, arguments, cells, formulas, viewId, part);
+                    insertCalcChartOnKitThread(requestId, arguments, cells, formulas, original.view, original.part);
                 } catch (JSONException | IllegalArgumentException e) {
                     Log.w(TAG, "calc_chart_target_invalid", e);
                     chartInsertRequestId = "";
                     setChartDialogState(CHART_STATE_COMPLETED);
-                    Toast.makeText(this, "图表数据范围无效，请重新选择单元格后生成", Toast.LENGTH_LONG).show();
+                    toastTodo(e instanceof JSONException ? "AI 返回的图表方案不完整，请重新生成"
+                            : "图表方案无法执行：" + e.getMessage());
                 }
             });
         });
@@ -8372,10 +8370,21 @@ public class LOActivity extends AppCompatActivity {
                 Toast.makeText(this, "无法进入编辑模式，请重试插入", Toast.LENGTH_SHORT).show();
             }
         }, 3000L);
+        getMainHandler().postDelayed(() -> {
+            if (requestId.equals(calcChartCommandRequest)) {
+                calcChartCommandRequest = "";
+                chartInsertRequestId = "";
+                setChartDialogState(CHART_STATE_COMPLETED);
+                toastTodo("等待图表插入确认超时，请先查看工作表");
+            }
+        }, 12000L);
     }
 
     private void dismissChartDialog() {
         chartInsertRequestId = "";
+        calcChartCommandRequest = "";
+        chartTarget = null;
+        chartSelectionText = "";
         if (!chartActiveRequestId.isEmpty()) {
             cancelAiRequest(chartActiveRequestId);
             aiStreamingViewByRequestId.remove(chartActiveRequestId);
@@ -10373,542 +10382,329 @@ public class LOActivity extends AppCompatActivity {
         }
     }
 
+    private final java.util.concurrent.ConcurrentMap<String, java.util.concurrent.CompletableFuture<Boolean>>
+            calcDataResults = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static final class CalcDataCommandAck {
+        final String id;
+        final String command;
+
+        CalcDataCommandAck(String id, String command) {
+            this.id = id;
+            this.command = command.split("\\?", 2)[0];
+        }
+    }
+
+    private final java.util.concurrent.atomic.AtomicReference<CalcDataCommandAck> calcDataCommandAck =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
     private void onDataProcessExecute() {
-        final org.json.JSONArray ops = dpPendingOperations;
+        final JSONArray ops = dpPendingOperations;
+        final CalcAiTarget original = dpTarget;
         if (ops == null || ops.length() == 0) {
-            Toast.makeText(this, "没有可执行的操作", Toast.LENGTH_SHORT).show();
+            toastTodo("没有可执行的操作");
             return;
         }
+        if (!isDocEditable || original == null || original.generation != documentLifecycleGeneration) {
+            toastTodo("无法编辑原工作表，请重新选择数据区域");
+            return;
+        }
+        if (dpDialogState == DP_STATE_EXECUTING || mWebView == null) return;
+        final String request = dpActiveRequestId;
         setDataProcessDialogState(DP_STATE_EXECUTING);
-        final String requestId = dpActiveRequestId;
-        try {
-            String firstOp = ops.length() > 0 ? ops.getJSONObject(0).optString("type", "") : "none";
-            String firstRange = ops.length() > 0 ? ops.getJSONObject(0).optString("range", "") : "";
-            Log.i(TAG, "calc_data_process_execute_start id=" + requestId + " ops=" + ops.length()
-                    + " first=" + firstOp + " range=" + firstRange);
-        } catch (Exception e) {
-            Log.i(TAG, "calc_data_process_execute_start id=" + requestId + " ops=" + ops.length());
-        }
-
-        new Thread(() -> {
-            try {
-                int total = ops.length();
-                for (int i = 0; i < total; i++) {
-                    final int step = i;
-                    final org.json.JSONObject op = ops.getJSONObject(i);
-                    final String type = op.optString("type", "");
-                    final String command = op.optString("command", "");
-                    final String range = op.optString("range", "");
-                    final String header = op.optString("header", "");
-                    String valueData = op.optString("value", "");
-                    if (valueData.isEmpty()) valueData = op.optString("valueFormula", "");
-                    final String valueFormula = valueData;
-                    final org.json.JSONArray values = op.optJSONArray("values");
-
-                    Log.i(TAG, "calc_data_process_execute step=" + step + "/" + total + " type=" + type
-                            + " range=" + range + " value=" + valueFormula + " header=" + header
-                            + " raw=" + op.toString().replaceAll("\\s+", " "));
-
-                    runOnUiThread(() -> {
-                        if (dpExecutingStatus != null) {
-                            dpExecutingStatus.setText("正在执行第 " + (step + 1) + "/" + total + " 步...\n"
-                                    + getOperationTypeLabel(type) + " " + range);
-                        }
-                    });
-
-                    switch (type) {
-                        case "uno":
-                            if (!command.isEmpty()) {
-                                postUnoCommand(command, "{}", false);
-                                Thread.sleep(200);
-                            }
-                            break;
-
-                        case "set_value": // fall through — same GoToCell + confirm + paste pattern
-                        case "set_formula":
-                            writeCellValue(range, valueFormula);
-                            break;
-
-                        case "add_column":
-                            postUnoCommand(".uno:InsertColumnsAfter", "{}", false);
-                            Thread.sleep(200);
-                            String addColBase = range.isEmpty() ? "A" : extractColLetter(range.split(":")[0]);
-                            String newColLetter = nextColumnLetter(addColBase);
-                            if (!range.isEmpty() && range.contains(":")) {
-                                String endCol = extractColLetter(range.split(":")[1]);
-                                newColLetter = nextColumnLetter(endCol);
-                            }
-                            stripInheritedFormatFromColumn(newColLetter);
-                            if (!header.isEmpty() && !range.isEmpty()) {
-                                String[] rangeParts = range.split(":");
-                                String startRef = rangeParts[0];
-                                int startRow = extractRowNumber(startRef);
-                                String colLetter = extractColLetter(startRef);
-                                String newCol = nextColumnLetter(colLetter);
-                                if (range.contains(":")) {
-                                    newCol = nextColumnLetter(extractColLetter(range.split(":")[1]));
-                                }
-                                String headerCell = newCol + startRow;
-                                writeCellValue(headerCell, header);
-                            }
-                            if (values != null && values.length() > 0 && !range.isEmpty()) {
-                                String newCol = nextColumnLetter(extractColLetter(range.split(":")[0]));
-                                if (range.contains(":")) {
-                                    newCol = nextColumnLetter(extractColLetter(range.split(":")[1]));
-                                }
-                                int baseRow = extractRowNumber(range.split(":")[0]);
-                                for (int r = 0; r < values.length(); r++) {
-                                    String v = values.optString(r, "");
-                                    if (v == null || v.isEmpty()) continue;
-                                    writeCellValue(newCol + (baseRow + r + 1), v);
-                                }
-                            }
-                            break;
-
-                        case "sort": {
-                            String keyColumn = op.optString("keyColumn", "");
-                            boolean ascending = op.optBoolean("ascending", true);
-                            boolean hasHeader = op.optBoolean("hasHeader", true);
-                            if (!keyColumn.isEmpty()) {
-                                String sortCell = keyColumn + "1";
-                                long tSort0 = System.currentTimeMillis();
-                                waitForReconnectIfNeeded("sort_pre", 3000);
-                                postUnoCommand(".uno:GoToCell",
-                                    "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + sortCell + "\"}}",
-                                    false);
-                                long tSort1 = System.currentTimeMillis();
-                                waitForReconnectIfNeeded("sort_post", 3000);
-                                String sortParams = hasHeader ? "{\"HasHeader\":true}" : "{}";
-                                postUnoCommand(ascending ? ".uno:SortAscending" : ".uno:SortDescending", sortParams, false);
-                                Log.i(TAG, "calc_data_process_sort cell=" + sortCell
-                                        + " goto=" + (tSort1 - tSort0) + "ms");
-                                Thread.sleep(200);
-                            }
-                            break;
-                        }
-
-                        case "filter":
-                            postUnoCommand(".uno:DataFilterAutoFilter", "{}", false);
-                            Thread.sleep(200);
-                            break;
-
-                        case "clear_formatting":
-                            if (!range.isEmpty()) {
-                                String[] parts = range.split(":");
-                                confirmAndExecCellOp(parts[0], ".uno:ResetAttributes", "{}", "clear_formatting");
-                            }
-                            break;
-
-                        case "delete_rows":
-                            if (!range.isEmpty()) {
-                                confirmAndExecRowOp(range, ".uno:DeleteRows", "{}", "delete_rows");
-                            }
-                            break;
-
-                        case "delete_columns":
-                            if (!range.isEmpty()) {
-                                confirmAndExecColumnOp(range, ".uno:DeleteColumns", "{}", "delete_columns");
-                            }
-                            break;
-
-                        case "insert_rows":
-                            if (!range.isEmpty()) {
-                                confirmAndExecRowOp(range, ".uno:InsertRowsBefore", "{}", "insert_rows");
-                            }
-                            break;
-
-                        case "insert_columns":
-                            if (!range.isEmpty()) {
-                                confirmAndExecColumnOp(range, ".uno:InsertColumnsAfter", "{}", "insert_columns");
-                            }
-                            break;
-
-                        case "format_number": {
-                            String fmtStyle = op.optString("style", "decimal");
-                            int decimals = op.optInt("decimals", -1);
-                            if (!range.isEmpty()) {
-                                String fmtCmd;
-                                switch (fmtStyle) {
-                                    case "percent": fmtCmd = ".uno:NumberFormatPercent"; break;
-                                    case "currency": fmtCmd = ".uno:NumberFormatCurrency"; break;
-                                    case "date": fmtCmd = ".uno:NumberFormatDate"; break;
-                                    default:
-                                        fmtCmd = decimals > 0
-                                            ? ".uno:NumberFormatDecimal?Decimals:short=" + decimals
-                                            : ".uno:NumberFormatDecimal";
-                                        break;
-                                }
-                                confirmAndExecCellOp(range, fmtCmd, "{}", "format_number");
-                            }
-                            break;
-                        }
-
-                        case "set_column_width":
-                            postUnoCommand(".uno:SetOptimalColumnWidth", "{}", false);
-                            Thread.sleep(200);
-                            break;
-
-                        case "merge_cells":
-                            postUnoCommand(".uno:ToggleMergeCells", "{}", false);
-                            Thread.sleep(200);
-                            break;
-
-                        case "bold":
-                            postUnoCommand(".uno:Bold", "{}", false);
-                            Thread.sleep(200);
-                            break;
-
-                        case "calculate":
-                            postUnoCommand(".uno:Calculate", "{}", false);
-                            Thread.sleep(200);
-                            break;
-
-                        default:
-                            Log.w(TAG, "calc_data_process_unknown_type type=" + type);
-                            break;
-                    }
+        ensureEditModeThen(() -> {
+            if (!isCurrentDataProcess(request, original) || mWebView == null) return;
+            mWebView.evaluateJavascript(JS_CALC_AI_TARGET, value -> {
+                if (!isCurrentDataProcess(request, original)) return;
+                if (!original.sameSheet(parseCalcAiTarget(value, documentLifecycleGeneration))) {
+                    setDataProcessDialogState(DP_STATE_COMPLETED);
+                    toastTodo("工作表已切换，请回到原工作表后执行");
+                    return;
                 }
-
-                runOnUiThread(() -> {
-                    if (dpExecutingStatus != null) {
-                        dpExecutingStatus.setText("数据处理完成 ✓");
-                    }
-                    Log.i(TAG, "calc_data_process_execute_done id=" + requestId);
-                    forceRefreshTilesAfterDpExec();
-                    getMainHandler().postDelayed(() -> {
-                        dismissDataProcessDialog();
-                        Toast.makeText(LOActivity.this, "数据处理完成", Toast.LENGTH_SHORT).show();
-                    }, 1000L);
-                });
-
-            } catch (Exception e) {
-                Log.e(TAG, "calc_data_process_execute_error", e);
-                runOnUiThread(() -> {
-                    if (dpExecutingStatus != null) {
-                        dpExecutingStatus.setText("执行失败：" + e.getMessage());
-                    }
-                    Toast.makeText(LOActivity.this, "数据处理执行失败", Toast.LENGTH_SHORT).show();
-                    getMainHandler().postDelayed(() -> setDataProcessDialogState(DP_STATE_COMPLETED), 1500L);
-                });
-            }
-        }, "dp-executor-" + requestId).start();
-    }
-
-    private int extractRowNumber(String cellRef) {
-        if (cellRef == null) return 0;
-        StringBuilder digits = new StringBuilder();
-        for (int i = 0; i < cellRef.length(); i++) {
-            char c = cellRef.charAt(i);
-            if (Character.isDigit(c)) digits.append(c);
-        }
-        try {
-            return digits.length() > 0 ? Integer.parseInt(digits.toString()) : 0;
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
-
-    private String extractColLetter(String cellRef) {
-        if (cellRef == null) return "A";
-        StringBuilder letters = new StringBuilder();
-        for (int i = 0; i < cellRef.length(); i++) {
-            char c = cellRef.charAt(i);
-            if (Character.isLetter(c)) letters.append(c);
-            else break;
-        }
-        String col = letters.toString().toUpperCase();
-        return col.isEmpty() ? "A" : col;
-    }
-
-    private String nextColumnLetter(String col) {
-        if (col == null || col.isEmpty()) return "B";
-        char[] chars = col.toUpperCase().toCharArray();
-        int i = chars.length - 1;
-        while (i >= 0) {
-            if (chars[i] < 'Z') {
-                chars[i]++;
-                return new String(chars);
-            }
-            chars[i] = 'A';
-            i--;
-        }
-        return "A" + new String(chars);
-    }
-
-        /**
-     * 检查 JS 侧 socket 是否处于重连状态（_reconnecting || _interactionBlockedForReconnect）。
-     * 如果是，轮询等待直到重连完成（_reconnecting 变 false 且 readyState=OPEN）。
-     * 在 dp-executor 后台线程中调用。
-     *
-     * @param tag 日志标签
-     * @param timeoutMs 最大等待时间
-     * @return true 表示 socket 就绪可写，false 表示超时
-     */
-    private boolean waitForReconnectIfNeeded(String tag, int timeoutMs) {
-        if (mWebView == null) return false;
-        final int maxAttempts = Math.max(1, timeoutMs / 150);
-        for (int attempt = 0; attempt < maxAttempts; attempt++) {
-            final CountDownLatch latch = new CountDownLatch(1);
-            final boolean[] isStable = {false};
-            runOnUiThread(() -> {
-                if (mWebView == null) { latch.countDown(); return; }
-                mWebView.evaluateJavascript(
-                    "(function(){try{"
-                    + "var s=window.socket;"
-                    + "if(!s)return 'no_socket';"
-                    + "if(s.isTemporarilyReconnecting&&s.isTemporarilyReconnecting()){"
-                    + "return 'reconnecting';"
-                    + "}"
-                    + "if(s.readyState===1)return 'open';"
-                    + "return 'state:'+s.readyState;"
-                    + "}catch(e){return 'err';}})()",
-                    value -> {
-                        isStable[0] = (value != null && value.contains("open"));
-                        latch.countDown();
-                    });
+                new Thread(() -> executeCalcDataPlan(ops, request, original), "CalcDataProcess").start();
             });
-            try {
-                latch.await(150, java.util.concurrent.TimeUnit.MILLISECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
-            if (isStable[0]) {
-                if (attempt > 0) {
-                    Log.i(TAG, "calc_data_process_reconnect_done tag=" + tag + " attempt=" + attempt);
-                }
-                return true;
-            }
-            try { Thread.sleep(150); } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
-        }
-        Log.w(TAG, "calc_data_process_reconnect_timeout tag=" + tag + " attempts=" + maxAttempts);
-        return false;
-    }
-
-    /** 简化的 tile 刷新：只触发 resize 重绘，不做光标跳转 */
-    private void forceRefreshTilesAfterDpExec() {
-        if (mWebView == null) return;
-        runOnUiThread(() -> {
-            mWebView.evaluateJavascript(
-                "(function(){try{"
-                + "if(window.app&&app.events)app.events.fire('resize');"
-                + "return 'ok';"
-                + "}catch(e){return 'err';}})()",
-                value -> Log.i(TAG, "calc_data_process_tile_refresh result=" + value));
         });
-    }
-
-    /**
-     * 安全的单元格写入：检测重连 → GoToCell → 确认无重连 → paste。
-     * paste() 通过 native JNI 直接写入 core 内部光标位置，不依赖 JS 侧 cellAddress。
-     * 关键防护：每次 GoToCell 后检查 socket 是否因该操作触发了重连（如 close: idle），
-     * 如果重连了则等它完成，避免 paste 写到被重置后的错误位置。
-     */
-    private void writeCellValue(String range, String valueFormula) throws Exception {
-        if (range == null || range.isEmpty() || valueFormula == null) {
-            return;
-        }
-        if (valueFormula.isEmpty()) {
-            clearCellContentsInRange(range);
-            return;
-        }
-        String[] parts = range.split(":");
-        String startRef = parts[0];
-        String endRef = parts.length > 1 ? parts[1] : startRef;
-        int startRow = extractRowNumber(startRef);
-        int endRow = extractRowNumber(endRef);
-        String colLetter = extractColLetter(startRef);
-        if (colLetter.isEmpty()) {
-            Log.w(TAG, "calc_data_process_writeCellValue_invalid_range range=" + range);
-            return;
-        }
-        for (int r = startRow; r <= endRow; r++) {
-            String cellRef = colLetter + r;
-            String val = valueFormula.replace("{row}", String.valueOf(r));
-            long t0 = System.currentTimeMillis();
-            waitForReconnectIfNeeded(cellRef, 3000);
-            long t1 = System.currentTimeMillis();
-            // typed JSON 格式（参考 gtv-signal-handlers.cxx），确保 ToPoint 被正确解析
-            postUnoCommand(".uno:GoToCell",
-                "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + cellRef + "\"}}",
-                false);
-            long t2 = System.currentTimeMillis();
-            waitForReconnectIfNeeded(cellRef + "_post", 3000);
-            paste("text/plain;charset=utf-8", val.getBytes("UTF-8"));
-            long t3 = System.currentTimeMillis();
-            Log.i(TAG, "calc_data_process_write_cell cell=" + cellRef
-                    + " wait1=" + (t1 - t0) + "ms goto=" + (t2 - t1) + "ms paste=" + (t3 - t2) + "ms");
+        if (!mIsEditModeActive) {
+            getMainHandler().postDelayed(() -> {
+                if (!mIsEditModeActive && isCurrentDataProcess(request, original)) {
+                    setDataProcessDialogState(DP_STATE_COMPLETED);
+                }
+            }, 2700L);
         }
     }
 
-    /** 选中单列或多列（0-based Col index，与 Web Control.Header.ts 一致）。 */
-    private void selectCalcColumn(int colIndex, int modifier) throws Exception {
-        waitForReconnectIfNeeded("select_col_" + colIndex, 3000);
-        postUnoCommand(".uno:SelectColumn ",
-                "{\"Col\":{\"type\":\"unsigned short\",\"value\":" + colIndex + "},"
-                        + "\"Modifier\":{\"type\":\"unsigned short\",\"value\":" + modifier + "}}",
-                false);
-        Log.i(TAG, "calc_data_process_select_column index=" + colIndex
-                + " col=" + columnIndexToLetters(colIndex) + " modifier=" + modifier);
+    private boolean isCurrentDataProcess(String request, CalcAiTarget target) {
+        return request.equals(dpActiveRequestId) && target == dpTarget
+                && target.generation == documentLifecycleGeneration && dpDialogState == DP_STATE_EXECUTING;
     }
 
-    /** 从 range 解析列字母并选中（支持 A:A、A1、A1:C100）。 */
-    private void selectCalcColumnsInRange(String range) throws Exception {
-        String[] parts = range.split(":", 2);
-        String startCol = extractColLetter(parts[0]);
-        String endCol = parts.length > 1 ? extractColLetter(parts[1]) : startCol;
-        int colStart = columnLettersToIndex(startCol);
-        int colEnd = columnLettersToIndex(endCol);
-        if (colStart > colEnd) {
-            int tmp = colStart;
-            colStart = colEnd;
-            colEnd = tmp;
-        }
-        selectCalcColumn(colStart, 0);
-        if (colEnd > colStart) {
-            selectCalcColumn(colEnd, 1);
-        }
-    }
-
-    /** 选中单行或多行（0-based Row index，与 Web Control.Header.ts 一致）。 */
-    private void selectCalcRow(int rowIndex, int modifier) throws Exception {
-        waitForReconnectIfNeeded("select_row_" + rowIndex, 3000);
-        postUnoCommand(".uno:SelectRow ",
-                "{\"Row\":{\"type\":\"long\",\"value\":" + rowIndex + "},"
-                        + "\"Modifier\":{\"type\":\"unsigned short\",\"value\":" + modifier + "}}",
-                false);
-        Log.i(TAG, "calc_data_process_select_row index=" + rowIndex
-                + " row=" + (rowIndex + 1) + " modifier=" + modifier);
-    }
-
-    private static int parseRowFromRangePart(String part) {
-        if (part == null || part.isEmpty()) return 0;
-        StringBuilder digits = new StringBuilder();
-        for (int i = 0; i < part.length(); i++) {
-            char c = part.charAt(i);
-            if (Character.isDigit(c)) digits.append(c);
-        }
-        if (digits.length() == 0) return 0;
+    private void executeCalcDataPlan(JSONArray ops, String request, CalcAiTarget target) {
+        int completed = 0;
         try {
-            return Integer.parseInt(digits.toString());
-        } catch (NumberFormatException e) {
-            return 0;
+            for (int i = 0; i < ops.length(); i++) {
+                if (!isCurrentDataProcess(request, target)) return;
+                JSONObject op = ops.getJSONObject(i);
+                String type = op.getString("type");
+                int step = i + 1;
+                runOnUiThread(() -> {
+                    if (isCurrentDataProcess(request, target) && dpExecutingStatus != null) {
+                        dpExecutingStatus.setText("正在执行第 " + step + "/" + ops.length() + " 步："
+                                + getOperationTypeLabel(type));
+                    }
+                });
+                executeCalcDataStep(op, type, target, request);
+                completed++;
+            }
+            runOnUiThread(() -> {
+                if (!isCurrentDataProcess(request, target)) return;
+                forceRefreshTilesAfterDpExec();
+                dismissDataProcessDialog();
+                toastTodo("数据处理完成，共执行 " + ops.length() + " 步");
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "calc_data_process_execute_failed completed=" + completed, e);
+            String reason = e.getMessage() != null ? e.getMessage() : "等待编辑器确认超时，请先查看表格";
+            String message = "第 " + (completed + 1) + " 步未完成，已完成 " + completed
+                    + " 步。当前步骤可能已部分写入。\n" + reason;
+            runOnUiThread(() -> {
+                if (!isCurrentDataProcess(request, target)) return;
+                dpPendingOperations = null;
+                forceRefreshTilesAfterDpExec();
+                if (dpContentText != null) dpContentText.setText(message);
+                setDataProcessDialogState(DP_STATE_COMPLETED);
+                toastTodo(reason);
+            });
         }
     }
 
-    /** 从 range 解析行号并选中（支持 5:5、3:7、A5、A5:A10）。 */
-    private void selectCalcRowsInRange(String range) throws Exception {
-        String[] parts = range.split(":", 2);
-        int rowStart = parseRowFromRangePart(parts[0]);
-        int rowEnd = parts.length > 1 ? parseRowFromRangePart(parts[1]) : rowStart;
-        if (rowStart <= 0 || rowEnd <= 0) {
-            Log.w(TAG, "calc_data_process_select_row_invalid range=" + range);
+    private static boolean isCalcRowOrColumnOperation(String type) {
+        return "delete_rows".equals(type) || "insert_rows".equals(type)
+                || "delete_columns".equals(type) || "insert_columns".equals(type);
+    }
+
+    private static JSONObject calcDataActionParameters(JSONObject op) throws JSONException {
+        // Accept parameters both at the action root and in the params object described by the prompt.
+        JSONObject params = new JSONObject(op.toString());
+        JSONObject nested = op.optJSONObject("params");
+        if (nested != null) {
+            for (java.util.Iterator<String> keys = nested.keys(); keys.hasNext();) {
+                String key = keys.next();
+                if (!params.has(key)) params.put(key, nested.get(key));
+            }
+        }
+        return params;
+    }
+
+    private void executeCalcDataStep(JSONObject op, String type, CalcAiTarget target, String request)
+            throws Exception {
+        JSONObject params = calcDataActionParameters(op);
+        String rawRange = params.optString("range", target.range).trim();
+        if (rawRange.isEmpty()) rawRange = target.range;
+        if (isCalcRowOrColumnOperation(type)) {
+            boolean rows = type.endsWith("_rows");
+            String range = normalizeCalcAxisRange(rawRange, target.sheet, rows);
+            int split = range.indexOf(':');
+            String first = range.substring(0, split);
+            String last = range.substring(split + 1);
+            int start = rows ? Integer.parseInt(first) - 1 : columnLettersToIndex(first);
+            int end = rows ? Integer.parseInt(last) - 1 : columnLettersToIndex(last);
+            String select = rows ? ".uno:SelectRow" : ".uno:SelectColumn";
+            String command;
+            if (type.startsWith("delete")) {
+                command = rows ? ".uno:DeleteRows" : ".uno:DeleteColumns";
+            } else {
+                boolean after = "after".equals(params.optString("position", rows ? "before" : "after"));
+                command = (rows ? ".uno:InsertRows" : ".uno:InsertColumns") + (after ? "After" : "Before");
+            }
+            String firstArgs = calcAxisSelectionArgs(rows, start, 0);
+            if (end == start) {
+                runCalcDataCommands(target, request, new String[]{select, command},
+                        new String[]{firstArgs, "{}"});
+            } else {
+                runCalcDataCommands(target, request, new String[]{select, select, command},
+                        new String[]{firstArgs, calcAxisSelectionArgs(rows, end, 1), "{}"});
+            }
+            if ("insert_columns".equals(type)) {
+                int firstInserted = command.endsWith("After") ? end + 1 : start;
+                int lastInserted = firstInserted + end - start;
+                clearCalcDataColumnConditionalFormat(target, request, columnIndexToLetters(firstInserted)
+                        + "1:" + columnIndexToLetters(lastInserted) + "1048576");
+            }
             return;
         }
-        if (rowStart > rowEnd) {
-            int tmp = rowStart;
-            rowStart = rowEnd;
-            rowEnd = tmp;
-        }
-        selectCalcRow(rowStart - 1, 0);
-        if (rowEnd > rowStart) {
-            selectCalcRow(rowEnd - 1, 1);
+
+        String range = calcAiRangeOnSheet(rawRange, target.sheet);
+        switch (type) {
+            case "set_value":
+            case "set_formula": {
+                String key = params.has("value") ? "value" : "valueFormula";
+                if (!params.has(key) || params.isNull(key)) throw new IllegalArgumentException("缺少要写入的内容");
+                String value = params.getString(key);
+                boolean formula = "set_formula".equals(type);
+                if (formula && !value.trim().startsWith("=")) throw new IllegalArgumentException("公式必须以 = 开头");
+                writeCalcDataValues(target, request, range, value, formula);
+                break;
+            }
+            case "add_column": {
+                String[] ends = range.split(":");
+                String col = extractColLetter(ends[ends.length - 1]);
+                String newCol = columnIndexToLetters(columnLettersToIndex(col) + 1);
+                CalcChartTypeMapper.cellAddress(newCol + "1");
+                runCalcDataRangeCommand(target, request, col + "1", ".uno:InsertColumnsAfter", "{}");
+                clearCalcDataColumnConditionalFormat(target, request, newCol + "1:" + newCol + "1048576");
+                int row = extractRowNumber(ends[0]);
+                String header = params.optString("header");
+                if (!header.isEmpty()) writeCalcDataValues(target, request, newCol + row, header, false);
+                JSONArray values = params.optJSONArray("values");
+                if (values != null) {
+                    for (int i = 0; i < values.length(); i++) {
+                        String value = values.optString(i, "");
+                        if (!value.isEmpty()) writeCalcDataValues(target, request, newCol + (row + i + 1),
+                                value, value.startsWith("="));
+                    }
+                }
+                break;
+            }
+            case "sort": {
+                String[] ends = range.split(":");
+                String key = params.optString("keyColumn", extractColLetter(ends[0]))
+                        .trim().toUpperCase(Locale.ROOT);
+                if (!key.matches("[A-Z]{1,3}")) throw new IllegalArgumentException("排序列无效");
+                int field = columnLettersToIndex(key) - columnLettersToIndex(extractColLetter(ends[0]));
+                int width = columnLettersToIndex(extractColLetter(ends[ends.length - 1]))
+                        - columnLettersToIndex(extractColLetter(ends[0]));
+                if (field < 0 || field > width) throw new IllegalArgumentException("排序列超出数据区域");
+                String args = "{\"HasHeader\":{\"type\":\"boolean\",\"value\":"
+                        + params.optBoolean("hasHeader", true) + "},\"KeyColumn\":{\"type\":\"long\",\"value\":"
+                        + (columnLettersToIndex(key) + 1) + "}}";
+                runCalcDataRangeCommand(target, request, range, params.optBoolean("ascending", true)
+                        ? ".uno:SortAscending" : ".uno:SortDescending", args);
+                break;
+            }
+            case "filter":
+                runCalcDataRangeCommand(target, request, range, ".uno:DataFilterAutoFilter", "{}");
+                break;
+            case "clear_formatting":
+                runCalcDataRangeCommand(target, request, range, ".uno:ResetAttributes", "{}");
+                break;
+            case "format_number":
+                String format = params.optString("style", "decimal");
+                String command;
+                switch (format) {
+                    case "percent": command = ".uno:NumberFormatPercent"; break;
+                    case "currency": command = ".uno:NumberFormatCurrency"; break;
+                    case "date": command = ".uno:NumberFormatDate"; break;
+                    default:
+                        int decimals = params.optInt("decimals", -1);
+                        command = decimals >= 0 && decimals <= 20
+                                ? ".uno:NumberFormatDecimal?Decimals:short=" + decimals
+                                : ".uno:NumberFormatDecimal";
+                }
+                runCalcDataRangeCommand(target, request, range, command, "{}");
+                break;
+            case "set_column_width":
+                runCalcDataRangeCommand(target, request, range, ".uno:SetOptimalColumnWidth", "{}");
+                break;
+            case "merge_cells":
+                runCalcDataRangeCommand(target, request, range, ".uno:ToggleMergeCells", "{}");
+                break;
+            case "bold":
+                runCalcDataRangeCommand(target, request, range, ".uno:Bold", "{}");
+                break;
+            case "calculate":
+                runCalcDataCommands(target, request, new String[]{".uno:Calculate"}, new String[]{"{}"});
+                break;
+            default:
+                throw new IllegalArgumentException("不支持的操作：" + type);
         }
     }
 
-    /**
-     * SelectColumn + 列级 UNO（delete/insert columns）。
-     * DeleteColumns 作用于 Core 当前列选区，必须先 SelectColumn。
-     */
-    private void confirmAndExecColumnOp(String range, String unoCmd, String unoArgs, String logTag) throws Exception {
-        String[] parts = range.split(":", 2);
-        String startCol = extractColLetter(parts[0]);
-        String endCol = parts.length > 1 ? extractColLetter(parts[1]) : startCol;
-        Log.i(TAG, "calc_data_process_exec_pre type=" + logTag + " aiRange=" + range
-                + " cols=" + startCol + ":" + endCol + " dpCellRange=" + dpCellRange);
-        long t0 = System.currentTimeMillis();
-        selectCalcColumnsInRange(range);
-        long t1 = System.currentTimeMillis();
-        waitForReconnectIfNeeded(logTag + "_post", 3000);
-        postUnoCommand(unoCmd, unoArgs, false);
-        long t2 = System.currentTimeMillis();
-        Log.i(TAG, "calc_data_process_" + logTag + " cols=" + startCol + ":" + endCol
-                + " select=" + (t1 - t0) + "ms exec=" + (t2 - t1) + "ms");
-        if (".uno:InsertColumnsAfter".equals(unoCmd)) {
-            stripInheritedFormatFromColumn(nextColumnLetter(endCol));
-        } else if (".uno:InsertColumnsBefore".equals(unoCmd)) {
-            stripInheritedFormatFromColumn(startCol);
+    private static String normalizeCalcAxisRange(String value, String sheet, boolean rows) {
+        String axis = value.trim().replace("$", "").toUpperCase(Locale.ROOT);
+        String pattern = rows ? "[1-9][0-9]{0,6}" : "[A-Z]{1,3}";
+        String[] ends = axis.split(":", -1);
+        if (ends.length > 2 || !ends[0].matches(pattern) || !ends[ends.length - 1].matches(pattern)) {
+            ends = calcAiRangeOnSheet(value, sheet).split(":");
+            axis = rows ? extractRowNumber(ends[0]) + ":" + extractRowNumber(ends[ends.length - 1])
+                    : extractColLetter(ends[0]) + ":" + extractColLetter(ends[ends.length - 1]);
+            ends = axis.split(":");
         }
+        String first = ends[0];
+        String last = ends[ends.length - 1];
+        calcAiRangeOnSheet(rows ? "A" + first + ":A" + last : first + "1:" + last + "1", sheet);
+        return first + ":" + last;
     }
 
-    /**
-     * SelectRow + 行级 UNO（delete/insert rows）。
-     */
-    private void confirmAndExecRowOp(String range, String unoCmd, String unoArgs, String logTag) throws Exception {
-        String[] parts = range.split(":", 2);
-        int rowStart = parseRowFromRangePart(parts[0]);
-        int rowEnd = parts.length > 1 ? parseRowFromRangePart(parts[1]) : rowStart;
-        Log.i(TAG, "calc_data_process_exec_pre type=" + logTag + " aiRange=" + range
-                + " rows=" + rowStart + ":" + rowEnd + " dpCellRange=" + dpCellRange);
-        long t0 = System.currentTimeMillis();
-        selectCalcRowsInRange(range);
-        long t1 = System.currentTimeMillis();
-        waitForReconnectIfNeeded(logTag + "_post", 3000);
-        postUnoCommand(unoCmd, unoArgs, false);
-        long t2 = System.currentTimeMillis();
-        Log.i(TAG, "calc_data_process_" + logTag + " rows=" + rowStart + ":" + rowEnd
-                + " select=" + (t1 - t0) + "ms exec=" + (t2 - t1) + "ms");
+    private static String calcAxisSelectionArgs(boolean rows, int index, int modifier) {
+        return (rows ? "{\"Row\":{\"type\":\"long\"" : "{\"Col\":{\"type\":\"unsigned short\"")
+                + ",\"value\":" + index + "},\"Modifier\":{\"type\":\"unsigned short\",\"value\":" + modifier + "}}";
     }
 
-    /**
-     * GoToCell + 结构性 UNO 命令（format/clear 等），带重连检测。
-     */
-    private void confirmAndExecCellOp(String range, String unoCmd, String unoArgs, String logTag) throws Exception {
-        String colLetter = extractColLetter(range);
-        if (colLetter == null || colLetter.isEmpty()) {
-            Log.w(TAG, "calc_data_process_" + logTag + "_invalid_range range=" + range);
+    private void runCalcDataRangeCommand(CalcAiTarget target, String request,
+                                         String range, String command, String args) throws Exception {
+        String goTo = "{\"ToPoint\":{\"type\":\"string\",\"value\":" + JSONObject.quote(range) + "}}";
+        runCalcDataCommands(target, request, new String[]{".uno:GoToCell", command}, new String[]{goTo, args});
+    }
+
+    private void runCalcDataCommands(CalcAiTarget target, String request, String[] commands, String[] args)
+            throws Exception {
+        awaitCalcDataResult(target, request, commands[commands.length - 1], id ->
+                executeCalcDataCommandsOnKitThread(id, commands, args, target.view, target.part));
+    }
+
+    private void writeCalcDataValues(CalcAiTarget target, String request, String range,
+                                     String value, boolean formula) throws Exception {
+        range = calcAiRangeOnSheet(range, target.sheet);
+        if (value.isEmpty()) {
+            String args = "{\"Range\":{\"type\":\"string\",\"value\":" + JSONObject.quote(range) + "}}";
+            runCalcDataCommands(target, request, new String[]{".uno:ClearContentsInRange"}, new String[]{args});
             return;
         }
-        String cellRef = range.split(":")[0];
-        long t0 = System.currentTimeMillis();
-        waitForReconnectIfNeeded(cellRef, 3000);
-        long t1 = System.currentTimeMillis();
-        // typed JSON 格式（参考 gtv-signal-handlers.cxx），确保 ToPoint 被正确解析
-        postUnoCommand(".uno:GoToCell",
-            "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + cellRef + "\"}}",
-            false);
-        long t2 = System.currentTimeMillis();
-        waitForReconnectIfNeeded(cellRef + "_post", 3000);
-        postUnoCommand(unoCmd, unoArgs, false);
-        long t3 = System.currentTimeMillis();
-        Log.i(TAG, "calc_data_process_cell_op tag=" + logTag + " cell=" + cellRef
-                + " wait1=" + (t1 - t0) + "ms goto=" + (t2 - t1) + "ms exec=" + (t3 - t2) + "ms");
-    }
-
-    /** 选中 range 对应区域（单列用 SelectColumn，否则 GoToCell 到起始格）。 */
-    private void selectRangeFromCellRange(String range) throws Exception {
-        String[] parts = range.split(":", 2);
-        String startCol = extractColLetter(parts[0]);
-        String endCol = parts.length > 1 ? extractColLetter(parts[1]) : startCol;
-        if (startCol.equals(endCol)) {
-            selectCalcColumnsInRange(startCol + ":" + endCol);
-        } else {
-            waitForReconnectIfNeeded("select_range_goto", 3000);
-            postUnoCommand(".uno:GoToCell",
-                    "{\"ToPoint\":{\"type\":\"string\",\"value\":\"" + parts[0] + "\"}}",
-                    false);
+        if (value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0 || value.indexOf('\t') >= 0) {
+            throw new IllegalArgumentException("每个单元格只能写入单行内容");
+        }
+        String[] ends = range.split(":");
+        String first = ends[0], last = ends[ends.length - 1];
+        int firstCol = columnLettersToIndex(extractColLetter(first)), lastCol = columnLettersToIndex(extractColLetter(last));
+        int firstRow = extractRowNumber(first), lastRow = extractRowNumber(last);
+        if ((long) (lastCol - firstCol + 1) * (lastRow - firstRow + 1) > 10000) {
+            throw new IllegalArgumentException("单次写入最多支持 10000 个单元格");
+        }
+        for (int row = firstRow; row <= lastRow; row++) {
+            String cellValue = value.replace("{row}", String.valueOf(row));
+            if (!formula && cellValue.startsWith("=")) cellValue = "'" + cellValue;
+            byte[] data = cellValue.getBytes(StandardCharsets.UTF_8);
+            for (int col = firstCol; col <= lastCol; col++) {
+                String cell = columnIndexToLetters(col) + row;
+                awaitCalcDataResult(target, request, null, id ->
+                        pasteAtCellOnKitThread("text/plain;charset=utf-8", data, id, cell, target.view, target.part));
+            }
         }
     }
 
-    /** 清空单元格内容（range 参数 UNO，不依赖当前选区）。 */
-    private void clearCellContentsInRange(String range) throws Exception {
-        Log.i(TAG, "calc_data_process_clear_contents range=" + range + " dpCellRange=" + dpCellRange
-                + " method=ClearContentsInRange");
-        String args = "{\"Range\":{\"type\":\"string\",\"value\":\"" + range + "\"}}";
-        postUnoCommand(".uno:ClearContentsInRange", args, false);
+    private void awaitCalcDataResult(CalcAiTarget target, String request, String command,
+                                     java.util.function.Consumer<String> submit) throws Exception {
+        if (!isCurrentDataProcess(request, target)) throw new IllegalStateException("数据处理已结束");
+        String id = "calc-dp:" + UUID.randomUUID();
+        java.util.concurrent.CompletableFuture<Boolean> result = new java.util.concurrent.CompletableFuture<>();
+        CalcDataCommandAck ack = command == null ? null : new CalcDataCommandAck(id, command);
+        calcDataResults.put(id, result);
+        try {
+            if (ack != null && !calcDataCommandAck.compareAndSet(null, ack)) {
+                throw new IllegalStateException("上一条数据操作仍在执行");
+            }
+            submit.accept(id);
+            if (!result.get(8, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new IllegalStateException("编辑器未能执行，请确认仍在原工作表");
+            }
+        } finally {
+            if (ack != null) calcDataCommandAck.compareAndSet(ack, null);
+            calcDataResults.remove(id);
+        }
+    }
+
+    private void forceRefreshTilesAfterDpExec() {
+        forceVisibleTileRedrawFromAndroid("calc_data_process");
     }
 
     /** 清除条件格式规则（range 参数 UNO，不依赖选区；不调用 ResetAttributes）。 */
@@ -10919,17 +10715,10 @@ public class LOActivity extends AppCompatActivity {
         Log.i(TAG, "cond_format_clear_range_done range=" + range);
     }
 
-    /** 插入列后 Calc 会复制相邻列条件格式，对新列按 range 清除继承的 CF 规则。 */
-    private void stripInheritedFormatFromColumn(String colLetter) {
-        if (colLetter == null || colLetter.isEmpty()) return;
-        try {
-            String range = colLetter + "1:" + colLetter + "1048576";
-            postUnoCommand(".uno:ClearConditionalFormat",
-                    "{\"Range\":{\"type\":\"string\",\"value\":\"" + range + "\"}}", false);
-            Log.i(TAG, "calc_data_process_strip_cf col=" + colLetter + " range=" + range);
-        } catch (Exception e) {
-            Log.w(TAG, "calc_data_process_strip_cf_failed col=" + colLetter, e);
-        }
+    private void clearCalcDataColumnConditionalFormat(CalcAiTarget target, String request,
+                                                      String columns) throws Exception {
+        String args = "{\"Range\":{\"type\":\"string\",\"value\":" + JSONObject.quote(columns) + "}}";
+        runCalcDataCommands(target, request, new String[]{".uno:ClearConditionalFormat"}, new String[]{args});
     }
 
     /**
@@ -10957,6 +10746,129 @@ public class LOActivity extends AppCompatActivity {
                 }
             });
         }, "selection-popup-preread").start();
+    }
+
+    private static final String JS_CALC_AI_TARGET =
+            "(function(){try{var d=app.map._docLayer,c=app.calc,g=d&&d.sheetGeometry;"
+            + "if(!d||!c)return null;"
+            + "var p=d._selectedPart,v=d._viewId;"
+            + "if(!Number.isInteger(v)||v<0){var ids=Object.keys(app.map._viewInfo||{});"
+            + "if(ids.length===1&&/^[0-9]+$/.test(ids[0]))v=Number(ids[0]);"
+            + "else if(ids.length===0&&app.activeDocument)v=app.activeDocument.activeViewID;}"
+            + "if(!Number.isInteger(v)||v<0||!Number.isInteger(p)||p<0)return null;"
+            + "function cell(x,y){if(!Number.isInteger(x)||!Number.isInteger(y)||x<0||y<0)return '';"
+            + "var r='';for(;x>=0;x=Math.floor(x/26)-1)r=String.fromCharCode(65+x%26)+r;"
+            + "return r+(y+1);}"
+            + "function address(raw){var t=String(raw||'').trim().replace(/[$]/g,'').toUpperCase();"
+            + "return /^[A-Z]{1,3}[1-9][0-9]{0,6}(?::[A-Z]{1,3}[1-9][0-9]{0,6})?$/.test(t)?t:'';}"
+            + "var a=c.cellAddress,s=d._cellSelectionArea,active=a&&c.cellCursorVisible?cell(a.x,a.y):'';"
+            + "var snapshot=d._calcAiSelection,core=snapshot&&snapshot.part===p?address(snapshot.address):'';"
+            + "var box=document.querySelector('#addressInput input'),shown=address(box&&box.getAttribute('aria-label'));"
+            + "var range=core||shown;"
+            + "if(range.indexOf(':')<0&&s&&g&&g.getPart()===p&&s.width>0&&s.height>0){"
+            + "try{var cx=g._columns,ry=g._rows;"
+            + "var first=cell(cx.getIndexFromPos(s.x1,'tiletwips'),ry.getIndexFromPos(s.y1,'tiletwips'));"
+            + "var last=cell(cx.getIndexFromPos(s.x2-1,'tiletwips'),ry.getIndexFromPos(s.y2-1,'tiletwips'));"
+            + "if(first&&last&&first!==last)range=first+':'+last;}catch(ignored){}}"
+            + "if(!range)range=active;"
+            + "return JSON.stringify({view:v,part:p,sheet:d._partNames&&d._partNames[p]||'',cell:active||range.split(':')[0],range:range});"
+            + "}catch(e){return null;}})()";
+
+    private static final class CalcAiTarget {
+        final long generation;
+        final int view;
+        final int part;
+        final String sheet;
+        final String cell;
+        final String range;
+
+        CalcAiTarget(long generation, int view, int part, String sheet, String cell, String range) {
+            this.generation = generation;
+            this.view = view;
+            this.part = part;
+            this.sheet = sheet;
+            this.cell = cell;
+            this.range = range;
+        }
+
+        boolean sameSheet(CalcAiTarget other) {
+            return other != null && generation == other.generation && view == other.view
+                    && part == other.part && sheet.equals(other.sheet);
+        }
+    }
+
+    private static CalcAiTarget parseCalcAiTarget(String result, long generation) {
+        try {
+            JSONObject target = new JSONObject(parseJsStringResult(result));
+            return new CalcAiTarget(generation, target.getInt("view"), target.getInt("part"),
+                    target.optString("sheet"), target.optString("cell"), target.optString("range"));
+        } catch (JSONException | IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private long calcAiTargetReadSerial;
+
+    private void readCalcAiTarget(String feature, java.util.function.Consumer<CalcAiTarget> callback) {
+        long serial = ++calcAiTargetReadSerial;
+        long generation = documentLifecycleGeneration;
+        // A toolbar click can arrive before the cell cursor or sheet update from Core.
+        getMainHandler().postDelayed(() -> readCalcAiTarget(feature, callback, generation, serial, 0, null), 80L);
+    }
+
+    private void readCalcAiTarget(String feature, java.util.function.Consumer<CalcAiTarget> callback,
+                                  long generation, long serial, int attempt, CalcAiTarget previous) {
+        if (mWebView == null || !mIsCalcDocument || generation != documentLifecycleGeneration
+                || serial != calcAiTargetReadSerial) {
+            return;
+        }
+        mWebView.evaluateJavascript(JS_CALC_AI_TARGET, value -> {
+            if (generation != documentLifecycleGeneration || serial != calcAiTargetReadSerial) return;
+            CalcAiTarget target = parseCalcAiTarget(value, generation);
+            boolean ready = target != null && !target.cell.isEmpty() && !target.range.isEmpty();
+            if (ready && target.sameSheet(previous) && target.cell.equals(previous.cell)
+                    && target.range.equals(previous.range)) {
+                callback.accept(target);
+            } else if (attempt < 8) {
+                getMainHandler().postDelayed(() ->
+                        readCalcAiTarget(feature, callback, generation, serial, attempt + 1, target), 80L);
+            } else {
+                Log.w(TAG, "calc_ai_target_unavailable feature=" + feature);
+                toastTodo("无法读取当前单元格或选区，请重新选择后打开" + feature);
+            }
+        });
+    }
+
+    private String readCalcAiSelectionText() {
+        String text = getTextSelection("text/plain;charset=utf-8");
+        return text == null ? "" : text;
+    }
+
+    private static String calcAiCellOnSheet(String reference, String sheet) {
+        int separator = Math.max(reference.lastIndexOf('.'), reference.lastIndexOf('!'));
+        if (separator >= 0) {
+            String qualifier = reference.substring(0, separator).trim().replaceFirst("^\\$", "");
+            if (qualifier.startsWith("'") && qualifier.endsWith("'") && qualifier.length() >= 2) {
+                qualifier = qualifier.substring(1, qualifier.length() - 1).replace("''", "'");
+            }
+            if (!sheet.equalsIgnoreCase(qualifier)) {
+                throw new IllegalArgumentException("目标超出当前工作表");
+            }
+        }
+        return CalcChartTypeMapper.cellAddress(reference);
+    }
+
+    private static String calcAiRangeOnSheet(String reference, String sheet) {
+        String[] ends = reference.split(":(?=(?:[^']*'[^']*')*[^']*$)", -1);
+        if (ends.length > 2) throw new IllegalArgumentException("请选择一个连续区域");
+        String start = calcAiCellOnSheet(ends[0], sheet);
+        if (ends.length == 1) return start;
+        String end = calcAiCellOnSheet(ends[1], sheet);
+        if (extractRowNumber(start) > extractRowNumber(end)
+                || columnLettersToIndex(extractColLetter(start)) > columnLettersToIndex(extractColLetter(end))) {
+            throw new IllegalArgumentException("区域起点和终点顺序无效");
+        }
+        return start + ":" + end;
     }
 
     private static final String JS_CALC_RANGE_FROM_LAYER =
@@ -11118,6 +11030,22 @@ public class LOActivity extends AppCompatActivity {
         String firstLine = selText.split("\n", 2)[0];
         if (!firstLine.contains("\t")) return 1;
         return firstLine.split("\t", -1).length;
+    }
+
+    private static int extractRowNumber(String cell) {
+        return Integer.parseInt(cell.substring(calcCellColumnLength(cell)));
+    }
+
+    private static String extractColLetter(String cell) {
+        return cell.substring(0, calcCellColumnLength(cell));
+    }
+
+    private static int calcCellColumnLength(String cell) {
+        int index = 0;
+        while (index < cell.length() && Character.isLetter(cell.charAt(index))) {
+            index++;
+        }
+        return index;
     }
 
     private static int columnLettersToIndex(String letters) {
@@ -12004,6 +11932,14 @@ public class LOActivity extends AppCompatActivity {
                 }
 
                 @Override
+                public void executeWriterCharacterToggle(String command) {
+                    // The WebView retains the document selection. Taking Android focus here
+                    // can change the keyboard and selection UI while the panel is open.
+                    postMobileMessage("uno " + command);
+                    nudgeSocketIfStalled("writer_character_toggle");
+                }
+
+                @Override
                 public void fetchCharFormatState(BottomToolbarController.CharFormatCallback callback) {
                     fetchCurrentFormattingAsync(new FunctionPanelController.FormattingCallback() {
                         @Override
@@ -12014,7 +11950,7 @@ public class LOActivity extends AppCompatActivity {
                                 callback.onResult(bold, italic, underline, strikethrough);
                             }
                         }
-                    });
+                    }, false);
                 }
             });
         }
@@ -14003,7 +13939,14 @@ public class LOActivity extends AppCompatActivity {
     }
 
     void fetchCurrentFormattingAsync(FunctionPanelController.FormattingCallback callback) {
-        runWebJs("(function(){try{"
+        fetchCurrentFormattingAsync(callback, true);
+    }
+
+    private void fetchCurrentFormattingAsync(FunctionPanelController.FormattingCallback callback,
+                                              boolean focusEditor) {
+        if (mWebView == null) return;
+        if (focusEditor) requestWebViewFocusForPanelAction("run_web_js");
+        mWebView.evaluateJavascript("(function(){try{"
                 + "if(!window.app||!app.map){return '{}';}"
                 + "var sch=app.map.stateChangeHandler||app.map['stateChangeHandler'];"
                 + "function state(cmd){try{return sch&&typeof sch.getItemValue==='function'?sch.getItemValue(cmd):'';}catch(e){return '';}}"
@@ -14067,7 +14010,7 @@ public class LOActivity extends AppCompatActivity {
             } catch (JSONException e) {
                 Log.w(TAG, "function_current_format_parse_failed", e);
             }
-            Log.i(TAG, "function_current_format style=" + style + " font=" + font
+            if (focusEditor) Log.i(TAG, "function_current_format style=" + style + " font=" + font
                     + " size=" + size + " align=" + align
                     + " bold=" + bold + " italic=" + italic
                     + " underline=" + underline + " strike=" + strikethrough);
@@ -20437,12 +20380,21 @@ public class LOActivity extends AppCompatActivity {
         if (requestId == null || requestId.isEmpty()) {
             return;
         }
+        if (requestId.startsWith("calc-dp:")) {
+            java.util.concurrent.CompletableFuture<Boolean> result = calcDataResults.get(requestId);
+            CalcDataCommandAck pending = calcDataCommandAck.get();
+            if (result != null && (!success || pending == null || !requestId.equals(pending.id))) {
+                result.complete(success);
+            }
+            return;
+        }
         runOnUiThread(() -> {
             if (requestId.startsWith("chart-insert:")) {
                 if (!requestId.equals(chartInsertRequestId)) {
                     return;
                 }
                 chartInsertRequestId = "";
+                calcChartCommandRequest = "";
                 if (chartDocumentGeneration != documentLifecycleGeneration) {
                     return;
                 }
@@ -22360,6 +22312,9 @@ public class LOActivity extends AppCompatActivity {
 
     private native void pasteAtCellOnKitThread(String mimeType, byte[] data, String requestId,
             String cellAddress, int viewId, int part);
+
+    private native void executeCalcDataCommandsOnKitThread(String requestId, String[] commands,
+                                                           String[] args, int viewId, int part);
 
     private native void insertCalcChartOnKitThread(String requestId, String arguments,
             String[] cells, String[] formulas, int viewId, int part);

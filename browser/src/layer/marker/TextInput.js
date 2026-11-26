@@ -193,6 +193,8 @@ window.L.TextInput = window.L.Layer.extend({
 	},
 
 	onRemove: function() {
+		if (this._androidRemoveTimer && this._map.getDocType() === 'text')
+			this._flushAndroidRemoveText();
 		window.__coolSetIosNativeEditing = null;
 		window.MagicToGetHWKeyboardWorking = null;
 		window.MagicKeyDownHandler = null;
@@ -276,6 +278,8 @@ window.L.TextInput = window.L.Layer.extend({
 	},
 
 	_onFocusBlur: function(ev) {
+		if (this._androidRemoveTimer && this._map.getDocType() === 'text' && ev.type === 'blur')
+			this._flushAndroidRemoveText();
 		this._fancyLog(ev.type, '');
 		this._statusLog('_onFocusBlur');
 		var onoff = (ev.type === 'focus' ? window.L.DomEvent.on : window.L.DomEvent.off).bind(window.L.DomEvent);
@@ -793,6 +797,16 @@ window.L.TextInput = window.L.Layer.extend({
 		this._statusLog('_onBeforeInput [');
 		this._ignoreNextBackspace = false;
 		this._iosBackspaceGuardBeforeInputLength = 0;
+		// When the Android IME is deleting against the two sentinel nodes,
+		// keep the DOM intact instead of rebuilding it on every repeat.
+		if (window.ThisIsTheAndroidApp && this._map.getDocType() === 'text' &&
+			ev.cancelable && !ev.isComposing && !this._isComposing &&
+			ev.inputType === 'deleteContentBackward' && !this.hasAccessibilitySupport() &&
+			this._isInitialContent() && this._isSelectionValid() && window.getSelection().isCollapsed) {
+			ev.preventDefault();
+			this._removeTextContent(1, 0);
+			return;
+		}
 		if (this._isIOSWriterBackspaceGuardActive() && !this._isComposing && !ev.isComposing &&
 			ev.inputType === 'deleteContentBackward' && this._hasPreSpace() &&
 			window.getSelection().isCollapsed && this._getSelectionStart() === 0 &&
@@ -1259,6 +1273,8 @@ window.L.TextInput = window.L.Layer.extend({
 	// Very difficult to handle right now, so the strategy is to panic and
 	// empty the text area.
 	_abortComposition: function(ev) {
+		if (this._androidRemoveTimer && this._map.getDocType() === 'text')
+			this._flushAndroidRemoveText();
 		this._fancyLog('abort-composition', ev.type);
 		if (this._isComposing)
 			this._isComposing = false;
@@ -1310,6 +1326,8 @@ window.L.TextInput = window.L.Layer.extend({
 	},
 
 	_onKeyDown: function(ev) {
+		if (this._androidRemoveTimer && this._map.getDocType() === 'text' && ev.keyCode !== 8 && ev.keyCode !== 46 && ev.keyCode !== 229)
+			this._flushAndroidRemoveText();
 		if (this._map.uiManager.isUIBlocked())
 			return;
 
@@ -1466,7 +1484,9 @@ window.L.TextInput = window.L.Layer.extend({
 		if (this._map.uiManager.isUIBlocked())
 			return;
 
-		if (window.ThisIsTheAndroidApp &&
+		// Some Android keyboards synthesize a complete key pair for every repeat.
+		// Writer already has a fixed flush deadline; keyup must not cancel batching.
+		if (window.ThisIsTheAndroidApp && this._map.getDocType() !== 'text' &&
 			(ev.key === 'Backspace' || ev.key === 'Delete')) {
 			this._flushAndroidRemoveText();
 		}
@@ -1514,16 +1534,22 @@ window.L.TextInput = window.L.Layer.extend({
 	// A held delete key emits one removetextcontent per repeat and stalls core.
 	// Batch them into the multi-character message this socket command already accepts.
 	_queueAndroidRemoveText: function(before, after) {
+		var writer = this._map.getDocType() === 'text';
+		if (writer && ((before && this._androidRemoveAfter) || (after && this._androidRemoveBefore)))
+			this._flushAndroidRemoveText();
 		this._androidRemoveBefore = (this._androidRemoveBefore || 0) + (before || 0);
 		this._androidRemoveAfter = (this._androidRemoveAfter || 0) + (after || 0);
-		if (this._androidRemoveTimer) {
+		// A fixed deadline gives Writer visible progress even during an unbroken hold.
+		if (!writer && this._androidRemoveTimer) {
 			clearTimeout(this._androidRemoveTimer);
+			this._androidRemoveTimer = null;
 		}
-		var self = this;
-		this._androidRemoveTimer = setTimeout(function() {
-			self._androidRemoveTimer = null;
-			self._flushAndroidRemoveText();
-		}, 60);
+		if (!this._androidRemoveTimer) {
+			this._androidRemoveTimer = setTimeout(function() {
+				this._androidRemoveTimer = null;
+				this._flushAndroidRemoveText();
+			}.bind(this), 60);
+		}
 		if ((this._androidRemoveBefore + this._androidRemoveAfter) >= 24) {
 			this._flushAndroidRemoveText();
 		}

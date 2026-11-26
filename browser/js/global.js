@@ -511,7 +511,14 @@ class AndroidAppInitializer extends MobileAppInitializer {
 		super();
 
 		window.ThisIsTheAndroidApp = true;
-		window.postMobileMessage = function(msg) { window.COOLMessageHandler.postMobileMessage(msg); };
+		let screenCommand;
+		window.postMobileMessage = function(msg) {
+			if (msg === 'LIGHT_SCREEN' || msg === 'DIM_SCREEN') {
+				if (msg === screenCommand) return;
+				screenCommand = msg;
+			}
+			window.COOLMessageHandler.postMobileMessage(msg);
+		};
 		window.postMobileError   = function(msg) { window.COOLMessageHandler.postMobileError(msg); };
 		window.postMobileDebug   = function(msg) { window.COOLMessageHandler.postMobileDebug(msg); };
 		window.NativeBridgeTransport = {

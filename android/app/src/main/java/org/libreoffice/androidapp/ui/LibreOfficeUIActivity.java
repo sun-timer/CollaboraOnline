@@ -651,6 +651,8 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         modelUrlInput = panel.findViewById(R.id.modelUrlInput);
         modelApiKeyInput = panel.findViewById(R.id.modelApiKeyInput);
         modelNameInput = panel.findViewById(R.id.modelNameInput);
+        AiModelPicker.bind(this, modelNameInput, panel.findViewById(R.id.modelFetchButton),
+                modelUrlInput, modelProviderInput, modelApiKeyInput);
         topPBar = panel.findViewById(R.id.topPBar);
         temperatureBar = panel.findViewById(R.id.temperatureBar);
         presencePenaltyBar = panel.findViewById(R.id.presencePenaltyBar);

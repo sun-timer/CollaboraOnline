@@ -81,6 +81,7 @@ public class SelectionMenuController {
         void saveDocument();
 
         void hideQuickActionPanel();
+        boolean keepWriterCharacterPanel();
 
         boolean onAiOperation(String taskType);
 
@@ -225,6 +226,9 @@ public class SelectionMenuController {
             Log.w(TAG, "show_aborted overlay=" + (overlayView != null)
                     + " menu=" + (menuView != null)
                     + " calcMode=" + calcMode);
+            return;
+        }
+        if (!calcMode && host.keepWriterCharacterPanel()) {
             return;
         }
         host.hideQuickActionPanel();

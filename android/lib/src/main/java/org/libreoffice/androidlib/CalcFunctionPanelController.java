@@ -2088,15 +2088,7 @@ public class CalcFunctionPanelController {
         int rgb = pickerColorRgb.getOrDefault("border_color", 0);
         try {
             if (index >= 10) {
-                String property = index == 10 ? "BorderTLBR" : "BorderBLTR";
-                JSONObject arguments = new JSONObject();
-                // JsonToPropertyValues accepts reflected UNO structs through an any wrapper.
-                JSONObject border = new JSONObject();
-                border.put("type", "any");
-                border.put("value", makeBorderLineJson(rgb, 20));
-                arguments.put(property, border);
-                host.executeUnoCommand(".uno:" + property + " " + arguments);
-                Log.i(TAG, "calc_border_preset index=" + index + " command=" + property + " color=" + rgb);
+                applyDiagonalBorder(index == 10 ? "BorderTLBR" : "BorderBLTR", rgb, 20);
                 return;
             }
             // Faint grid strokes in the icons show cell guides, not dashed borders.
@@ -2113,10 +2105,23 @@ public class CalcFunctionPanelController {
                 return;
             }
             host.executeUnoCommand(buildBorderUnoCommand(rgb, presets[index], 0, 0));
+            if (index == 0) {
+                applyDiagonalBorder("BorderTLBR", rgb, 0);
+                applyDiagonalBorder("BorderBLTR", rgb, 0);
+            }
             Log.i(TAG, "calc_border_preset index=" + index + " color=" + rgb);
         } catch (JSONException e) {
             Log.w(TAG, "calc_border_preset_failed index=" + index, e);
         }
+    }
+
+    private void applyDiagonalBorder(String property, int rgb, int width) throws JSONException {
+        JSONObject border = new JSONObject();
+        border.put("type", "any");
+        border.put("value", makeBorderLineJson(rgb, width));
+        JSONObject arguments = new JSONObject();
+        arguments.put(property, border);
+        host.executeUnoCommand(".uno:" + property + " " + arguments);
     }
 
     private String buildBorderColorUnoCommand(int rgb) {

@@ -14,7 +14,7 @@
                 </LinearLayout>
                 <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingHorizontal="16dp">
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="标题" android:textSize="16sp" android:textColor="#1F2329"/>
-                    <EditText android:id="@+id/fileName" android:layout_width="match_parent" android:layout_height="44dp" android:layout_marginTop="8dp" android:background="@drawable/bg_create_file_input" android:paddingHorizontal="12dp" android:textSize="14sp" android:hint="请输入文件名称" android:singleLine="true" android:inputType="text" android:imeOptions="actionNext"/>
+                    <EditText android:id="@+id/fileName" android:layout_width="match_parent" android:layout_height="44dp" android:layout_marginTop="8dp" android:background="@drawable/bg_create_file_input" android:paddingHorizontal="12dp" android:textSize="14sp" android:textColor="#1F2329" android:textColorHint="#A2A9B2" android:hint="请输入文件名称" android:singleLine="true" android:inputType="text" android:imeOptions="actionNext"/>
                     <TextView android:id="@+id/overwriteWarning" android:layout_width="match_parent" android:layout_height="wrap_content" android:visibility="gone"/>
                     <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:padding="12dp" android:background="@drawable/bg_create_file_ai_row">
                         <LinearLayout android:orientation="horizontal" android:gravity="center_vertical" android:layout_width="match_parent" android:layout_height="32dp">

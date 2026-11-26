@@ -64,7 +64,7 @@ final class AiModelConfigPanelController {
         bindHeader();
         bindSliders();
         loadValues();
-        AiModelPicker.bind(context, modelNameInput, urlInput, providerInput, apiKeyInput);
+        AiModelPicker.bind(context, modelNameInput, root.findViewById(R.id.modelFetchButton), urlInput, providerInput, apiKeyInput);
         bindActions();
 
         View panel = root.findViewById(R.id.aiModelConfigPanel);

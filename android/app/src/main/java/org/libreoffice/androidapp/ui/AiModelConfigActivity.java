@@ -65,7 +65,7 @@ public class AiModelConfigActivity extends AppCompatActivity {
         bindHeader();
         bindSliders();
         loadValues();
-        AiModelPicker.bind(this, modelNameInput, urlInput, providerInput, apiKeyInput);
+        AiModelPicker.bind(this, modelNameInput, findViewById(R.id.modelFetchButton), urlInput, providerInput, apiKeyInput);
         bindActions();
         View scrim = findViewById(R.id.modelConfigScrim);
         if (scrim != null) {

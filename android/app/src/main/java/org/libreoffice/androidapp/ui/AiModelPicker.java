@@ -35,15 +35,12 @@ final class AiModelPicker {
 
     private AiModelPicker() {}
 
-    static void bind(Context context, EditText modelInput, EditText urlInput,
-            EditText providerInput, EditText apiKeyInput) {
-        if (modelInput == null || urlInput == null) {
+    static void bind(Context context, EditText modelInput, android.view.View fetchButton,
+            EditText urlInput, EditText providerInput, EditText apiKeyInput) {
+        if (modelInput == null || fetchButton == null || urlInput == null) {
             return;
         }
-        modelInput.setFocusable(false);
-        modelInput.setFocusableInTouchMode(false);
-        modelInput.setCursorVisible(false);
-        modelInput.setOnClickListener(view -> fetchModels(context, modelInput, urlInput,
+        fetchButton.setOnClickListener(view -> fetchModels(context, modelInput, urlInput,
                 providerInput, apiKeyInput));
         urlInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
