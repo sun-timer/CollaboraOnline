@@ -37,7 +37,7 @@ function harness(surface = 'quick') {
 	});
 	for (const name of ['WriterEditorController', 'WriterQuickActionBar', 'ImpressEditorPanel'])
 		vm.runInContext(stripTypeScriptTypes(fs.readFileSync(path.resolve(__dirname, '../src/app', name + '.ts'), 'utf8')), context);
-	vm.runInContext('window.Bar = WriterQuickActionBar; window.Panel = ImpressEditorPanel; window.Controller = WriterEditorController;', context);
+	vm.runInContext('window.Bar = WriterQuickActionBar; window.Panel = ImpressEditorPanel; window.Controller = WriterEditorController; window.FontPicker = IosFontPickerState;', context);
 	let bar;
 	if (surface === 'quick') {
 		bar = new window.Bar();
@@ -45,6 +45,7 @@ function harness(surface = 'quick') {
 	} else {
 		bar = Object.create(window.Panel.prototype);
 		Object.assign(bar, { grid: window.document.createElement('div'), activeTab: 'default',
+			fontPicker: new window.FontPicker(() => {}),
 			subDialogs: [], slideBackgroundRequest: 0, sheet: { open() {}, close() {} },
 			inlineSubpage: { clearSubpages() {} }, refreshCommandState() {}, renderTabs() {},
 			renderGrid() {

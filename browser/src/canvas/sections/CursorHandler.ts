@@ -29,6 +29,12 @@ class CursorHandler extends HTMLObjectSection {
 		this.sectionProperties.lastPosition = null;
 	}
 
+	onMouseDown(point: cool.SimplePoint, e: MouseEvent): void {
+		if (e.type === 'touchstart' && MobileSelectionMagnifier.isIOSImpressTextEditing()) {
+			this.sectionProperties.lastPosition = null;
+		}
+	}
+
 	onMouseMove(
 		point: cool.SimplePoint,
 		dragDistance: Array<number>,
@@ -41,7 +47,8 @@ class CursorHandler extends HTMLObjectSection {
 			this.stopPropagating();
 			e.stopPropagation();
 
-			if (!this.sectionProperties.lastPosition)
+			const dragStarted = !this.sectionProperties.lastPosition;
+			if (dragStarted)
 				this.sectionProperties.lastPosition = this.position.slice();
 			else {
 				this.setPosition(
@@ -49,10 +56,27 @@ class CursorHandler extends HTMLObjectSection {
 					this.sectionProperties.lastPosition[1] + dragDistance[1],
 				);
 			}
+
+			if (e.type === 'touchmove' && MobileSelectionMagnifier.isIOSImpressTextEditing()) {
+				const touch = (e as unknown as TouchEvent).touches[0];
+				if (touch) {
+					// Sample the text above the handle's grab area.
+					const sampleY = touch.clientY - CursorHandler.objectHeight / 2;
+					if (dragStarted) {
+						AndroidSelectionMenu.cancelIOSLongPressForHandle();
+						MobileSelectionMagnifier.startAt(touch.clientX, sampleY);
+					} else {
+						MobileSelectionMagnifier.updateAt(touch.clientX, sampleY);
+					}
+				}
+			}
 		}
 	}
 
 	onMouseUp(point: cool.SimplePoint, e: MouseEvent): void {
+		if (this.sectionProperties.lastPosition && MobileSelectionMagnifier.isIOSImpressTextEditing()) {
+			MobileSelectionMagnifier.hide();
+		}
 		if (
 			this.containerObject.isDraggingSomething() &&
 			this.containerObject.targetSection === this.name

@@ -94,7 +94,10 @@ class CalcAiController {
 		prompt: string,
 		contextOverride?: { [key: string]: any },
 	): string | null {
-		if (['loading', 'streaming', 'applying'].includes(this.state.state)) {
+		if (this.state.state === 'applying') {
+			return null;
+		}
+		if (['loading', 'streaming'].includes(this.state.state)) {
 			this.setError('已有 AI 请求正在进行');
 			return null;
 		}
@@ -164,6 +167,9 @@ class CalcAiController {
 	}
 
 	regenerate(): string | null {
+		if (this.state.state === 'applying') {
+			return null;
+		}
 		if (this.requestContext !== CalcAiContext.snapshot()) {
 			this.setError('文档、工作表或选区已变化，请重新生成');
 			return null;
@@ -171,7 +177,7 @@ class CalcAiController {
 		if (!this.lastRequest) {
 			return null;
 		}
-		if (['loading', 'streaming', 'applying'].includes(this.state.state)) {
+		if (['loading', 'streaming'].includes(this.state.state)) {
 			return null;
 		}
 		return this.request(
@@ -213,19 +219,24 @@ class CalcAiController {
 			return false;
 		}
 		if (this.resultMode === 'mutateConfirm') {
-			this.state = { ...this.state, state: 'applying' };
+			const { requestId, taskType, preview } = this.state;
+			const applyingState: CalcAiControllerState = { ...this.state, state: 'applying' };
+			const sourceRange = this.lastRequest?.context.cellRange;
+			this.state = applyingState;
 			this.notify();
-			const applyingRequestId = this.state.requestId;
 			const result = await CalcAiMutateApply.apply(
-				this.state.taskType || '',
-				this.state.preview,
-				this.lastRequest?.context.cellRange,
+				taskType || '',
+				preview,
+				sourceRange,
 			);
+			if (this.state !== applyingState) {
+				return false;
+			}
 			if (!result.ok) {
 				this.setError(result.error || '改表执行失败');
 				return false;
 			}
-			const accepted = this.bridge.accept(applyingRequestId!, this.state.preview);
+			const accepted = this.bridge.accept(requestId, preview);
 			if (!accepted) {
 				this.setError('NativeBridge 未确认 AI 结果');
 				return false;
@@ -282,7 +293,7 @@ class CalcAiController {
 
 	private handleNativeMessage(message: NativeBridgeEnvelope): void {
 		const requestId = this.state.requestId;
-		if (!requestId || message.requestId !== requestId) {
+		if (!requestId || message.requestId !== requestId || this.state.state === 'applying') {
 			return;
 		}
 		if (

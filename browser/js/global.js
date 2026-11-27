@@ -1233,6 +1233,8 @@ function getInitializerClass() {
 	global.proxySocketCounter = 0;
 	global.ProxySocket = function (uri) {
 		var that = this;
+		var isIOS = !!window.ThisIsTheiOSApp;
+		var iosWrite = null;
 		this.uri = uri;
 		this.binaryType = 'arraybuffer';
 		this.bufferedAmount = 0;
@@ -1380,6 +1382,7 @@ function getInitializerClass() {
 			this._deferredCriticalSends.clear();
 		};
 		this._signalErrorClose = function() {
+			iosWrite = null;
 			clearInterval(this.pollInterval);
 			clearTimeout(this.delaySession);
 			this.pollInterval = undefined;
@@ -1430,7 +1433,10 @@ function getInitializerClass() {
 			if (isMobileApp && that.msgInflight >= 1)
 			{
 				var mobileNow = performance.now();
-				if (mobileNow - that.lastDataTimestamp > 20 * 1000)
+				// The local iOS transport only reads when native code has data.
+				// Time spent idle before starting this read is normal.
+				const waitingSince = iosWrite ? iosWrite.startedAt : that.lastDataTimestamp;
+				if (mobileNow - waitingSince > 20 * 1000)
 				{
 					global.app.console.debug('Close mobile connection after no response for 20secs');
 					that._signalErrorClose();
@@ -1440,6 +1446,8 @@ function getInitializerClass() {
 					global.app.console.debug('High latency connection - mobile waiting for in-flight drain.');
 					that._lastMobileInflightWaitLogTs = mobileNow;
 				}
+				if (iosWrite)
+					iosWrite.readAgain = true;
 				return;
 			}
 
@@ -1496,7 +1504,11 @@ function getInitializerClass() {
 			const url = that.getEndPoint('write');
 			req.open('POST', url);
 			req.responseType = 'arraybuffer';
+			const write = isIOS ? { startedAt: performance.now(), readAgain: false } : null;
+			iosWrite = write;
 			req.addEventListener('load', function() {
+				if (write && iosWrite !== write)
+					return;
 				if (this.status == 200)
 				{
 					var data = new Uint8Array(this.response);
@@ -1534,7 +1546,13 @@ function getInitializerClass() {
 				that._setPollInterval(that.curPollMs);
 			});
 			req.addEventListener('loadend', function() {
+				if (write && iosWrite !== write)
+					return;
+				iosWrite = null;
 				that.msgInflight--;
+				// Native may have notified us after the response took its snapshot.
+				if (write && write.readAgain)
+					that.doSend();
 			});
 			const toSend = that.sendQueue;
 			that.sendQueue = '';

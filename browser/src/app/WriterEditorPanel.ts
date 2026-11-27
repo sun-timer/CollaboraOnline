@@ -16,7 +16,7 @@ class WriterEditorPanel {
 	private readonly actions: HTMLDivElement;
 	private readonly tabScroll: HTMLDivElement;
 	private readonly content: HTMLDivElement;
-	/** Fallback display strings for picker rows; live CO state wins when present. */
+	/** Fallback display strings for picker rows. */
 	private readonly pickerLabels: { [key: string]: string } = {
 		style: '正文',
 		'font-name': '字体',
@@ -27,6 +27,7 @@ class WriterEditorPanel {
 	};
 	/** Value text nodes of the formatter rows, keyed by feature id. */
 	private readonly pickerValueNodes: { [key: string]: HTMLElement } = {};
+	private readonly fontPicker = new IosFontPickerState(() => this.refreshPickerValues());
 	private readonly controller: WriterEditorController;
 	private activeTab: WriterEditorTab = 'default';
 	/** Toggle inputs in the review tab, keyed by .uno command. */
@@ -60,8 +61,6 @@ class WriterEditorPanel {
 	/** Commands whose current state feeds the formatter rows (Map.StateChanges). */
 	private static readonly VALUE_COMMANDS: { [featureId: string]: string } = {
 		style: '.uno:StyleApply',
-		'font-name': '.uno:CharFontName',
-		'font-size': '.uno:FontHeight',
 	};
 
 	private constructor() {
@@ -499,17 +498,15 @@ class WriterEditorPanel {
 		return row;
 	}
 
-	/** Current value for a formatter row: CO state first, then the last pick. */
+	/** Current value for a formatter row. */
 	private displayValue(featureId: string): string {
+		if (featureId === 'font-name' || featureId === 'font-size') {
+			const command = featureId === 'font-name' ? '.uno:CharFontName' : '.uno:FontHeight';
+			return this.fontPicker.label(command) || this.pickerLabels[featureId];
+		}
 		const command = WriterEditorPanel.VALUE_COMMANDS[featureId];
 		const state = command ? this.controller.getCommandState(command) : '';
-		if (state) {
-			if (featureId === 'font-size') {
-				return WriterEditorCatalog.charHeightLabelFor(state) || state;
-			}
-			return state;
-		}
-		return this.pickerLabels[featureId] || '';
+		return state || this.pickerLabels[featureId] || '';
 	}
 
 	/** Re-reads the formatter rows in place (called on command state changes). */
@@ -749,6 +746,7 @@ class WriterEditorPanel {
 	}
 
 	private unsubscribeReviewState(): void {
+		this.fontPicker.close();
 		if (!this.onReviewStateBound) {
 			return;
 		}
@@ -824,13 +822,11 @@ class WriterEditorPanel {
 				'字体',
 				options,
 				(option) => {
-					this.pickerLabels['font-name'] = option.label;
-					this.refreshPickerValues();
-					this.controller.applyFontName(
-						WriterEditorCatalog.aliasFont(option.value),
-					);
+					const font = WriterEditorCatalog.aliasFont(option.value);
+					this.fontPicker.pick('.uno:CharFontName', option.label, font);
+					this.controller.applyFontName(font);
 				},
-				this.pickerLabels['font-name'],
+				IosFontPickerState.selectedFont(options, this.displayValue('font-name')),
 				this.subHost(),
 			),
 		);
@@ -847,11 +843,10 @@ class WriterEditorPanel {
 				'字号',
 				options,
 				(option) => {
-					this.pickerLabels['font-size'] = option.label;
-					this.refreshPickerValues();
+					this.fontPicker.pick('.uno:FontHeight', option.label, option.value);
 					this.controller.applyFontSize(option.value);
 				},
-				this.pickerLabels['font-size'],
+				this.displayValue('font-size'),
 				this.subHost(),
 			),
 		);

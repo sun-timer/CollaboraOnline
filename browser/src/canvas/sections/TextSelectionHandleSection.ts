@@ -150,7 +150,8 @@ class TextSelectionHandle extends HTMLObjectSection {
 			this.onDrag(point, e);
 			const magnifier = (window as any).MobileSelectionMagnifier;
 			const clientPoint = this.eventClientPoint(e);
-			if (magnifier && clientPoint && this.isMobileWriter()) {
+			if (magnifier && clientPoint &&
+				(this.isMobileWriter() || (e.type === 'touchmove' && magnifier.isIOSImpressTextEditing()))) {
 				magnifier.updateAt(clientPoint.x, clientPoint.y - 22);
 			}
 		}
@@ -210,7 +211,9 @@ class TextSelectionHandle extends HTMLObjectSection {
 				}
 			}
 		}
-		if (magnifier && clientPoint && this.isMobileWriter()) {
+		const isIOSImpressHandleTouch = e.type === 'touchstart' && magnifier?.isIOSImpressTextEditing();
+		if (isIOSImpressHandleTouch) AndroidSelectionMenu.cancelIOSLongPressForHandle();
+		if (magnifier && clientPoint && (this.isMobileWriter() || isIOSImpressHandleTouch)) {
 			// The grab handle extends below its text boundary; center the lens on the text row.
 			magnifier.startAt(clientPoint.x, clientPoint.y - 22);
 		}
@@ -219,7 +222,7 @@ class TextSelectionHandle extends HTMLObjectSection {
 	onMouseUp(point: cool.SimplePoint, e: MouseEvent): void {
 		e.stopPropagation();
 		const magnifier = (window as any).MobileSelectionMagnifier;
-		if (magnifier && this.isMobileWriter()) {
+		if (magnifier && (this.isMobileWriter() || magnifier.isIOSImpressTextEditing())) {
 			magnifier.hide();
 		}
 		if (this.containerObject.isDraggingSomething()) {

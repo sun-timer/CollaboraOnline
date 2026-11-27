@@ -21,8 +21,8 @@ class WriterAiPanel {
 
 	private constructor() {
 		this.assistantPanel = new MobileAiAssistantPanel();
-		this.operationSheet = new MobileAiOperationSheet((entry) => {
-			this.openTask(entry.taskType);
+		this.operationSheet = new MobileAiOperationSheet((entry, closeOrigin) => {
+			this.openTask(entry.taskType, closeOrigin);
 		});
 	}
 
@@ -66,7 +66,7 @@ class WriterAiPanel {
 		}
 	}
 
-	openTask(taskType: string): void {
+	openTask(taskType: string, closeOrigin?: () => void): void {
 		const entry = MobileAiUiCatalog.getEntry(taskType);
 		if (!entry || !entry.iosSupport) {
 			this.showUnavailable(taskType);
@@ -92,7 +92,13 @@ class WriterAiPanel {
 		if (entry.dialog === 'translate') {
 			this.activeDialog = new MobileAiTranslateDialog();
 		} else if (entry.dialog === 'calc') {
-			this.activeDialog = new MobileAiCalcDialog(taskType);
+			const dialog = new MobileAiCalcDialog(taskType, () => {
+				if (this.activeDialog === dialog) {
+					this.activeDialog = null;
+					closeOrigin?.();
+				}
+			});
+			this.activeDialog = dialog;
 		} else if (entry.dialog === 'formatBatch') {
 			this.activeDialog = new MobileAiFormatBatchDialog();
 		} else if (entry.dialog === 'image') {

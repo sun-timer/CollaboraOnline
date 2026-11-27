@@ -884,6 +884,163 @@ class WriterEditorController {
 	}
 }
 
+type IosFontCommand = '.uno:CharFontName' | '.uno:FontHeight';
+
+/** A provisional picker label for the current selection until its UNO state arrives. */
+class IosFontPickerState {
+	private readonly picks = new Map<IosFontCommand, {
+		label: string;
+		value: string;
+		previous: Set<string> | null;
+	}>();
+	private map: any = null;
+	private selection = '';
+	private layer: unknown;
+	private readonly refresh: () => void;
+
+	constructor(refresh: () => void) {
+		this.refresh = refresh;
+	}
+
+	private static normalized(command: IosFontCommand, value: unknown): string {
+		if (typeof value !== 'string' && typeof value !== 'number') return '';
+		const text = String(value).trim();
+		if (command === '.uno:FontHeight') {
+			const points = parseFloat(text);
+			return Number.isFinite(points) && points > 0 ? String(points) : '';
+		}
+		if (!text || /^(disabled|enabled)$/i.test(text)) return '';
+		return WriterEditorCatalog.aliasFont(text).toLowerCase();
+	}
+
+	private selectionKey(): string {
+		// Formatting can move and resize the caret and the selection markers.
+		// Use the actual editing context here and watch user navigation separately.
+		return JSON.stringify([
+			this.map?._docLayer?._selectedPart,
+			typeof GraphicSelection !== 'undefined' && GraphicSelection.hasActiveSelection()
+				? GraphicSelection.extraInfo?.id : null,
+			typeof TextSelections !== 'undefined' && TextSelections.isActive(),
+		]);
+	}
+
+	private sameSelection(): boolean {
+		return this.map === (window as any).app?.map &&
+			this.layer === this.map?._docLayer &&
+			this.selection === this.selectionKey();
+	}
+
+	private rawState(command: IosFontCommand): unknown {
+		return (window as any).app?.map?.stateChangeHandler?.getItemValue(command);
+	}
+
+	label(command: IosFontCommand): string {
+		const pick = this.picks.get(command);
+		if (pick && this.sameSelection()) return pick.label;
+		const raw = this.rawState(command);
+		if (!IosFontPickerState.normalized(command, raw)) return '';
+		const state = String(raw).trim();
+		return command === '.uno:FontHeight'
+			? WriterEditorCatalog.charHeightLabelFor(state) || state
+			: state;
+	}
+
+	pick(command: IosFontCommand, label: string, value: string): void {
+		const map = (window as any).app?.map;
+		if (!map?.on || map.isEditMode?.() === false) return;
+		if (!this.sameSelection()) this.close();
+		if (!this.map) {
+			this.map = map;
+			this.layer = map._docLayer;
+			this.selection = this.selectionKey();
+			map.on('commandstatechanged', this.onState);
+			map.on('commandresult', this.onResult);
+			map.on('impresscharacterselectionchanged updateparts updatepermission', this.onSelectionChanged);
+			map.on('docloaded', this.invalidate);
+			document.addEventListener('pointerdown', this.onDocumentPointer, true);
+			document.addEventListener('keydown', this.onDocumentKey, true);
+		}
+		const previousPick = this.picks.get(command);
+		const previous = new Set(previousPick?.previous);
+		previous.add(IosFontPickerState.normalized(command, this.rawState(command)));
+		if (previousPick) previous.add(previousPick.value);
+		this.picks.set(command, {
+			label, value: IosFontPickerState.normalized(command, value), previous,
+		});
+		this.refresh();
+	}
+
+	private readonly onState = (event: any) => {
+		const command = event?.commandName as IosFontCommand;
+		const pick = this.picks.get(command);
+		if (!pick) return;
+		const state = IosFontPickerState.normalized(command, event.state);
+		if (!this.sameSelection()) {
+			this.invalidate();
+			return;
+		}
+		if (state === pick.value) {
+			pick.previous = null;
+			return;
+		}
+		// A queued callback can still describe the previous pick or the cached
+		// value from before the user acted. Keep the newest pick until it settles.
+		if (pick.previous?.has(state)) return;
+		this.picks.delete(command);
+		this.refresh();
+	};
+
+	private readonly onSelectionChanged = () => {
+		if (!this.sameSelection() || this.map?.isEditMode?.() === false)
+			this.invalidate();
+	};
+
+	private readonly onDocumentPointer = (event: PointerEvent) => {
+		if ((event.target as Element)?.closest?.('#document-container')) this.invalidate();
+	};
+
+	private readonly onDocumentKey = (event: KeyboardEvent) => {
+		if (/^(Arrow(Up|Down|Left|Right)|Home|End|PageUp|PageDown)$/.test(event.key))
+			this.invalidate();
+	};
+
+	private readonly onResult = (event: any) => {
+		const command = event?.commandName;
+		if (command === '.uno:Undo' || command === '.uno:Redo') {
+			this.invalidate();
+		} else if (event?.success === false && this.picks.delete(command)) {
+			this.refresh();
+		}
+	};
+
+	private readonly invalidate = () => {
+		const hadPicks = this.picks.size > 0;
+		this.close();
+		if (hadPicks) this.refresh();
+	};
+
+	close(): void {
+		this.picks.clear();
+		if (!this.map) return;
+		this.map.off('commandstatechanged', this.onState);
+		this.map.off('commandresult', this.onResult);
+		this.map.off('impresscharacterselectionchanged updateparts updatepermission', this.onSelectionChanged);
+		this.map.off('docloaded', this.invalidate);
+		document.removeEventListener('pointerdown', this.onDocumentPointer, true);
+		document.removeEventListener('keydown', this.onDocumentKey, true);
+		this.map = null;
+		this.layer = null;
+	}
+
+	static selectedFont(options: WriterChooseOption[], current: string): string {
+		const value = IosFontPickerState.normalized('.uno:CharFontName', current);
+		return options.find((option) => option.label === current)?.label ||
+			options.find((option) =>
+				IosFontPickerState.normalized('.uno:CharFontName', option.value) === value
+			)?.label || current;
+	}
+}
+
 if (typeof window !== 'undefined') {
 	WriterEditorController.getInstance();
 	(window as any).ImpressCharacterStateBridge = {

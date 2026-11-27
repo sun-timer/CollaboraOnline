@@ -1982,8 +1982,12 @@ class AndroidSelectionMenu {
 		}
 		AndroidSelectionMenu.writerSelectionHandleTouchActive = true;
 		AndroidSelectionMenu.clearTryShowRetry();
-		AndroidSelectionMenu.clearIosLongPressForHandle?.();
+		AndroidSelectionMenu.cancelIOSLongPressForHandle();
 		AndroidSelectionMenu.hide();
+	}
+
+	static cancelIOSLongPressForHandle(): void {
+		AndroidSelectionMenu.clearIosLongPressForHandle?.();
 	}
 
 	/** Release only the handle-ownership guard; callers keep the existing range. */
@@ -2391,6 +2395,7 @@ class AndroidSelectionMenu {
 		let caretMenuTimer = 0;
 		let multiTouchActive = false;
 		let cancelCaretMenuForThisGesture = false;
+		let presentationLensStarted = false;
 		let startX = 0;
 		let startY = 0;
 		let caretTapCandidate: {
@@ -2503,6 +2508,7 @@ class AndroidSelectionMenu {
 			caretTapCandidate = null;
 			annotationTapCandidate = null;
 			AndroidSelectionMenu.iosPinchCancelledLongPress = false;
+			presentationLensStarted = false;
 			const touch = e.touches[0];
 			if (!touch || !AndroidSelectionMenu.isSelectionDoc()) {
 				return;
@@ -2511,6 +2517,8 @@ class AndroidSelectionMenu {
 			if (!isCaretTarget(target)) {
 				return;
 			}
+			if (AndroidSelectionMenu.isPresentation() && target?.tagName === 'CANVAS' &&
+				target !== document.getElementById('document-canvas')) return;
 			startX = touch.clientX;
 			startY = touch.clientY;
 			AndroidSelectionMenu.lastIosGestureCss = { x: startX, y: startY };
@@ -2572,7 +2580,7 @@ class AndroidSelectionMenu {
 						startX * scale(),
 						startY * scale(),
 					);
-					if (AndroidSelectionMenu.nativeSelectionDragActive) {
+					if (AndroidSelectionMenu.nativeSelectionDragActive && !AndroidSelectionMenu.isPresentation()) {
 						MobileSelectionMagnifier.startAt(startX, startY);
 					}
 				}
@@ -2600,7 +2608,15 @@ class AndroidSelectionMenu {
 					x: touch.clientX,
 					y: touch.clientY,
 				};
-				MobileSelectionMagnifier.updateAt(touch.clientX, touch.clientY);
+				if (!AndroidSelectionMenu.isPresentation() || presentationLensStarted) {
+					MobileSelectionMagnifier.updateAt(touch.clientX, touch.clientY);
+				} else if (AndroidSelectionMenu.selectionStartAcknowledged &&
+					app.activeDocument?.activeView?.hasTextSelection) {
+					// A slide press can hit a shape even while a text caret is visible.
+					// Wait for the core to confirm a text range before showing the lens.
+					presentationLensStarted = true;
+					MobileSelectionMagnifier.startAt(touch.clientX, touch.clientY);
+				}
 				AndroidSelectionMenu.updateTextSelectionEndAt(
 					touch.clientX * scale(),
 					touch.clientY * scale(),

@@ -105,6 +105,16 @@ class MobileSelectionMagnifier {
 	private static lifecycleMap: any = null;
 	private static sourceCanvas: HTMLCanvasElement | null = null;
 	private static sourceDocLayer: any = null;
+	private static sourcePresentationPart: number | null = null;
+
+	static isIOSImpressTextEditing(): boolean {
+		return !!(
+			window.ThisIsTheiOSApp &&
+			app.map?.getDocType() === 'presentation' &&
+			app.map.isEditMode() &&
+			(app.file?.textCursor?.visible || app.activeDocument?.activeView?.hasTextSelection)
+		);
+	}
 
 	static isEnabled(): boolean {
 		if (typeof window === 'undefined') return false;
@@ -119,9 +129,10 @@ class MobileSelectionMagnifier {
 			typeof app !== 'undefined' &&
 			app.map &&
 			app.map.getDocType &&
-			app.map.getDocType() === 'text' &&
-			((window as any).ThisIsTheiOSApp || androidCanvasFallback) &&
-			app.map._docLayer
+			app.map._docLayer &&
+			((app.map.getDocType() === 'text' &&
+				(window.ThisIsTheiOSApp || androidCanvasFallback)) ||
+				MobileSelectionMagnifier.isIOSImpressTextEditing())
 		);
 	}
 
@@ -207,6 +218,8 @@ class MobileSelectionMagnifier {
 		}
 		MobileSelectionMagnifier.sourceCanvas = source;
 		MobileSelectionMagnifier.sourceDocLayer = app.map._docLayer;
+		MobileSelectionMagnifier.sourcePresentationPart =
+			app.map.getDocType() === 'presentation' ? app.map._docLayer._selectedPart : null;
 		MobileSelectionMagnifier.ensureOverlay();
 		if (!MobileSelectionMagnifier.root || !MobileSelectionMagnifier.context) {
 			return;
@@ -238,6 +251,7 @@ class MobileSelectionMagnifier {
 		MobileSelectionMagnifier.lastPoint = null;
 		MobileSelectionMagnifier.sourceCanvas = null;
 		MobileSelectionMagnifier.sourceDocLayer = null;
+		MobileSelectionMagnifier.sourcePresentationPart = null;
 		if (MobileSelectionMagnifier.frameId) {
 			window.cancelAnimationFrame(MobileSelectionMagnifier.frameId);
 			MobileSelectionMagnifier.frameId = 0;
@@ -325,6 +339,8 @@ class MobileSelectionMagnifier {
 			!source.isConnected ||
 			!MobileSelectionMagnifier.isEnabled() ||
 			app.map._docLayer !== MobileSelectionMagnifier.sourceDocLayer ||
+			(MobileSelectionMagnifier.sourcePresentationPart !== null &&
+				app.map._docLayer._selectedPart !== MobileSelectionMagnifier.sourcePresentationPart) ||
 			!point || !canvas || !context
 		) {
 			MobileSelectionMagnifier.hide();

@@ -11,8 +11,9 @@ class MobileAiCalcDialog {
 	private readonly promptInput: HTMLTextAreaElement;
 	private readonly unsubscribe: () => void;
 	private readonly resultMode: 'insertFormula' | 'conversation' | 'mutateConfirm';
+	private disposed = false;
 
-	constructor(taskType: string) {
+	constructor(taskType: string, onApplySuccess?: () => void) {
 		this.taskType = taskType;
 		this.controller = CalcAiController.getInstance();
 		const entry = MobileAiUiCatalog.getEntry(taskType);
@@ -28,6 +29,7 @@ class MobileAiCalcDialog {
 			title: entry?.label || 'Calc AI',
 			presentation: 'writer',
 			taskType,
+			onClose: () => this.dispose(),
 		});
 
 		this.hint = document.createElement('div');
@@ -60,7 +62,18 @@ class MobileAiCalcDialog {
 		this.layout.copyRow.onclick = () => this.controller.copy();
 		this.layout.regenerateButton.onclick = () => this.controller.regenerate();
 		if (this.resultMode === 'insertFormula' || this.resultMode === 'mutateConfirm') {
-			this.layout.applyButton.onclick = () => this.controller.accept();
+			const closeOnApply = [
+				'calc_chart',
+				'calc_cond_format',
+				'calc_data_process',
+			].includes(taskType);
+			this.layout.applyButton.onclick = async () => {
+				const accepted = await this.controller.accept();
+				if (closeOnApply && accepted && !this.disposed) {
+					this.close();
+					onApplySuccess?.();
+				}
+			};
 		} else {
 			this.layout.applyButton.hidden = true;
 		}
@@ -76,14 +89,24 @@ class MobileAiCalcDialog {
 	}
 
 	close(): void {
-		this.controller.cancel();
-		this.unsubscribe();
 		this.sheet.close();
+	}
+
+	private dispose(): void {
+		if (this.disposed) {
+			return;
+		}
+		this.disposed = true;
+		this.unsubscribe();
+		this.controller.cancel();
 	}
 
 	private async request(): Promise<void> {
 		this.refreshHint();
 		await MobileAiBridge.getInstance().getSelectedTextAsync();
+		if (this.disposed) {
+			return;
+		}
 		this.refreshHint();
 		this.controller.request(this.taskType, this.promptInput.value);
 	}

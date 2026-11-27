@@ -2,7 +2,10 @@
  * Android-style grouped AI operation sheet (lolib_sheet_ai_operations.xml).
  */
 
-type MobileAiOperationSelectHandler = (entry: MobileAiUiEntry) => void;
+type MobileAiOperationSelectHandler = (
+	entry: MobileAiUiEntry,
+	closeOrigin: () => void,
+) => void;
 
 const WRITER_AI_ROWS: Array<Array<string | null>> = [
 	['continue', 'outline', 'article_generate'],
@@ -30,6 +33,7 @@ class MobileAiOperationSheet {
 	private readonly sections: HTMLDivElement;
 	private readonly hint: HTMLDivElement;
 	private selectionOverride: string | null = null;
+	private openSession = 0;
 
 	static resolveDocumentType(
 		nativeDocumentType?: string,
@@ -65,6 +69,7 @@ class MobileAiOperationSheet {
 	}
 
 	open(): void {
+		this.openSession++;
 		this.selectionOverride = null;
 		this.render();
 		this.sheet.open();
@@ -233,7 +238,13 @@ class MobileAiOperationSheet {
 				this.hint.style.color = '#d93025';
 				return;
 			}
-			this.onSelect(entry);
+			// An asynchronously completed task can only close the sheet that launched it.
+			const session = this.openSession;
+			this.onSelect(entry, () => {
+				if (this.openSession === session && this.sheet.root.isConnected) {
+					this.close();
+				}
+			});
 		};
 		return button;
 	}
